@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useCallback, useRef } from "react";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import { ImpersonationState } from "@/lib/impersonation";
 import {
   beginImpersonation,
@@ -34,9 +35,10 @@ const OUTCOME_MESSAGES: Record<
 };
 
 export function useAdminImpersonation(): AdminImpersonationHook {
-  const [impersonatedUserId, setImpersonatedUserId] = useState<string | null>(
-    ImpersonationState.get,
-  );
+  // Re-read whenever the signed-in user changes: after the reload that starts
+  // impersonation, the target only counts once the owning admin is known.
+  const viewer = useAuthStore((state) => state.user);
+  const impersonatedUserId = viewer ? ImpersonationState.get() : null;
   const { toast } = useToast();
   const { mutateAsync: notifyImpersonationStart, isPending: isStarting } =
     usePostV2NotifyImpersonationStart();
@@ -75,7 +77,6 @@ export function useAdminImpersonation(): AdminImpersonationHook {
           return;
         }
 
-        setImpersonatedUserId(userId);
         window.location.reload();
       } catch (error) {
         console.error("Failed to start impersonation:", error);
@@ -94,7 +95,6 @@ export function useAdminImpersonation(): AdminImpersonationHook {
   const stopImpersonating = useCallback(() => {
     try {
       ImpersonationState.clear();
-      setImpersonatedUserId(null);
       window.location.reload();
     } catch (error) {
       console.error("Failed to stop impersonation:", error);

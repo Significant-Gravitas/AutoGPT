@@ -5,6 +5,7 @@ import { resetAnalyticsIdentity } from "@/services/analytics/reset-identity";
 import {
   clearImpersonationEverywhere,
   ImpersonationState,
+  isImpersonationChangedEvent,
   isImpersonationClearedEvent,
   isImpersonationUsableBy,
   hasImpersonation,
@@ -17,6 +18,7 @@ import { reloadForNewDeployment } from "../deployment-reload";
 import {
   broadcastLogout,
   navigateWithFullLoad,
+  reloadPage,
   setupSessionEventListeners,
   setWebSocketDisconnectIntent,
 } from "../helpers";
@@ -158,40 +160,54 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
         // This handles the case where hasLoadedUser might be stale after logout/login
         if (!get().hasLoadedUser || !get().user) {
           set({ isUserLoading: true });
-          const epoch = get().sessionEpoch;
-          const { user, ...result } = await fetchUser();
-          if (get().sessionEpoch !== epoch) return;
-          set(result);
-          if (user) adoptUser(user);
-          else set({ user: null });
-
-          // If fetchUser didn't return a user, validate the session to ensure we have the latest state
-          // This handles race conditions after login where cookies might not be immediately available
-          if (!user) {
-            const validationResult = await validateSessionHelper({
-              path: params.path,
-              currentUser: null,
-            });
+          // A check already running for this session answers for start-up
+          // too; only look again if it didn't find anyone.
+          while (checkRunning()) await currentCheck?.done;
+          if (get().user) {
+            set({ isUserLoading: false });
+            return;
+          }
+          const finishCheck = beginCheck();
+          try {
+            const epoch = get().sessionEpoch;
+            const { user, ...result } = await fetchUser();
             if (get().sessionEpoch !== epoch) return;
+            set(result);
+            if (user) adoptUser(user);
+            else set({ user: null });
 
-            if (validationResult.unavailable) {
-              handleUnavailable(validationResult.unavailable);
-            } else if (validationResult.user && validationResult.isValid) {
-              adoptUser(validationResult.user);
-              set({ hasLoadedUser: true, isUserLoading: false });
-            } else if (!validationResult.isValid) {
-              // No session at startup: a target left from the last one goes,
-              // and a protected page sends the user to sign in (the
-              // middleware only checks that a session cookie exists, which an
-              // expired or revoked one still does).
-              if (hasImpersonation()) {
-                endSessionEpoch();
-                clearImpersonationEverywhere();
-              }
-              if (validationResult.redirectPath) {
-                params.router.push(validationResult.redirectPath);
+            // If fetchUser didn't return a user, validate the session to ensure we have the latest state
+            // This handles race conditions after login where cookies might not be immediately available
+            if (!user) {
+              const validationResult = await validateSessionHelper({
+                path: params.path,
+                currentUser: null,
+              });
+              if (get().sessionEpoch !== epoch) return;
+
+              if (validationResult.unavailable) {
+                handleUnavailable(validationResult.unavailable);
+              } else if (validationResult.user && validationResult.isValid) {
+                adoptUser(validationResult.user);
+                set({ hasLoadedUser: true, isUserLoading: false });
+              } else if (!validationResult.isValid) {
+                // No session at startup: a target left from the last one goes,
+                // and a protected page sends the user to sign in (the
+                // middleware only checks that a session cookie exists, which an
+                // expired or revoked one still does).
+                if (hasImpersonation()) {
+                  endSessionEpoch();
+                  clearImpersonationEverywhere();
+                }
+                // Replace, like the middleware's redirect: the page the
+                // dead session landed on isn't somewhere to come back to.
+                if (validationResult.redirectPath) {
+                  params.router.replace(validationResult.redirectPath);
+                }
               }
             }
+          } finally {
+            finishCheck();
           }
         } else {
           set({ isUserLoading: false });
@@ -263,17 +279,15 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const pathname = params?.path ?? get().currentPath;
 
     if (!router || !pathname) return true;
-    // One check at a time, even a forced one: a retry or `online` event that
-    // lands mid-check would otherwise race it and act on a stale answer.
-    if (get().isValidating) return true;
+    // Even a forced check waits its turn: one that lands mid-check would
+    // race it and act on a stale answer.
+    if (checkRunning()) return true;
 
     const now = Date.now();
     if (!params?.force && now - get().lastValidation < 2000) return true;
 
-    set({
-      isValidating: true,
-      lastValidation: now,
-    });
+    set({ lastValidation: now });
+    const finishCheck = beginCheck();
 
     const epoch = get().sessionEpoch;
     try {
@@ -319,7 +333,7 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
 
       return true;
     } finally {
-      set({ isValidating: false });
+      finishCheck();
     }
   }
 
@@ -375,6 +389,34 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     set({ sessionEpoch: get().sessionEpoch + 1 });
   }
 
+  // One session check at a time per epoch: start-up's lookups and every
+  // validation go through here. A check from an earlier epoch doesn't block
+  // a new one, since its answer will be dropped anyway.
+  let currentCheck: { epoch: number; done: Promise<void> } | null = null;
+
+  function checkRunning(): boolean {
+    return currentCheck !== null && currentCheck.epoch === get().sessionEpoch;
+  }
+
+  function beginCheck(): () => void {
+    let finished!: () => void;
+    const check = {
+      epoch: get().sessionEpoch,
+      done: new Promise<void>((resolve) => {
+        finished = resolve;
+      }),
+    };
+    currentCheck = check;
+    set({ isValidating: true });
+    return () => {
+      if (currentCheck === check) {
+        currentCheck = null;
+        set({ isValidating: false });
+      }
+      finished();
+    };
+  }
+
   // An impersonation target belongs to the admin session that chose it. When
   // this tab takes on a different account, or one that may not use it, the
   // target goes. That includes a tab starting from an empty store, which can
@@ -401,6 +443,13 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   function handleStorageEventInternal(event: StorageEvent): void {
     if (isImpersonationClearedEvent(event)) {
       ImpersonationState.clear();
+      return;
+    }
+    if (isImpersonationChangedEvent(event)) {
+      // Another tab started impersonating someone else: this tab's page
+      // belongs to the old choice. Only the owning admin's tabs follow it.
+      const user = get().user;
+      if (user && isImpersonationUsableBy(user)) reloadPage();
       return;
     }
 
@@ -431,6 +480,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
   }
 
   async function refreshSessionInternal() {
+    // A refresh is asked for explicitly, so it isn't skipped like a
+    // background check: it waits its turn, then holds the one-at-a-time slot.
+    while (checkRunning()) await currentCheck?.done;
+    const finishCheck = beginCheck();
+    try {
+      return await refreshOnce();
+    } finally {
+      finishCheck();
+    }
+  }
+
+  async function refreshOnce() {
     const epoch = get().sessionEpoch;
     const result = await refreshSessionHelper();
     if (get().sessionEpoch !== epoch) return result;

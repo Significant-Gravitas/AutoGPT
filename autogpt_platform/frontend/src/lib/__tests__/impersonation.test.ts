@@ -77,10 +77,18 @@ describe("impersonation records", () => {
 });
 
 describe("ImpersonationState.read()", () => {
-  it("prefers this tab's copy over the shared cookie", () => {
-    ImpersonationSession.set(record("session-target"));
-    setCookiesRaw(cookieHolding("cookie-target"));
-    expect(ImpersonationState.read()).toEqual(record("session-target"));
+  it("follows the shared cookie when another tab chose a different target", () => {
+    ImpersonationSession.set(record("old-target"));
+    setCookiesRaw(cookieHolding("new-target"));
+    // The server checks requests against the cookie, so this tab must too.
+    expect(ImpersonationState.read()).toEqual(record("new-target"));
+    expect(ImpersonationSession.get()).toEqual(record("new-target"));
+  });
+
+  it("keeps this tab's copy when the cookie holds the same record", () => {
+    ImpersonationSession.set(record("same-target"));
+    setCookiesRaw(cookieHolding("same-target"));
+    expect(ImpersonationState.read()).toEqual(record("same-target"));
   });
 
   it("falls back to the cookie and keeps a copy (cross-tab path)", () => {
@@ -98,7 +106,14 @@ describe("ImpersonationState.read()", () => {
   it("never pairs this tab's target with another source's owner", () => {
     sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "session-target");
     setCookiesRaw(cookieHolding("cookie-target"));
+    // The cookie's record, whole; never session-target with the cookie's owner.
+    expect(ImpersonationState.read()).toEqual(record("cookie-target"));
+  });
+
+  it("drops a tab copy that no cookie backs (cleared, or from an old session)", () => {
+    ImpersonationSession.set(record("restored-target"));
     expect(ImpersonationState.read()).toBeNull();
+    expect(ImpersonationSession.getRaw()).toBeNull();
     expect(isImpersonationUsableBy(ADMIN)).toBe(false);
   });
 
@@ -110,7 +125,7 @@ describe("ImpersonationState.read()", () => {
 
 describe("getSystemHeaders", () => {
   it("sends the target only for the signed-in admin who chose it", () => {
-    ImpersonationSession.set(record("user-abc"));
+    setCookiesRaw(cookieHolding("user-abc"));
     setImpersonationViewer(ADMIN);
     expect(getSystemHeaders()).toEqual({
       [IMPERSONATION_HEADER_NAME]: "user-abc",
@@ -118,19 +133,19 @@ describe("getSystemHeaders", () => {
   });
 
   it("sends nothing for a different admin, however the record got there", () => {
-    ImpersonationSession.set(record("user-abc"));
+    setCookiesRaw(cookieHolding("user-abc"));
     setImpersonationViewer(OTHER_ADMIN);
     expect(getSystemHeaders()).toEqual({});
   });
 
   it("sends nothing for the owner once they're no longer an admin", () => {
-    ImpersonationSession.set(record("user-abc"));
+    setCookiesRaw(cookieHolding("user-abc"));
     setImpersonationViewer({ id: ADMIN.id, role: "authenticated" });
     expect(getSystemHeaders()).toEqual({});
   });
 
   it("sends nothing while nobody is signed in", () => {
-    ImpersonationSession.set(record("user-abc"));
+    setCookiesRaw(cookieHolding("user-abc"));
     expect(getSystemHeaders()).toEqual({});
   });
 

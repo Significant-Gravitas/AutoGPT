@@ -37,6 +37,12 @@ export function uniqueSignal(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+// Full reload, so the page shows (and requests act as) what changed in
+// another tab rather than what this tab started with.
+export function reloadPage(): void {
+  window.location.reload();
+}
+
 export function broadcastLogout(): void {
   storage.set(Key.LOGOUT, uniqueSignal());
 }
