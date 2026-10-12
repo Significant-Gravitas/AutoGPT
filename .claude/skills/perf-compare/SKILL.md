@@ -75,7 +75,7 @@ Measuring the candidate preview against `app:dev-behave:cloud` at dev HEAD in th
 
 ## How much data
 
-- The script gives no verdict unless each side has `--min-count` samples (default 200) **from** `--min-traces` distinct traces (default 30). At 200, p95 rests on 10 values above it. p99 is shown but never judged. The verdict cell says which minimum was missed.
+- The script gives no p50 or p95 verdict unless each side has `--min-count` samples (default 200) **from** `--min-traces` distinct traces (default 30). At 200, p95 rests on 10 values above it. p99 is shown but never judged. The verdict cell says which minimum was missed. The failure-rate test works from Sentry's event counts instead, and needs `--min-count` events per side.
 - It samples up to `--sample-cap` values per side per transaction (default 1000, at most 20000), paging 100 at a time. A cap below `--min-count` is refused.
 - For a claim about one transaction, name it with `--transaction` and raise `--sample-cap` to 2000–5000. Naming it also shrinks the multiple-comparison correction (see below).
 - Correlated spans count once: the bootstrap resamples whole traces, and the trace minimum stops a few busy traces (a page polling an endpoint) from passing as a big sample. The table shows samples and distinct traces. The effective sample is closer to the trace count than the span count. In A/A tests on clustered data, resampling spans one at a time called 38–44% of identical pairs a change, against 2–5% when resampling by trace.
@@ -99,13 +99,16 @@ The k6 tests are in `autogpt_platform/backend/load-tests/`. `K6_ENVIRONMENT=PREV
 - **Token needed:** `tests/api/core-api-test.js`, `tests/api/graph-execution-test.js`, `tests/marketplace/library-access-test.js`, `tests/comprehensive/platform-journey-test.js`. These read `configs/pre-authenticated-tokens.js`, which is gitignored; copy it from `configs/pre-authenticated-tokens.example.js`.
   - The backend verifies Better Auth tokens (ES256, audience `authenticated`) against `<frontend>/api/auth/jwks` and rejects HS256. `generate-tokens.js` signs in against dev's Supabase, so its tokens do not work.
   - Mint a token for a preview's seeded account instead. The `preview-*@previews.agpt.co` accounts use the `PREVIEW_ACCOUNTS_PASSWORD` secret, which is in the team Bitwarden. Tokens last one hour.
+  - Export the password first. The recipe below reads it from the environment and sends it on stdin, so it never appears on a command line other users can see. The cookie jar is a private temporary file.
 
     ```bash
     F=https://autogpt-pr-<N>.vercel.app
-    curl -sS -c /tmp/pc-jar -H "Origin: $F" -H 'Content-Type: application/json' \
-      -d "{\"email\":\"preview-existing@previews.agpt.co\",\"password\":\"$PREVIEW_ACCOUNTS_PASSWORD\"}" \
-      "$F/api/auth/sign-in/email" > /dev/null
-    curl -sS -b /tmp/pc-jar "$F/api/auth/token"   # {"token": "..."}
+    jar=$(mktemp)
+    python3 -c 'import json, os; print(json.dumps({"email": "preview-existing@previews.agpt.co", "password": os.environ["PREVIEW_ACCOUNTS_PASSWORD"]}))' |
+      curl -sS -c "$jar" -H "Origin: $F" -H 'Content-Type: application/json' \
+        --data-binary @- "$F/api/auth/sign-in/email" > /dev/null
+    curl -sS -b "$jar" "$F/api/auth/token"   # {"token": "..."}
+    rm -f "$jar"
     ```
 
 - **Previews start with an empty database.** Store and library lists return nothing, so costs that grow with data (N+1 queries, scans) do not show. Seed data through the API first, or confirm on dev and prod after merge.
@@ -121,12 +124,13 @@ The markdown output (default) or `--json` reports two things for each transactio
 - **A verdict for p50 and p95:**
   - The interval is a bootstrap CI of candidate minus baseline from the raw samples, resampling whole traces.
   - It is Bonferroni-adjusted so that every interval in the run holds together at `--confidence` (95%). Two transactions means four intervals at 98.75% each. The plain 95% interval is in the JSON as `ci`.
-  - Resamples are raised automatically until each tail of the adjusted interval holds 20 draws, up to 50000. For example, 4000 becomes 8000 for five transactions. The JSON reports the number used as `settings.resamples`.
+  - Resamples are raised automatically until each tail of the adjusted interval holds 20 draws, up to 50000. For example, 4000 becomes 8000 for five transactions. At the 50000 cap a run still goes ahead with as few as 10 draws per tail. A run that would leave fewer than 10, because too many transactions are compared, is refused before it starts (exit 2). The JSON reports the number used as `settings.resamples`.
   - `faster` or `slower` needs the adjusted interval to exclude zero, and **both** the sample change and Sentry's all-events change to be at least `--min-effect` (5%) in that direction. Anything else is `no detectable change`. Below `--min-count` samples or `--min-traces` traces it is `not enough data`.
   - The transaction takes its worst percentile: `slower` if either is slower, else `faster` if either is faster.
 - **Failure rate:** Fisher's exact test on the failure counts behind Sentry's `failure_rate()`. It is exact because a normal approximation is wrong with a handful of failures: 0 of 1000 against 4 of 1000 passes a z-test, but Fisher gives p = 0.12.
   - The significance level is Bonferroni-adjusted over the K transactions that have `--min-count` events on both sides. That is one test per transaction, not two.
   - `higher` needs significance and a rise of at least `--min-failure-delta` (0.1 percentage points). It counts as a regression even when the transaction got faster, because requests that fail fast look like a speedup.
+  - The test treats every event as independent, and `--min-traces` does not apply to it. When failures come from a few traces (one broken page retrying), it overstates significance. Check `sample_traces` and the failing traces in Sentry before acting on a failure-rate result alone.
 
 `no detectable change` means "not distinguishable from noise with this much data". It does not mean "no change". Check the interval widths and trace counts before concluding anything.
 

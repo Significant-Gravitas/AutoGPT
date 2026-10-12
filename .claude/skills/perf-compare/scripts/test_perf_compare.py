@@ -15,6 +15,7 @@ import random
 import socket
 import sys
 import threading
+import time
 import unittest
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -870,6 +871,33 @@ class VerdictTest(unittest.TestCase):
                 self.assertAlmostEqual(
                     pc.fisher_exact_p(*case), exact_fisher(*case), places=10
                 )
+
+    def test_fisher_stays_fast_and_exact_on_huge_failure_counts(self):
+        def full_support(base_failures, base_total, cand_failures, cand_total):
+            total = base_total + cand_total
+            failures = base_failures + cand_failures
+            low = max(0, cand_total - (total - failures))
+            high = min(failures, cand_total)
+
+            def log_p(count):
+                return (
+                    pc.log_comb(failures, count)
+                    + pc.log_comb(total - failures, cand_total - count)
+                    - pc.log_comb(total, cand_total)
+                )
+
+            observed = log_p(cand_failures) + math.log1p(1e-7)
+            values = (log_p(count) for count in range(low, high + 1))
+            return sum(math.exp(value) for value in values if value <= observed)
+
+        for case in ((40000, 100000, 40600, 100000), (30000, 100000, 30000, 100000)):
+            with self.subTest(case=case):
+                self.assertAlmostEqual(
+                    pc.fisher_exact_p(*case) / full_support(*case), 1.0, places=9
+                )
+        started = time.perf_counter()
+        pc.fisher_exact_p(5_000_000, 10_000_000, 5_002_000, 10_000_000)
+        self.assertLess(time.perf_counter() - started, 1.0)
 
     def test_failure_rate_verdicts(self):
         def check(base, cand, family=1, **overrides):

@@ -839,8 +839,11 @@ def fisher_exact_p(
 
     Sums the hypergeometric probability of every table with the same margins
     that is no more likely than the observed one. Probabilities are computed
-    in log space so million-event tables stay fast; ties use the usual 1e-7
-    relative tolerance.
+    in log space; ties use the usual 1e-7 relative tolerance. The walk starts
+    at the most likely table and, since the distribution is unimodal, stops in
+    each direction once tables are e^-40 times less likely than the observed
+    one. Everything further out changes the result by under 1e-9 of itself,
+    so a table with millions of failures still takes milliseconds.
     """
     total = base_total + cand_total
     failures = base_failures + cand_failures
@@ -855,11 +858,17 @@ def fisher_exact_p(
         )
 
     observed = log_probability(cand_failures) + math.log1p(1e-7)
+    cutoff = observed - 40
+    mode = (cand_total + 1) * (failures + 1) // (total + 2)
+    mode = min(high, max(low, mode))
     p_value = 0.0
-    for count in range(low, high + 1):
-        probability = log_probability(count)
-        if probability <= observed:
-            p_value += math.exp(probability)
+    for counts in (range(mode, low - 1, -1), range(mode + 1, high + 1)):
+        for count in counts:
+            probability = log_probability(count)
+            if probability <= observed:
+                p_value += math.exp(probability)
+            if probability < cutoff:
+                break
     return min(1.0, p_value)
 
 
