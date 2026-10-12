@@ -3,7 +3,7 @@ import { APIError, createAuthMiddleware, isAPIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
-import { Pool } from "pg";
+import { authDbPool } from "./auth-db-pool";
 import { runAfterResponse } from "./background-tasks";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
@@ -50,33 +50,6 @@ function getSocialProviders() {
   }
 
   return providers;
-}
-
-// Shared with the databaseHooks below so the verified-email mirror reuses the
-// same connection/search_path instead of opening a second pool.
-// Cached on globalThis in development: `next dev` re-evaluates this module on
-// every hot reload, and a fresh Pool per reload leaks its idle connections
-// (the old one is never ended), eventually exhausting Postgres backends.
-// Production evaluates it once, so the cache is a no-op there.
-const globalForAuthDb = globalThis as { __authDbPool?: Pool };
-
-const authDbPool =
-  globalForAuthDb.__authDbPool ??
-  new Pool({
-    // Fallback matches the docker-compose db service so `make run-frontend`
-    // works against `make start-core` without a frontend/.env, mirroring the
-    // localhost fallbacks in services/environment. Production must set
-    // DATABASE_URL explicitly.
-    connectionString:
-      process.env.DATABASE_URL ||
-      "postgresql://postgres:your-super-secret-and-long-postgres-password@localhost:5432/postgres", // pragma: allowlist secret
-    // Better Auth shares the platform Postgres; its tables live in the same
-    // schema as the Prisma-managed ones (created by the backend migrations).
-    options: `-c search_path=${process.env.AUTH_DB_SCHEMA || "platform"}`,
-  });
-
-if (process.env.NODE_ENV !== "production") {
-  globalForAuthDb.__authDbPool = authDbPool;
 }
 
 const requireEmailVerification =
