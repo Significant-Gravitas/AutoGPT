@@ -143,7 +143,14 @@
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_blocked_url[http://169.254.169.254/]",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_missing_url",
     "backend.copilot.tools.agent_browser_integration_test.test_tool_navigate_returns_response",
-    "test.test_data_creator.test_main_function_runs_without_errors"
+    "test.test_data_creator.test_main_function_runs_without_errors",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-anthropic]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-anthropic-dropped-after-tool]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-anthropic-dropped-first-turn]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-anthropic-overloaded-after-tool]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-anthropic-overloaded-on-resume]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-openrouter-lookups-refused]",
+    "backend.copilot.billing_e2e.thread_billing_test.test_each_turn_is_charged_what_its_provider_billed[sdk-openrouter-no-reconcile]"
   ],
   "python_versions": {
     "3.11": [],

@@ -106,6 +106,15 @@ _OPENROUTER = {
 # is configured.
 _DIRECT = {"use_openrouter": False, "api_key": "sk-ant-billing-e2e"}
 
+# Where no provider reports a cost, the platform charges the CLI's own
+# estimate, and the bundled CLI prices Sonnet 5.5 cache reads at $0.20 per
+# million where Anthropic bills $0.10.
+_CLI_SONNET_CACHE_READ_GAP = KnownGap(
+    check="charge",
+    reason="the platform charges the bundled CLI's estimate, which prices "
+    "Sonnet 5.5 cache reads at twice Anthropic's rate",
+)
+
 _SDK_ANTHROPIC = Scenario(
     id="sdk-anthropic",
     engine="sdk",
@@ -113,6 +122,7 @@ _SDK_ANTHROPIC = Scenario(
     charge="invoice",
     cost_log_provider="anthropic",
     config={**_DIRECT, "claude_agent_model": SONNET},
+    known_gap=_CLI_SONNET_CACHE_READ_GAP,
 )
 _SDK_OPENROUTER = Scenario(
     id="sdk-openrouter",
@@ -189,6 +199,7 @@ SCENARIOS = [
         cost_log_provider="open_router",
         config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
         generation_lookups_fail=True,
+        known_gap=_CLI_SONNET_CACHE_READ_GAP,
     ),
     Scenario(
         id="sdk-openrouter-no-reconcile",
@@ -201,6 +212,7 @@ SCENARIOS = [
             "claude_agent_model": f"anthropic/{SONNET}",
             "sdk_reconcile_openrouter_cost": False,
         },
+        known_gap=_CLI_SONNET_CACHE_READ_GAP,
     ),
     Scenario(
         id="sdk-openrouter-kimi",
