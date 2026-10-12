@@ -374,6 +374,12 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     );
     const retryTimer = setTimeout(() => {
       set({ retryTimer: null });
+      // A check already in flight answers for this retry (and reschedules if
+      // it's still unavailable), so this one isn't spent.
+      if (checkRunning()) {
+        set({ retryAttempt: Math.max(0, get().retryAttempt - 1) });
+        return;
+      }
       void validateSessionInternal({ force: true });
     }, delay);
     set({ retryTimer, retryAttempt: attempt + 1 });

@@ -335,6 +335,42 @@ describe("useAuthStore resilience", () => {
     expect(validateSessionHelper).toHaveBeenCalledTimes(1);
   });
 
+  it("doesn't spend a retry when its timer fires while a check is already running", async () => {
+    vi.useFakeTimers();
+    const router = makeRouter();
+    useAuthStore.setState({
+      user,
+      hasLoadedUser: true,
+      routerRef: router,
+      currentPath: "/library",
+    });
+    vi.mocked(validateSessionHelper).mockResolvedValueOnce({
+      isValid: true,
+      shouldUpdateUser: false,
+      unavailable: "network",
+    });
+    await useAuthStore.getState().validateSession({ force: true });
+    expect(useAuthStore.getState().retryAttempt).toBe(1);
+
+    let finish!: (
+      result: Awaited<ReturnType<typeof validateSessionHelper>>,
+    ) => void;
+    vi.mocked(validateSessionHelper).mockReturnValueOnce(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const inFlight = useAuthStore
+      .getState()
+      .validateSession({ force: true, router, path: "/library" });
+    await vi.runOnlyPendingTimersAsync();
+
+    expect(validateSessionHelper).toHaveBeenCalledTimes(2);
+    expect(useAuthStore.getState().retryAttempt).toBe(0);
+    finish({ user, isValid: true, shouldUpdateUser: false });
+    await inFlight;
+  });
+
   it("sends the tab to login with a full page load when another tab signs out", async () => {
     vi.mocked(fetchUser).mockResolvedValue({
       user,
