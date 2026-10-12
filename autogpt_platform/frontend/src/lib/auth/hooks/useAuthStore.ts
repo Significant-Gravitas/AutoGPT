@@ -45,6 +45,17 @@ async function signOutOnServer(options: ServerLogoutOptions): Promise<void> {
   }
 }
 
+async function afterSignOut(
+  step: string,
+  run: () => void | Promise<void>,
+): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    console.error(`Signed out, but couldn't ${step}:`, error);
+  }
+}
+
 interface InitializeParams {
   api: BackendAPI;
   router: AppRouterInstance;
@@ -170,20 +181,23 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     // in and no other tab is told otherwise; the caller reports the failure.
     await signOutOnServer(options);
 
-    setWebSocketDisconnectIntent();
-    api?.disconnectWebSocket();
-
-    const existingCleanup = get().listenersCleanup;
-    if (existingCleanup) {
-      existingCleanup();
+    // The server has ended the session, so the user is signed out whatever
+    // happens next: a local cleanup step that fails is logged and skipped.
+    await afterSignOut("disconnect the WebSocket", () => {
+      setWebSocketDisconnectIntent();
+      api?.disconnectWebSocket();
+    });
+    await afterSignOut("remove the session listeners", () => {
+      const existingCleanup = get().listenersCleanup;
       set({ listenersCleanup: null });
-    }
-
+      existingCleanup?.();
+    });
     // Clear React Query cache to prevent stale data from old user
-    if (typeof window !== "undefined") {
+    await afterSignOut("clear cached data", async () => {
+      if (typeof window === "undefined") return;
       const { getQueryClient } = await import("@/lib/react-query/queryClient");
       getQueryClient().clear();
-    }
+    });
 
     set({
       user: null,

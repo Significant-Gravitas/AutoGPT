@@ -309,3 +309,35 @@ describe("getSystemHeaders", () => {
     expect(getSystemHeaders()).toEqual({});
   });
 });
+
+// ---------- server-side reads ----------
+
+describe("ImpersonationCookie.getServerSide", () => {
+  function readFrom(cookies: Record<string, string>) {
+    return async (name: string) => cookies[name] ?? null;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(false);
+  });
+
+  it("returns the target when its owner cookie is present", async () => {
+    expect(
+      await ImpersonationCookie.getServerSide(
+        readFrom({
+          [IMPERSONATION_COOKIE_NAME]: "user-a",
+          [IMPERSONATION_OWNER_COOKIE_NAME]: "admin-1",
+        }),
+      ),
+    ).toBe("user-a");
+  });
+
+  it("never uses a target without an owner cookie", async () => {
+    expect(
+      await ImpersonationCookie.getServerSide(
+        readFrom({ [IMPERSONATION_COOKIE_NAME]: "user-a" }),
+      ),
+    ).toBeNull();
+  });
+});

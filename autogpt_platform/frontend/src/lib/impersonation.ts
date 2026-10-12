@@ -76,11 +76,13 @@ export const ImpersonationCookie = {
    * Read the target for server-side requests (Next.js cookies API). A target
    * without an owner cookie is never used.
    */
-  async getServerSide(): Promise<string | null> {
+  async getServerSide(
+    readCookie: (name: string) => Promise<string | null> = readServerCookie,
+  ): Promise<string | null> {
     if (environment.isClientSide()) return null;
     const [target, owner] = await Promise.all([
-      readServerCookie(IMPERSONATION_COOKIE_NAME),
-      readServerCookie(IMPERSONATION_OWNER_COOKIE_NAME),
+      readCookie(IMPERSONATION_COOKIE_NAME),
+      readCookie(IMPERSONATION_OWNER_COOKIE_NAME),
     ]);
     return target && owner ? target : null;
   },

@@ -307,4 +307,28 @@ describe("signing out", () => {
     expect(localStorage.getItem(LOGOUT_SIGNAL)).not.toBeNull();
     expect(useAuthStore.getState().user).toBeNull();
   });
+
+  it("is signed out even when local cleanup fails after the server confirmed", async () => {
+    await signInTab(admin);
+    useAuthStore.setState({
+      apiRef: {
+        disconnectWebSocket: () => {
+          throw new Error("socket already gone");
+        },
+      } as unknown as BackendAPI,
+    });
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    actions.serverLogout.mockResolvedValue({ success: true });
+
+    await useAuthStore.getState().logOut();
+
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(localStorage.getItem(LOGOUT_SIGNAL)).not.toBeNull();
+    expect(consoleError).toHaveBeenCalledWith(
+      "Signed out, but couldn't disconnect the WebSocket:",
+      expect.any(Error),
+    );
+  });
 });
