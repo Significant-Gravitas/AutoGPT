@@ -4,6 +4,63 @@ import unittest
 from pathlib import Path
 
 
+def _matrix_leg(workflow: str, suite: str) -> dict[str, str]:
+    e2e_job = workflow.split("\n  e2e_test:\n", 1)[1].split("\n    steps:\n", 1)[0]
+    leg = e2e_job.split(f"- suite: {suite}\n", 1)[1].split("- suite:", 1)[0]
+    return dict(re.findall(r"^\s+(\w+): (\S+)$", leg, re.MULTILINE))
+
+
+class E2EMatrixContractTests(unittest.TestCase):
+    def test_legs_keep_separate_seed_caches(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        key = next(
+            line for line in workflow.splitlines() if "key: e2e-test-data-" in line
+        )
+        self.assertIn("matrix.embeddings", key)
+        self.assertEqual(_matrix_leg(workflow, "smoke")["embeddings"], "true")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["embeddings"], "false")
+
+    def test_only_smoke_writes_shared_caches(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        write_cache = next(
+            line for line in workflow.splitlines() if "WRITE_BUILD_CACHE: ${{" in line
+        )
+        self.assertIn("matrix.suite == 'smoke' &&", write_cache)
+        for step in (
+            "Export Next.js build cache from BuildKit",
+            "Save Next.js build cache",
+            "Set up tests - Cache Playwright browsers",
+        ):
+            with self.subTest(step=step):
+                body = workflow.split(f"- name: {step}\n", 1)[1].split(
+                    "\n      - name:", 1
+                )[0]
+                self.assertIn("matrix.suite == 'smoke'", body)
+
+    def test_only_journeys_answer_copilot_from_scripts(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        self.assertEqual(_matrix_leg(workflow, "smoke")["scripted_model"], "false")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["scripted_model"], "true")
+        prepare = workflow.split("- name: Set up Platform - Prepare Docker build\n", 1)[
+            1
+        ].split("\n      - name:", 1)[0]
+        self.assertIn("-f docker-compose.journeys.yml", prepare)
+        self.assertIn("matrix.scripted_model", prepare)
+
+    def test_journeys_check_is_advisory(self):
+        checker = (
+            Path(__file__).resolve().parents[1]
+            / "workflows/scripts/check_actions_status.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn('"end-to-end tests (journeys)"', checker)
+
+
 class E2ESeedCacheContractTests(unittest.TestCase):
     def test_fresh_and_cached_seed_credentials_are_verified_before_tests(self):
         workflow = (
@@ -14,7 +71,12 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             "\n      - name:", 1
         )[0]
         self.assertIn("--refresh-credentials-only", verification)
-        self.assertNotIn("if:", verification)
+        # Runs whenever the leg seeds, cached dump or fresh; only the
+        # journeys leg, which seeds nothing, skips it.
+        self.assertEqual(
+            re.findall(r"^\s+if: (.+)$", verification, re.M), ["matrix.seed"]
+        )
+        self.assertEqual(_matrix_leg(workflow, "smoke")["seed"], "true")
         self.assertNotIn("continue-on-error", verification)
         self.assertLess(
             workflow.index("- name: Set up tests - Create E2E test data"),
@@ -69,7 +131,11 @@ class E2ECoverageContractTests(unittest.TestCase):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
         ).read_text(encoding="utf-8")
-        self.assertIn("--min-tests 28", workflow)
+        self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
+        self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "9")
+        # Smoke stays strict: no test.fail() known failures.
+        self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
 
     def test_codecov_requires_validated_coverage(self):
         workflow = (

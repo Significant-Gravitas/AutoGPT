@@ -2,6 +2,15 @@ import type { AnchorHTMLAttributes, ReactNode } from "react";
 import { render, screen } from "@/tests/integrations/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+let mockIsBillingEnabled = true;
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => mockIsBillingEnabled,
+  useBillingStatus: () => ({
+    isBillingEnabled: mockIsBillingEnabled,
+    isResolved: true,
+  }),
+}));
+
 type MockLinkProps = AnchorHTMLAttributes<HTMLAnchorElement> & {
   children: ReactNode;
   href: string;
@@ -51,6 +60,15 @@ const expectedItems = [
 describe("SettingsSidebar", () => {
   beforeEach(() => {
     usePathnameMock.mockReturnValue("/settings/profile");
+    mockIsBillingEnabled = true;
+  });
+
+  it("leaves Billing out on a self-hosted install without payments", () => {
+    mockIsBillingEnabled = false;
+    render(<SettingsSidebar />);
+
+    expect(screen.queryByRole("link", { name: /billing/i })).toBeNull();
+    expect(screen.getByRole("link", { name: /integrations/i })).toBeDefined();
   });
 
   it("renders a Back link to /copilot and all 6 nav items with correct hrefs", () => {

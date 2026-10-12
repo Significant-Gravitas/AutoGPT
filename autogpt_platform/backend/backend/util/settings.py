@@ -604,6 +604,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    schedule_read_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description=(
+            "How long a page read (library agents, Home) waits for the scheduler "
+            "before rendering without schedule badges. Healthy reads take well "
+            "under a second; the Vercel proxy gives up at 30s."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
@@ -1322,6 +1332,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
+
+    slack_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the Slack app used to sign in to Slack's MCP "
+        "server (mcp.slack.com). Slack does not support dynamic client "
+        "registration, so MCP sign-in to Slack is unavailable until this is set.",
+    )
+    slack_mcp_client_secret: str = Field(
+        default="", description="Client secret of the Slack MCP sign-in app"
+    )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")
     todoist_client_secret: str = Field(default="", description="Todoist client secret")

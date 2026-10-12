@@ -1,4 +1,6 @@
 import { authMiddleware } from "@/lib/auth/middleware";
+import { SENTRY_TUNNEL_PATH } from "@/lib/sentry-tunnel";
+import { relaySentryEnvelope } from "@/lib/sentry-tunnel-middleware";
 import {
   isPostHogProxyPath,
   proxyPostHogRequest,
@@ -6,6 +8,12 @@ import {
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // First, ahead of the redirects, auth checks and any broader /relay handler:
+  // each of those would drop or misroute the browser's envelopes.
+  if (request.nextUrl.pathname === SENTRY_TUNNEL_PATH) {
+    return relaySentryEnvelope(request);
+  }
+
   // PostHog's own requests never reach the auth checks: a redirect here would
   // silently drop events.
   if (isPostHogProxyPath(request.nextUrl.pathname)) {
