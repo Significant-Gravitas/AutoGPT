@@ -132,8 +132,20 @@ interface RefreshSessionResult {
   isUnavailable?: boolean;
 }
 
+// Never rejects: callers get a result either way. A call that didn't reach
+// the server says nothing about the session, so it comes back unavailable.
 export async function refreshSession(): Promise<RefreshSessionResult> {
-  const result = await refreshSessionAction();
+  let result: RefreshSessionResult;
+  try {
+    result = await refreshSessionAction();
+  } catch (error) {
+    console.warn("Session refresh unavailable:", error);
+    return {
+      user: null,
+      error: "Couldn't reach the server",
+      isUnavailable: true,
+    };
+  }
 
   if (result.user) {
     clearWebSocketDisconnectIntent();
