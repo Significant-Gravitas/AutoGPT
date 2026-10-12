@@ -30,8 +30,12 @@ ENV NODE_ENV=production \
     BETTER_AUTH_SECRET=build-only-placeholder-not-used-at-runtime \
     DATABASE_URL="postgresql:///postgres?host=%2Frun%2Fpostgresql&user=autogpt_frontend"
 
+# `pnpm build` sets the build's heap cap itself (16 GiB, through cross-env in
+# package.json), so a NODE_OPTIONS cap here never took effect. A lower cap
+# doesn't help: the build peaks at about 7 GiB either way (see "Requirements"
+# in docs/platform/single-container.md).
 RUN pnpm run generate:api \
-    && NODE_OPTIONS="--max-old-space-size=8192" pnpm build \
+    && pnpm build \
     && rm -f .env .env.local .env.production
 
 FROM node:24.18.0-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS node-runtime
