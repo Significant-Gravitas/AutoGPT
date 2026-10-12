@@ -593,7 +593,7 @@ def _session_summary(
         source_platform=session.metadata.source_platform,
         is_pinned=session.is_pinned,
         expert_id=session.expert_id,
-        board_id=extras.board_id,
+        board_id=session.board_id,
         board_column=extras.board_column,
         board_position=extras.board_position,
         started=extras.started,

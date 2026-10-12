@@ -255,7 +255,9 @@ def test_get_board_of_a_project_lists_its_cards(
     mock_list = mocker.patch.object(
         board_routes,
         "list_board_sessions",
-        new=AsyncMock(return_value=[_row(_session(), board_id=PROJECT_ID)]),
+        new=AsyncMock(
+            return_value=[_row(_session(board_id=PROJECT_ID), board_id=PROJECT_ID)]
+        ),
     )
 
     response = client.get(f"/boards/{PROJECT_ID}")
@@ -823,6 +825,7 @@ def _mock_reassign(
     old = old or _session(
         expert_id="e-old",
         metadata=ChatSessionMetadata(llm_auth_provider="platform", dry_run=True),
+        board_id=board_id,
     )
     experts = {"e-old": _expert("Nova"), "e-new": target or _expert("Priya")}
     created: list[ChatSession] = []
@@ -833,7 +836,9 @@ def _mock_reassign(
         return session
 
     async def _fake_validate(session_id: str, _user_id: str):
-        return old if session_id == old.session_id else created[-1]
+        if session_id == old.session_id:
+            return old
+        return created[-1].model_copy(update={"board_id": board_id})
 
     async def _fake_mark(
         _session_id: str,
@@ -1301,7 +1306,7 @@ def _mock_session_list(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     mocker.patch.object(
         chat_routes,
         "get_user_sessions",
-        new=AsyncMock(return_value=([_session()], 1)),
+        new=AsyncMock(return_value=([_session(board_id=PROJECT_ID)], 1)),
     )
     return mocker.patch.object(
         chat_routes,
@@ -1361,14 +1366,14 @@ def test_list_sessions_falls_back_when_board_facts_fail(
     assert card["started"] is False
 
 
-def test_list_sessions_without_board_facts_has_no_board(
+def test_list_sessions_without_board_facts_still_carries_the_board(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     _mock_session_list(mocker)
 
     response = client.get("/sessions")
 
-    assert response.json()["sessions"][0]["board_id"] is None
+    assert response.json()["sessions"][0]["board_id"] == PROJECT_ID
 
 
 # ─── GET /sessions/{id} board ─────────────────────────────────────────
