@@ -405,40 +405,41 @@ class _HangingRedis:
         await asyncio.Event().wait()
 
 
-async def _never_connects():
-    await asyncio.Event().wait()
+class _Outage:
+    """Stands in for ``get_redis_async``, which every Redis operation calls
+    first, so ``attempts`` counts each time the cache tries Redis."""
+
+    def __init__(self, kind: str) -> None:
+        self.kind = kind
+        self.attempts = 0
+
+    async def __call__(self) -> _HangingRedis:
+        self.attempts += 1
+        if self.kind == "connect-hangs":
+            await asyncio.Event().wait()
+        if self.kind == "refused":
+            raise RedisConnectionError("refused")
+        if self.kind == "standalone-redis":
+            raise RedisClusterException("Cluster mode is not enabled on this node")
+        return _HangingRedis()
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "outage",
-    [
-        pytest.param(
-            lambda: AsyncMock(side_effect=_never_connects), id="connect-hangs"
-        ),
-        pytest.param(
-            lambda: AsyncMock(return_value=_HangingRedis()), id="command-hangs"
-        ),
-        pytest.param(
-            lambda: AsyncMock(side_effect=RedisConnectionError("refused")),
-            id="refused",
-        ),
-        pytest.param(
-            lambda: AsyncMock(
-                side_effect=RedisClusterException(
-                    "Cluster mode is not enabled on this node"
-                )
-            ),
-            id="standalone-redis",
-        ),
-    ],
+    "kind", ["connect-hangs", "command-hangs", "refused", "standalone-redis"]
 )
 async def test_a_redis_outage_never_slows_or_blocks_billing(
-    trial, fake_stripe, worker_b, save_tier, outage
+    trial, fake_stripe, worker_b, save_tier, kind
 ):
-    """With Redis hanging or unusable, lookups answer from Stripe within the
-    cache's deadline, and a charge still saves the paid plan."""
-    with patch.object(versioned_cache, "get_redis_async", outage()):
+    """With Redis hanging or unusable, lookups answer from Stripe after at
+    most one deadline, then skip Redis entirely for the backoff, and a charge
+    still saves the paid plan.
+
+    Counts Redis attempts rather than timing them; the wall clock is only a
+    backstop, far below what paying a deadline per read would take."""
+    outage = _Outage(kind)
+    backstop = 10 * versioned_cache._REDIS_DEADLINE_SECONDS
+    with patch.object(versioned_cache, "get_redis_async", outage):
         started = time.monotonic()
         ends = await asyncio.wait_for(
             asyncio.gather(
@@ -449,19 +450,29 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
             ),
             WAIT,
         )
+        first_wave = outage.attempts
+        # Each concurrent read tries Redis at most once before the backoff.
+        assert 1 <= first_wave <= 60
         for _ in range(100):
             ends.append(await worker_a.get_active_subscription_period_end("user-1"))
+        # The backoff holds: no read in its window tries Redis again.
+        assert outage.attempts == first_wave
         assert set(ends) == {TRIAL_END}
-        assert time.monotonic() - started < 1.5
         # Stripe traffic stays bounded while Redis can't be used.
         assert fake_stripe.lookups == 1
+        assert time.monotonic() - started < backstop
 
+        before = outage.attempts
         started = time.monotonic()
         await asyncio.wait_for(
             conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO),
             WAIT,
         )
-        assert time.monotonic() - started < 2
+        # Only invalidations, which never skip Redis, try it, each for at
+        # most one deadline: invalidate_billing_lookups drops both caches
+        # after the tier sync and again after saving the conversion.
+        assert outage.attempts - before == 4
+        assert time.monotonic() - started < backstop
         save_tier.assert_awaited_once()
         assert save_tier.await_args.args[0]["status"] == "active"
 
