@@ -2255,6 +2255,11 @@ async def test_get_or_create_client_chat_session_refuses_a_different_expert(
             "team_id": "team-b",
             "handed_off_from_expert_id": "expert-0",
         },
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "delegated_by_expert_id": "expert-0",
+        },
     ],
     ids=[
         "other-organization",
@@ -2264,6 +2269,7 @@ async def test_get_or_create_client_chat_session_refuses_a_different_expert(
         "external-platform",
         "delegated",
         "handed-off",
+        "delegated-by-expert",
     ],
 )
 async def test_get_or_create_client_chat_session_refuses_a_plain_session_out_of_scope(
