@@ -5,7 +5,7 @@ Centralized service client helpers with thread caching.
 from typing import TYPE_CHECKING
 
 from backend.util.cache import thread_cached
-from backend.util.per_loop_cache import per_loop_cached
+from backend.util.per_loop_cache import per_loop_cached, same_loop_hooks
 from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -171,7 +171,7 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     up with two equivalent ``AsyncOpenAI`` instances pointed at the same
     endpoint.
     """
-    from openai import AsyncOpenAI
+    from openai import AsyncOpenAI, DefaultAsyncHttpxClient
 
     # Reuse the module-level ``ChatConfig`` singleton from
     # ``copilot.sdk.env`` rather than constructing a fresh one — that
@@ -186,6 +186,9 @@ def _get_local_openai_client() -> "AsyncOpenAI":
         api_key=chat_cfg.api_key,
         base_url=chat_cfg.base_url,
         timeout=chat_cfg.local_request_timeout_s,
+        http_client=DefaultAsyncHttpxClient(
+            event_hooks=same_loop_hooks("get_openai_client()")
+        ),
     )
 
 
@@ -223,8 +226,6 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
     feature" sentinel will instead exercise the local path — that is the
     intended behaviour for this PR.
     """
-    from openai import AsyncOpenAI
-
     # Local transport takes precedence so a stray ``OPENAI_API_KEY`` set
     # for some other reason can't override an explicit ``CHAT_USE_LOCAL=true``.
     from backend.copilot.sdk.env import config as chat_cfg
@@ -237,14 +238,27 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 
     if prefer_openrouter:
         if openrouter_key:
-            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+            return _openai_client(openrouter_key, OPENROUTER_BASE_URL)
         return None
     else:
         if openai_key:
-            return AsyncOpenAI(api_key=openai_key)
+            return _openai_client(openai_key)
         if openrouter_key:
-            return AsyncOpenAI(api_key=openrouter_key, base_url=OPENROUTER_BASE_URL)
+            return _openai_client(openrouter_key, OPENROUTER_BASE_URL)
     return None
+
+
+def _openai_client(api_key: str, base_url: str | None = None) -> "AsyncOpenAI":
+    """A ``get_openai_client`` client, which refuses to send from a second loop."""
+    from openai import AsyncOpenAI, DefaultAsyncHttpxClient
+
+    return AsyncOpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        http_client=DefaultAsyncHttpxClient(
+            event_hooks=same_loop_hooks("get_openai_client()")
+        ),
+    )
 
 
 # ============ Anthropic Client ============ #
@@ -264,11 +278,16 @@ def get_anthropic_client() -> "AsyncAnthropic | None":
     direct Anthropic API access (batch API, prompt caching with
     cache_control, tool-use forced structured output).
     """
-    from anthropic import AsyncAnthropic
+    from anthropic import AsyncAnthropic, DefaultAsyncHttpxClient
 
     anthropic_key = settings.secrets.anthropic_api_key
     if anthropic_key:
-        return AsyncAnthropic(api_key=anthropic_key)
+        return AsyncAnthropic(
+            api_key=anthropic_key,
+            http_client=DefaultAsyncHttpxClient(
+                event_hooks=same_loop_hooks("get_anthropic_client()")
+            ),
+        )
     return None
 
 

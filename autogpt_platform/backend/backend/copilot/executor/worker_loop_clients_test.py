@@ -15,10 +15,14 @@ that journals every request. Each seed interleaves the calls randomly across
 the workers, runs some concurrently, and shuts one worker down and replaces
 it mid-run, the two ways a worker loop ends: stopped as
 ``CoPilotProcessor.cleanup`` does, or shut down as ``asyncio.run`` does.
+
+A client that still reaches a second loop must fail there before it sends:
+the last test puts the process-wide title client back and checks that.
 """
 
 import asyncio
 import concurrent.futures
+import functools
 import gc
 import json
 import logging
@@ -33,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import pytest
+from openai.types.chat import ChatCompletion
 
 from backend.copilot import service
 from backend.copilot.baseline import service as baseline_service
@@ -42,12 +47,14 @@ from backend.util import clients
 SEEDS = range(200)
 WORKERS = 3
 REPLY = "Seeded reply"
-# Signs that a call touched another loop's connection, or a dead loop's.
+# Signs that a call touched another loop's connection, or a dead loop's, or
+# that a client refused to (backend/util/per_loop_cache.py same_loop_hooks).
 CROSS_LOOP_SIGNS = (
     "different event loop",
     "attached to a different loop",
     "Event loop is closed",
     "Retrying request",
+    "another event loop",
 )
 
 _CALL_TAG = re.compile(r"\[\[call:(\d+) delay:(\d+)\]\]")
@@ -285,9 +292,12 @@ def test_every_call_reaches_the_provider_once(
     next_call_id = 0
     try:
         for seed in SEEDS:
-            next_call_id = _run_seed(
-                seed, workers, provider, loop_errors, cross_loop_signs, next_call_id
-            )
+            try:
+                next_call_id = _run_seed(
+                    seed, workers, provider, loop_errors, cross_loop_signs, next_call_id
+                )
+            except AssertionError as failure:
+                raise AssertionError(f"seed {seed}: {failure}") from failure
     finally:
         for worker in workers:
             worker.shut_down()
@@ -366,8 +376,9 @@ def _replace_worker(
     else:
         held = asyncio.run_coroutine_threadsafe(_loop_clients(), worker.loop)
         worker.shut_down()
-        # A loop that shuts down closes its clients rather than leaking them.
-        assert all(client.is_closed() for client in held.result(timeout=5))
+        assert all(
+            client.is_closed() for client in held.result(timeout=5)
+        ), f"w{victim} shut down, but its clients stayed open"
         how = "shut down"
     workers[victim] = _WorkerLoop(loop_errors)
     return f"w{victim} {how} and replaced"
@@ -381,3 +392,46 @@ async def _loop_clients() -> list[Any]:
 
 def _wait(future: "concurrent.futures.Future[str]") -> str:
     return future.result(timeout=30)
+
+
+def test_a_process_wide_client_sends_nothing_from_a_second_loop(
+    provider: _Provider,
+    local_transport: None,
+    cross_loop_signs: _CrossLoopSigns,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Put the bug back, one title client for the whole process: the second
+    worker's title request fails before it is sent, and says why, instead of
+    going out on the first worker's connection and being sent again."""
+    first, second = _WorkerLoop([]), _WorkerLoop([])
+    try:
+        shared = _run_on(first, _aux_client())
+        monkeypatch.setattr(service, "_get_aux_client", functools.cache(lambda: shared))
+        titled = _run_on(first, _title_reply(0))
+        refused = _run_on(second, _title_reply(1))
+    finally:
+        first.shut_down()
+        second.shut_down()
+    assert titled is not None, "the first worker's title call should succeed"
+    assert refused is None, "the second worker's title call should fall back"
+    with provider.lock:
+        assert provider.journal == [0], "the refused title request was sent"
+    assert any(
+        "_get_aux_client() was first used on another event loop" in sign
+        for sign in cross_loop_signs.seen
+    ), cross_loop_signs.seen
+
+
+async def _aux_client() -> Any:
+    return service._get_aux_client()
+
+
+async def _title_reply(call_id: int) -> ChatCompletion | None:
+    _, response = await service._generate_session_title(
+        _tagged("Plan a trip to Lisbon", call_id, 0)
+    )
+    return response
+
+
+def _run_on(worker: _WorkerLoop, coro: Coroutine[Any, Any, Any]) -> Any:
+    return asyncio.run_coroutine_threadsafe(coro, worker.loop).result(timeout=30)

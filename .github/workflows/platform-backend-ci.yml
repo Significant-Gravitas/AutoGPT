@@ -14,6 +14,8 @@ on:
       - ".github/scripts/backend_test_shard.py"
       - ".github/scripts/test_backend_test_shard.py"
       - ".github/scripts/backend-allowed-skips.json"
+      - ".github/scripts/check_loop_bound_clients.py"
+      - ".github/scripts/test_check_loop_bound_clients.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
@@ -30,6 +32,8 @@ on:
       - ".github/scripts/backend_test_shard.py"
       - ".github/scripts/test_backend_test_shard.py"
       - ".github/scripts/backend-allowed-skips.json"
+      - ".github/scripts/check_loop_bound_clients.py"
+      - ".github/scripts/test_check_loop_bound_clients.py"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
       - "autogpt_platform/frontend/public/integrations/**"
@@ -72,6 +76,10 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      # Async clients shared by every event loop send some calls twice.
+      - name: Check for async clients shared by the whole process
+        run: python ../../.github/scripts/check_loop_bound_clients.py
 
       - name: Set up Python dependency cache
         uses: actions/cache@v5

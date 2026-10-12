@@ -7,16 +7,21 @@ call on loop B can pick up a connection opened on loop A: the request is
 written to the socket, reading the reply raises "... is bound to a different
 event loop", and the SDK retries the call on a new connection, so the
 provider receives (and bills) the call twice while the caller sees one
-success. ``per_loop_cached`` gives every running loop its own instance.
+success. ``per_loop_cached`` gives every running loop its own instance, and
+``same_loop_hooks`` makes a client that still reaches another loop fail before
+it sends. ``.github/scripts/check_loop_bound_clients.py`` rejects new
+process-wide clients in CI.
 """
 
 import asyncio
 import logging
 import threading
-from collections.abc import AsyncGenerator, Callable, Hashable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Hashable
 from functools import update_wrapper
 from typing import Generic, ParamSpec, Protocol, TypeVar
-from weakref import WeakKeyDictionary
+from weakref import ReferenceType, WeakKeyDictionary, ref
+
+import httpx
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +108,45 @@ class PerLoopCached(Generic[P, C]):
                         "Failed to close a per-loop client at loop shutdown",
                         exc_info=True,
                     )
+
+
+class WrongEventLoopError(RuntimeError):
+    """A loop-bound client was asked to send from another event loop."""
+
+
+def same_loop_hooks(
+    getter: str,
+) -> dict[str, list[Callable[[httpx.Request], Awaitable[None]]]]:
+    """httpx event hooks that keep a client on the loop of its first request.
+
+    A request from any other loop raises ``WrongEventLoopError`` before
+    anything is sent, instead of going out on the first loop's connections and
+    being retried into a second call. ``getter`` names where the client came
+    from, for the error.
+    """
+    first_loop: ReferenceType[asyncio.AbstractEventLoop] | None = None
+    reported = False
+
+    async def require_first_loop(request: httpx.Request) -> None:
+        nonlocal first_loop, reported
+        loop = asyncio.get_running_loop()
+        if first_loop is None:
+            first_loop = ref(loop)
+        if first_loop() is loop:
+            return
+        message = (
+            f"A client from {getter} was first used on another event loop, so "
+            f"it won't send {request.method} {request.url.host}{request.url.path} "
+            "from this one. Call "
+            f"{getter} on the loop that makes the request: it is cached per "
+            "loop (backend/util/per_loop_cache.py)."
+        )
+        if not reported:
+            reported = True
+            logger.error(message)
+        raise WrongEventLoopError(message)
+
+    return {"request": [require_first_loop]}
 
 
 def _start_loop_finalizer(finalizer: AsyncGenerator[None, None]) -> None:

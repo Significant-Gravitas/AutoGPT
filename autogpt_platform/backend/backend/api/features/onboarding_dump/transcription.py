@@ -89,7 +89,7 @@ def get_stt_client() -> AsyncOpenAI | None:
 
     Built per call rather than ``@cached``: ``AsyncOpenAI`` binds its
     connection pool to the first event loop that uses it, so a process-wide
-    cache poisons itself across loops. ``backend/util/architecture_test.py``
+    cache poisons itself across loops. ``.github/scripts/check_loop_bound_clients.py``
     enforces this; ``per_loop_cached`` is the cached alternative. Finalize
     runs once per user, so the pool churn is negligible.
     """

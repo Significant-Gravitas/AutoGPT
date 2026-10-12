@@ -12,61 +12,9 @@ import pathlib
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
-# ---------------------------------------------------------------------------
-# Rule: no process-wide event-loop-bound async clients
-# ---------------------------------------------------------------------------
-#
-# Motivation: async clients (AsyncOpenAI, httpx.AsyncClient, AsyncRabbitMQ,
-# ...) wrap connection pools whose internal asyncio primitives bind to the
-# event loop that first uses them, and the executors run one long-lived loop
-# per worker thread. A client cached for the process, by
-# `backend.util.cache.cached` or in a module global, hands a call on loop B an
-# idle connection loop A opened: the request is written, reading the reply
-# raises `RuntimeError: ... bound to a different event loop`, and the SDK
-# retries on a new connection. The provider receives and bills the call twice
-# while the caller sees one success, or `APIConnectionError: Connection
-# error.` once the retries run out.
-#
-# Use `backend.util.per_loop_cache.per_loop_cached` or construct per-call.
-
-LOOP_BOUND_TYPES = frozenset(
-    {
-        "AsyncOpenAI",
-        "LangfuseAsyncOpenAI",
-        "AsyncAnthropic",
-        "AsyncClient",  # httpx, openai internal
-        "AsyncRabbitMQ",
-        "AsyncRedisExecutionEventBus",
-    }
-)
-
-
-def _decorator_name(node: ast.expr) -> str | None:
-    if isinstance(node, ast.Call):
-        return _decorator_name(node.func)
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        return node.attr
-    return None
-
-
-def _annotation_names(annotation: ast.expr | None) -> set[str]:
-    if annotation is None:
-        return set()
-    if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
-        try:
-            parsed = ast.parse(annotation.value, mode="eval").body
-        except SyntaxError:
-            return set()
-        return _annotation_names(parsed)
-    names: set[str] = set()
-    for child in ast.walk(annotation):
-        if isinstance(child, ast.Name):
-            names.add(child.id)
-        elif isinstance(child, ast.Attribute):
-            names.add(child.attr)
-    return names
+# Event-loop-bound async clients (AsyncOpenAI, httpx.AsyncClient, ...) must not
+# be shared by the whole process; .github/scripts/check_loop_bound_clients.py
+# enforces that in the backend lint job.
 
 
 def _iter_backend_py_files():
@@ -182,64 +130,3 @@ def test_known_offenders_use_posix_separators():
             f"known-offenders entry uses backslash: {entry!r}. "
             "Use forward slashes — the test should normalise Path separators."
         )
-
-
-def test_no_process_cached_loop_bound_clients():
-    offenders: list[str] = []
-    for py in _iter_backend_py_files():
-        try:
-            tree = ast.parse(py.read_text(encoding="utf-8"), filename=str(py))
-        except SyntaxError:
-            continue
-        rel = py.relative_to(BACKEND_ROOT)
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            decorators = {_decorator_name(d) for d in node.decorator_list}
-            bound = _annotation_names(node.returns) & LOOP_BOUND_TYPES
-            if "cached" in decorators and bound:
-                offenders.append(
-                    f"{rel}:{node.lineno} @cached {node.name}() -> {sorted(bound)}"
-                )
-            for lineno, name, client in _global_client_assignments(node):
-                offenders.append(
-                    f"{rel}:{lineno} {node.name}() stores {client} in global {name}"
-                )
-
-    assert not offenders, (
-        "Event-loop-bound async clients must not be cached for the whole "
-        "process. They bind their connection pool to the first event loop "
-        "that uses them; shared across loops, a call can be sent to the "
-        "provider twice.\n\n"
-        "Offenders:\n  " + "\n  ".join(offenders) + "\n\n"
-        "Fix: construct the client per-call, or decorate the factory with "
-        "backend.util.per_loop_cache.per_loop_cached."
-    )
-
-
-def _global_client_assignments(
-    func: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> list[tuple[int, str, str]]:
-    """``global x`` followed by ``x = <LoopBoundType>(...)`` in ``func``."""
-    declared = {
-        name
-        for stmt in ast.walk(func)
-        if isinstance(stmt, ast.Global)
-        for name in stmt.names
-    }
-    found: list[tuple[int, str, str]] = []
-    for stmt in ast.walk(func):
-        if not isinstance(stmt, (ast.Assign, ast.AnnAssign)):
-            continue
-        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
-        client = (
-            _decorator_name(stmt.value.func)
-            if isinstance(stmt.value, ast.Call)
-            else None
-        )
-        if client not in LOOP_BOUND_TYPES:
-            continue
-        for target in targets:
-            if isinstance(target, ast.Name) and target.id in declared:
-                found.append((stmt.lineno, target.id, client))
-    return found

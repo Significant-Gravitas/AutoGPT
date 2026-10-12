@@ -19,6 +19,7 @@ from langfuse import get_client
 from langfuse.openai import (
     AsyncOpenAI as LangfuseAsyncOpenAI,  # pyright: ignore[reportPrivateImportUsage]
 )
+from openai import DefaultAsyncHttpxClient
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.prompting import VOICE_TURN_TAG
@@ -29,7 +30,7 @@ from backend.data.understanding import (
 )
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.llm.providers import call_provider_openai_compat_sync
-from backend.util.per_loop_cache import per_loop_cached
+from backend.util.per_loop_cache import per_loop_cached, same_loop_hooks
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
@@ -101,7 +102,13 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
     OpenRouter for non-Anthropic models.
     """
     api_key, base_url = config.main_client_credentials
-    kwargs: dict = {"api_key": api_key, "base_url": base_url}
+    kwargs: dict = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "http_client": DefaultAsyncHttpxClient(
+            event_hooks=same_loop_hooks("_get_main_client()")
+        ),
+    }
     # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
     # many minutes for a single turn against Otto's heavy system
     # prompt. The OpenAI client default (600 s) is too short for that
@@ -123,7 +130,13 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     ``CHAT_AUX_BASE_URL`` are unset (preserves single-key deployments).
     """
     api_key, base_url = config.aux_client_credentials
-    kwargs: dict = {"api_key": api_key, "base_url": base_url}
+    kwargs: dict = {
+        "api_key": api_key,
+        "base_url": base_url,
+        "http_client": DefaultAsyncHttpxClient(
+            event_hooks=same_loop_hooks("_get_aux_client()")
+        ),
+    }
     # Local transport routes aux through the same self-hosted backend
     # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
     # client timeout to match ``_get_main_client`` so title generation
