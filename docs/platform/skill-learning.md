@@ -124,12 +124,14 @@ edit and checked under the same write lock, so a change that landed while
 the owner was typing — overnight or from another tab — makes the save a
 conflict with the draft kept, never a silent overwrite of that change.
 A human edit turns automatic improvements off for that skill unless the
-editor keeps them on. A restore also turns them off and records a
+editor keeps them on. An owner restore also turns them off and records a
 suppression for the undone behaviour, so the same change is not reapplied
 silently; a near-identical proposal becomes a labelled decision instead.
 Excluding a source makes every version that depends on it unavailable,
 restores the newest independent version when one exists, and otherwise
-pauses the skill with an explanation. A source the viewer can no longer
+pauses the skill with an explanation. That fallback restore leaves automatic
+improvements off but does not suppress the behavior: independent valid evidence
+can support a new proposal for the owner to decide. A source the viewer can no longer
 open shows **Evidence not visible to you** without a title or link.
 
 ## Adapters

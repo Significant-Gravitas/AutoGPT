@@ -128,13 +128,15 @@ async def restore_version(
     version_id: str,
     actor_user_id: str,
     reason: str = "Restored by the owner",
+    suppress_behavior: bool = True,
 ) -> PublishOutcome:
-    """Restore prior content as a new version and suppress what it replaces.
+    """Restore prior content as a new version, suppressing owner-rejected behavior.
 
     Restoration keeps the audit trail (a new version referring to the old
     one), affects future use only, and — as the first-release boundary —
     turns automatic improvements off for the skill so the undone change
-    cannot reappear without an explicit decision.
+    cannot reappear without an explicit decision. Source revocation skips
+    behavior suppression because it withdraws evidence, not the procedure.
     """
     versions = skill_versions_db()
     target = await versions.get_version(user_id, version_id)
@@ -176,14 +178,15 @@ async def restore_version(
     outcome = await commit_and_write(user_id, head, draft, None, auto_improve=False)
     if outcome.status == "applied" and replaced is not None:
         replaced_body = _body_of(replaced)
-        await _suppress_replaced_behavior(
-            user_id,
-            expert_id,
-            replaced,
-            target.content,
-            reason="undone by restore",
-            head_files=target.files,
-        )
+        if suppress_behavior:
+            await _suppress_replaced_behavior(
+                user_id,
+                expert_id,
+                replaced,
+                target.content,
+                reason="undone by restore",
+                head_files=target.files,
+            )
         logger.info(
             "Restored %s to v%s for user %s (replaced v%s, %d chars)",
             skill_name,

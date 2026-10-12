@@ -46,6 +46,7 @@ async def invalidate_versions_for_source(
             version_id=fallback.id,
             actor_user_id=user_id,
             reason="Restored after a source became unavailable",
+            suppress_behavior=False,
         )
         if outcome.status != "applied":
             await versions.update_head_policy(
