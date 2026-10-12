@@ -152,7 +152,6 @@ def _make_patches(*, hire_experts_enabled: bool):
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_thinking_effort=None,
-                claude_agent_fallback_model=None,
                 # The turn sizes its compression budgets from the pinned
                 # window (sdk/context_window.py); a mocked config has to
                 # hand those resolvers numbers, not MagicMocks.

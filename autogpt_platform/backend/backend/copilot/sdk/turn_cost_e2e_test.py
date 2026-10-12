@@ -73,7 +73,6 @@ async def test_second_turn_on_a_new_pod_is_charged_only_its_own_call(
         options.cli_path = str(cli)
         options.env = env
         options.model = _MODEL
-        options.fallback_model = None
         options.mcp_servers = {}
         options.hooks = None
         options.allowed_tools = []

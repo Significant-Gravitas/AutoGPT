@@ -497,12 +497,6 @@ class ChatConfig(BaseSettings):
         "disallowed list stay off; a name that is no Claude Code built-in is "
         "logged once and ignored.",
     )
-    claude_agent_fallback_model: str = Field(
-        default="",
-        description="Fallback model when the primary model is unavailable (e.g. 529 "
-        "overloaded). The SDK automatically retries with this cheaper model. "
-        "Empty string disables the fallback (no --fallback-model flag passed to CLI).",
-    )
     agent_max_turns: int = Field(
         default=100,
         ge=1,
@@ -1325,14 +1319,10 @@ class ChatConfig(BaseSettings):
         - ``use_openrouter=True`` — operator hasn't opted out; the
           credential-missing case is OK at boot.
 
-        Empty fallback strings are also skipped (no fallback configured).
-
         Covers every model field that flows through
         ``normalize_model_for_transport``: SDK tiers
-        (``thinking_standard_model``, ``thinking_advanced_model``),
-        baseline tiers (``fast_standard_model``,
-        ``fast_advanced_model``), and the SDK fallback
-        (``claude_agent_fallback_model`` via ``_resolve_fallback_model``).
+        (``thinking_standard_model``, ``thinking_advanced_model``) and
+        baseline tiers (``fast_standard_model``, ``fast_advanced_model``).
         """
         if self.use_local:
             return self
@@ -1348,7 +1338,6 @@ class ChatConfig(BaseSettings):
             "thinking_advanced_model",
             "fast_standard_model",
             "fast_advanced_model",
-            "claude_agent_fallback_model",
         ):
             value: str = getattr(self, field_name)
             if not value:
@@ -1361,8 +1350,7 @@ class ChatConfig(BaseSettings):
                         f"got {value!r}. Set CHAT_THINKING_STANDARD_MODEL / "
                         f"CHAT_THINKING_ADVANCED_MODEL / "
                         f"CHAT_FAST_STANDARD_MODEL / "
-                        f"CHAT_FAST_ADVANCED_MODEL / "
-                        f"CHAT_CLAUDE_AGENT_FALLBACK_MODEL to an "
+                        f"CHAT_FAST_ADVANCED_MODEL to an "
                         f"``{constraint}/*`` or ``claude-*`` slug, or set "
                         f"CHAT_USE_OPENROUTER=true."
                     )

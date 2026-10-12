@@ -206,7 +206,6 @@ async def sdk_service_turn(
                 "api_key": UNSENT_MODEL_KEY,
                 "use_claude_code_subscription": False,
                 "use_e2b_sandbox": False,
-                "claude_agent_fallback_model": None,
                 "claude_agent_max_transient_retries": 1,
             }
         ),

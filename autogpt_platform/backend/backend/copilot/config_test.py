@@ -39,7 +39,6 @@ _ENV_VARS_TO_CLEAR = (
     "CHAT_THINKING_ADVANCED_MODEL",
     "CHAT_MODEL",
     "CHAT_ADVANCED_MODEL",
-    "CHAT_CLAUDE_AGENT_FALLBACK_MODEL",
     "CHAT_TITLE_MODEL",
     "CHAT_SIMULATION_MODEL",
     "CHAT_STREAM_REPLAY_COUNT",
@@ -296,21 +295,6 @@ class TestSdkModelVendorCompatibility:
                 thinking_advanced_model="moonshotai/kimi-k2.6",
             )
 
-    def test_fallback_model_also_validated(self):
-        """``claude_agent_fallback_model`` flows through
-        ``_normalize_model_name`` via ``_resolve_fallback_model`` so the
-        same direct-Anthropic guard applies."""
-        with pytest.raises(Exception, match="claude_agent_fallback_model"):
-            ChatConfig(
-                use_openrouter=False,
-                api_key=None,
-                base_url=None,
-                use_claude_code_subscription=False,
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
-                thinking_advanced_model="anthropic/claude-opus-4-7",
-                claude_agent_fallback_model="moonshotai/kimi-k2.6",
-            )
-
     def test_credentialless_default_construct_does_not_raise(self):
         """Build environments and OpenAPI-schema export jobs construct
         ``ChatConfig()`` with no API keys in the env; the SDK vendor
@@ -402,22 +386,6 @@ class TestSdkModelVendorCompatibility:
                 thinking_advanced_model="anthropic/claude-opus-4-7",
                 fast_advanced_model="openai/gpt-5",
             )
-
-    def test_empty_fallback_skipped(self):
-        """Empty ``claude_agent_fallback_model`` (no fallback configured)
-        must not trip the validator — the fallback-disabled state is
-        intentional and shouldn't require a placeholder anthropic/* slug."""
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            claude_agent_fallback_model="",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_fallback_model == ""
 
 
 class TestTransportProfile:
@@ -725,7 +693,6 @@ class TestLocalTransport:
             base_url="http://localhost:11434/v1",
             thinking_standard_model="llama3.2:3b",
             thinking_advanced_model="llama3.1:8b",
-            claude_agent_fallback_model="phi3:mini",
         )
         assert cfg.thinking_standard_model == "llama3.2:3b"
 

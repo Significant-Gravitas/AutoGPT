@@ -703,7 +703,6 @@ def _make_sdk_patches(
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_autocompact_pct_override=0,
                 claude_agent_thinking_effort=None,
-                claude_agent_fallback_model=None,
                 # Real strings: the stamp path canonicalizes the model for
                 # fallback detection; auto-MagicMock attributes would leak
                 # into regex-based comparison.

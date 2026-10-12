@@ -118,9 +118,6 @@ from ..graphiti.config import is_enabled_for_user
 from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
-from ..moonshot import (
-    is_moonshot_model as _is_moonshot_model,
-)
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -552,12 +549,10 @@ async def _consume_sdk_until_done(
             msg_id = sdk_msg.message_id
             if msg_id is not None and msg_id.startswith("gen-"):
                 state.generations.add(msg_id)
-            # Track the model the SDK actually used — when a fallback
-            # activates, this differs from ``state.options.model``.
-            # Consumed by the Moonshot cost-override decision so we
-            # don't mis-bill a fallback-Anthropic response at
-            # Moonshot rates (or a fallback-Moonshot at Anthropic
-            # rates).
+            # Track the model the SDK actually used (the CLI picks one
+            # when none was requested, as on a subscription).  Consumed
+            # by the Moonshot cost-override decision and the turn's
+            # model stamps.
             observed = getattr(sdk_msg, "model", None)
             if isinstance(observed, str) and observed:
                 state.observed_model = observed
@@ -1462,10 +1457,8 @@ class _RetryState:
     # transient retry absorbs the failed launch's (``_do_transient_backoff``).
     generations: TurnGenerations = dataclass_field(default_factory=TurnGenerations)
     # The *actually executed* model observed on ``AssistantMessage.model`` —
-    # differs from ``state.options.model`` (the requested primary) when
-    # ``_resolve_fallback_model`` swaps to a fallback mid-attempt.  The
-    # Moonshot cost override gates on this so a Moonshot-→-Anthropic
-    # fallback doesn't get mis-billed at Moonshot rates, and vice versa.
+    # set even when ``state.options.model`` is unset (the CLI picked one).
+    # The Moonshot cost override gates on this.
     observed_model: str | None = None
 
 
@@ -2306,28 +2299,6 @@ async def _resolve_thinking_model_for_user(
     return await resolve_model_route("thinking", tier, user_id, config=config)
 
 
-def _resolve_fallback_model() -> str | None:
-    """Resolve the fallback model name via :func:`_normalize_model_name`.
-
-    Returns ``None`` when no fallback is configured (empty string).
-    """
-    raw = config.claude_agent_fallback_model
-    if not raw:
-        return None
-    return _normalize_model_name(raw)
-
-
-def _resolve_env_model(sdk_model: str | None, fallback_model: str | None) -> str | None:
-    """Pick the model that drives ``build_sdk_env``'s model-aware gates.
-
-    Use the fallback when it's Moonshot so a 529-triggered swap to Kimi
-    still suppresses ``CLAUDE_AUTOCOMPACT_PCT_OVERRIDE``.
-    """
-    if fallback_model and _is_moonshot_model(fallback_model):
-        return fallback_model
-    return sdk_model
-
-
 async def _resolve_sdk_model_for_request(
     model: "CopilotLLMModel | None",
     session_id: str,
@@ -2540,19 +2511,6 @@ async def _do_transient_backoff(
         message_id=ctx.message_id,
         session_id=ctx.session_id,
     )
-
-
-def _is_fallback_stderr(line: str) -> bool:
-    """Return True if a CLI stderr line signals fallback-model activation.
-
-    Matches ``"fallback model"`` case-insensitively.  Uses the specific
-    two-word phrase rather than just ``"fallback"`` to avoid false positives
-    from unrelated CLI stderr lines (tool retries, cached-result fallbacks).
-
-    Extracted as a module-level pure function so it can be unit-tested
-    without wiring up the full ``_on_stderr`` closure.
-    """
-    return "fallback model" in line.lower()
 
 
 _CLI_STDERR_AUTH_RE = re.compile(
@@ -5363,12 +5321,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 credential_id=credential_lease.credentials.id,
             )
             await codex_gateway.start()
-            fallback_model = None
         else:
             sdk_model, routing_source = await _resolve_sdk_model_for_request(
                 model, session_id, user_id
             )
-            fallback_model = _resolve_fallback_model()
             codex_engine = None
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
@@ -5377,7 +5333,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             session_id=session_id,
             user_id=user_id,
             sdk_cwd=sdk_cwd,
-            model=_resolve_env_model(sdk_model, fallback_model),
+            model=sdk_model,
             codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
             codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
             codex_engine=codex_engine,
@@ -5427,22 +5383,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
-            nonlocal fallback_model_activated_per_attempt
             sid = session_id[:12] if session_id else "?"
             capability = codex_gateway.auth_token if codex_gateway is not None else ""
             safe_line = _redact_cli_stderr(line, secrets=(capability,))
             logger.info("[SDK] [%s] CLI stderr: %s", sid, safe_line.rstrip())
-            # Detect SDK fallback-model activation via the module-level pure
-            # helper so the detection logic can be unit-tested independently.
-            # Sets the per-attempt flag which is preserved across transient
-            # retries so the user notification is never lost.
-            if not fallback_model_activated_per_attempt and _is_fallback_stderr(line):
-                fallback_model_activated_per_attempt = True
-                logger.warning(
-                    "[SDK] [%s] Fallback model activated — primary model "
-                    "overloaded, switching to fallback",
-                    sid,
-                )
 
         # With the live prompt, this turn's prompt is the one sent even when
         # resuming a session that started with another.
@@ -5476,9 +5420,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if not is_codex_transport:
             # The Claude/OpenRouter paths use provider-USD controls. A Codex
             # subscription consumes the connected account's allowance, so
-            # presenting a fabricated USD ceiling or provider fallback to the
-            # CLI would produce incorrect policy and accounting behavior.
-            sdk_options.fallback_model = fallback_model
+            # presenting a fabricated USD ceiling to the CLI would produce
+            # incorrect policy and accounting behavior.
             sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
             sdk_options.thinking = {"type": "adaptive"}
             if config.claude_agent_max_thinking_tokens > 0:
@@ -5863,11 +5806,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         transient_retries = 0
         max_transient_retries = config.claude_agent_max_transient_retries
-        # Preserved across transient retries so the fallback-model notification
-        # is not lost when a retry resets local per-attempt variables.  Reset
-        # only on context-level attempt changes (same guard as transient_retries).
-        fallback_model_activated_per_attempt = False
-        fallback_notified_per_attempt = False
 
         state = _RetryState(
             options=sdk_options,
@@ -5909,8 +5847,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # create an infinite retry loop.
             if attempt != _last_reset_attempt:
                 transient_retries = 0
-                fallback_model_activated_per_attempt = False
-                fallback_notified_per_attempt = False
                 _last_reset_attempt = attempt
             # Clear any stale stash signal from the previous attempt so
             # wait_for_stash() doesn't fire prematurely on a leftover event.
@@ -6065,21 +6001,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 async for event in _run_stream_attempt(stream_ctx, state):
                     if not isinstance(event, _EPHEMERAL_EVENT_TYPES):
                         events_yielded += 1
-                    # Emit a one-time StreamStatus when the SDK switches
-                    # to the fallback model (detected via stderr).  The flag
-                    # is preserved across transient retries (reset only on
-                    # context-level attempt change) so the notification is
-                    # not lost if the activation occurs during a failed sub-
-                    # attempt that later retries successfully.
-                    if (
-                        fallback_model_activated_per_attempt
-                        and not fallback_notified_per_attempt
-                    ):
-                        fallback_notified_per_attempt = True
-                        yield StreamStatus(
-                            message="Primary model overloaded — "
-                            "using fallback model for this request"
-                        )
                     yield event
                 # Discard any state captured from prior failed attempts so
                 # outer cleanup paths don't replay pre-retry content.

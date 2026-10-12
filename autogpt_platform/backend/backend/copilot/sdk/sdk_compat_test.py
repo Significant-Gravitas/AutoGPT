@@ -126,7 +126,6 @@ def test_agent_options_accepts_all_our_fields():
         "resume",
         "max_buffer_size",
         "stderr",
-        "fallback_model",
         "max_turns",
         "max_budget_usd",
     ]

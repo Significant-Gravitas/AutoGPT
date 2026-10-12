@@ -1004,9 +1004,9 @@ class TestHumaniseToolList:
 
 class TestRetryStateObservedModel:
     """Regression guards for the ``observed_model`` field added to
-    ``_RetryState``.  The Moonshot cost override reads this — when a
-    fallback model activates mid-attempt, the requested primary
-    (``state.options.model``) no longer matches what actually ran."""
+    ``_RetryState``.  The Moonshot cost override reads this — the
+    requested model (``state.options.model``) is unset when the CLI
+    picks one, and only the observed model says what actually ran."""
 
     def _make_state(self, *, options_model: str | None = "primary/model"):
         """Build a minimally-valid ``_RetryState``.  All the heavy
@@ -1183,22 +1183,6 @@ class TestMoonshotCostOverrideGate:
             sdk_reported_usd=0.05,
         )
         assert cost == 0.05
-
-
-# ---------------------------------------------------------------------------
-# Moonshot helper re-exports — keep imports stable for call-site code
-# ---------------------------------------------------------------------------
-
-
-class TestMoonshotHelperReexports:
-    """The service's model-dependent environment gates use the shared predicate."""
-
-    def test_is_moonshot_model_aliased(self):
-        from backend.copilot.moonshot import is_moonshot_model as canonical
-
-        from .service import _is_moonshot_model
-
-        assert _is_moonshot_model is canonical
 
 
 class TestIdleTimeoutThreshold:

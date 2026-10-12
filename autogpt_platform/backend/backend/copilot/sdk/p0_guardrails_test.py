@@ -1,4 +1,4 @@
-"""Tests for P0 guardrails: _resolve_fallback_model, security env vars, TMPDIR."""
+"""Tests for P0 guardrails: security env vars, TMPDIR."""
 
 from unittest.mock import MagicMock, patch
 
@@ -53,81 +53,8 @@ def _make_config(**overrides) -> ChatConfig:
     return ChatConfig(**defaults)
 
 
-# ---------------------------------------------------------------------------
-# _resolve_fallback_model
-# ---------------------------------------------------------------------------
-
 _SVC = "backend.copilot.sdk.service"
 _ENV = "backend.copilot.sdk.env"
-
-
-class TestResolveFallbackModel:
-    """Provider-aware fallback model resolution."""
-
-    def test_returns_none_when_empty(self):
-        cfg = _make_config(claude_agent_fallback_model="")
-        with patch(f"{_SVC}.config", cfg):
-            from backend.copilot.sdk.service import _resolve_fallback_model
-
-            assert _resolve_fallback_model() is None
-
-    def test_keeps_full_slug_when_openrouter_active(self):
-        """OpenRouter routes by ``vendor/model`` slug — _normalize_model_name
-        now preserves the prefix when openrouter_active is True so non-
-        Anthropic vendors stay routable.  Anthropic slugs are passed
-        through unchanged in this mode (PR #12878)."""
-        cfg = _make_config(
-            claude_agent_fallback_model="anthropic/claude-sonnet-4-6",
-            use_openrouter=True,
-            api_key="sk-test",
-            base_url="https://openrouter.ai/api/v1",
-        )
-        with patch(f"{_SVC}.config", cfg):
-            from backend.copilot.sdk.service import _resolve_fallback_model
-
-            result = _resolve_fallback_model()
-
-        assert result == "anthropic/claude-sonnet-4-6"
-
-    def test_dots_replaced_for_direct_anthropic(self):
-        """Direct Anthropic requires hyphen-separated versions."""
-        cfg = _make_config(
-            claude_agent_fallback_model="claude-sonnet-4.5-20250514",
-            use_openrouter=False,
-        )
-        with patch(f"{_SVC}.config", cfg):
-            from backend.copilot.sdk.service import _resolve_fallback_model
-
-            result = _resolve_fallback_model()
-
-        assert result is not None
-        assert "." not in result
-        assert result == "claude-sonnet-4-5-20250514"
-
-    def test_dots_preserved_for_openrouter(self):
-        """OpenRouter uses dot-separated versions — don't normalise."""
-        cfg = _make_config(
-            claude_agent_fallback_model="claude-sonnet-4.5-20250514",
-            use_openrouter=True,
-            api_key="sk-test",
-            base_url="https://openrouter.ai/api/v1",
-        )
-        with patch(f"{_SVC}.config", cfg):
-            from backend.copilot.sdk.service import _resolve_fallback_model
-
-            result = _resolve_fallback_model()
-
-        assert result == "claude-sonnet-4.5-20250514"
-
-    def test_default_value(self):
-        """Default fallback model resolves to None (disabled by default)."""
-        cfg = _make_config()
-        with patch(f"{_SVC}.config", cfg):
-            from backend.copilot.sdk.service import _resolve_fallback_model
-
-            result = _resolve_fallback_model()
-
-        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -228,10 +155,6 @@ class TestSecurityEnvVars:
 
 class TestConfigDefaults:
     """Verify ChatConfig P0 fields have correct defaults."""
-
-    def test_fallback_model_default(self):
-        cfg = _make_config()
-        assert cfg.claude_agent_fallback_model == ""
 
     def test_max_turns_default(self):
         cfg = _make_config()
@@ -840,49 +763,6 @@ class TestDoTransientBackoff:
             cli_cost_usd=0.1,
             cli_session_total_usd=None,
         )
-
-
-# ---------------------------------------------------------------------------
-# _is_fallback_stderr — module-level pure function
-# ---------------------------------------------------------------------------
-
-
-class TestIsFallbackStderr:
-    """Unit tests for _is_fallback_stderr.
-
-    Ensures the pure function used by _on_stderr to detect fallback-model
-    activation can be tested independently of the closure.
-    """
-
-    def test_true_for_fallback_model_phrase(self):
-        """Lines containing 'fallback model' must return True."""
-        from backend.copilot.sdk.service import _is_fallback_stderr
-
-        assert _is_fallback_stderr("Using fallback model: claude-sonnet-4") is True
-
-    def test_case_insensitive(self):
-        """Matching must be case-insensitive."""
-        from backend.copilot.sdk.service import _is_fallback_stderr
-
-        assert _is_fallback_stderr("FALLBACK MODEL activated") is True
-        assert _is_fallback_stderr("Fallback Model switching") is True
-
-    def test_false_for_unrelated_fallback(self):
-        """'fallback' alone (no 'model') must not trigger detection."""
-        from backend.copilot.sdk.service import _is_fallback_stderr
-
-        assert _is_fallback_stderr("Using cached result fallback") is False
-        assert _is_fallback_stderr("Tool retry fallback triggered") is False
-
-    def test_false_for_empty_line(self):
-        from backend.copilot.sdk.service import _is_fallback_stderr
-
-        assert _is_fallback_stderr("") is False
-
-    def test_false_for_unrelated_stderr(self):
-        from backend.copilot.sdk.service import _is_fallback_stderr
-
-        assert _is_fallback_stderr("Task completed successfully") is False
 
 
 # ---------------------------------------------------------------------------
