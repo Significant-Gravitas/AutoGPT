@@ -25,12 +25,10 @@ export function useBoardHeader(name: string) {
   const queryClient = useQueryClient();
   const { boardRef, isDefault } = useBoardRef();
   const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
-  // A new project opens with its name in edit mode.
   const [renameParam, setRenameParam] = useQueryState("rename", parseAsString);
   const [isRenaming, setIsRenaming] = useState(
     () => renameParam === "1" && !isDefault,
   );
-  // Null until edited, so the name shows even if it loads after mounting.
   const [editedDraft, setDraft] = useState<string | null>(null);
   const draft = editedDraft ?? name;
   const [error, setError] = useState<string | null>(null);

@@ -5,8 +5,6 @@ import { BOARD_MUTATION_KEY, boardScopeKey } from "./board-helpers";
 
 export type BoardSnapshot = [QueryKey, getV2GetBoardResponse | undefined][];
 
-// Every read and write stays inside one board's cache entries, so a change
-// on one board never touches another board's cached cards.
 export function useBoardCache(boardRef: string) {
   const queryClient = useQueryClient();
   const queryKey = boardScopeKey(boardRef);

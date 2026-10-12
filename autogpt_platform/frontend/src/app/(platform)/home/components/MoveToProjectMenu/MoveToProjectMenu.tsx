@@ -23,8 +23,6 @@ interface Props {
   triggerClassName: string;
 }
 
-// Clicks and presses stop here so the card under the button neither opens
-// nor starts a drag.
 function stopPropagation(event: React.SyntheticEvent) {
   event.stopPropagation();
 }

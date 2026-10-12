@@ -15,7 +15,6 @@ const HOME_TARGET: MoveTarget = {
   isHome: true,
 };
 
-// Home always exists, so a project offers it before the list has loaded.
 export function moveTargets(
   boards: BoardSummary[],
   currentRef: string,

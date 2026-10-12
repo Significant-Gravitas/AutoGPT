@@ -64,7 +64,6 @@ export function useMoveToProject(cardId: string) {
     mutation: {
       mutationKey: BOARD_PROJECT_MUTATION_KEY,
       onMutate: () => {
-        // The card leaves this board, so its panel goes with it.
         if (openSessionId === cardId) void setOpenSessionId(null);
         return applyOptimistic((board) => removeCard(board, cardId));
       },

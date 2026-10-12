@@ -83,11 +83,7 @@ export function useTaskBoardPage(boardRef: string) {
   });
 
   return {
-    boardContext: {
-      boardRef,
-      boardId: board?.board.id ?? null,
-      isDefault,
-    },
+    boardContext: { boardRef, isDefault },
     name: isDefault ? "Home" : (board?.board.name ?? null),
     redirectHref:
       isOffBoard && isOtherBoard && sessionId

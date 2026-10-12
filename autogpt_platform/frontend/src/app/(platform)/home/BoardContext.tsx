@@ -3,10 +3,7 @@
 import { createContext, type ReactNode, useContext } from "react";
 
 export interface BoardContextValue {
-  /** The id used in API paths and cache keys: "default" or a board uuid. */
   boardRef: string;
-  /** The board's real id, once it has loaded. */
-  boardId: string | null;
   isDefault: boolean;
 }
 
