@@ -26,7 +26,7 @@ class Price:
 
 # Keyed by model name without the vendor prefix (``anthropic/``).
 PRICES: dict[str, Price] = {
-    "claude-sonnet-5-5": Price(2.0, 10.0, 0.2, 2.5, 4.0),
+    "claude-sonnet-5-5": Price(2.0, 10.0, 0.1, 2.5, 4.0),
     "claude-opus-5-5": Price(4.0, 20.0, 0.2, 5.0, 8.0),
     "claude-haiku-4-5": Price(1.0, 5.0, 0.1, 1.25, 2.0),
 }
