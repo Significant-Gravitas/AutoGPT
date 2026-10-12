@@ -2,10 +2,12 @@
 database: a new row carries its lease, a renewal moves it, the sync route's
 own end empties it and the input bundle (the statement's ``clear``), a close
 that leaves a cleanup behind (a cancel, the reaper's expiry) marks the row
-and keeps its lease until the one write a closed row takes clears both, the
-reaper lists open rows whose lease lapsed and closed rows whose cleanup is
-due, oldest first, on their indexes, and retention deletes closed rows past
-their retention, a batch at a time, none whose cleanup is pending."""
+and keeps its lease until the closed-row write of a finished cleanup clears
+both, the reaper lists open rows whose lease lapsed (oldest lapse first) and
+closed rows whose cleanup is due (least recently written first, so one it
+tried without finishing goes behind the others), on their indexes, and
+retention deletes closed rows past their retention, a batch at a time, none
+whose cleanup is pending."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -25,13 +27,14 @@ from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.pass_record import (
     cancelled,
     cleanup_finished,
+    cleanup_unfinished,
     expired,
     lease,
     outcome,
     reaped,
 )
 from backend.copilot.dream.schemas import ConsolidationOutput, DreamPassResult
-from backend.data.db import query_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.util.json import SafeJson
 
 from .dream_pass import (
@@ -204,7 +207,7 @@ async def test_the_reapers_expiry_marks_the_row_until_its_cleanup_finishes(owner
     assert pass_id not in [r.id for r in cleanups]
 
 
-async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
+async def test_the_cleanup_scan_lists_closed_marked_rows_least_recently_written_first(
     owner,
 ):
     marked = []
@@ -214,10 +217,7 @@ async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
         assert await update_dream_pass(
             pass_id, reaped("lapsed", not_updated_since=row.updated_at)
         )
-        await PrismaDreamPass.prisma().update(
-            where={"id": pass_id},
-            data={"cleanupPendingAt": _LONG_AGO + timedelta(minutes=minutes)},
-        )
+        await _written_at(pass_id, _LONG_AGO + timedelta(minutes=minutes))
         marked.append(pass_id)
     unmarked = await _new_pass(owner, lease_expires_at=_LONG_AGO)
     await update_dream_pass(
@@ -230,6 +230,35 @@ async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
     assert [r.id for r in rows if r.user_id == owner] == marked
     first = await list_dream_pass_cleanups(_NOW, limit=1)
     assert [r.id for r in first] == marked[:1]
+
+
+async def test_an_unfinished_cleanup_goes_behind_the_others(owner):
+    """The reaper's attempt that did not finish writes nothing but the row's
+    write time: the row stays marked, and goes to the back of the scan."""
+    stuck = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    waiting = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    for pass_id, minutes in ((stuck, 5), (waiting, 50)):
+        row = await _row(pass_id)
+        assert await update_dream_pass(
+            pass_id, reaped("lapsed", not_updated_since=row.updated_at)
+        )
+        await _written_at(pass_id, _LONG_AGO + timedelta(minutes=minutes))
+    before = await _row(stuck)
+
+    assert await update_dream_pass(stuck, cleanup_unfinished())
+
+    after = await _row(stuck)
+    assert after.updated_at > before.updated_at
+    assert (after.cleanup_pending_at, after.lease_token, after.status) == (
+        before.cleanup_pending_at,
+        before.lease_token,
+        before.status,
+    )
+    rows = await list_dream_pass_cleanups(_NOW + timedelta(minutes=1), limit=1000)
+    assert [r.id for r in rows if r.user_id == owner] == [waiting, stuck]
+    # An open row takes no closed-row write.
+    open_row = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    assert not await update_dream_pass(open_row, cleanup_unfinished())
 
 
 async def test_the_cleanup_scan_lists_a_row_once_its_cleanup_is_due(owner):
@@ -362,3 +391,13 @@ async def _row(pass_id: str) -> DreamPassRecord:
     row = await get_dream_pass(pass_id)
     assert row is not None
     return row
+
+
+async def _written_at(pass_id: str, when: datetime) -> None:
+    """Set the row's write time, which Prisma's ``@updatedAt`` would move."""
+    await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"DreamPass" '
+        'SET "updatedAt" = $2::timestamptz AT TIME ZONE \'UTC\' WHERE "id" = $1',
+        pass_id,
+        when,
+    )

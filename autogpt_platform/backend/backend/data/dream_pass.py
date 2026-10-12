@@ -147,7 +147,10 @@ async def list_dream_pass_cleanups(
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked before *due_before*, or holding no lease or
-    one that lapsed before it. The longest pending first, at most *limit*."""
+    one that lapsed before it. The ones written least recently first, at
+    most *limit*: a closed row is written when it closes and each time the
+    reaper tries its cleanup without finishing it, so a cleanup that keeps
+    failing goes behind the others instead of heading every run."""
     rows = await prisma.models.DreamPass.prisma().find_many(
         where={
             "status": {"in": list(CLOSED_STATUSES)},
@@ -158,7 +161,7 @@ async def list_dream_pass_cleanups(
                 {"leaseExpiresAt": {"lte": due_before}},
             ],
         },
-        order={"cleanupPendingAt": "asc"},
+        order={"updatedAt": "asc"},
         take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]

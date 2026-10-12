@@ -279,11 +279,11 @@ class FakeDreamDb:
         self, due_before: datetime, limit: int = 100
     ) -> list[DreamPassRecord]:
         """Closed rows marked for a cleanup that is due (marked, or holding
-        no lease or one that lapsed, before *due_before*), longest pending
-        first."""
+        no lease or one that lapsed, before *due_before*), the ones written
+        least recently first."""
         self._raise_if_down()
         pending = [
-            (row["cleanup_pending_at"], pass_id)
+            (row["updated_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] not in OPEN_STATUSES
             and row.get("cleanup_pending_at") is not None

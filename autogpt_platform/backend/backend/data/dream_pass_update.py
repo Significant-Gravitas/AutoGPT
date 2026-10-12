@@ -25,9 +25,11 @@ statement against the row as it stands when the statement runs:
 Nothing is written to a row that has reached a terminal status, nor to one
 that fails the update's own conditions: another user's row when it names the
 owner, a row written since the instant it names. The one exception is the
-update marked ``closed_row`` (the cleanup after the pass finished), which
-applies to a closed row only and only clears. The statement text is
-constant; every value is a bound parameter.
+update marked ``closed_row`` (the cleanup after the pass finished, or the
+reaper's attempt at it that did not), which applies to a closed row only and
+only clears; one that clears nothing moves ``updatedAt`` alone, which orders
+the reaper's list of pending cleanups. The statement text is constant; every
+value is a bound parameter.
 """
 
 from typing import Any

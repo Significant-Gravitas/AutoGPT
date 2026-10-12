@@ -9,9 +9,14 @@ rest, every ``REAPER_INTERVAL_MINUTES``, across every user. The row's lease
 is the authority: a pass whose Redis renewals kept landing while every row
 write failed looks dead too, and is stopped at its next check.
 
-Each run lists ``REAPER_ROW_LIMIT`` rows at most, oldest first: the closed
-rows whose cleanup (``cleanup.py``) is pending and due, then the open rows
-whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync lock TTL) ago.
+Each run lists ``REAPER_ROW_LIMIT`` rows at most, two kinds taking turns:
+the open rows whose lease lapsed more than ``REAP_GRACE_SECONDS`` (one sync
+lock TTL) ago, the oldest lapse first, and the closed rows whose cleanup
+(``cleanup.py``) is pending and due, the least recently tried first. So
+neither kind can fill a run while the other waits: cleanups that keep
+failing (a provider that hangs on every cancel) do not keep a dead pass from
+being closed and charged before its batch state lapses, and each attempt
+that does not finish puts its row behind the others (``_to_the_back``).
 A cleanup is due once its lease lapsed a grace ago, or it was marked a grace
 ago: time for a pass stopped while it ran to reach its next check, and for
 the executor's drop to clean up after it. The grace is a bound, not a fence:
@@ -30,8 +35,9 @@ gated, and the reaper never calls it.
 Then it cleans up after the pass (``cleanup.clean_up_pass``), releasing the
 lock under the token the row kept unless the reaper holds the scope itself,
 and clears the mark and the lease only once every step has finished
-(``expired``, ``cleaned``); else the row stays marked (``retry``) and the
-next run does every step again, the finished ones doing nothing. A row
+(``expired``, ``cleaned``); else the row stays marked (``retry``), goes behind
+the other pending cleanups, and a later run does every step again, the
+finished ones doing nothing. A row
 marked longer ago than a batch can run no longer waits on the provider. A
 row that kept no token (one written before leases, say) cannot have its
 pass's lock released: its unlock finishes once the scope's lock is gone or
@@ -64,6 +70,7 @@ import logging
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+from itertools import zip_longest
 from typing import Literal
 
 from prisma.enums import DreamPassStatus
@@ -87,6 +94,7 @@ from .store import (
     read_expired_passes,
     read_pending_cleanups,
     record_cleanup_finished,
+    record_cleanup_unfinished,
     write_stop,
 )
 
@@ -131,14 +139,15 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
 
 
 async def _list(now: datetime) -> list[DreamPassRecord]:
-    """The rows to work, oldest first: the cleanups pending and due, then the
-    open rows whose lease lapsed a grace ago, ``REAPER_ROW_LIMIT`` in all."""
+    """The rows to work, ``REAPER_ROW_LIMIT`` in all: the open rows whose
+    lease lapsed a grace ago (the oldest lapse first) taking turns with the
+    cleanups pending and due (the least recently tried first), so that
+    neither kind can fill a run while the other has rows waiting."""
     due_before = now - timedelta(seconds=REAP_GRACE_SECONDS)
+    expired = await read_expired_passes(due_before, limit=REAPER_ROW_LIMIT)
     pending = await read_pending_cleanups(due_before=due_before, limit=REAPER_ROW_LIMIT)
-    room = REAPER_ROW_LIMIT - len(pending)
-    if room <= 0:
-        return pending
-    return pending + await read_expired_passes(due_before, limit=room)
+    turns = [row for pair in zip_longest(expired, pending) for row in pair if row]
+    return turns[:REAPER_ROW_LIMIT]
 
 
 async def _reap_rows(
@@ -226,8 +235,9 @@ async def _clean_up(
 ) -> PassCleanup:
     """Clean up after *row*'s pass, releasing its lock under the token the
     row kept when *release* (for a row that kept none, finding the lock not
-    the pass's), then clear the row's mark and lease if every step finished.
-    Raises when that write fails: the row is listed again."""
+    the pass's), then clear the row's mark and lease if every step finished,
+    else put the row behind the cleanups tried less recently. Raises when
+    the clearing write fails: the row is listed again."""
     cleanup = await clean_up_pass(
         row.id,
         scope,
@@ -239,7 +249,23 @@ async def _clean_up(
     )
     if cleanup.finished:
         await record_cleanup_finished(row.id)
+    else:
+        await _to_the_back(row.id)
     return cleanup
+
+
+async def _to_the_back(pass_id: str) -> None:
+    """Put a cleanup the reaper did not finish behind the ones it has tried
+    less recently, so a cleanup that keeps failing does not head every run.
+    Best-effort: a write that fails leaves the row where it was."""
+    try:
+        await record_cleanup_unfinished(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass reaper: could not move pass {pass_id} behind the other "
+            "cleanups",
+            exc_info=True,
+        )
 
 
 def _logged(

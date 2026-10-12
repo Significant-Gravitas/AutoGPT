@@ -125,9 +125,11 @@ class TestACleanupCutShort:
 
 
 class TestTheListing:
-    async def test_takes_the_pending_cleanups_first_within_the_cap(
+    async def test_lapsed_passes_and_pending_cleanups_take_turns_within_the_cap(
         self, mocker, fake_dream_db
     ):
+        """The oldest lapse, then the pending cleanup: the newer lapse is past
+        the cap and waits for the next run."""
         mocker.patch.object(reaper_mod, "REAPER_ROW_LIMIT", 2)
         for pass_id, lapsed_hours in (("new", 1), ("old", 5)):
             _seed(
@@ -151,6 +153,72 @@ class TestTheListing:
         assert statuses["old"] is DreamPassStatus.EXPIRED
         assert statuses["new"] is DreamPassStatus.RUNNING
         assert fake_dream_db.rows["closed"]["cleanup_pending_at"] is None
+
+    async def test_cleanups_that_keep_hanging_do_not_keep_a_lapsed_pass_waiting(
+        self, mocker, fake_dream_db, provider_cancel
+    ):
+        """Three closed rows whose batch cancel never answers would take every
+        run if the pending cleanups came first, and a dead pass would never
+        be closed and charged before its batch state lapsed. It takes its
+        turn ahead of them."""
+        _scale_the_budget(mocker, budget=0.5, release=0.05)
+        for pass_id in ("stuck1", "stuck2", "stuck3"):
+            _seed(
+                fake_dream_db,
+                pass_id,
+                route=DreamPassRoute.ANTHROPIC_BATCH,
+                status=DreamPassStatus.EXPIRED,
+                provider_batch_id=f"b-{pass_id}",
+                cleanup_pending_at=datetime.now(timezone.utc) - timedelta(minutes=10),
+            )
+        _seed(fake_dream_db, "lapsed", route=DreamPassRoute.SYNC)
+
+        async def never_answers(**_kwargs) -> bool:
+            await asyncio.Event().wait()
+            return True
+
+        provider_cancel.side_effect = never_answers
+
+        run = await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert run.outcomes == {"expired": 1, "out_of_budget": 3}
+        assert fake_dream_db.rows["lapsed"]["status"] is DreamPassStatus.EXPIRED
+        assert fake_dream_db.rows["lapsed"]["cleanup_pending_at"] is None
+
+    async def test_a_cleanup_left_unfinished_goes_behind_the_others(
+        self, mocker, fake_dream_db, provider_cancel, batch_status
+    ):
+        """One row a run: the cleanup whose batch will not stop is tried first,
+        left marked and put behind the other pending cleanup, which the next
+        run reaches instead of trying the same row again."""
+        mocker.patch.object(reaper_mod, "REAPER_ROW_LIMIT", 1)
+        now = datetime.now(timezone.utc)
+        for pass_id, written_minutes_ago in (("stuck", 30), ("waiting", 20)):
+            _seed(
+                fake_dream_db,
+                pass_id,
+                route=DreamPassRoute.ANTHROPIC_BATCH,
+                status=DreamPassStatus.EXPIRED,
+                provider_batch_id=f"b-{pass_id}",
+                cleanup_pending_at=now - timedelta(minutes=40),
+            )
+            fake_dream_db.rows[pass_id]["updated_at"] = now - timedelta(
+                minutes=written_minutes_ago
+            )
+
+        async def refuses_the_stuck_one(*, provider_batch_id: str, **_kwargs) -> bool:
+            return provider_batch_id != "b-stuck"
+
+        provider_cancel.side_effect = refuses_the_stuck_one
+        batch_status.return_value = "in_progress"
+
+        first = await reap_expired_passes()
+        second = await reap_expired_passes()
+
+        assert (first.outcomes, second.outcomes) == ({"retry": 1}, {"cleaned": 1})
+        assert fake_dream_db.rows["waiting"]["cleanup_pending_at"] is None
+        assert fake_dream_db.rows["stuck"]["cleanup_pending_at"] is not None
+        assert fake_dream_db.rows["stuck"]["status"] is DreamPassStatus.EXPIRED
 
 
 class TestTheBudget:
