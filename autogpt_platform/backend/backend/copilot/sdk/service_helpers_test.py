@@ -31,7 +31,6 @@ from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionStats, CompactionTracker
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
-    _BARE_MESSAGE_TOKEN_FLOOR,
     ReducedContext,
     _build_query_message,
     _compaction_target_tokens,
@@ -2178,34 +2177,6 @@ class TestExpectPreQueryCompaction:
                 target_tokens=_TARGET,
             )
         ).expected is False
-
-    def test_no_resume_below_the_bare_message_floor_never_predicts(self):
-        """``_build_query_message`` abandons history injection entirely once
-        the retry budget reaches ``_BARE_MESSAGE_TOKEN_FLOOR``, so the mirror
-        must too — otherwise the row opens for a branch that returns the bare
-        message and compresses nothing."""
-        messages = _big_history()
-        assert (
-            _expect_pre_query_compaction(
-                messages,
-                "gpt-4o",
-                use_resume=False,
-                transcript_msg_count=0,
-                session_msg_ceiling=len(messages),
-                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR,
-            )
-        ).expected is False
-        # A budget above the floor still compresses, so the row still opens.
-        assert (
-            _expect_pre_query_compaction(
-                messages,
-                "gpt-4o",
-                use_resume=False,
-                transcript_msg_count=0,
-                session_msg_ceiling=len(messages),
-                target_tokens=_BARE_MESSAGE_TOKEN_FLOOR + 1,
-            )
-        ).expected is True
 
     def test_resume_with_zero_watermark_never_predicts(self):
         messages = _big_history()

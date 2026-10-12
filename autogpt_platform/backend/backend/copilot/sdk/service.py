@@ -3203,10 +3203,9 @@ def _expect_pre_query_compaction(
     error — the branch compresses a slice this function never looked at.
 
     ``target_tokens`` must be the same value handed to
-    ``_build_query_message`` — the no-resume branch there abandons history
-    injection entirely once the budget falls to ``_BARE_MESSAGE_TOKEN_FLOOR``,
-    and a mirror that skips that guard predicts compression for a branch that
-    returns the bare message.
+    ``_build_query_message``: the turn's ``_compaction_target_tokens``, never
+    below 10,000 tokens, so the builder's bare-message floor, which only a
+    retry's budget reaches, never applies on the path this predicts.
 
     False negatives are safe: ``emit_pre_query_end`` emits a self-contained
     row when compression happens without a prediction.  That covers slices
@@ -3217,8 +3216,6 @@ def _expect_pre_query_compaction(
     ]
     if not use_resume:
         if session_msg_ceiling <= 1:
-            return _NO_COMPACTION
-        if target_tokens <= _BARE_MESSAGE_TOKEN_FLOOR:
             return _NO_COMPACTION
         source = prior_messages if prior_messages is not None else prior
         return _will_compact(source, model, target_tokens=target_tokens)
