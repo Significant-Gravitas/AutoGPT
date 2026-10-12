@@ -13,7 +13,12 @@ from backend.sdk import (
 )
 from backend.util.exceptions import BlockExecutionError
 
-from ._api import AnySearchAuth, AnySearchClient, unwrap_envelope
+from ._api import (
+    AnySearchAuth,
+    AnySearchClient,
+    sanitize_upstream_text,
+    unwrap_envelope,
+)
 from ._config import anysearch
 
 
@@ -42,6 +47,7 @@ class AnySearchExtractBlock(Block):
         content: str = SchemaField(
             description="Extracted readable page content (cleaned HTML, text, JSON, or markdown; untrusted web content)"
         )
+        request_id: str = SchemaField(description="Unique identifier for this request")
 
     def __init__(self):
         super().__init__(
@@ -61,11 +67,13 @@ class AnySearchExtractBlock(Block):
                 ("url", "https://agpt.co"),
                 ("title", "AutoGPT"),
                 ("content", lambda x: "AI agents" in x),
+                ("request_id", "req-test"),
             ],
             test_mock={
                 "_extract": lambda *args, **kwargs: {
                     "code": 0,
                     "message": "success",
+                    "request_id": "req-test",
                     "data": {
                         "url": "https://agpt.co",
                         "title": "AutoGPT",
@@ -98,15 +106,15 @@ class AnySearchExtractBlock(Block):
             )
 
         try:
-            data = unwrap_envelope(await self._extract(credentials, input_data.url))
-            url = data.get("url") or input_data.url
-            title = data.get("title") or ""
-            content = data.get("content") or ""
+            env = unwrap_envelope(await self._extract(credentials, input_data.url))
+            url = env.data.get("url") or input_data.url
+            title = env.data.get("title") or ""
+            content = env.data.get("content") or ""
             if not all(isinstance(v, str) for v in (url, title, content)):
                 raise ValueError("malformed extract response fields")
         except Exception as e:
             raise BlockExecutionError(
-                message=f"Extract failed: {e}",
+                message=f"Extract failed: {sanitize_upstream_text(str(e))}",
                 block_name=self.name,
                 block_id=self.id,
             ) from e
@@ -114,3 +122,4 @@ class AnySearchExtractBlock(Block):
         yield "url", url
         yield "title", title
         yield "content", content
+        yield "request_id", env.request_id

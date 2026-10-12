@@ -1,6 +1,7 @@
 import asyncio
-from typing import Any
+from typing import Any, Literal
 
+import aiohttp
 from pydantic import model_validator
 
 from backend.sdk import (
@@ -14,6 +15,7 @@ from backend.sdk import (
     CredentialsMetaInput,
     SchemaField,
 )
+from backend.util.request import HTTPClientError, HTTPServerError
 
 from ._api import (
     AnySearchAuth,
@@ -22,6 +24,7 @@ from ._api import (
     AnySearchQueryResults,
     check_vertical_inputs,
     result_from_dict,
+    sanitize_upstream_text,
     unwrap_envelope,
 )
 from ._config import anysearch
@@ -74,6 +77,26 @@ class AnySearchParallelSearchBlock(Block):
             default=None,
             advanced=True,
         )
+        zone: Literal["cn", "intl"] | None = SchemaField(
+            description="Regional recall-pool routing (cn=China, "
+            "intl=international) applied to every query; the effect "
+            "varies by query",
+            default=None,
+            advanced=True,
+        )
+        language: str | None = SchemaField(
+            description="Preferred result language as a BCP 47 tag "
+            "(e.g. zh-CN, en), applied to every query",
+            default=None,
+            advanced=True,
+        )
+        format: Literal["json", "markdown"] | None = SchemaField(
+            description="Content encoding inside each result - 'markdown' "
+            "makes AnySearchResult.content Markdown text; the outer "
+            "response stays JSON",
+            default=None,
+            advanced=True,
+        )
 
         @model_validator(mode="after")
         def _check_vertical_inputs(self):
@@ -105,13 +128,15 @@ class AnySearchParallelSearchBlock(Block):
                     "results",
                     lambda groups: isinstance(groups, list)
                     and len(groups) == 2
-                    and all(g.results and not g.error for g in groups),
+                    and all(g.results and not g.error for g in groups)
+                    and all(g.request_id == "req-test" for g in groups),
                 ),
             ],
             test_mock={
                 "_search": lambda *args, **kwargs: {
                     "code": 0,
                     "message": "success",
+                    "request_id": "req-test",
                     "data": {
                         "results": [
                             {
@@ -138,12 +163,36 @@ class AnySearchParallelSearchBlock(Block):
         self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
     ) -> AnySearchQueryResults:
         query = payload["query"]
+        request_id = ""
         try:
-            data = unwrap_envelope(await self._search(credentials, payload))
-            results = [result_from_dict(r) for r in data.get("results", [])]
-        except Exception as e:
-            return AnySearchQueryResults(query=query, error=str(e) or type(e).__name__)
-        return AnySearchQueryResults(query=query, results=results)
+            response = await self._search(credentials, payload)
+            if not isinstance(response, dict):
+                raise ValueError("malformed AnySearch response envelope")
+            request_id = str(response.get("request_id") or "")
+            env = unwrap_envelope(response, required="results")
+            raw_results = env.data["results"]
+            if not isinstance(raw_results, list):
+                raise ValueError("AnySearch response data.results is not a list")
+            results = [result_from_dict(r) for r in raw_results]
+        except (
+            ValueError,
+            HTTPClientError,
+            HTTPServerError,
+            aiohttp.ClientError,
+            TimeoutError,
+            asyncio.TimeoutError,
+        ) as e:
+            # Expected failure modes only - envelope errors, HTTP status
+            # (4xx/5xx), transport, and timeouts degrade to an error group;
+            # anything else propagates and fails the whole block.
+            return AnySearchQueryResults(
+                query=query,
+                error=sanitize_upstream_text(str(e) or type(e).__name__),
+                request_id=request_id,
+            )
+        return AnySearchQueryResults(
+            query=query, results=results, request_id=request_id
+        )
 
     async def run(
         self,
@@ -166,12 +215,24 @@ class AnySearchParallelSearchBlock(Block):
             shared["tag"] = input_data.sub_domain
         if input_data.sub_domain_params:
             shared["params"] = input_data.sub_domain_params
+        if input_data.zone:
+            shared["zone"] = input_data.zone
+        if input_data.language:
+            shared["language"] = input_data.language
+        if input_data.format:
+            shared["format"] = input_data.format
 
-        groups = await asyncio.gather(
-            *(
-                self._search_one(credentials, {"query": q, **shared})
-                for q in input_data.queries
-            )
-        )
+        tasks = [
+            asyncio.ensure_future(self._search_one(credentials, {"query": q, **shared}))
+            for q in input_data.queries
+        ]
+        try:
+            groups = await asyncio.gather(*tasks)
+        finally:
+            # A propagated unexpected failure must not leave sibling calls
+            # running detached - they would burn quota and log unretrieved
+            # exceptions.
+            for task in tasks:
+                task.cancel()
 
         yield "results", list(groups)
