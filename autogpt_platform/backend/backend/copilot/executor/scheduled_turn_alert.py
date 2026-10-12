@@ -52,6 +52,12 @@ _RECORD_TIMEOUT_SECONDS = 20
 _ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 UNCLASSIFIED = "unclassified"
 
+# Finding a block and reading its schema is how a run gets ready to work, not
+# work done. The every-minute Discord monitor did both before its one real
+# step failed; counting them made a run that did nothing read as one that
+# went ahead without Discord, so it was never paused.
+_LOOKUP_TOOLS = frozenset({"find_capability", "describe_capability"})
+
 
 class ToolFailure(BaseModel):
     tool: str
@@ -101,7 +107,7 @@ class ScheduledTurnWatch:
                 error_type=UNCLASSIFIED, text_hash=text_hash(chunk.output)
             )
             self._failure_details.append((tool, detail))
-        else:
+        elif chunk.toolName not in _LOOKUP_TOOLS:
             self._tool_successes += 1
 
     def outcome(self, turn_error: str | None) -> RunOutcome:

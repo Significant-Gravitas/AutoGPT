@@ -241,12 +241,49 @@ def test_list_all_schedules_does_not_scope_to_a_graph(
 
 def test_delete_schedule_returns_the_id(mocker: pytest_mock.MockFixture) -> None:
     sched = _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(),
+    )
 
     response = client.delete("/schedules/sched-1")
 
     assert response.status_code == 200
     assert response.json() == {"id": "sched-1"}
     assert sched.delete_schedule.await_args.args[0] == "sched-1"
+
+
+def test_deleting_a_schedule_forgets_its_failure_streak(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+) -> None:
+    """A paused chat that is deleted must not stay listed as paused, raise
+    its alert, or answer Resume."""
+    _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    forget = mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(),
+    )
+
+    response = client.delete("/schedules/sched-1")
+
+    assert response.status_code == 200
+    forget.assert_awaited_once_with(test_user_id, "sched-1")
+
+
+def test_a_schedule_that_is_not_there_keeps_its_streak(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Nothing was deleted: a routine's id, say, is not a schedule's."""
+    _patch_scheduler(
+        mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
+    )
+    forget = mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(),
+    )
+
+    assert client.delete("/schedules/routine-1").status_code == 404
+    forget.assert_not_awaited()
 
 
 def test_paused_scheduled_chats_are_listed_for_the_caller(
