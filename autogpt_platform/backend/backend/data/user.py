@@ -877,7 +877,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
             ),
         )
     except Exception as e:
-        raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+        raise DatabaseError(f"Failed to unsubscribe user by token: {e}") from e
 
 
 async def cleanup_user_managed_credentials(
