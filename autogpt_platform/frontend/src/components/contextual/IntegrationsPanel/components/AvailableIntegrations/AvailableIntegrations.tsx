@@ -30,7 +30,7 @@ export function AvailableIntegrations({ query, onSelect }: Props) {
           Available integrations
         </Text>
         <Text variant="small" className="text-zinc-500">
-          Connect your services, including official MCP integrations. Some
+          Connect your services, including official vendor integrations. Some
           services need additional setup.
         </Text>
       </div>

@@ -2,9 +2,7 @@
 
 import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 import { Button } from "@/components/atoms/Button/Button";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { PublishAgentModal } from "@/components/contextual/PublishAgentModal/PublishAgentModal";
-import { GitCompareArrowsIcon } from "@hugeicons/core-free-icons";
 import { useState } from "react";
 import { SectionHeader } from "../SectionHeader";
 import { SHELF_GRID, SHELF_PREVIEW_SIZE } from "../Shelf/helpers";
@@ -36,10 +34,6 @@ export function WorkflowsShelf({ id, agents, featuredAgents, total }: Props) {
       className="mb-16 scroll-mt-24"
     >
       <SectionHeader
-        size="small"
-        titleIcon={
-          <Icon icon={GitCompareArrowsIcon} size="2.2rem" aria-hidden />
-        }
         title="Workflows"
         titleId={HEADING_ID}
         subtitle="Automations your experts can run — or install one yourself."

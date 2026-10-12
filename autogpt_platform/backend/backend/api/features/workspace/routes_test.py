@@ -2,6 +2,7 @@ import io
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import fastapi
 import fastapi.testclient
 import pytest
@@ -1170,6 +1171,105 @@ class TestCreateFileDownloadResponse:
         file = _make_file(storage_path="gcs://bucket/file.txt")
         with pytest.raises(RuntimeError, match="Also failed"):
             await create_file_download_response(file)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "storage_path", ["gcs://bucket/file.txt", "local://ws/file-001/file.txt"]
+    )
+    async def test_missing_content_returns_404_without_retry(
+        self, mocker, storage_path
+    ):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "/api/fallback"
+        mock_storage.retrieve.side_effect = FileNotFoundError("File not found")
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path=storage_path)
+        with pytest.raises(fastapi.HTTPException) as exc_info:
+            await create_file_download_response(file)
+        assert exc_info.value.status_code == 404
+        assert mock_storage.retrieve.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_transient_storage_error_is_retried(self, mocker, caplog):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "/api/fallback"
+        mock_storage.retrieve.side_effect = [
+            aiohttp.ClientPayloadError("Response payload is not completed"),
+            b"second try",
+        ]
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        with caplog.at_level("WARNING"):
+            response = await create_file_download_response(file)
+        assert response.status_code == 200
+        assert response.body == b"second try"
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            aiohttp.ClientPayloadError("Response payload is not completed"),
+            TimeoutError(),
+        ],
+    )
+    async def test_persistent_storage_error_returns_502_and_logs(
+        self, mocker, caplog, error
+    ):
+        from backend.api.features.workspace.routes import create_file_download_response
+
+        mock_storage = AsyncMock()
+        mock_storage.get_download_url.return_value = "/api/fallback"
+        mock_storage.retrieve.side_effect = error
+        mocker.patch(
+            "backend.api.features.workspace.routes.get_workspace_storage",
+            return_value=mock_storage,
+        )
+
+        file = _make_file(storage_path="gcs://bucket/file.txt")
+        with caplog.at_level("WARNING"), pytest.raises(
+            fastapi.HTTPException
+        ) as exc_info:
+            await create_file_download_response(file)
+        assert exc_info.value.status_code == 502
+        assert mock_storage.retrieve.await_count == 2
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert len(errors) == 1
+        assert errors[0].exc_info is not None
+        assert type(error).__name__ in errors[0].getMessage()
+
+
+def test_download_file_missing_content_returns_404(mocker):
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace",
+        return_value=_make_workspace(),
+    )
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_file",
+        return_value=_make_file(storage_path="gcs://bucket/ws/file-001/gone.png"),
+    )
+    mock_storage = AsyncMock()
+    mock_storage.get_download_url.return_value = "/api/fallback"
+    mock_storage.retrieve.side_effect = FileNotFoundError("File not found")
+    mocker.patch(
+        "backend.api.features.workspace.routes.get_workspace_storage",
+        return_value=mock_storage,
+    )
+
+    response = client.get("/files/file-001/download")
+    assert response.status_code == 404
 
 
 # -- list_workspace_files: expert filter + attribution --

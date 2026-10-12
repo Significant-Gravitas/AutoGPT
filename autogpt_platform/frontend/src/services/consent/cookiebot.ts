@@ -15,6 +15,13 @@ export const COOKIEBOT_CONSENT_EVENTS = [
   "CookiebotOnLoad",
 ] as const;
 
+// Fired when the banner is about to ask, i.e. the visitor has no answer yet.
+// A visitor outside every consent region gets no banner and no such event.
+export const COOKIEBOT_DIALOG_EVENTS = [
+  "CookiebotOnDialogInit",
+  "CookiebotOnDialogDisplay",
+] as const;
+
 export interface CookiebotConsent {
   necessary: boolean;
   preferences: boolean;

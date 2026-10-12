@@ -138,3 +138,8 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     )
     returned = TypeAdapter(DreamPassRecord | None).validate_python(to_dict(record))
     assert returned == record
+
+
+def test_the_audience_consumer_can_read_the_opt_out() -> None:
+    assert hasattr(DatabaseManager, "is_marketing_opted_out")
+    assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")

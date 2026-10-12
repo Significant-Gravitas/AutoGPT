@@ -1,4 +1,4 @@
-.PHONY: start-core stop-core logs-core format lint migrate run-backend run-frontend load-store-agents
+.PHONY: start-core stop-core logs-core format lint migrate publish-skills run-backend run-frontend load-store-agents
 
 # Run just Postgres + Redis + RabbitMQ
 start-core:
@@ -43,6 +43,13 @@ migrate:
 	cd backend && poetry run prisma migrate deploy
 	cd backend && poetry run prisma generate
 	cd backend && poetry run gen-prisma-stub
+
+# Publish the skills catalog (marketplace skills + expert roster) into the
+# local database. Experts get their preload workflows only if the store assets
+# are loaded first (`make load-store-agents`); without them the experts still
+# land, minus those workflows, and a later run fills them in.
+publish-skills:
+	cd backend && poetry run publish-skills-catalog --skip-missing-preloads
 
 run-backend:
 	cd backend && poetry run app

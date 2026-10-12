@@ -24,7 +24,7 @@ class TestParseActionId:
     def test_round_trips_token_and_index(self):
         blocks = choice_blocks("Q?", "abcdef012345", ["US", "EU"])
         action_id = blocks[1]["elements"][1]["action_id"]
-        assert parse_action_id(action_id) == ("abcdef012345", 1)
+        assert parse_action_id(action_id) == ("qans", "abcdef012345", 1)
 
     def test_rejects_malformed_action_id(self):
         assert parse_action_id("not-a-choice-action") is None

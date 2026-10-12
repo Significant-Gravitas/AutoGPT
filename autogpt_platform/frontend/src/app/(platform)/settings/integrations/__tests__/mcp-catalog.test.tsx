@@ -40,6 +40,23 @@ beforeEach(() => {
   );
 });
 
+function shippedCatalogProvider(name: string): ProviderMetadata {
+  const catalog: ProviderMetadata[] = JSON.parse(
+    readFileSync(
+      resolve("../backend/backend/integrations/mcp_catalog.json"),
+      "utf8",
+    ),
+  );
+  const entry = catalog.find((item) => item.name === name);
+  expect(entry).toBeDefined();
+  return {
+    ...entry!,
+    service: entry!.mcp_server?.provider ?? name.replace(/^mcp_/, ""),
+    service_name: entry!.display_name,
+    service_icon: entry!.mcp_server?.icon_id ?? null,
+  };
+}
+
 async function openPicker() {
   const buttons = await screen.findAllByRole("button", {
     name: /connect.*service/i,
@@ -50,18 +67,12 @@ async function openPicker() {
 
 describe("SettingsIntegrationsPage — MCP catalogue", () => {
   test("shows PostHog branding and connection options from the shipped catalog", async () => {
-    const catalog: ProviderMetadata[] = JSON.parse(
-      readFileSync(
-        resolve("../backend/backend/integrations/mcp_catalog.json"),
-        "utf8",
-      ),
+    server.use(
+      getGetV1ListProvidersMockHandler([shippedCatalogProvider("mcp_posthog")]),
     );
-    const posthog = catalog.find((entry) => entry.name === "mcp_posthog");
-    expect(posthog).toBeDefined();
-    server.use(getGetV1ListProvidersMockHandler([posthog!]));
 
     render(<SettingsIntegrationsPage />);
-    const row = await screen.findByRole("button", { name: /posthog.*mcp/i });
+    const row = await screen.findByRole("button", { name: /posthog/i });
     expect(row.querySelector("img")?.getAttribute("src")).toBe(
       "/integrations/posthog.png",
     );
@@ -81,6 +92,33 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     ).toBeDefined();
   });
 
+  test("opens OpenSEO on its cloud server and lets self-hosters change the URL", async () => {
+    server.use(
+      getGetV1ListProvidersMockHandler([shippedCatalogProvider("mcp_openseo")]),
+    );
+
+    render(<SettingsIntegrationsPage />);
+    const row = await screen.findByRole("button", { name: /openseo/i });
+    expect(within(row).queryByText("Setup required")).toBeNull();
+    fireEvent.click(row);
+
+    const dialog = await screen.findByRole("dialog");
+    const input =
+      await within(dialog).findByLabelText<HTMLInputElement>("Server URL");
+    expect(input.value).toBe("https://app.openseo.so/mcp");
+    expect(input.readOnly).toBe(false);
+    fireEvent.change(input, {
+      target: { value: "https://openseo.example.workers.dev/mcp" },
+    });
+    expect(input.value).toBe("https://openseo.example.workers.dev/mcp");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^connect$/i }));
+    await waitFor(() => {
+      expect(oauthRequest).toHaveBeenCalledWith({
+        server_url: "https://openseo.example.workers.dev/mcp",
+      });
+    });
+  });
+
   test("lists native providers and branded MCP entries together", async () => {
     render(<SettingsIntegrationsPage />);
     expect(
@@ -89,7 +127,7 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
     const preset = await screen.findByRole("button", {
       name: /agentmail.*account/i,
     });
-    expect(within(preset).getByText("MCP", { exact: true })).toBeDefined();
+    expect(within(preset).queryByText("MCP", { exact: true })).toBeNull();
     expect(preset.querySelector("img")?.getAttribute("src")).toBe(
       "/integrations/agent_mail.png",
     );
@@ -196,9 +234,8 @@ describe("SettingsIntegrationsPage — MCP catalogue", () => {
           : "Connected, but this server returned no tools.",
       );
       expect(
-        within(dialog).getByText(/no connection was saved/i),
+        within(dialog).getByText(/needs no sign-in, so nothing was saved/i),
       ).toBeDefined();
-      expect(within(dialog).getByText(/use this server url/i)).toBeDefined();
       expect(discoveryRequest).toHaveBeenCalledWith({
         server_url: "https://search.parallel.ai/mcp",
         use_saved_credentials: false,

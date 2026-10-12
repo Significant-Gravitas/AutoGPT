@@ -64,6 +64,15 @@ SCHEDULER_JOBS = Gauge(
     labelnames=["job_type", "status"],
 )
 
+# Scheduled copilot turns that were dispatched but then failed while running:
+# the turn itself errored, or a tool it called returned an error. Counted in
+# the copilot executor, because the scheduler only sees the dispatch.
+COPILOT_SCHEDULED_TURN_FAILURES = Counter(
+    "autogpt_copilot_scheduled_turn_failures_total",
+    "Scheduled copilot turns that failed after dispatch",
+    labelnames=["reason", "tool"],
+)
+
 # Every Stripe SDK call, by resource/method and how it ended. Stripe applies
 # its rate limit per account rather than per endpoint, so the rate_limited
 # outcome is worth alerting on regardless of which call path produced it.

@@ -241,8 +241,9 @@ async def _complete(
                 call.ctx, messages, VerdictPayload, max_output_tokens=MAX_OUTPUT_TOKENS
             )
         except InferenceError as e:
-            # A response that arrived but didn't parse was still billed.
-            await _record_spend(call.ctx, session, e.usage)
+            # A response that arrived but didn't parse was still billed; the
+            # trace reports it as priced, like a call that parsed.
+            call.usage = await _record_spend(call.ctx, session, e.usage)
             raise
         call.usage = await _record_spend(call.ctx, session, completion.usage)
     return completion

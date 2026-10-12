@@ -1,0 +1,9 @@
+{
+  "categories": {
+    "correctness": "off"
+  },
+  "jsPlugins": ["@shadcn/lint"],
+  "rules": {
+    "shadcn/require-static-classes": "warn"
+  }
+}

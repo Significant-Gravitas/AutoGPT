@@ -132,6 +132,7 @@ class CapabilityIndex:
         permissions: "CopilotPermissions | None" = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
+        prefer_mcp: bool = False,
     ) -> SearchResult:
         query = " ".join((query or "").split())
         if not query:
@@ -166,11 +167,13 @@ class CapabilityIndex:
         fallback: list[SearchHit] = []
         if service_indices is not None:
             # A skill is not a service, but the one written for the named
-            # service is the best answer there is, so skills stay in.
+            # service is the best answer there is, so skills stay in; so do
+            # experts, since "someone to run my LinkedIn" names one.
             main = [
                 idx
                 for idx in rest
-                if idx in service_indices or self.entries[idx].kind == "skill"
+                if idx in service_indices
+                or self.entries[idx].kind in ("skill", "expert")
             ]
             others = [idx for idx in rest if idx not in main]
             fallback = _ranked(
@@ -182,7 +185,12 @@ class CapabilityIndex:
             )[:fallback_limit]
         else:
             main = rest
-        hits += _ranked([to_hit(idx, "search") for idx in main])
+        hits += _ranked(
+            [to_hit(idx, "search") for idx in main],
+            mcp_first=prefer_mcp
+            and service_indices is not None
+            and any(self.entries[idx].kind == "mcp_server" for idx in main),
+        )
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
@@ -224,6 +232,14 @@ class CapabilityIndex:
                     entry.kind == "skill"
                     and allowed_tools is not None
                     and SKILL_TOOL not in allowed_tools
+                ):
+                    continue
+                # An expert runs as the tool it dispatches to (hire or
+                # delegate), and is shown only where that tool may run.
+                if (
+                    entry.kind == "expert"
+                    and allowed_tools is not None
+                    and entry.implementations[0].ref not in allowed_tools
                 ):
                     continue
             allowed.add(idx)
@@ -340,10 +356,51 @@ def _service_tags(entry: CapabilityEntry) -> Iterable[str]:
         yield from (tag.lower() for tag in entry.tags[marker + 1 :])
 
 
-def _ranked(hits: list[SearchHit]) -> list[SearchHit]:
+def _ranked(hits: list[SearchHit], *, mcp_first: bool = False) -> list[SearchHit]:
     """Coverage first; among equals a connected capability, then a platform
     tool (first-party, no credentials, already trusted by the model), then
-    the class-weighted BM25 score (``score`` already carries the weight)."""
+    the class-weighted BM25 score (``score`` already carries the weight).
+
+    ``mcp_first`` is for an expert chat that named a service: connection
+    still leads, but within a tier the service's MCP server comes before
+    its blocks, which stay listed for what the server cannot do."""
+    if mcp_first:
+        ranked = sorted(
+            hits,
+            key=lambda h: (
+                tier(h.entry, h.connected),
+                -h.coverage,
+                h.entry.kind != "tool",
+                -h.score,
+                h.entry.name.lower(),
+            ),
+        )
+        service_hits: dict[str, list[SearchHit]] = defaultdict(list)
+        for hit in ranked:
+            if hit.entry.service:
+                service_hits[hit.entry.service].append(hit)
+        for service, entries in service_hits.items():
+            service_hits[service] = sorted(
+                entries,
+                key=lambda h: (
+                    tier(h.entry, h.connected),
+                    h.entry.kind != "mcp_server",
+                    -h.coverage,
+                    h.entry.kind != "tool",
+                    -h.score,
+                    h.entry.name.lower(),
+                ),
+            )
+        offsets: dict[str, int] = defaultdict(int)
+        result: list[SearchHit] = []
+        for hit in ranked:
+            service = hit.entry.service
+            if not service:
+                result.append(hit)
+                continue
+            result.append(service_hits[service][offsets[service]])
+            offsets[service] += 1
+        return result
     return sorted(
         hits,
         key=lambda h: (

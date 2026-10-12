@@ -22,7 +22,10 @@ from .generation import (
 )
 from .models import Usage
 
-ROSTER = roster_experts()
+try:
+    ROSTER = roster_experts()
+except Exception as exc:  # the catalog is a separate repo; no roster, no eval
+    pytest.skip(f"skills catalog roster unavailable: {exc}", allow_module_level=True)
 
 
 def _completion(

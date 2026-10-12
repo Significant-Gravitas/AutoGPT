@@ -28,11 +28,39 @@ def test_posthog_catalog_entry_uses_hosted_authentication():
     assert entry.display_name == "PostHog"
     assert entry.mcp_server.icon_id == "posthog"
     assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.allow_custom_url is False
     assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
     assert (
         entry.mcp_server.documentation_url
         == "https://posthog.com/docs/model-context-protocol"
     )
+
+
+def test_openseo_catalog_entry_defaults_to_cloud_and_allows_self_hosting():
+    entry = get_mcp_catalog_entry_for_url("https://app.openseo.so/mcp")
+
+    assert entry is not None
+    assert entry.name == "mcp_openseo"
+    assert entry.display_name == "OpenSEO"
+    assert entry.mcp_server.icon_id == "openseo"
+    assert entry.mcp_server.connection_mode == "hosted"
+    assert entry.mcp_server.server_url == "https://app.openseo.so/mcp"
+    assert entry.mcp_server.allow_custom_url is True
+    assert entry.mcp_server.auth_methods == ["oauth", "bearer"]
+    assert entry.mcp_server.documentation_url == "https://openseo.so/docs/mcp"
+
+
+def test_no_catalogued_server_is_limited_to_read_access():
+    for entry in get_mcp_catalog():
+        server = entry.mcp_server
+        assert not server.oauth_write_scopes, entry.name
+        assert "readonly" not in (server.server_url or ""), entry.name
+
+
+def test_a_connection_saved_against_an_old_address_still_finds_its_server():
+    entry = get_mcp_catalog_entry_for_url("https://api.githubcopilot.com/mcp/readonly")
+    assert entry is not None and entry.name == "mcp_github"
+    assert "legacy_server_urls" not in entry.mcp_server.model_dump()
 
 
 @pytest.mark.parametrize(
@@ -63,9 +91,12 @@ def test_catalog_rejects_unsafe_urls(url: str, field: str):
     [
         {"server_url": None},
         {"connection_mode": "custom"},
+        {"server_url": None, "connection_mode": "custom", "allow_custom_url": True},
     ],
 )
-def test_catalog_rejects_misleading_connection_modes(changes: dict[str, str | None]):
+def test_catalog_rejects_misleading_connection_modes(
+    changes: dict[str, str | bool | None],
+):
     data = get_mcp_catalog()[0].mcp_server.model_dump()
     data.update(changes)
     with pytest.raises(ValidationError):
@@ -215,15 +246,15 @@ def test_a_tool_cannot_carry_two_effects():
 @pytest.mark.parametrize(
     "url, tool, effect",
     [
-        ("https://api.githubcopilot.com/mcp/readonly", "issue_read", "read"),
-        ("https://api.githubcopilot.com/mcp/readonly", "create_branch", "external"),
-        ("https://api.githubcopilot.com/mcp/readonly", "issue_write", "irreversible"),
+        ("https://api.githubcopilot.com/mcp/", "issue_read", "read"),
+        ("https://api.githubcopilot.com/mcp/", "create_branch", "external"),
+        ("https://api.githubcopilot.com/mcp/", "issue_write", "irreversible"),
         (
-            "https://api.githubcopilot.com/mcp/readonly",
+            "https://api.githubcopilot.com/mcp/",
             "merge_pull_request",
             "irreversible",
         ),
-        ("https://api.githubcopilot.com/mcp/readonly", "not_published", None),
+        ("https://api.githubcopilot.com/mcp/", "not_published", None),
         ("https://mcp.example.com/mcp", "get_things", None),
     ],
 )

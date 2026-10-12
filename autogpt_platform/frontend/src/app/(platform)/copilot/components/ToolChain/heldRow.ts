@@ -1,6 +1,11 @@
-import type { HeldOutcome } from "../ChatMessagesContainer/heldCallRows";
+import type {
+  HeldCard,
+  HeldOutcome,
+} from "../ChatMessagesContainer/heldCallRows";
+import type { HeldAnswer } from "../ApprovalQueue/heldAnswersStore";
 import { COPILOT_GATE_NODE_PREFIX } from "@/components/organisms/PendingReviewsList/PendingReviewsList";
 import { fallbackAsk } from "../ApprovalQueue/helpers";
+import { capabilityTargetRow } from "./capabilityRow";
 import type { ChainRow } from "./helpers";
 import { asObject, str } from "./resultHelpers";
 import { getCatalogLabel } from "./toolCatalog";
@@ -19,12 +24,15 @@ export interface HeldRowInfo {
   reviewId: string | null;
   // A read held for carrying instructions, not an action held for approval.
   read?: boolean;
+  // What a settled action was asked to do; a read's card shows no arguments either.
+  card?: HeldCard;
 }
 
 // A held call's row names the action while it waits, then what became of it.
 export function applyHeldOutcome(
   row: ChainRow,
   outcomes: ReadonlyMap<string, HeldOutcome>,
+  answers: Readonly<Record<string, HeldAnswer>> = {},
 ): ChainRow {
   const data = asObject(row.output);
   if (!row.tool || data?.type !== "approval_required") return row;
@@ -42,6 +50,13 @@ export function applyHeldOutcome(
     );
   }
   const outcome = outcomes.get(row.key);
+  // Answered here and not yet run: the tag flips now, the result lands later.
+  const answer = outcome ? undefined : answers[reviewId];
+  if (answer === "rejected") return settle(row, didnt, answer, reviewId, read);
+  // Approved but not run: nothing to show until its result lands.
+  if (answer === "approved") {
+    return { ...settle(row, ask, answer, reviewId, read), output: undefined };
+  }
   if (!outcome) {
     return {
       ...row,
@@ -52,26 +67,34 @@ export function applyHeldOutcome(
   }
   // It may have run; claim neither success nor a refusal.
   if (outcome.outcome === "unknown") {
-    return settle(row, ask, "unknown", reviewId, read);
+    return settle(row, ask, "unknown", reviewId, read, outcome.card);
   }
   if (outcome.outcome !== "approved") {
-    return settle(row, didnt, outcome.outcome, reviewId, read);
+    return settle(row, didnt, outcome.outcome, reviewId, read, outcome.card);
   }
   const result = asObject(outcome.output);
   const done = getCatalogLabel(tool, row.input, "done")?.text ?? ask;
   // It ran and failed: the normal error row, still marked as approved.
   if (result?.type === "error") {
     return {
-      ...settle(row, done, "approved", reviewId, read),
+      ...settle(row, done, "approved", reviewId, read, outcome.card),
       state: "error",
       detail: str(result, "message", "error") ?? undefined,
       output: outcome.output,
     };
   }
   return {
-    ...settle(row, done, "approved", reviewId, read),
+    ...settle(row, done, "approved", reviewId, read, outcome.card),
     output: outcome.output,
   };
+}
+
+// The shell's card prints the command itself, run or not, so it needs no card copy.
+export function heldShowsOwnCall(row: ChainRow) {
+  return (
+    row.held?.state === "approved" &&
+    capabilityTargetRow(row).tool === "bash_exec"
+  );
 }
 
 // The held call's own tool, which a capability row names only in its output.
@@ -95,12 +118,13 @@ function settle(
   state: HeldState,
   reviewId: string | null,
   read = false,
+  card?: HeldCard,
 ): ChainRow {
   return {
     ...row,
     text,
     requiresAction: false,
-    held: { state, reviewId, read },
+    held: { state, reviewId, read, card: read ? undefined : card },
   };
 }
 

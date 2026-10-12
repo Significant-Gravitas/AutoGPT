@@ -5,10 +5,11 @@ import { useEffect, useRef, useState } from "react";
 import { Drawer } from "vaul";
 import { MIN_ARTIFACT_PANEL_WIDTH, PANEL_RESERVED_WIDTH } from "../../store";
 import { PanelResizeHandle } from "../PanelResizeHandle";
-import { ArtifactContent } from "./components/ArtifactContent";
+import { ArtifactPreview } from "./components/ArtifactPreview";
 import { ArtifactPanelHeader } from "./components/ArtifactPanelHeader";
 import { ComputerPanelContent } from "./components/ComputerPanelContent";
 import { useArtifactPanel } from "./useArtifactPanel";
+import { useArtifactFullscreen } from "./useArtifactFullscreen";
 
 // Matched to the context panel so the two side rails move as one system.
 const PANEL_EASE: [number, number, number, number] = [0.32, 0.72, 0, 1];
@@ -18,19 +19,16 @@ interface Props {
   mobile?: boolean;
   /** Enables the Computer face: the chat whose sandboxes the panel can show. */
   sessionId?: string | null;
-  /** The desktop copilot chat renders its own sidebar-right close control;
-   *  standalone hosts (share viewer, tour, mobile drawer) do not, so their
-   *  header keeps its Close button. */
-  hasExternalClose?: boolean;
 }
 
-export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
+export function ArtifactPanel({ mobile, sessionId }: Props) {
   const {
     activeArtifact,
     history,
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,
@@ -43,6 +41,13 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
     isComputerOpen,
     setArtifactPanelMode,
   } = useArtifactPanel();
+  const {
+    fullscreenRef,
+    isFullscreen,
+    canFullscreen,
+    toggleFullscreen,
+    exitFullscreen,
+  } = useArtifactFullscreen();
   const showComputer = !!sessionId && mode === "computer" && isComputerOpen;
 
   // Hold the last live artifact so both the mobile drawer and the desktop
@@ -110,7 +115,7 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
             aria-hidden="true"
           />
           <Drawer.Content
-            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col bg-white shadow-xl outline-none"
+            className="fixed right-0 top-0 z-[70] flex h-full w-full flex-col overflow-hidden bg-card shadow-xl outline-none"
             style={{ userSelect: "text" }}
             aria-describedby={undefined}
           >
@@ -131,7 +136,7 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
               onOpenFiles={showFilesTab}
               onSourceToggle={setIsSourceView}
             />
-            <ArtifactContent
+            <ArtifactPreview
               artifact={shown.artifact}
               isSourceView={isSourceView}
               classification={shown.classification}
@@ -161,6 +166,32 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
       ? { duration: 0 }
       : { duration: PANEL_DURATION, ease: PANEL_EASE };
 
+  function closeDesktopPanel() {
+    if (sessionId) {
+      closeArtifactPanel();
+      return;
+    }
+    clearArtifactPreview();
+  }
+
+  function runAfterFullscreenExit(action: () => void) {
+    if (document.fullscreenElement !== fullscreenRef.current) {
+      action();
+      return;
+    }
+    void exitFullscreen().then((didExit) => {
+      if (didExit) action();
+    });
+  }
+
+  function handleDesktopClose() {
+    runAfterFullscreenExit(closeDesktopPanel);
+  }
+
+  function handleOpenFiles() {
+    runAfterFullscreenExit(showFilesTab);
+  }
+
   return (
     <AnimatePresence initial={false}>
       {showDesktopPanel && (shown || showComputer) && (
@@ -172,7 +203,7 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
           exit={{ width: 0, opacity: 0 }}
           transition={transition}
           style={{ userSelect: "text" }}
-          className="relative h-full shrink-0 border-l border-l-[#80808017] bg-sidebar"
+          className="relative h-full shrink-0 bg-sidebar"
         >
           {/* Sibling of the clip, not a child of it: the handle straddles the
               border, so clipping it here would halve the drag target. */}
@@ -182,12 +213,17 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
             onResizingChange={setIsResizing}
             minWidth={MIN_ARTIFACT_PANEL_WIDTH}
           />
-          <div className="h-full overflow-hidden">
+          <div className="h-full overflow-hidden p-2 pl-1">
             {/* Fixed inner width so the header and content keep their final
                 layout while the shell widens — nothing reflows mid-tween. */}
             <div
-              style={{ width: renderedWidth }}
-              className="flex h-full min-h-0 flex-col overflow-hidden"
+              ref={fullscreenRef}
+              style={{
+                width: isFullscreen
+                  ? "100%"
+                  : `calc(${renderedWidth}px - 0.75rem)`,
+              }}
+              className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm [&:fullscreen]:rounded-none [&:fullscreen]:border-0"
             >
               <ArtifactPanelHeader
                 artifact={
@@ -203,22 +239,25 @@ export function ArtifactPanel({ mobile, hasExternalClose, sessionId }: Props) {
                 mode={showComputer ? "computer" : "artifact"}
                 showModeSwitch={!!sessionId}
                 onModeChange={setArtifactPanelMode}
-                hasExternalClose={hasExternalClose}
+                isFullscreen={isFullscreen}
+                onToggleFullscreen={
+                  canFullscreen ? toggleFullscreen : undefined
+                }
                 canGoBack={history.length > 0}
                 isSourceView={isSourceView}
                 hasSourceToggle={shown?.classification.hasSourceToggle ?? false}
                 canCopy={canCopy}
                 onBack={goBackArtifact}
-                onClose={clearArtifactPreview}
+                onClose={handleDesktopClose}
                 onCopy={handleCopy}
                 onDownload={handleDownload}
-                onOpenFiles={showFilesTab}
+                onOpenFiles={handleOpenFiles}
                 onSourceToggle={setIsSourceView}
               />
               {showComputer && sessionId ? (
                 <ComputerPanelContent sessionId={sessionId} />
               ) : shown ? (
-                <ArtifactContent
+                <ArtifactPreview
                   artifact={shown.artifact}
                   isSourceView={isSourceView}
                   classification={shown.classification}
