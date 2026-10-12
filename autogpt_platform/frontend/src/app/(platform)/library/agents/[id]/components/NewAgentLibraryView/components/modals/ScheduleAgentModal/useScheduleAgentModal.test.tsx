@@ -88,7 +88,8 @@ describe("useScheduleAgentModal", () => {
         const body = (await request.json()) as { schedule_id?: unknown };
         sentKeys.push(body.schedule_id);
         calls += 1;
-        if (calls === 1) {
+        // The first submission and its automatic re-send both go unconfirmed.
+        if (calls <= 2) {
           return HttpResponse.json(
             {
               detail: {
@@ -143,12 +144,60 @@ describe("useScheduleAgentModal", () => {
       await result.current.handleSchedule("Another schedule", "0 9 * * *");
     });
 
-    expect(sentKeys).toHaveLength(3);
+    expect(sentKeys).toHaveLength(4);
     expect(sentKeys[0]).toMatch(/^[0-9a-f-]{36}$/);
-    // The retry is the same submission, so the scheduler returns the schedule
-    // it made instead of creating a second one...
-    expect(sentKeys[1]).toBe(sentKeys[0]);
+    // The re-send and the retry after the reload are the same submission, so
+    // the scheduler returns the schedule it made instead of creating another...
+    expect(sentKeys.slice(0, 3)).toEqual([
+      sentKeys[0],
+      sentKeys[0],
+      sentKeys[0],
+    ]);
     // ...while a new submission after a success gets its own key.
-    expect(sentKeys[2]).not.toBe(sentKeys[0]);
+    expect(sentKeys[3]).not.toBe(sentKeys[0]);
+  });
+
+  test("a cold scheduler that applies a create after the caller gave up reads as success", async () => {
+    const sentKeys: unknown[] = [];
+    server.use(
+      http.post("*/api/graphs/:graphId/schedules", async ({ request }) => {
+        const body = (await request.json()) as { schedule_id?: unknown };
+        sentKeys.push(body.schedule_id);
+        if (sentKeys.length === 1) {
+          return HttpResponse.json(
+            {
+              detail: { code: "scheduler_unconfirmed", message: "unconfirmed" },
+            },
+            { status: 503 },
+          );
+        }
+        // The re-send finds the schedule the first request created.
+        return HttpResponse.json({
+          id: String(body.schedule_id),
+          name: "My schedule",
+          user_id: "user-1",
+          graph_id: "graph-xyz",
+          graph_version: 1,
+          cron: "0 9 * * *",
+          input_data: {},
+          next_run_time: new Date().toISOString(),
+        });
+      }),
+    );
+    const { result } = renderHook(() => useScheduleAgentModal(agent, {}, {}), {
+      wrapper,
+    });
+
+    await act(async () => {
+      await result.current.handleSchedule("My schedule", "0 9 * * *");
+    });
+
+    expect(sentKeys).toEqual([sentKeys[0], sentKeys[0]]);
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Schedule created" }),
+    );
+    expect(toastMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ variant: "destructive" }),
+    );
   });
 });

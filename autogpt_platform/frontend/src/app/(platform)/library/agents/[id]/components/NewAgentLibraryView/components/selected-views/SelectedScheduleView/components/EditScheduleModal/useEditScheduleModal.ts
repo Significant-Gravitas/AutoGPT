@@ -9,6 +9,7 @@ import {
   invalidateAllScheduleQueries,
   reconcileAfterScheduleWriteError,
 } from "@/services/schedules/invalidate-schedules";
+import { resendUnconfirmedWriteOnce } from "@/services/schedules/scheduler-availability";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { validateSchedule } from "../../../../modals/ScheduleAgentModal/components/ModalScheduleSection/helpers";
@@ -53,6 +54,7 @@ export function useEditScheduleModal(
   const { mutate: updateSchedule, isPending } =
     usePatchV1UpdateExecutionSchedule({
       mutation: {
+        ...resendUnconfirmedWriteOnce,
         onSuccess: async () => {
           invalidateAllScheduleQueries(queryClient, graphId);
           const runsKey = getGetV1ListGraphExecutionsQueryKey(graphId);

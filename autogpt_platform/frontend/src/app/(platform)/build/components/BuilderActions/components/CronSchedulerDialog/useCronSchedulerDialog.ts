@@ -8,6 +8,7 @@ import {
   invalidateAllScheduleQueries,
   reconcileAfterScheduleWriteError,
 } from "@/services/schedules/invalidate-schedules";
+import { resendUnconfirmedWriteOnce } from "@/services/schedules/scheduler-availability";
 import { createSubmissionKeys } from "@/services/schedules/submission-keys";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsInteger, parseAsString, useQueryStates } from "nuqs";
@@ -45,6 +46,7 @@ export function useCronSchedulerDialog({
   const { mutateAsync: createSchedule, isPending: isCreatingSchedule } =
     usePostV1CreateExecutionSchedule({
       mutation: {
+        ...resendUnconfirmedWriteOnce,
         onSuccess: (response) => {
           if (response.status === 200) {
             setOpen(false);

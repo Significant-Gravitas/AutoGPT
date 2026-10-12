@@ -64,3 +64,13 @@ export function recheckWhileScheduleInfoUnknown(
     ? schedulerRecheckDelay(fetches)
     : false;
 }
+
+// Mutation options for idempotent schedule writes (a keyed create, an edit).
+// A write the scheduler didn't confirm is sent again once, unchanged: it
+// either finds what the first one did, or does it. A cold scheduler that
+// applies a create after its caller gave up then reads as plain success.
+export const resendUnconfirmedWriteOnce = {
+  retry: (failureCount: number, error: unknown) =>
+    failureCount < 1 && isSchedulerUnconfirmedError(error),
+  retryDelay: 0,
+};
