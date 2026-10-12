@@ -310,28 +310,38 @@ joined to the person's other events.
 They are the exception to [Who sends it](#who-sends-it): the clicks are sent
 by the backend too (`POST /api/account/deletion/feedback`), because posthog-js
 attaches the signed-in user's id to every event and browser events wait for
-analytics consent.
+analytics consent. The dialog carries `ph-no-capture`, so posthog-js
+autocapture and session replay record nothing inside it: the chosen reason and
+the panel buttons never reach PostHog under the person's id.
 
 | Event | Sender | Status | Required properties | Fires when |
 | --- | --- | --- | --- | --- |
+| `account_deletion_started` | backend | live | `plan_state`, `tenure_bucket` (as below), `surface` (`settings`, `paywall`: where the flow was opened) | The Delete account dialog opens: once per open, and reopening counts again. Sent when the button is clicked, so a dialog closed with the X still counts. |
 | `account_deletion_feedback` | backend | live | `plan_state` (`max`, `pro`, `trial`, `none`, `managed` for BASIC, BUSINESS and ENTERPRISE), `tenure_bucket` (account age: `<7d`, `7-30d`, `30-90d`, `90d+`). Optional: `reason` (`privacy`, `cost`, `not_using`, `missing_capability`, `limits`, `other`, `skipped`; absent when only text was typed), `text` (what was typed in the optional field, trimmed, at most 1000 characters; absent when nothing was typed) | Skip or Continue is clicked on the "Why are you leaving?" step, once per pass through it. Skip sends `reason: skipped`, so the skip rate is the share of `skipped`. |
 | `account_deletion_alternative_clicked` | backend | live | `alternative` (`manage_apps`, `disconnect_all`, `billing`, `keep_account`), `plan_state`, `tenure_bucket`. Optional: `reason` (the one the alternative was shown for) | The button of the alternative shown for a reason is clicked: "Manage connected apps", "Disconnect all apps", "Go to Billing" or "Keep my account". |
 | `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | `POST /api/account/deletion` closes the account. Once per account: a repeat call sends nothing. |
 
 `plan_state` and `tenure_bucket` are read from the account on the server; the
 browser cannot set them. An optional property the person left empty is left
-out, never sent as null. The feedback route accepts 10 calls per account per
+out, never sent as null. The feedback route accepts 20 calls per account per
 hour and answers 429 after that, so a script cannot flood these counts.
 
 `text` is free text sent as typed, so it can hold anything the person wrote;
 that is one more reason the events are anonymous, and the backend never logs
 it. The deletion source is `surface`, not `source`, which is the
-[base property](#base-properties) (`platform`). There is no start event:
-closing the dialog on the first step sends nothing, so
-`account_deletion_feedback` counts the passes that reached the confirmation
-card (someone who reopens the flow counts again, and with no id the repeats
-cannot be removed) and `account_deletion_completed` the accounts that were
-deleted.
+[base property](#base-properties) (`platform`).
+
+Reading the funnel (someone who reopens the flow counts again, and with no id
+the repeats cannot be removed):
+
+- starts: `account_deletion_started`; read the numbers after the first 30.
+- skip rate: `account_deletion_feedback` with `reason: skipped` over all
+  `account_deletion_feedback`, which counts the passes that reached the
+  confirmation card.
+- save rate: `account_deletion_alternative_clicked` with `alternative` of
+  `keep_account`, `billing` or `manage_apps`, over `account_deletion_started`.
+- completion: `account_deletion_completed` (the accounts that were deleted)
+  over `account_deletion_started`.
 
 ## Experiments
 

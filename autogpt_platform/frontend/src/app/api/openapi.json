@@ -37,6 +37,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
           "404": {
             "description": "The self-serve-account-deletion flag is off"
           },
@@ -74,6 +77,9 @@
           "204": { "description": "Successful Response" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
           },
           "404": {
             "description": "The self-serve-account-deletion flag is off"
@@ -21073,7 +21079,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["answer", "alternative_clicked"],
+            "enum": ["opened", "answer", "alternative_clicked"],
             "title": "Kind"
           },
           "reason": {
@@ -21112,12 +21118,19 @@
               { "type": "null" }
             ],
             "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
         "required": ["kind"],
         "title": "DeletionFeedbackRequest",
-        "description": "One answer to \"Why are you leaving?\", or one click on the alternative it\noffered. Nothing here identifies the person; the route adds no identity\neither."
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
       },
       "DemotionSummary": {
         "properties": {

@@ -29,14 +29,16 @@ class AccountDeletionResponse(BaseModel):
 
 
 class DeletionFeedbackRequest(BaseModel):
-    """One answer to "Why are you leaving?", or one click on the alternative it
-    offered. Nothing here identifies the person; the route adds no identity
-    either."""
+    """One open of the Delete account dialog (with the surface it was opened
+    from), one answer to "Why are you leaving?", or one click on the
+    alternative it offered. Nothing here identifies the person; the route adds
+    no identity either."""
 
-    kind: Literal["answer", "alternative_clicked"]
+    kind: Literal["opened", "answer", "alternative_clicked"]
     reason: ExitReason | None = None
     text: str | None = None
     alternative: Alternative | None = None
+    surface: DeletionSource | None = None
 
     @field_validator("text")
     @classmethod
@@ -48,6 +50,14 @@ class DeletionFeedbackRequest(BaseModel):
 
     @model_validator(mode="after")
     def _match_kind(self) -> "DeletionFeedbackRequest":
+        if self.kind == "opened":
+            if self.surface is None:
+                raise ValueError("opened needs a surface")
+            if self.reason or self.text or self.alternative:
+                raise ValueError("an open carries only its surface")
+            return self
+        if self.surface is not None:
+            raise ValueError("only an open carries a surface")
         if self.kind == "alternative_clicked" and self.alternative is None:
             raise ValueError("alternative_clicked needs an alternative")
         if self.kind == "answer" and self.alternative is not None:

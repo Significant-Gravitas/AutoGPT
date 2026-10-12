@@ -9,7 +9,7 @@ import { UserRemove01Icon } from "@hugeicons/core-free-icons";
 // counts clicks and focus inside it as inside the paywall.
 export function DeleteAccountButton() {
   const { isFlowOpen, openFlow, handleFlowOpenChange } =
-    useDeleteAccountFlowOpener();
+    useDeleteAccountFlowOpener("paywall");
 
   return (
     <>

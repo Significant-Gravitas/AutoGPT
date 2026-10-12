@@ -9,8 +9,9 @@ from backend.util.posthog_events import PostHogEvent
 
 
 async def record_feedback(user_id: str, body: DeletionFeedbackRequest) -> None:
-    """Send one answer to "Why are you leaving?", or one click on the
-    alternative it offered, as an anonymous PostHog event.
+    """Send one open of the Delete account dialog, one answer to "Why are you
+    leaving?", or one click on the alternative it offered, as an anonymous
+    PostHog event.
 
     The user id only keys the rate limit and loads the plan and account age,
     which are computed here so the client cannot set them. Nothing that
@@ -28,6 +29,8 @@ async def record_feedback(user_id: str, body: DeletionFeedbackRequest) -> None:
 
 
 def _event(body: DeletionFeedbackRequest) -> tuple[PostHogEvent, dict[str, str | None]]:
+    if body.kind == "opened":
+        return PostHogEvent.ACCOUNT_DELETION_STARTED, {"surface": body.surface}
     if body.kind == "alternative_clicked":
         return PostHogEvent.ACCOUNT_DELETION_ALTERNATIVE_CLICKED, {
             "reason": body.reason,

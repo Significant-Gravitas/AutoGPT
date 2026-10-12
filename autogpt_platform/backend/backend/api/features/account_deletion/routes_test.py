@@ -21,7 +21,7 @@ import httpx
 import pytest
 import pytest_asyncio
 import stripe
-from autogpt_libs.auth import closed_accounts
+from autogpt_libs.auth import forget_account_state
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import (
     AccountDeletionSource,
@@ -36,7 +36,7 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 from pytest_mock import MockerFixture
 
 from backend.api.features.account_deletion.rate_limit import FEEDBACK_MAX_REQUESTS
-from backend.api.features.account_deletion.routes import router
+from backend.api.features.account_deletion.routes import IMPERSONATION_DETAIL, router
 from backend.data.auth.api_key import create_api_key
 from backend.data.credit import ACCOUNT_DELETION_CANCELLATION_COMMENT
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
@@ -52,6 +52,7 @@ PACKAGE = "backend.api.features.account_deletion"
 DELETE = "/api/account/deletion"
 FEEDBACK = "/api/account/deletion/feedback"
 COMPLETED = PostHogEvent.ACCOUNT_DELETION_COMPLETED.value
+STARTED = PostHogEvent.ACCOUNT_DELETION_STARTED.value
 ANSWERED = PostHogEvent.ACCOUNT_DELETION_FEEDBACK.value
 CLICKED = PostHogEvent.ACCOUNT_DELETION_ALTERNATIVE_CLICKED.value
 ANSWER = {"kind": "answer", "reason": "cost"}
@@ -116,7 +117,7 @@ async def account(server: SpinTestServer) -> AsyncIterator[Account]:
             api_key_id=key.id,
         )
     finally:
-        closed_accounts._CLOSED_ACCOUNT_CACHE.pop(user_id, None)
+        forget_account_state(user_id)
         await AccountDeletionRequest.prisma().delete_many(where={"userId": user_id})
         await AuthUser.prisma().delete_many(where={"id": user_id})
         await User.prisma().delete_many(where={"id": user_id})
@@ -428,7 +429,7 @@ async def test_the_old_token_is_refused_afterwards(
 
     right_after = await api.post(FEEDBACK, json=ANSWER)
     # Another worker has no cached answer: it asks the database.
-    closed_accounts._CLOSED_ACCOUNT_CACHE.pop(account.user_id, None)
+    forget_account_state(account.user_id)
     on_another_worker = await api.post(FEEDBACK, json=ANSWER)
 
     assert (right_after.status_code, right_after.json()) == (401, CLOSED)
@@ -590,6 +591,15 @@ async def test_an_admin_acting_as_the_account_can_neither_delete_nor_answer(
     posthog.capture.assert_not_called()
 
 
+def test_both_routes_declare_the_impersonation_refusal():
+    paths = app.openapi()["paths"]
+
+    for path in (DELETE, FEEDBACK):
+        assert paths[path]["post"]["responses"]["403"] == {
+            "description": IMPERSONATION_DETAIL
+        }
+
+
 # ---------------------------------------------------------------------------
 # POST /api/account/deletion/feedback
 # ---------------------------------------------------------------------------
@@ -615,6 +625,30 @@ async def test_an_answer_is_counted_without_the_person(
         "text": "Too pricey",
         "plan_state": "max",
         "tenure_bucket": "30-90d",
+        "$process_person_profile": False,
+        "environment": ANY,
+        "source": "platform",
+    }
+    _assert_anonymous(event, account)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_open_is_counted_with_its_surface_without_the_person(
+    account: Account, api: httpx.AsyncClient, flag: AsyncMock, posthog: MagicMock
+):
+    await _update(
+        account,
+        {"subscriptionTier": SubscriptionTier.TRIAL, "createdAt": _days_ago(3)},
+    )
+
+    response = await api.post(FEEDBACK, json={"kind": "opened", "surface": "paywall"})
+
+    assert response.status_code == 204
+    [event] = _captured(posthog, STARTED)
+    assert event["properties"] == {
+        "surface": "paywall",
+        "plan_state": "trial",
+        "tenure_bucket": "<7d",
         "$process_person_profile": False,
         "environment": ANY,
         "source": "platform",
@@ -680,8 +714,17 @@ async def test_the_plan_and_tenure_come_from_the_server(
         {"kind": "answer", "reason": "cost", "alternative": "billing"},
         {"kind": "answer", "reason": "bored"},
         {"kind": "goodbye"},
+        {"kind": "opened"},
+        {"kind": "answer", "reason": "cost", "surface": "settings"},
     ],
-    ids=["click_without_alternative", "answer_with_alternative", "reason", "kind"],
+    ids=[
+        "click_without_alternative",
+        "answer_with_alternative",
+        "reason",
+        "kind",
+        "open_without_surface",
+        "answer_with_surface",
+    ],
 )
 async def test_an_invalid_body_is_refused(
     account: Account,

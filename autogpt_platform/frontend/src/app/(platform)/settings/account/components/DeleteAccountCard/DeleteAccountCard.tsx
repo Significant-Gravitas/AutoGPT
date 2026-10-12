@@ -16,7 +16,7 @@ interface Props {
 export function DeleteAccountCard({ index = 0 }: Props) {
   const reduceMotion = useReducedMotion();
   const { isFlowOpen, openFlow, handleFlowOpenChange } =
-    useDeleteAccountFlowOpener();
+    useDeleteAccountFlowOpener("settings");
 
   return (
     <motion.section

@@ -68,6 +68,7 @@ router = APIRouter(
     summary="Delete account",
     responses={
         400: {"description": EMAIL_MISMATCH_DETAIL},
+        403: {"description": IMPERSONATION_DETAIL},
         404: {"description": "The self-serve-account-deletion flag is off"},
         502: {"description": PLAN_CANCELLATION_DETAIL},
     },
@@ -94,6 +95,7 @@ async def request_account_deletion(
     summary="Send exit feedback",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
+        403: {"description": IMPERSONATION_DETAIL},
         404: {"description": "The self-serve-account-deletion flag is off"},
         429: {"description": "Too many answers from this account"},
     },

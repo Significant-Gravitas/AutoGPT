@@ -76,6 +76,7 @@ class PostHogEvent(StrEnum):
 
     # Account deletion (SECRT-2877): backend/api/features/account_deletion/.
     # Anonymous: sent with capture_anonymous, never with the user's id.
+    ACCOUNT_DELETION_STARTED = "account_deletion_started"
     ACCOUNT_DELETION_FEEDBACK = "account_deletion_feedback"
     ACCOUNT_DELETION_ALTERNATIVE_CLICKED = "account_deletion_alternative_clicked"
     ACCOUNT_DELETION_COMPLETED = "account_deletion_completed"
