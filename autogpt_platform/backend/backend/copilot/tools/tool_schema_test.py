@@ -258,7 +258,16 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+#
+# Bumped 77_014 -> 80_317 for SECRT-2441's five workspace organisation tools
+# (move/copy_workspace_file, create/delete_workspace_folder and
+# move_workspace_files_to_folder), descriptions already trimmed. Measured on
+# the branch rebased onto dev, which is its merge ref:
+#     dev 7aaa60f999                              76,975 (89 tools)
+#     + the five tools                 +3,042     80,017 (94 tools)
+#     + headroom                         +300     80,317
+# Same deliberate margin as the line above, for the same reason.
+_CHAR_BUDGET = 80_317
 
 
 @pytest.fixture(scope="module")
@@ -453,7 +462,13 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+#
+# SECRT-2441's five workspace organisation tools, on the branch rebased onto
+# dev 7aaa60f999:
+#     dev                                         69,488
+#     + the five tools                 +2,698     72,186
+#     + headroom                         +300     72,486
+_SESSION_WIRE_BUDGET = 72_486
 
 
 def test_largest_declared_session_wire_budget() -> None:

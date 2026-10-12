@@ -49,6 +49,7 @@ _ASK: dict[str, tuple[str, tuple[str, ...]]] = {
     "run_sub_session": ("Start a subtask", ()),
     "delete_skill": ("Delete skill", ("name",)),
     "delete_workspace_file": ("Delete workspace file", ("path",)),
+    "delete_workspace_folder": ("Delete workspace folder", ("name",)),
     "memory_forget_confirm": ("Forget memories", ()),
     # The card names the block or workflow from the call's subject instead.
     "run_capability": ("Run a block", ()),

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Optional
 
 import pydantic
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspace, UserWorkspaceFile
+from prisma.models import UserWorkspace, UserWorkspaceFile, UserWorkspaceFolder
 from prisma.types import UserWorkspaceFileWhereInput
 
 from backend.data.skill_capacity import skill_owner_folder
@@ -21,6 +21,7 @@ from backend.data.workspace_scope import (
     WorkspaceAccessDeniedError,
     resolve_expert_workspace_scope,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
@@ -143,6 +144,7 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
+    folder_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -164,13 +166,19 @@ async def create_workspace_file(
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
+        folder_id: Folder membership (None = root); must be a live folder of
+            this workspace
 
     Returns:
         Created WorkspaceFile instance
+
+    Raises:
+        NotFoundError: If ``folder_id`` is not a live folder of this workspace.
     """
     # Normalize path to start with /
     if not path.startswith("/"):
         path = f"/{path}"
+    await _require_folder_in_workspace(folder_id, workspace_id)
 
     file = await UserWorkspaceFile.prisma().create(
         data={
@@ -183,6 +191,7 @@ async def create_workspace_file(
             "sizeBytes": size_bytes,
             "checksum": checksum,
             "metadata": SafeJson(metadata or {}),
+            "folderId": folder_id,
         }
     )
 
@@ -480,6 +489,76 @@ async def rename_workspace_file(
         return None
     logger.info(f"Renamed workspace file {file_id} to {new_path}")
     return WorkspaceFile.from_db(updated)
+
+
+async def _require_folder_in_workspace(
+    folder_id: Optional[str], workspace_id: str
+) -> None:
+    """Refuse a ``folderId`` that is not a live folder of *workspace_id*.
+
+    The foreign key only checks that the row exists, so without this a file
+    could be filed under another workspace's folder, or a deleted one.
+    """
+    if folder_id is None:
+        return
+    folder = await UserWorkspaceFolder.prisma().find_first(
+        where={"id": folder_id, "workspaceId": workspace_id, "isDeleted": False}
+    )
+    if folder is None:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+
+
+async def update_workspace_file_location(
+    file_id: str,
+    workspace_id: str,
+    name: str,
+    path: str,
+    folder_id: Optional[str] = None,
+) -> Optional[WorkspaceFile]:
+    """
+    Relocate a workspace file by rewriting its ``name``/``path``/``folderId``.
+
+    Only the virtual location changes: ``storagePath`` is left alone so no
+    bytes move. Nothing reads the filename back out of ``storagePath`` (the
+    download URL parses out the file ID only), so the stale filename segment
+    in the blob path is harmless.
+
+    Args:
+        file_id: The file ID
+        workspace_id: Workspace ID for scoping (required)
+        name: New user-visible filename
+        path: New virtual path
+        folder_id: New folder membership (``None`` = root)
+
+    Returns:
+        Updated WorkspaceFile, or None if no live file matched in this workspace
+
+    Raises:
+        NotFoundError: If ``folder_id`` is not a live folder of this workspace.
+        UniqueViolationError: If another live file already occupies ``path``.
+    """
+    if not path.startswith("/"):
+        path = f"/{path}"
+    await _require_folder_in_workspace(folder_id, workspace_id)
+
+    # update_many (not update) so the write itself is guarded by workspaceId
+    # and isDeleted: update() matches on the primary key alone, which would
+    # let a cross-workspace ID or a concurrently-deleted row through.
+    updated_count = await UserWorkspaceFile.prisma().update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={"name": name, "path": path, "folderId": folder_id},
+    )
+    if updated_count == 0:
+        return None
+
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False}
+    )
+    if file is None:
+        return None
+
+    logger.info(f"Moved workspace file {file_id} to path {path}")
+    return WorkspaceFile.from_db(file)
 
 
 async def soft_delete_workspace_file(

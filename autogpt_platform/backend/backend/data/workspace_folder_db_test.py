@@ -24,8 +24,8 @@ from backend.data.workspace import create_workspace_file, get_or_create_workspac
 from backend.data.workspace_folder import (
     apply_folder_update,
     bulk_move_files_to_folder,
-    create_folder,
-    delete_folder,
+    create_workspace_folder,
+    delete_workspace_folder,
     list_workspace_folders,
     move_folder,
     resolve_attachable_workspace_folders,
@@ -72,8 +72,8 @@ async def _folder_of(file_id: str) -> str | None:
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_child_folder_carries_its_parent(server: SpinTestServer):
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    child = await create_folder(workspace, "2026", parent_id=parent.id)
+    parent = await create_workspace_folder(workspace, "Invoices")
+    child = await create_workspace_folder(workspace, "2026", parent_id=parent.id)
 
     assert child.parent_id == parent.id
 
@@ -86,17 +86,17 @@ async def test_a_child_folder_carries_its_parent(server: SpinTestServer):
 async def test_a_name_clash_is_scoped_to_the_parent(server: SpinTestServer):
     """One name per level, not per workspace."""
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    await create_folder(workspace, "2026", parent_id=parent.id)
+    parent = await create_workspace_folder(workspace, "Invoices")
+    await create_workspace_folder(workspace, "2026", parent_id=parent.id)
 
     with pytest.raises(FolderAlreadyExistsError):
-        await create_folder(workspace, "2026", parent_id=parent.id)
+        await create_workspace_folder(workspace, "2026", parent_id=parent.id)
 
     # The same name one level up is a different folder, and is allowed.
-    root_2026 = await create_folder(workspace, "2026")
+    root_2026 = await create_workspace_folder(workspace, "2026")
     assert root_2026.parent_id is None
     with pytest.raises(FolderAlreadyExistsError):
-        await create_folder(workspace, "2026")
+        await create_workspace_folder(workspace, "2026")
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -106,7 +106,7 @@ async def test_the_database_refuses_a_duplicate_name_at_either_level(
     """The partial unique indexes, reached past the app-level check: they are
     what makes two concurrent creates safe."""
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
+    parent = await create_workspace_folder(workspace, "Invoices")
 
     for parent_id in (None, parent.id):
         data: dict = {"name": "Duplicate", "Workspace": {"connect": {"id": workspace}}}
@@ -124,12 +124,12 @@ async def test_deleting_a_folder_frees_its_name_at_either_level(
     """Needs this branch's migration: before it, only the ROOT index excluded
     soft-deleted rows, so re-creating a deleted child answered 409 forever."""
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
+    parent = await create_workspace_folder(workspace, "Invoices")
 
     for parent_id in (None, parent.id):
-        first = await create_folder(workspace, "2026", parent_id=parent_id)
-        await delete_folder(first.id, workspace)
-        again = await create_folder(workspace, "2026", parent_id=parent_id)
+        first = await create_workspace_folder(workspace, "2026", parent_id=parent_id)
+        await delete_workspace_folder(first.id, workspace)
+        again = await create_workspace_folder(workspace, "2026", parent_id=parent_id)
         assert again.id != first.id
 
 
@@ -138,15 +138,15 @@ async def test_deleting_a_folder_takes_its_subtree_and_frees_the_files(
     server: SpinTestServer,
 ):
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    child = await create_folder(workspace, "2026", parent_id=parent.id)
-    grandchild = await create_folder(workspace, "Q1", parent_id=child.id)
-    sibling = await create_folder(workspace, "Photos")
+    parent = await create_workspace_folder(workspace, "Invoices")
+    child = await create_workspace_folder(workspace, "2026", parent_id=parent.id)
+    grandchild = await create_workspace_folder(workspace, "Q1", parent_id=child.id)
+    sibling = await create_workspace_folder(workspace, "Photos")
 
     deep_file = await _file(workspace, grandchild.id)
     sibling_file = await _file(workspace, sibling.id)
 
-    await delete_folder(parent.id, workspace)
+    await delete_workspace_folder(parent.id, workspace)
 
     remaining = {f.id for f in await list_workspace_folders(workspace)}
     assert remaining == {sibling.id}
@@ -161,9 +161,9 @@ async def test_moving_a_folder_into_its_own_subtree_is_refused(
     server: SpinTestServer,
 ):
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    child = await create_folder(workspace, "2026", parent_id=parent.id)
-    grandchild = await create_folder(workspace, "Q1", parent_id=child.id)
+    parent = await create_workspace_folder(workspace, "Invoices")
+    child = await create_workspace_folder(workspace, "2026", parent_id=parent.id)
+    grandchild = await create_workspace_folder(workspace, "Q1", parent_id=child.id)
 
     for destination in (grandchild.id, child.id, parent.id):
         with pytest.raises(FolderValidationError):
@@ -178,8 +178,8 @@ async def test_moving_a_folder_under_a_parent_and_back_to_the_root(
     server: SpinTestServer,
 ):
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    loose = await create_folder(workspace, "Receipts")
+    parent = await create_workspace_folder(workspace, "Invoices")
+    loose = await create_workspace_folder(workspace, "Receipts")
 
     moved = await move_folder(loose.id, workspace, parent.id)
     assert moved.parent_id == parent.id
@@ -202,8 +202,8 @@ async def test_two_moves_racing_into_each_other_cannot_build_a_cycle(
     which is the whole point.
     """
     workspace = await _workspace()
-    a = await create_folder(workspace, "A")
-    b = await create_folder(workspace, "B")
+    a = await create_workspace_folder(workspace, "A")
+    b = await create_workspace_folder(workspace, "B")
 
     real_ancestors = workspace_folder._ancestor_ids
     both_checking = asyncio.Event()
@@ -244,7 +244,7 @@ async def test_creating_under_an_unknown_parent_is_refused(server: SpinTestServe
     workspace = await _workspace()
 
     with pytest.raises(NotFoundError):
-        await create_folder(workspace, "Orphan", parent_id=str(uuid.uuid4()))
+        await create_workspace_folder(workspace, "Orphan", parent_id=str(uuid.uuid4()))
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -252,8 +252,8 @@ async def test_a_move_and_rename_in_one_patch_apply_together(
     server: SpinTestServer,
 ):
     workspace = await _workspace()
-    destination = await create_folder(workspace, "Invoices")
-    moving = await create_folder(workspace, "Source")
+    destination = await create_workspace_folder(workspace, "Invoices")
+    moving = await create_workspace_folder(workspace, "Source")
 
     updated = await apply_folder_update(
         moving.id, workspace, parent_id=destination.id, name="2026"
@@ -270,9 +270,9 @@ async def test_a_refused_rename_leaves_the_folder_where_it_was(
     doing both left the folder at its new parent under its old name and the
     client holding a 409 — half of a request it had been told failed."""
     workspace = await _workspace()
-    destination = await create_folder(workspace, "Invoices")
-    await create_folder(workspace, "Taken", parent_id=destination.id)
-    moving = await create_folder(workspace, "Source")
+    destination = await create_workspace_folder(workspace, "Invoices")
+    await create_workspace_folder(workspace, "Taken", parent_id=destination.id)
+    moving = await create_workspace_folder(workspace, "Source")
 
     with pytest.raises(FolderAlreadyExistsError):
         await apply_folder_update(
@@ -286,9 +286,9 @@ async def test_a_refused_rename_leaves_the_folder_where_it_was(
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_move_onto_a_taken_name_is_refused(server: SpinTestServer):
     workspace = await _workspace()
-    parent = await create_folder(workspace, "Invoices")
-    await create_folder(workspace, "Receipts", parent_id=parent.id)
-    loose = await create_folder(workspace, "Receipts")
+    parent = await create_workspace_folder(workspace, "Invoices")
+    await create_workspace_folder(workspace, "Receipts", parent_id=parent.id)
+    loose = await create_workspace_folder(workspace, "Receipts")
 
     with pytest.raises(FolderAlreadyExistsError):
         await move_folder(loose.id, workspace, parent.id)
@@ -301,10 +301,10 @@ async def test_attaching_folders_drops_foreign_and_deleted_ones_and_gates_on_sco
     workspace = await _workspace()
     owner = await UserWorkspace.prisma().find_unique(where={"id": workspace})
     assert owner is not None
-    mine = await create_folder(workspace, "Invoices")
-    deleted = await create_folder(workspace, "Old")
-    await delete_folder(deleted.id, workspace)
-    foreign = await create_folder(await _workspace(), "Theirs")
+    mine = await create_workspace_folder(workspace, "Invoices")
+    deleted = await create_workspace_folder(workspace, "Old")
+    await delete_workspace_folder(deleted.id, workspace)
+    foreign = await create_workspace_folder(await _workspace(), "Theirs")
     ids = [mine.id, deleted.id, foreign.id]
 
     resolved = await resolve_attachable_workspace_folders(

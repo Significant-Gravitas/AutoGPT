@@ -133,14 +133,21 @@ async def list_workspace_folders(workspace_id: str) -> list[WorkspaceFolder]:
     return [WorkspaceFolder.from_db(f, file_count=counts.get(f.id, 0)) for f in folders]
 
 
-async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
-    """Get a single folder by ID, scoped to the workspace."""
+async def get_workspace_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
+    """Get a single folder by ID, scoped to the workspace.
+
+    This, ``create_workspace_folder`` and ``delete_workspace_folder`` carry the
+    workspace prefix for the reason ``list_workspace_folders`` does: the copilot
+    tools reach them over the DatabaseManager RPC surface, whose one flat
+    namespace already holds the Library's ``get_folder`` / ``create_folder`` /
+    ``delete_folder``.
+    """
     folder = await _get_folder_record(folder_id, workspace_id)
     count = await _file_count(workspace_id, folder_id)
     return WorkspaceFolder.from_db(folder, file_count=count)
 
 
-async def create_folder(
+async def create_workspace_folder(
     workspace_id: str,
     name: str,
     icon: Optional[str] = None,
@@ -290,7 +297,7 @@ async def apply_folder_update(
 
     if data:
         logger.info(f"Updated workspace folder {folder_id}: {sorted(data)}")
-    return await get_folder(folder_id, workspace_id)
+    return await get_workspace_folder(folder_id, workspace_id)
 
 
 async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
@@ -329,7 +336,7 @@ async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
     return chain
 
 
-async def delete_folder(folder_id: str, workspace_id: str) -> None:
+async def delete_workspace_folder(folder_id: str, workspace_id: str) -> None:
     """
     Soft-delete a folder and its subfolders, returning every file to root.
 

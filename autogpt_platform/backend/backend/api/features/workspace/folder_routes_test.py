@@ -116,7 +116,7 @@ def test_create_folder_success(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     create = mocker.patch(
-        "backend.api.features.workspace.folder_routes.create_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.create_workspace_folder",
         AsyncMock(return_value=_make_folder(name="Invoices")),
     )
 
@@ -134,7 +134,7 @@ def test_create_folder_name_conflict_returns_409(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     mocker.patch(
-        "backend.api.features.workspace.folder_routes.create_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.create_workspace_folder",
         AsyncMock(side_effect=FolderAlreadyExistsError("exists")),
     )
 
@@ -184,7 +184,7 @@ def test_delete_folder_returns_204(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     delete = mocker.patch(
-        "backend.api.features.workspace.folder_routes.delete_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.delete_workspace_folder",
         AsyncMock(return_value=None),
     )
 
@@ -250,7 +250,7 @@ def test_create_folder_under_a_parent(mocker):
         AsyncMock(return_value=_make_workspace()),
     )
     create = mocker.patch(
-        "backend.api.features.workspace.folder_routes.create_folder",
+        "backend.api.features.workspace.folder_routes.workspace_folder_db.create_workspace_folder",
         AsyncMock(return_value=_make_folder(name="2026")),
     )
 

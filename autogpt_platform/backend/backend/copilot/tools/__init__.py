@@ -95,11 +95,17 @@ from .update_soul import ConfirmExpertSoulUpdateTool, UpdateExpertSoulTool
 from .validate_agent import ValidateAgentGraphTool
 from .web_fetch import WebFetchTool
 from .web_search import WebSearchTool
+from .workspace_file_transfer import CopyWorkspaceFileTool, MoveWorkspaceFileTool
 from .workspace_files import (
     DeleteWorkspaceFileTool,
     ListWorkspaceFilesTool,
     ReadWorkspaceFileTool,
     WriteWorkspaceFileTool,
+)
+from .workspace_folders import (
+    CreateWorkspaceFolderTool,
+    DeleteWorkspaceFolderTool,
+    MoveWorkspaceFilesToFolderTool,
 )
 
 if TYPE_CHECKING:
@@ -199,6 +205,12 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "read_workspace_file": ReadWorkspaceFileTool(),
     "write_workspace_file": WriteWorkspaceFileTool(),
     "delete_workspace_file": DeleteWorkspaceFileTool(),
+    "move_workspace_file": MoveWorkspaceFileTool(),
+    "copy_workspace_file": CopyWorkspaceFileTool(),
+    # Workspace folder tools (file organisation; distinct from library folders)
+    "create_workspace_folder": CreateWorkspaceFolderTool(),
+    "delete_workspace_folder": DeleteWorkspaceFolderTool(),
+    "move_workspace_files_to_folder": MoveWorkspaceFilesToFolderTool(),
     # The hire's first turn (expert sessions only): greeting + intake card.
     "expert_onboarding": ExpertOnboardingTool(),
     # Expert Soul edits from chat (expert sessions only): preview + confirm

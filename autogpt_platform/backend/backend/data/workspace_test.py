@@ -18,10 +18,14 @@ from backend.data.user import get_or_create_user
 from backend.data.workspace import (
     create_workspace_file,
     get_or_create_workspace,
+    get_workspace_file,
     get_workspace_file_by_path,
     list_workspace_files,
     soft_delete_workspace_file,
+    update_workspace_file_location,
 )
+from backend.data.workspace_folder import create_workspace_folder
+from backend.util.exceptions import NotFoundError
 from backend.util.test import SpinTestServer
 
 
@@ -126,6 +130,91 @@ async def test_reads_pass_over_the_deleted_rows_sharing_a_path(
         newer,
         live,
     }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_rewrites_the_location_and_keeps_the_blob(
+    server: SpinTestServer,
+):
+    workspace = await _workspace()
+    file_id = await _write(workspace, "/drafts/report.txt")
+    folder = await create_workspace_folder(workspace, "Reports")
+
+    moved = await update_workspace_file_location(
+        file_id, workspace, "summary.txt", "reports/summary.txt", folder.id
+    )
+
+    assert moved is not None
+    assert (moved.name, moved.path, moved.folder_id) == (
+        "summary.txt",
+        "/reports/summary.txt",
+        folder.id,
+    )
+    assert moved.storage_path == f"{workspace}/drafts/report.txt"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_cannot_reach_another_workspaces_file(server: SpinTestServer):
+    owner, intruder = await _workspace(), await _workspace()
+    file_id = await _write(owner, "/mine.txt")
+
+    assert (
+        await update_workspace_file_location(file_id, intruder, "x.txt", "/x.txt")
+        is None
+    )
+    untouched = await get_workspace_file(file_id, owner)
+    assert untouched is not None and untouched.path == "/mine.txt"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_skips_a_deleted_file(server: SpinTestServer):
+    workspace = await _workspace()
+    file_id = await _write(workspace, "/gone.txt")
+    await soft_delete_workspace_file(file_id, workspace)
+
+    assert (
+        await update_workspace_file_location(file_id, workspace, "x.txt", "/x.txt")
+        is None
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_file_cannot_be_filed_under_another_workspaces_folder(
+    server: SpinTestServer,
+):
+    owner, other = await _workspace(), await _workspace()
+    foreign = await create_workspace_folder(other, "Theirs")
+    file_id = await _write(owner, "/mine.txt")
+
+    with pytest.raises(NotFoundError):
+        await update_workspace_file_location(
+            file_id, owner, "mine.txt", "/mine.txt", foreign.id
+        )
+    with pytest.raises(NotFoundError):
+        await create_workspace_file(
+            workspace_id=owner,
+            file_id=str(uuid.uuid4()),
+            name="copy.txt",
+            path="/copy.txt",
+            storage_path=f"{owner}/copy.txt",
+            mime_type="text/plain",
+            size_bytes=3,
+            folder_id=foreign.id,
+        )
+    untouched = await get_workspace_file(file_id, owner)
+    assert untouched is not None and untouched.folder_id is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_onto_a_live_path_is_refused(server: SpinTestServer):
+    workspace = await _workspace()
+    await _write(workspace, "/taken.txt")
+    file_id = await _write(workspace, "/mover.txt")
+
+    with pytest.raises(UniqueViolationError):
+        await update_workspace_file_location(
+            file_id, workspace, "taken.txt", "/taken.txt"
+        )
 
 
 async def _workspace() -> str:

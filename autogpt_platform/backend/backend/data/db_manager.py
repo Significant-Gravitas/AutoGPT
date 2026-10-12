@@ -203,8 +203,15 @@ from backend.data.workspace import (
     list_workspace_files,
     resolve_expert_workspace_scope,
     soft_delete_workspace_file,
+    update_workspace_file_location,
 )
-from backend.data.workspace_folder import list_workspace_folders
+from backend.data.workspace_folder import (
+    bulk_move_files_to_folder,
+    create_workspace_folder,
+    delete_workspace_folder,
+    get_workspace_folder,
+    list_workspace_folders,
+)
 from backend.data.workspace_skill import publish_workspace_skill_file
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
@@ -510,6 +517,11 @@ class DatabaseManager(AppService):
     list_workspace_files = _(list_workspace_files)
     list_workspace_folders = _(list_workspace_folders)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+    update_workspace_file_location = _(update_workspace_file_location)
+    bulk_move_files_to_folder = _(bulk_move_files_to_folder)
+    create_workspace_folder = _(create_workspace_folder)
+    delete_workspace_folder = _(delete_workspace_folder)
+    get_workspace_folder = _(get_workspace_folder)
     resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
@@ -965,6 +977,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_workspace_files = d.list_workspace_files
     list_workspace_folders = d.list_workspace_folders
     soft_delete_workspace_file = d.soft_delete_workspace_file
+    update_workspace_file_location = d.update_workspace_file_location
+    bulk_move_files_to_folder = d.bulk_move_files_to_folder
+    create_workspace_folder = d.create_workspace_folder
+    delete_workspace_folder = d.delete_workspace_folder
+    get_workspace_folder = d.get_workspace_folder
     resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #
