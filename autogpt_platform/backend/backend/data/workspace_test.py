@@ -217,6 +217,66 @@ async def test_a_move_onto_a_live_path_is_refused(server: SpinTestServer):
         )
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_overwriting_move_retires_the_occupant_in_one_step(
+    server: SpinTestServer,
+):
+    workspace = await _workspace()
+    occupant = await _write(workspace, "/taken.txt")
+    mover = await _write(workspace, "/mover.txt")
+
+    moved = await update_workspace_file_location(
+        mover, workspace, "taken.txt", "/taken.txt", replace_file_id=occupant
+    )
+
+    assert moved is not None and moved.path == "/taken.txt"
+    assert await get_workspace_file(occupant, workspace) is None
+    live = await get_workspace_file_by_path(workspace, "/taken.txt")
+    assert live is not None and live.id == mover
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_move_that_does_not_happen_keeps_the_occupant(
+    server: SpinTestServer,
+):
+    """The source did not match, so the occupant's retirement rolls back."""
+    workspace, other = await _workspace(), await _workspace()
+    occupant = await _write(workspace, "/taken.txt")
+    foreign = await _write(other, "/theirs.txt")
+
+    assert (
+        await update_workspace_file_location(
+            foreign, workspace, "taken.txt", "/taken.txt", replace_file_id=occupant
+        )
+        is None
+    )
+    kept = await get_workspace_file(occupant, workspace)
+    assert kept is not None and kept.path == "/taken.txt"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_replacing_create_retires_the_occupant_in_one_step(
+    server: SpinTestServer,
+):
+    workspace = await _workspace()
+    occupant = await _write(workspace, "/copy.txt")
+
+    created = await create_workspace_file(
+        workspace_id=workspace,
+        file_id=str(uuid.uuid4()),
+        name="copy.txt",
+        path="/copy.txt",
+        storage_path=f"{workspace}/copy-2.txt",
+        mime_type="text/plain",
+        size_bytes=3,
+        replace_file_id=occupant,
+    )
+
+    assert await get_workspace_file(occupant, workspace) is None
+    live = await get_workspace_file_by_path(workspace, "/copy.txt")
+    assert live is not None and live.id == created.id
+
+
 async def _workspace() -> str:
     suffix = uuid.uuid4().hex[:8]
     user = await get_or_create_user(

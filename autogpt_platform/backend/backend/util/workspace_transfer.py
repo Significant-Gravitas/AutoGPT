@@ -82,15 +82,18 @@ async def move_file(
     if resolved_path == source.path and target_folder_id == source.folder_id:
         return source
 
-    await _clear_destination(manager, resolved_path, file_id, overwrite)
+    occupant = await _occupant(manager, resolved_path, file_id, overwrite)
 
     try:
+        # The occupant is retired in the same transaction as the move, so a
+        # failed move leaves it in place.
         moved = await db.update_workspace_file_location(
             file_id=file_id,
             workspace_id=manager.workspace_id,
             name=_basename(resolved_path),
             path=resolved_path,
             folder_id=target_folder_id,
+            replace_file_id=occupant.id if occupant else None,
         )
     except UniqueViolationError:
         raise ValueError(
@@ -102,6 +105,7 @@ async def move_file(
 
     if moved is None:
         raise FileNotFoundError(f"File not found: {file_id}")
+    await _dispose(manager, occupant)
 
     logger.info(
         f"Moved workspace file {file_id} from {source.path} to {resolved_path} "
@@ -160,8 +164,8 @@ async def copy_file(
             f"Provide a different new_path."
         )
 
-    await _check_quota(manager, source.size_bytes, resolved_path, overwrite)
-    await _clear_destination(manager, resolved_path, file_id, overwrite)
+    occupant = await _occupant(manager, resolved_path, file_id, overwrite)
+    await _check_quota(manager, source.size_bytes, occupant)
 
     new_name = _basename(resolved_path)
     new_file_id = str(uuid.uuid4())
@@ -185,6 +189,9 @@ async def copy_file(
             checksum=source.checksum,
             metadata=source.metadata,
             folder_id=folder_id,
+            # Retired in the same transaction as the insert; its blob goes only
+            # after that commits, so a failed copy loses nothing.
+            replace_file_id=occupant.id if occupant else None,
         )
     except UniqueViolationError:
         await _discard_blob(storage_path)
@@ -194,6 +201,7 @@ async def copy_file(
     except Exception:
         await _discard_blob(storage_path)
         raise
+    await _dispose(manager, occupant)
 
     logger.info(
         f"Copied workspace file {file_id} to {copied.id} at {resolved_path} "
@@ -251,43 +259,65 @@ async def _validate_folder(
         ) from None
 
 
-async def _clear_destination(
+async def _occupant(
     manager: "WorkspaceManager",
     resolved_path: str,
     source_file_id: str,
     overwrite: bool,
-) -> None:
-    """Ensure ``resolved_path`` is free, deleting the occupant if allowed."""
-    db = workspace_db()
-    existing = await db.get_workspace_file_by_path(manager.workspace_id, resolved_path)
+) -> Optional[WorkspaceFile]:
+    """The other live file at ``resolved_path``, refused unless overwriting.
+
+    Nothing is deleted here: the caller retires it in the same transaction
+    that writes the replacement, then :func:`_dispose` removes its blob.
+    """
+    existing = await workspace_db().get_workspace_file_by_path(
+        manager.workspace_id, resolved_path
+    )
     if existing is None or existing.id == source_file_id:
-        return
+        return None
     if not overwrite:
         raise ValueError(
             f"File already exists at path: {resolved_path}. "
             f"Pass overwrite=true to replace it, or choose a different new_path."
         )
-    await manager.delete_file(existing.id)
+    return existing
+
+
+async def _dispose(
+    manager: "WorkspaceManager", occupant: Optional[WorkspaceFile]
+) -> None:
+    """Best-effort cleanup of a replaced file once its row is retired."""
+    if occupant is None:
+        return
+    await _discard_blob(occupant.storage_path)
+    try:
+        from backend.api.features.workspace.embeddings import (
+            delete_workspace_file_embedding,
+        )
+
+        await delete_workspace_file_embedding(
+            file_id=occupant.id, user_id=manager.user_id
+        )
+    except Exception as e:
+        logger.warning(f"Failed to delete file embedding for {occupant.id}: {e}")
 
 
 async def _check_quota(
     manager: "WorkspaceManager",
     added_bytes: int,
-    resolved_path: str,
-    overwrite: bool,
+    occupant: Optional[WorkspaceFile],
 ) -> None:
-    """Reject a copy that would push the user past their storage quota."""
-    db = workspace_db()
+    """Reject a copy that would push the user past their storage quota.
+
+    A file the copy replaces is not counted, so overwriting a file with one
+    the same size or smaller is not refused near the cap.
+    """
     storage_limit, current_usage = await asyncio.gather(
         get_workspace_storage_limit_bytes(manager.user_id),
-        db.get_workspace_total_size(manager.workspace_id),
+        workspace_db().get_workspace_total_size(manager.workspace_id),
     )
-    if overwrite:
-        existing = await db.get_workspace_file_by_path(
-            manager.workspace_id, resolved_path
-        )
-        if existing is not None:
-            current_usage = max(0, current_usage - existing.size_bytes)
+    if occupant is not None:
+        current_usage = max(0, current_usage - occupant.size_bytes)
 
     if storage_limit > 0 and current_usage + added_bytes > storage_limit:
         # Lazy: backend.util.workspace imports this module at the top.
@@ -302,7 +332,7 @@ async def _check_quota(
 
 
 async def _discard_blob(storage_path: str) -> None:
-    """Best-effort cleanup of a blob whose DB record was never created."""
+    """Best-effort delete of a blob no live record points at."""
     try:
         storage = await get_workspace_storage()
         await storage.delete(storage_path)

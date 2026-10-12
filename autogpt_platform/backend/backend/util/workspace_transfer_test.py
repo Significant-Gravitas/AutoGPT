@@ -171,24 +171,69 @@ async def test_move_file_rejects_occupied_destination(manager, mock_db):
 
 
 @pytest.mark.asyncio
-async def test_move_file_overwrite_deletes_occupant_first(manager, mock_db):
-    """overwrite=True removes the destination file before relocating."""
-    occupant = _make_workspace_file(id="other-file", path="/reports/summary.pdf")
+async def test_move_file_overwrite_retires_the_occupant_with_the_move(
+    manager, mock_db, mock_storage
+):
+    """The occupant's row goes in the move's transaction; its blob only after."""
+    occupant = _make_workspace_file(
+        id="other-file",
+        path="/reports/summary.pdf",
+        storage_path="local://ws-123/other-file/summary.pdf",
+    )
     mock_db.get_workspace_file_by_path.return_value = occupant
     mock_db.update_workspace_file_location.return_value = _make_workspace_file(
         name="summary.pdf", path="/reports/summary.pdf"
     )
 
-    with _patched(mock_db):
-        with patch.object(
-            WorkspaceManager, "delete_file", AsyncMock(return_value=True)
-        ) as delete_file:
-            moved = await manager.move_file(
-                "file-1", "/reports/summary.pdf", overwrite=True
-            )
+    with _patched(mock_db, mock_storage):
+        moved = await manager.move_file(
+            "file-1", "/reports/summary.pdf", overwrite=True
+        )
 
-    delete_file.assert_awaited_once_with("other-file")
     assert moved.path == "/reports/summary.pdf"
+    kwargs = mock_db.update_workspace_file_location.call_args.kwargs
+    assert kwargs["replace_file_id"] == "other-file"
+    mock_storage.delete.assert_awaited_once_with(
+        "local://ws-123/other-file/summary.pdf"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_failed_overwrite_move_keeps_the_occupant(
+    manager, mock_db, mock_storage
+):
+    occupant = _make_workspace_file(id="other-file", path="/reports/summary.pdf")
+    mock_db.get_workspace_file_by_path.return_value = occupant
+    mock_db.update_workspace_file_location.side_effect = RuntimeError("db down")
+
+    with _patched(mock_db, mock_storage):
+        with pytest.raises(RuntimeError):
+            await manager.move_file("file-1", "/reports/summary.pdf", overwrite=True)
+
+    mock_storage.delete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_overwrite_copy_keeps_the_occupant(
+    manager, mock_db, mock_storage
+):
+    """The new blob is discarded; the occupant's blob is never touched."""
+    occupant = _make_workspace_file(
+        id="other-file",
+        path="/reports/summary.pdf",
+        storage_path="local://ws-123/other-file/summary.pdf",
+    )
+    mock_db.get_workspace_file_by_path.return_value = occupant
+    mock_db.create_workspace_file.side_effect = RuntimeError("db down")
+
+    with _patched(mock_db, mock_storage):
+        with pytest.raises(RuntimeError):
+            await manager.copy_file("file-1", "/reports/summary.pdf", overwrite=True)
+
+    assert mock_db.create_workspace_file.call_args.kwargs["replace_file_id"] == (
+        "other-file"
+    )
+    mock_storage.delete.assert_awaited_once_with("local://ws-123/new-uuid/summary.pdf")
 
 
 @pytest.mark.asyncio
@@ -342,16 +387,14 @@ async def test_copy_file_overwrite_frees_the_occupant_from_the_quota(
     # 2500 + 1000 = 3500 > 3000 would fail; freeing the 1000-byte occupant
     # drops usage to 1500, so 1500 + 1000 = 2500 fits.
     with _patched(mock_db, mock_storage, storage_limit=3000):
-        with patch.object(
-            WorkspaceManager, "delete_file", AsyncMock(return_value=True)
-        ):
-            copied = await manager.copy_file(
-                "file-1", "/reports/summary.pdf", overwrite=True
-            )
+        copied = await manager.copy_file(
+            "file-1", "/reports/summary.pdf", overwrite=True
+        )
 
     assert copied.id == "new-copy"
     mock_storage.copy.assert_awaited_once()
-    mock_db.create_workspace_file.assert_awaited_once()
+    kwargs = mock_db.create_workspace_file.call_args.kwargs
+    assert kwargs["replace_file_id"] == "occupant"
 
 
 @pytest.mark.asyncio

@@ -69,7 +69,7 @@ def mock_folder_db():
     db.list_workspace_folders = AsyncMock(return_value=[])
     db.get_workspace_folder = AsyncMock(return_value=_folder())
     db.create_workspace_folder = AsyncMock(return_value=_folder())
-    db.delete_workspace_folder = AsyncMock(return_value=None)
+    db.delete_workspace_folder = AsyncMock(return_value=0)
     db.bulk_move_files_to_folder = AsyncMock(return_value=[])
     return db
 
@@ -225,6 +225,7 @@ async def test_delete_folder_reports_its_whole_subtree(patched):
         _folder("q1", "Q1", parent_id="2026", file_count=7),
         _folder("photos", "Photos", file_count=1),
     ]
+    patched.delete_workspace_folder.return_value = 14
 
     resp = await DeleteWorkspaceFolderTool()._execute(
         user_id=_USER, session=_session(), name="invoices"
@@ -266,6 +267,22 @@ async def test_delete_folder_refuses_an_ambiguous_name(patched):
     assert isinstance(resp, ErrorResponse)
     assert "pass folder_id" in resp.message
     patched.delete_workspace_folder.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_delete_folder_name_prefers_the_exact_case(patched):
+    """Siblings may differ only by case; the exact spelling settles it."""
+    patched.list_workspace_folders.return_value = [
+        _folder("upper", "Invoices"),
+        _folder("lower", "invoices"),
+    ]
+
+    resp = await DeleteWorkspaceFolderTool()._execute(
+        user_id=_USER, session=_session(), name="invoices"
+    )
+
+    assert isinstance(resp, WorkspaceFolderDeletedResponse), resp.message
+    assert resp.folder_id == "lower"
 
 
 @pytest.mark.asyncio

@@ -11,10 +11,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 import pydantic
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile, UserWorkspaceFolder
-from prisma.types import UserWorkspaceFileWhereInput
+from prisma.types import UserWorkspaceFileCreateInput, UserWorkspaceFileWhereInput
 
+from backend.data.db import transaction
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -145,6 +147,7 @@ async def create_workspace_file(
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
     folder_id: Optional[str] = None,
+    replace_file_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -168,6 +171,9 @@ async def create_workspace_file(
         metadata: Optional additional metadata
         folder_id: Folder membership (None = root); must be a live folder of
             this workspace
+        replace_file_id: A live file of this workspace to soft-delete in the
+            same transaction, so a replacement never leaves the path empty or
+            the old row gone without the new one
 
     Returns:
         Created WorkspaceFile instance
@@ -180,20 +186,24 @@ async def create_workspace_file(
         path = f"/{path}"
     await _require_folder_in_workspace(folder_id, workspace_id)
 
-    file = await UserWorkspaceFile.prisma().create(
-        data={
-            "id": file_id,
-            "workspaceId": workspace_id,
-            "name": name,
-            "path": path,
-            "storagePath": storage_path,
-            "mimeType": mime_type,
-            "sizeBytes": size_bytes,
-            "checksum": checksum,
-            "metadata": SafeJson(metadata or {}),
-            "folderId": folder_id,
-        }
-    )
+    data: UserWorkspaceFileCreateInput = {
+        "id": file_id,
+        "workspaceId": workspace_id,
+        "name": name,
+        "path": path,
+        "storagePath": storage_path,
+        "mimeType": mime_type,
+        "sizeBytes": size_bytes,
+        "checksum": checksum,
+        "metadata": SafeJson(metadata or {}),
+        "folderId": folder_id,
+    }
+    if replace_file_id is None:
+        file = await UserWorkspaceFile.prisma().create(data=data)
+    else:
+        async with transaction() as tx:
+            await _retire_file(tx, replace_file_id, workspace_id)
+            file = await UserWorkspaceFile.prisma(tx).create(data=data)
 
     logger.info(
         f"Created workspace file {file.id} at path {path} "
@@ -508,12 +518,25 @@ async def _require_folder_in_workspace(
         raise NotFoundError(f"Folder #{folder_id} not found")
 
 
+class _NothingMoved(Exception):
+    """Rolls back a relocation whose source row did not match."""
+
+
+async def _retire_file(tx: Prisma, file_id: str, workspace_id: str) -> None:
+    """Soft-delete a live file of *workspace_id* inside *tx*."""
+    await UserWorkspaceFile.prisma(tx).update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+    )
+
+
 async def update_workspace_file_location(
     file_id: str,
     workspace_id: str,
     name: str,
     path: str,
     folder_id: Optional[str] = None,
+    replace_file_id: Optional[str] = None,
 ) -> Optional[WorkspaceFile]:
     """
     Relocate a workspace file by rewriting its ``name``/``path``/``folderId``.
@@ -529,6 +552,8 @@ async def update_workspace_file_location(
         name: New user-visible filename
         path: New virtual path
         folder_id: New folder membership (``None`` = root)
+        replace_file_id: The live file at ``path`` to soft-delete in the same
+            transaction; it survives untouched if the move does not happen
 
     Returns:
         Updated WorkspaceFile, or None if no live file matched in this workspace
@@ -544,11 +569,17 @@ async def update_workspace_file_location(
     # update_many (not update) so the write itself is guarded by workspaceId
     # and isDeleted: update() matches on the primary key alone, which would
     # let a cross-workspace ID or a concurrently-deleted row through.
-    updated_count = await UserWorkspaceFile.prisma().update_many(
-        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
-        data={"name": name, "path": path, "folderId": folder_id},
-    )
-    if updated_count == 0:
+    try:
+        async with transaction() as tx:
+            if replace_file_id is not None:
+                await _retire_file(tx, replace_file_id, workspace_id)
+            updated_count = await UserWorkspaceFile.prisma(tx).update_many(
+                where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+                data={"name": name, "path": path, "folderId": folder_id},
+            )
+            if updated_count == 0:
+                raise _NothingMoved
+    except _NothingMoved:
         return None
 
     file = await UserWorkspaceFile.prisma().find_first(

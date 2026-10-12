@@ -336,7 +336,7 @@ async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
     return chain
 
 
-async def delete_workspace_folder(folder_id: str, workspace_id: str) -> None:
+async def delete_workspace_folder(folder_id: str, workspace_id: str) -> int:
     """
     Soft-delete a folder and its subfolders, returning every file to root.
 
@@ -347,13 +347,15 @@ async def delete_workspace_folder(folder_id: str, workspace_id: str) -> None:
     The subtree is resolved under the workspace's hierarchy lock, so a move or
     a create cannot add a folder to it after the snapshot and leave that folder
     live under a deleted parent, reachable from no root-anchored listing.
+
+    Returns how many files went back to the root, counted by the write itself.
     """
     async with transaction() as tx:
         await _lock_workspace_hierarchy(tx, workspace_id)
         await _get_folder_record(folder_id, workspace_id)
         doomed = await _subtree_ids(workspace_id, folder_id)
 
-        await UserWorkspaceFile.prisma(tx).update_many(
+        reparented = await UserWorkspaceFile.prisma(tx).update_many(
             where={"folderId": {"in": doomed}, "workspaceId": workspace_id},
             data={"folderId": None},
         )
@@ -369,6 +371,7 @@ async def delete_workspace_folder(folder_id: str, workspace_id: str) -> None:
         f"Soft-deleted workspace folder {folder_id} and {len(doomed) - 1} "
         "subfolder(s); files moved to root"
     )
+    return reparented
 
 
 async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:

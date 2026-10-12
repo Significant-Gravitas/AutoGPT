@@ -86,7 +86,8 @@ def _find_folder(
     folder_id: Optional[str],
     name: Optional[str],
 ) -> WorkspaceFolder | str:
-    """A folder by ID, else by case-insensitive name; a message when it can't.
+    """A folder by ID, else by name (case-insensitive, exact case first); a
+    message when it can't.
 
     Folders nest, so two can share a name under different parents: a name that
     matches more than one is refused rather than guessed.
@@ -94,8 +95,12 @@ def _find_folder(
     if folder_id:
         found = next((f for f in folders if f.id == folder_id), None)
         return found or f"Workspace folder not found: {folder_id}"
-    wanted = (name or "").strip().lower()
-    matches = [f for f in folders if f.name.lower() == wanted]
+    wanted = (name or "").strip()
+    matches = [f for f in folders if f.name.lower() == wanted.lower()]
+    # Names are unique per parent by exact case, so an exact match settles a
+    # tie between "Invoices" and "invoices".
+    exact = [f for f in matches if f.name == wanted]
+    matches = exact or matches
     if not matches:
         return f"Workspace folder not found: {name}"
     if len(matches) > 1:
@@ -289,7 +294,7 @@ class DeleteWorkspaceFolderTool(BaseTool):
             if isinstance(folder, str):
                 return ErrorResponse(message=folder, session_id=session_id)
             doomed = _subtree(folders, folder.id)
-            await workspace_folder_db().delete_workspace_folder(
+            files = await workspace_folder_db().delete_workspace_folder(
                 folder_id=folder.id, workspace_id=workspace_id
             )
         except NotFoundError:
@@ -305,7 +310,6 @@ class DeleteWorkspaceFolderTool(BaseTool):
                 session_id=session_id,
             )
 
-        files = sum(f.file_count for f in doomed)
         subfolders = len(doomed) - 1
         detail = f"; {files} file(s) moved to the workspace root" if files else ""
         if subfolders:
