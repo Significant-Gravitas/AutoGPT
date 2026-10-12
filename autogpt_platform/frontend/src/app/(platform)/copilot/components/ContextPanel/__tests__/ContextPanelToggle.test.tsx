@@ -295,6 +295,14 @@ describe("ContextPanelToggle computer button", () => {
     render(<ContextPanelToggle sessionId="s1" />);
 
     expect(screen.queryByLabelText("Open computer")).toBeNull();
-    expect(screen.getByLabelText("Open files")).toBeDefined();
+  });
+});
+
+describe("files toggle on mobile", () => {
+  test("is hidden, since mobile floats its own files button", () => {
+    setMobile(true);
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    expect(screen.queryByLabelText(/files/)).toBeNull();
   });
 });

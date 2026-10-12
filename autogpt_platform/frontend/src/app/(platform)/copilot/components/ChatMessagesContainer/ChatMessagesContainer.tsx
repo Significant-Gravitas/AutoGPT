@@ -53,7 +53,7 @@ import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
-import { ThreadHeader } from "./components/ThreadHeader";
+import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
   PendingUploadMessage,
@@ -133,9 +133,9 @@ interface Props {
    *  metadata). Shown on the row that opened the thread (DB sequence 0) when
    *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports (see ThreadHeader). */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports (see ThreadHeader). */
+  floatingControls?: FloatingControls;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -299,7 +299,7 @@ export function ChatMessagesContainer({
   expertIdentity,
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
-  hasFloatingControls = false,
+  floatingControls,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -470,7 +470,7 @@ export function ChatMessagesContainer({
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -488,7 +488,7 @@ export function ChatMessagesContainer({
           className={cn(
             "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
-            showThreadHeader && hasFloatingControls && "max-lg:pt-32",
+            showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
           )}
           style={

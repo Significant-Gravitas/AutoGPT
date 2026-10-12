@@ -1,5 +1,6 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import type { FloatingControls } from "./components/ChatMessagesContainer/components/ThreadHeader";
 import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
@@ -10,9 +11,9 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports. */
+  floatingControls?: FloatingControls;
 }
 
 /**
@@ -35,7 +36,7 @@ export function CopilotChatHost(props: Props) {
 function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
-  hasFloatingControls,
+  floatingControls,
   isStreamRuntime,
 }: Props & { isStreamRuntime: boolean }) {
   const {
@@ -128,7 +129,7 @@ function ChatHostBody({
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       </div>
       <RateLimitGate
