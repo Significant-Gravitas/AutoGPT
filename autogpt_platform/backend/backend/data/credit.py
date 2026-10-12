@@ -47,6 +47,11 @@ from backend.data.subscription_lookup_cache import (
     invalidate_active_subscription_cache,
     read_active_subscription,
 )
+from backend.data.subscription_pending_cache import (
+    PENDING_CHANGES,
+    PendingChange,
+    invalidate_pending_subscription_change,
+)
 from backend.data.subscription_trial_stripe import reconcile_trial_subscription
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
@@ -1592,12 +1597,9 @@ def invalidate_subscription_caches(user_id: str) -> None:
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
 
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Invalidate the pending-change cache too — an admin tier override or the
-    # webhook-driven phase transition means any cached pending-change state
-    # (schedule, cancel_at_period_end) is likely stale. Without this the
-    # billing page can show a pending change for up to 30s after the tier
-    # has already flipped.
-    get_pending_subscription_change.cache_delete(user_id)
+    # The pending-change cache needs nothing here: it is read from the Stripe
+    # subscription alone, and every Stripe change reaches it through
+    # sync_subscription_from_stripe.
 
 
 # Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
@@ -1743,7 +1745,7 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             customer_id, at_period_end=True
         )
         if cancelled_count > 0:
-            get_pending_subscription_change.cache_delete(user_id)
+            await invalidate_pending_subscription_change(customer_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
                 PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
@@ -1828,7 +1830,7 @@ def is_tier_downgrade(current: SubscriptionTier, target: SubscriptionTier) -> bo
 
 class PendingChangeUnknown(Exception):
     """Raised when pending-change state cannot be determined (e.g. LaunchDarkly
-    price-id lookup failed). Propagates past the @cached wrapper so the next
+    price-id lookup failed). Propagates past the pending-change cache so the next
     request retries instead of serving a stale `None` for the TTL window."""
 
 
@@ -2259,7 +2261,7 @@ async def modify_stripe_subscription_for_tier(
             )
         return True
     finally:
-        get_pending_subscription_change.cache_delete(user_id)
+        await invalidate_pending_subscription_change(user.stripe_customer_id)
         await invalidate_active_subscription_cache(user.stripe_customer_id)
 
 
@@ -2329,12 +2331,11 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
             )
     finally:
         if did_anything:
-            get_pending_subscription_change.cache_delete(user_id)
+            await invalidate_pending_subscription_change(user.stripe_customer_id)
             await invalidate_active_subscription_cache(user.stripe_customer_id)
     return did_anything
 
 
-@cached(ttl_seconds=30, maxsize=512, cache_none=True, shared_cache=True)
 async def get_pending_subscription_change(
     user_id: str,
 ) -> tuple[SubscriptionTier, datetime, BillingCycle | None] | None:
@@ -2343,34 +2344,49 @@ async def get_pending_subscription_change(
     Reflects both Subscription Schedule phase transitions (paid→paid downgrade)
     and ``cancel_at_period_end=True`` (paid→BASIC cancel).
 
-    Cached for 30 seconds per user_id. *Why the cache exists:* this function
+    Cached for 30 seconds per Stripe customer, for every API worker
+    (``PENDING_CHANGES``, a versioned cache). *Why the cache exists:* this function
     runs on every dashboard/home fetch and would otherwise fire
     2× Subscription.list + 1× Schedule.retrieve per page load. A busy user
     polling the billing page would quickly brush up against Stripe's per-API
     rate limits; the 30s TTL absorbs dashboard polling while being short
     enough that the UI reconciles quickly after a downgrade / cancel action.
 
-    *Invalidation contract.* Every call-site that mutates Stripe state which
-    could change the pending-change answer MUST call
-    ``get_pending_subscription_change.cache_delete(user_id)`` so the UI never
-    shows a stale pending badge after a user-visible action. Current
+    *Invalidation contract.* The answer is read from the customer's Stripe
+    subscription alone (``cancel_at_period_end`` and its schedule), never from
+    the DB tier. Every call-site that changes those in Stripe MUST await
+    ``invalidate_pending_subscription_change(customer_id)`` after the change,
+    so the UI never shows a stale pending badge after a user-visible action;
+    a read already in flight then can't store its old answer. Current
     invalidators (keep this list in sync when adding new mutators):
 
-    - ``set_subscription_tier`` — admin or webhook-driven tier flip.
+    - ``sync_subscription_from_stripe`` — ``finally`` block: every
+      subscription and schedule webhook, Stripe-side changes (billing portal,
+      dashboard) and trial transitions, whether or not the tier changed.
     - ``modify_stripe_subscription_for_tier`` — ``finally`` block (covers
       upgrade path clear + downgrade-schedule create + any partial failure).
     - ``release_pending_subscription_schedule`` — ``finally`` block when a
       schedule release OR ``cancel_at_period_end`` clear succeeded.
     - ``cancel_stripe_subscription`` — after scheduling period-end cancel.
-    - ``sync_subscription_from_stripe`` — webhook entry point.
-    - ``set_user_tier`` (``backend.copilot.rate_limit``) — admin tier override
-      invalidates any cached pending state keyed off the old tier.
+
+    ``PendingChangeUnknown`` and Stripe errors reach every caller and are not
+    cached, so the next request retries.
     """
     user = await get_user_by_id(user_id)
-    if not user.stripe_customer_id:
+    customer_id = user.stripe_customer_id
+    if not customer_id:
         # Short-circuit for users with no Stripe customer (admin-granted tiers,
         # BASIC-only users): skip the Stripe API calls entirely.
         return None
+    pending = await PENDING_CHANGES.read(
+        customer_id, lambda: _fetch_pending_subscription_change(customer_id)
+    )
+    if pending is None:
+        return None
+    return pending.tier, pending.effective_at, pending.billing_cycle
+
+
+async def _fetch_pending_subscription_change(customer_id: str) -> PendingChange | None:
 
     priceable = (
         SubscriptionTier.BASIC,
@@ -2404,7 +2420,7 @@ async def get_pending_subscription_change(
             "Stripe price lookup failed; pending-change state cannot be determined"
         )
 
-    sub = await _get_active_subscription(user.stripe_customer_id)
+    sub = await _get_active_subscription(customer_id)
     if sub is None:
         return None
     if sub.get("status") == "trialing" and (sub.get("metadata") or {}).get(
@@ -2417,14 +2433,18 @@ async def get_pending_subscription_change(
         return None
     effective_at = datetime.fromtimestamp(period_end, tz=timezone.utc)
     if sub.cancel_at_period_end:
-        return SubscriptionTier.NO_TIER, effective_at, None
+        return PendingChange(tier=SubscriptionTier.NO_TIER, effective_at=effective_at)
     if not sub.schedule:
         return None
     schedule_id = sub.schedule if isinstance(sub.schedule, str) else sub.schedule.id
     schedule = await stripe_call(
         stripe.SubscriptionSchedule.retrieve_async, schedule_id
     )
-    return _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
+    next_phase = _next_phase_tier_and_start(schedule, price_to_tier, price_to_cycle)
+    if next_phase is None:
+        return None
+    tier, starts_at, cycle = next_phase
+    return PendingChange(tier=tier, effective_at=starts_at, billing_cycle=cycle)
 
 
 def _next_phase_tier_and_start(
@@ -2794,9 +2814,11 @@ async def sync_subscription_from_stripe(
     covers those users.
 
     The payload is Stripe's latest word on the subscription, so afterwards
-    the cached lookup the billing page reads is dropped on every worker. Only
-    afterwards: saving the tier can change Stripe too (a rejected trial is
-    canceled), and a read in between would cache the state before that.
+    the cached lookups the billing page reads (the active subscription and
+    any pending change) are dropped on every worker, whether or not the tier
+    changed: a cancellation or downgrade scheduled in Stripe changes neither.
+    Only afterwards: saving the tier can change Stripe too (a rejected trial
+    is canceled), and a read in between would cache the state before that.
     """
     customer_id = stripe_subscription.get("customer")
     try:
@@ -2804,6 +2826,7 @@ async def sync_subscription_from_stripe(
     finally:
         if isinstance(customer_id, str) and customer_id:
             await invalidate_active_subscription_cache(customer_id)
+            await invalidate_pending_subscription_change(customer_id)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
@@ -2992,9 +3015,6 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
                 "billing_cycle": billing_cycle,
             },
         )
-    # Tier changed — bust any cached pending-change view so the next
-    # dashboard fetch reflects the new state immediately.
-    get_pending_subscription_change.cache_delete(user.id)
 
 
 async def sync_subscription_schedule_from_stripe(stripe_schedule: dict) -> None:

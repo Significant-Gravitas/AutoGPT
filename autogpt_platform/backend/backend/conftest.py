@@ -10,8 +10,10 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
-from backend.data import subscription_lookup_cache
+from backend.data import versioned_cache
+from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
 from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
+from backend.data.subscription_pending_cache import PENDING_CHANGES
 from backend.util.logging import configure_logging
 
 load_dotenv()
@@ -68,23 +70,21 @@ def no_force_all_flags(monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.fixture(autouse=True)
-def isolated_subscription_lookup_cache(monkeypatch: pytest.MonkeyPatch):
-    """The subscription lookup cache lives in Redis, which outlives a test and
-    is shared by parallel runs; give every test keys of its own, and a cache
-    that hasn't backed off after an earlier test's Redis failure."""
-    monkeypatch.setattr(
-        subscription_lookup_cache, "KEY_PREFIX", f"test:{uuid4().hex}:subscription"
-    )
-    monkeypatch.setattr(subscription_lookup_cache._backoff, "until", 0.0)
-    monkeypatch.setattr(subscription_lookup_cache, "_fallback", {})
-    monkeypatch.setattr(subscription_lookup_cache, "_in_flight", {})
-    monkeypatch.setattr(
-        subscription_lookup_cache,
-        "_unconfirmed",
-        UnconfirmedInvalidations(
-            lifetime=subscription_lookup_cache.SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1
-        ),
-    )
+def isolated_versioned_caches(monkeypatch: pytest.MonkeyPatch):
+    """Versioned caches live in Redis, which outlives a test and is shared by
+    parallel runs: give every test keys of its own, empty process-local state,
+    and a Redis that hasn't backed off after an earlier test's failure."""
+    run = uuid4().hex
+    monkeypatch.setattr(versioned_cache._backoff, "until", 0.0)
+    for cache in (ACTIVE_SUBSCRIPTIONS, PENDING_CHANGES):
+        monkeypatch.setattr(cache, "prefix", f"test:{run}:{cache.prefix}")
+        monkeypatch.setattr(cache, "_in_flight", {})
+        monkeypatch.setattr(cache, "_fallback", {})
+        monkeypatch.setattr(
+            cache,
+            "_unconfirmed",
+            UnconfirmedInvalidations(lifetime=cache.ttl_seconds + 1),
+        )
 
 
 @pytest.fixture

@@ -96,7 +96,6 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
 
 
 async def _pending_change_for(subscription: dict):
-    _clear_cache(get_pending_subscription_change)
     mock_list = MagicMock()
     mock_list.data = [stripe.Subscription.construct_from(subscription, "k")]
     with (
