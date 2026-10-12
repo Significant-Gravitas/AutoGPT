@@ -146,9 +146,14 @@ describe("auth database pool", () => {
           pool.end(),
         ),
       );
+      // A closed connection frees its slot a tick later; let those land so
+      // they aren't counted against the next seed.
+      await postgres.yieldTicks(2);
 
       expect({ seed, refusals }).toEqual({ seed, refusals: [] });
+      expect(postgres.peak).toBeGreaterThan(0);
       expect(postgres.peak).toBeLessThanOrEqual(ROLE_LIMIT);
+      expect(postgres.open).toBe(0);
     }
   });
 });

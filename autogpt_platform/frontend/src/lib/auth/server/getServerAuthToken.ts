@@ -36,7 +36,14 @@ import { cache } from "react";
  * layer; they keep the self-fetching variant in autogpt-server-api/helpers.ts.
  */
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
-  const cookieStore = await cookies();
+  let cookieStore: Awaited<ReturnType<typeof cookies>>;
+  try {
+    cookieStore = await cookies();
+  } catch (error) {
+    // Outside a request (prerendering) there is no session to send.
+    console.error("Failed to get auth token:", error);
+    return null;
+  }
   const sessionCookie = cookieStore
     .getAll()
     .find(

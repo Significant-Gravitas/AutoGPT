@@ -8,10 +8,11 @@ export const AUTH_DB_POOL_MAX = 10;
 // One pool per process, shared by Better Auth and its database hooks, cached
 // on globalThis. A production build evaluates this module more than once:
 // route handlers and the pages' server actions are bundled separately, each
-// with its own copy. Without the cache every copy opened its own pool, and on
-// the appliance two pools of 10 met a role limit of 10, so concurrent sign-ups
-// failed with "too many connections". `next dev` also re-evaluates the module
-// on every hot reload, where a fresh pool leaked its idle connections.
+// with its own copy. Without the cache every copy opened its own pool, which
+// could take the appliance's frontend role past its connection limit, so
+// concurrent sign-ups failed with "too many connections". `next dev` also
+// re-evaluates the module on every hot reload, where a fresh pool leaked its
+// idle connections.
 const globalForAuthDb = globalThis as { __authDbPool?: Pool };
 
 export const authDbPool =

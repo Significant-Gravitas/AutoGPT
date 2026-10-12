@@ -117,6 +117,18 @@ describe("getServerAuthToken", () => {
     expect(token).toBeNull();
   });
 
+  it("returns null outside a request, where there are no cookies to read", async () => {
+    cookiesMock.mockRejectedValue(
+      new Error("cookies() was called outside a request scope"),
+    );
+    const { getServerAuthToken } = await importModule();
+
+    const token = await getServerAuthToken();
+
+    expect(token).toBeNull();
+    expect(getTokenMock).not.toHaveBeenCalled();
+  });
+
   it("returns null when Better Auth rejects the session", async () => {
     cookiesMock.mockResolvedValue(
       cookieStore([
