@@ -7,9 +7,12 @@ replaces it, so the next read on any worker misses and asks Stripe again. An
 entry is written only while the token it was read under is still current, so
 a read that was in flight when a change landed can't put the old answer back.
 A missing token (expired, or Redis lost its data) is never treated as a
-version: the reader creates a fresh one before it asks Stripe.
+version: the reader establishes a fresh one before it asks Stripe.
 
-Within a process, concurrent lookups for one customer share one Stripe call.
+Within a process, concurrent lookups for one customer and token share one
+Stripe call. A lookup stores its answer only while it is still the current one
+for its key, so an answer read before a change this process made is returned
+to the callers that were already waiting for it, and never kept.
 
 Redis is only an optimisation here. Every operation has a short hard deadline,
 and after a failure this process skips Redis for a few seconds, so an outage
@@ -46,8 +49,7 @@ _FALLBACK_TTL_SECONDS = 5.0
 _FALLBACK_MAXSIZE = 2048
 _VERSION_TTL_SECONDS = 24 * 60 * 60
 KEY_PREFIX = "active_subscription"
-# In-flight keys for reads without a version token; tokens are hex.
-_NO_VERSION = "no-version"
+# The in-flight key for reads while Redis can't be used; tokens are hex.
 _NO_REDIS = "no-redis"
 
 # KEYS: version, lookup. ARGV: version read, entry, TTL.
@@ -130,14 +132,16 @@ async def read_active_subscription(
     """The cached lookup, or ``fetch``'s answer when it isn't cached."""
     try:
         version, cached = await _read_entry(customer_id)
+        if version is None:
+            # Established before the in-flight key is chosen, so a read after
+            # Redis lost the token never joins a lookup started before.
+            version = await _establish_version(customer_id)
     except _RedisUnavailable:
         return await _read_without_redis(customer_id, fetch)
-    if version is not None and cached is not None and cached.version == version:
+    if cached is not None and cached.version == version:
         return cached.subscription
     return await _shared(
-        customer_id,
-        version or _NO_VERSION,
-        lambda: _fetch_and_store(customer_id, version, fetch),
+        customer_id, version, lambda: _fetch_and_store(customer_id, version, fetch)
     )
 
 
@@ -170,37 +174,36 @@ async def _read_entry(customer_id: str) -> tuple[str | None, _CachedLookup | Non
     return _text(version), _parse_lookup(_text(raw))
 
 
-async def _create_version(customer_id: str) -> str | None:
+async def _establish_version(customer_id: str) -> str:
     """A fresh token for a customer who has none, or the one another reader
-    just created; None when Redis failed, and then the read isn't cached."""
+    created first."""
     token = uuid4().hex
-    try:
-        created = await _call_redis(
-            lambda redis: redis.set(
-                _version_key(customer_id), token, nx=True, ex=_VERSION_TTL_SECONDS
-            )
-        )
-        if created:
-            return token
-        return _text(
-            await _call_redis(lambda redis: redis.get(_version_key(customer_id)))
-        )
-    except _RedisUnavailable:
-        return None
+    key = _version_key(customer_id)
+    created = await _call_redis(
+        lambda redis: redis.set(key, token, nx=True, ex=_VERSION_TTL_SECONDS)
+    )
+    if created:
+        return token
+    current = _text(await _call_redis(lambda redis: redis.get(key)))
+    if current:
+        return current
+    # Expired again in between: a token of our own only costs a miss.
+    await _call_redis(lambda redis: redis.set(key, token, ex=_VERSION_TTL_SECONDS))
+    return token
 
 
 async def _fetch_and_store(
-    customer_id: str, version: str | None, fetch: Fetch
+    customer_id: str, version: str, fetch: Fetch
 ) -> ActiveSubscription | None:
-    if version is None:
-        # Before asking Stripe, so a change made meanwhile replaces it.
-        version = await _create_version(customer_id)
-        if version is not None:
-            # Readers that see the new token before this answer is stored
-            # wait for this lookup instead of starting their own.
-            _serve_in_flight(customer_id, version)
+    # Another lookup may have stored it while this one was being started.
+    try:
+        current, cached = await _read_entry(customer_id)
+    except _RedisUnavailable:
+        current, cached = None, None
+    if current == version and cached is not None and cached.version == version:
+        return cached.subscription
     subscription = summarize_subscription(await fetch())
-    if version is None:
+    if not _still_current(customer_id, version):
         return subscription
     entry = _CachedLookup(version=version, subscription=subscription)
     keys_and_args = (
@@ -232,6 +235,8 @@ async def _read_without_redis(
 
 async def _fetch_and_keep(customer_id: str, fetch: Fetch) -> ActiveSubscription | None:
     subscription = summarize_subscription(await fetch())
+    if not _still_current(customer_id, _NO_REDIS):
+        return subscription
     _fallback[customer_id] = (time.monotonic() + _FALLBACK_TTL_SECONDS, subscription)
     if len(_fallback) > _FALLBACK_MAXSIZE:
         del _fallback[next(iter(_fallback))]
@@ -256,13 +261,11 @@ async def _shared(
     return await asyncio.shield(task)
 
 
-def _serve_in_flight(customer_id: str, version: str) -> None:
-    task = asyncio.current_task()
+def _still_current(customer_id: str, version: str) -> bool:
+    """Whether the running lookup still owns its in-flight key: invalidating
+    in this process drops it, and then its answer must not be kept."""
     key = (asyncio.get_running_loop(), customer_id, version)
-    if task is None or key in _in_flight:
-        return
-    _in_flight[key] = task
-    task.add_done_callback(lambda done: _drop_in_flight(key, done))
+    return _in_flight.get(key) is asyncio.current_task()
 
 
 def _drop_in_flight(

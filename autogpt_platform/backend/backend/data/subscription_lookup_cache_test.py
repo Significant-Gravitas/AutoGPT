@@ -62,26 +62,37 @@ class FakeStripe:
     def __init__(self, subscription: dict):
         self.subscription = subscription
         self.lookups = 0
-        self.frozen: stripe.Subscription | None = None
-        self.release: asyncio.Event | None = None
-        self.held: asyncio.Task | None = None
         self.reached = asyncio.Event()
 
     def current(self) -> stripe.Subscription:
         return stripe.Subscription.construct_from(self.subscription, "test-key")
 
-    def hold_reads(self) -> asyncio.Event:
-        """Answer the next lookup from the subscription as it is now, once
-        released: a slow answer that arrives after a change made meanwhile.
-        Other lookups are answered at once."""
-        self.frozen = self.current()
-        self.release = asyncio.Event()
-        return self.release
+    def hold_next_lookup(
+        self, monkeypatch: pytest.MonkeyPatch, worker: ModuleType
+    ) -> asyncio.Event:
+        """Answer ``worker``'s next lookup with the subscription as it is now,
+        once released: a slow answer that arrives after a change made
+        meanwhile. Later lookups ask the fake Stripe as usual.
 
-    def stop_holding(self) -> None:
-        self.frozen = None
-        self.release = None
-        self.held = None
+        Held per lookup, not per task: on Python 3.11 ``asyncio.wait_for``
+        (inside ``stripe_call``) runs each SDK call in a task of its own."""
+        before = self.current()
+        release = asyncio.Event()
+        ask_stripe = worker._get_active_subscription
+        held = False
+
+        async def lookup(customer_id: str):
+            nonlocal held
+            if held:
+                return await ask_stripe(customer_id)
+            held = True
+            self.lookups += 1
+            self.reached.set()
+            await asyncio.wait_for(release.wait(), WAIT)
+            return before
+
+        monkeypatch.setattr(worker, "_get_active_subscription", lookup)
+        return release
 
     async def list_async(self, *, customer: str, status: str, limit: int):
         if status == "active":
@@ -89,13 +100,7 @@ class FakeStripe:
             self.lookups += 1
         # Stripe takes a moment to answer, so concurrent lookups overlap.
         await asyncio.sleep(0.02)
-        if self.release is not None and self.held is None:
-            self.held = asyncio.current_task()
-        held = self.held is not None and self.held is asyncio.current_task()
-        answer = self.frozen if held and self.frozen else self.current()
-        if held and self.release is not None:
-            self.reached.set()
-            await asyncio.wait_for(self.release.wait(), WAIT)
+        answer = self.current()
         matches = (
             [answer]
             if customer == answer["customer"] and status == answer["status"]
@@ -260,11 +265,11 @@ async def test_a_webhook_on_one_worker_refreshes_the_lookup_on_another(
 
 @pytest.mark.asyncio
 async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
-    trial, fake_stripe, worker_b, redis_up
+    trial, fake_stripe, worker_b, redis_up, monkeypatch
 ):
     """A page load whose Stripe answer predates the purchase, but arrives after
     it, must neither be served to later reads nor overwrite the fresh entry."""
-    release = fake_stripe.hold_reads()
+    release = fake_stripe.hold_next_lookup(monkeypatch, worker_b)
     in_flight = asyncio.create_task(
         worker_b.get_active_subscription_period_end("user-1")
     )
@@ -276,7 +281,6 @@ async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
     )
     release.set()
     assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
-    fake_stripe.stop_holding()
 
     assert await _cached_period_end(redis_up, trial.customer_id) == PAID_PERIOD_END
     assert (
@@ -287,11 +291,11 @@ async def test_a_read_in_flight_during_the_purchase_does_not_cache_the_trial(
 
 @pytest.mark.asyncio
 async def test_a_lookup_read_before_redis_lost_its_data_is_not_served(
-    trial, fake_stripe, worker_b, redis_up
+    trial, fake_stripe, worker_b, redis_up, monkeypatch
 ):
     """Trial read → purchase → Redis restarts empty → the slow trial answer
     arrives. With no token left, nothing may vouch for that answer."""
-    release = fake_stripe.hold_reads()
+    release = fake_stripe.hold_next_lookup(monkeypatch, worker_b)
     in_flight = asyncio.create_task(
         worker_b.get_active_subscription_period_end("user-1")
     )
@@ -305,7 +309,6 @@ async def test_a_lookup_read_before_redis_lost_its_data_is_not_served(
 
     release.set()
     assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
-    fake_stripe.stop_holding()
     assert not await asyncio.wait_for(
         redis_up.get(cache_a._lookup_key(trial.customer_id)), WAIT
     )
@@ -317,6 +320,35 @@ async def test_a_lookup_read_before_redis_lost_its_data_is_not_served(
         await worker_b.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
     assert fake_stripe.lookups == 2
+
+
+@pytest.mark.asyncio
+async def test_a_read_after_redis_lost_its_data_does_not_join_an_older_lookup(
+    trial, fake_stripe, worker_b, redis_up, monkeypatch
+):
+    """A lookup started before a purchase on another worker, then Redis loses
+    every key: a read on this worker after that asks Stripe itself instead of
+    waiting for the old lookup's answer."""
+    release = fake_stripe.hold_next_lookup(monkeypatch, worker_b)
+    in_flight = asyncio.create_task(
+        worker_b.get_active_subscription_period_end("user-1")
+    )
+    await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
+    await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
+    for key in (
+        cache_a._version_key(trial.customer_id),
+        cache_a._lookup_key(trial.customer_id),
+    ):
+        await asyncio.wait_for(redis_up.delete(key), WAIT)
+
+    try:
+        after = await asyncio.wait_for(
+            worker_b.get_active_subscription_period_end("user-1"), 2
+        )
+    finally:
+        release.set()
+    assert after == PAID_PERIOD_END
+    assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
 
 
 @pytest.mark.asyncio
@@ -428,3 +460,34 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
             await worker_a.get_active_subscription_period_end("user-1")
             == PAID_PERIOD_END
         )
+
+
+@pytest.mark.asyncio
+async def test_an_answer_read_before_a_change_is_not_kept_during_an_outage(
+    trial, fake_stripe, worker_b, save_tier, monkeypatch
+):
+    """Redis is out: a lookup started before this worker's purchase answers
+    after it. Its callers get the old answer, but this worker must not keep
+    it and serve it for the next few seconds."""
+    monkeypatch.setattr(
+        cache_a,
+        "get_redis_async",
+        AsyncMock(side_effect=RedisConnectionError("refused")),
+    )
+    release = fake_stripe.hold_next_lookup(monkeypatch, worker_a)
+    in_flight = asyncio.create_task(
+        worker_a.get_active_subscription_period_end("user-1")
+    )
+    await asyncio.wait_for(fake_stripe.reached.wait(), WAIT)
+
+    await conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO)
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+    release.set()
+    assert await asyncio.wait_for(in_flight, WAIT) == TRIAL_END
+
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+    assert fake_stripe.lookups == 2
