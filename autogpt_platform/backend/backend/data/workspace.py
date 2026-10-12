@@ -184,8 +184,6 @@ async def create_workspace_file(
     # Normalize path to start with /
     if not path.startswith("/"):
         path = f"/{path}"
-    await _require_folder_in_workspace(folder_id, workspace_id)
-
     data: UserWorkspaceFileCreateInput = {
         "id": file_id,
         "workspaceId": workspace_id,
@@ -198,11 +196,13 @@ async def create_workspace_file(
         "metadata": SafeJson(metadata or {}),
         "folderId": folder_id,
     }
-    if replace_file_id is None:
+    if replace_file_id is None and folder_id is None:
         file = await UserWorkspaceFile.prisma().create(data=data)
     else:
         async with transaction() as tx:
-            await _retire_file(tx, replace_file_id, workspace_id)
+            await _require_folder_in_workspace(tx, folder_id, workspace_id)
+            if replace_file_id is not None:
+                await _retire_file(tx, replace_file_id, workspace_id)
             file = await UserWorkspaceFile.prisma(tx).create(data=data)
 
     logger.info(
@@ -501,17 +501,37 @@ async def rename_workspace_file(
     return WorkspaceFile.from_db(updated)
 
 
+async def lock_workspace_folder_hierarchy(tx: Prisma, workspace_id: str) -> None:
+    """Hold the workspace's folder-hierarchy lock until the transaction ends.
+
+    Moves, parented creates and subtree deletes all check the tree and then
+    write it, so they serialize against each other or one can act on a shape
+    another has already changed; filing a file into a folder takes it too, so
+    the folder cannot be deleted between the check and the write. Lives here
+    rather than in ``workspace_folder``, which imports this module.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", workspace_id
+    )
+
+
 async def _require_folder_in_workspace(
-    folder_id: Optional[str], workspace_id: str
+    tx: Prisma, folder_id: Optional[str], workspace_id: str
 ) -> None:
     """Refuse a ``folderId`` that is not a live folder of *workspace_id*.
 
     The foreign key only checks that the row exists, so without this a file
-    could be filed under another workspace's folder, or a deleted one.
+    could be filed under another workspace's folder, or a deleted one. Holds
+    the hierarchy lock for the rest of *tx*, so a concurrent folder delete
+    cannot land between this check and the caller's write.
     """
     if folder_id is None:
         return
-    folder = await UserWorkspaceFolder.prisma().find_first(
+    await lock_workspace_folder_hierarchy(tx, workspace_id)
+    folder = await UserWorkspaceFolder.prisma(tx).find_first(
         where={"id": folder_id, "workspaceId": workspace_id, "isDeleted": False}
     )
     if folder is None:
@@ -564,13 +584,12 @@ async def update_workspace_file_location(
     """
     if not path.startswith("/"):
         path = f"/{path}"
-    await _require_folder_in_workspace(folder_id, workspace_id)
-
     # update_many (not update) so the write itself is guarded by workspaceId
     # and isDeleted: update() matches on the primary key alone, which would
     # let a cross-workspace ID or a concurrently-deleted row through.
     try:
         async with transaction() as tx:
+            await _require_folder_in_workspace(tx, folder_id, workspace_id)
             if replace_file_id is not None:
                 await _retire_file(tx, replace_file_id, workspace_id)
             updated_count = await UserWorkspaceFile.prisma(tx).update_many(

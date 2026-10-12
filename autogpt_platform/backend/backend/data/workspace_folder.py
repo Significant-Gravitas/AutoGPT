@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Optional
 
 import pydantic
-from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile, UserWorkspaceFolder
 
@@ -21,7 +20,11 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.data.db import transaction
-from backend.data.workspace import WorkspaceFile, get_or_create_workspace
+from backend.data.workspace import (
+    WorkspaceFile,
+    get_or_create_workspace,
+    lock_workspace_folder_hierarchy,
+)
 from backend.data.workspace_scope import resolve_expert_workspace_scope
 from backend.util.exceptions import NotFoundError
 
@@ -174,7 +177,7 @@ async def create_workspace_folder(
 
     async with transaction() as tx:
         if parent_id is not None:
-            await _lock_workspace_hierarchy(tx, workspace_id)
+            await lock_workspace_folder_hierarchy(tx, workspace_id)
             await _get_folder_record(parent_id, workspace_id)
         if await _name_taken(workspace_id, name, parent_id):
             raise FolderAlreadyExistsError("A folder with this name already exists")
@@ -256,7 +259,7 @@ async def apply_folder_update(
     moving = not isinstance(parent_id, _Unchanged)
     async with transaction() as tx:
         if moving or name is not None:
-            await _lock_workspace_hierarchy(tx, workspace_id)
+            await lock_workspace_folder_hierarchy(tx, workspace_id)
 
         folder = await _get_folder_record(folder_id, workspace_id)
         destination = parent_id if moving else folder.parentId
@@ -300,21 +303,6 @@ async def apply_folder_update(
     return await get_workspace_folder(folder_id, workspace_id)
 
 
-async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
-    """Hold the workspace's folder-hierarchy lock until the transaction ends.
-
-    Moves, parented creates and subtree deletes all check the tree and then
-    write it, so they serialize against each other or one can act on a shape
-    another has already changed.
-
-    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
-    Prisma cannot deserialize as a result column.
-    """
-    await tx.execute_raw(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", workspace_id
-    )
-
-
 async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
     """*folder_id* and every live folder above it, nearest first.
 
@@ -351,7 +339,7 @@ async def delete_workspace_folder(folder_id: str, workspace_id: str) -> int:
     Returns how many files went back to the root, counted by the write itself.
     """
     async with transaction() as tx:
-        await _lock_workspace_hierarchy(tx, workspace_id)
+        await lock_workspace_folder_hierarchy(tx, workspace_id)
         await _get_folder_record(folder_id, workspace_id)
         doomed = await _subtree_ids(workspace_id, folder_id)
 
