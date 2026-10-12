@@ -3771,6 +3771,85 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/chat/board": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get board",
+        "description": "The user's columns and cards: every placed session, plus unplaced ones\ntouched in the last week.",
+        "operationId": "getV2Get board",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "include_older",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Also return unplaced sessions older than a week.",
+              "default": false,
+              "title": "Include Older"
+            },
+            "description": "Also return unplaced sessions older than a week."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BoardResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/chat/board/columns": {
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update board columns",
+        "description": "Replace the user's columns. Cards in a removed column go to Backlog.",
+        "operationId": "putV2Update board columns",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBoardColumnsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardColumnsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": { "description": "The columns cannot be stored" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/config/ttl": {
       "get": {
         "tags": ["v2", "chat", "chat"],
@@ -4198,6 +4277,50 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/board": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session board",
+        "description": "Move a card. A card leaving Backlog that has not started yet starts\nwith its title as the first message.",
+        "operationId": "patchV2Update session board",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionBoardRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": { "description": "Unknown board column" }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
@@ -4421,6 +4544,61 @@
           },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/expert": {
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update session expert",
+        "description": "Change who works a card, only until the user has written in it.",
+        "operationId": "patchV2Update session expert",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSessionExpertRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session or expert not found" },
+          "409": { "description": "The task has already started" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": {
+            "description": "The expert's workspace is still being set up"
+          }
         }
       }
     },
@@ -4739,6 +4917,49 @@
               }
             }
           }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/start": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Start session",
+        "description": "Start a card: send *message* (or the title) and move it to the top of\nIn progress. The title stays as it is.",
+        "operationId": "postV2Start session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/StartSessionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionSummaryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "409": { "description": "The task has already started" },
+          "422": { "description": "Nothing to send: no message and no title" }
         }
       }
     },
@@ -18646,6 +18867,45 @@
         "required": ["blocks", "pagination"],
         "title": "BlockResponse"
       },
+      "BoardColumn": {
+        "properties": {
+          "key": { "type": "string", "title": "Key" },
+          "name": { "type": "string", "title": "Name" },
+          "builtin": { "type": "boolean", "title": "Builtin", "default": false }
+        },
+        "type": "object",
+        "required": ["key", "name"],
+        "title": "BoardColumn"
+      },
+      "BoardColumnsResponse": {
+        "properties": {
+          "columns": {
+            "items": { "$ref": "#/components/schemas/BoardColumn" },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": ["columns"],
+        "title": "BoardColumnsResponse"
+      },
+      "BoardResponse": {
+        "properties": {
+          "columns": {
+            "items": { "$ref": "#/components/schemas/BoardColumn" },
+            "type": "array",
+            "title": "Columns"
+          },
+          "sessions": {
+            "items": { "$ref": "#/components/schemas/SessionSummaryResponse" },
+            "type": "array",
+            "title": "Sessions"
+          }
+        },
+        "type": "object",
+        "required": ["columns", "sessions"],
+        "title": "BoardResponse"
+      },
       "Body_patchOauthUpdateAppStatus": {
         "properties": {
           "is_active": {
@@ -19415,6 +19675,22 @@
           "handed_off_from_expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Handed Off From Expert Id"
+          },
+          "reassigned_from_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reassigned From Session Id"
+          },
+          "reassigned_from_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reassigned From Expert Id"
+          },
+          "reassigned_to_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reassigned To Session Id"
+          },
+          "reassigned_to_expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reassigned To Expert Id"
           },
           "purpose": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -20488,12 +20764,26 @@
             "type": "boolean",
             "title": "Expert Kickoff",
             "default": false
+          },
+          "title": {
+            "anyOf": [
+              { "type": "string", "maxLength": 500 },
+              { "type": "null" }
+            ],
+            "title": "Title"
+          },
+          "board_column": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Board Column"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\n``title`` and ``board_column`` create a task board card in one call. A\ncard outside Backlog starts at once with its title as the first message.\nNeither combines with ``builder_graph_id`` or ``expert_kickoff`` (422).\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -29815,6 +30105,33 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "board_column": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Board Column"
+          },
+          "board_position": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Board Position"
+          },
+          "started": {
+            "type": "boolean",
+            "title": "Started",
+            "default": false
+          },
+          "needs_you": {
+            "type": "boolean",
+            "title": "Needs You",
+            "default": false
+          },
+          "last_line": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Line"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
           }
         },
         "type": "object",
@@ -30252,6 +30569,20 @@
         "type": "object",
         "required": ["text"],
         "title": "SpeechRequest"
+      },
+      "StartSessionRequest": {
+        "properties": {
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 10000 },
+              { "type": "null" }
+            ],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "title": "StartSessionRequest",
+        "description": "The first message; ``None`` sends the card's title."
       },
       "Stats": {
         "properties": {
@@ -32614,6 +32945,18 @@
         "required": ["logo_url"],
         "title": "UpdateAppLogoRequest"
       },
+      "UpdateBoardColumnsRequest": {
+        "properties": {
+          "columns": {
+            "items": { "$ref": "#/components/schemas/BoardColumn" },
+            "type": "array",
+            "title": "Columns"
+          }
+        },
+        "type": "object",
+        "required": ["columns"],
+        "title": "UpdateBoardColumnsRequest"
+      },
       "UpdateGraphResponse": {
         "properties": {
           "graph": { "$ref": "#/components/schemas/GraphModel" },
@@ -32678,6 +33021,39 @@
         "type": "object",
         "required": ["permissions"],
         "title": "UpdatePermissionsRequest"
+      },
+      "UpdateSessionBoardRequest": {
+        "properties": {
+          "column": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Column"
+          },
+          "position": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "title": "UpdateSessionBoardRequest",
+        "description": "Where a card goes. ``None`` leaves that field as it is."
+      },
+      "UpdateSessionExpertRequest": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
+          }
+        },
+        "type": "object",
+        "required": ["expert_id"],
+        "title": "UpdateSessionExpertRequest",
+        "description": "Who works a card; ``None`` is Otto."
       },
       "UpdateSessionPinnedRequest": {
         "properties": {

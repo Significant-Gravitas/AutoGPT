@@ -91,6 +91,11 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         new=AsyncMock(),
     )
     mocker.patch.object(
+        chat_routes,
+        "get_board_session_extras",
+        new=AsyncMock(return_value={}),
+    )
+    mocker.patch.object(
         chat_transports,
         "user_db",
         return_value=MagicMock(
