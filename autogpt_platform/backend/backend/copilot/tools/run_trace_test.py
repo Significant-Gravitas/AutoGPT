@@ -508,3 +508,43 @@ async def test_a_trace_that_fails_to_build_judges_the_whole_result(judge, tool):
         output, judged = await _call(judge, tool, graph, run)
 
     assert judged == output and "Morning fog begins to lift" in judged
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", _TOOLS)
+async def test_a_credentials_pin_is_judged_even_at_its_default(judge, tool):
+    """Credential pins are filled from the run's credential inputs, stored apart
+    from ``nodes_input_masks``; their free-form title is never the graph's own."""
+    graph, run = _haiku_run()
+    credentials = {
+        "id": "c",
+        "type": "api_key",
+        "provider": "openai",
+        "title": _INJECTION,
+    }
+    graph.nodes[1].input_default["credentials"] = credentials
+    run.node_executions[1].input_data["credentials"] = credentials
+
+    _, judged = await _call(judge, tool, graph, run)
+
+    assert _INJECTION in judged
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "tool, target",
+    [
+        ("run_agent", "backend.copilot.tools.run_agent.build_run_health_warning"),
+        (
+            "view_agent_output",
+            "backend.copilot.tools.agent_output.summarize_node_failures",
+        ),
+    ],
+)
+async def test_an_error_raised_while_answering_is_screened(judge, tool, target):
+    """The error text the model receives can quote what the run read."""
+    graph, run = _haiku_run()
+    with patch(target, side_effect=RuntimeError(_INJECTION)):
+        output, judged = await _call(judge, tool, graph, run)
+
+    assert _INJECTION in output and _INJECTION in judged

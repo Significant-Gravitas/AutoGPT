@@ -8,8 +8,9 @@ reader to act and held the user's first run.
 
 Provenance decides, never text: a node input is left out of the judge's view
 only when the graph itself sets that pin, no link feeds it, the run did not
-override it (``nodes_input_masks``), the node is not an input or trigger block
-(the run's own inputs land there), and the value is the graph's own. Every
+override it (``nodes_input_masks``), it is not a credentials pin (filled from
+the run's credential inputs), the node is not an input or trigger block (the
+run's own inputs land there), and the value is the graph's own. Every
 retained block output, every link-fed or overridden input and every run input
 stays declared whole. Anything this cannot account for (no graph, another graph
 version, an unknown node or block, a malformed entry or override, an error)
@@ -117,10 +118,14 @@ def _declared_trace(
         if block.block_type in _RUN_FED:
             declared.append([inputs, outputs])
             continue
+        # The executor fills credential pins from the run's credential inputs,
+        # stored apart from ``nodes_input_masks``; they are never the graph's own.
+        credential_pins = set(block.input_schema.get_credentials_fields())
         fed = {
             key: value
             for key, value in inputs.items()
             if (node.id, _pin(key)) in fed_pins
+            or _pin(key) in credential_pins
             or key not in node.input_default
             or node.input_default[key] != value
         }
