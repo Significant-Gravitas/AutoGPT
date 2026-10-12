@@ -426,6 +426,30 @@ async def test_a_chat_resumed_some_other_way_starts_over(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_chat_resumed_some_other_way_that_runs_idle_is_not_called_paused(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Its next run only repeated that Discord needs connecting. The chat runs
+    again, so neither the Scheduled page nor its alert may call it paused."""
+    user_id, session_id = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+        scheduler.get_execution_schedules.return_value = [MagicMock(id="sched-1")]
+
+        await record_scheduled_run(_run(user_id, session_id, RunOutcome(idle=True)))
+
+        assert await list_paused_scheduled_chats(user_id) == []
+        row = await ScheduledChatStreak.prisma().find_first(where={"userId": user_id})
+        assert row is not None and row.failures == 1 and row.pausedAt is None
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+    finally:
+        await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_note_that_could_not_be_posted_is_told_on_the_next_run(
     server: SpinTestServer, scheduler: MagicMock, mocker
 ):

@@ -10,6 +10,9 @@ asks what this run changes, and carries it out (``service``).
 * A run that worked clears the streak. One that called no tool continues an
   open connection failure, and otherwise changes nothing.
 * A neutral run (cancelled, our outage) changes nothing.
+* The caller lets a run on a paused streak through only once the chat's jobs
+  fire again: it was resumed some other way. Unless the run is neutral, the
+  pause is over and the run counts from the start.
 """
 
 from pydantic import BaseModel
@@ -51,7 +54,13 @@ def advance(streak: Streak | None, outcome: RunOutcome) -> StreakStep:
     if failure is None:
         if not outcome.idle:
             return StreakStep(streak=None, ended_notified=_was_told(streak))
-        if streak is None or not _idle_continues(streak):
+        if streak is None:
+            return StreakStep(streak=None)
+        if not _idle_continues(streak):
+            if streak.paused:
+                # Its pause is over, and a run that called no tool starts
+                # nothing of its own.
+                return StreakStep(streak=None, ended_notified=_was_told(streak))
             return StreakStep(streak=streak)
         failure, whole_run = streak.failure, True
     ended_notified = False
@@ -85,7 +94,7 @@ def advance(streak: Streak | None, outcome: RunOutcome) -> StreakStep:
 
 
 def _idle_continues(streak: Streak) -> bool:
-    return not streak.paused and streak.failure.kind in _IDLE_CONTINUES
+    return streak.failure.kind in _IDLE_CONTINUES
 
 
 def _was_told(streak: Streak | None) -> bool:
