@@ -2,9 +2,10 @@
 
 Resolved from persisted session attribution, never from tool arguments. An
 expert session may read and write under its own conversations and its own
-skills folder, read under conversations it delegated, and read the owner's
-own files. ``None`` scope means unrestricted: the account owner acting
-through personal Otto, REST endpoints, or system paths.
+skills folder, read under conversations it delegated or took a reassigned
+task from, and read the owner's own files. ``None`` scope means
+unrestricted: the account owner acting through personal Otto, REST
+endpoints, or system paths.
 """
 
 import posixpath
@@ -147,12 +148,27 @@ async def resolve_expert_workspace_scope(
             ),
         }
     )
+    session_ids = [row.id for row in own_sessions]
+    read_only = dict.fromkeys(
+        [row.id for row in delegated_sessions if row.expertId != expert_id]
+        + [
+            source
+            for row in own_sessions
+            if (source := _reassigned_from(row.metadata)) is not None
+        ]
+    )
     return WorkspaceScope(
         expert_id=expert_id,
         owns_skills_folder=True,
         reads_user_files=True,
-        session_ids=[row.id for row in own_sessions],
-        delegated_session_ids=[
-            row.id for row in delegated_sessions if row.expertId != expert_id
-        ],
+        session_ids=session_ids,
+        delegated_session_ids=[sid for sid in read_only if sid not in session_ids],
     )
+
+
+def _reassigned_from(metadata: object) -> str | None:
+    """The chat a reassigned task came from: its files stay readable."""
+    if not isinstance(metadata, dict):
+        return None
+    source = metadata.get("reassigned_from_session_id")
+    return source if isinstance(source, str) else None
