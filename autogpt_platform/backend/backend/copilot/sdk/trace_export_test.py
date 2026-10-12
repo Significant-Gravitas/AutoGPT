@@ -29,6 +29,7 @@ class _TraceServer(ThreadingHTTPServer):
         self.bodies: list[bytes] = []
         self.accepted: list[bytes] = []
         self.fail_requests = 1
+        self.fail_body: bytes | None = None
         self.response_delay = 1.2
         self.success_delay = 0.0
         self.response_status = 200
@@ -40,7 +41,7 @@ class _TraceHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(int(self.headers["Content-Length"]))
         receiver.bodies.append(body)
         status = receiver.response_status
-        if len(receiver.bodies) <= receiver.fail_requests:
+        if len(receiver.bodies) <= receiver.fail_requests or body == receiver.fail_body:
             time.sleep(receiver.response_delay)
             status = 504
         elif status == 200:
@@ -165,8 +166,13 @@ def test_trace_export_session_bounds_transport_retries(
 def test_exporter_bounds_retry_window_and_recovers_next_batch(
     trace_receiver: _TraceServer,
 ) -> None:
-    trace_receiver.fail_requests = 100
+    # Fail the exhausted batch by its body: an attempt the client gave up on can
+    # still reach the server after the next batch has started.
+    trace_receiver.fail_requests = 0
+    trace_receiver.fail_body = b""
     trace_receiver.response_delay = 0.4
+    next_batch = TracerProvider().get_tracer(__name__).start_span("next-batch")
+    next_batch.end()
     with create_trace_export_session() as session:
         exporter = OTLPSpanExporter(
             endpoint=f"http://127.0.0.1:{trace_receiver.server_port}/v1/traces",
@@ -180,8 +186,7 @@ def test_exporter_bounds_retry_window_and_recovers_next_batch(
         assert 1 <= len(trace_receiver.bodies) <= 3
         assert not trace_receiver.accepted
 
-        trace_receiver.fail_requests = 0
-        assert exporter.export([]) == SpanExportResult.SUCCESS
+        assert exporter.export([next_batch]) == SpanExportResult.SUCCESS
         exporter.shutdown()
 
     assert elapsed < 0.7
