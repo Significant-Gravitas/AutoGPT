@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import sys
 
+import pytest
 import sentry_sdk
 from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
@@ -491,10 +492,17 @@ def test_sentry_init_reports_the_deployed_commit_as_release(monkeypatch) -> None
     assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
 
 
-def test_sentry_init_reports_no_release_for_an_empty_sha(monkeypatch) -> None:
+def test_sentry_init_trims_the_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "  0123abcd\n")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+@pytest.mark.parametrize("sha", ["", "   ", "\n"])
+def test_sentry_init_reports_no_release_for_a_blank_sha(monkeypatch, sha) -> None:
     """A build made without the SENTRY_RELEASE build arg bakes in an empty
-    value, which has to read as no release rather than an empty-string one."""
-    monkeypatch.setattr(metrics.settings.config, "sentry_release", "")
+    value, which has to read as no release rather than a blank one."""
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", sha)
 
     assert _sentry_init_options(monkeypatch)["release"] is None
 
@@ -507,10 +515,17 @@ def test_sentry_init_environment_override_wins(monkeypatch) -> None:
     assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
 
 
+def test_sentry_init_trims_the_environment_override(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "  pr-123 ")
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+@pytest.mark.parametrize("override", ["", "   "])
 def test_sentry_init_computes_the_environment_without_an_override(
-    monkeypatch,
+    monkeypatch, override
 ) -> None:
-    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "")
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", override)
     monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
     monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
 

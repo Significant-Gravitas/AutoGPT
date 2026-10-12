@@ -991,14 +991,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     sentry_release: str = Field(
         default="",
         description="Git sha of the deployed build, reported to Sentry as the "
-        "release. Empty reports no release.",
+        "release. Blank reports no release.",
     )
 
     sentry_environment: str = Field(
         default="",
         description="Environment name Sentry events are tagged with, replacing "
         "the one computed from app_env and behave_as (a PR preview names itself "
-        "pr-<n>). Empty keeps the computed one.",
+        "pr-<n>). Blank keeps the computed one.",
     )
 
     autopilot_bot_teams_allow_unverified: bool = Field(

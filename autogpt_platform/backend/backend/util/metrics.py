@@ -298,10 +298,10 @@ def _before_send_transaction(event, hint):
 def _sentry_environment() -> str:
     """The environment events are tagged with. A deployment that names itself
     (a PR preview, say) takes precedence over the one computed from the app
-    environment and behaviour mode."""
+    environment and behaviour mode. A blank name counts as none."""
     config = settings.config
     return (
-        config.sentry_environment
+        config.sentry_environment.strip()
         or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
     )
 
@@ -320,7 +320,7 @@ def sentry_init():
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
-        release=settings.config.sentry_release or None,
+        release=settings.config.sentry_release.strip() or None,
         environment=_sentry_environment(),
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
