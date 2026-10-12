@@ -14,7 +14,12 @@ PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
 # through this check. Other review bots report "neutral" in that case, which
 # PASSING_CONCLUSIONS already accepts; this is the same treatment for one
 # that does not.
-ADVISORY_CHECK_RUNS = {"copilot-pull-request-reviewer"}
+# The journeys e2e leg is advisory while it beds in: its failures show on the
+# PR but don't block merging. Drop it from here once it has proven stable.
+ADVISORY_CHECK_RUNS = {
+    "copilot-pull-request-reviewer",
+    "end-to-end tests (journeys)",
+}
 
 
 def is_advisory(check_run: Dict) -> bool:

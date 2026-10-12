@@ -8,19 +8,28 @@ interface Props {
 }
 
 export function IntegrationsListEmpty({ query }: Props) {
-  const hasQuery = query.trim().length > 0;
+  const trimmed = query.trim();
+
+  // A search usually lands in Available integrations below, so a miss here
+  // is one quiet line rather than the full empty state.
+  if (trimmed) {
+    return (
+      <Text variant="body" className="px-4 text-zinc-500">
+        {`None of your connected integrations match "${trimmed}".`}
+      </Text>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center justify-center gap-4 px-6 py-10 text-center">
       <IntegrationsMarquee />
       <div className="flex flex-col items-center gap-1">
         <Text variant="large-medium" as="span" className="text-textBlack">
-          {hasQuery ? "No integrations found" : "No integration connected"}
+          No integration connected
         </Text>
         <Text variant="body" className="max-w-[360px] text-zinc-500">
-          {hasQuery
-            ? `No integrations match "${query.trim()}". Try a different search.`
-            : "Connect a service to let your agents use third-party tools like GitHub, Gmail, or Figma."}
+          Connect a service to let your agents use third-party tools like
+          GitHub, Gmail, or Figma.
         </Text>
       </div>
     </div>

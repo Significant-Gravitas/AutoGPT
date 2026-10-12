@@ -24,13 +24,20 @@ export async function GET(request: Request) {
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   const iss = searchParams.get("iss");
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
 
   const success = Boolean(code && state);
   const message = success
     ? { success: true, code, state, iss }
     : {
         success: false,
-        message: `Missing parameters: ${searchParams.toString()}`,
+        // Echo back `state` when present so the opener's state-keyed listener
+        // routes the failure to its flow instead of waiting for the timeout.
+        ...(state ? { state } : {}),
+        message: error
+          ? `${error}${errorDescription ? `: ${errorDescription}` : ""}`
+          : `Missing parameters: ${searchParams.toString()}`,
       };
 
   return new NextResponse(

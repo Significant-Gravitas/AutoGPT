@@ -144,6 +144,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     # GPT-6 models (September 2026)
     GPT6_ASTRA = "gpt-6-astra"
     GPT6_SOL = "gpt-6-sol"
+    GPT6_1_SOL = "gpt-6.1-sol"
     GPT6_LUNA = "gpt-6-luna"
     # GPT-5.6 models (July 2026)
     GPT5_6_SOL = "gpt-5.6-sol"
@@ -209,8 +210,14 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_LARGE_4 = "mistralai/mistral-large-4-0"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_MEDIUM_3_5 = "mistralai/mistral-medium-3-5"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    MISTRAL_SMALL_4 = "mistralai/mistral-small-2603"
+    MINISTRAL_3_14B = "mistralai/ministral-14b-2512"
+    MINISTRAL_3_8B = "mistralai/ministral-8b-2512"
+    MINISTRAL_3_3B = "mistralai/ministral-3b-2512"
     CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
     COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
@@ -461,7 +468,8 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
     "cohere/command-r-plus-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
-    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_3_2,
+    # nemo's prior target Small 3.2 is also retired; route to its successor.
+    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_4,
     "microsoft/wizardlm-2-8x22b": LLMModel.MICROSOFT_PHI_4,
     "moonshotai/kimi-k2": LLMModel.KIMI_K2_6,
     "moonshotai/kimi-k2-0905": LLMModel.KIMI_K2_6,

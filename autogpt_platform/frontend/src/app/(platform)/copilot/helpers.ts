@@ -1,9 +1,10 @@
 import { getSystemHeaders } from "@/lib/impersonation";
 import { getWebSocketToken } from "@/lib/auth/actions";
-import type { UIMessage } from "ai";
+import type { ChatStatus, UIMessage } from "ai";
 
 import { deleteV2DisconnectSessionStream } from "@/app/api/__generated__/endpoints/chat/chat";
 import { TOOL_PART_PREFIX } from "./components/JobStatsBar/constants";
+import { parseSpecialMarkers } from "./helpers/messageMarkers";
 
 export const ORIGINAL_TITLE = "AutoGPT";
 
@@ -32,12 +33,20 @@ export async function getCopilotAuthHeaders(): Promise<Record<string, string>> {
   const { token, error } = await getWebSocketToken();
   if (error || !token) {
     console.warn("[Copilot] Failed to get auth token:", error);
-    throw new Error("Authentication failed — please sign in again.");
+    throw new CopilotAuthError();
   }
   return {
     Authorization: `Bearer ${token}`,
     ...getSystemHeaders(),
   };
+}
+
+/** The server answered and has no session token: signed out, not offline. */
+export class CopilotAuthError extends Error {
+  constructor() {
+    super("Authentication failed — please sign in again.");
+    this.name = "CopilotAuthError";
+  }
 }
 
 /**
@@ -229,6 +238,7 @@ interface SuppressDuplicateArgs {
   isReconnectScheduled: boolean;
   lastSubmittedText: string | null;
   messages: UIMessage[];
+  status?: ChatStatus;
 }
 
 /**
@@ -253,8 +263,20 @@ export function getSendSuppressionReason({
   isReconnectScheduled,
   lastSubmittedText,
   messages,
+  status,
 }: SuppressDuplicateArgs): SuppressReason {
   if (isReconnectScheduled) return "reconnecting";
+
+  const lastMessage = messages.at(-1);
+  const hasRetryableError =
+    status === "ready" &&
+    lastMessage?.role === "assistant" &&
+    lastMessage.parts.some(
+      (part) =>
+        part.type === "text" &&
+        parseSpecialMarkers(part.text).markerType === "retryable_error",
+    );
+  if (status === "error" || hasRetryableError) return null;
 
   if (text && lastSubmittedText === text) {
     const lastUserMsg = messages.filter((m) => m.role === "user").pop();

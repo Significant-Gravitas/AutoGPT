@@ -1,0 +1,128 @@
+[
+  {
+    "id": "row-0",
+    "role": "user",
+    "content": "Compare example.com and example.org",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 0,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:00Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-1",
+    "role": "assistant",
+    "content": "",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": [
+      {
+        "id": "call-com",
+        "type": "function",
+        "function": {
+          "name": "web_fetch",
+          "arguments": "{\"url\": \"example.com\"}"
+        }
+      }
+    ],
+    "function_call": null,
+    "sequence": 1,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:01Z",
+    "model": "anthropic/claude-sonnet-4-6",
+    "llm_auth_provider": "platform",
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-2",
+    "role": "tool",
+    "content": "Example Domain",
+    "name": null,
+    "tool_call_id": "call-com",
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 2,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:02Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-3",
+    "role": "assistant",
+    "content": "",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": [
+      {
+        "id": "call-org",
+        "type": "function",
+        "function": {
+          "name": "web_fetch",
+          "arguments": "{\"url\": \"example.org\"}"
+        }
+      }
+    ],
+    "function_call": null,
+    "sequence": 3,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:03Z",
+    "model": "anthropic/claude-sonnet-4-6",
+    "llm_auth_provider": "platform",
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-4",
+    "role": "tool",
+    "content": "Example Domain",
+    "name": null,
+    "tool_call_id": "call-org",
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 4,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:04Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-5",
+    "role": "assistant",
+    "content": "Both are placeholder pages.",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 5,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:05Z",
+    "model": "anthropic/claude-sonnet-4-6",
+    "llm_auth_provider": "platform",
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  }
+]

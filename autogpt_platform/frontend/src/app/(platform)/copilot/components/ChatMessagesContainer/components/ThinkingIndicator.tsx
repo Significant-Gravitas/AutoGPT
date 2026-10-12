@@ -9,10 +9,10 @@ interface Props {
   active: boolean;
   elapsedSeconds: number;
   /**
-   * Backend-emitted status message for the current silent gap (e.g.
-   * "Reading your message…", "Analyzing result…", "Optimizing conversation
-   * context…"). An absent message shows no label at all rather than
-   * inventing a generic placeholder.
+   * Plain-language label for a wait the UI itself narrates (e.g. "Uploading
+   * 2 files…"). Defaults to "Thinking…". The backend's own `data-status`
+   * lines ("Restoring your session…", "Preparing workspace…") never reach
+   * here: they describe plumbing, not anything the user needs to know.
    */
   statusMessage?: string | null;
 }
@@ -31,10 +31,11 @@ export function ThinkingIndicator({
       className="inline-flex w-fit items-center gap-2.5 text-sm text-zinc-600"
     >
       <PixelGridLoader className="text-zinc-600" />
-      {statusMessage && (
-        <SwapText text={statusMessage} shimmer className="text-sm" />
-      )}
-      {!statusMessage && <span className="sr-only">Thinking…</span>}
+      <SwapText
+        text={statusMessage ?? "Thinking…"}
+        shimmer
+        className="text-sm"
+      />
       {showTime && (
         <span className="font-mono text-xs tabular-nums text-zinc-400">
           {formatElapsed(elapsedSeconds)}

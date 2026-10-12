@@ -1,0 +1,19 @@
+{
+  "name": "gitbook: docs sync only",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/gitbook"],
+      "exclude": []
+    }
+  },
+  "rules": [{ "type": "creation" }, { "type": "update" }],
+  "bypass_actors": [
+    {
+      "actor_id": 4260672,
+      "actor_type": "Integration",
+      "bypass_mode": "always"
+    }
+  ]
+}

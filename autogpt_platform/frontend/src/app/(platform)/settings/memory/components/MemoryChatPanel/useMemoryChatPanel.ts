@@ -6,7 +6,6 @@ import {
   useGetV2GetSession,
   usePostV2CreateSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -155,11 +154,8 @@ export function useMemoryChatPanel({ scopeExpertID }: Args) {
           return;
         }
         Sentry.captureException(err);
-        toast({
-          variant: "destructive",
-          title: "Could not queue message",
-          description: "Please wait for the current response to finish.",
-        });
+        // The composer restores the draft and shows the one toast for it.
+        throw err;
       }
       return;
     }
