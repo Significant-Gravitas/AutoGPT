@@ -863,34 +863,14 @@ class TestSafeCloseSdkClient:
 # ---------------------------------------------------------------------------
 
 
-class TestSystemPromptPreset:
-    """Tests for _build_system_prompt_value — cross-user prompt caching and
-    the live prompt."""
+class TestSystemPromptValue:
+    """Tests for _build_system_prompt_value — the live prompt."""
 
-    def test_preset_dict_structure_when_enabled(self):
-        """When cross_user_cache is True, returns a SystemPromptPreset dict
-        with the snapshot off."""
+    def test_custom_dict_when_live(self):
+        """The prompt replaces the CLI's own prompt in the custom form, the
+        form that carries ``snapshot``."""
         custom_prompt = "You are a helpful assistant."
-        result = _build_system_prompt_value(
-            custom_prompt, cross_user_cache=True, live=True
-        )
-
-        assert result == {
-            "type": "preset",
-            "preset": "claude_code",
-            "append": custom_prompt,
-            "exclude_dynamic_sections": True,
-            "snapshot": False,
-        }
-
-    def test_custom_dict_when_disabled(self):
-        """When cross_user_cache is False, the prompt replaces the CLI's own
-        prompt in the custom form, the only non-preset form that carries
-        ``snapshot``."""
-        custom_prompt = "You are a helpful assistant."
-        result = _build_system_prompt_value(
-            custom_prompt, cross_user_cache=False, live=True
-        )
+        result = _build_system_prompt_value(custom_prompt, live=True)
 
         assert result == {"type": "custom", "prompt": custom_prompt, "snapshot": False}
 
@@ -898,42 +878,9 @@ class TestSystemPromptPreset:
         """The rollback lever: exactly the value passed before the live
         prompt, so the CLI records the prompt and resends it on resume."""
         custom_prompt = "You are a helpful assistant."
-        result = _build_system_prompt_value(
-            custom_prompt, cross_user_cache=False, live=False
-        )
+        result = _build_system_prompt_value(custom_prompt, live=False)
 
         assert result == custom_prompt
-
-    def test_live_off_keeps_the_preset_without_snapshot(self):
-        result = _build_system_prompt_value("sys", cross_user_cache=True, live=False)
-
-        assert result == {
-            "type": "preset",
-            "preset": "claude_code",
-            "append": "sys",
-            "exclude_dynamic_sections": True,
-        }
-
-    def test_empty_string_with_cache_enabled(self):
-        """Empty system_prompt with cross_user_cache=True produces append=''."""
-        result = _build_system_prompt_value("", cross_user_cache=True, live=True)
-
-        assert isinstance(result, dict)
-        assert result["type"] == "preset"
-        assert result["preset"] == "claude_code"
-        assert result["append"] == ""
-        assert result["exclude_dynamic_sections"] is True
-
-    def test_resume_and_fresh_share_the_same_static_prefix(self):
-        """Every turn (fresh + --resume) must emit the same preset dict
-        so the cross-user cache prefix match works on all turns.  This
-        relies on CLI ≥ 2.1.98 (installed in the Docker image); older
-        CLIs would crash on --resume + excludeDynamicSections=True."""
-        fresh = _build_system_prompt_value("sys", cross_user_cache=True, live=True)
-        resumed = _build_system_prompt_value("sys", cross_user_cache=True, live=True)
-        assert fresh == resumed
-        assert isinstance(fresh, dict)
-        assert fresh.get("exclude_dynamic_sections") is True
 
     def test_default_config_sends_a_live_prompt(self, _clean_config_env):
         cfg = cfg_mod.ChatConfig(
@@ -989,11 +936,6 @@ class TestSystemPromptPreset:
 
     def test_configured_prompt_follows_the_live_switch(self, monkeypatch):
         monkeypatch.setattr(
-            "backend.copilot.sdk.service.config.claude_agent_cross_user_prompt_cache",
-            False,
-        )
-
-        monkeypatch.setattr(
             "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", True
         )
         assert _configured_system_prompt_value("sys") == {
@@ -1006,47 +948,6 @@ class TestSystemPromptPreset:
             "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", False
         )
         assert _configured_system_prompt_value("sys") == "sys"
-
-    def test_configured_prompt_follows_the_cache_switch(self, monkeypatch):
-        monkeypatch.setattr(
-            "backend.copilot.sdk.service.config.claude_agent_cross_user_prompt_cache",
-            True,
-        )
-        monkeypatch.setattr(
-            "backend.copilot.sdk.service.config.claude_agent_live_system_prompt", True
-        )
-
-        assert _configured_system_prompt_value("sys") == _build_system_prompt_value(
-            "sys", cross_user_cache=True, live=True
-        )
-
-    def test_default_config_disables_claude_code_system_prompt(self, _clean_config_env):
-        """The default config passes only AutoGPT's Copilot system prompt."""
-        cfg = cfg_mod.ChatConfig(
-            _env_file=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is False
-
-    def test_env_var_enables_cache(self, _clean_config_env, monkeypatch):
-        """CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE=true enables caching."""
-        monkeypatch.setenv("CHAT_CLAUDE_AGENT_CROSS_USER_PROMPT_CACHE", "true")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.claude_agent_cross_user_prompt_cache is True
 
 
 class TestStreamErrorCodePrefix:

@@ -195,9 +195,6 @@ class TestApplyBuildingModeRestart:
     @pytest.mark.asyncio
     async def test_live_prompt_switch_off_restores_the_raw_prompt(self, mocker):
         mocker.patch.object(service.config, "claude_agent_live_system_prompt", False)
-        mocker.patch.object(
-            service.config, "claude_agent_cross_user_prompt_cache", False
-        )
 
         _, state, _, _ = await self._run(mocker)
 

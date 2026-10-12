@@ -52,9 +52,8 @@ def cli_path(monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cross_user_cache", [False, True])
 async def test_resumed_session_sends_the_relaunched_prompt(
-    cli_path: Path, tmp_path: Path, cross_user_cache: bool
+    cli_path: Path, tmp_path: Path
 ):
     """The building-mode restart's shape: same session, new prompt."""
     stub = _StubAnthropic()
@@ -64,7 +63,7 @@ async def test_resumed_session_sends_the_relaunched_prompt(
             cli_path,
             tmp_path,
             port,
-            _prompt_value(_PROMPT_V1, cross_user_cache),
+            _prompt_value(_PROMPT_V1),
             _FIRST_TURN,
             resume=None,
         )
@@ -72,7 +71,7 @@ async def test_resumed_session_sends_the_relaunched_prompt(
             cli_path,
             tmp_path,
             port,
-            _prompt_value(_PROMPT_V2, cross_user_cache),
+            _prompt_value(_PROMPT_V2),
             _RESUMED_TURN,
             resume=session_id,
         )
@@ -89,10 +88,8 @@ async def test_resumed_session_sends_the_relaunched_prompt(
     ), "the resumed turn sent the prompt recorded on the session's first request"
 
 
-def _prompt_value(text: str, cross_user_cache: bool):
-    return _build_system_prompt_value(
-        text, cross_user_cache=cross_user_cache, live=True
-    )
+def _prompt_value(text: str):
+    return _build_system_prompt_value(text, live=True)
 
 
 async def _run_turn(

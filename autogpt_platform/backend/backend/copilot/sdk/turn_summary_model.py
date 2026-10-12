@@ -242,16 +242,14 @@ def _system_prompt_text(
 ) -> tuple[str, str | None]:
     """The prompt text a launch was given, and how the CLI combines it with its own.
 
-    The live prompt carries the replace-mode text in a ``custom`` dict so it
-    can turn the CLI's snapshot off; it still replaces the CLI's prompt.
+    Every launch replaces the CLI's prompt: with a raw string, or with the
+    live prompt's ``custom`` dict, which can turn the CLI's snapshot off.
     """
     if isinstance(prompt, str):
         return prompt, "replace"
-    if prompt is None or prompt["type"] == "file":
-        return "", None
-    if prompt["type"] == "custom":
+    if prompt is not None and prompt["type"] == "custom":
         return prompt["prompt"], "replace"
-    return prompt.get("append", ""), "preset_append"
+    return "", None
 
 
 def outcome(

@@ -264,10 +264,7 @@ _ROUTE_ENV = {
 }
 _ALLOWED = ["mcp__copilot__find_capability", "Glob", "TodoWrite"]
 _DISALLOWED = ["Bash", "Glob"]
-_LIVE_PROMPT = {
-    "claude_agent_live_system_prompt": True,
-    "claude_agent_cross_user_prompt_cache": False,
-}
+_LIVE_PROMPT = {"claude_agent_live_system_prompt": True}
 
 
 @pytest.fixture

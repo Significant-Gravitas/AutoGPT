@@ -7,7 +7,6 @@ tests will catch it immediately.
 """
 
 import inspect
-from typing import cast
 
 import pytest
 
@@ -91,42 +90,9 @@ def test_agent_options_accepts_required_fields():
     assert opts.cwd == "/tmp"
 
 
-def test_agent_options_accepts_system_prompt_preset_with_exclude_dynamic_sections():
-    """Verify ClaudeAgentOptions accepts the exact preset dict _build_system_prompt_value produces.
-
-    The Turn 1 (non-resume) code path includes ``exclude_dynamic_sections=True`` in
-    the preset dict for cross-user caching.  This compat test mirrors that exact
-    shape so any SDK version that starts rejecting unknown keys will be caught
-    here rather than at runtime.
-    """
-    from claude_agent_sdk import ClaudeAgentOptions
-    from claude_agent_sdk.types import SystemPromptPreset
-
-    from .service import _build_system_prompt_value
-
-    preset = _build_system_prompt_value(
-        "custom system prompt", cross_user_cache=True, live=True
-    )
-    assert isinstance(
-        preset, dict
-    ), "_build_system_prompt_value must return a dict when caching is on"
-    assert preset.get("exclude_dynamic_sections") is True, (
-        "Turn 1 must strip dynamic sections to keep the prefix cacheable " "cross-user"
-    )
-
-    sdk_preset = cast(SystemPromptPreset, preset)
-    opts = ClaudeAgentOptions(system_prompt=sdk_preset)
-    assert opts.system_prompt == sdk_preset
-
-
-@pytest.mark.parametrize(
-    "cross_user_cache, flag",
-    [(False, "--system-prompt"), (True, "--append-system-prompt")],
-)
-def test_live_prompt_reaches_the_cli_as_its_prompt_flag(cross_user_cache, flag):
+def test_live_prompt_reaches_the_cli_as_its_prompt_flag():
     """The live prompt's dict form must still put the prompt text on the
-    CLI's command line, as the raw string did (cross_user_cache=False
-    replaces the CLI's prompt, True appends to its preset)."""
+    CLI's command line, as the raw string did."""
     from claude_agent_sdk import ClaudeAgentOptions
     from claude_agent_sdk._internal.transport.subprocess_cli import (
         SubprocessCLITransport,
@@ -134,15 +100,13 @@ def test_live_prompt_reaches_the_cli_as_its_prompt_flag(cross_user_cache, flag):
 
     from .service import _build_system_prompt_value
 
-    value = _build_system_prompt_value(
-        "my prompt", cross_user_cache=cross_user_cache, live=True
-    )
+    value = _build_system_prompt_value("my prompt", live=True)
     transport = SubprocessCLITransport(
         prompt="", options=ClaudeAgentOptions(system_prompt=value, cli_path="claude")
     )
 
     cmd = transport._build_command()
-    assert cmd[cmd.index(flag) + 1] == "my prompt"
+    assert cmd[cmd.index("--system-prompt") + 1] == "my prompt"
 
 
 def test_agent_options_accepts_all_our_fields():

@@ -40,7 +40,7 @@ from claude_agent_sdk import (
     ToolResultBlock,
     ToolUseBlock,
 )
-from claude_agent_sdk.types import SystemPromptCustom, SystemPromptPreset
+from claude_agent_sdk.types import SystemPromptCustom
 from langfuse import get_client, propagate_attributes
 from langsmith.integrations.claude_agent_sdk import configure_claude_agent_sdk
 from opentelemetry import trace as otel_trace
@@ -2603,18 +2603,14 @@ def _raise_deferred_codex_cleanup_error(
     raise cleanup_error
 
 
-def _configured_system_prompt_value(
-    system_prompt: str,
-) -> str | SystemPromptPreset | SystemPromptCustom:
+def _configured_system_prompt_value(system_prompt: str) -> str | SystemPromptCustom:
     """The ``system_prompt`` option for *system_prompt* under the current config.
 
     Every launch (first, context-size retry, building-mode restart) goes
     through here so they agree on the prompt's form.
     """
     return _build_system_prompt_value(
-        system_prompt,
-        cross_user_cache=config.claude_agent_cross_user_prompt_cache,
-        live=config.claude_agent_live_system_prompt,
+        system_prompt, live=config.claude_agent_live_system_prompt
     )
 
 
@@ -2664,59 +2660,26 @@ def _build_sdk_tool_options(
 
 
 def _build_system_prompt_value(
-    system_prompt: str,
-    *,
-    cross_user_cache: bool,
-    live: bool,
-) -> str | SystemPromptPreset | SystemPromptCustom:
+    system_prompt: str, *, live: bool
+) -> str | SystemPromptCustom:
     """Build the ``system_prompt`` argument for :class:`ClaudeAgentOptions`.
 
-    When *cross_user_cache* is enabled, returns a :class:`SystemPromptPreset`
-    with ``exclude_dynamic_sections=True`` so every turn — Turn 1 *and*
-    resumed turns — shares the same static prefix and hits the cross-user
-    prompt cache.  Our custom *system_prompt* is appended after the preset.
+    *system_prompt* replaces the CLI's built-in prompt via ``--system-prompt``.
 
-    Requires CLI ≥ 2.1.98 (older CLIs crash when ``excludeDynamicSections``
-    is combined with ``--resume``); the CLI bundled with the pinned
-    ``claude-agent-sdk`` is newer.
-
-    When *cross_user_cache* is disabled, *system_prompt* replaces the CLI's
-    built-in prompt via ``--system-prompt`` (vs ``--append-system-prompt``
-    for the preset).  Per-session prompt caching remains available; only the
-    shared Claude Code preset prefix and its cross-user cache reuse are
-    removed.
-
-    When *live* is set, both forms carry ``snapshot=False``, so the prompt
-    this process was launched with is the one sent, on a new session and on
+    When *live* is set it carries ``snapshot=False``, so the prompt this
+    process was launched with is the one sent, on a new session and on
     ``--resume``.  With the snapshot on (the CLI's default when the key is
     absent), the CLI records the system prompt and every tool description on
     a session's first request and resends that record on every later request
     and resume until the session compacts, ignoring the prompt a later
-    process was given.  Only the dict forms can carry ``snapshot`` (the SDK
-    sends it on the initialize request; the prompt text still travels as the
-    flag above), so the replace-mode prompt is wrapped in
-    :class:`SystemPromptCustom`.  Without *live*, the values are exactly the
-    ones passed before ``snapshot`` existed: a raw string, or the preset
-    without the key.
-
-    An empty *system_prompt* is accepted: the preset dict will have
-    ``append: ""`` which the SDK treats as no custom suffix.
+    process was given.  Only a dict can carry ``snapshot`` (the SDK sends it
+    on the initialize request; the prompt text still travels as the flag
+    above), so the prompt is wrapped in :class:`SystemPromptCustom`.
+    Without *live*, the value is the raw string passed before ``snapshot``
+    existed.
     """
-    if cross_user_cache:
-        logger.debug("Using SystemPromptPreset for cross-user prompt cache")
-        preset = SystemPromptPreset(
-            type="preset",
-            preset="claude_code",
-            append=system_prompt,
-            exclude_dynamic_sections=True,
-        )
-        if live:
-            preset["snapshot"] = False
-        return preset
     if live:
-        logger.debug("Cross-user prompt cache disabled, using custom prompt")
         return SystemPromptCustom(type="custom", prompt=system_prompt, snapshot=False)
-    logger.debug("Cross-user prompt cache disabled, using raw string")
     return system_prompt
 
 
@@ -5481,11 +5444,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     sid,
                 )
 
-        # When cross-user caching is enabled, use SystemPromptPreset with
-        # exclude_dynamic_sections=True on every turn — including resumed
-        # ones — so all turns share the same static prefix. With the live
-        # prompt, this turn's prompt is the one sent even when resuming a
-        # session that started with another.
+        # With the live prompt, this turn's prompt is the one sent even when
+        # resuming a session that started with another.
         system_prompt_value = _configured_system_prompt_value(system_prompt)
 
         sdk_options = ClaudeAgentOptions(

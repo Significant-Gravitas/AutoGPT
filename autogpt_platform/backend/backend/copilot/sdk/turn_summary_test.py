@@ -219,14 +219,14 @@ class TestCollector:
         tracker = CompactionTracker()
         tracker.on_compact()
         options = ClaudeAgentOptions(
-            system_prompt={"type": "preset", "preset": "claude_code", "append": "abc"},
+            system_prompt="abc",
             allowed_tools=["mcp__copilot__b", "Read", "mcp__copilot__a"],
         )
 
         _finish(c, options=options, compaction=tracker, usage=TurnUsage(cost_usd=0.5))
 
         s = c.summary
-        assert (s.system_prompt_mode, s.system_prompt_chars) == ("preset_append", 3)
+        assert (s.system_prompt_mode, s.system_prompt_chars) == ("replace", 3)
         assert s.system_prompt_sha == short_hash("abc")
         assert (s.tools_allowed, s.tools_builtin) == (3, 1)
         assert s.tools_sha == short_hash("Read\nmcp__copilot__a\nmcp__copilot__b")
@@ -333,27 +333,22 @@ class TestCollector:
         assert "builtin_tools_declared" not in c.summary.model_dump(exclude_none=True)
 
     @pytest.mark.parametrize("live", [True, False])
-    @pytest.mark.parametrize(
-        "cross_user_cache, mode", [(False, "replace"), (True, "preset_append")]
-    )
     def test_finish_reads_the_prompt_in_every_form_a_launch_sends(
-        self, monkeypatch, live, cross_user_cache, mode
+        self, monkeypatch, live
     ):
         monkeypatch.setattr(
             copilot_service, "_cached_prompt_identity", ("v38 prompt", 38)
         )
         prompt = "v38 prompt\nsupplement"
         options = ClaudeAgentOptions(
-            system_prompt=_build_system_prompt_value(
-                prompt, cross_user_cache=cross_user_cache, live=live
-            )
+            system_prompt=_build_system_prompt_value(prompt, live=live)
         )
         c = TurnSummaryCollector("s")
 
         _finish(c, options=options)
 
         s = c.summary
-        assert (s.system_prompt_mode, s.system_prompt_chars) == (mode, len(prompt))
+        assert (s.system_prompt_mode, s.system_prompt_chars) == ("replace", len(prompt))
         assert s.system_prompt_sha == short_hash(prompt)
         assert (s.prompt_name, s.prompt_version) == (
             copilot_service.config.langfuse_prompt_name,
