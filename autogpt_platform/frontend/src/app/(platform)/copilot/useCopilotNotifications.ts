@@ -4,10 +4,10 @@ import { Key } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 import {
-  COPILOT_COMPLETION_NOTIFICATION,
   ORIGINAL_TITLE,
   formatNotificationTitle,
   parseSessionIDs,
+  resolveCompletionNotificationContent,
 } from "./helpers";
 import { useCopilotUIStore } from "./store";
 import { SESSION_LIST_QUERY_KEY } from "./useSessionList";
@@ -116,9 +116,10 @@ export function useCopilotNotifications(activeSessionID: string | null) {
         Notification.permission === "granted" &&
         isUserAway
       ) {
-        showBrowserNotification(COPILOT_COMPLETION_NOTIFICATION.title, {
-          body: COPILOT_COMPLETION_NOTIFICATION.body,
-          icon: COPILOT_COMPLETION_NOTIFICATION.icon,
+        const content = resolveCompletionNotificationContent(notification);
+        showBrowserNotification(content.title, {
+          body: content.body,
+          icon: content.icon,
           sessionID,
         });
       }

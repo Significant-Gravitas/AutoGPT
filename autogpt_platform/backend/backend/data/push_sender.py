@@ -25,8 +25,23 @@ DEBOUNCE_SECONDS = 5.0
 # multiple WS replicas; acceptable since debounce is a best-effort UX nicety.
 _user_last_push = TTLCache[str, float](maxsize=10_000, ttl=DEBOUNCE_SECONDS)
 
-# Fields to forward from the notification payload to the push message
-_FORWARDED_FIELDS = ("session_id", "step", "status", "graph_id", "execution_id")
+# Fields to forward from the notification payload to the push message.
+# Beyond the routing fields, the rich display fields (title/body/icon/url)
+# and their structured context let the service worker render who did what
+# without another fetch.
+_FORWARDED_FIELDS = (
+    "session_id",
+    "step",
+    "status",
+    "graph_id",
+    "execution_id",
+    "title",
+    "body",
+    "icon",
+    "url",
+    "expert_name",
+    "session_title",
+)
 
 
 def _extract_status_code(e: WebPushException) -> int | None:

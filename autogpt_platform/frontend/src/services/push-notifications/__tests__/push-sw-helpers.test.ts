@@ -44,6 +44,12 @@ function loadServiceWorkerHelpers() {
     ) => boolean;
     _clientUrls: Record<string, string>;
     _effectiveUrl: (client: { id: string; url: string }) => string;
+    isSafeRelativeUrl: (value: unknown) => boolean;
+    resolveIconUrl: (icon: unknown) => string | null;
+    resolvePushContent: (
+      data: Record<string, unknown>,
+      fallback: { title: string; body: string; url: string },
+    ) => { title: string; body: string; icon: string; url: string };
   };
 }
 
@@ -196,5 +202,148 @@ describe("push-sw notifications toggle", () => {
 
   it("defaults to enabled so a freshly-restarted SW still delivers", () => {
     expect(sw._notificationsEnabled).toBe(true);
+  });
+});
+
+describe("push-sw resolveIconUrl", () => {
+  const sw = loadServiceWorkerHelpers();
+
+  it("resolves a site-relative avatar against the SW origin", () => {
+    expect(sw.resolveIconUrl("/avatars/maria.webp")).toBe(
+      "https://example.com/avatars/maria.webp",
+    );
+  });
+
+  it("accepts an absolute https avatar URL", () => {
+    expect(sw.resolveIconUrl("https://cdn.example.com/a/m.png")).toBe(
+      "https://cdn.example.com/a/m.png",
+    );
+  });
+
+  it("accepts an https avatar URL on any host — the backend is trusted for icon hosts", () => {
+    expect(sw.resolveIconUrl("https://evil.example.com/m.png")).toBe(
+      "https://evil.example.com/m.png",
+    );
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["null", null],
+    ["empty", ""],
+    ["non-string", 42],
+    ["http URL", "http://cdn.example.com/a/m.png"],
+    ["data URL", "data:image/png;base64,abc"],
+    ["javascript URL", "javascript:alert(1)"],
+    ["protocol-relative URL", "//evil.example.com/m.png"],
+  ])("returns null for %s", (_label, icon) => {
+    expect(sw.resolveIconUrl(icon)).toBeNull();
+  });
+});
+
+describe("push-sw isSafeRelativeUrl", () => {
+  const sw = loadServiceWorkerHelpers();
+
+  it("accepts a same-origin relative path with query", () => {
+    expect(sw.isSafeRelativeUrl("/copilot?sessionId=sess-1")).toBe(true);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["absolute https URL", "https://example.com/copilot"],
+    ["protocol-relative URL", "//example.com/copilot"],
+    ["bare path", "copilot"],
+    ["over-long path", `/${"a".repeat(2048)}`],
+  ])("rejects %s", (_label, url) => {
+    expect(sw.isSafeRelativeUrl(url)).toBe(false);
+  });
+});
+
+describe("push-sw resolvePushContent", () => {
+  const sw = loadServiceWorkerHelpers();
+  const fallback = {
+    title: "AutoGPT",
+    body: "Task completed",
+    url: "/copilot",
+  };
+
+  it("prefers server-provided title, body, icon and url", () => {
+    const content = sw.resolvePushContent(
+      {
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-1",
+        title: "Maria",
+        body: "Finished: Q3 revenue report",
+        icon: "/avatars/maria.webp",
+        url: "/copilot?sessionId=sess-1",
+      },
+      fallback,
+    );
+    expect(content).toEqual({
+      title: "Maria",
+      body: "Finished: Q3 revenue report",
+      icon: "https://example.com/avatars/maria.webp",
+      url: "/copilot?sessionId=sess-1",
+    });
+  });
+
+  it("falls back per-field when the payload carries no rich content", () => {
+    const content = sw.resolvePushContent(
+      {
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-1",
+      },
+      fallback,
+    );
+    expect(content).toEqual({
+      title: "AutoGPT",
+      body: "Task completed",
+      icon: "/notification-icon-192.png",
+      url: "/copilot?sessionId=sess-1",
+    });
+  });
+
+  it("builds the session url from session_id when the server url is unsafe", () => {
+    const content = sw.resolvePushContent(
+      {
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-1",
+        url: "https://evil.example.com/phish",
+      },
+      fallback,
+    );
+    expect(content.url).toBe("/copilot?sessionId=sess-1");
+  });
+
+  it("uses the default icon when the server icon is unsafe", () => {
+    const content = sw.resolvePushContent(
+      {
+        type: "copilot_completion",
+        event: "session_completed",
+        title: "Maria",
+        body: "Finished: Q3 revenue report",
+        icon: "javascript:alert(1)",
+      },
+      fallback,
+    );
+    expect(content.title).toBe("Maria");
+    expect(content.icon).toBe("/notification-icon-192.png");
+  });
+
+  it("renders rich content for unknown notification types too", () => {
+    const content = sw.resolvePushContent(
+      {
+        type: "future_type",
+        event: "something",
+        title: "Someone",
+        body: "Did something",
+      },
+      { title: "AutoGPT Notification", body: "something", url: "/" },
+    );
+    expect(content.title).toBe("Someone");
+    expect(content.body).toBe("Did something");
+    expect(content.url).toBe("/");
   });
 });

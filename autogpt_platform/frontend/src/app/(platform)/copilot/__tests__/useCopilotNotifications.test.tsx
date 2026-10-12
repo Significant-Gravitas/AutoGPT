@@ -108,4 +108,29 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
       expect(NotificationCtor).not.toHaveBeenCalled();
     });
   });
+
+  it("renders the backend-composed rich content when the payload carries it", async () => {
+    renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+    expect(capturedHandler).not.toBeNull();
+
+    act(() => {
+      capturedHandler!({
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-3",
+        status: "completed",
+        title: "Maria",
+        body: "Finished: Q3 revenue report",
+        icon: "/avatars/maria.webp",
+      });
+    });
+
+    await waitFor(() => {
+      expect(NotificationCtor).toHaveBeenCalledTimes(1);
+    });
+    expect(NotificationCtor).toHaveBeenCalledWith("Maria", {
+      body: "Finished: Q3 revenue report",
+      icon: "/avatars/maria.webp",
+    });
+  });
 });

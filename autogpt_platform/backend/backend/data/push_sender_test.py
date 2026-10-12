@@ -88,6 +88,32 @@ class TestBuildPushPayload:
         assert parsed["graph_id"] == "graph-1"
         assert parsed["status"] == "completed"
 
+    def test_forwards_rich_display_fields(self):
+        payload = _make_payload(
+            type="copilot_completion",
+            event="session_completed",
+            session_id="sess-1",
+            status="completed",
+            title="Maria",
+            body="Finished: Q3 revenue report",
+            icon="/avatars/maria.webp",
+            url="/copilot?sessionId=sess-1",
+            expert_name="Maria",
+            session_title="Q3 revenue report",
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        import json
+
+        parsed = json.loads(result)
+        assert parsed["title"] == "Maria"
+        assert parsed["body"] == "Finished: Q3 revenue report"
+        assert parsed["icon"] == "/avatars/maria.webp"
+        assert parsed["url"] == "/copilot?sessionId=sess-1"
+        assert parsed["expert_name"] == "Maria"
+        assert parsed["session_title"] == "Q3 revenue report"
+
     def test_excludes_unknown_fields(self):
         payload = _make_payload(
             custom_field="should-not-appear",

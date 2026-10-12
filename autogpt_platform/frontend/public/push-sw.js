@@ -38,6 +38,60 @@ function getNotificationConfig(data) {
   };
 }
 
+var DEFAULT_ICON = "/notification-icon-192.png";
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.length > 0;
+}
+
+// Same rule as the CLIENT_URL guard below: a same-origin relative path.
+// Absolute URLs are never accepted for navigation — the click target must
+// stay inside the app.
+function isSafeRelativeUrl(value) {
+  return (
+    typeof value === "string" &&
+    value.startsWith("/") &&
+    !value.startsWith("//") &&
+    value.length <= 2048
+  );
+}
+
+// Resolve a server-provided icon to an absolute URL the notification can
+// load, or null to use the default. Accepts the same values the expert API
+// stores: site-relative paths and absolute https URLs. Anything else —
+// notably data:, javascript: and protocol-relative URLs — is refused.
+function resolveIconUrl(icon) {
+  if (!isNonEmptyString(icon)) return null;
+  try {
+    if (isSafeRelativeUrl(icon)) {
+      return new URL(icon, self.location.origin).href;
+    }
+    var parsed = new URL(icon);
+    if (parsed.protocol === "https:") return parsed.href;
+  } catch (_) {
+    // fall through to null
+  }
+  return null;
+}
+
+// Merge server-provided rich content over the static fallback map. Any
+// notification type whose push payload carries title/body/icon/url renders
+// richly; older payloads without them keep the hardcoded copy.
+function resolvePushContent(data, fallback) {
+  var url = fallback.url;
+  if (isSafeRelativeUrl(data.url)) {
+    url = data.url;
+  } else if (data.type === "copilot_completion" && data.session_id) {
+    url = "/copilot?sessionId=" + data.session_id;
+  }
+  return {
+    title: isNonEmptyString(data.title) ? data.title : fallback.title,
+    body: isNonEmptyString(data.body) ? data.body : fallback.body,
+    icon: resolveIconUrl(data.icon) || DEFAULT_ICON,
+    url: url,
+  };
+}
+
 self.addEventListener("install", function () {
   self.skipWaiting();
 });
@@ -116,11 +170,8 @@ self.addEventListener("push", function (event) {
   }
 
   var config = getNotificationConfig(data);
-
-  var targetUrl = config.url;
-  if (data.type === "copilot_completion" && data.session_id) {
-    targetUrl = "/copilot?sessionId=" + data.session_id;
-  }
+  var content = resolvePushContent(data, config);
+  var targetUrl = content.url;
 
   event.waitUntil(
     self.clients
@@ -151,15 +202,15 @@ self.addEventListener("push", function (event) {
         var tag = data.type + ":" + data.event + ":" + (data.id || Date.now());
 
         var options = {
-          body: config.body,
-          icon: "/notification-icon-192.png",
+          body: content.body,
+          icon: content.icon,
           badge: "/notification-badge-96.png",
           tag: tag,
           data: Object.assign({ url: targetUrl }, data),
           renotify: true,
         };
 
-        return self.registration.showNotification(config.title, options);
+        return self.registration.showNotification(content.title, options);
       }),
   );
 });
