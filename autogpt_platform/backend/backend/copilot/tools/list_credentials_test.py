@@ -205,6 +205,7 @@ class TestListUserCredentialsTool:
             server("mcp-1", "https://mcp.example.com:8443/notion?token=hidden#x"),
             server("mcp-2", "https://mcp.example.com/slack"),
             server("mcp-3", "mcp.example.com/linear"),
+            server("mcp-4", "http://user:pw@[::1]:9000/mcp?key=hidden"),
         ]
         with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
             result = await tool._execute(user_id="user-1", session=mock_session)
@@ -213,6 +214,7 @@ class TestListUserCredentialsTool:
             "https://mcp.example.com:8443/notion",
             "https://mcp.example.com/slack",
             "mcp.example.com/linear",
+            "http://[::1]:9000/mcp",
         ]
         assert "hidden" not in result.model_dump_json()
 

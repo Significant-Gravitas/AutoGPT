@@ -1,6 +1,7 @@
 """List the user's connected integration credentials (metadata only, no secrets)."""
 
 import asyncio
+import ipaddress
 import logging
 import re
 import weakref
@@ -207,13 +208,25 @@ def _safe_server_url(raw: str) -> str | None:
         port = parts.port
     except ValueError:
         return None
-    if not hostname or not _HOSTNAME_RE.fullmatch(hostname):
+    if not hostname or not _is_plain_host(hostname):
         return None
     if any(ch.isspace() for ch in parts.path):
         return None
-    netloc = f"{hostname}:{port}" if port else hostname
+    host = f"[{hostname}]" if ":" in hostname else hostname
+    netloc = f"{host}:{port}" if port else host
     prefix = f"{parts.scheme}://" if has_scheme and parts.scheme else ""
     return f"{prefix}{netloc}{parts.path}"
+
+
+def _is_plain_host(hostname: str) -> bool:
+    """A DNS name or an IP literal, nothing an embedded secret could hide in."""
+    if _HOSTNAME_RE.fullmatch(hostname):
+        return True
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return True
 
 
 def _build_inventory_message(
