@@ -66,6 +66,16 @@ def library_db():
     return library_db
 
 
+def library_batch_db():
+    if db.is_connected():
+        from backend.api.features.library import _get_many
+
+        return _get_many
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def store_db():
     if db.is_connected():
         from backend.api.features.store import db as _store_db
@@ -142,6 +152,36 @@ def user_db():
         user_db = get_database_manager_async_client()
 
     return user_db
+
+
+def onboarding_role_db():
+    if db.is_connected():
+        from backend.data import onboarding_role
+
+        return onboarding_role
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def onboarding_audience_db():
+    if db.is_connected():
+        from backend.data import onboarding_audience
+
+        return onboarding_audience
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def onboarding_dump_db():
+    if db.is_connected():
+        from backend.api.features.onboarding_dump import db as _onboarding_dump_db
+
+        return _onboarding_dump_db
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
 
 
 def understanding_db():

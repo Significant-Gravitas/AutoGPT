@@ -18,10 +18,11 @@ def admission(mocker):
     payments = mocker.patch.object(
         rate_limit, "evaluate_feature_flag", new=AsyncMock(return_value=(True, True))
     )
-    tier_lookup = mocker.patch.object(
+    tier_lookup = AsyncMock(return_value=SubscriptionTier.NO_TIER)
+    mocker.patch.object(
         rate_limit,
-        "get_user_subscription_tier",
-        new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
+        "user_db",
+        return_value=MagicMock(get_user_subscription_tier=tier_lookup),
     )
     redis = MagicMock()
     redis.eval = AsyncMock(return_value=0)

@@ -173,17 +173,24 @@ def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:
     )
 
 
+@pytest.fixture
+def record_consent(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    database = mocker.patch("backend.api.features.user.routes.user_db").return_value
+    record = AsyncMock()
+    database.record_signup_consent = record
+    return record
+
+
 def test_record_user_consent_route(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
+    record_consent: AsyncMock,
 ) -> None:
     """Records for the caller's own account, whatever the body claims, and
     answers with the four consent fields only."""
     opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=timezone.utc)
-    record = mocker.patch(
-        "backend.api.features.user.routes.record_signup_consent",
-        return_value=_consented_user(test_user_id, opted_out_at),
-    )
+    record = record_consent
+    record.return_value = _consented_user(test_user_id, opted_out_at)
 
     response = client.post(
         "/auth/user/consent",
@@ -205,14 +212,11 @@ def test_record_user_consent_route(
 
 
 def test_record_user_consent_route_answers_404_for_a_deleted_account(
-    mocker: pytest_mock.MockFixture, mock_jwt_user
+    mocker: pytest_mock.MockFixture, mock_jwt_user, record_consent: AsyncMock
 ) -> None:
     """Through the real application, whose handlers turn NotFoundError into a
     404 rather than a 500."""
-    mocker.patch(
-        "backend.api.features.user.routes.record_signup_consent",
-        new=AsyncMock(side_effect=NotFoundError("User not found with ID: x")),
-    )
+    record_consent.side_effect = NotFoundError("User not found with ID: x")
     real_app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     try:
         response = fastapi.testclient.TestClient(real_app).post(
@@ -230,11 +234,10 @@ def test_record_user_consent_route_accepts_a_recognized_version(
     mocker: pytest_mock.MockFixture,
     test_user_id: str,
     terms_version: str,
+    record_consent: AsyncMock,
 ) -> None:
-    record = mocker.patch(
-        "backend.api.features.user.routes.record_signup_consent",
-        return_value=_consented_user(test_user_id, None),
-    )
+    record = record_consent
+    record.return_value = _consented_user(test_user_id, None)
 
     response = client.post(
         "/auth/user/consent",
@@ -295,8 +298,9 @@ def test_record_user_consent_route_accepts_a_recognized_version(
 def test_record_user_consent_route_rejects_an_invalid_body(
     mocker: pytest_mock.MockFixture,
     body: dict[str, str | bool] | None,
+    record_consent: AsyncMock,
 ) -> None:
-    record = mocker.patch("backend.api.features.user.routes.record_signup_consent")
+    record = record_consent
 
     response = client.post("/auth/user/consent", json=body)
 

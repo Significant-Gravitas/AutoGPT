@@ -5,6 +5,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
 import backend.api.features.library._get_many as get_many
+from backend.data.db_accessors import library_batch_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
@@ -116,7 +117,7 @@ async def get_library_agents_by_ids(
     """
     Get several library agents at once, as `GET /agents/{id}` would return each.
     """
-    return await get_many.get_library_agents_by_ids(ids=ids, user_id=user_id)
+    return await library_batch_db().get_library_agents_by_ids(ids=ids, user_id=user_id)
 
 
 @router.get("/{library_agent_id}", summary="Get Library Agent")

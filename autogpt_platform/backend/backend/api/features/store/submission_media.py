@@ -1,12 +1,11 @@
 from collections.abc import AsyncIterator, Mapping
 
 import aiohttp
-import prisma.enums
-import prisma.models
 from autogpt_libs.auth import User
 from gcloud.aio import storage as async_storage
 from google.cloud import storage as gcs_storage
 
+from backend.data.db_accessors import orgs_db
 from backend.util.gcs_utils import generate_iam_signed_url, is_not_found_error
 from backend.util.settings import Settings
 
@@ -30,24 +29,7 @@ async def can_read(user: User, owner_user_id: str) -> bool:
     """
     if user.user_id == owner_user_id or user.role == "admin":
         return True
-    shared_membership = await prisma.models.OrgMember.prisma().find_first(
-        where={
-            "userId": user.user_id,
-            "status": prisma.enums.OrgMemberStatus.ACTIVE,
-            "Org": {
-                "is": {
-                    "deletedAt": None,
-                    "Members": {
-                        "some": {
-                            "userId": owner_user_id,
-                            "status": prisma.enums.OrgMemberStatus.ACTIVE,
-                        }
-                    },
-                }
-            },
-        }
-    )
-    return shared_membership is not None
+    return await orgs_db().users_share_active_org(user.user_id, owner_user_id)
 
 
 def url(user_id: str, media_type: str, filename: str) -> str:

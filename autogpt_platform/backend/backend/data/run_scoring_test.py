@@ -3,7 +3,7 @@ first-ever success outranks everything."""
 
 from prisma.enums import AgentExecutionStatus
 
-from backend.notifications.scoring import ANOMALY_FACTOR, compute_score
+from backend.data.run_scoring import ANOMALY_FACTOR, compute_score
 
 
 def _score(status, **over):

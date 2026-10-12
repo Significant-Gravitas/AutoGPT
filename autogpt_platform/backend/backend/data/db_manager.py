@@ -9,6 +9,7 @@ from backend.api.features.experts import experts_db
 from backend.api.features.experts import routine_jobs as experts_routine_jobs
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.api.features.experts import spend_approval as experts_spend_approval
+from backend.api.features.library._get_many import get_library_agents_by_ids
 from backend.api.features.library.db import (
     add_store_agent_to_library,
     bulk_move_agents_to_folder,
@@ -40,7 +41,12 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
-from backend.api.features.orgs.db import get_user_default_team, resolve_default_tenancy
+from backend.api.features.onboarding_dump import db as onboarding_dump_db
+from backend.api.features.orgs.db import (
+    get_user_default_team,
+    resolve_default_tenancy,
+    users_share_active_org,
+)
 from backend.api.features.search.embeddings import (
     cleanup_orphaned_embeddings,
     delete_content_embedding,
@@ -151,6 +157,8 @@ from backend.data.human_review import (
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.onboarding_audience import queue_onboarding_role
+from backend.data.onboarding_role import save_onboarding_role
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
@@ -188,6 +196,8 @@ from backend.data.user import (
     get_user_subscription_tier,
     heal_orphaned_auth_identities,
     is_marketing_opted_out,
+    record_marketing_opt_out_by_email,
+    record_signup_consent,
     release_welcome_email,
     set_last_briefing_at,
     set_user_credentials,
@@ -380,6 +390,8 @@ class DatabaseManager(AppService):
 
     # ============ User + Integrations ============ #
     get_user_by_id = _(get_user_by_id)
+    record_signup_consent = _(record_signup_consent)
+    record_marketing_opt_out_by_email = _(record_marketing_opt_out_by_email)
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
@@ -429,6 +441,7 @@ class DatabaseManager(AppService):
     create_graph_in_library = _(create_graph_in_library)
     create_library_agent = _(create_library_agent)
     get_library_agent = _(get_library_agent)
+    get_library_agents_by_ids = _(get_library_agents_by_ids)
     get_library_agent_by_graph_id = _(get_library_agent_by_graph_id)
     update_library_agent = _(update_library_agent)
     update_graph_in_library = _(update_graph_in_library)
@@ -454,6 +467,7 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
+    mark_failed = _(onboarding_dump_db.mark_failed)
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)
@@ -548,6 +562,7 @@ class DatabaseManager(AppService):
     # ============ Orgs ============ #
     get_user_default_team = _(get_user_default_team)
     resolve_default_tenancy = _(resolve_default_tenancy)
+    users_share_active_org = _(users_share_active_org)
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
@@ -655,6 +670,7 @@ class DatabaseManager(AppService):
     add_chat_messages_batch = _(chat_db.add_chat_messages_batch)
     append_expert_run_message = _(chat_db.append_expert_run_message)
     get_user_chat_sessions = _(chat_db.get_user_chat_sessions)
+    list_recent_chat_sessions = _(chat_db.list_recent_chat_sessions)
     set_session_pending_question = _(chat_db.set_session_pending_question)
     clear_session_pending_question = _(chat_db.clear_session_pending_question)
     get_sessions_with_pending_question = _(chat_db.get_sessions_with_pending_question)
@@ -709,6 +725,9 @@ class DatabaseManager(AppService):
     is_marketing_opted_out = _(is_marketing_opted_out)
     release_welcome_email = _(release_welcome_email)
     update_briefing_content = _(update_briefing_content)
+
+    save_onboarding_role = _(save_onboarding_role)
+    queue_onboarding_role = _(queue_onboarding_role)
 
 
 class DatabaseManagerClient(AppServiceClient):
@@ -830,6 +849,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ User + Integrations ============ #
     get_user_by_id = d.get_user_by_id
+    record_signup_consent = d.record_signup_consent
+    record_marketing_opt_out_by_email = d.record_marketing_opt_out_by_email
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
     get_subscription_trial = d.get_subscription_trial
@@ -888,6 +909,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     is_marketing_opted_out = d.is_marketing_opted_out
     release_welcome_email = d.release_welcome_email
 
+    save_onboarding_role = d.save_onboarding_role
+    queue_onboarding_role = d.queue_onboarding_role
+
     # ============ Morning Briefing ============ #
     append_plain_session_message = d.append_plain_session_message
     create_briefing = d.create_briefing
@@ -903,6 +927,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_graph_in_library = d.create_graph_in_library
     create_library_agent = d.create_library_agent
     get_library_agent = d.get_library_agent
+    get_library_agents_by_ids = d.get_library_agents_by_ids
     get_library_agent_by_graph_id = d.get_library_agent_by_graph_id
     update_library_agent = d.update_library_agent
     update_graph_in_library = d.update_graph_in_library
@@ -929,6 +954,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = d.increment_onboarding_runs
+    mark_failed = d.mark_failed
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = d.cleanup_expired_oauth_tokens
@@ -1002,6 +1028,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     find_server_link_owner = d.find_server_link_owner
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
+    users_share_active_org = d.users_share_active_org
     find_user_link_owner = d.find_user_link_owner
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
@@ -1084,6 +1111,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     append_expert_run_message = d.append_expert_run_message
     get_library_agent_id_by_graph_id = d.get_library_agent_id_by_graph_id
     get_user_chat_sessions = d.get_user_chat_sessions
+    list_recent_chat_sessions = d.list_recent_chat_sessions
     set_session_pending_question = d.set_session_pending_question
     clear_session_pending_question = d.clear_session_pending_question
     get_sessions_with_pending_question = d.get_sessions_with_pending_question

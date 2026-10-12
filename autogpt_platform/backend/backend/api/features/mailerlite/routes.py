@@ -21,10 +21,8 @@ import logging
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
-from backend.data.user import (
-    MARKETING_OPT_OUT_SOURCE_EMAIL_UNSUBSCRIBE,
-    record_marketing_opt_out_by_email,
-)
+from backend.data.db_accessors import user_db
+from backend.data.user import MARKETING_OPT_OUT_SOURCE_EMAIL_UNSUBSCRIBE
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -93,7 +91,7 @@ async def mailerlite_webhook(request: Request) -> Response:
         raise HTTPException(status_code=400, detail="Invalid payload")
 
     for address in payload.unsubscribed_addresses():
-        user_id = await record_marketing_opt_out_by_email(
+        user_id = await user_db().record_marketing_opt_out_by_email(
             address, MARKETING_OPT_OUT_SOURCE_EMAIL_UNSUBSCRIBE
         )
         if user_id:

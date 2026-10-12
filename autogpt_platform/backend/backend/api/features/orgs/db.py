@@ -4,7 +4,9 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 
+from prisma.enums import OrgMemberStatus
 from prisma.errors import UniqueViolationError
+from prisma.models import OrgMember
 
 from backend.data.db import prisma, transaction
 from backend.data.org_migration import (
@@ -17,6 +19,27 @@ from backend.util.exceptions import NotFoundError
 from .model import OrgAliasResponse, OrgMemberResponse, OrgResponse, UpdateOrgData
 
 logger = logging.getLogger(__name__)
+
+
+async def users_share_active_org(user_id: str, other_user_id: str) -> bool:
+    membership = await OrgMember.prisma().find_first(
+        where={
+            "userId": user_id,
+            "status": OrgMemberStatus.ACTIVE,
+            "Org": {
+                "is": {
+                    "deletedAt": None,
+                    "Members": {
+                        "some": {
+                            "userId": other_user_id,
+                            "status": OrgMemberStatus.ACTIVE,
+                        }
+                    },
+                }
+            },
+        }
+    )
+    return membership is not None
 
 
 # ---------------------------------------------------------------------------

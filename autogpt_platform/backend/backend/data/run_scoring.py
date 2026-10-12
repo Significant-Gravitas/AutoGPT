@@ -1,4 +1,4 @@
-"""Interestingness scoring for finished runs.
+"""Database-backed interestingness scoring for finished runs.
 
 Each completed run is scored once, at completion, from signals the platform
 already has. Scoring at completion is what lets Briefing assembly be a cheap

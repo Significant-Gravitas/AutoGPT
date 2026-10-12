@@ -29,11 +29,11 @@ from pydantic import BaseModel
 
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import stream_registry
-from backend.copilot.db import get_chat_messages_paginated
 from backend.copilot.model import ChatMessage, ChatSession, upsert_chat_session
 from backend.copilot.response_model import StreamBaseResponse, StreamError, StreamStatus
 from backend.copilot.stream_checkpoint import canonical_digest, canonical_rows
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
+from backend.data.db_accessors import chat_db
 from backend.data.redis_client import get_redis_async
 
 from .fold import fold_rows
@@ -114,7 +114,7 @@ async def persisted_session(
 
 async def persisted_rows(session: ChatSession) -> list[dict[str, Any]]:
     """The session's rows as ``GET /sessions/{id}`` returns them."""
-    page = await get_chat_messages_paginated(
+    page = await chat_db().get_chat_messages_paginated(
         session.session_id, limit=200, user_id=session.user_id
     )
     assert page is not None, "the session was never persisted"
