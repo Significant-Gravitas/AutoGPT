@@ -10,6 +10,7 @@ export const BOARD_MUTATION_KEY = ["copilot", "board", "mutation"];
 export const BOARD_MOVE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "move"];
 export const BOARD_COLUMNS_MUTATION_KEY = [...BOARD_MUTATION_KEY, "columns"];
 export const BOARD_CREATE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "create"];
+export const BOARD_PROJECT_MUTATION_KEY = [...BOARD_MUTATION_KEY, "project"];
 export const MAX_COLUMNS = 6;
 export const MAX_COLUMN_NAME = 40;
 export const MAX_BOARD_NAME = 40;
@@ -222,6 +223,13 @@ export function patchCard(
     sessions: data.sessions.map((card) =>
       card.id === cardId ? { ...card, ...patch } : card,
     ),
+  };
+}
+
+export function removeCard(data: BoardResponse, cardId: string): BoardResponse {
+  return {
+    ...data,
+    sessions: data.sessions.filter((card) => card.id !== cardId),
   };
 }
 

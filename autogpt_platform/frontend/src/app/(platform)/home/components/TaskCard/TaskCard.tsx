@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Card } from "../../board-helpers";
+import { MoveToProjectMenu } from "../MoveToProjectMenu/MoveToProjectMenu";
 import { CardFilesPopover } from "./components/CardFilesPopover/CardFilesPopover";
 import { useTaskCard } from "./useTaskCard";
 
@@ -39,18 +40,24 @@ export function TaskCard({ card, onOpen, sortable, isOverlay = false }: Props) {
       )}
     >
       {/* The drag handle is this button, whose ::after covers the card. The
-          files popover sits above it and outside it, so its clicks and the
-          viewer modal's never start a drag. */}
+          files popover and the card menu sit above it and outside it, so
+          their clicks and the viewer modal's never start a drag. */}
       <button
         ref={sortable?.setActivatorNodeRef}
         type="button"
         {...sortable?.attributes}
         {...sortable?.listeners}
         onClick={() => onOpen(card.id)}
-        className="block w-full truncate text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-zinc-800"
+        className="block w-full truncate pr-6 text-left text-sm font-medium text-zinc-900 after:absolute after:inset-0 after:rounded-lg focus-visible:outline-none focus-visible:after:ring-2 focus-visible:after:ring-zinc-800"
       >
         {title}
       </button>
+      {!isOverlay && (
+        <MoveToProjectMenu
+          cardId={card.id}
+          triggerClassName="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-md bg-white text-zinc-500 opacity-0 transition-opacity hover:bg-zinc-100 hover:text-zinc-800 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-800 group-focus-within:opacity-100 group-hover:opacity-100 data-[state=open]:opacity-100 [@media(hover:none)]:opacity-100"
+        />
+      )}
       {stateLine && (
         <Text variant="small" tone="muted" className="mt-0.5 truncate">
           {stateLine}

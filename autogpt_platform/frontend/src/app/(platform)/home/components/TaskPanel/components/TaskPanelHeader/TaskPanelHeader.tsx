@@ -20,6 +20,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { Card } from "../../../../board-helpers";
 import { AssigneePicker } from "../../../AssigneePicker/AssigneePicker";
+import { MoveToProjectMenu } from "../../../MoveToProjectMenu/MoveToProjectMenu";
 import { AssigneeButton } from "./components/AssigneeButton/AssigneeButton";
 import { StatusSelect } from "./components/StatusSelect/StatusSelect";
 import { useTaskPanelHeader } from "./useTaskPanelHeader";
@@ -151,6 +152,12 @@ export function TaskPanelHeader({
               expert={chatExpert}
               showComputer={false}
               className="m-0 border-0 p-0 shadow-none"
+            />
+          )}
+          {card && (
+            <MoveToProjectMenu
+              cardId={sessionId}
+              triggerClassName={ICON_BUTTON_CLASS}
             />
           )}
           <Tooltip>
