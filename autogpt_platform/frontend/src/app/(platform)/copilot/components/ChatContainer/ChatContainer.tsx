@@ -13,6 +13,7 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
+import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -117,9 +118,9 @@ export interface ChatContainerProps {
   isKickoffStarting?: boolean;
   /** Follow a turn the server started, e.g. after an approval card is answered. */
   onBackendTurn?: () => void;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports; the thread header clears them. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports; the thread header lines up with them. */
+  floatingControls?: FloatingControls;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -161,7 +162,7 @@ export const ChatContainer = ({
   isAdoptingExpertSession,
   isKickoffStarting,
   onBackendTurn,
-  hasFloatingControls,
+  floatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -388,7 +389,7 @@ export const ChatContainer = ({
                   bottomContentPadding={usageCardHeight}
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
-                  hasFloatingControls={hasFloatingControls}
+                  floatingControls={floatingControls}
                 />
               </NewChatOnboarding>
               {archivedExpertIdentity ? (
