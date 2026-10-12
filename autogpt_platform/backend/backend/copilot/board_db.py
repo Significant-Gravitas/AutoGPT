@@ -63,7 +63,8 @@ _EXTRAS_SQL = (
     f'{_STARTED_SQL} AS "started", '
     f'{_HAS_MESSAGES_SQL} AS "has_messages", '
     "("
-    "jsonb_typeof(cs.\"metadata\"->'pending_question') = 'object' "
+    # A missing key makes jsonb_typeof NULL, and NULL OR FALSE stays NULL.
+    "COALESCE(jsonb_typeof(cs.\"metadata\"->'pending_question') = 'object', FALSE) "
     "OR EXISTS ("
     'SELECT 1 FROM {schema_prefix}"PendingHumanReview" r '
     'WHERE r."chatSessionId" = cs."id" AND r."status" = \'WAITING\''
