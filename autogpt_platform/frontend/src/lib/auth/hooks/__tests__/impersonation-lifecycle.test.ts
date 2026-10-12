@@ -19,6 +19,11 @@ const actions = vi.hoisted(() => ({
   serverLogout: vi.fn(),
 }));
 vi.mock("../../actions", () => actions);
+const reloadPage = vi.hoisted(() => vi.fn());
+vi.mock("../../helpers", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../helpers")>()),
+  reloadPage,
+}));
 vi.mock("@/lib/react-query/queryClient", () => ({
   getQueryClient: () => ({ clear: vi.fn() }),
 }));
@@ -148,9 +153,8 @@ describe("admin impersonation follows the session that chose it", () => {
 
   it("is dropped from this tab when another tab signs in as someone else", async () => {
     await signInTab(admin);
-    // This tab's own copy; the other tab's sign-in already cleared the
-    // shared cookie and announced it.
-    ImpersonationSession.set({ target: "user-a", owner: admin.id });
+    // Acting as user-a until the other tab's sign-in clears it everywhere.
+    ImpersonationState.set("user-a", admin.id);
     expect(getSystemHeaders()).toEqual({ [ACT_AS]: "user-a" });
 
     storageEvent("impersonation-cleared");
@@ -267,7 +271,7 @@ describe("starting up with a session the backend no longer accepts", () => {
   it("sends a protected page to sign in", async () => {
     const router = await startUpOn("/library", "/login?next=%2Flibrary");
 
-    expect(router.push).toHaveBeenCalledWith("/login?next=%2Flibrary");
+    expect(router.replace).toHaveBeenCalledWith("/login?next=%2Flibrary");
     expect(useAuthStore.getState()).toMatchObject({
       user: null,
       isUserLoading: false,
@@ -279,14 +283,14 @@ describe("starting up with a session the backend no longer accepts", () => {
 
     const router = await startUpOn("/library", "/login?next=%2Flibrary");
 
-    expect(router.push).toHaveBeenCalledWith("/login?next=%2Flibrary");
+    expect(router.replace).toHaveBeenCalledWith("/login?next=%2Flibrary");
     expect(ImpersonationState.read()).toBeNull();
   });
 
   it("leaves a public page where it is", async () => {
     const router = await startUpOn("/marketplace");
 
-    expect(router.push).not.toHaveBeenCalled();
+    expect(router.replace).not.toHaveBeenCalled();
     expect(useAuthStore.getState().isUserLoading).toBe(false);
   });
 });
@@ -419,5 +423,36 @@ describe("signing out", () => {
       "Signed out, but couldn't disconnect the WebSocket:",
       expect.any(Error),
     );
+  });
+});
+
+describe("another tab starts impersonating someone else", () => {
+  function changedInAnotherTab() {
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "impersonation-changed",
+        newValue: String(Math.random()),
+      }),
+    );
+  }
+
+  it("reloads the owning admin's tab so its page matches the new target", async () => {
+    await signInTab(admin);
+    ImpersonationState.set("new-target", admin.id);
+    reloadPage.mockClear();
+
+    changedInAnotherTab();
+
+    expect(reloadPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a tab signed in as someone else alone", async () => {
+    await signInTab(otherUser);
+    ImpersonationState.set("new-target", admin.id);
+    reloadPage.mockClear();
+
+    changedInAnotherTab();
+
+    expect(reloadPage).not.toHaveBeenCalled();
   });
 });

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { getPostV2NotifyImpersonationStartMockHandler200 } from "@/app/api/__generated__/endpoints/admin/admin.msw";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { User } from "@/lib/auth/types";
-import { ImpersonationState } from "@/lib/impersonation";
+import { ImpersonationCookie, ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import { act, renderHook, waitFor } from "@/tests/integrations/test-utils";
 
@@ -151,6 +151,23 @@ describe("useAdminImpersonation", () => {
     expect(apiHit).not.toHaveBeenCalled();
     expect(setSpy).not.toHaveBeenCalled();
     expect(reloadMock).not.toHaveBeenCalled();
+  });
+
+  test("shows the active impersonation once the admin is known after a reload", async () => {
+    // The reload that starts impersonation comes back before auth has loaded.
+    useAuthStore.setState({ user: null });
+    // Stored directly: this file stubs ImpersonationState.set.
+    ImpersonationCookie.set({ target: TARGET_USER_ID, owner: "admin-1" });
+
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+    expect(result.current.isImpersonating).toBe(false);
+
+    act(() => {
+      useAuthStore.setState({ user: { id: "admin-1", role: "admin" } as User });
+    });
+
+    expect(result.current.impersonatedUserId).toBe(TARGET_USER_ID);
+    expect(result.current.isImpersonating).toBe(true);
   });
 
   test("drops a re-entrant second start so only one audit alert is sent", async () => {

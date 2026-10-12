@@ -21,6 +21,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  *      until somebody signs in again;
  *  (c) no stored target (cookie or any tab's copy) is paired with an owner
  *      other than the admin who chose it.
+ *  (d) at most one session check (start-up lookup, validation or refresh) is in
+ *      flight per tab for the current session epoch.
+ *  (e) the target a tab sends matches the shared cookie the server checks.
  */
 
 type Kind =
@@ -56,6 +59,7 @@ vi.mock("@/lib/auth/helpers", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/auth/helpers")>()),
   // A full page load is the browser's job; the scheduler reloads the tab.
   navigateWithFullLoad: (path: string) => harness.navigate(path),
+  reloadPage: () => harness.navigate("reload"),
 }));
 vi.mock("@/lib/react-query/queryClient", () => ({
   getQueryClient: () => ({ clear() {}, invalidateQueries: async () => {} }),
@@ -90,6 +94,8 @@ interface Tab {
 interface Pending {
   tab: Tab;
   kind: Kind;
+  // The tab's session epoch when the request was made.
+  epoch: number;
   answer: unknown;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -287,8 +293,9 @@ class World {
     else if (kind === "refreshSession")
       answer = user ? { user } : { user: null, error: "No active session" };
     else answer = { success: true };
+    const epoch = tab.store.getState().sessionEpoch;
     return new Promise((resolve, reject) => {
-      this.pending.push({ tab, kind, answer, resolve, reject });
+      this.pending.push({ tab, kind, epoch, answer, resolve, reject });
     });
   }
 
@@ -417,6 +424,7 @@ class World {
               this.pending.push({
                 tab,
                 kind: "audit",
+                epoch: tab.store.getState().sessionEpoch,
                 answer: {},
                 resolve,
                 reject,
@@ -543,6 +551,23 @@ class World {
       this.enter(tab);
       try {
         const user = tab.store.getState().user;
+
+        // (d) one session check at a time: start-up's lookups and every
+        // validation share it. Requests from an earlier epoch don't count;
+        // their answers are dropped.
+        const epoch = tab.store.getState().sessionEpoch;
+        const checksInFlight = this.pending.filter(
+          (p) =>
+            p.tab === tab &&
+            p.epoch === epoch &&
+            (p.kind === "getCurrentUser" ||
+              p.kind === "validateSession" ||
+              p.kind === "refreshSession"),
+        ).length;
+        expect(
+          checksInFlight,
+          `${tab.name} has ${checksInFlight} session checks in flight`,
+        ).toBeLessThanOrEqual(1);
         const headers = tab.imp.getSystemHeaders();
         const actingAs = headers[IMPERSONATION_HEADER_NAME];
         const record = tab.imp.ImpersonationState.read();
@@ -582,6 +607,15 @@ class World {
             tab.imp.ImpersonationCookie.get(),
             "the shared cookie holds a target after sign-out",
           ).toBeNull();
+        }
+
+        // (e) the target this tab sends is the one the server will check it
+        // against (the shared cookie), even after another tab chose another.
+        if (actingAs) {
+          expect(
+            tab.imp.ImpersonationCookie.get()?.target,
+            `${tab.name} sends ${actingAs} but the cookie says otherwise`,
+          ).toBe(actingAs);
         }
 
         // (c)

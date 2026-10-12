@@ -229,27 +229,30 @@ export function setImpersonationViewer(
 }
 
 /**
- * The record for this tab: its own copy if it has one, otherwise the shared
- * cookie's (copied in for next time). A stored value that isn't a whole
- * record is dropped.
+ * The record in force: the shared cookie's, mirrored into this tab's copy. A
+ * stored value that isn't a whole record is dropped.
  */
 function readImpersonation(): ImpersonationRecord | null {
-  const sessionRaw = ImpersonationSession.getRaw();
-  if (sessionRaw) {
-    const record = decodeImpersonation(sessionRaw);
-    if (!record) ImpersonationState.clear();
-    return record;
-  }
-
+  // The shared cookie is the record of truth: it's what the server checks
+  // every request against. This tab's copy only mirrors it, so a copy the
+  // cookie doesn't back (cleared, replaced by another tab, or restored from
+  // an old session) is dropped rather than sent.
   const cookieRaw = ImpersonationCookie.getRaw();
-  if (!cookieRaw) return null;
-  const record = decodeImpersonation(cookieRaw);
-  if (!record) {
-    ImpersonationState.clear();
+  const cookieRecord = decodeImpersonation(cookieRaw);
+  if (!cookieRecord) {
+    if (cookieRaw || ImpersonationSession.getRaw()) ImpersonationState.clear();
     return null;
   }
-  ImpersonationSession.set(record);
-  return record;
+
+  const sessionRecord = ImpersonationSession.get();
+  if (!sessionRecord || !sameRecord(sessionRecord, cookieRecord)) {
+    ImpersonationSession.set(cookieRecord);
+  }
+  return cookieRecord;
+}
+
+function sameRecord(a: ImpersonationRecord, b: ImpersonationRecord): boolean {
+  return a.target === b.target && a.owner === b.owner;
 }
 
 export const ImpersonationState = {
@@ -277,6 +280,11 @@ export const ImpersonationState = {
     const record = { target: userId, owner: ownerId };
     ImpersonationSession.set(record);
     ImpersonationCookie.set(record);
+    // Other tabs are showing (and acting as) the previous choice.
+    storage.set(
+      Key.IMPERSONATION_CHANGED,
+      `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
   },
 
   clear(): void {
@@ -314,6 +322,10 @@ export function hasImpersonation(): boolean {
 
 export function isImpersonationClearedEvent(event: StorageEvent): boolean {
   return event.key === Key.IMPERSONATION_CLEARED;
+}
+
+export function isImpersonationChangedEvent(event: StorageEvent): boolean {
+  return event.key === Key.IMPERSONATION_CHANGED;
 }
 
 /**
