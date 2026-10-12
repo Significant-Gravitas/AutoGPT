@@ -1594,9 +1594,12 @@ async def invalidate_billing_lookups(customer_id: str) -> None:
     """Drop the customer's cached billing lookups on every worker: the active
     subscription and any pending change. Every path that changes the
     customer's subscription in Stripe calls this after the change; it never
-    raises."""
-    await invalidate_active_subscription_cache(customer_id)
-    await invalidate_pending_subscription_change(customer_id)
+    raises. Both at once, so a Redis outage costs the caller one deadline,
+    not two in a row."""
+    await asyncio.gather(
+        invalidate_active_subscription_cache(customer_id),
+        invalidate_pending_subscription_change(customer_id),
+    )
 
 
 def invalidate_subscription_caches(user_id: str) -> None:

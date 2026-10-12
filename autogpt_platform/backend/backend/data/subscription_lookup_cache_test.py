@@ -397,31 +397,49 @@ async def test_the_tier_is_saved_before_the_lookup_is_dropped(
     assert calls == ["save", "invalidate"]
 
 
-class _HangingRedis:
-    async def mget(self, *args, **kwargs):
-        await asyncio.Event().wait()
-
-    async def set(self, *args, **kwargs):
-        await asyncio.Event().wait()
-
-
 class _Outage:
     """Stands in for ``get_redis_async``, which every Redis operation calls
-    first, so ``attempts`` counts each time the cache tries Redis."""
+    first, so ``attempts`` counts each time the cache tries Redis.
+
+    ``serial_waits`` counts the deadline waits a caller pays one after the
+    other: a hanging attempt that starts while no other is hanging opens a
+    new wait; attempts made alongside it share that one."""
 
     def __init__(self, kind: str) -> None:
         self.kind = kind
         self.attempts = 0
+        self.serial_waits = 0
+        self._hanging = 0
 
-    async def __call__(self) -> _HangingRedis:
+    async def __call__(self) -> "_HangingRedis":
         self.attempts += 1
         if self.kind == "connect-hangs":
-            await asyncio.Event().wait()
+            await self.hang()
         if self.kind == "refused":
             raise RedisConnectionError("refused")
         if self.kind == "standalone-redis":
             raise RedisClusterException("Cluster mode is not enabled on this node")
-        return _HangingRedis()
+        return _HangingRedis(self)
+
+    async def hang(self) -> None:
+        if self._hanging == 0:
+            self.serial_waits += 1
+        self._hanging += 1
+        try:
+            await asyncio.Event().wait()
+        finally:
+            self._hanging -= 1
+
+
+class _HangingRedis:
+    def __init__(self, outage: _Outage) -> None:
+        self.outage = outage
+
+    async def mget(self, *args, **kwargs):
+        await self.outage.hang()
+
+    async def set(self, *args, **kwargs):
+        await self.outage.hang()
 
 
 @pytest.mark.asyncio
@@ -438,6 +456,7 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
     Counts Redis attempts rather than timing them; the wall clock is only a
     backstop, far below what paying a deadline per read would take."""
     outage = _Outage(kind)
+    hangs = kind in ("connect-hangs", "command-hangs")
     backstop = 10 * versioned_cache._REDIS_DEADLINE_SECONDS
     with patch.object(versioned_cache, "get_redis_async", outage):
         started = time.monotonic()
@@ -451,8 +470,11 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
             WAIT,
         )
         first_wave = outage.attempts
-        # Each concurrent read tries Redis at most once before the backoff.
+        # Each concurrent read tries Redis at most once before the backoff,
+        # and when Redis hangs every read pays that one deadline at the same
+        # time, not one after another.
         assert 1 <= first_wave <= 60
+        assert outage.serial_waits == (1 if hangs else 0)
         for _ in range(100):
             ends.append(await worker_a.get_active_subscription_period_end("user-1"))
         # The backoff holds: no read in its window tries Redis again.
@@ -463,15 +485,18 @@ async def test_a_redis_outage_never_slows_or_blocks_billing(
         assert time.monotonic() - started < backstop
 
         before = outage.attempts
+        waits_before = outage.serial_waits
         started = time.monotonic()
         await asyncio.wait_for(
             conversion.convert_cancel_pending_trial(trial, SubscriptionTier.PRO),
             WAIT,
         )
-        # Only invalidations, which never skip Redis, try it, each for at
-        # most one deadline: invalidate_billing_lookups drops both caches
-        # after the tier sync and again after saving the conversion.
+        # Only invalidations, which never skip Redis, try it:
+        # invalidate_billing_lookups drops both caches at once, after the tier
+        # sync and again after saving the conversion, so the purchase pays at
+        # most two deadlines in a row.
         assert outage.attempts - before == 4
+        assert outage.serial_waits - waits_before == (2 if hangs else 0)
         assert time.monotonic() - started < backstop
         save_tier.assert_awaited_once()
         assert save_tier.await_args.args[0]["status"] == "active"
