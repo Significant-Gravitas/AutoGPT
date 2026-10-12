@@ -12,14 +12,16 @@ interface Props {
 // Sits next to the sidebar toggle in the new-layout inset header and mirrors
 // SidebarTrigger's ghost styling (no border, no shadow).
 export function WorkspaceFilesTrigger({ className }: Props) {
-  const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
+  const toggleContextPanelTab = useCopilotUIStore(
+    (s) => s.toggleContextPanelTab,
+  );
 
   return (
     <Button
       variant="ghost"
       size="icon"
       className={className}
-      onClick={toggleContextPanel}
+      onClick={() => toggleContextPanelTab("files")}
       aria-label="Open workspace files"
     >
       <Icon icon={Folder01Icon} className="!size-5" />
