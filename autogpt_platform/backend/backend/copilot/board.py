@@ -18,8 +18,9 @@ LAST_LINE_MAX = 140
 REASSIGN_BRIEF_KIND = "reassign_brief"
 
 _CUSTOM_KEY = re.compile(
-    r"^col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    r"col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
+_LIST_MARKER = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*+])\s+")
 _MARKDOWN_NOISE = re.compile(r"[#*_`>~]+")
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 
@@ -62,7 +63,7 @@ def validate_columns(columns: list[BoardColumn]) -> list[BoardColumn]:
                 f"Column names must be 1 to {MAX_COLUMN_NAME} characters"
             )
         builtin = column.key in BUILTIN_COLUMN_KEYS
-        if not builtin and not _CUSTOM_KEY.match(column.key):
+        if not builtin and not _CUSTOM_KEY.fullmatch(column.key):
             raise BoardColumnsError(f"Invalid column key: {column.key!r}")
         result.append(BoardColumn(key=column.key, name=name, builtin=builtin))
     return result
@@ -72,7 +73,7 @@ def first_sentence(text: str | None) -> str | None:
     """The card's state line: the first sentence of a reply, one line, clipped."""
     if not text:
         return None
-    flat = " ".join(_MARKDOWN_NOISE.sub("", text).split())
+    flat = " ".join(_MARKDOWN_NOISE.sub("", _LIST_MARKER.sub("", text)).split())
     if not flat:
         return None
     end = _SENTENCE_END.search(flat)

@@ -60,6 +60,11 @@ def test_validate_rejects_blank_name_duplicate_key_and_bad_custom_key():
         validate_columns(_cols(BoardColumn(key="review", name="Review")))
 
 
+def test_validate_rejects_a_custom_key_with_a_trailing_newline():
+    with pytest.raises(BoardColumnsError):
+        validate_columns(_cols(BoardColumn(key=f"{new_column_key()}\n", name="A")))
+
+
 def test_validate_rejects_name_over_40_chars():
     with pytest.raises(BoardColumnsError):
         validate_columns(_cols(BoardColumn(key=new_column_key(), name="x" * 41)))
@@ -75,6 +80,9 @@ def test_validate_rejects_name_over_40_chars():
         ("## Status\n\nAll **done** here! Next up: tests.", "Status All done here!"),
         ("No punctuation at all", "No punctuation at all"),
         ("Version 1.2 is out. Rest.", "Version 1.2 is out."),
+        ("1. Drafted the PRD\n2. Sent it", "Drafted the PRD Sent it"),
+        ("- Drafted the PRD\n- Sent it. Waiting.", "Drafted the PRD Sent it."),
+        ("  3) Booked the room", "Booked the room"),
     ],
 )
 def test_first_sentence(text, expected):
