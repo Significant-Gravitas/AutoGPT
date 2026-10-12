@@ -8,10 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import stripe
 from prisma.enums import SubscriptionTier
+from pytest_mock import MockerFixture
 
 from backend.data import credit
 from backend.util.exceptions import InsufficientBalanceError
 
+CHECKOUT = "backend.data.subscription_checkout"
 CUSTOMER = "cus_123"
 COMMENT = {"comment": credit.ACCOUNT_DELETION_CANCELLATION_COMMENT}
 BILLABLE = ["active", "trialing"]
@@ -19,6 +21,35 @@ BILLABLE = ["active", "trialing"]
 UNSETTLED = ["past_due", "unpaid", "paused", "incomplete"]
 # Terminal: Stripe refuses to cancel these.
 ENDED = ["incomplete_expired", "canceled"]
+
+
+@pytest.fixture(autouse=True)
+def checkouts(mocker: MockerFixture) -> MagicMock:
+    """The customer's open Checkout sessions: none unless a test opens some."""
+    parent = MagicMock()
+    parent.attach_mock(
+        mocker.patch(
+            f"{CHECKOUT}.stripe.checkout.Session.list_async",
+            new_callable=AsyncMock,
+            return_value=_sessions(),
+        ),
+        "list",
+    )
+    parent.attach_mock(
+        mocker.patch(
+            f"{CHECKOUT}.stripe.checkout.Session.expire_async",
+            new_callable=AsyncMock,
+        ),
+        "expire",
+    )
+    return parent
+
+
+def _sessions(*sessions: dict) -> MagicMock:
+    page = MagicMock()
+    page.data = [stripe.checkout.Session.construct_from(s, "sk_test") for s in sessions]
+    page.has_more = False
+    return page
 
 
 def _user(stripe_customer_id: str | None) -> MagicMock:
@@ -113,7 +144,7 @@ async def _cancelled(sub_id: str, **params) -> stripe.Subscription:
 
 
 @pytest.mark.asyncio
-async def test_a_user_without_a_stripe_customer_cancels_nothing():
+async def test_a_user_without_a_stripe_customer_cancels_nothing(checkouts: MagicMock):
     with (
         patch(
             "backend.data.credit.get_user_by_id",
@@ -129,6 +160,31 @@ async def test_a_user_without_a_stripe_customer_cancels_nothing():
     listed.assert_not_called()
     cancel.assert_not_called()
     created.assert_not_called()
+    checkouts.list.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_every_open_checkout_expires_before_any_subscription_is_listed(
+    checkouts: MagicMock,
+):
+    """A Checkout left open in another tab would otherwise subscribe and bill
+    the closed account once finished, whether a plan, a trial or a top-up."""
+    checkouts.list.return_value = _sessions(
+        {"id": "cs_plan", "mode": "subscription"},
+        {"id": "cs_top_up", "mode": "payment"},
+    )
+    with _stripe(_one_per_status("active")) as (listed, _cancel, _modify):
+        checkouts.attach_mock(listed, "list_subscriptions")
+        assert await credit.cancel_all_subscriptions_now("user-1") == 1
+
+    checkouts.list.assert_awaited_once_with(customer=CUSTOMER, status="open", limit=100)
+    assert [c.args[0] for c in checkouts.expire.await_args_list] == [
+        "cs_plan",
+        "cs_top_up",
+    ]
+    order = [name for name, _, _ in checkouts.mock_calls]
+    last_expire = len(order) - 1 - order[::-1].index("expire")
+    assert last_expire < order.index("list_subscriptions")
 
 
 @pytest.mark.asyncio

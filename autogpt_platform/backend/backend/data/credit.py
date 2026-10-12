@@ -39,6 +39,7 @@ from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_checkout import (
     ensure_no_unconverted_trial,
+    expire_all_open_checkouts,
     expire_other_subscription_checkouts,
     subscription_checkout_lock,
 )
@@ -1629,13 +1630,17 @@ async def cancel_all_subscriptions_now(user_id: str) -> int:
     trials, paid plans, and past-due, unpaid, paused or incomplete ones.
 
     No invoice, no proration and no refund; Stripe stops collecting the open
-    invoices of what it cancels. Returns how many were cancelled: 0 for a user
-    without a Stripe customer, which this never creates. Raises
-    stripe.StripeError so the caller can stop before closing the account.
+    invoices of what it cancels. The customer's open Checkouts expire first, so
+    one finished later in another tab can't subscribe or charge the closed
+    account, and one that completes meanwhile is listed and cancelled below.
+    Returns how many subscriptions were cancelled: 0 for a user without a
+    Stripe customer, which this never creates. Raises stripe.StripeError so
+    the caller can stop before closing the account.
     """
     user = await get_user_by_id(user_id)
     if not user.stripe_customer_id:
         return 0
+    await expire_all_open_checkouts(user.stripe_customer_id)
     return await _cancel_customer_subscriptions(
         user.stripe_customer_id,
         at_period_end=False,

@@ -24,6 +24,7 @@ from prisma.types import (
 )
 from pydantic import BaseModel, ConfigDict
 
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import prisma, query_raw_with_schema, transaction
 from backend.data.model import (
     CREDENTIALS_ADAPTER,
@@ -1281,12 +1282,14 @@ async def get_billing_email_recipient(
     stripe_customer_id: str,
 ) -> BillingEmailRecipient | None:
     """The account behind a Stripe customer, or None for a deleted or unknown
-    one — better to skip than to email into the void."""
+    one — better to skip than to email into the void. A closed account counts
+    as deleted: its row stays until the erasure, but only the deletion
+    confirmation may reach it."""
     try:
         row = await prisma.user.find_first(
             where={"stripeCustomerId": stripe_customer_id}
         )
-        if row is None:
+        if row is None or await is_account_closed(row.id):
             return None
         return BillingEmailRecipient(
             id=row.id,
