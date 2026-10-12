@@ -58,10 +58,12 @@ async def read_schedules(call: Awaitable[T], timeout: float | None = None) -> T:
 async def write_schedule(call: Awaitable[T]) -> T:
     """Await a scheduler write made through the interactive scheduler client.
 
-    The write is not wrapped in a timeout here: cancelling it after the request
-    was sent would hide whether it was applied. The interactive client's own
-    connect and read timeouts bound it instead, and the two failure modes get
-    different codes.
+    A scheduler that can't be reached fails within the client's connect
+    timeout, and nothing was sent. Once it has the request, the write is not
+    cut short: a deadline here would turn slow-but-successful writes (a cold
+    scheduler takes 25s+ to create one) into failures, and on a self-hosted
+    install nothing else would. Behind the hosted proxy a write that outlives
+    it ends as a 504, which the frontend treats like ``scheduler_unconfirmed``.
     """
     try:
         return await call

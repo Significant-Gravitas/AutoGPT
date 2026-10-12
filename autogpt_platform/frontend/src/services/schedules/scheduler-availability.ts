@@ -8,7 +8,11 @@ const SCHEDULER_RECHECK_MAX_MS = 120_000;
 type SchedulerErrorCode = "scheduler_unavailable" | "scheduler_unconfirmed";
 
 function schedulerErrorCode(error: unknown): SchedulerErrorCode | null {
-  if (!(error instanceof ApiError) || error.status !== 503) return null;
+  if (!(error instanceof ApiError)) return null;
+  // The hosted proxy gives up on a request after 30s. A schedule write it cut
+  // off may still have been applied, exactly like scheduler_unconfirmed.
+  if (error.status === 504) return "scheduler_unconfirmed";
+  if (error.status !== 503) return null;
   const code: unknown = error.response?.detail?.code;
   if (code === "scheduler_unavailable" || code === "scheduler_unconfirmed") {
     return code;
@@ -48,4 +52,15 @@ export function schedulerRecheckDelay(failures: number): number {
     SCHEDULER_RECHECK_MS * 2 ** doublings,
     SCHEDULER_RECHECK_MAX_MS,
   );
+}
+
+// Library agents load fine without the scheduler but carry schedule info
+// "unknown"; recheck them on the same backoff until it is known again.
+export function recheckWhileScheduleInfoUnknown(
+  agents: LibraryAgent[],
+  fetches: number,
+): number | false {
+  return hasUnavailableScheduleInfo(agents)
+    ? schedulerRecheckDelay(fetches)
+    : false;
 }

@@ -9,12 +9,13 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
 from croniter import croniter
+from fastapi import HTTPException
 from pika.exceptions import ChannelClosedByBroker
 from prisma.enums import AgentExecutionStatus
 from prisma.models import AgentGraph, AgentGraphExecution, LibraryAgent, User
 from pydantic import BaseModel
 
-from backend.api.features.schedule_availability import read_schedules
+from backend.api.features.schedule_availability import read_schedules, write_schedule
 from backend.data.db import query_raw_with_schema
 from backend.data.execution import get_graph_executions, get_graph_executions_count
 from backend.data.rabbitmq import SyncRabbitMQ
@@ -770,10 +771,16 @@ async def cleanup_orphaned_schedules_bulk(
             return False
 
         try:
-            await scheduler.delete_schedule(
-                schedule_id=schedule_id, user_id=schedule.user_id
+            await write_schedule(
+                scheduler.delete_schedule(
+                    schedule_id=schedule_id, user_id=schedule.user_id
+                )
             )
             return True
+        except HTTPException:
+            # The scheduler is down or didn't confirm: that is not "failed to
+            # delete", so answer 503 instead of a count that may be wrong.
+            raise
         except Exception as e:
             logger.error(f"Failed to delete schedule {schedule_id}: {e}")
             return False

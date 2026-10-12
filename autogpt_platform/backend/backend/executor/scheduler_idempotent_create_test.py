@@ -15,7 +15,7 @@ from backend.api.model import CreateGraph
 from backend.data import db
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
-from backend.util.exceptions import NotAuthorizedError
+from backend.util.exceptions import ConflictError, NotAuthorizedError
 from backend.util.test import SpinTestServer
 
 
@@ -27,11 +27,19 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
     graph = await server.agent_server.test_create_graph(
         create_graph=CreateGraph(graph=create_test_graph()), user_id=owner.id
     )
+    other_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()), user_id=owner.id
+    )
     scheduler = get_scheduler_client()
 
-    async def create(key: str, user_id: str = owner.id, name: str = "Morning"):
+    async def create(
+        key: str,
+        user_id: str = owner.id,
+        name: str = "Morning",
+        graph_id: str = graph.id,
+    ):
         return await scheduler.add_execution_schedule(
-            graph_id=graph.id,
+            graph_id=graph_id,
             user_id=user_id,
             graph_version=graph.version,
             cron="0 9 * * *",
@@ -58,6 +66,9 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
         # A key can't be used to read or take over someone else's schedule.
         with pytest.raises(NotAuthorizedError):
             await create(key, user_id=other.id, name="Hijack")
+        # Nor can it pass off one agent's schedule as another agent's create.
+        with pytest.raises(ConflictError):
+            await create(key, graph_id=other_graph.id)
         [kept] = [
             s
             for s in await scheduler.get_execution_schedules(graph.id, owner.id)

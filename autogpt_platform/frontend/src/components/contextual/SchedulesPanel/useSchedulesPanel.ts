@@ -58,12 +58,13 @@ export function useSchedulesPanel() {
   const isLoading = copilotQuery.isLoading || graphQuery.isLoading;
   // A restarting scheduler is its own calm state, never an error or an
   // empty list.
+  // Each query's own scheduler 503 is the calm state; any other failure on
+  // either query is still a real error, not hidden behind the notice.
   const isUnavailable =
     isSchedulerUnavailableError(copilotQuery.error) ||
     isSchedulerUnavailableError(graphQuery.error);
-  const fetchError = isUnavailable
-    ? null
-    : (copilotQuery.error ?? graphQuery.error);
+  const fetchError =
+    realError(copilotQuery.error) ?? realError(graphQuery.error);
 
   function retry() {
     copilotQuery.refetch();
@@ -85,4 +86,8 @@ export function useSchedulesPanel() {
     error: !isLoading && schedules.length === 0 ? fetchError : null,
     partialError: !isLoading && schedules.length > 0 ? fetchError : null,
   };
+}
+
+function realError<TError>(error: TError | null): TError | null {
+  return isSchedulerUnavailableError(error) ? null : error;
 }

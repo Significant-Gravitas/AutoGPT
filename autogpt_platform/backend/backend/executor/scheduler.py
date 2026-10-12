@@ -72,6 +72,7 @@ from backend.util.clients import (
 )
 from backend.util.cloud_storage import cleanup_expired_files_async
 from backend.util.exceptions import (
+    ConflictError,
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
     ExpertRunPausedError,
@@ -2507,7 +2508,7 @@ class Scheduler(AppService):
         """
         name = normalize_schedule_name(name)
         if schedule_id is not None:
-            replayed = self._replayed_graph_schedule(schedule_id, user_id)
+            replayed = self._replayed_graph_schedule(schedule_id, user_id, graph_id)
             if replayed is not None:
                 return replayed
 
@@ -2556,7 +2557,7 @@ class Scheduler(AppService):
             )
         except ConflictingIdError:
             # A concurrent copy of the same submission got there first.
-            replayed = self._replayed_graph_schedule(key, user_id)
+            replayed = self._replayed_graph_schedule(key, user_id, graph_id)
             if replayed is None:
                 raise
             return replayed
@@ -2570,7 +2571,7 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     def _replayed_graph_schedule(
-        self, schedule_id: str, user_id: str
+        self, schedule_id: str, user_id: str, graph_id: str
     ) -> GraphExecutionJobInfo | None:
         """The schedule an earlier submission with this key created, if any."""
         try:
@@ -2579,6 +2580,12 @@ class Scheduler(AppService):
             return None
         if not isinstance(info, GraphExecutionJobInfo):
             raise NotAuthorizedError(f"Schedule #{schedule_id} is not an agent run")
+        if info.graph_id != graph_id:
+            # The key belongs to a different submission; replaying it would
+            # report another agent's schedule as this create.
+            raise ConflictError(
+                f"Schedule #{schedule_id} already exists for a different agent"
+            )
         logger.info(f"Create for schedule {schedule_id} replayed; returning it")
         return info
 

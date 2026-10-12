@@ -57,13 +57,11 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
         </Text>
       ) : null}
 
-      {isUnavailable && !isLoading && schedules.length > 0 && (
+      {isUnavailable && !isLoading && (schedules.length > 0 || error) ? (
         <SchedulesUnavailableNotice compact onRetry={retry} />
-      )}
+      ) : null}
 
-      {isUnavailable && !isLoading && schedules.length === 0 ? (
-        <SchedulesUnavailableNotice onRetry={retry} />
-      ) : error ? (
+      {error ? (
         <ErrorCard
           responseError={{
             message:
@@ -73,6 +71,8 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           }}
           context="scheduled items"
         />
+      ) : isUnavailable && !isLoading && schedules.length === 0 ? (
+        <SchedulesUnavailableNotice onRetry={retry} />
       ) : isLoading ? (
         <div
           className="flex items-center justify-center py-16"

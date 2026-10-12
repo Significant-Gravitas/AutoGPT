@@ -68,6 +68,9 @@ def scheduler_client(
         monkeypatch.setattr(
             config, "scheduler_request_timeout_seconds", _REQUEST_TIMEOUT_S
         )
+        # A hung write waits out the RPC's own timeout (300s in production);
+        # shortened so the test reaches the scheduler_unconfirmed answer.
+        monkeypatch.setattr(config, "rpc_client_call_timeout", 1)
         monkeypatch.setattr(config, "scheduler_connect_timeout_seconds", 0.5)
     # The real factory, uncached, so each test gets a client for its own port.
     real_factory = inspect.unwrap(clients.get_interactive_scheduler_client)

@@ -1,6 +1,7 @@
 import { useGetV2ListLibraryAgentsInfinite } from "@/app/api/__generated__/endpoints/library/library";
 import { getPaginationNextPageNumber, unpaginate } from "@/app/api/helpers";
 import { useMemo } from "react";
+import { recheckWhileScheduleInfoUnknown } from "@/services/schedules/scheduler-availability";
 import { buildAgentInfoMap } from "./store";
 
 export function useLibraryAgents() {
@@ -18,6 +19,11 @@ export function useLibraryAgents() {
           refetchOnMount: false,
           refetchOnWindowFocus: false,
           staleTime: 5 * 60 * 1000, // 5 minutes
+          refetchInterval: (query) =>
+            recheckWhileScheduleInfoUnknown(
+              query.state.data ? unpaginate(query.state.data, "agents") : [],
+              query.state.dataUpdateCount,
+            ),
         },
       },
     );

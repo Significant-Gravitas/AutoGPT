@@ -618,10 +618,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=25.0,
         gt=0,
         description=(
-            "How long a schedule page or change a user is waiting on (list, "
-            "create, edit, delete, admin diagnostics) waits for the scheduler "
-            "before answering 503. Just under the 30s Vercel proxy cut-off, so "
-            "it only replaces the proxy's 504; prod listings are slow (p50 15s)."
+            "How long a schedule listing a user is waiting on (schedule lists, "
+            "admin diagnostics) waits for the scheduler before answering 503. "
+            "Just under the 30s Vercel proxy cut-off, so it only replaces the "
+            "proxy's 504; prod listings are slow (p50 15s). Writes are not cut "
+            "short once the scheduler has the request: see "
+            "schedule_availability.write_schedule."
         ),
     )
 
