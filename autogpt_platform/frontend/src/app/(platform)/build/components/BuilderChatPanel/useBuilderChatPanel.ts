@@ -231,6 +231,9 @@ export function useBuilderChatPanel({
     if (!isOpen) return;
     if (!flowID) return;
     if (isWaitingForModel) return;
+    // A failed bind waits for Retry (which clears it) or a new graph, not for
+    // the next transports refetch to re-run this effect.
+    if (bindError) return;
     if (boundGraphRef.current === flowID && sessionId) return;
     if (bindingRef.current) return;
     const effectFlowID = flowID;
@@ -284,6 +287,7 @@ export function useBuilderChatPanel({
     sessionId,
     bindRetryToken,
     isWaitingForModel,
+    bindError,
     createBuilderSession,
     toast,
   ]);
@@ -296,6 +300,8 @@ export function useBuilderChatPanel({
   useEffect(() => {
     if (!isOpen || flowID || isBootstrappingRef.current) return;
     if (!canCreateAgent) return;
+    // Likewise, a failed attempt waits for Retry.
+    if (bootstrapError) return;
     isBootstrappingRef.current = true;
     setBootstrapError(null);
     void (async () => {
@@ -338,6 +344,7 @@ export function useBuilderChatPanel({
     flowID,
     bootstrapRetryToken,
     canCreateAgent,
+    bootstrapError,
     createNewGraph,
     setQueryStates,
     toast,
