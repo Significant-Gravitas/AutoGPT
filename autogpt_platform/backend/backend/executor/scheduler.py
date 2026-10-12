@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.blocks import get_blocks
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPins
@@ -321,6 +322,21 @@ def execute_copilot_turn(**kwargs):
         run_async(_execute_copilot_turn(run=current_run(), **kwargs))
     except RunAbandoned:
         logger.info("Scheduled copilot turn handed back at shutdown")
+
+
+def _load_block_registry() -> None:
+    """Load every block before the RPC server starts, and so before readiness.
+
+    Creating a schedule validates the graph, which needs the block registry.
+    Loaded lazily, the first create after each deploy paid for importing every
+    block, tens of seconds on a fresh pod, long enough for the caller to give
+    up on a create that then landed anyway.
+    """
+    load_started = time.monotonic()
+    block_count = len(get_blocks())
+    logger.info(
+        f"Loaded {block_count} blocks in {time.monotonic() - load_started:.1f}s"
+    )
 
 
 def _dispatch_marks_its_commit(job: JobObj) -> bool:
@@ -2458,6 +2474,7 @@ class Scheduler(AppService):
         global _scheduler_instance
         _scheduler_instance = self
         self._start_schedule_index_backfill()
+        _load_block_registry()
 
         # Keep the service running since BackgroundScheduler doesn't block
         super().run_service()
