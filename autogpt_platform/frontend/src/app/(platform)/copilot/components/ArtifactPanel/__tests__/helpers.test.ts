@@ -560,6 +560,23 @@ describe("classifyArtifact", () => {
     expect(c.openable).toBe(false);
   });
 
+  it.each([
+    ["report.txt", "application/msword"],
+    [
+      "notes.md",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
+    ["data.json", "application/vnd.ms-excel"],
+    [
+      "slides.html",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ],
+  ])("keeps %s download-only when its MIME is %s", (name, mime) => {
+    const c = classifyArtifact(mime, name);
+    expect(c.type).toBe("download-only");
+    expect(c.openable).toBe(false);
+  });
+
   it("does not open certificate/key files", () => {
     // .pem has no extension mapping; .key maps to download-only (Keynote)
     for (const file of ["cert.pem", "server.key", "ca.crt", "id.p12"]) {
