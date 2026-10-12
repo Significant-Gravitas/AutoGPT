@@ -24,7 +24,12 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.tree import root_envelope
-from backend.data.db_accessors import orgs_db, platform_linking_db, workspace_db
+from backend.data.db_accessors import (
+    account_deletion_db,
+    orgs_db,
+    platform_linking_db,
+    workspace_db,
+)
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 from backend.util.workspace import WorkspaceManager
@@ -146,19 +151,31 @@ async def resolve_owner(
 ) -> str:
     """Resolve the AutoGPT user that owns a platform conversation.
 
-    Server context → server owner. DM context → the DM-linked user.
+    Server context → server owner. DM context → the DM-linked user. A closed
+    account's links count as unlinked.
     """
     db = platform_linking_db()
 
     if platform_server_id:
         owner = await db.find_server_link_owner(platform, platform_server_id)
-        if owner is None:
-            raise NotFoundError("This server is not linked to an AutoGPT account.")
-        return owner
+        return await _open_owner(
+            owner, "This server is not linked to an AutoGPT account."
+        )
 
     owner = await db.find_user_link_owner(platform, platform_user_id)
-    if owner is None:
-        raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
+    return await _open_owner(owner, "Your DMs are not linked to an AutoGPT account.")
+
+
+async def _open_owner(owner: str | None, unlinked: str) -> str:
+    """*owner*, unless the link has none or its account is closed.
+
+    Account deletion unlinks the chat platforms, but only best effort, and
+    the bot's turn gate checks the plan and usage, not a closed account. So a
+    link that outlived the close must not run turns as the deleted user. A
+    failed check raises: the bot fails closed, like its paywall gate.
+    """
+    if owner is None or await account_deletion_db().is_account_closed(owner):
+        raise NotFoundError(unlinked)
     return owner
 
 
@@ -432,11 +449,12 @@ async def list_user_chats(
     Ownership is resolved server-side from the user's own DM link — never a
     server — so a caller can only ever see their own conversations.
     """
-    owner_user_id = await platform_linking_db().find_user_link_owner(
-        platform.value, platform_user_id
+    owner_user_id = await _open_owner(
+        await platform_linking_db().find_user_link_owner(
+            platform.value, platform_user_id
+        ),
+        "Your DMs are not linked to an AutoGPT account.",
     )
-    if owner_user_id is None:
-        raise NotFoundError("Your DMs are not linked to an AutoGPT account.")
 
     # Clamp pagination — negative values would crash the DB driver, and an
     # unbounded `limit` would fan out into a giant query. The cap also lines

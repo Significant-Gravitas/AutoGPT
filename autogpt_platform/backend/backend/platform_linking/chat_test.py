@@ -19,6 +19,17 @@ from .chat import (
 from .models import BotChatRequest, Platform, TurnDenial, WorkspaceUploadRequest
 
 
+@pytest.fixture(autouse=True)
+def accounts():
+    """Every link's owner is an open account unless a test closes it."""
+    accounts = MagicMock()
+    accounts.is_account_closed = AsyncMock(return_value=False)
+    with patch(
+        "backend.platform_linking.chat.account_deletion_db", return_value=accounts
+    ):
+        yield accounts
+
+
 def _request(**overrides) -> BotChatRequest:
     defaults = dict(
         platform=Platform.DISCORD,
@@ -357,6 +368,82 @@ class TestStartChatTurn:
         mock_create.assert_not_awaited()
         assert mock_enqueue.await_args.kwargs["organization_id"] == "personal-org"
         assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
+
+
+class TestClosedAccountOwner:
+    """A closed account's chat links count as unlinked, even when the unlink
+    at deletion failed: nobody in its server or DMs may run turns as it."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "server_id,message",
+        [
+            ("guild-1", "This server is not linked to an AutoGPT account."),
+            (None, "Your DMs are not linked to an AutoGPT account."),
+        ],
+    )
+    async def test_no_turn_runs_as_a_closed_owner(
+        self, accounts: MagicMock, server_id: str | None, message: str
+    ):
+        accounts.is_account_closed.return_value = True
+        db_mock = MagicMock()
+        db_mock.find_server_link_owner = AsyncMock(return_value="owner-1")
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+
+        orgs = MagicMock()
+        orgs.get_user_default_team = AsyncMock(return_value=(None, None))
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.evaluate_turn_gate",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "backend.platform_linking.chat._resolve_or_create_session",
+                new=AsyncMock(return_value=MagicMock(session_id="sess-1")),
+            ),
+            patch(
+                "backend.platform_linking.chat.append_and_save_message",
+                new=AsyncMock(return_value=MagicMock()),
+            ),
+            patch("backend.platform_linking.chat.stream_registry") as registry,
+            patch("backend.platform_linking.chat.orgs_db", return_value=orgs),
+            patch(
+                "backend.platform_linking.chat.enqueue_copilot_turn",
+                new=AsyncMock(),
+            ) as mock_enqueue,
+        ):
+            registry.create_session = AsyncMock()
+            with pytest.raises(NotFoundError, match=message):
+                await start_chat_turn(_request(platform_server_id=server_id))
+
+        accounts.is_account_closed.assert_awaited_once_with("owner-1")
+        mock_enqueue.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_closed_owners_chats_are_not_listed(self, accounts: MagicMock):
+        accounts.is_account_closed.return_value = True
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.get_user_sessions",
+                new=AsyncMock(return_value=([], 0)),
+            ) as mock_get_sessions,
+        ):
+            with pytest.raises(NotFoundError):
+                await list_user_chats(Platform.DISCORD, "pu1")
+
+        mock_get_sessions.assert_not_awaited()
 
 
 class TestListUserChats:

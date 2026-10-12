@@ -270,6 +270,19 @@ def orgs_db():
     return orgs_db
 
 
+def account_deletion_db():
+    if db.is_connected():
+        from backend.data import account_deletion as _account_deletion_db
+
+        account_deletion_db = _account_deletion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        account_deletion_db = get_database_manager_async_client()
+
+    return account_deletion_db
+
+
 def platform_linking_db():
     if db.is_connected():
         from backend.platform_linking import db as _platform_linking_db
