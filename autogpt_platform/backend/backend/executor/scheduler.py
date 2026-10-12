@@ -54,6 +54,11 @@ from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
+from backend.executor.scheduler_shutdown import (
+    DrainingBackgroundScheduler,
+    exit_if_jobs_hung,
+    stop_scheduler,
+)
 from backend.monitoring import (
     flush_matured_alerts,
     report_block_error_rates,
@@ -2192,7 +2197,7 @@ class Scheduler(AppService):
         # unrestorable row rather than deleting it.
         self._execution_jobstore = self._persistent_jobstores[Jobstores.EXECUTION.value]
 
-        self.scheduler = BackgroundScheduler(
+        self.scheduler = DrainingBackgroundScheduler(
             executors={
                 "default": ThreadPoolExecutor(
                     max_workers=self.db_pool_size()
@@ -2428,22 +2433,33 @@ class Scheduler(AppService):
                     f"not run until repaired: {parked}"
                 )
 
+    @classmethod
+    def rpc_graceful_shutdown_seconds(cls) -> float | None:
+        return config.scheduler_rpc_drain_seconds
+
     def cleanup(self):
+        # By now the RPC server has stopped. Stop the scheduler before the event
+        # loop its jobs run on, and bound the wait so a stuck job can't hold the
+        # pod until it is killed.
+        global _event_loop, _event_loop_thread
+        stopped = True
         if self.scheduler:
             logger.info("⏳ Shutting down scheduler...")
-            self.scheduler.shutdown(wait=True)
+            stopped = stop_scheduler(
+                self.scheduler, _event_loop, config.scheduler_shutdown_grace_seconds
+            )
 
-        global _event_loop
         if _event_loop:
             logger.info("⏳ Closing event loop...")
             _event_loop.call_soon_threadsafe(_event_loop.stop)
 
-        global _event_loop_thread
         if _event_loop_thread:
             logger.info("⏳ Waiting for event loop thread to finish...")
-            _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
+            # A daemon thread: a short wait is enough, and it can't hold exit.
+            _event_loop_thread.join(timeout=5)
 
         super().cleanup()
+        exit_if_jobs_hung(stopped)
 
     def _persist_schedule(
         self,
