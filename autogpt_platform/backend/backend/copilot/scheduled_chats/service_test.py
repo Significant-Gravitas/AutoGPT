@@ -726,6 +726,12 @@ async def test_a_deleted_chat_leaves_no_paused_ghost(
         assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
         assert await list_paused_scheduled_chats(user_id) == []
         assert await resume_scheduled_chat(user_id, "sched-1") is False
+        # Nor does its alert email about a chat that is gone.
+        alert = await _alert(user_id)
+        assert alert is not None and alert.status == AlertConditionStatus.RESOLVED
+        other_alert = await _alert(other_id)
+        assert other_alert is not None
+        assert other_alert.status == AlertConditionStatus.PENDING
         # Only the owner's own chat goes.
         [left] = await list_paused_scheduled_chats(other_id)
         # A follow-up, which the paused list can delete.
