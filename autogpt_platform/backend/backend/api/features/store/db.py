@@ -19,7 +19,7 @@ from backend.data.graph import (
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
-from backend.data.user import ensure_user_profile
+from backend.data.profile import ensure_user_profile
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings

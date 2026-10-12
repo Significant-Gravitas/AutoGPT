@@ -23,7 +23,7 @@ from backend.api.features.store import db as store_db
 from backend.api.features.store import model as store_model
 from backend.api.features.store.routes import get_profile
 from backend.data import db
-from backend.data import user as user_module
+from backend.data import profile as profile_module
 from backend.data.db import prisma
 from backend.data.user import get_or_create_user_with_status
 from backend.util.test import SpinTestServer
@@ -227,7 +227,7 @@ def _interleave_profile_queries(
         return await create(self, *args, **kwargs)
 
     monkeypatch.setattr(ProfileActions, "create", insert_or_fail)
-    generate = user_module._generate_profile_username
+    generate = profile_module._generate_profile_username
 
     async def taken_handle_first() -> str:
         racer = _RACER.get()
@@ -236,7 +236,9 @@ def _interleave_profile_queries(
             return taken_handle
         return await generate()
 
-    monkeypatch.setattr(user_module, "_generate_profile_username", taken_handle_first)
+    monkeypatch.setattr(
+        profile_module, "_generate_profile_username", taken_handle_first
+    )
 
 
 def _after_yielding(query):
