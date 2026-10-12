@@ -16,6 +16,7 @@ import asyncio
 import contextlib
 import json
 import os
+import random
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -33,8 +34,10 @@ from claude_agent_sdk import (
     ToolUseBlock,
     UserMessage,
 )
+from pydantic import BaseModel
 
 from backend.copilot.constants import (
+    COMPACTION_TOOL_NAME,
     COPILOT_ERROR_PREFIX,
     COPILOT_RETRYABLE_ERROR_PREFIX,
 )
@@ -169,25 +172,146 @@ async def test_a_launch_that_ran_a_tool_is_not_relaunched(
     assert len(turn.launched) == 1
     assert sent == ["toolu_1"]
     assert [error.code for error in turn.errors()] == [code]
-    streamed_calls = {
-        e.toolCallId for e in turn.events if isinstance(e, StreamToolInputAvailable)
-    }
-    streamed_results = {
-        e.toolCallId for e in turn.events if isinstance(e, StreamToolOutputAvailable)
-    }
+    assert turn.streamed_tool_rows() == turn.persisted_tool_rows()
+    assert turn.streamed_tool_rows() == ({"toolu_1"}, {"toolu_1"})
     persisted = turn.persisted_messages()
-    persisted_calls = {tc["id"] for m in persisted for tc in m.tool_calls or []}
-    persisted_results = {m.tool_call_id for m in persisted if m.role == "tool"}
-    assert streamed_calls == persisted_calls == {"toolu_1"}
-    assert streamed_results == persisted_results == {"toolu_1"}
     assert (persisted[-1].content or "").startswith(
         (COPILOT_ERROR_PREFIX, COPILOT_RETRYABLE_ERROR_PREFIX)
     )
 
 
+@pytest.mark.asyncio
+async def test_random_turns_relaunch_only_what_streamed_nothing(tmp_path, monkeypatch):
+    """Seeded random turns: every launch does some unseen work (a generation,
+    a subagent), maybe shows text or runs a tool, then succeeds, overflows
+    the context, or fails transiently with a 529 or a dropped connection.
+
+    However the steps fall, the loop relaunches exactly when the retry rules
+    allow it and nothing was streamed, so no tool runs twice and the chat keeps
+    every row it showed; and OpenRouter bills exactly the launches no transient
+    retry absorbed.
+    """
+    for seed in range(_SEEDS):
+        rng = random.Random(seed)
+        root = tmp_path / str(seed)
+        root.mkdir()
+        turn = _Turn(root, monkeypatch, first_turn=rng.random() < 0.3)
+        sent: list[str] = []
+        plans = [
+            _random_launch(rng, f"{seed}-{n}", turn, sent, monkeypatch)
+            for n in range(_MAX_LAUNCHES)
+        ]
+
+        await turn.run([plan.steps for plan in plans])
+
+        ran = plans[: len(turn.launched)]
+        context = f"seed {seed}: {[(p.shown, p.end) for p in ran]}"
+        assert len(ran) == _launches_allowed(plans), context
+        assert sent == [p.tool for p in ran if p.tool], context
+        assert turn.streamed_tool_rows() == turn.persisted_tool_rows(), context
+        kept = [p for i, p in enumerate(ran) if i == len(ran) - 1 or not p.transient]
+        billed = [g for p in kept for g in p.live + p.subagent]
+        reconcile = turn.reconcile_mock()
+        if any(p.live for p in kept):
+            reconcile.assert_awaited_once()
+            assert reconcile.await_args.kwargs["cost_usd"] == pytest.approx(
+                sum(_COSTS[g] for g in billed)
+            ), context
+        else:
+            reconcile.assert_not_awaited()
+
+
 # A step of a scripted launch: a message the CLI streams, or something done
 # at that point (a subagent writing its transcript, a tool doing its work).
 _Step = AssistantMessage | UserMessage | ResultMessage | Callable[[], None]
+
+_SEEDS = 200
+# Three context attempts, each with one transient retry.
+_MAX_LAUNCHES = 6
+_TRANSIENT_ENDS = ("overloaded", "dropped")
+
+
+class _Launch(BaseModel):
+    """One scripted launch of a random turn, and what it does."""
+
+    steps: list[Any] = []
+    live: list[str] = []
+    subagent: list[str] = []
+    shown: str = "nothing"
+    tool: str | None = None
+    end: str = "ok"
+
+    @property
+    def streamed(self) -> bool:
+        return self.shown != "nothing" or self.end == "ok"
+
+    @property
+    def transient(self) -> bool:
+        return self.end in _TRANSIENT_ENDS
+
+
+def _random_launch(
+    rng: random.Random,
+    key: str,
+    turn: "_Turn",
+    sent: list[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> _Launch:
+    launch = _Launch(shown=rng.choice(["nothing", "text", "tool"]))
+    for n in range(rng.randint(0, 2)):
+        generation = f"gen-{key}-{n}"
+        monkeypatch.setitem(_COSTS, generation, rng.randint(1, 99) / 1000)
+        if rng.random() < 0.5:
+            launch.steps.append(_generation(generation))
+            launch.live.append(generation)
+        else:
+            launch.steps.append(turn.subagent(f"agent-{key}-{n}", generation))
+            launch.subagent.append(generation)
+    shown = f"gen-{key}-shown"
+    monkeypatch.setitem(_COSTS, shown, rng.randint(1, 99) / 1000)
+    if launch.shown == "text":
+        launch.steps.append(
+            AssistantMessage(
+                content=[TextBlock(text="partial")], model=_MODEL, message_id=shown
+            )
+        )
+        launch.live.append(shown)
+    elif launch.shown == "tool":
+        launch.tool = f"toolu_{key}"
+        launch.steps += _sends_email(launch.tool, sent, generation_id=shown)
+        launch.live.append(shown)
+    launch.end = rng.choice(["ok", "overflow", *_TRANSIENT_ENDS])
+    if launch.end == "ok":
+        reply = f"gen-{key}-reply"
+        monkeypatch.setitem(_COSTS, reply, rng.randint(1, 99) / 1000)
+        launch.steps += _reply(reply)
+        launch.live.append(reply)
+    elif launch.end == "overflow":
+        launch.steps.append(_prompt_too_long())
+    elif launch.end == "overloaded":
+        launch.steps.append(_overloaded())
+    else:
+        launch.steps.append(_dropped)
+    return launch
+
+
+def _launches_allowed(plans: list[_Launch]) -> int:
+    """How many launches the retry rules make of *plans*: a launch is retried
+    only if it streamed nothing, a transient failure once per context
+    attempt, a context overflow until the third attempt."""
+    attempt = transient = 0
+    for n, plan in enumerate(plans, start=1):
+        if plan.streamed:
+            return n
+        if plan.end == "overflow":
+            attempt, transient = attempt + 1, 0
+            if attempt >= 3:
+                return n
+        else:
+            transient += 1
+            if transient > 1:
+                return n
+    return len(plans)
 
 
 class _Turn:
@@ -302,6 +426,10 @@ class _Turn:
     def errors(self) -> list[StreamError]:
         return [e for e in self.events if isinstance(e, StreamError)]
 
+    def reconcile_mock(self) -> MagicMock:
+        """What the OpenRouter reconcile charged, if it ran."""
+        return self._mocks["reconcile"]
+
     def reconciled_cost(self) -> float:
         self._mocks["persist"].assert_not_awaited()
         reconcile = self._mocks["reconcile"]
@@ -312,6 +440,43 @@ class _Turn:
         """The chat as the turn's last save wrote it."""
         upsert = self._mocks[f"{_SVC}.upsert_chat_session"]
         return list(upsert.await_args.args[0].messages)
+
+    def streamed_tool_rows(self) -> tuple[set[str], set[str]]:
+        """The model's tool calls and their results the turn streamed, by ID.
+
+        Compaction rows are left out: one the loop opens and then finds
+        nothing to compact for is retired on the wire, never persisted.
+        """
+        calls = {
+            e.toolCallId
+            for e in self.events
+            if isinstance(e, StreamToolInputAvailable)
+            and e.toolName != COMPACTION_TOOL_NAME
+        }
+        results = {
+            e.toolCallId
+            for e in self.events
+            if isinstance(e, StreamToolOutputAvailable)
+            and e.toolName != COMPACTION_TOOL_NAME
+        }
+        return calls, results
+
+    def persisted_tool_rows(self) -> tuple[set[str], set[str]]:
+        """The model's tool calls and their results the chat kept, by ID."""
+        messages = self.persisted_messages()
+        tool_calls = [tc for m in messages for tc in m.tool_calls or []]
+        compactions = {
+            tc["id"]
+            for tc in tool_calls
+            if tc["function"]["name"] == COMPACTION_TOOL_NAME
+        }
+        calls = {tc["id"] for tc in tool_calls} - compactions
+        results = {
+            m.tool_call_id
+            for m in messages
+            if m.role == "tool" and m.tool_call_id and m.tool_call_id not in compactions
+        }
+        return calls, results
 
     def _launch(self, *args: Any, **kwargs: Any) -> AsyncMock:
         options = kwargs["options"]
@@ -392,7 +557,9 @@ def _prompt_too_long() -> ResultMessage:
     return result
 
 
-def _sends_email(tool_use_id: str, sent: list[str]) -> list[_Step]:
+def _sends_email(
+    tool_use_id: str, sent: list[str], generation_id: str | None = None
+) -> list[_Step]:
     return [
         AssistantMessage(
             content=[
@@ -403,6 +570,7 @@ def _sends_email(tool_use_id: str, sent: list[str]) -> list[_Step]:
                 )
             ],
             model=_MODEL,
+            message_id=generation_id,
         ),
         lambda: sent.append(tool_use_id),
         UserMessage(content=[ToolResultBlock(tool_use_id=tool_use_id, content="sent")]),
