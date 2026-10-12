@@ -362,14 +362,17 @@ export const MessageResponse = memo(
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre]:!bg-white",
         "[&_a]:text-blue-500 [&_a]:no-underline hover:[&_a]:underline",
-        // Raycast/Linear-style markdown tables — clean borders, subtle row
-        // separators, light header, no outer-corner artifacts.
-        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border [&_table]:border-zinc-200 [&_table]:text-sm",
-        "[&_thead]:bg-zinc-50",
-        "[&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_th]:text-zinc-600",
-        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_td]:text-zinc-800",
+        // Raycast-style markdown tables: a rounded card with a quiet small-caps
+        // header, hairline row separators and tabular figures.
+        "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:border-0 [&_table]:text-[13px] [&_table]:tabular-nums",
+        "[&_tbody]:bg-transparent [&_thead]:bg-[radial-gradient(35%_160%_at_8%_0%,rgba(139,92,246,0.05),transparent),radial-gradient(35%_160%_at_50%_0%,rgba(99,102,241,0.04),transparent),radial-gradient(35%_160%_at_92%_0%,rgba(59,130,246,0.05),transparent),linear-gradient(to_bottom,theme(colors.white),theme(colors.zinc.50))]",
+        "[&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:border-b [&_th]:border-zinc-200 [&_th]:px-4 [&_th]:py-0 [&_th]:text-left [&_th]:text-[11px] [&_th]:font-medium [&_th]:uppercase [&_th]:tracking-[0.06em] [&_th]:text-indigo-950/60",
+        "[&_th:first-child]:[text-shadow:0_0_6px_rgba(139,92,246,0.45),0_0_18px_rgba(139,92,246,0.55)] [&_th:last-child]:[text-shadow:0_0_6px_rgba(59,130,246,0.45),0_0_18px_rgba(59,130,246,0.55)] [&_th]:[text-shadow:0_0_6px_rgba(99,102,241,0.45),0_0_18px_rgba(99,102,241,0.55)]",
+        "[&_td]:border-b [&_td]:border-zinc-100 [&_td]:px-4 [&_td]:py-2 [&_td]:align-top [&_td]:text-[13px] [&_td]:leading-5 [&_td]:text-zinc-700",
+        "[&_td_strong]:font-medium [&_td_strong]:text-zinc-950",
+        "[&_td_code]:whitespace-nowrap [&_td_code]:rounded [&_td_code]:bg-zinc-100 [&_td_code]:px-1 [&_td_code]:py-px [&_td_code]:text-[12px] [&_td_code]:text-zinc-700",
         "[&_tbody_tr:last-child_td]:border-b-0",
-        "[&_tbody_tr:hover_td]:bg-zinc-50/60",
+        "[&_tbody_tr:hover_td]:bg-zinc-50 [&_tbody_tr]:transition-colors",
         className,
       )}
       components={{
@@ -377,7 +380,7 @@ export const MessageResponse = memo(
         // Wrap in an overflow-x-auto div so the page never grows past the
         // chat container — the table scrolls internally instead.
         table: ({ children, ...tableProps }) => (
-          <div className="my-4 max-w-full overflow-x-auto">
+          <div className="my-4 max-w-full overflow-x-auto rounded-xl border border-zinc-200 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
             <table {...tableProps}>{children}</table>
           </div>
         ),
