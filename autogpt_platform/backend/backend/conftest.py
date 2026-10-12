@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import sys
+from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
@@ -11,7 +12,10 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+import sentry_sdk
 from dotenv import load_dotenv
+from sentry_sdk.envelope import Envelope
+from sentry_sdk.transport import Transport
 
 from backend.data import versioned_cache
 from backend.data.subscription_lookup_cache import ACTIVE_SUBSCRIPTIONS
@@ -169,6 +173,44 @@ def admin_user_id() -> str:
 def target_user_id() -> str:
     """Target user ID fixture."""
     return "5e53486c-cf57-477e-ba2a-cb02dc828e1c"
+
+
+class _SentryTransactionCapture(Transport):
+    """Keeps the transactions a test's Sentry client would have sent."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.transactions: list[dict] = []
+
+    def capture_envelope(self, envelope: Envelope) -> None:
+        for item in envelope.items:
+            if item.type == "transaction" and item.payload.json is not None:
+                self.transactions.append(item.payload.json)
+
+
+@pytest.fixture
+def sentry_transactions() -> Iterator[list[dict]]:
+    """A live Sentry client for the test, sampling as production does. Every
+    transaction it finishes is appended, as sent, to the yielded list."""
+    from backend.util.tracing import traces_sampler
+
+    capture = _SentryTransactionCapture()
+    client = sentry_sdk.Client(
+        dsn="https://key@o1.ingest.us.sentry.io/1",
+        transport=capture,
+        traces_sampler=traces_sampler,
+        default_integrations=False,
+        auto_enabling_integrations=False,
+        send_client_reports=False,
+    )
+    global_scope = sentry_sdk.get_global_scope()
+    previous = global_scope.client
+    global_scope.set_client(client)
+    try:
+        yield capture.transactions
+    finally:
+        global_scope.set_client(previous)
+        client.close()
 
 
 async def _create_user_with_loop_retry(user_data: dict) -> None:
