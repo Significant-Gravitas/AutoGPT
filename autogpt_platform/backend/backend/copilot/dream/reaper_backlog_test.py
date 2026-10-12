@@ -629,6 +629,7 @@ def _scale_every_bound(mocker, scale: float) -> None:
         (cleanup_mod, "STATE_STEP_TIMEOUT_SECONDS", 5),
         (cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 10),
         (batch_costs_mod, "CLAIM_WINDOW_SECONDS", 30),
+        (batch_costs_mod, "CLAIM_TIMEOUT_SECONDS", 5),
         (cleanup_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (locks_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (provider_batch_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),

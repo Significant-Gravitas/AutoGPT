@@ -31,10 +31,16 @@ logger = logging.getLogger(__name__)
 # unknown, its claim neither made nor refused, so the next cleanup tries.
 PhaseCharge = Literal["charged", "nothing", "failed", "claimed", "unknown"]
 
-# How long a pass's charge goes on claiming, from its start: past it, the
-# pass's gate or a phase's claim still waiting on Redis is given up, and left
-# for the next cleanup. A phase claimed in time is charged all the same.
+# How long a pass's charge admits claims, from its start: a phase not
+# claimed by then is left for the next cleanup, as is the pass whose gate
+# check is still waiting on Redis (cutting that check claims nothing). A
+# claim issued in time is never cut by the window.
 CLAIM_WINDOW_SECONDS = 30.0
+# How long one phase's claim, once issued, is waited for, the Redis client's
+# retries included, as the cleanup waits on a state read. A claim Redis took
+# whose reply has not come by then leaves its phase claimed and uncharged:
+# the at-most-once of any Redis command whose reply is lost.
+CLAIM_TIMEOUT_SECONDS = 5.0
 
 # The passes' charges under way. Each runs on whatever happens to the caller
 # that started it (``charge_landed_phases``), and is kept here until it ends.
@@ -69,15 +75,18 @@ async def charge_landed_phases(
     reaper run out of budget, the executor's bound on a drop hook): a cleanup
     that has read the state makes the charge even when it is cut while Redis
     answers slowly, and no cut lands between a claim and its charge. The task
-    gives up claiming ``CLAIM_WINDOW_SECONDS`` after it starts; a phase
-    claimed by then is charged to its end. Each phase is claimed on its own,
+    issues no claim ``CLAIM_WINDOW_SECONDS`` after it starts, and never cuts
+    one it issued for the window (each waits up to ``CLAIM_TIMEOUT_SECONDS``
+    of its own); a phase it claims is charged to its end. Each phase is
+    claimed on its own,
     so a charge stopped part-way resumes with the rest: the claimed ones are
     skipped, the others charged. Not *settled* when the gate or a claim could
     not be made or checked: the next cleanup tries again.
 
     At most once, not exactly once. A process that dies between a phase's
-    claim and its cost-log write leaves that phase uncharged, and a charge
-    that fails part-way is not retried: the trial ledger and the weekly
+    claim and its cost-log write leaves that phase uncharged, as does a claim
+    Redis took whose reply was lost or outlasted ``CLAIM_TIMEOUT_SECONDS``;
+    and a charge that fails part-way is not retried: the trial ledger and the weekly
     counter can move before the cost-log write raises, so a second attempt
     could charge them twice. Both under-account the pass rather than risk a
     second charge for a phase; the failure is logged, the crash is not.
@@ -101,8 +110,8 @@ async def _charge_pass(
     state: dict[str, dict[str, Any]],
     phase_models: dict[str, str],
 ) -> PhaseCharges:
-    """The gate, then each landed phase claimed and charged; claiming until
-    ``CLAIM_WINDOW_SECONDS`` after it starts."""
+    """The gate, then each landed phase claimed and charged; admitting
+    claims until ``CLAIM_WINDOW_SECONDS`` after it starts."""
     deadline = asyncio.get_running_loop().time() + CLAIM_WINDOW_SECONDS
     try:
         async with asyncio.timeout_at(deadline):
@@ -166,8 +175,11 @@ async def _claim_and_charge(
     phase_models: dict[str, str],
     deadline: float,
 ) -> PhaseCharge:
-    """Claim one phase by *deadline* (loop time), then charge it; past the
-    deadline the phase is not claimed, and left for the next cleanup."""
+    """Claim one phase, then charge it. The claim is issued only before
+    *deadline* (loop time), the charge's claim window, else the phase is left
+    for the next cleanup; once issued it is waited for up to
+    ``CLAIM_TIMEOUT_SECONDS`` whatever the window, which must not cut a claim
+    Redis may have taken."""
     if asyncio.get_running_loop().time() >= deadline:
         logger.warning(
             f"Dream pass {pass_id}: its charge stopped claiming before its "
@@ -175,7 +187,7 @@ async def _claim_and_charge(
         )
         return "unknown"
     try:
-        async with asyncio.timeout_at(deadline):
+        async with asyncio.timeout(CLAIM_TIMEOUT_SECONDS):
             claimed = await claim_phase_charge(pass_id, phase)
     except Exception:
         logger.warning(

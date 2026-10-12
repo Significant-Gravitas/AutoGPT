@@ -189,6 +189,52 @@ class TestACleanupCutShortInItsCharge:
         assert _charged(charges) == ["consolidate"]
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
 
+    async def test_a_claim_issued_in_time_is_charged_when_its_reply_comes_late(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """Codex's probe: the gate answers late in the claim window, so the
+        phase's claim goes out in time; Redis takes it, and its reply comes
+        after the window has closed. The window only admits claims, so the
+        claim is waited for and the phase charged; the next run finds it
+        charged and finishes."""
+        mocker.patch.object(costs_mod, "CLAIM_WINDOW_SECONDS", 0.3)
+        mocker.patch.object(costs_mod, "CLAIM_TIMEOUT_SECONDS", 0.5)
+        mocker.patch.object(cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 0.1)
+        await _dead_batch_pass(fake_dream_db)
+        gate = costs_mod.claim_per_phase_charging
+
+        async def slow_gate(pass_id: str) -> bool:
+            await asyncio.sleep(0.2)
+            return await gate(pass_id)
+
+        claim = "dream:batch:charged:p1:consolidate"
+        set_ = fake_dream_redis.set
+        late: list[str] = []
+
+        async def late_reply(key: str, *args, **kwargs):
+            taken = await set_(key, *args, **kwargs)
+            if key == claim and taken:
+                await asyncio.sleep(0.15)
+                late.append(key)
+            return taken
+
+        mocker.patch.object(costs_mod, "claim_per_phase_charging", slow_gate)
+        mocker.patch.object(fake_dream_redis, "set", late_reply)
+
+        first = await asyncio.wait_for(reap_expired_passes(), 5)
+        await asyncio.wait_for(asyncio.gather(*costs_mod._CHARGES_IN_FLIGHT), 5)
+
+        assert first.outcomes == {"retry": 1}
+        assert late == [claim]
+        assert _charged(charges) == ["consolidate"]
+
+        mocker.patch.object(costs_mod, "claim_per_phase_charging", gate)
+        second = await reap_expired_passes()
+
+        assert second.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+
 
 class TestAPhaseCharge:
     async def test_is_made_once_whoever_asks_and_however_often(
