@@ -3,6 +3,10 @@ import type { User } from "@/lib/auth/types";
 // Resolution of the wizard's "Other" / "Something else" sentinels into real
 // values for the Preparing-step profile submit.
 
+// The profile submit rejects a longer role (the API counts code points), and
+// the whole profile is then lost.
+export const OTHER_ROLE_MAX_LENGTH = 100;
+
 interface ProfileSource {
   role: string;
   otherRole: string;
@@ -28,7 +32,10 @@ export function accountDisplayName(user: User | null | undefined): string {
 export function normalizeOnboardingProfile(
   state: ProfileSource,
 ): NormalizedProfile {
-  const resolvedRole = state.role === "Other" ? state.otherRole : state.role;
+  const resolvedRole =
+    state.role === "Other"
+      ? Array.from(state.otherRole).slice(0, OTHER_ROLE_MAX_LENGTH).join("")
+      : state.role;
   const resolvedPainPoints = state.painPoints
     .filter((p) => p !== "Something else")
     .concat(

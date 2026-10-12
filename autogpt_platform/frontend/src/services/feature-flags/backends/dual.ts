@@ -1,7 +1,9 @@
 "use client";
 
+import { FeatureFlagEvent } from "@/services/analytics/posthog-events";
 import { environment } from "@/services/environment";
 import { usePostHog } from "@posthog/react";
+import * as Sentry from "@sentry/nextjs";
 import isEqual from "lodash/isEqual";
 import { useEffect } from "react";
 import { isPostHogFlagsEnabled } from "../flag-backend";
@@ -53,7 +55,49 @@ function useReportMismatch(
   useEffect(() => {
     if (!comparable || agree) return;
     const mismatch = JSON.parse(record);
-    console.warn("feature-flag mismatch", mismatch);
-    posthog?.capture("feature_flag_mismatch", mismatch);
+    reportMismatchToSentry(mismatch);
+    posthog?.capture(FeatureFlagEvent.FEATURE_FLAG_MISMATCHED, mismatch);
   }, [comparable, agree, record, posthog]);
+}
+
+interface Mismatch {
+  flag: string;
+  launchdarkly: { value: unknown };
+  posthog: { value: unknown };
+}
+
+// Sentry tag values are capped at 200 characters.
+const MAX_TAG_LENGTH = 200;
+
+// One issue per flag, so the patrol sees which flags disagree; the tags carry
+// each vendor's answer, so the issue shows the direction too (BUILDER-94P).
+export function reportMismatchToSentry({
+  flag,
+  launchdarkly,
+  posthog,
+}: Mismatch) {
+  const launchDarklyValue = describeValue(launchdarkly.value);
+  const postHogValue = describeValue(posthog.value);
+  const message = `Feature flag mismatch: ${flag} (LaunchDarkly=${launchDarklyValue}, PostHog=${postHogValue})`;
+  console.info(message);
+  Sentry.captureMessage(message, {
+    level: "warning",
+    fingerprint: ["feature-flag-mismatch", flag],
+    tags: {
+      "feature_flag.key": flag,
+      "feature_flag.launchdarkly": launchDarklyValue.slice(0, MAX_TAG_LENGTH),
+      "feature_flag.posthog": postHogValue.slice(0, MAX_TAG_LENGTH),
+    },
+    contexts: {
+      feature_flag_mismatch: {
+        flag,
+        launchdarkly: launchDarklyValue,
+        posthog: postHogValue,
+      },
+    },
+  });
+}
+
+function describeValue(value: unknown) {
+  return value === undefined ? "undefined" : JSON.stringify(value);
 }

@@ -103,9 +103,18 @@ def _gate_attention(
             )
         )
         or None,
-        review=review,
+        review=_without_held_bytes(review),
         primary_action=HomeAction(label="Open chat", href=_review_link(review)),
     )
+
+
+def _without_held_bytes(review: PendingHumanReviewModel) -> PendingHumanReviewModel:
+    # A held read's `content` is up to 70k chars the card never shows (it renders
+    # `passage`), shipped per row on every Home poll.
+    if not isinstance(review.payload, dict) or "content" not in review.payload:
+        return review
+    payload = {k: v for k, v in review.payload.items() if k != "content"}
+    return review.model_copy(update={"payload": payload})
 
 
 def _gate_payload(review: PendingHumanReviewModel) -> GateReviewPayload | None:

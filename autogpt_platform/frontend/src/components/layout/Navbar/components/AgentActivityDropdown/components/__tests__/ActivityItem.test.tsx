@@ -60,6 +60,27 @@ describe("ActivityItem", () => {
     expect(screen.getByText("Weather Agent")).toBeDefined();
   });
 
+  it("says a completed run with a failed step completed with errors", () => {
+    render(
+      <ActivityItem
+        execution={makeExecution({ stats: { node_error_count: 1 } })}
+      />,
+    );
+
+    expect(screen.getByText(/^Completed with errors /)).toBeDefined();
+  });
+
+  it("says a clean completed run completed", () => {
+    render(
+      <ActivityItem
+        execution={makeExecution({ stats: { node_error_count: 0 } })}
+      />,
+    );
+
+    expect(screen.getByText(/^Completed /)).toBeDefined();
+    expect(screen.queryByText(/with errors/)).toBeNull();
+  });
+
   it("renders a non-linked item when the execution has no library agent", () => {
     render(
       <ActivityItem

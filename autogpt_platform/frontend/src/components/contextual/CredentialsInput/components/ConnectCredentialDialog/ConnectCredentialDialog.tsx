@@ -139,6 +139,7 @@ export function ConnectCredentialDialog({
 
   const connectable: ConnectableProvider = {
     id: provider,
+    serviceId: provider,
     name: displayName,
     description: null,
     supportedAuthTypes: getConnectableCredentialTypes(

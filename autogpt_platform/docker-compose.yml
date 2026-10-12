@@ -25,6 +25,12 @@ services:
       file: ./docker-compose.platform.yml
       service: migrate
 
+  publish_skills:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: publish_skills
+
   redis-0:
     <<: *agpt-services
     extends:

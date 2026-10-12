@@ -9,6 +9,7 @@ import re
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
+import aiohttp
 import fastapi
 from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi import Query, UploadFile
@@ -36,7 +37,10 @@ from backend.data.workspace_scope import (
 )
 from backend.util.settings import Config
 from backend.util.workspace import WorkspaceManager, format_bytes
-from backend.util.workspace_storage import get_workspace_storage
+from backend.util.workspace_storage import (
+    WorkspaceStorageBackend,
+    get_workspace_storage,
+)
 
 
 def _sanitize_filename_for_header(
@@ -89,48 +93,71 @@ def _create_streaming_response(
     )
 
 
+_STORAGE_READ_ATTEMPTS = 2
+
+
+async def _read_file_content(
+    storage: WorkspaceStorageBackend, file: WorkspaceFile
+) -> bytes:
+    """Read a file's bytes, retrying once on a transient storage error.
+
+    Content missing from storage is a 404, not a server error. A storage read
+    that keeps failing (a GCS body cut off mid-transfer, a timeout, a 5xx from
+    the bucket) is a 502, logged with its traceback so it reaches Sentry.
+    """
+    attempt = 1
+    while True:
+        try:
+            return await storage.retrieve(file.storage_path)
+        except FileNotFoundError:
+            logger.warning(
+                f"File {file.id} has a record but no content in storage "
+                f"(storagePath={file.storage_path})"
+            )
+            raise fastapi.HTTPException(status_code=404, detail="File not found")
+        except (aiohttp.ClientError, OSError) as e:
+            if attempt < _STORAGE_READ_ATTEMPTS:
+                logger.warning(f"Retrying read of file {file.id} after {e!r}")
+                attempt += 1
+                continue
+            logger.error(
+                f"Failed to read file {file.id} from storage after {attempt} "
+                f"attempts (storagePath={file.storage_path}): {e!r}",
+                exc_info=True,
+            )
+            raise fastapi.HTTPException(
+                status_code=502,
+                detail="File storage is temporarily unavailable, please retry",
+            ) from e
+
+
 async def create_file_download_response(
     file: WorkspaceFile, *, inline: bool = False
 ) -> Response:
     """
     Create a download response for a workspace file.
 
-    Handles both local storage (direct streaming) and GCS (signed URL redirect
-    with fallback to streaming).
+    GCS files redirect to a signed URL when the credentials can sign one;
+    otherwise (local storage, or GCS without a signing key) the content is
+    streamed through the API.
     """
     storage = await get_workspace_storage()
 
-    # For local storage, stream the file directly
-    if file.storage_path.startswith("local://"):
-        content = await storage.retrieve(file.storage_path)
-        return _create_streaming_response(content, file, inline=inline)
-
-    # For GCS, try to redirect to signed URL, fall back to streaming
-    try:
-        url = await storage.get_download_url(file.storage_path, expires_in=300)
-        # If we got back an API path (fallback), stream directly instead
-        if url.startswith("/api/"):
-            content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file, inline=inline)
-        return fastapi.responses.RedirectResponse(url=url, status_code=302)
-    except Exception as e:
-        # Log the signed URL failure with context
-        logger.error(
-            f"Failed to get signed URL for file {file.id} "
-            f"(storagePath={file.storage_path}): {e}",
-            exc_info=True,
-        )
-        # Fall back to streaming directly from GCS
+    if not file.storage_path.startswith("local://"):
         try:
-            content = await storage.retrieve(file.storage_path)
-            return _create_streaming_response(content, file, inline=inline)
-        except Exception as fallback_error:
-            logger.error(
-                f"Fallback streaming also failed for file {file.id} "
-                f"(storagePath={file.storage_path}): {fallback_error}",
-                exc_info=True,
+            url = await storage.get_download_url(file.storage_path, expires_in=300)
+        except Exception as e:
+            logger.warning(
+                f"Could not sign a download URL for file {file.id}, "
+                f"streaming it instead: {e!r}"
             )
-            raise
+            url = None
+        # An /api/ path means the backend cannot sign URLs, so stream instead.
+        if url and not url.startswith("/api/"):
+            return fastapi.responses.RedirectResponse(url=url, status_code=302)
+
+    content = await _read_file_content(storage, file)
+    return _create_streaming_response(content, file, inline=inline)
 
 
 class WorkspaceFileUploadResponse(BaseModel):

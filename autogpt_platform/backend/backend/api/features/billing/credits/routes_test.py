@@ -52,6 +52,15 @@ def setup_app_auth(mock_jwt_user, test_user_id):
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def track_checkout_started(mocker: pytest_mock.MockFixture) -> AsyncMock:
+    """Keep analytics off the network and let tests assert the event."""
+    return mocker.patch(
+        "backend.api.features.billing.credits.routes.track_checkout_started",
+        new_callable=AsyncMock,
+    )
+
+
 EXPECTED_OPERATIONS = {
     ("get", "/api/credits"),
     ("post", "/api/credits"),
@@ -181,6 +190,50 @@ def test_request_top_up(
         json.dumps(response_data, indent=2, sort_keys=True),
         "cred_topup_req",
     )
+
+
+def test_request_top_up_sends_checkout_started(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+    test_user_id: str,
+) -> None:
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(
+        return_value="https://checkout.example.com/session123"
+    )
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_awaited_once_with(
+        user_id=test_user_id, checkout_kind="top_up", surface="billing"
+    )
+
+
+def test_request_top_up_without_a_checkout_sends_no_checkout_started(
+    mocker: pytest_mock.MockFixture,
+    track_checkout_started: AsyncMock,
+) -> None:
+    """With credits disabled there is no checkout session, so no checkout started."""
+    mock_credit_model = Mock()
+    mock_credit_model.top_up_intent = AsyncMock(return_value="")
+    mocker.patch(
+        "backend.api.features.billing.credits.routes.get_credit_model",
+        return_value=mock_credit_model,
+    )
+
+    response = client.post(
+        "/credits", json={"credit_amount": 500, "surface": "billing"}
+    )
+
+    assert response.status_code == 200
+    track_checkout_started.assert_not_awaited()
 
 
 def test_request_top_up_forwards_datafast_headers(

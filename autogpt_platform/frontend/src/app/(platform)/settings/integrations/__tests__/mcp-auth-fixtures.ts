@@ -18,7 +18,10 @@ function preset(
     name: `mcp_${slug}`,
     display_name: name,
     description: `${name} account and data tools`,
-    supported_auth_types: ["oauth2"],
+    supported_auth_types: [],
+    service: slug,
+    service_name: name,
+    service_icon: metadata.icon_id ?? null,
     mcp_server: {
       server_url: `https://mcp.${slug}.example.com/mcp`,
       documentation_url: `https://docs.example.com/${slug}`,

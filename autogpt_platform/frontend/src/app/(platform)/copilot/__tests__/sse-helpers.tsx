@@ -19,9 +19,23 @@ import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { ReactNode, StrictMode, useState } from "react";
 import { expect } from "vitest";
 import { CopilotChatHost } from "../CopilotChatHost";
+import { resetCopilotChatRegistry } from "../copilotChatRegistry";
+import { resetTurnRuntimes } from "../stream/turnRuntime";
 
 export const TEST_BACKEND_BASE_URL = "http://localhost:18006";
 export const TEST_SESSION_ID = "test-session-stream-1";
+
+/** The two chat streams a test can drive: the AI SDK's, the default, and the
+ *  turn runtime behind `copilot-stream-runtime`. */
+export const STREAM_PATHS = ["AI SDK", "stream runtime"] as const;
+export type StreamPath = (typeof STREAM_PATHS)[number];
+export const STREAM_RUNTIME_FLAG = "copilot-stream-runtime";
+
+/** Both paths keep a per-session runtime in a module-level map. */
+export function resetChatRuntimes() {
+  resetCopilotChatRegistry();
+  resetTurnRuntimes();
+}
 
 export interface SessionOverride {
   active_stream?: SessionDetailResponse["active_stream"];
@@ -115,13 +129,15 @@ export function renderHost(
     searchParams?: string;
     /** Follow-ups the backend still holds in the session's pending buffer. */
     pendingMessages?: string[];
+    /** Replaces the default session GET, e.g. to answer it with an error. */
+    sessionResponse?: HttpHandler;
     /** Mount under React Strict Mode, as the dev server does: every effect
      *  runs twice on mount, so load-time requests fire twice. */
     strictMode?: boolean;
   } = {},
 ) {
   server.use(
-    sessionHandler(opts.sessionOverride),
+    opts.sessionResponse ?? sessionHandler(opts.sessionOverride),
     getGetV2GetCopilotUsageMockHandler200({
       daily: {
         percent_used: 0,

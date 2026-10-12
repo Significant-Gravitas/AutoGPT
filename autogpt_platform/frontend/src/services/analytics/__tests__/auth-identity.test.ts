@@ -16,6 +16,7 @@ import {
 const posthog = vi.hoisted(() => ({
   get_distinct_id: vi.fn<() => string | undefined>(),
   reset: vi.fn(),
+  register: vi.fn(),
 }));
 
 vi.mock("posthog-js", () => ({ default: posthog }));
@@ -104,6 +105,9 @@ describe("analytics identity on account transitions", () => {
 
       expect(posthog.reset).toHaveBeenCalledOnce();
       expect(posthog.reset).toHaveBeenCalledWith(true);
+      expect(posthog.register).toHaveBeenCalledWith(
+        expect.objectContaining({ source: "web" }),
+      );
       expect(observed).toEqual(["new-visitor"]);
       expect(getAnonymousID()).toBe(posthog.get_distinct_id());
     },

@@ -111,6 +111,9 @@ describe("ApiKeysPage", () => {
     await waitFor(() => {
       expect(apiKeys[0]?.name).toBe("CLI Key");
     });
+    expect(
+      screen.getByText("plain-text-key").closest(".ph-no-capture"),
+    ).not.toBeNull();
   });
 
   test("revokes an existing API key", async () => {
