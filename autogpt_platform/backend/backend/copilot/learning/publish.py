@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 
+from backend.api.features.store.exceptions import VirusDetectedError
 from backend.copilot.tools.skills import (
     ExpectedHead,
     ParsedSkill,
@@ -355,6 +356,10 @@ async def _record_untracked_edit(
             pattern_class=exc.failure.pattern_class,
             blocked_step=exc.failure.step,
         )
+    except VirusDetectedError:
+        return PublishOutcome(
+            status="blocked_content", reason="skill package rejected by malware scan"
+        )
     return PublishOutcome(
         status="conflict",
         reason="the skill was edited concurrently; the edit was kept",
@@ -469,11 +474,16 @@ async def write_committed_version(
             expected_head=ExpectedHead(version_id=version.id),
             files=restore_files(version.files) if version.files is not None else None,
         )
-    except SkillContentBlockedError as exc:
+    except (SkillContentBlockedError, VirusDetectedError):
+        reason = "skill package rejected by content or malware scan"
         await skill_publication_db().abandon_publication(
-            user_id, version_id=version.id, review_id=review_id, reason=str(exc)
+            user_id,
+            version_id=version.id,
+            review_id=review_id,
+            reason=reason,
+            disposition="blocked_content",
         )
-        return PublishOutcome(status="blocked_content", reason=str(exc))
+        return PublishOutcome(status="blocked_content", reason=reason)
     except SkillVersionConflictError:
         reason = "superseded by a newer version before its workspace write"
         await skill_publication_db().abandon_publication(
