@@ -15,11 +15,12 @@ It is advisory: Check PR Status ignores its result (``ADVISORY_CHECK_RUNS`` in
     run --suite S FILE...   re-run the files and report (CI or local)
     stress -- CMD...        run CMD once under the gate's CPU load (local repro)
 
-Each ``run`` starts with one run in file order without load. A test that fails
-there too is a real failure, or needs a service the gate doesn't start; it is
-listed, not counted. Then come up to ``--runs`` runs under load, each in a new
-seeded order, while the time budget lasts. A test that passes in some runs
-and fails in others is flaky.
+Every run has coverage on, as the suites' CI jobs do: tracing slows tests
+down, and some only fail with it. Each ``run`` starts with one run in file
+order without load. A test that fails there too is a real failure, or needs a
+service the gate doesn't start; it is listed, not counted. Then come up to
+``--runs`` runs under load, each in a new seeded order, while the time budget
+lasts. A test that passes in some runs and fails in others is flaky.
 """
 
 from __future__ import annotations
@@ -43,10 +44,11 @@ REPO_ROOT = SCRIPTS_DIR.parents[1]
 
 DEFAULT_RUNS = 10
 DEFAULT_BUDGET_SECONDS = 360
-# Busy processes per CPU core during a loaded run. Two per core leave the
-# tests about a third of a core: slower than an idle runner, as slow as a busy
-# one gets, so a test that only fits an idle runner fails here.
-DEFAULT_LOAD_PER_CORE = 2
+# Busy processes per CPU core during a loaded run. Three per core leave a
+# test about a third of a core, which is how W26 reproduced the frontend tests
+# that ejected merge groups (3 of 3 runs failed) while their fixes held (10 of
+# 10 passed). At two per core a CI runner didn't slow them enough to fail.
+DEFAULT_LOAD_PER_CORE = 3
 # A loaded run that takes HANG_FACTOR times as long as the run without load,
 # and at least HANG_FLOOR_SECONDS, is stuck: it is stopped and counted.
 HANG_FACTOR = 5
@@ -177,7 +179,7 @@ class Suite:
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
         raise NotImplementedError
 
-    def env(self, seed: Optional[int]) -> dict[str, str]:
+    def env(self, seed: Optional[int], report: Path) -> dict[str, str]:
         return dict(os.environ)
 
     def parse(self, report: Path) -> dict[str, Outcome]:
@@ -200,14 +202,19 @@ class BackendSuite(Suite):
     directory = REPO_ROOT / "autogpt_platform" / "backend"
     report_suffix = "jsonl"
 
+    # How the backend test job runs pytest. Coverage tracing slows tests
+    # down, on Python 3.11 most of all, and #15427's test only ever failed
+    # with it on, so the gate measures under it too.
+    OPTIONS = ["-c", "pyproject.toml", "--cov=backend", "--cov-branch", "--cov-report="]
+
     def __init__(
         self,
         prefix: Optional[list[str]] = None,
         directory: Optional[Path] = None,
-        ini: Optional[list[str]] = None,
+        options: Optional[list[str]] = None,
     ):
         super().__init__(prefix, directory)
-        self.ini = ["-c", "pyproject.toml"] if ini is None else ini
+        self.options = self.OPTIONS if options is None else options
 
     def default_prefix(self) -> list[str]:
         return ["poetry", "run", "pytest"]
@@ -215,7 +222,7 @@ class BackendSuite(Suite):
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
         cmd = [
             *self.prefix,
-            *self.ini,
+            *self.options,
             "-p",
             "no:cacheprovider",
             "-p",
@@ -228,8 +235,9 @@ class BackendSuite(Suite):
             cmd.append(f"--flake-gate-seed={seed}")
         return [*cmd, *files]
 
-    def env(self, seed: Optional[int]) -> dict[str, str]:
+    def env(self, seed: Optional[int], report: Path) -> dict[str, str]:
         env = _with_plugin_path(dict(os.environ))
+        env["COVERAGE_FILE"] = str(report.with_suffix(".coverage"))
         if seed is not None:
             # Set iteration order follows the hash seed, so pinning it lets a
             # failing run be repeated exactly.
@@ -273,11 +281,11 @@ class BackendSuite(Suite):
 
     def repro(self, file: str, seed: Optional[int], load: int) -> str:
         if seed is None:
-            return f"poetry run test {shlex.quote(file)}"
+            return f"poetry run test --cov=backend --cov-branch {shlex.quote(file)}"
         return (
             f"PYTHONHASHSEED={seed} python3 ../../.github/scripts/flake_gate.py "
-            f"stress --load {load} -- poetry run test -p flake_gate_pytest "
-            f"--flake-gate-seed={seed} {shlex.quote(file)}"
+            f"stress --load {load} -- poetry run test --cov=backend --cov-branch "
+            f"-p flake_gate_pytest --flake-gate-seed={seed} {shlex.quote(file)}"
         )
 
 
@@ -290,10 +298,15 @@ class FrontendSuite(Suite):
         return ["pnpm", "exec", "vitest", "run"]
 
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
+        # Coverage on, as the integration test job runs Vitest; its report
+        # goes beside the run's own.
         cmd = [
             *self.prefix,
             *files,
             "--passWithNoTests",
+            "--coverage",
+            "--coverage.reporter=json-summary",
+            f"--coverage.reportsDirectory={report.with_suffix('')}-coverage",
             "--reporter=default",
             "--reporter=json",
             f"--outputFile.json={report}",
@@ -330,10 +343,10 @@ class FrontendSuite(Suite):
 
     def repro(self, file: str, seed: Optional[int], load: int) -> str:
         if seed is None:
-            return f"pnpm exec vitest run {shlex.quote(file)}"
+            return f"pnpm exec vitest run {shlex.quote(file)} --coverage"
         return (
             f"python3 ../../.github/scripts/flake_gate.py stress --load {load} -- "
-            f"pnpm exec vitest run {shlex.quote(file)} "
+            f"pnpm exec vitest run {shlex.quote(file)} --coverage "
             f"--sequence.shuffle --sequence.seed={seed}"
         )
 
@@ -431,7 +444,7 @@ def execute(
             proc = subprocess.Popen(
                 cmd,
                 cwd=suite.directory,
-                env=suite.env(seed),
+                env=suite.env(seed, report),
                 stdin=subprocess.DEVNULL,
                 stdout=out,
                 stderr=subprocess.STDOUT,
@@ -940,7 +953,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         "--load",
         type=int,
         default=int(os.environ.get("FLAKE_GATE_LOAD", default_load())),
-        help="busy processes during a loaded run (default: 2 per core)",
+        help="busy processes during a loaded run (default: 3 per core)",
     )
     run.add_argument("--seed", type=int, help="seed of the first loaded run")
     run.add_argument(

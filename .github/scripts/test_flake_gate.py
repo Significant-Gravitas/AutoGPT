@@ -307,8 +307,8 @@ class GateTests(unittest.TestCase):
         self.assertIn("E   assert 1.62 < 1.5", report)
         self.assertIn(
             "PYTHONHASHSEED=100 python3 ../../.github/scripts/flake_gate.py stress "
-            "--load 8 -- poetry run test -p flake_gate_pytest --flake-gate-seed=100 "
-            "a_test.py",
+            "--load 8 -- poetry run test --cov=backend --cov-branch "
+            "-p flake_gate_pytest --flake-gate-seed=100 a_test.py",
             report,
         )
         (annotation,) = annotation_commands(result)
@@ -323,7 +323,9 @@ class GateTests(unittest.TestCase):
         }
         result, _ = self.gate({0: _run(0, None, failed), 1: _run(1, 0, ok)}, runs=1)
         self.assertEqual([v.test for v in result.of_kind("flaky")], ["a_test.py::t"])
-        self.assertIn("\npoetry run test a_test.py\n", render(result))
+        self.assertIn(
+            "\npoetry run test --cov=backend --cov-branch a_test.py\n", render(result)
+        )
 
     def test_a_test_that_fails_every_run_is_listed_but_not_counted(self):
         broken = {
@@ -454,7 +456,7 @@ class EndToEndTests(unittest.TestCase):
             # the backend's pytest config.
             env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
             suite = BackendSuite(
-                prefix=[sys.executable, "-m", "pytest"], directory=suite_dir, ini=[]
+                prefix=[sys.executable, "-m", "pytest"], directory=suite_dir, options=[]
             )
             with mock.patch.dict(os.environ, env, clear=True):
                 result = run_gate(
