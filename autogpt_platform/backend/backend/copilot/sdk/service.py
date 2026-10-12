@@ -2480,20 +2480,24 @@ async def _do_transient_backoff(
     so the relaunch can start the session again; the failed launch streamed
     nothing, so it holds nothing worth resuming.
 
+    All of that is settled before the first yield. A turn torn down while it
+    waits out the backoff, by a client that goes away or a stop, never comes
+    back to this generator, yet the failed launch is no less ours.
+
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
     """
+    state.usage.cli_session_total_usd = None
+    await state.generations.absorb_launch()
+    fresh_session = state.options.session_id
+    if ctx.sdk_cwd and fresh_session and state.options.resume is None:
+        delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
     state.adapter = SDKResponseAdapter(
         message_id=ctx.message_id,
         session_id=ctx.session_id,
     )
-    state.usage.cli_session_total_usd = None
-    await state.generations.absorb_launch()
-    fresh_session = state.options.session_id
-    if ctx.sdk_cwd and fresh_session and state.options.resume is None:
-        delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
 
 
 def _is_fallback_stderr(line: str) -> bool:

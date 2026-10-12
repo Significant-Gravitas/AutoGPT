@@ -45,6 +45,7 @@ from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamError,
+    StreamStatus,
     StreamToolInputAvailable,
     StreamToolOutputAvailable,
 )
@@ -95,6 +96,27 @@ async def test_a_relaunch_bills_nothing_the_failed_launch_ran(
     assert not turn.errors()
     billed = ["gen-overflow", "gen-ok"] if overflowed_first else ["gen-ok"]
     assert turn.reconciled_cost() == pytest.approx(sum(_COSTS[g] for g in billed))
+
+
+@pytest.mark.asyncio
+async def test_a_turn_left_during_the_backoff_bills_nothing_of_the_failed_launch(
+    tmp_path, monkeypatch
+):
+    """The client goes away on the "retrying" notice, before the relaunch.
+
+    The failed launch was ours to absorb the moment the retry was decided, so
+    the turn, which ends there, is charged nothing for it.
+    """
+    turn = _Turn(tmp_path, monkeypatch)
+
+    await turn.run(
+        [[_generation("gen-failed"), _overloaded()], _reply("gen-ok")],
+        leave_when=lambda event: isinstance(event, StreamStatus)
+        and "retrying" in event.message,
+    )
+
+    assert len(turn.launched) == 1
+    turn.reconcile_mock().assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -367,7 +389,14 @@ class _Turn:
 
         return write
 
-    async def run(self, launches: list[list[_Step]]) -> None:
+    async def run(
+        self,
+        launches: list[list[_Step]],
+        *,
+        leave_when: Callable[[StreamBaseResponse], bool] | None = None,
+    ) -> None:
+        """Play the turn; ``leave_when`` closes the stream at the first event
+        it matches, the way a client that goes away does."""
         self._launches = launches
         patches = _make_sdk_patches(
             self.session,
@@ -412,14 +441,18 @@ class _Turn:
                 )
             )
             stack.enter_context(patch("httpx.AsyncClient.get", new=_generation_lookup))
-            async for event in sdk_service.stream_chat_completion_sdk(
+            stream = sdk_service.stream_chat_completion_sdk(
                 session_id=_SESSION_ID,
                 message="hello",
                 is_user_message=True,
                 user_id="test-user",
                 session=self.session,
-            ):
+            )
+            async for event in stream:
                 self.events.append(event)
+                if leave_when is not None and leave_when(event):
+                    break
+            await stream.aclose()
             # The reconcile charges from a task the turn leaves behind.
             await asyncio.gather(*_reconcile_tasks())
 
