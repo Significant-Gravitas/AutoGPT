@@ -143,7 +143,7 @@ async def test_exchange_code_for_tokens(mocker: MockerFixture):
     assert creds.access_token_expires_at is not None
     assert before + 1800 <= creds.access_token_expires_at <= int(time.time()) + 1800
     assert creds.scopes == SCOPES
-    assert creds.username == "jdoe@example.com"
+    assert creds.username == "jdoe@example.com (portal 1234567)"
     assert creds.title == "example.com"
     assert creds.metadata == {"hub_id": 1234567}
 
@@ -159,6 +159,27 @@ async def test_exchange_survives_a_failed_introspection(mocker: MockerFixture):
     assert creds.access_token.get_secret_value() == "new-access-token"
     assert creds.username is None
     assert creds.metadata == {"hub_id": 1234567}
+
+
+async def test_same_user_in_two_portals_gets_two_usernames(mocker: MockerFixture):
+    # The callback merges sign-ins with the same username into one credential,
+    # so a second portal must not share the first one's username.
+    other_portal = {**TOKEN_RESPONSE, "hub_id": 7654321}
+    post = AsyncMock(
+        side_effect=[
+            _response(TOKEN_RESPONSE),
+            _response(INTROSPECT_RESPONSE),
+            _response(other_portal),
+            _response({**INTROSPECT_RESPONSE, "hub_id": 7654321}),
+        ]
+    )
+    _mock_requests(mocker, post=post)
+
+    first = await _handler().exchange_code_for_tokens("code-1", SCOPES, None)
+    second = await _handler().exchange_code_for_tokens("code-2", SCOPES, None)
+
+    assert first.username != second.username
+    assert second.metadata == {"hub_id": 7654321}
 
 
 async def test_exchange_raises_hubspots_error(mocker: MockerFixture):
@@ -281,3 +302,9 @@ async def test_every_hubspot_request_has_a_retry_cap(mocker: MockerFixture):
     assert requests.call_count == 3
     for call in requests.call_args_list:
         assert call.kwargs == {"raise_for_status": False, "retry_max_attempts": 3}
+
+
+async def test_revoke_survives_hubspot_being_unreachable(mocker: MockerFixture):
+    _mock_requests(mocker, post=AsyncMock(side_effect=ConnectionError("down")))
+
+    assert await _handler().revoke_tokens(_creds()) is False

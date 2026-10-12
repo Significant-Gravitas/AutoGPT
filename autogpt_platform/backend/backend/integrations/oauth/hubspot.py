@@ -80,16 +80,17 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
             }
         )
         token_info = await self._introspect(tokens["access_token"])
+        hub_id = tokens.get("hub_id") or token_info.get("hub_id")
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=token_info.get("hub_domain"),
-            username=token_info.get("user"),
+            username=_portal_username(token_info.get("user"), hub_id),
             access_token=tokens["access_token"],
             refresh_token=tokens.get("refresh_token"),
             access_token_expires_at=self._expires_at(tokens),
             refresh_token_expires_at=None,
             scopes=self._granted_scopes(tokens, fallback=scopes),
-            metadata={"hub_id": tokens.get("hub_id") or token_info.get("hub_id")},
+            metadata={"hub_id": hub_id},
         )
 
     async def _refresh_tokens(
@@ -123,23 +124,26 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         if not credentials.refresh_token:
             return False
 
-        response = await _requests().post(
-            self.REVOKE_URL,
-            data={
-                "client_id": self.client_id,
-                "client_secret": self.client_secret,
-                "token_type_hint": "refresh_token",
-                "token": credentials.refresh_token.get_secret_value(),
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            allow_redirects=False,
-        )
+        # The credential is already deleted on our side by the time this runs,
+        # so no failure here may turn the deletion into an error.
+        try:
+            response = await _requests().post(
+                self.REVOKE_URL,
+                data={
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                    "token_type_hint": "refresh_token",
+                    "token": credentials.refresh_token.get_secret_value(),
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                allow_redirects=False,
+            )
+        except Exception as e:
+            logger.warning("Could not reach HubSpot to revoke a refresh token: %s", e)
+            return False
         if not response.ok:
-            # The credential is already deleted on our side by now, so a failure
-            # here must not turn the deletion into an error.
             logger.warning(
-                "HubSpot refused to delete a refresh token (HTTP %s)",
-                response.status,
+                "HubSpot refused to revoke a refresh token (HTTP %s)", response.status
             )
             return False
         return True
@@ -200,6 +204,18 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         # HubSpot returns the granted scopes as a list under `scopes`.
         granted = " ".join(tokens.get("scopes") or [])
         return parse_granted_scopes(granted, fallback=fallback)
+
+
+def _portal_username(user: Optional[str], hub_id: Any) -> Optional[str]:
+    """The HubSpot user *in one portal*.
+
+    The OAuth callback merges a new sign-in into an existing credential with the
+    same username. One HubSpot login can belong to several portals, so the bare
+    email would let connecting a second portal overwrite the first one's tokens.
+    """
+    if not user:
+        return None
+    return f"{user} (portal {hub_id})" if hub_id else user
 
 
 def _requests() -> Requests:
