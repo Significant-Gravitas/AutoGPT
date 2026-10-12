@@ -211,16 +211,31 @@ async def test_on_node_execution_runs_the_node_as_one_transaction(sentry_transac
     assert [span["op"] for span in run["spans"]] == ["http.client"]
 
 
-@pytest.mark.asyncio
-async def test_routing_an_output_is_a_child_of_the_node_run(sentry_transactions):
-    processor = ExecutionProcessor()
-    graph_exec = GraphExecutionEntry(
+def _graph_exec() -> GraphExecutionEntry:
+    return GraphExecutionEntry(
         user_id="user-1",
         graph_exec_id=ROOT_EXEC_ID,
         graph_id="graph-1",
         graph_version=3,
         execution_context=ExecutionContext(root_execution_id=ROOT_EXEC_ID),
     )
+
+
+def _log_metadata() -> LogMetadata:
+    return LogMetadata(
+        logger=logging.getLogger("test"),
+        user_id="user-1",
+        graph_eid=ROOT_EXEC_ID,
+        graph_id="graph-1",
+        node_eid="node-exec-1",
+        node_id="node-1",
+        block_name="AITextGeneratorBlock",
+    )
+
+
+@pytest.mark.asyncio
+async def test_routing_an_output_is_a_child_of_the_node_run(sentry_transactions):
+    processor = ExecutionProcessor()
     with node_tracing.node_transaction(_node_exec(), _AI_BLOCK) as node_run:
         output = ExecutionOutputEntry(
             node=Node(id="node-1", block_id="block-1"),
@@ -241,16 +256,8 @@ async def test_routing_an_output_is_a_child_of_the_node_run(sentry_transactions)
         await processor._process_node_output(
             output=output,
             node_id="node-1",
-            graph_exec=graph_exec,
-            log_metadata=LogMetadata(
-                logger=logging.getLogger("test"),
-                user_id="user-1",
-                graph_eid=ROOT_EXEC_ID,
-                graph_id="graph-1",
-                node_eid="node-exec-1",
-                node_id="node-1",
-                block_name="AITextGeneratorBlock",
-            ),
+            graph_exec=_graph_exec(),
+            log_metadata=_log_metadata(),
             nodes_input_masks=None,
             execution_queue=queue,
         )
@@ -267,3 +274,94 @@ async def test_routing_an_output_is_a_child_of_the_node_run(sentry_transactions)
     assert data["executor.node.output.enqueued_count"] == 2
     assert data["executor.output_name"] == "response"
     assert data["executor.node.output.wait_ms"] >= 0
+
+
+def test_a_node_run_hands_its_trace_to_its_first_outputs_only(sentry_transactions):
+    limit = node_tracing.TRACED_OUTPUTS_PER_NODE_RUN
+
+    with node_tracing.node_transaction(_node_exec(), _AI_BLOCK):
+        within = [node_tracing.output_trace_headers(n) for n in (1, limit)]
+        past = node_tracing.output_trace_headers(limit + 1)
+
+    assert all(headers.get("sentry-trace") for headers in within)
+    assert past == {}
+
+
+@pytest.mark.asyncio
+async def test_a_high_fanout_node_traces_a_bounded_number_of_routings(
+    sentry_transactions,
+):
+    """A node yielding many outputs (an iterator over a list) hands its trace to
+    the first few only, and its transaction still counts them all."""
+    processor = ExecutionProcessor()
+    progress = NodeExecutionProgress()
+    produced = node_tracing.TRACED_OUTPUTS_PER_NODE_RUN + 5
+
+    async def yield_items(**kwargs):
+        for item in range(produced):
+            yield "item", item
+
+    db_client = MagicMock(
+        upsert_execution_output=AsyncMock(),
+        get_node_execution=AsyncMock(return_value=None),
+    )
+    node = Node(id="node-1", block_id="block-1")
+    untimed_block = SimpleNamespace(execution_timeout_seconds=None)
+
+    with (
+        patch("backend.data.graph.get_block", return_value=untimed_block),
+        patch("backend.executor.manager.execute_node", new=yield_items),
+        patch(
+            "backend.executor.manager.async_update_node_execution_status",
+            new=AsyncMock(),
+        ),
+    ):
+        with node_tracing.node_transaction(_node_exec(), _AI_BLOCK):
+            _, status = await processor._on_node_execution(
+                node=node,
+                node_exec=_node_exec(),
+                node_exec_progress=progress,
+                stats=NodeExecutionStats(),
+                db_client=db_client,
+                log_metadata=_log_metadata(),
+            )
+
+    assert status == ExecutionStatus.COMPLETED
+    outputs = progress.output["node-exec-1"]
+    assert len(outputs) == produced
+    assert [bool(o.trace_headers) for o in outputs] == [True] * (
+        node_tracing.TRACED_OUTPUTS_PER_NODE_RUN
+    ) + [False] * 5
+    [run] = sentry_transactions
+    assert _trace(run)["data"]["executor.node.output_count"] == produced
+
+
+@pytest.mark.asyncio
+async def test_an_output_the_node_run_did_not_trace_is_routed_untraced(
+    sentry_transactions,
+):
+    queue: ExecutionQueue[NodeExecutionEntry] = ExecutionQueue()
+    untraced = ExecutionOutputEntry(
+        node=Node(id="node-1", block_id="block-1"),
+        node_exec_id="node-exec-1",
+        data=("item", 99),
+    )
+
+    with (
+        patch("backend.executor.manager.get_db_async_client"),
+        patch(
+            "backend.executor.manager._enqueue_next_nodes",
+            new=AsyncMock(return_value=[_node_exec()]),
+        ),
+    ):
+        await ExecutionProcessor()._process_node_output(
+            output=untraced,
+            node_id="node-1",
+            graph_exec=_graph_exec(),
+            log_metadata=_log_metadata(),
+            nodes_input_masks=None,
+            execution_queue=queue,
+        )
+
+    assert queue.get_or_none() is not None
+    assert sentry_transactions == []

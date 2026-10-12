@@ -97,7 +97,12 @@ from .activity_status_generator import (
 from .auto_credentials import acquire_auto_credentials
 from .automod.manager import automod_manager
 from .cluster_lock import ClusterLock
-from .node_tracing import node_transaction, output_transaction, record_node_result
+from .node_tracing import (
+    node_transaction,
+    output_trace_headers,
+    output_transaction,
+    record_node_result,
+)
 from .simulator import get_dry_run_credentials, prepare_dry_run, simulate_block
 from .utils import (
     GRACEFUL_SHUTDOWN_TIMEOUT_SECONDS,
@@ -897,8 +902,11 @@ class ExecutionProcessor:
         nodes_to_skip: Optional[set[str]] = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
+        outputs = 0
 
         async def persist_output(output_name: str, output_data: Any) -> None:
+            nonlocal outputs
+            outputs += 1
             await db_client.upsert_execution_output(
                 node_exec_id=node_exec.node_exec_id,
                 output_name=output_name,
@@ -914,7 +922,7 @@ class ExecutionProcessor:
                     node=node,
                     node_exec_id=node_exec.node_exec_id,
                     data=(output_name, output_data),
-                    trace_headers=tracing.trace_propagation_headers(),
+                    trace_headers=output_trace_headers(outputs),
                 )
             )
 
@@ -989,6 +997,7 @@ class ExecutionProcessor:
                 await persist_output(
                     "error", str(stats.error) or type(stats.error).__name__
                 )
+            tracing.set_data("executor.node.output_count", outputs)
         return status
 
     @func_retry

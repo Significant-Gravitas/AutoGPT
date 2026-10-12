@@ -1,12 +1,12 @@
 """Sentry transactions for graph node runs.
 
 Every node run is one ``executor.node`` transaction named after its block, and
-the routing of every output it yields (persisting downstream inputs, queueing
-the nodes they complete) is one ``executor.node.output`` transaction. All of
-a graph execution's transactions, and those of the sub-graphs it starts, share
-one trace whose id is the root execution's id without dashes, so a run's trace
-can be opened from its id. A node run inside another node's (an orchestrator's
-tool) is that run's child.
+the routing of each of its first outputs (persisting downstream inputs,
+queueing the nodes they complete) is one ``executor.node.output`` transaction.
+All of a graph execution's transactions, and those of the sub-graphs it
+starts, share one trace whose id is the root execution's id without dashes,
+so a run's trace can be opened from its id. A node run inside another node's
+(an orchestrator's tool) is that run's child.
 """
 
 import time
@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from sentry_sdk.tracing import Span
+from sentry_sdk.tracing import NoOpSpan, Span
 
 from backend.data.execution import (
     ExecutionContext,
@@ -32,6 +32,11 @@ if TYPE_CHECKING:
 
 NODE_OP = "executor.node"
 OUTPUT_OP = "executor.node.output"
+
+TRACED_OUTPUTS_PER_NODE_RUN = 20
+"""How many of a node run's outputs get their routing traced. A node can yield
+thousands (an iterator over a list), and a transaction each would make the
+run's tracing cost grow with its output instead of staying bounded."""
 
 
 def graph_trace_id(graph_exec_id: str, execution_context: ExecutionContext) -> str:
@@ -92,18 +97,30 @@ def record_node_result(
         tracing.set_status("cancelled", span=span)
 
 
+def output_trace_headers(output_number: int) -> dict[str, str]:
+    """The trace the routing of a node run's ``output_number``-th output
+    continues: the node run's, for its first ``TRACED_OUTPUTS_PER_NODE_RUN``
+    outputs, and none after, so their routing runs untraced."""
+    if output_number > TRACED_OUTPUTS_PER_NODE_RUN:
+        return {}
+    return tracing.trace_propagation_headers()
+
+
 @contextmanager
 def output_transaction(
     output: "ExecutionOutputEntry", graph_exec: GraphExecutionEntry
 ) -> Iterator[Span]:
     """Run the routing of one node output as an ``executor.node.output``
-    transaction, a child of the node run that produced it."""
+    transaction, a child of the node run that produced it, when that run
+    handed the output its trace (see ``output_trace_headers``)."""
+    if not output.trace_headers:
+        yield NoOpSpan()
+        return
     block = output.node.block
     with tracing.start_transaction(
         OUTPUT_OP,
         OUTPUT_OP,
         trace_headers=output.trace_headers,
-        trace_id=graph_trace_id(graph_exec.graph_exec_id, graph_exec.execution_context),
         tags={"executor.block": block.name if block else "UnknownBlock"},
         data={
             "executor.graph_exec_id": graph_exec.graph_exec_id,
