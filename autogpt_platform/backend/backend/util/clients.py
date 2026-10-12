@@ -4,7 +4,8 @@ Centralized service client helpers with thread caching.
 
 from typing import TYPE_CHECKING
 
-from backend.util.cache import cached, thread_cached
+from backend.util.cache import thread_cached
+from backend.util.per_loop_cache import per_loop_cached
 from backend.util.settings import Settings
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -159,15 +160,16 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
 # ============ OpenAI Client ============ #
 
 
-@cached(ttl_seconds=3600)
+@per_loop_cached
 def _get_local_openai_client() -> "AsyncOpenAI":
     """Build the local-transport OpenAI client.
 
     Factored out so both ``prefer_openrouter`` arms of ``get_openai_client``
-    share a single cached instance under ``CHAT_USE_LOCAL=true`` — the cache
-    keys on its own arglist (which is empty), not on the caller's
-    ``prefer_openrouter`` kwarg, so we don't end up with two equivalent
-    ``AsyncOpenAI`` instances pointed at the same endpoint.
+    share a single cached instance per event loop under
+    ``CHAT_USE_LOCAL=true`` — the cache keys on its own arglist (which is
+    empty), not on the caller's ``prefer_openrouter`` kwarg, so we don't end
+    up with two equivalent ``AsyncOpenAI`` instances pointed at the same
+    endpoint.
     """
     from openai import AsyncOpenAI
 
@@ -187,10 +189,14 @@ def _get_local_openai_client() -> "AsyncOpenAI":
     )
 
 
-@cached(ttl_seconds=3600)
+@per_loop_cached
 def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None":
     """
-    Get a process-cached async OpenAI client.
+    Get the running event loop's cached async OpenAI client.
+
+    Cached per loop, not per process: the executors run one loop per worker
+    thread, and a client shared across loops sends a call to the provider
+    twice (see ``backend/util/per_loop_cache.py``).
 
     Resolution order:
 
@@ -244,9 +250,9 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 # ============ Anthropic Client ============ #
 
 
-@cached(ttl_seconds=3600)
+@per_loop_cached
 def get_anthropic_client() -> "AsyncAnthropic | None":
-    """Get a process-cached async Anthropic client.
+    """Get the running event loop's cached async Anthropic client.
 
     Reads ``settings.secrets.anthropic_api_key`` (same env var the SDK
     blocks consume). Returns ``None`` when no key is configured — caller
