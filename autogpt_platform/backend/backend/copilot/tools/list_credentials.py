@@ -2,14 +2,16 @@
 
 import asyncio
 import logging
+import re
 import weakref
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from backend.api.features.integrations.router import (
     CredentialsMetaResponse,
     to_meta_response,
 )
+from backend.copilot.capabilities.resolve import connection_state_from
 from backend.copilot.model import ChatSession
 from backend.data.model import Credentials, is_sdk_default
 from backend.integrations.credentials_store import (
@@ -25,14 +27,19 @@ from backend.integrations.managed_providers import register_all
 
 from .base import BaseTool
 from .models import ErrorResponse, ResponseType, ToolResponseBase
-from .utils import get_user_credentials
+from .utils import get_user_credentials, scope_credentials_to_expert
 
 logger = logging.getLogger(__name__)
 
 # Mirrors the bound the integrations router puts on its first-time managed
 # credential sweep, so a slow upstream can't hang the tool call.
 _MANAGED_PROVISION_TIMEOUT_S = 10.0
-_managed_provision_tasks_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, dict[str, asyncio.Task[bool]]]" = (weakref.WeakKeyDictionary())
+_ProvisionTasks = dict[str, "asyncio.Task[bool]"]
+_managed_provision_tasks_by_loop: (
+    "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, _ProvisionTasks]"
+) = weakref.WeakKeyDictionary()
+_DNS_LABEL = r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+_HOSTNAME_RE = re.compile(rf"{_DNS_LABEL}(?:\.{_DNS_LABEL})*")
 
 
 class CredentialListResponse(ToolResponseBase):
@@ -45,6 +52,9 @@ class CredentialListResponse(ToolResponseBase):
     # False when the managed-credential provisioning sweep timed out or
     # failed, meaning platform-managed integrations may be missing below.
     provisioning_complete: bool = True
+    # Expert sessions only: providers the account has connected but this
+    # expert was not granted. They need a grant, not a sign-in.
+    ungranted_providers: list[str] = []
 
 
 class ListUserCredentialsTool(BaseTool):
@@ -57,10 +67,9 @@ class ListUserCredentialsTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List the integrations the user has already connected (metadata "
-            "only, never secrets). Call before asking the user to sign in or "
-            "connect an integration, so you only surface sign-in for "
-            "integrations that are genuinely missing."
+            "List every integration the user has connected (metadata only, "
+            "never secrets). For one service, find_capability's `connected` "
+            "already answers."
         )
 
     @property
@@ -70,10 +79,7 @@ class ListUserCredentialsTool(BaseTool):
             "properties": {
                 "provider": {
                     "type": "string",
-                    "description": (
-                        "Optional provider slug to filter by "
-                        "(e.g. 'github', 'google', 'notion')."
-                    ),
+                    "description": "Optional provider filter, e.g. 'github'.",
                 },
             },
             "required": [],
@@ -112,6 +118,9 @@ class ListUserCredentialsTool(BaseTool):
 
         try:
             all_creds = await get_user_credentials(user_id)
+            granted = await scope_credentials_to_expert(
+                user_id, session.expert_id, all_creds
+            )
         except Exception:
             logger.exception("Failed to list credentials for user %s", user_id)
             return ErrorResponse(
@@ -120,50 +129,87 @@ class ListUserCredentialsTool(BaseTool):
                 session_id=session_id,
             )
 
-        metas = _serialize_connected_credentials(all_creds, wanted_provider)
+        metas = _serialize_connected_credentials(granted, wanted_provider)
         providers = sorted({m.provider for m in metas})
+        ungranted = _ungranted_providers(all_creds, granted, wanted_provider)
 
         return CredentialListResponse(
             message=_build_inventory_message(
-                metas, providers, wanted_provider, provisioning_complete
+                metas, providers, wanted_provider, provisioning_complete, ungranted
             ),
             credentials=metas,
             providers=providers,
             count=len(metas),
             provisioning_complete=provisioning_complete,
+            ungranted_providers=ungranted,
             session_id=session_id,
         )
 
 
-def _serialize_connected_credentials(
-    all_creds: list[Credentials], wanted: str
-) -> list[CredentialsMetaResponse]:
-    """Strip secrets and drop non-user credentials, then apply the provider filter."""
+def _user_connected(creds: list[Credentials], wanted: str) -> list[Credentials]:
+    """Drop non-user credentials, then apply the provider filter."""
     # System credentials (platform-provided API keys) and SDK defaults are
-    # not user-connected integrations, so they'd mislead the model here. Filter
-    # on the raw credentials (including the provider filter) before serializing,
-    # so to_meta_response only runs on the retained set.
-    metas = [
-        _to_safe_meta_response(cred)
-        for cred in all_creds
+    # not user-connected integrations, so they'd mislead the model here.
+    return [
+        cred
+        for cred in creds
         if not is_sdk_default(cred.id)
         and cred.id not in SYSTEM_CREDENTIAL_IDS
         and (not wanted or provider_matches(cred.provider, wanted))
     ]
 
-    return metas
+
+def _serialize_connected_credentials(
+    creds: list[Credentials], wanted: str
+) -> list[CredentialsMetaResponse]:
+    """Strip secrets from the user-connected credentials that match *wanted*."""
+    return [_to_safe_meta_response(cred) for cred in _user_connected(creds, wanted)]
+
+
+def _ungranted_providers(
+    all_creds: list[Credentials], granted: list[Credentials], wanted: str
+) -> list[str]:
+    """Providers the account holds but the session's expert was not granted.
+
+    Uses the same connection state ``find_capability`` ranks on, so the two
+    tools agree on what "connected" and "needs a grant" mean.
+    """
+    granted_ids = {cred.id for cred in granted}
+    ungranted = [
+        c for c in _user_connected(all_creds, wanted) if c.id not in granted_ids
+    ]
+    return sorted(connection_state_from(ungranted).providers)
 
 
 def _to_safe_meta_response(cred: Credentials) -> CredentialsMetaResponse:
     """Serialize credential metadata without secrets embedded in URLs."""
     meta = to_meta_response(cred)
     if meta.host and provider_matches(cred.provider, "mcp"):
-        try:
-            host = urlparse(meta.host).hostname
-        except ValueError:
-            host = None
-        return meta.model_copy(update={"host": host})
+        return meta.model_copy(update={"host": _safe_server_url(meta.host)})
     return meta
+
+
+def _safe_server_url(raw: str) -> str | None:
+    """An MCP server URL without userinfo, query string or fragment.
+
+    Host, port and path are kept: they are what tell two servers on one host
+    apart. Anything that does not parse to a plain DNS hostname is dropped.
+    """
+    value = raw.strip()
+    has_scheme = "://" in value
+    try:
+        parts = urlsplit(value if has_scheme else f"//{value}")
+        hostname = parts.hostname
+        port = parts.port
+    except ValueError:
+        return None
+    if not hostname or not _HOSTNAME_RE.fullmatch(hostname):
+        return None
+    if any(ch.isspace() for ch in parts.path):
+        return None
+    netloc = f"{hostname}:{port}" if port else hostname
+    prefix = f"{parts.scheme}://" if has_scheme and parts.scheme else ""
+    return f"{prefix}{netloc}{parts.path}"
 
 
 def _build_inventory_message(
@@ -171,6 +217,7 @@ def _build_inventory_message(
     providers: list[str],
     wanted: str,
     provisioning_complete: bool,
+    ungranted: list[str],
 ) -> str:
     """Compose the model-facing summary of the connected-credential inventory."""
     if metas and wanted:
@@ -183,6 +230,8 @@ def _build_inventory_message(
             f"The user has {len(metas)} connected credential(s) across "
             f"{len(providers)} provider(s): {', '.join(providers)}."
         )
+    elif ungranted:
+        message = "This expert has not been granted any matching integration."
     elif not provisioning_complete:
         scope = f" for provider '{wanted}'" if wanted else ""
         message = (
@@ -203,6 +252,12 @@ def _build_inventory_message(
             "connect_integration to surface a sign-in card if one is needed."
         )
 
+    if ungranted:
+        message += (
+            f" Connected on the account but not granted to this expert: "
+            f"{', '.join(ungranted)}. Do not ask the user to sign in to these; "
+            "ask them to grant access."
+        )
     if metas and not provisioning_complete:
         message += (
             " Note: platform-managed credential provisioning did not "
@@ -213,7 +268,7 @@ def _build_inventory_message(
     return message
 
 
-def _get_managed_provision_tasks() -> dict[str, asyncio.Task[bool]]:
+def _get_managed_provision_tasks() -> _ProvisionTasks:
     """Return the provisioning task cache for the current worker event loop."""
     loop = asyncio.get_running_loop()
     tasks = _managed_provision_tasks_by_loop.get(loop)
@@ -226,7 +281,7 @@ def _get_managed_provision_tasks() -> dict[str, asyncio.Task[bool]]:
 def _managed_provision_finished(
     user_id: str,
     task: asyncio.Task[bool],
-    tasks: dict[str, asyncio.Task[bool]],
+    tasks: _ProvisionTasks,
 ) -> None:
     if tasks.get(user_id) is task:
         tasks.pop(user_id, None)

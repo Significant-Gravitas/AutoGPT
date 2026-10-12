@@ -27,6 +27,7 @@ _MANAGED_PATH = (
 )
 _REGISTER_PATH = "backend.copilot.tools.list_credentials.register_all"
 _GET_MANAGED_PATH = "backend.copilot.tools.list_credentials.get_managed_provider"
+_SCOPE_PATH = "backend.copilot.tools.list_credentials.scope_credentials_to_expert"
 
 
 @pytest.fixture(autouse=True)
@@ -112,6 +113,7 @@ def tool():
 def mock_session():
     session = MagicMock()
     session.session_id = "test-session-123"
+    session.expert_id = None
     return session
 
 
@@ -170,7 +172,7 @@ class TestListUserCredentialsTool:
         host_scoped = next(c for c in result.credentials if c.type == "host_scoped")
         assert host_scoped.host == "api.example.com"
         mcp = next(c for c in result.credentials if c.provider == "mcp")
-        assert mcp.host == "mcp.linear.app"
+        assert mcp.host == "https://mcp.linear.app/mcp"
 
         payload = result.model_dump_json()
         assert "host_scoped_secret" not in payload
@@ -191,6 +193,66 @@ class TestListUserCredentialsTool:
 
         assert result.credentials[0].host is None
         assert "mcp_url_secret" not in result.model_dump_json()
+
+    @pytest.mark.asyncio
+    async def test_mcp_servers_on_one_host_stay_distinct(self, tool, mock_session):
+        def server(cred_id: str, url: str) -> OAuth2Credentials:
+            return _mcp_oauth().model_copy(
+                update={"id": cred_id, "metadata": {"mcp_server_url": url}}
+            )
+
+        creds = [
+            server("mcp-1", "https://mcp.example.com:8443/notion?token=hidden#x"),
+            server("mcp-2", "https://mcp.example.com/slack"),
+            server("mcp-3", "mcp.example.com/linear"),
+        ]
+        with patch(_CREDS_PATH, new_callable=AsyncMock, return_value=creds):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        assert [c.host for c in result.credentials] == [
+            "https://mcp.example.com:8443/notion",
+            "https://mcp.example.com/slack",
+            "mcp.example.com/linear",
+        ]
+        assert "hidden" not in result.model_dump_json()
+
+    @pytest.mark.asyncio
+    async def test_expert_session_lists_only_granted_credentials(
+        self, tool, mock_session
+    ):
+        mock_session.expert_id = "expert-1"
+        github, notion = _github_oauth(), _notion_api_key()
+        with (
+            patch(_CREDS_PATH, new_callable=AsyncMock, return_value=[github, notion]),
+            patch(_SCOPE_PATH, new_callable=AsyncMock, return_value=[github]) as scope,
+        ):
+            result = await tool._execute(user_id="user-1", session=mock_session)
+
+        scope.assert_awaited_once_with("user-1", "expert-1", [github, notion])
+        assert result.providers == ["github"]
+        assert result.ungranted_providers == ["notion"]
+        assert "not granted to this expert: notion" in result.message
+        assert "ask them to grant access" in result.message
+
+    @pytest.mark.asyncio
+    async def test_expert_session_ungranted_match_needs_grant_not_sign_in(
+        self, tool, mock_session
+    ):
+        mock_session.expert_id = "expert-1"
+        with (
+            patch(
+                _CREDS_PATH, new_callable=AsyncMock, return_value=[_notion_api_key()]
+            ),
+            patch(_SCOPE_PATH, new_callable=AsyncMock, return_value=[]),
+        ):
+            result = await tool._execute(
+                user_id="user-1", session=mock_session, provider="notion"
+            )
+
+        assert result.count == 0
+        assert result.ungranted_providers == ["notion"]
+        assert "connect_integration" not in result.message
+        assert "grant access" in result.message
 
     @pytest.mark.asyncio
     async def test_filters_sdk_default_credentials(self, tool, mock_session):
