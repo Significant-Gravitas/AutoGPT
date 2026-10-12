@@ -249,3 +249,20 @@ async def test_failed_revoke_does_not_raise(mocker: MockerFixture):
     _mock_requests(mocker, delete=AsyncMock(return_value=_response({}, 404)))
 
     assert await _handler().revoke_tokens(_creds()) is False
+
+
+async def test_every_hubspot_request_has_a_retry_cap(mocker: MockerFixture):
+    # Uncapped, a throttled or failing HubSpot is retried forever.
+    post = AsyncMock(
+        side_effect=[_response(TOKEN_RESPONSE), _response(INTROSPECT_RESPONSE)]
+    )
+    requests = _mock_requests(
+        mocker, post=post, delete=AsyncMock(return_value=_response({}, 204))
+    )
+
+    await _handler().exchange_code_for_tokens("auth-code", SCOPES, None)
+    await _handler().revoke_tokens(_creds())
+
+    assert requests.call_count == 3
+    for call in requests.call_args_list:
+        assert call.kwargs == {"raise_for_status": False, "retry_max_attempts": 3}

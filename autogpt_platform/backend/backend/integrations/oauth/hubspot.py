@@ -122,7 +122,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
             return False
 
         token = quote(credentials.refresh_token.get_secret_value(), safe="")
-        response = await Requests(raise_for_status=False).delete(
+        response = await _requests().delete(
             self.REVOKE_URL.format(token=token), allow_redirects=False
         )
         if not response.ok:
@@ -136,7 +136,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         return True
 
     async def _request_tokens(self, params: dict[str, str]) -> dict[str, Any]:
-        response = await Requests(raise_for_status=False).post(
+        response = await _requests().post(
             self.TOKEN_URL,
             data={
                 "client_id": self.client_id,
@@ -160,7 +160,7 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
     async def _introspect(self, access_token: str) -> dict[str, Any]:
         """The HubSpot user and account a token belongs to, or {} if unknown."""
         try:
-            response = await Requests(raise_for_status=False).post(
+            response = await _requests().post(
                 self.INTROSPECT_URL,
                 data={
                     "client_id": self.client_id,
@@ -191,6 +191,13 @@ class HubSpotOAuthHandler(BaseOAuthHandler):
         # v3 returns the granted scopes as a list under `scopes`.
         granted = " ".join(tokens.get("scopes") or [])
         return parse_granted_scopes(granted, fallback=fallback)
+
+
+def _requests() -> Requests:
+    # Without a cap, a throttled (429) or failing (5xx) HubSpot is retried
+    # forever and the sign-in or block run hangs. After the last attempt the
+    # response is returned and reported like any other failure.
+    return Requests(raise_for_status=False, retry_max_attempts=3)
 
 
 def _error_message(response: Response) -> str:
