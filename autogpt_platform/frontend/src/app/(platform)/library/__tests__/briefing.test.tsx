@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
-import { render, screen } from "@/tests/integrations/test-utils";
+import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
 import { server } from "@/mocks/mock-server";
 import {
   getGetV2ListLibraryAgentsMockHandler,
@@ -142,5 +142,23 @@ describe("LibraryPage — AgentBriefingPanel without billing (self-hosted)", () 
     expect(screen.queryByText(/costs breakdown/i)).toBeNull();
     expect(screen.queryByText("$8.25")).toBeNull();
     expect(costSummaryRequests).toBe(0);
+  });
+
+  test("a second click on the active tile goes back to the overview", async () => {
+    flags.paymentsOn = false;
+    setupHandlers({ totalCents: 0 });
+
+    render(<LibraryPage />);
+
+    const idle = await screen.findByRole("button", { name: /^Idle\b/ });
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(idle);
+    expect(idle.getAttribute("aria-pressed")).toBe("false");
+    expect(
+      screen
+        .getByRole("button", { name: /^Running now\b/ })
+        .getAttribute("aria-pressed"),
+    ).toBe("false");
   });
 });

@@ -89,7 +89,10 @@ export function StatsGrid({ summary, activeTab, onTabChange }: Props) {
           <button
             key={tile.label}
             type="button"
-            onClick={() => onTabChange(tile.filter)}
+            aria-pressed={isActive}
+            // A second click goes back to the overview, which has no tile of
+            // its own when billing is off.
+            onClick={() => onTabChange(isActive ? "all" : tile.filter)}
             className={cn(
               "flex min-w-0 flex-col gap-1 rounded-medium border p-3 text-left shadow-md transition-all hover:shadow-lg",
               isActive
