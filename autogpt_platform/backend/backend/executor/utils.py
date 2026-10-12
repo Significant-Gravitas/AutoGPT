@@ -8,7 +8,7 @@ from concurrent.futures import Future
 from typing import Literal, Mapping, Optional, cast, get_args
 
 from prisma.enums import ReviewStatus
-from pydantic import BaseModel, JsonValue, ValidationError
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from backend.api.features.experts import scheduling as experts_scheduling
 from backend.blocks import get_block
@@ -1830,6 +1830,10 @@ class ExecutionOutputEntry(BaseModel):
     node: Node
     node_exec_id: str
     data: BlockOutputEntry
+    # The producing node's Sentry trace, which the output's routing continues,
+    # and when the output was produced (monotonic), for the routing's wait.
+    trace_headers: dict[str, str] = Field(default_factory=dict, exclude=True)
+    produced_at: float = Field(default_factory=time.monotonic, exclude=True)
 
 
 class NodeExecutionProgress:
