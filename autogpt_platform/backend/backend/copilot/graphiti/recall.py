@@ -53,6 +53,10 @@ FORGOTTEN_FACT = "[forgotten]"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
 
+# How many of a search's best matches ``search_forgotten_facts`` reads for
+# each forgotten fact it may return: live facts take most of them.
+_FORGOTTEN_OVERFETCH = 5
+
 # The ``expired_at`` half of the live test, applied inside every graphiti
 # search method so a retired fact never takes one of the ``limit`` slots. The
 # ``status`` half runs in Python (``is_live``): graphiti 0.30 builds no Cypher
@@ -183,6 +187,27 @@ async def search_facts(
     tentative = include_tentative
     found = [f for f in results.edges if is_live(f, include_tentative=tentative)]
     return await live_now(client.driver, found, include_tentative=tentative)
+
+
+async def search_forgotten_facts(
+    scope: MemoryScope, query: str, *, limit: int
+) -> list[EntityEdge]:
+    """Forgotten facts matching ``query``, best first, at most ``limit``: for
+    making a soft forget permanent (``recall_forget.retract(hard=True)``).
+
+    A forget leaves a fact's embedding, so graphiti still finds it by
+    meaning, though its sentence reads ``FORGOTTEN_FACT`` (the original is in
+    ``fact_redacted``). Live facts take most of a search's best matches, so
+    it reads ``_FORGOTTEN_OVERFETCH`` times ``limit`` of them.
+    """
+    client = await get_graphiti_client(scope.group_id)
+    config = EDGE_HYBRID_SEARCH_RRF.model_copy(
+        update={"limit": limit * _FORGOTTEN_OVERFETCH}
+    )
+    results = await client.search_(
+        query=query, config=config, group_ids=[scope.group_id]
+    )
+    return [fact for fact in results.edges if is_forgotten(fact)][:limit]
 
 
 async def live_now(

@@ -18,7 +18,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT, live_fact_predicate
 from backend.copilot.graphiti.recall_fake_redis import FakeRedis
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
@@ -127,6 +127,88 @@ class TestForgetSearchCandidates:
                 "valid_to": "present",
             }
         ]
+
+
+class TestForgetSearchForgottenCandidates:
+    @staticmethod
+    def _edge(uuid: str, fact: str, **attributes: str) -> EntityEdge:
+        return EntityEdge(
+            uuid=uuid,
+            group_id="user_user-abc",
+            source_node_uuid="a",
+            target_node_uuid="b",
+            created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
+            name="works_on",
+            fact=fact,
+            attributes=attributes,
+        )
+
+    async def _search(self, include_forgotten: bool, live, forgotten):
+        session = ChatSession.new("user-abc", dry_run=False)
+        search_forgotten = AsyncMock(return_value=forgotten)
+        with (
+            patch(f"{_MODULE}.is_enabled_for_user", _enabled),
+            patch(f"{_MODULE}.search_facts", AsyncMock(return_value=live)),
+            patch(f"{_MODULE}.search_forgotten_facts", search_forgotten),
+        ):
+            response = await MemoryForgetSearchTool()._execute(
+                "user-abc",
+                session,
+                query="atlas",
+                include_forgotten=include_forgotten,
+            )
+        assert isinstance(response, MemoryForgetCandidatesResponse)
+        return response, search_forgotten
+
+    @pytest.mark.asyncio
+    async def test_are_left_out_unless_asked_for(self) -> None:
+        live = [self._edge("e1", "Bob leads Atlas")]
+
+        response, search_forgotten = await self._search(False, live, [])
+
+        search_forgotten.assert_not_awaited()
+        assert [c["uuid"] for c in response.candidates] == ["e1"]
+        assert "forgotten" not in response.candidates[0]
+
+    @pytest.mark.asyncio
+    async def test_when_asked_come_after_the_live_ones_marked_with_their_sentence(
+        self,
+    ) -> None:
+        """A soft forget can be made permanent: the forgotten fact is offered
+        by the sentence its forget kept for audit (``fact_redacted``), its own
+        text being the placeholder, and marked forgotten."""
+        live = [self._edge("e1", "Bob leads Atlas")]
+        gone = [
+            self._edge(
+                "e2",
+                FORGOTTEN_FACT,
+                fact_redacted="Alice works on Atlas",
+                forgotten_at="2026-01-01T00:00:00+00:00",
+            ),
+            self._edge("e3", "Carol owns Atlas"),  # forgotten before the policy
+        ]
+
+        response, search_forgotten = await self._search(True, live, gone)
+
+        search_forgotten.assert_awaited_once_with(
+            MemoryScope.for_user("user-abc"), "atlas", limit=10
+        )
+        assert [
+            (c["uuid"], c["fact"], c.get("forgotten")) for c in response.candidates
+        ] == [
+            ("e1", "Bob leads Atlas", None),
+            ("e2", "Alice works on Atlas", "true"),
+            ("e3", "Carol owns Atlas", "true"),
+        ]
+        assert "hard_delete=true" in response.message
+
+    @pytest.mark.asyncio
+    async def test_are_offered_when_nothing_live_matches(self) -> None:
+        gone = [self._edge("e2", FORGOTTEN_FACT, fact_redacted="Alice works on Atlas")]
+
+        response, _ = await self._search(True, [], gone)
+
+        assert [c["uuid"] for c in response.candidates] == ["e2"]
 
 
 class TestForgetConfirmModes:

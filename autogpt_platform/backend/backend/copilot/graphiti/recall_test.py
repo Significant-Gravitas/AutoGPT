@@ -297,3 +297,30 @@ class TestSearchFacts:
         assert config.edge_config.reranker == EdgeReranker.cross_encoder
         assert config.limit == 3
         assert EDGE_HYBRID_SEARCH_CROSS_ENCODER.limit == recipe_limit
+
+
+class TestSearchForgottenFacts:
+    @pytest.mark.asyncio
+    async def test_returns_only_forgotten_facts_best_first(self) -> None:
+        """For a soft forget made permanent: live and retired facts are
+        dropped, forgotten ones kept in graphiti's order, up to ``limit``."""
+        client = MagicMock()
+        found = [
+            _fact("live"),
+            _fact("first", status="retracted", forgotten_at=_NOW.isoformat()),
+            _fact("superseded", status="superseded", reason="stale_fact"),
+            _fact("pre-policy", expired_at=_NOW),
+            _fact("third", forgotten_at=_NOW.isoformat()),
+        ]
+        client.search_ = AsyncMock(return_value=SearchResults(edges=found))
+        get_client = AsyncMock(return_value=client)
+        with patch.object(recall, "get_graphiti_client", get_client):
+            facts = await recall.search_forgotten_facts(_SCOPE, "atlas", limit=2)
+
+        assert [f.uuid for f in facts] == ["first", "pre-policy"]
+        get_client.assert_awaited_once_with(_SCOPE.group_id)
+        kwargs = client.search_.await_args.kwargs
+        assert (kwargs["query"], kwargs["group_ids"]) == ("atlas", [_SCOPE.group_id])
+        assert "search_filter" not in kwargs, "expired facts must be searched"
+        assert kwargs["config"].limit == 2 * recall._FORGOTTEN_OVERFETCH
+        assert kwargs["config"].edge_config.reranker == EdgeReranker.rrf
