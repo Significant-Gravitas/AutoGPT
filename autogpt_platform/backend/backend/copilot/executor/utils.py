@@ -7,6 +7,8 @@
 """
 
 import logging
+import time
+from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
@@ -36,6 +38,7 @@ from backend.copilot.tree import (
     root_envelope,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
+from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
 from backend.util.settings import Config
 
@@ -352,6 +355,14 @@ class CoPilotExecutionEntry(BaseModel):
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
 
+    trace_headers: dict[str, str] = Field(default_factory=dict)
+    """``sentry-trace``/``baggage`` of the transaction that dispatched the turn,
+    which the turn's own transaction continues. Empty when the dispatcher was
+    not traced or is not the turn's cause, e.g. a promotion from the queue."""
+
+    enqueued_at: float = 0.0
+    """Unix-epoch seconds when the turn was published, for its queue wait."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -384,6 +395,7 @@ async def enqueue_copilot_turn(
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    trace_headers: Mapping[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -394,6 +406,9 @@ async def enqueue_copilot_turn(
     which tree its turn belongs to rather than silently opting out.
     ``CoPilotExecutionEntry.envelope`` stays optional so a message enqueued by
     an older worker still decodes.
+
+    The turn continues the Sentry trace in ``trace_headers``, by default that
+    of the transaction this is called in.
 
     Args:
         session_id: Chat session ID (also used for dedup/locking)
@@ -430,6 +445,12 @@ async def enqueue_copilot_turn(
         unattended=unattended,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
+        trace_headers=(
+            dict(trace_headers)
+            if trace_headers is not None
+            else tracing.trace_propagation_headers()
+        ),
+        enqueued_at=time.time(),
     )
 
     queue_client = await get_async_copilot_queue()
@@ -590,12 +611,18 @@ async def dispatch_turn(
     ``envelope`` was admitted before (an approval wake carries the one its
     call was held under): it is re-checked instead, narrowed by today's
     ``permissions``, and its node is not released if dispatch fails.
+
+    The same rule decides the turn's Sentry trace: it continues the caller's
+    only when it derives its envelope from the caller's context, because a
+    root or a re-admitted turn was caused by something other than the code
+    dispatching it.
     """
     # Local import: stream_registry imports executor.utils (the
     # COPILOT_CONSUMER_TIMEOUT_SECONDS constant) → top-level circular.
     from backend.copilot import stream_registry
 
     admitted_here = envelope is None
+    trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
             turn_id, session_id, user_id, permissions, spawn, root=root
@@ -649,6 +676,7 @@ async def dispatch_turn(
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            trace_headers=trace_headers,
         )
         slot.keep()
         committed = True
