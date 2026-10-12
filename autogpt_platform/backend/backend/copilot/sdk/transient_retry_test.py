@@ -122,9 +122,7 @@ async def test_a_failure_before_any_output_is_retried_and_billed_once(
 
 
 @pytest.mark.asyncio
-async def test_a_first_turn_failure_before_any_output_is_retried(
-    tmp_path, monkeypatch
-):
+async def test_a_first_turn_failure_before_any_output_is_retried(tmp_path, monkeypatch):
     """A chat's first turn starts a fresh CLI session, and the CLI writes its
     file before the first call. Relaunched under the same session id the CLI
     refuses to start ("Session ID ... is already in use"), so the retry must

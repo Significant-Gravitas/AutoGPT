@@ -786,7 +786,9 @@ class TestDoTransientBackoff:
         ):
             new_adapter = MagicMock()
             mock_cls.return_value = new_adapter
-            async for _ in _do_transient_backoff(3, state, _backoff_ctx("msg-1", "sess-1")):
+            async for _ in _do_transient_backoff(
+                3, state, _backoff_ctx("msg-1", "sess-1")
+            ):
                 pass
 
         mock_cls.assert_called_once_with(message_id="msg-1", session_id="sess-1")
