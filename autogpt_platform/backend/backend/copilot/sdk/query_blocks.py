@@ -9,7 +9,7 @@ returns block content.
 
 import re
 
-from backend.copilot.builder_context import BUILDER_CONTEXT_TAG, BUILDER_SESSION_TAG
+from backend.copilot.builder_context import BUILDER_CONTEXT_TAG
 from backend.copilot.service import SERVER_INJECTED_BLOCK_TAGS
 
 CONTEXT_BLOCK_TAGS = frozenset(
@@ -18,7 +18,6 @@ CONTEXT_BLOCK_TAGS = frozenset(
         "budget_status",
         "conversation_history",
         BUILDER_CONTEXT_TAG,
-        BUILDER_SESSION_TAG,
     }
 )
 # What ``_build_query_message`` writes between the history block and the turn.
