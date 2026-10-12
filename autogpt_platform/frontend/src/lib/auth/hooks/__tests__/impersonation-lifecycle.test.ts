@@ -247,6 +247,50 @@ describe("admin impersonation follows the session that chose it", () => {
   });
 });
 
+describe("starting up with a session the backend no longer accepts", () => {
+  async function startUpOn(path: string, redirectPath?: string) {
+    const router = makeRouter();
+    actions.getCurrentUser.mockResolvedValue({ user: null });
+    actions.validateSession.mockResolvedValue({
+      user: null,
+      isValid: false,
+      redirectPath,
+    });
+    await useAuthStore.getState().initialize({
+      api: { disconnectWebSocket: vi.fn() } as unknown as BackendAPI,
+      router,
+      path,
+    });
+    return router;
+  }
+
+  it("sends a protected page to sign in", async () => {
+    const router = await startUpOn("/library", "/login?next=%2Flibrary");
+
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Flibrary");
+    expect(useAuthStore.getState()).toMatchObject({
+      user: null,
+      isUserLoading: false,
+    });
+  });
+
+  it("sends it to sign in and drops a left-over target", async () => {
+    ImpersonationState.set("user-a", admin.id);
+
+    const router = await startUpOn("/library", "/login?next=%2Flibrary");
+
+    expect(router.push).toHaveBeenCalledWith("/login?next=%2Flibrary");
+    expect(ImpersonationState.read()).toBeNull();
+  });
+
+  it("leaves a public page where it is", async () => {
+    const router = await startUpOn("/marketplace");
+
+    expect(router.push).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().isUserLoading).toBe(false);
+  });
+});
+
 describe("answers that arrive after a sign-out", () => {
   it("a refresh started before the sign-out can't sign the tab back in", async () => {
     await signInTab(admin);
