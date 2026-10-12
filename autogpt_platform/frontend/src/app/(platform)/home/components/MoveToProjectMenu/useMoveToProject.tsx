@@ -4,7 +4,6 @@ import {
   usePatchV2UpdateSessionBoard,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { Button } from "@/components/atoms/Button/Button";
-import { BOARDS_LIST_QUERY_KEY } from "@/components/layout/AppSidebar/components/ProjectsNavSection/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
@@ -12,6 +11,7 @@ import { useState } from "react";
 import { toast as sonnerToast } from "sonner";
 import {
   BOARD_PROJECT_MUTATION_KEY,
+  BOARDS_LIST_QUERY_KEY,
   boardHref,
   boardScopeKey,
   DEFAULT_BOARD_REF,

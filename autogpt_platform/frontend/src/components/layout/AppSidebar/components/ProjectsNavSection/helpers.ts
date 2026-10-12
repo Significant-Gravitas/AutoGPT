@@ -1,7 +1,6 @@
 import { boardHref } from "@/app/(platform)/home/board-helpers";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
-export const BOARDS_LIST_QUERY_KEY = ["copilot", "boards"] as const;
 export const MAX_BOARDS = 20;
 export const PROJECT_LIMIT_MESSAGE = `You can have up to ${MAX_BOARDS} projects`;
 

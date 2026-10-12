@@ -5,6 +5,7 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export const BOARD_QUERY_KEY = ["copilot", "board"] as const;
+export const BOARDS_LIST_QUERY_KEY = ["copilot", "boards"] as const;
 export const BOARD_REFETCH_INTERVAL_MS = 10_000;
 export const BOARD_MUTATION_KEY = ["copilot", "board", "mutation"];
 export const BOARD_MOVE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "move"];

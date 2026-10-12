@@ -21,8 +21,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { BOARDS_LIST_QUERY_KEY } from "@/components/layout/AppSidebar/components/ProjectsNavSection/helpers";
-import { boardQueryKey } from "../board-helpers";
+import { BOARDS_LIST_QUERY_KEY, boardQueryKey } from "../board-helpers";
 import { TaskBoardPage } from "../TaskBoardPage";
 
 const { routerReplace } = vi.hoisted(() => ({ routerReplace: vi.fn() }));

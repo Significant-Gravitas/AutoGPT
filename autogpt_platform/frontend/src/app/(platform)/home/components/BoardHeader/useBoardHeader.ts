@@ -2,7 +2,6 @@ import {
   useDeleteV2DeleteBoard,
   usePatchV2UpdateBoard,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import { BOARDS_LIST_QUERY_KEY } from "@/components/layout/AppSidebar/components/ProjectsNavSection/helpers";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { isKey } from "@/lib/keyboard";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,6 +11,7 @@ import { useState } from "react";
 import { useBoardRef } from "../../BoardContext";
 import {
   BOARD_MUTATION_KEY,
+  BOARDS_LIST_QUERY_KEY,
   boardScopeKey,
   DEFAULT_BOARD_REF,
   MAX_BOARD_NAME,

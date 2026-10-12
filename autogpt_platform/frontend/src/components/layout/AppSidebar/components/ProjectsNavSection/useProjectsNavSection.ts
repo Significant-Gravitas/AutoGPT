@@ -3,11 +3,11 @@ import {
   usePostV2CreateBoard,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
+import { BOARDS_LIST_QUERY_KEY } from "@/app/(platform)/home/board-helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "next/navigation";
 import { useJumpToNavGroup } from "../../useJumpToNavGroup";
 import {
-  BOARDS_LIST_QUERY_KEY,
   errorDetail,
   isBoardPath,
   MAX_BOARDS,
