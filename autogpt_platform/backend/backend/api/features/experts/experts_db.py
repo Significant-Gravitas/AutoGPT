@@ -94,8 +94,8 @@ from backend.api.features.orgs.db import get_user_default_team
 from backend.api.features.store import skill_db
 from backend.api.features.store.categories import category_match_values
 from backend.blocks import get_output_block_ids
+from backend.copilot.autopilot_mode import AUTOPILOT_MODES, AutopilotMode
 from backend.copilot.briefing.outcome import DEFAULT_AGENT_NAME, run_link
-from backend.copilot.model import AUTOPILOT_MODES, AutopilotMode
 from backend.copilot.tools.skills import (
     BuiltInSkillError,
     SkillNotFoundError,

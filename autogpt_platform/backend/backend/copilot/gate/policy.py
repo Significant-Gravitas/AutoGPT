@@ -7,7 +7,7 @@ decision here must hold even if it always answered "allow".
 from enum import Enum
 from typing import Any
 
-from backend.copilot.model import AutopilotMode
+from backend.copilot.autopilot_mode import AutopilotMode
 
 DEFAULT_MODE: AutopilotMode = "auto"
 

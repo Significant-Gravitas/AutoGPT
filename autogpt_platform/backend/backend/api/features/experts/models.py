@@ -13,8 +13,8 @@ from pydantic import (
 )
 
 from backend.api.features.experts.avatar_catalog import resolve_avatar_url
+from backend.copilot.autopilot_mode import AutopilotMode
 from backend.copilot.credential_selection import CredentialPins
-from backend.copilot.model import AutopilotMode
 from backend.data.expert_run_output import OutputType
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, skill_name_key
 

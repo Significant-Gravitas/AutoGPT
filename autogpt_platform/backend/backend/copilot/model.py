@@ -37,6 +37,7 @@ from backend.util.exceptions import (
 )
 from backend.util.feature_flag import Flag, is_feature_enabled
 
+from .autopilot_mode import AutopilotMode
 from .config import ChatConfig, CopilotLlmAuthProvider
 
 logger = logging.getLogger(__name__)
@@ -65,8 +66,6 @@ RoutingSource = Literal[
 # an interactive origin — "has no expert_id" only means "not an expert chat",
 # which an AutoPilotBlock session also satisfies.
 ChatSessionOrigin = Literal["interactive", "automation"]
-AutopilotMode = Literal["ask_first", "auto", "unsupervised"]
-AUTOPILOT_MODES: frozenset[str] = frozenset({"ask_first", "auto", "unsupervised"})
 
 
 # Redis cache key prefix for chat sessions
