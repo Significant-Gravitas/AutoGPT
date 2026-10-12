@@ -1,5 +1,3 @@
-"""Worker calls must use RPC while local Prisma is disconnected."""
-
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 

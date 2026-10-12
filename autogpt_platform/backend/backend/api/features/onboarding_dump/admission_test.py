@@ -20,7 +20,6 @@ def pipeline(mocker):
         ("mark_failed", store.mark_failed),
     ):
         mocker.patch.object(service.db, name, new=method)
-    # The API process owns a connection, so admission failures are marked locally.
     mocker.patch("backend.data.db.is_connected", return_value=True)
     admission = mocker.patch.object(
         service, "enforce_personalization_budget", new=AsyncMock()

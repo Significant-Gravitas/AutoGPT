@@ -26,7 +26,6 @@ async def client():
 
 @pytest.fixture
 def understanding_store(mocker):
-    """The saved understanding's read and write, as the route reaches them."""
     store = MagicMock(
         get_business_understanding=AsyncMock(return_value=None),
         upsert_business_understanding=AsyncMock(),
