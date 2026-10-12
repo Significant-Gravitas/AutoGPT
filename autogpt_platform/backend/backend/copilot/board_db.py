@@ -232,16 +232,6 @@ async def set_session_board(
     return result > 0
 
 
-async def session_is_started(session_id: str) -> bool:
-    """Not scoped to a user: callers must check ownership first."""
-    rows = await db.query_raw_with_schema(
-        f'SELECT {_STARTED_SQL} AS "started" '
-        'FROM {schema_prefix}"ChatSession" cs WHERE cs."id" = $1',
-        session_id,
-    )
-    return bool(rows and rows[0]["started"])
-
-
 async def set_session_expert_if_unstarted(
     session_id: str,
     user_id: str,

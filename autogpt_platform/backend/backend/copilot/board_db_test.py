@@ -165,7 +165,6 @@ async def test_a_reassign_brief_starts_a_session(user_id: str):
     extras = await get_board_session_extras(user_id, [reassigned])
 
     assert extras[reassigned].started is True
-    assert await board_db.session_is_started(reassigned) is True
 
 
 @pytest.mark.asyncio(loop_scope="session")
