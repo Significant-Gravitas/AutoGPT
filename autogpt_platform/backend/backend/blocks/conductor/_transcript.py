@@ -47,8 +47,6 @@ NON_AGENT_TYPES = USER_TYPES | {"system"}
 # started events, say nothing about whether the agent produced anything.
 STARTUP_RAW_TYPES = frozenset({"system", "command_lifecycle"})
 STARTUP_CODEX_EVENTS = frozenset({"thread.started", "turn.started"})
-# Session states in which no agent turn is running.
-SETTLED_STATES = frozenset({"idle", "error"})
 
 logger = logging.getLogger(__name__)
 
