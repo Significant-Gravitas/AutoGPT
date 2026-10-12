@@ -11,6 +11,7 @@ from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
+from prisma import Prisma
 from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
@@ -562,61 +563,86 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
     around: rows missing from ``credentials`` are revoked (soft delete),
     new ids are created, existing ids get their payload refreshed
     (OAuth token rotation runs through here constantly).
+
+    Runs as one transaction. Credential reads take no lock, so a reader must
+    see the old list or the new one: committed row by row, it could see a
+    replacement next to the credential it supersedes, and offer or pick the
+    one about to be revoked.
     """
     cryptor = JSONCryptor()
-    existing_rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "ownerId": user_id},
-    )
-    existing_by_id = {row.id: row for row in existing_rows}
     incoming_ids = {c.id for c in credentials}
+    async with transaction() as tx:
+        await _lock_user_credentials(tx, user_id)
+        existing_rows = await tx.integrationcredential.find_many(
+            where={"ownerType": "USER", "ownerId": user_id},
+        )
+        existing_ids = {row.id for row in existing_rows}
 
-    org_id: str | None = None
-    for cred in credentials:
-        row = existing_by_id.get(cred.id)
-        encrypted = cryptor.encrypt(cred.model_dump())
-        if row is not None:
-            await prisma.integrationcredential.update(
-                where={"id": cred.id},
+        org_id: str | None = None
+        for cred in credentials:
+            encrypted = cryptor.encrypt(cred.model_dump())
+            if cred.id in existing_ids:
+                await tx.integrationcredential.update(
+                    where={"id": cred.id},
+                    data={
+                        "encryptedPayload": encrypted,
+                        "displayName": cred.title or cred.provider,
+                        "status": "active",
+                    },
+                )
+                continue
+            if org_id is None:
+                org_id = await _personal_org_id(tx, user_id)
+            await tx.integrationcredential.create(
                 data={
-                    "encryptedPayload": encrypted,
+                    "id": cred.id,
+                    "organizationId": org_id,
+                    "ownerType": "USER",
+                    "ownerId": user_id,
+                    "provider": cred.provider,
+                    "credentialType": cred.type,
                     "displayName": cred.title or cred.provider,
-                    "status": "active",
-                },
-            )
-            continue
-        if org_id is None:
-            org_row = await prisma.organization.find_first(
-                where={
-                    "isPersonal": True,
-                    "Members": {"some": {"userId": user_id, "isOwner": True}},
+                    "encryptedPayload": encrypted,
+                    "createdByUserId": user_id,
                 }
             )
-            if org_row is None:
-                raise DatabaseError(
-                    f"Cannot store credentials for user {user_id}: "
-                    "personal org not bootstrapped"
-                )
-            org_id = org_row.id
-        await prisma.integrationcredential.create(
-            data={
-                "id": cred.id,
-                "organizationId": org_id,
-                "ownerType": "USER",
-                "ownerId": user_id,
-                "provider": cred.provider,
-                "credentialType": cred.type,
-                "displayName": cred.title or cred.provider,
-                "encryptedPayload": encrypted,
-                "createdByUserId": user_id,
-            }
-        )
 
-    for row in existing_rows:
-        if row.id not in incoming_ids and row.status == "active":
-            await prisma.integrationcredential.update(
-                where={"id": row.id},
-                data={"status": "revoked"},
-            )
+        for row in existing_rows:
+            if row.id not in incoming_ids and row.status == "active":
+                await tx.integrationcredential.update(
+                    where={"id": row.id},
+                    data={"status": "revoked"},
+                )
+
+
+async def _lock_user_credentials(tx: Prisma, user_id: str) -> None:
+    """Serialize full-list replaces for one user until the transaction ends.
+
+    The credential store's Redis lock already does this; this keeps two
+    replaces from interleaving row locks, and deadlocking, if that lock lapses.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"integration-credentials:{user_id}",
+    )
+
+
+async def _personal_org_id(tx: Prisma, user_id: str) -> str:
+    org_row = await tx.organization.find_first(
+        where={
+            "isPersonal": True,
+            "Members": {"some": {"userId": user_id, "isOwner": True}},
+        }
+    )
+    if org_row is None:
+        raise DatabaseError(
+            f"Cannot store credentials for user {user_id}: "
+            "personal org not bootstrapped"
+        )
+    return org_row.id
 
 
 async def migrate_and_encrypt_user_integrations():
@@ -851,7 +877,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
             ),
         )
     except Exception as e:
-        raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+        raise DatabaseError(f"Failed to unsubscribe user by token: {e}") from e
 
 
 async def cleanup_user_managed_credentials(

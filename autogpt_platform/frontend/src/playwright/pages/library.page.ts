@@ -146,14 +146,16 @@ export class LibraryPage extends BasePage {
 
   async openUploadDialog(): Promise<void> {
     console.log(`opening upload dialog`);
-    // Open the unified Import dialog first
-    await this.page.getByRole("button", { name: "Import" }).click();
-
-    // Wait for dialog to appear
-    await this.page.getByRole("dialog", { name: "Import" }).waitFor({
-      state: "visible",
-      timeout: 5_000,
-    });
+    // Open the unified Import dialog first. A click that lands before the
+    // page hydrates does nothing, so click again until the dialog shows.
+    const importButton = this.page.getByRole("button", { name: "Import" });
+    const dialog = this.page.getByRole("dialog", { name: "Import" });
+    await expect(async () => {
+      if (!(await dialog.isVisible())) {
+        await importButton.click({ timeout: 2_000 });
+      }
+      await expect(dialog).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
 
     // Click the "AutoGPT agent" tab
     await this.page.getByRole("tab", { name: "AutoGPT agent" }).click();

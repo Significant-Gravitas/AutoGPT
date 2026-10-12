@@ -663,9 +663,15 @@ SELECT has_column_privilege(current_user, 'platform."User"', 'id', 'SELECT')
   AND has_column_privilege(current_user, 'platform."User"', 'email', 'SELECT')
   AND has_column_privilege(current_user, 'platform."User"', 'email', 'UPDATE')
   AND has_column_privilege(current_user, 'platform."User"', 'updatedAt', 'UPDATE')
+  AND has_column_privilege(current_user, 'platform."User"', 'id', 'INSERT')
+  AND has_column_privilege(current_user, 'platform."User"', 'email', 'INSERT')
+  AND has_column_privilege(current_user, 'platform."User"', 'name', 'INSERT')
+  AND has_column_privilege(current_user, 'platform."User"', 'updatedAt', 'INSERT')
   AND NOT has_column_privilege(current_user, 'platform."User"', 'metadata', 'SELECT')
   AND NOT has_column_privilege(current_user, 'platform."User"', 'metadata', 'UPDATE')
+  AND NOT has_column_privilege(current_user, 'platform."User"', 'metadata', 'INSERT')
   AND NOT has_table_privilege(current_user, 'platform."User"', 'SELECT')
+  AND NOT has_table_privilege(current_user, 'platform."User"', 'INSERT')
   AND NOT has_table_privilege(current_user, 'platform."User"', 'UPDATE');
 SQL
   )"
@@ -746,6 +752,26 @@ assert_email_auth_flow() {
     --header "Origin: ${PUBLIC_URL}" \
     --data "{\"name\":\"Single Container Smoke\",\"email\":\"${email}\",\"password\":\"${password}\"}" \
     "${PUBLIC_URL}/api/auth/sign-up/email" >/dev/null
+
+  # Nothing has called the backend yet, so the row can only come from the
+  # sign-up hook, not from the backend's lazy provisioning on first request.
+  local platform_user_rows
+  platform_user_rows="$(
+    docker exec --interactive --user postgres "${CONTAINER_NAME}" \
+      /usr/bin/env -i \
+      PATH=/usr/lib/postgresql/15/bin:/usr/bin:/bin \
+      PGHOST=/run/postgresql \
+      PGDATABASE=postgres \
+      PGUSER=postgres \
+      psql --no-psqlrc --tuples-only --no-align --set=ON_ERROR_STOP=1 \
+      --set=email="${email}" <<'SQL'
+SELECT count(*) FROM platform."User" WHERE email = :'email';
+SQL
+  )"
+  [[ "${platform_user_rows}" == 1 ]] || {
+    echo "sign-up did not create the platform User row" >&2
+    return 1
+  }
 
   curl --fail-with-body --silent --show-error --max-time 30 \
     --cookie "${AUTH_COOKIE_FILE}" \

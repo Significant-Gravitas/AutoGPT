@@ -617,6 +617,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The pool size for the scheduler database connection pool",
     )
 
+    schedule_read_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description=(
+            "How long a page read (library agents, Home) waits for the scheduler "
+            "before rendering without schedule badges. Healthy reads take well "
+            "under a second; the Vercel proxy gives up at 30s."
+        ),
+    )
+
     # Prefer the cluster env var so the new image can co-exist with old-image
     # pods still reading the unsuffixed RABBITMQ_HOST during a rollout.
     rabbitmq_host: str = Field(
