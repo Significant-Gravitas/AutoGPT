@@ -25,7 +25,12 @@
 <title>{{ title_text }}</title>
 <!--[if mso]>
 <xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml>
-<style>body, td, div, p, a, span { font-family: Arial, Helvetica, sans-serif !important; }</style>
+<style>
+  body, td, div, p, a, span { font-family: Arial, Helvetica, sans-serif !important; }
+  .email-button { padding:13px 28px !important; }
+  .email-button-small { padding:8px 14px !important; }
+  .email-button a { padding:0 !important; }
+</style>
 <![endif]-->
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
@@ -186,17 +191,19 @@
 {%- endif -%}
 {%- endmacro -%}
 
+{# The link owns the full padded surface. MSO rules transfer padding to the
+   cell for Outlook without applying it twice. #}
 {%- macro btn(label, url) -%}
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
-            <tr><td bgcolor="#6144DF" align="center" style="border-radius:8px; padding:13px 28px; mso-padding-alt:13px 28px;">
-              <a href="{{ url }}" style="display:inline-block; font-size:15px; line-height:20px; font-weight:600; color:#ffffff; font-family:{{ FONT }};">{{ label }}</a>
+            <tr><td bgcolor="#6144DF" align="center" class="email-button" style="border-radius:8px; mso-padding-alt:13px 28px;">
+              <a href="{{ url }}" style="display:block; padding:13px 28px; font-size:15px; line-height:20px; font-weight:600; color:#ffffff; font-family:{{ FONT }};">{{ label }}</a>
             </td></tr>
           </table>
 {%- endmacro -%}
 
 {%- macro btn_small(label, url) -%}
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6E8"><tr><td bgcolor="#6144DF" align="center" style="border-radius:6px; padding:8px 14px; mso-padding-alt:8px 14px;">
-                  <a href="{{ url }}" style="display:inline-block; font-size:13px; line-height:18px; font-weight:600; color:#ffffff; font-family:{{ FONT }};">{{ label }}</a>
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFF6E8"><tr><td bgcolor="#6144DF" align="center" class="email-button email-button-small" style="border-radius:6px; mso-padding-alt:8px 14px;">
+                  <a href="{{ url }}" style="display:block; padding:8px 14px; font-size:13px; line-height:18px; font-weight:600; color:#ffffff; font-family:{{ FONT }};">{{ label }}</a>
                 </td></tr></table>
 {%- endmacro -%}
 

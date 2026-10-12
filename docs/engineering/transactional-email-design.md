@@ -14,7 +14,7 @@ payload; Postmark receives those bodies rather than a hosted template ID.
 | Alert | Each cause, including coalesced alerts | Amber needs-you strip and primary attention card; secondary actions are text links |
 | Verdict | Approved; changes requested with/without notes | State eyebrow; reviewer feedback preserved and escaped; one marketplace action |
 | Ops | Refund request, refund processed | Internal amount band and compact Otto; admin action; no unsubscribe |
-| Auth | Verify email, reset password, confirm new email | Compact layout without hero; action button and complete fallback URL; HTML and text; original subjects and origin validation |
+| Auth | Verify email, set/reset password, confirm new email | Compact layout without hero; action button and complete fallback URL; HTML and text; original subjects and origin validation |
 
 Organization invitations have no email sender yet. SMTP/Gmail workflow blocks
 send user-authored content and are not platform transactional notices. The
@@ -28,8 +28,10 @@ publish content or settings to MailerLite.
 `#6144DF` actions, ink `#171925`, white sheet and lavender paper. Facts stack on
 phones. At 600px and below, the paper has no side padding and the sheet has
 square corners; content keeps its 22px gutters. The sheet is fluid even when a
-client strips the stylesheet. Inline font stacks and a table-backed button
-preserve the fallback appearance in Outlook; action glyphs request text
+client strips the stylesheet. Button links own their full padded surface,
+including when styles are removed. MSO-only rules transfer that padding to
+table cells for Outlook without doubling it. Inline font stacks preserve
+the fallback appearance in Outlook; action glyphs request text
 presentation instead of emoji. Each family owns its HTML, subject/preheader,
 and text templates. The preheader appears in the lede; supplied user names and
 feedback stay escaped, and customer-authored punctuation is preserved.
@@ -143,7 +145,7 @@ predate the transparent Otto and email-client compatibility follow-up.
 The notification design fixtures cover each lifecycle/trial branch, welcome
 feature cohorts, Briefing cadences/attention, coalesced alerts, verdicts, and
 refunds. Tests check frame/tokens, safe images, CTA exceptions, size, footers,
-link parity and escaped feedback. Auth tests check all three actions, URL
+link parity and escaped feedback. Auth tests check all four actions, URL
 escaping, origin restrictions, and plain-text delivery. Transport tests inspect
 the actual Postmark request fields with the network client mocked.
 
@@ -160,13 +162,17 @@ production configuration changed, or deployment performed by this PR.
 
 ## Review previews
 
-The client compatibility follow-up was checked across all 31 fixture/auth
+The client compatibility follow-up was checked across all 32 fixture/auth
 variants at 640px, 390px and 360px in five modes: normal, stylesheet removed,
-images blocked, dark preference, and simulated dark backgrounds (465 layout
-and asset checks). No case overflowed; the largest HTML was 16,018 bytes. The
+images blocked, dark preference, and simulated dark backgrounds (480 layout
+and asset checks). No case overflowed; the largest HTML was 16,204 bytes. The
 dark simulation checks the transparent artwork against recolored backgrounds;
 it does not reproduce a mail client's color algorithm or establish dark-mode
 text contrast. Real inbox validation remains part of the release checklist.
+
+Both button sizes also passed 60 browser clicks across the three widths with
+normal and stripped styles, including each padded edge. Previously, all 48
+edge clicks missed the link; only the 12 label-center clicks succeeded.
 
 The comparisons below use local checked-in assets and synthetic fixture data.
 Desktop remains 560px wide. Phones now use the viewport width, and the inline

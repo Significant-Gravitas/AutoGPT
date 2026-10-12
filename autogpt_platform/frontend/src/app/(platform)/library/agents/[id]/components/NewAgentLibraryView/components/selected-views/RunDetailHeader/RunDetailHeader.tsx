@@ -6,6 +6,8 @@ import { AGENT_LIBRARY_SECTION_PADDING_X } from "../../../helpers";
 import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { isCompletedWithErrors } from "@/lib/run-health";
 
 type Props = {
   agent: LibraryAgent;
@@ -16,6 +18,7 @@ type Props = {
 };
 
 export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
+  const isBillingEnabled = useIsBillingEnabled();
   return (
     <div className={AGENT_LIBRARY_SECTION_PADDING_X}>
       <div className="flex w-full items-center justify-between">
@@ -24,7 +27,10 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
               {run?.status ? (
                 <div className="flex items-center gap-2">
-                  <RunStatusBadge status={run.status} />
+                  <RunStatusBadge
+                    status={run.status}
+                    completedWithErrors={isCompletedWithErrors(run)}
+                  />
                   {run.is_dry_run && (
                     <div className="inline-flex items-center gap-1 rounded-md bg-amber-50 p-1">
                       <Icon
@@ -84,7 +90,7 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
                   </Text>
                 </>
               )}
-              {run.stats?.cost !== undefined && (
+              {isBillingEnabled && run.stats?.cost !== undefined && (
                 <>
                   <span className="mx-1 inline-block text-zinc-200">|</span>
                   <Text variant="small" className="text-zinc-500">

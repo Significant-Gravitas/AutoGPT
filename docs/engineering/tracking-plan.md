@@ -143,6 +143,7 @@ what replaced them.
 | `tour_scenario_started` | browser | live | `scenario` | A tour scenario starts playing. |
 | `tour_scenario_completed` | browser | live | `scenario` | A tour scenario reaches its end. |
 | `tour_cta_clicked` | browser | live | `label` (`free-trial`, `signup`, `pricing`, `another-scenario`, `self-host`, `share`), `placement` where the CTA has one, `surface` (`tour`, `marketplace`) on sidebar-card clicks | A tour or logged-out marketplace call to action is clicked. |
+| `marketing_opted_out` | browser | live | `surface` (`signup`) | Someone refuses marketing email in the app. `signup`: "opt out" is clicked in the legal line under the signup buttons (not "Undo"); nothing else is sent, since there is no user yet, so it only gives the opt-out rate. The refusal itself is stored on the user (`marketingOptOutAt`). |
 | `signup_completed` | backend | live | `signup_method` (the auth provider, e.g. `email`, `google`: from the user's first Better Auth account row, where `credential` is reported as `email`, else from a Supabase token's `app_metadata.provider`; omitted when neither has it) | The user row is created (`data/user.py`), whichever request creates it. |
 
 Sidebar CTA clicks retain the tour event names for compatibility. Filter
@@ -245,18 +246,21 @@ differently.
 | `checkout_started` | backend | live | `checkout_kind` (`subscription`, `top_up`, `trial`), `subscription_tier`, `billing_cycle`, `surface` (sent by the client; unset for the low-credit top-up dialog and the legacy `/profile/credits` page), `$feature/<experiment>` for every recorded experiment arm | A Stripe Checkout session is created and its URL returned (subscription, credit top-up or trial card setup). A paid plan changed in place opens no Checkout and sends nothing. |
 | `checkout_abandoned` | browser | live | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL: `subscription=cancelled`, `topup=cancel`, `trial=cancelled`, or the paywall modal's `paywall_checkout=cancelled` marker). Browser-sent: Stripe only reports the expiry a day later. A trial abandonment is sent once per tab per surface until the next trial checkout starts, so a refresh on the cancel URL does not count twice but a second real abandonment does. |
 | `trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
+| `trial_cancel_popup_viewed` | browser | live | `days_left` (whole days of trial access left, rounded up; `1` under a day) | The "Cancellation confirmed" popup opens, once, right after a cancel that sets the trial to cancel at its end, so trial access continues until then. A reload never reopens it. |
+| `trial_resume_clicked` | browser | live | `days_left` | Resume trial is clicked on a trial set to cancel at its end, in the popup or on the trial card. Sent on the click; `trial_resumed` (backend) confirms it took effect. |
+| `trial_subscribe_now_clicked` | browser | live | `days_left` | Subscribe now is clicked in the cancellation popup. It opens Billing. There, the trial's own plan converts the trial at once on the saved card (`trial_converted`, no `checkout_started`); any other plan, or a card that asks for authentication, goes through Stripe Checkout (`checkout_started`), which ends the trial without a `trial_ended`. |
 | `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
 | `trial_ending` | backend | live | as above | The reminder window opens. |
-| `trial_canceled` | backend | live | as above | The trial is set to cancel. |
-| `trial_resumed` | backend | live | as above | A cancelled trial is resumed. |
+| `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. |
+| `trial_resumed` | backend | live | as above | A trial set to cancel is resumed before its end date, so it converts to paid at its end as first agreed. |
 | `payment_failed` | backend | live | as above | The conversion charge fails. |
 | `trial_converted` | backend | live | as above | The trial converts to paid. |
-| `trial_ended` | backend | live | as above | The trial ends without converting. |
+| `trial_ended` | backend | live | as above | The trial ends without converting. Not sent when the trial subscription ends because another plan was bought while the trial was set to cancel; that plan's `checkout_started` and `payment_succeeded` cover it. |
 | `subscription_changed` | backend | live | `change_type: upgrade`, `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier upgrade takes effect. Downgrades and cancellations are not sent here yet. |
 | `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. Deduplicated on the invoice id: Stripe delivers both `invoice.payment_succeeded` and `invoice_payment.paid` for one invoice, and redelivers either, so revenue is counted once. |
 | `topup_completed` | backend | live | `amount_credits`, `top_up_type`, `amount_cents` (the Checkout total or the auto top-up charge), `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
-| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`; `payment_failed` too when our own payment-failure handler cancelled the subscription because the balance could not cover a failed renewal, which Stripe would stamp `cancellation_requested`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead. |
+| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`; `payment_failed` too when our own payment-failure handler cancelled the subscription because the balance could not cover a failed renewal, which Stripe would stamp `cancellation_requested`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead; a trial ended by buying another plan sends neither. |
 | `subscription_tier_reconciled` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
 
 The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
@@ -314,7 +318,7 @@ replaying events.
 
 | Property | Value |
 | --- | --- |
-| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled` (a trial set to cancel, which keeps access until its end and goes back to `in_trial` on resume, or a trial that ended unconverted), `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
 | `signup_at` | When the user row was created. |
 | `trial_started_at` | When the trial started. |
 | `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
@@ -324,6 +328,23 @@ replaying events.
 Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
+
+The role picked in the onboarding wizard is set with a `$set` of its own when
+the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,
+`product_analytics.set_onboarding_role`), so funnels and retention can be split
+by role. Someone who left the wizard before Preparing has neither property.
+
+| Property | Value |
+| --- | --- |
+| `onboarding_role` | The pick, as labelled in the wizard: `Founder / CEO`, `Operations`, `Sales / BD`, `Marketing`, `Product / PM`, `Engineering`, `HR / People` or `Other`. |
+| `onboarding_role_other` | What was typed after picking `Other` (trimmed, at most 100 characters); null for any other pick. |
+
+The pick is kept on `UserOnboarding`, not read back from the AutoPilot
+business understanding, whose copy AutoPilot rewrites. `poetry run cli
+onboarding-role-backfill` sets both for earlier accounts with `$set_once`, from
+exact picks only: any other stored value may be `Other`'s text or a rewrite,
+so it is left unset. MailerLite gets the same values as `role` and
+`role_other`.
 
 ## Removed
 
@@ -416,9 +437,10 @@ line:
   families, ...) come with the plan's phases, not with this list.
 - **Events the plan has no name for keep their own**, e.g.
   `integration_connected`, `schedule_created`, `hire_started`,
-  `billing_portal_opened`, `tour_*`, `tab_intro_*`, `voice_*` and
-  `credential_*`. `briefing_opened` is the briefing shown on home, a
-  different action from the plan's `briefing_opened_in_chat`.
+  `billing_portal_opened`, `marketing_opted_out`, `tour_*`,
+  `tab_intro_*`, `voice_*` and `credential_*`. `briefing_opened` is the
+  briefing shown on home, a different action from the plan's
+  `briefing_opened_in_chat`.
 
 ## Events not in the constants modules
 

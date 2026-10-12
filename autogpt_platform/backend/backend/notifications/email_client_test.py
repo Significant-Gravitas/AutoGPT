@@ -82,8 +82,37 @@ def test_both_button_sizes_preserve_padding_in_outlook(kit_html: str):
     ]
     assert len(buttons) == 2
     for button, padding in zip(buttons, ("13px 28px", "8px 14px")):
-        assert f"padding:{padding}" in button["style"]
         assert f"mso-padding-alt:{padding}" in button["style"]
+        classes = button["class"].split()
+        assert "email-button" in classes
+        assert ("email-button-small" in classes) == (padding == "8px 14px")
+
+
+def test_both_button_sizes_have_full_clickable_padding(kit_html: str):
+    document = EmailElements()
+    document.feed(kit_html)
+    buttons = [
+        (attrs, document.elements[index + 1])
+        for index, (tag, attrs) in enumerate(document.elements)
+        if tag == "td" and attrs.get("bgcolor") == "#6144DF"
+    ]
+    assert len(buttons) == 2
+    for (cell, (tag, link)), padding in zip(buttons, ("13px 28px", "8px 14px")):
+        assert tag == "a"
+        assert f"padding:{padding}" in link["style"]
+        assert "display:block" in link["style"]
+        assert not re.search(r"(?:^|;)\s*padding(?:-[a-z]+)?:", cell["style"])
+
+
+def test_outlook_padding_does_not_double_the_clickable_link_padding(kit_html: str):
+    outlook_head = re.search(r"<!--\[if mso\]>(.*?)<!\[endif\]-->", kit_html, re.S)
+    assert outlook_head is not None
+    styles = outlook_head.group(1)
+    assert re.search(r"\.email-button\s*\{\s*padding:13px 28px !important;", styles)
+    assert re.search(
+        r"\.email-button-small\s*\{\s*padding:8px 14px !important;", styles
+    )
+    assert re.search(r"\.email-button a\s*\{\s*padding:0 !important;", styles)
 
 
 def test_triangle_and_play_symbols_request_text_presentation(kit_html: str):

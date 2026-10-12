@@ -26,11 +26,18 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
     current_dir = Path(__file__).parent
     modules = []
     for f in current_dir.rglob("*.py"):
-        if not f.is_file() or f.name == "__init__.py" or f.name.startswith("test_"):
+        if (
+            not f.is_file()
+            or f.name in {"__init__.py", "conftest.py"}
+            or f.name.startswith("test_")
+            or f.name.endswith("_test.py")
+        ):
             continue
 
         # Skip examples directory if not enabled
         relative_path = f.relative_to(current_dir)
+        if {"test", "tests"}.intersection(relative_path.parts[:-1]):
+            continue
         if not load_examples and relative_path.parts[0] == "examples":
             continue
 

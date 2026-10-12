@@ -4,6 +4,7 @@ import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
 import {
   Alert01Icon,
+  Alert02Icon,
   AlertCircleIcon,
   CancelCircleIcon,
   CheckmarkCircle02Icon,
@@ -59,24 +60,38 @@ const statusIconMap: Record<AgentExecutionStatus, StatusIconMap> = {
   },
 };
 
-type Props = {
-  status: AgentExecutionStatus;
+const completedWithErrorsStyle: StatusIconMap = {
+  icon: <Icon icon={Alert02Icon} size={16} className="text-amber-700" />,
+  bgColor: "bg-amber-50",
+  textColor: "!text-amber-700",
 };
 
-export function RunStatusBadge({ status }: Props) {
+type Props = {
+  status: AgentExecutionStatus;
+  completedWithErrors?: boolean;
+};
+
+export function RunStatusBadge({ status, completedWithErrors = false }: Props) {
+  const style = completedWithErrors
+    ? completedWithErrorsStyle
+    : statusIconMap[status];
+  const label = completedWithErrors
+    ? "Completed with errors"
+    : getRunStatusInfo(status).label;
+
   return (
     <div
       className={cn(
         "inline-flex items-center gap-1 rounded-md p-1",
-        statusIconMap[status].bgColor,
+        style.bgColor,
       )}
     >
-      {statusIconMap[status].icon}
+      {style.icon}
       <Text
         variant="small-medium"
-        className={cn(statusIconMap[status].textColor, "capitalize")}
+        className={cn(style.textColor, "capitalize")}
       >
-        {getRunStatusInfo(status).label}
+        {label}
       </Text>
     </div>
   );
