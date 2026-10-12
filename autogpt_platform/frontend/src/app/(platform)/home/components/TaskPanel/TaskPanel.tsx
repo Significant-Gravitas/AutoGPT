@@ -1,11 +1,12 @@
 "use client";
 
 import { CopilotChatHost } from "@/app/(platform)/copilot/CopilotChatHost";
+import { ContextPanel } from "@/app/(platform)/copilot/components/ContextPanel/ContextPanel";
 import { ContextPanelAutoOpen } from "@/app/(platform)/copilot/components/ContextPanel/ContextPanelAutoOpen";
 import { CopilotModals } from "@/app/(platform)/copilot/components/CopilotModals/CopilotModals";
-import { WorkspaceFileCards } from "@/app/(platform)/copilot/components/WorkspaceFileCards/WorkspaceFileCards";
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import dynamic from "next/dynamic";
 import type { Card } from "../../board-helpers";
 import { DraftStart } from "./components/DraftStart/DraftStart";
@@ -44,8 +45,7 @@ export function TaskPanel({
     isDraft,
     canStart,
     isStarting,
-    showFiles,
-    toggleFiles,
+    isContextOpen,
     handleRename,
     handleAssign,
     handleMove,
@@ -64,6 +64,7 @@ export function TaskPanel({
         side="right"
         aria-describedby={undefined}
         onEscapeKeyDown={handleEscapeKeyDown}
+        hideClose
         className="flex w-1/2 min-w-[560px] max-w-none flex-col gap-0 p-0 max-md:w-full max-md:min-w-0 sm:max-w-none"
       >
         <TaskPanelHeader
@@ -72,20 +73,14 @@ export function TaskPanel({
           card={card}
           columns={columns}
           columnKey={columnKey}
-          showFiles={showFiles}
-          onToggleFiles={toggleFiles}
+          showChatControls={!isDraft}
           onRename={handleRename}
           onAssign={handleAssign}
           onMove={handleMove}
           onReassign={onReassign}
         />
         <div className="flex min-h-0 flex-1 flex-col bg-[#f6f7fb]">
-          {showFiles && (
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
-              <WorkspaceFileCards sessionId={sessionId} />
-            </div>
-          )}
-          {!showFiles && isDraft && card && (
+          {isDraft && card && (
             <DraftStart
               key={card.id}
               cardId={card.id}
@@ -94,15 +89,26 @@ export function TaskPanel({
               onStart={handleStart}
             />
           )}
-          {!showFiles && canStart && (
+          {canStart && (
             <StartBar isStarting={isStarting} onStart={handleStartWithTitle} />
           )}
-          {!showFiles && !isDraft && (
-            <CopilotChatHost
-              key={sessionId}
-              droppedFiles={[]}
-              onDroppedFilesConsumed={noop}
-            />
+          {!isDraft && isContextOpen && (
+            <ContextPanel sessionId={sessionId} inline />
+          )}
+          {!isDraft && (
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col",
+                isContextOpen && "hidden",
+              )}
+            >
+              <CopilotChatHost
+                key={sessionId}
+                droppedFiles={[]}
+                onDroppedFilesConsumed={noop}
+                embedded
+              />
+            </div>
           )}
         </div>
         <ContextPanelAutoOpen sessionId={sessionId} />

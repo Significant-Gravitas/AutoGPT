@@ -597,7 +597,7 @@ describe("task panel", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Research competitors",
     });
-    within(dialog).getByRole("button", { name: "Files" }).focus();
+    within(dialog).getByRole("button", { name: "Close" }).focus();
     await userEvent.keyboard("{Escape}");
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());

@@ -23,6 +23,8 @@ import { useContextPanel } from "./useContextPanel";
 interface Props {
   sessionId: string | null;
   mobile?: boolean;
+  /** Render the open tab in place, for hosts that swap it with the chat. */
+  inline?: boolean;
 }
 
 // iOS sheet curve — decelerates hard at the end so the chat column settles
@@ -36,7 +38,7 @@ const TAB_TITLES: Record<ContextPanelTab, string> = {
   integrations: "Integrations",
 };
 
-export function ContextPanel({ sessionId, mobile }: Props) {
+export function ContextPanel({ sessionId, mobile, inline }: Props) {
   const expert = useCopilotUIStore((s) => s.contextPanelExpert);
   const {
     activeTab,
@@ -63,6 +65,8 @@ export function ContextPanel({ sessionId, mobile }: Props) {
       )}
     </div>
   );
+
+  if (inline) return showExpanded ? content : null;
 
   if (mobile) {
     return (

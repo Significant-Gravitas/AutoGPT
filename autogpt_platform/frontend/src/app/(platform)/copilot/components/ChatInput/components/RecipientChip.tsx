@@ -32,6 +32,7 @@ interface Props {
   onCloseAutoFocus?: (event: Event) => void;
   className?: string;
   ariaLabel?: string;
+  hideName?: boolean;
 }
 
 const CHIP_CLASSNAME =
@@ -47,6 +48,7 @@ export function RecipientChip({
   onCloseAutoFocus,
   className,
   ariaLabel,
+  hideName,
 }: Props) {
   if (isLoading) {
     return (
@@ -76,7 +78,7 @@ export function RecipientChip({
           )}
         >
           <RecipientAvatar option={recipient} />
-          {recipient.name}
+          {!hideName && recipient.name}
           <Icon
             icon={ArrowDown01Icon}
             className="size-3.5 text-zinc-600 transition-transform duration-150 group-data-[state=open]:rotate-180"

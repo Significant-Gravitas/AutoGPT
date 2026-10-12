@@ -5,6 +5,7 @@ import {
   useGetV2GetSession,
   usePostV2StartSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import { useContextPanel } from "@/app/(platform)/copilot/components/ContextPanel/useContextPanel";
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
@@ -35,8 +36,8 @@ const EDITABLE_SELECTOR = "input, textarea, [contenteditable='true']";
 export function useTaskPanel({ card, sessionId, columns }: Args) {
   const queryClient = useQueryClient();
   const { applyOptimistic, rollback, settleBoard } = useBoardCache();
-  const [showFiles, setShowFiles] = useState(false);
   const [startedLocally, setStartedLocally] = useState(false);
+  const { showExpanded: isContextOpen } = useContextPanel();
   const [renamedTitle, setRenamedTitle] = useState<string | null>(null);
 
   const { data: sessionTitle } = useGetV2GetSession(sessionId, undefined, {
@@ -152,8 +153,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     isDraft: isUnstarted && !card?.has_messages,
     canStart: isUnstarted && !!card?.has_messages && !!card.title,
     isStarting,
-    showFiles,
-    toggleFiles: () => setShowFiles((value) => !value),
+    isContextOpen,
     handleRename,
     handleAssign,
     handleMove,

@@ -122,6 +122,8 @@ export interface ChatContainerProps {
   /** Which layout floats its controls over the chat's top-left corner on
    *  small viewports; the thread header lines up with them. */
   floatingControls?: FloatingControls;
+  /** The host draws the expert chip and the top-right controls itself. */
+  embedded?: boolean;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -164,6 +166,7 @@ export const ChatContainer = ({
   isKickoffStarting,
   onBackendTurn,
   floatingControls,
+  embedded = false,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -357,12 +360,14 @@ export const ChatContainer = ({
               <SessionNotFound />
             ) : sessionId ? (
               <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
-                <div className="absolute right-0 top-0 z-30">
-                  <ContextPanelToggle
-                    sessionId={sessionId}
-                    expert={chatExpert}
-                  />
-                </div>
+                {!embedded && (
+                  <div className="absolute right-0 top-0 z-30">
+                    <ContextPanelToggle
+                      sessionId={sessionId}
+                      expert={chatExpert}
+                    />
+                  </div>
+                )}
                 <NewChatOnboarding
                   expertId={expertIdentity?.id ?? null}
                   enabled={
@@ -395,6 +400,7 @@ export const ChatContainer = ({
                     expertIdentity={expertIdentity}
                     isResolvingExpertIdentity={isResolvingExpertIdentity}
                     floatingControls={floatingControls}
+                    showThreadHeader={!embedded}
                   />
                 </NewChatOnboarding>
                 {archivedExpertIdentity ? (

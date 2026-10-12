@@ -13,6 +13,9 @@ interface Props {
   sessionId?: string | null;
   /** The chat's live expert, whose integrations lead the controls. */
   expert?: ContextPanelExpert | null;
+  className?: string;
+  /** Hosts without a computer face (the board's card panel) hide its toggle. */
+  showComputer?: boolean;
 }
 
 // Sized and stroked like the sidebar's nav icons so the chat's top-right
@@ -25,7 +28,12 @@ const toggleClass =
  *  Computer toggle is always there for a chat with a session: the panel's
  *  own "Turn on screen" button lives on that face, so it must be reachable
  *  before any desktop exists. */
-export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
+export function ContextPanelToggle({
+  sessionId = null,
+  expert = null,
+  className,
+  showComputer = true,
+}: Props) {
   const { deliverables, documentCount: liveDocumentCount } =
     useSessionFiles(sessionId);
   const documentCount = Math.max(deliverables.length, liveDocumentCount);
@@ -48,7 +56,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const isMobile = useIsMobile();
   // The mobile sheet has no computer face to open, and mobile already floats
   // a files button over the chat's top-left corner.
-  const showComputerToggle = !!sessionId && !isMobile;
+  const showComputerToggle = showComputer && !!sessionId && !isMobile;
   const showFilesToggle = !isMobile;
 
   function handleComputerToggle() {
@@ -67,6 +75,7 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
       className={cn(
         "m-1 flex shrink-0 items-center gap-1 rounded-xl border border-transparent bg-white p-1 transition-shadow duration-150",
         isPanelOpen && "border-zinc-200/70 shadow-sm",
+        className,
       )}
     >
       {expert && <IntegrationsToggle expert={expert} className={toggleClass} />}
