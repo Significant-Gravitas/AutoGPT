@@ -49,7 +49,7 @@ If `release` comes back null for a project, select by time window instead of rel
 
 ## Choosing baseline and candidate
 
-Both sides take `KEY=VALUE` pairs: `project=`, `env=`, `release=`, `query=` (extra Sentry filter), and time as `window=START/END` (repeatable), `start=`/`end=`, or `period=24h`. Shared defaults come from `--project`, `--env`, `--query` and `--period`/`--start`/`--end`/`--window`; a side's own value wins. Times are UTC ISO 8601.
+Both sides take `KEY=VALUE` pairs: `project=`, `env=`, `release=`, `query=` (extra Sentry filter), and time as `window=START/END` (repeatable), `start=`/`end=`, or `period=24h`. Shared defaults come from `--project`, `--env`, `--query` and `--period`/`--start`/`--end`/`--window`. A side's own `project=`, `env=` or `query=` wins over the shared value (`env=` with nothing after it clears it). Any time key on a side (`window=`, `start=`/`end=` or `period=`) replaces all of the shared time flags for that side. Times are UTC ISO 8601; without a time anywhere, both sides use the last 7 days.
 
 **1. After merge: release against release (dev or prod).** Same project and environment, previous release against new release, in windows of equal length that cover the same hours of the day: the 24 hours before the deploy against the 24 hours after, or 7 days against 7 days for quiet routes. Always filter by release when there is one. Old releases keep sending events for days (open tabs, Vercel skew protection), so a time window alone mixes releases.
 
@@ -75,10 +75,10 @@ Measuring the candidate preview against `app:dev-behave:cloud` at dev HEAD in th
 
 ## How much data
 
-- The script gives no verdict unless each side has `--min-count` samples (default 200). At 200, p95 rests on 10 values above it. p99 is shown but never judged.
-- It samples up to `--sample-cap` values per side per transaction (default 1000), paging 100 at a time.
+- The script gives no verdict unless each side has `--min-count` samples (default 200) **from** `--min-traces` distinct traces (default 30). At 200, p95 rests on 10 values above it. p99 is shown but never judged. The verdict cell says which minimum was missed.
+- It samples up to `--sample-cap` values per side per transaction (default 1000, at most 20000), paging 100 at a time. A cap below `--min-count` is refused.
 - For a claim about one transaction, name it with `--transaction` and raise `--sample-cap` to 2000–5000. Naming it also shrinks the multiple-comparison correction (see below).
-- Correlated spans count once: the bootstrap resamples whole traces. The table shows samples and distinct traces. When one trace contributes many spans (a page polling an endpoint), the effective sample is the number of traces, and only big shifts are detectable.
+- Correlated spans count once: the bootstrap resamples whole traces, and the trace minimum stops a few busy traces (a page polling an endpoint) from passing as a big sample. The table shows samples and distinct traces. The effective sample is closer to the trace count than the span count. In A/A tests on clustered data, resampling spans one at a time called 38–44% of identical pairs a change, against 2–5% when resampling by trace.
 - Drive at least 1000 requests per side per transaction you care about. Wait a few minutes after load stops before measuring, so Sentry has the last events.
 
 ## Driving load on a preview
@@ -121,9 +121,12 @@ The markdown output (default) or `--json` reports two things for each transactio
 - **A verdict for p50 and p95:**
   - The interval is a bootstrap CI of candidate minus baseline from the raw samples, resampling whole traces.
   - It is Bonferroni-adjusted so that every interval in the run holds together at `--confidence` (95%). Two transactions means four intervals at 98.75% each. The plain 95% interval is in the JSON as `ci`.
-  - `faster` or `slower` needs the adjusted interval to exclude zero, and **both** the sample change and Sentry's all-events change to be at least `--min-effect` (5%) in that direction. Anything else is `no detectable change`. Below `--min-count` it is `not enough data`.
+  - Resamples are raised automatically until each tail of the adjusted interval holds 20 draws, up to 50000. For example, 4000 becomes 8000 for five transactions. The JSON reports the number used as `settings.resamples`.
+  - `faster` or `slower` needs the adjusted interval to exclude zero, and **both** the sample change and Sentry's all-events change to be at least `--min-effect` (5%) in that direction. Anything else is `no detectable change`. Below `--min-count` samples or `--min-traces` traces it is `not enough data`.
   - The transaction takes its worst percentile: `slower` if either is slower, else `faster` if either is faster.
-- **Failure rate:** a two-proportion z-test on Sentry's `failure_rate()`, with the same correction. `higher` counts as a regression even when the transaction got faster, because requests that fail fast look like a speedup.
+- **Failure rate:** Fisher's exact test on the failure counts behind Sentry's `failure_rate()`. It is exact because a normal approximation is wrong with a handful of failures: 0 of 1000 against 4 of 1000 passes a z-test, but Fisher gives p = 0.12.
+  - The significance level is Bonferroni-adjusted over the K transactions that have `--min-count` events on both sides. That is one test per transaction, not two.
+  - `higher` needs significance and a rise of at least `--min-failure-delta` (0.1 percentage points). It counts as a regression even when the transaction got faster, because requests that fail fast look like a speedup.
 
 `no detectable change` means "not distinguishable from noise with this much data". It does not mean "no change". Check the interval widths and trace counts before concluding anything.
 
@@ -142,18 +145,23 @@ A run over the top transactions is for spotting regressions and leads, not for c
 |---|---|
 | 0 | faster: a compared transaction got faster and nothing regressed |
 | 1 | slower or more failures: at least one compared transaction regressed |
-| 2 | usage error: bad arguments, unknown project, or Sentry rejected the query (HTTP 400) |
+| 2 | usage error: bad arguments (including a `--region-url` that is not https, `--timeout` ≤ 0, or `--sample-cap` below `--min-count`), unknown project, or Sentry rejected the query (HTTP 400) |
 | 3 | no detectable change |
-| 4 | not enough data: no compared transaction met `--min-count` on both sides |
+| 4 | not enough data: no compared transaction met `--min-count` and `--min-traces` on both sides |
 | 5 | auth: `SENTRY_AUTH_TOKEN` missing, or Sentry rejected it (401/403) |
-| 6 | Sentry API or network error after retries |
+| 6 | Sentry API or network error after retries, or any unexpected error; never read as a regression |
 
 With `--json`, the fields to branch on are:
 
 - `overall.verdict`, `overall.exit_code` and `overall.reasons`;
-- per transaction in `transactions[]`: `verdict`, `regression`, `p50`/`p95` (`baseline`, `candidate`, `diff`, `rel`, `sentry_rel`, `ci`, `ci_adjusted`, `verdict`), `failure_rate` (`baseline`, `candidate`, `diff`, `z`, `verdict`), and `baseline`/`candidate` (`count`, `p50`, `p95`, `p99`, `failure_rate`, `sample_n`, `sample_traces`).
+- per transaction in `transactions[]`:
+  - `verdict`, `note` (why there is not enough data), `regression`;
+  - `p50`/`p95`: `baseline`, `candidate`, `diff`, `rel`, `sentry_rel`, `ci`, `ci_adjusted`, `verdict`;
+  - `failure_rate`: `baseline`, `candidate`, `diff`, `p_value`, `verdict`;
+  - `baseline`/`candidate`: `count`, `p50`, `p95`, `p99`, `failure_rate`, `sample_n`, `sample_traces`;
+- `settings`, holding the values actually used: `sample_cap`, `resamples`, `comparisons`, `failure_comparisons`, `adjusted_confidence`, `min_count`, `min_traces`, `min_effect`, `seed`.
 
-Errors in `--json` mode print `{"error": {"type", "message"}, "exit_code"}`.
+Errors in `--json` mode print `{"error": {"type", "message"}, "exit_code"}`, where `type` is `usage`, `auth`, `api` or `internal`.
 
 ## The exact queries
 
@@ -222,4 +230,10 @@ Checked through the Sentry MCP on `builder` and `autogpt-server`.
 python3 -m unittest discover -s .claude/skills/perf-compare/scripts
 ```
 
-The tests run offline against the synthetic Sentry responses in `scripts/fixtures/`. They cover query building, cursor pagination and retries, the percentile and bootstrap maths with fixed seeds, the verdict rules and exit codes, and the missing-token error.
+The tests run offline in a few seconds, against the synthetic Sentry responses in `scripts/fixtures/`, served by a fake transport or by a local `http.server`. They cover:
+
+- query building, time parsing and option validation;
+- cursor pagination, retries, and real-socket errors;
+- the percentile, bootstrap and Fisher maths with fixed seeds;
+- seeded A/A calibration on independent and trace-clustered data;
+- the verdict rules, every exit code, and the missing-token error.

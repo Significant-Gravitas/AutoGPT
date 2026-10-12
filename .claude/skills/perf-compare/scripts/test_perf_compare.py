@@ -1,18 +1,26 @@
 """Offline tests for perf_compare.py.
 
 Run from this directory with ``python3 -m unittest``. Sentry is replaced by a
-fake transport that serves the synthetic responses in ``fixtures/``.
+fake transport, or by a local ``http.server``, that serves the synthetic
+responses in ``fixtures/``.
 """
 
 import contextlib
+import http.server
 import io
 import json
+import math
+import os
 import random
+import socket
 import sys
+import threading
 import unittest
 import urllib.parse
 from datetime import datetime, timedelta, timezone
+from fractions import Fraction
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -86,7 +94,7 @@ def side(**overrides):
     return pc.Side(**values)
 
 
-def run_main(argv, environ=None, transport=None):
+def run_main(argv, environ=None, transport=None, sleep=None):
     stdout, stderr = io.StringIO(), io.StringIO()
     code = pc.main(
         argv,
@@ -95,8 +103,26 @@ def run_main(argv, environ=None, transport=None):
         now=NOW,
         stdout=stdout,
         stderr=stderr,
+        sleep=sleep or (lambda seconds: None),
     )
     return code, stdout.getvalue(), stderr.getvalue()
+
+
+def exact_fisher(base_failures, base_total, cand_failures, cand_total):
+    """Two-sided Fisher p-value in exact integer arithmetic."""
+    total = base_total + cand_total
+    failures = base_failures + cand_failures
+
+    def weight(count):
+        return math.comb(failures, count) * math.comb(
+            total - failures, cand_total - count
+        )
+
+    observed = weight(cand_failures)
+    low = max(0, cand_total - (total - failures))
+    high = min(failures, cand_total)
+    tail = sum(weight(c) for c in range(low, high + 1) if weight(c) <= observed)
+    return float(Fraction(tail, math.comb(total, cand_total)))
 
 
 COMPARE_ARGS = [
@@ -203,6 +229,70 @@ class QueryBuildingTest(unittest.TestCase):
         self.assertEqual(arguments["dataset"], "spans")
 
 
+class TimeTest(unittest.TestCase):
+    def test_parse_time_accepts_utc_offsets_naive_and_date_only(self):
+        expected = datetime(2026, 10, 11, 14, 0, tzinfo=timezone.utc)
+        for text in (
+            "2026-10-11T14:00:00Z",
+            "2026-10-11T14:00:00z",
+            "2026-10-11T16:00:00+02:00",
+            "2026-10-11T09:00:00-05:00",
+            "2026-10-11T14:00:00",
+            "2026-10-11T14:00:00.987654Z",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(pc.parse_time(text), expected)
+        self.assertEqual(
+            pc.parse_time("2026-10-11"), datetime(2026, 10, 11, tzinfo=timezone.utc)
+        )
+
+    def test_parse_time_rejects_junk(self):
+        for text in ("yesterday", "", "2026-13-01T00:00:00Z", "14:00"):
+            with self.subTest(text=text), self.assertRaises(pc.UsageError):
+                pc.parse_time(text)
+
+    def parse(self, *extra):
+        return pc.build_parser().parse_args(
+            ["--project", "builder", "--baseline", "release=a"]
+            + ["--candidate", "release=b", *extra]
+        )
+
+    def test_shared_start_and_end_apply_to_both_sides(self):
+        baseline, candidate = pc.build_sides(
+            self.parse(
+                "--start", "2026-10-11T10:00:00Z", "--end", "2026-10-11T12:00:00Z"
+            ),
+            NOW,
+        )
+        window = pc.parse_window("2026-10-11T10:00:00Z/2026-10-11T12:00:00Z")
+        self.assertEqual(baseline.windows, [window])
+        self.assertEqual(candidate.windows, [window])
+
+    def test_shared_start_alone_runs_until_now(self):
+        baseline, _ = pc.build_sides(self.parse("--start", "2026-10-12T09:00:00Z"), NOW)
+        self.assertEqual(
+            baseline.windows,
+            [pc.Window(datetime(2026, 10, 12, 9, tzinfo=timezone.utc), NOW)],
+        )
+
+    def test_a_side_window_replaces_all_shared_time_flags(self):
+        args = pc.build_parser().parse_args(
+            ["--project", "builder", "--period", "24h"]
+            + ["--baseline", "release=a", "period=1h", "--candidate", "release=b"]
+        )
+        baseline, candidate = pc.build_sides(args, NOW)
+        self.assertEqual(baseline.windows, [pc.Window(NOW - timedelta(hours=1), NOW)])
+        self.assertEqual(candidate.windows, [pc.Window(NOW - timedelta(hours=24), NOW)])
+
+    def test_mixing_shared_time_flags_is_a_usage_error(self):
+        with self.assertRaises(pc.UsageError):
+            pc.build_sides(self.parse("--period", "24h", "--start", "2026-10-11"), NOW)
+
+    def test_default_window_is_the_last_seven_days(self):
+        baseline, _ = pc.build_sides(self.parse(), NOW)
+        self.assertEqual(baseline.windows, [pc.Window(NOW - timedelta(days=7), NOW)])
+
+
 class SelectorTest(unittest.TestCase):
     def shared(self, **overrides):
         values = dict(
@@ -267,20 +357,75 @@ class SelectorTest(unittest.TestCase):
         self.assertEqual(code, pc.EXIT_USAGE)
         self.assertIn("select the same events", err)
 
-    def test_bad_field_is_refused_before_any_request(self):
-        transport = FakeTransport(sentry_route())
-        code, _, _ = run_main(
-            COMPARE_ARGS + ["--field", "p50(x) OR 1"], transport=transport
-        )
-        self.assertEqual(code, pc.EXIT_USAGE)
-        self.assertEqual(transport.calls, [])
-
     def test_malformed_selector_exits_with_usage_code(self):
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(
             SystemExit
         ) as raised:
             pc.build_parser().parse_args(["--baseline"])
         self.assertEqual(raised.exception.code, pc.EXIT_USAGE)
+
+
+class OptionsTest(unittest.TestCase):
+    def refuse(self, path, params):
+        raise AssertionError("invalid options must not reach Sentry")
+
+    def assert_usage_error(self, extra, message):
+        transport = FakeTransport(self.refuse)
+        code, out, err = run_main(
+            COMPARE_ARGS + extra + ["--json"], transport=transport
+        )
+        self.assertEqual(code, pc.EXIT_USAGE)
+        self.assertIn(message, err)
+        self.assertEqual(json.loads(out)["error"]["type"], "usage")
+        self.assertEqual(transport.calls, [])
+
+    def test_region_url_must_be_https_with_a_host(self):
+        for url in (
+            "us.sentry.io",
+            "http://us.sentry.io",
+            "ftp://us.sentry.io",
+            "https://",
+            "https://us.sentry.io/api/0",
+            "https://us.sentry.io?x=1",
+        ):
+            with self.subTest(url=url):
+                self.assert_usage_error(["--region-url", url], "bad --region-url")
+
+    def test_plain_http_is_allowed_only_for_this_machine(self):
+        for url in (
+            "http://localhost:9000",
+            "http://127.0.0.1:9000",
+            "https://us.sentry.io/",
+        ):
+            with self.subTest(url=url):
+                code, _, _ = run_main(
+                    COMPARE_ARGS + ["--region-url", url, "--print-queries"], environ={}
+                )
+                self.assertEqual(code, 0)
+
+    def test_timeout_must_be_positive(self):
+        for value in ("0", "-1"):
+            with self.subTest(value=value):
+                self.assert_usage_error(["--timeout", value], "--timeout")
+
+    def test_sample_cap_below_min_count_is_refused(self):
+        self.assert_usage_error(
+            ["--sample-cap", "100"], "--sample-cap 100 is below --min-count 150"
+        )
+
+    def test_min_traces_must_be_positive(self):
+        self.assert_usage_error(["--min-traces", "0"], "--min-traces")
+
+    def test_sample_cap_is_clamped_to_what_paging_can_fetch(self):
+        code, out, err = run_main(
+            COMPARE_ARGS + ["--sample-cap", "50000", "--print-queries"], environ={}
+        )
+        self.assertEqual(code, 0)
+        self.assertIn(f"limited to {pc.MAX_SAMPLE_CAP}", err)
+        self.assertIn(f"first {pc.MAX_SAMPLE_CAP} rows by id", out)
+
+    def test_too_many_comparisons_for_the_resample_cap_are_refused(self):
+        self.assert_usage_error(["--top", "200"], "compare fewer transactions")
 
 
 class PaginationTest(unittest.TestCase):
@@ -312,6 +457,32 @@ class PaginationTest(unittest.TestCase):
         self.assertEqual(len(transport.calls), 1)
         self.assertEqual(len(client.paginate([("query", "x")], 130)), 130)
         self.assertEqual(len(transport.calls), 3)
+
+    def test_paginate_stops_at_max_pages(self):
+        def endless(path, params):
+            body = {"data": [{"span.duration": 1.0, "trace": "t", "id": "x"}]}
+            link = (
+                '<https://x/?cursor=0:1:0>; rel="next"; results="true"; cursor="0:1:0"'
+            )
+            return 200, {"link": link}, json.dumps(body).encode()
+
+        client, transport = self.client(endless)
+        with mock.patch.object(pc, "MAX_PAGES", 3):
+            rows = client.paginate([("query", "x")], 1000)
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(len(transport.calls), 3)
+
+    def test_paginate_stops_on_an_empty_page_that_claims_more(self):
+        def empty(path, params):
+            link = (
+                '<https://x/?cursor=0:100:0>; rel="next"; results="true"; '
+                'cursor="0:100:0"'
+            )
+            return 200, {"link": link}, b'{"data": []}'
+
+        client, transport = self.client(empty)
+        self.assertEqual(client.paginate([("query", "x")], 1000), [])
+        self.assertEqual(len(transport.calls), 1)
 
     def test_rate_limits_are_retried_after_the_advertised_delay(self):
         replies = [(429, {"retry-after": "7"}, b"{}"), respond("project_builder.json")]
@@ -367,6 +538,102 @@ class PaginationTest(unittest.TestCase):
         self.assertEqual(len(transport.calls), 1)
 
 
+class SentryStub(http.server.BaseHTTPRequestHandler):
+    """Serves ``server.route`` over real HTTP for urllib_transport."""
+
+    def do_GET(self):
+        parts = urllib.parse.urlsplit(self.path)
+        params = urllib.parse.parse_qs(parts.query, keep_blank_values=True)
+        self.server.seen.append((parts.path, self.headers.get("Authorization")))
+        status, headers, body = self.server.route(parts.path, params)
+        self.send_response(status)
+        for name, value in headers.items():
+            self.send_header(name, value)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+class LiveHttpTest(unittest.TestCase):
+    def setUp(self):
+        patcher = mock.patch.dict(os.environ, {"no_proxy": "127.0.0.1,localhost"})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def serve(self, route):
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), SentryStub)
+        server.route = route
+        server.seen = []
+        thread = threading.Thread(
+            target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True
+        )
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return server, f"http://127.0.0.1:{server.server_address[1]}"
+
+    def test_transport_returns_status_lowercased_headers_and_body(self):
+        _, base = self.serve(sentry_route())
+        status, headers, body = pc.urllib_transport(
+            base + EVENTS_PATH + "?" + urllib.parse.urlencode({"query": "x"}), {}, 5
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(pc.next_cursor(headers["link"]), "0:100:0")
+        self.assertEqual(len(json.loads(body)["data"]), 100)
+
+    def test_transport_returns_error_statuses_with_headers(self):
+        _, base = self.serve(lambda path, params: (429, {"Retry-After": "3"}, b"{}"))
+        status, headers, _ = pc.urllib_transport(base + PROJECT_PATH, {}, 5)
+        self.assertEqual((status, headers["retry-after"]), (429, "3"))
+
+    def test_full_run_over_http(self):
+        server, base = self.serve(sentry_route())
+        code, out, _ = run_main(COMPARE_ARGS + ["--region-url", base, "--json"])
+        self.assertEqual(code, pc.EXIT_SLOWER)
+        self.assertEqual(json.loads(out)["requests"], 7)
+        self.assertEqual(len(server.seen), 7)
+        self.assertTrue(all(auth == "Bearer test-token" for _, auth in server.seen))
+
+    def test_rate_limit_over_http_is_retried(self):
+        replies = [(429, {"Retry-After": "0"}, b"{}")]
+        route = sentry_route()
+        slept = []
+        _, base = self.serve(
+            lambda path, params: replies.pop(0) if replies else route(path, params)
+        )
+        code, _, _ = run_main(
+            COMPARE_ARGS + ["--region-url", base, "--json"], sleep=slept.append
+        )
+        self.assertEqual(code, pc.EXIT_SLOWER)
+        self.assertEqual(slept, [0.0])
+
+    def test_rejected_token_over_http_exits_with_the_auth_code(self):
+        _, base = self.serve(
+            lambda path, params: (401, {}, b'{"detail": "Invalid token"}')
+        )
+        code, _, err = run_main(COMPARE_ARGS + ["--region-url", base])
+        self.assertEqual(code, pc.EXIT_AUTH)
+        self.assertIn("Invalid token", err)
+
+    def test_connection_refused_exits_with_the_api_code(self):
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        slept = []
+        code, out, err = run_main(
+            COMPARE_ARGS + ["--region-url", f"http://127.0.0.1:{port}", "--json"],
+            sleep=slept.append,
+        )
+        self.assertEqual(code, pc.EXIT_API)
+        self.assertIn("network error", err)
+        self.assertEqual(json.loads(out)["error"]["type"], "api")
+        self.assertEqual(slept, [1.0, 2.0, 4.0])
+
+
 class StatisticsTest(unittest.TestCase):
     def test_percentile_interpolates_between_ranks(self):
         values = [1.0, 2.0, 3.0, 4.0, 5.0]
@@ -388,6 +655,14 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(pc.adjusted_confidence(0.95, 1), 0.95)
         self.assertEqual(pc.adjusted_confidence(0.95, 0), 0.95)
 
+    def test_resamples_are_raised_until_each_tail_has_twenty_draws(self):
+        self.assertEqual(pc.required_resamples(0.95), 800)
+        self.assertEqual(pc.required_resamples(pc.adjusted_confidence(0.95, 2)), 1600)
+        self.assertEqual(pc.required_resamples(pc.adjusted_confidence(0.95, 10)), 8000)
+        self.assertEqual(pc.required_resamples(1 - 1e-9), pc.RESAMPLE_CAP)
+        self.assertEqual(pc.effective_resamples(5000, 0.95), 5000)
+        self.assertEqual(pc.effective_resamples(500, 0.975), 1600)
+
     def test_bootstrap_of_a_constant_shift_is_exact(self):
         diffs = pc.bootstrap_quantile_diffs(
             [[100.0]] * 50, [[110.0]] * 50, [0.5, 0.95], 200, random.Random(1)
@@ -401,6 +676,22 @@ class StatisticsTest(unittest.TestCase):
             values = draw()
             self.assertEqual(values.count(5.0) % 3, 0)
             self.assertEqual(len(values), values.count(5.0) + values.count(1.0))
+
+    def test_clusters_are_keyed_on_trace_not_span_id(self):
+        rows = [
+            {"span.duration": 1.0, "trace": "t1", "id": "a"},
+            {"span.duration": 2.0, "trace": "t1", "id": "b"},
+            {"span.duration": 3.0, "trace": "t2", "id": "c"},
+            {"span.duration": 4.0, "id": "d"},
+            {"span.duration": None, "trace": "t3", "id": "e"},
+            {"span.duration": "slow", "trace": "t4", "id": "f"},
+            {"span.duration": True, "trace": "t5", "id": "g"},
+            {"span.duration": float("nan"), "trace": "t6", "id": "h"},
+        ]
+        clusters = pc.to_clusters(rows, "span.duration")
+        self.assertEqual(clusters, [[1.0, 2.0], [3.0], [4.0]])
+        summary = pc.side_summary({"count": 8}, clusters)
+        self.assertEqual((summary["sample_n"], summary["sample_traces"]), (4, 3))
 
     def test_bootstrap_is_deterministic_for_a_seed(self):
         rng = random.Random(11)
@@ -450,6 +741,80 @@ class StatisticsTest(unittest.TestCase):
         self.assertEqual(steady["p50"]["verdict"], pc.NO_CHANGE)
         self.assertEqual(steady["p95"]["verdict"], pc.NO_CHANGE)
 
+    def test_many_spans_from_few_traces_is_not_enough_data(self):
+        few = [[100.0 + i for i in range(100)] for _ in range(3)]
+        many = [[200.0] for _ in range(300)]
+        options = pc.Options(resamples=100)
+        result = pc.compare_quantiles(few, many, random.Random(1), options)
+        self.assertEqual(result["p50"]["verdict"], pc.NOT_ENOUGH_DATA)
+        self.assertIn(
+            "needs 30 traces per side, has 3 / 300",
+            pc.sample_shortfall(few, many, options),
+        )
+        enough = pc.compare_quantiles(
+            few, many, random.Random(1), pc.Options(resamples=100, min_traces=3)
+        )
+        self.assertEqual(enough["p50"]["verdict"], pc.SLOWER)
+
+
+class CalibrationTest(unittest.TestCase):
+    """A/A runs: identical distributions must rarely be called a change."""
+
+    REPLICATES = 60
+    RESAMPLES = 800
+
+    @staticmethod
+    def iid_side(rng, count):
+        return [[rng.lognormvariate(4.8, 0.4)] for _ in range(count)]
+
+    @staticmethod
+    def clustered_side(rng, traces):
+        side = []
+        for _ in range(traces):
+            level = rng.gauss(0, 0.5)
+            side.append(
+                [
+                    rng.lognormvariate(4.8 + level, 0.15)
+                    for _ in range(rng.randint(1, 8))
+                ]
+            )
+        return side
+
+    def false_change_rate(self, make_pair, seed):
+        rng = random.Random(seed)
+        options = pc.Options(
+            min_count=50, min_traces=10, resamples=self.RESAMPLES, min_effect=0.0
+        )
+        changed = 0
+        for index in range(self.REPLICATES):
+            baseline, candidate = make_pair(rng)
+            result = pc.compare_quantiles(
+                baseline, candidate, random.Random(index), options, family_size=2
+            )
+            verdict = pc.combine_verdicts([stat["verdict"] for stat in result.values()])
+            changed += verdict in (pc.FASTER, pc.SLOWER)
+        return changed / self.REPLICATES
+
+    def test_independent_spans_are_called_a_change_about_five_percent_or_less(self):
+        rate = self.false_change_rate(
+            lambda rng: (self.iid_side(rng, 120), self.iid_side(rng, 120)), 1
+        )
+        self.assertLessEqual(rate, 0.07)
+
+    def test_clustered_spans_stay_calibrated_only_when_resampled_by_trace(self):
+        def clustered(rng):
+            return self.clustered_side(rng, 40), self.clustered_side(rng, 40)
+
+        def flattened(rng):
+            baseline, candidate = clustered(rng)
+            return (
+                [[value] for cluster in baseline for value in cluster],
+                [[value] for cluster in candidate for value in cluster],
+            )
+
+        self.assertLessEqual(self.false_change_rate(clustered, 2), 0.07)
+        self.assertGreaterEqual(self.false_change_rate(flattened, 2), 0.25)
+
 
 class VerdictTest(unittest.TestCase):
     def test_quantile_verdict_rules(self):
@@ -492,21 +857,50 @@ class VerdictTest(unittest.TestCase):
         )
         self.assertEqual(pc.combine_verdicts([]), pc.NOT_ENOUGH_DATA)
 
-    def test_failure_rate_test(self):
-        options = pc.Options(min_count=100)
+    def test_fisher_matches_exact_arithmetic(self):
+        for case in (
+            (0, 1000, 4, 1000),
+            (3, 1500, 43, 1450),
+            (10, 1000, 24, 1000),
+            (2, 400, 9, 400),
+            (5, 200, 5, 200),
+            (0, 300, 0, 300),
+        ):
+            with self.subTest(case=case):
+                self.assertAlmostEqual(
+                    pc.fisher_exact_p(*case), exact_fisher(*case), places=10
+                )
 
-        def check(base, cand):
-            return pc.compare_failure_rates(base, cand, options)["verdict"]
+    def test_failure_rate_verdicts(self):
+        def check(base, cand, family=1, **overrides):
+            options = pc.Options(**overrides)
+            return pc.compare_failure_rates(base, cand, options, family)["verdict"]
 
-        def agg(count, rate):
-            return {"count": count, "failure_rate": rate}
+        def agg(failures, count):
+            return {"count": count, "failure_rate": failures / count}
 
-        self.assertEqual(check(agg(1500, 0.002), agg(1450, 43 / 1450)), pc.HIGHER)
-        self.assertEqual(check(agg(1450, 43 / 1450), agg(1500, 0.002)), pc.LOWER)
-        self.assertEqual(check(agg(1500, 0.002), agg(1500, 0.0027)), pc.NO_CHANGE)
-        self.assertEqual(check(agg(1500, 0.0), agg(1500, 0.0)), pc.NO_CHANGE)
-        self.assertEqual(check(agg(50, 0.0), agg(1500, 0.5)), pc.NOT_ENOUGH_DATA)
-        self.assertEqual(check(agg(1500, None), agg(1500, 0.5)), pc.NOT_ENOUGH_DATA)
+        self.assertEqual(check(agg(0, 1000), agg(4, 1000)), pc.NO_CHANGE)
+        self.assertEqual(check(agg(3, 1500), agg(43, 1450)), pc.HIGHER)
+        self.assertEqual(check(agg(43, 1450), agg(3, 1500)), pc.LOWER)
+        self.assertEqual(check(agg(3, 1500), agg(4, 1500)), pc.NO_CHANGE)
+        self.assertEqual(check(agg(0, 1500), agg(0, 1500)), pc.NO_CHANGE)
+        self.assertEqual(check(agg(10, 1000), agg(24, 1000)), pc.HIGHER)
+        self.assertEqual(check(agg(10, 1000), agg(24, 1000), family=5), pc.NO_CHANGE)
+        big = (agg(1000, 100000), agg(1150, 100000))
+        self.assertEqual(check(*big), pc.HIGHER)
+        self.assertEqual(check(*big, min_failure_delta=0.002), pc.NO_CHANGE)
+        self.assertEqual(check(agg(0, 50), agg(25, 50)), pc.NOT_ENOUGH_DATA)
+        missing = {"count": 1500, "failure_rate": None}
+        self.assertEqual(check(missing, agg(9, 1500)), pc.NOT_ENOUGH_DATA)
+
+    def test_failure_rate_reports_the_p_value(self):
+        result = pc.compare_failure_rates(
+            {"count": 1000, "failure_rate": 0.0},
+            {"count": 1000, "failure_rate": 0.004},
+            pc.Options(),
+        )
+        self.assertAlmostEqual(result["p_value"], 0.1246249063, places=9)
+        self.assertAlmostEqual(result["diff"], 0.004)
 
     def test_overall_outcome_and_exit_codes(self):
         def result(verdict, failure=pc.NO_CHANGE):
@@ -540,6 +934,49 @@ class VerdictTest(unittest.TestCase):
                 outcome = pc.overall_outcome(results)
                 self.assertEqual(outcome["verdict"], verdict)
                 self.assertEqual(outcome["exit_code"], code)
+
+
+class ReportTest(unittest.TestCase):
+    def test_two_sampled_transactions_make_four_comparisons(self):
+        rng = random.Random(7)
+
+        def sample():
+            return [[rng.lognormvariate(4.8, 0.3)] for _ in range(60)]
+
+        def agg(count):
+            return {
+                "count": count,
+                "p50": 120.0,
+                "p95": 200.0,
+                "p99": 260.0,
+                "failure_rate": 0.0,
+            }
+
+        aggregates = {LIBRARY: agg(500), STORE: agg(400)}
+        report = pc.build_report(
+            side(),
+            side(label="candidate", release=CAND_SHA),
+            pc.Options(min_count=50, min_traces=10, resamples=200),
+            {},
+            (aggregates, aggregates),
+            (
+                {LIBRARY: sample(), STORE: sample()},
+                {LIBRARY: sample(), STORE: sample()},
+            ),
+            "millisecond",
+            0,
+        )
+        settings = report["settings"]
+        self.assertEqual(settings["comparisons"], 4)
+        self.assertEqual(settings["failure_comparisons"], 2)
+        self.assertAlmostEqual(settings["adjusted_confidence"], 0.9875)
+        self.assertEqual(settings["resamples"], 3200)
+        for result in report["transactions"]:
+            for name in ("p50", "p95"):
+                low, high = result[name]["ci"]
+                adjusted_low, adjusted_high = result[name]["ci_adjusted"]
+                self.assertLessEqual(adjusted_low, low)
+                self.assertGreaterEqual(adjusted_high, high)
 
 
 class MissingTokenTest(unittest.TestCase):
@@ -579,6 +1016,43 @@ class MissingTokenTest(unittest.TestCase):
         self.assertIn(f'transaction:\\"{LIBRARY}\\"', out)
 
 
+class ExitCodeTest(unittest.TestCase):
+    def events_reply(self, reply):
+        route = sentry_route()
+
+        def answer(path, params):
+            return route(path, params) if path == PROJECT_PATH else reply
+
+        return FakeTransport(answer)
+
+    def test_unexpected_errors_exit_with_the_api_code_not_as_a_regression(self):
+        def explode(path, params):
+            raise RuntimeError("boom")
+
+        code, out, err = run_main(
+            COMPARE_ARGS + ["--json"], transport=FakeTransport(explode)
+        )
+        self.assertEqual(code, pc.EXIT_API)
+        self.assertIn("RuntimeError: boom", err)
+        payload = json.loads(out)
+        self.assertEqual(payload["error"]["type"], "internal")
+        self.assertEqual(payload["exit_code"], pc.EXIT_API)
+
+    def test_sentry_status_codes_map_to_exit_codes(self):
+        cases = [
+            (respond("error_400.json", 400), pc.EXIT_USAGE),
+            ((403, {}, b'{"detail": "forbidden"}'), pc.EXIT_AUTH),
+            ((503, {}, b"unavailable"), pc.EXIT_API),
+            ((418, {}, b"teapot"), pc.EXIT_API),
+            ((200, {}, b"not json"), pc.EXIT_API),
+            ((200, {}, b'{"rows": []}'), pc.EXIT_API),
+        ]
+        for reply, expected in cases:
+            with self.subTest(status=reply[0], body=reply[2][:12]):
+                code, _, _ = run_main(COMPARE_ARGS, transport=self.events_reply(reply))
+                self.assertEqual(code, expected)
+
+
 class EndToEndTest(unittest.TestCase):
     def test_slower_candidate_with_more_failures_exits_one(self):
         transport = FakeTransport(sentry_route())
@@ -588,15 +1062,19 @@ class EndToEndTest(unittest.TestCase):
         library, store = report["transactions"]
         self.assertEqual(library["transaction"], LIBRARY)
         self.assertEqual(library["verdict"], pc.SLOWER)
+        self.assertIsNone(library["note"])
         self.assertEqual(library["failure_rate"]["verdict"], pc.HIGHER)
+        self.assertLess(library["failure_rate"]["p_value"], 1e-6)
         self.assertTrue(library["regression"])
         self.assertEqual(library["baseline"]["sample_n"], 160)
         self.assertEqual(library["candidate"]["sample_n"], 160)
         self.assertGreater(library["p50"]["rel"], 0.15)
         self.assertAlmostEqual(library["p50"]["sentry_rel"], 150.6 / 120.4 - 1)
         self.assertEqual(store["verdict"], pc.NOT_ENOUGH_DATA)
+        self.assertEqual(store["note"], "needs 150 samples per side, has 0 / 0")
         self.assertEqual(store["baseline"]["sample_n"], 0)
         self.assertEqual(report["settings"]["comparisons"], 2)
+        self.assertEqual(report["settings"]["resamples"], 1600)
         self.assertEqual(report["overall"]["verdict"], pc.SLOWER)
         self.assertEqual(report["unit"], "millisecond")
         self.assertEqual(report["requests"], 7)
@@ -633,6 +1111,7 @@ class EndToEndTest(unittest.TestCase):
         self.assertIn("**Overall: slower** (exit 1)", out)
         self.assertIn(f"| {LIBRARY} | 160 / 160", out)
         self.assertIn("**slower, more failures**", out)
+        self.assertIn("**not enough data** (needs 150 samples per side", out)
 
     def test_identical_data_is_no_detectable_change(self):
         transport = FakeTransport(sentry_route(candidate_data="baseline"))
@@ -645,7 +1124,8 @@ class EndToEndTest(unittest.TestCase):
     def test_too_little_traffic_is_not_enough_data(self):
         transport = FakeTransport(sentry_route())
         code, out, _ = run_main(
-            COMPARE_ARGS + ["--min-count", "2000", "--json"], transport=transport
+            COMPARE_ARGS + ["--min-count", "2000", "--sample-cap", "2000", "--json"],
+            transport=transport,
         )
         self.assertEqual(code, pc.EXIT_NOT_ENOUGH_DATA)
         self.assertEqual(json.loads(out)["overall"]["verdict"], pc.NOT_ENOUGH_DATA)

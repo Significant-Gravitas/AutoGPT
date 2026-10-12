@@ -22,7 +22,6 @@ import math
 import os
 import random
 import re
-import statistics
 import sys
 import threading
 import time
@@ -31,6 +30,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -42,7 +42,12 @@ SCHEMA_VERSION = 1
 USER_AGENT = "autogpt-perf-compare/1"
 PAGE_SIZE = 100
 MAX_PAGES = 200
+MAX_SAMPLE_CAP = PAGE_SIZE * MAX_PAGES
 OVERVIEW_ROWS = 15
+RESAMPLE_CAP = 50000
+TARGET_TAIL_DRAWS = 20
+MIN_TAIL_DRAWS = 10
+LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
 FASTER = "faster"
 SLOWER = "slower"
@@ -68,7 +73,7 @@ exit codes:
   3  no detectable change: nothing moved beyond the noise
   4  not enough data: no compared transaction met --min-count on both sides
   5  auth: SENTRY_AUTH_TOKEN missing, or Sentry rejected it (401/403)
-  6  Sentry API or network error after retries
+  6  Sentry API or network error after retries, or any unexpected error
 """
 
 TOKEN_SCOPES = "org:read  project:read  event:read"
@@ -662,6 +667,7 @@ class Options:
     top: int = 5
     sample_cap: int = 1000
     min_count: int = 200
+    min_traces: int = 30
     min_effect: float = 0.05
     min_failure_delta: float = 0.001
     confidence: float = 0.95
@@ -677,6 +683,45 @@ def adjusted_confidence(confidence: float, family_size: int) -> float:
     a change by luck about 40% of the time; this holds the whole set at 95%.
     """
     return 1 - (1 - confidence) / max(1, family_size)
+
+
+def tail_share(level: float) -> float:
+    return (1 - level) / 2
+
+
+def required_resamples(level: float) -> int:
+    """Resamples that leave TARGET_TAIL_DRAWS draws in each tail at ``level``."""
+    return min(RESAMPLE_CAP, math.ceil(TARGET_TAIL_DRAWS / tail_share(level) - 1e-9))
+
+
+def effective_resamples(requested: int, level: float) -> int:
+    return max(requested, required_resamples(level))
+
+
+def sample_shortfall(
+    baseline: Sequence[Sequence[float]],
+    candidate: Sequence[Sequence[float]],
+    options: Options,
+) -> Optional[str]:
+    """Why the samples cannot support a verdict, or None when they can.
+
+    Spans from one trace move together, so the bootstrap learns nothing about
+    variation between requests from a side made of a handful of traces, no
+    matter how many spans those traces hold. Both counts have to clear.
+    """
+    spans = (sample_size(baseline), sample_size(candidate))
+    traces = (len(baseline), len(candidate))
+    if min(spans) < options.min_count:
+        return (
+            f"needs {options.min_count} samples per side, has "
+            f"{spans[0]} / {spans[1]}"
+        )
+    if min(traces) < options.min_traces:
+        return (
+            f"needs {options.min_traces} traces per side, has "
+            f"{traces[0]} / {traces[1]}"
+        )
+    return None
 
 
 def quantile_verdict(
@@ -731,7 +776,7 @@ def compare_quantiles(
     """
     base_values = sorted(value for cluster in baseline for value in cluster)
     cand_values = sorted(value for cluster in candidate for value in cluster)
-    enough = min(len(base_values), len(cand_values)) >= options.min_count
+    enough = sample_shortfall(baseline, candidate, options) is None
     diffs = (
         bootstrap_quantile_diffs(
             baseline,
@@ -779,15 +824,56 @@ def compare_quantiles(
     return result
 
 
+def log_comb(total: int, chosen: int) -> float:
+    return (
+        math.lgamma(total + 1)
+        - math.lgamma(chosen + 1)
+        - math.lgamma(total - chosen + 1)
+    )
+
+
+def fisher_exact_p(
+    base_failures: int, base_total: int, cand_failures: int, cand_total: int
+) -> float:
+    """Two-sided Fisher exact p-value for the 2x2 failure table.
+
+    Sums the hypergeometric probability of every table with the same margins
+    that is no more likely than the observed one. Probabilities are computed
+    in log space so million-event tables stay fast; ties use the usual 1e-7
+    relative tolerance.
+    """
+    total = base_total + cand_total
+    failures = base_failures + cand_failures
+    low = max(0, cand_total - (total - failures))
+    high = min(failures, cand_total)
+
+    def log_probability(count: int) -> float:
+        return (
+            log_comb(failures, count)
+            + log_comb(total - failures, cand_total - count)
+            - log_comb(total, cand_total)
+        )
+
+    observed = log_probability(cand_failures) + math.log1p(1e-7)
+    p_value = 0.0
+    for count in range(low, high + 1):
+        probability = log_probability(count)
+        if probability <= observed:
+            p_value += math.exp(probability)
+    return min(1.0, p_value)
+
+
 def compare_failure_rates(
     baseline: Optional[Dict[str, object]],
     candidate: Optional[Dict[str, object]],
     options: Options,
     family_size: int = 1,
 ) -> Dict[str, object]:
-    """Two-proportion z-test on each side's Sentry ``failure_rate()``.
+    """Fisher's exact test on each side's Sentry ``failure_rate()``.
 
-    The critical value is Bonferroni-adjusted over ``family_size`` tests.
+    Exact rather than a normal approximation, which is wrong with a handful
+    of failures (0 of 1000 against 4 of 1000 would pass a z-test). The
+    significance level is Bonferroni-adjusted over ``family_size`` tests.
     """
 
     def split(aggregate: Optional[Dict[str, object]]) -> Optional[Tuple[int, int]]:
@@ -801,20 +887,17 @@ def compare_failure_rates(
         "baseline": baseline.get("failure_rate") if baseline else None,
         "candidate": candidate.get("failure_rate") if candidate else None,
         "diff": None,
-        "z": None,
+        "p_value": None,
         "verdict": NOT_ENOUGH_DATA,
     }
     if base is None or cand is None or min(base[0], cand[0]) < options.min_count:
         return result
     base_rate, cand_rate = base[1] / base[0], cand[1] / cand[0]
-    pooled = (base[1] + cand[1]) / (base[0] + cand[0])
-    spread = math.sqrt(pooled * (1 - pooled) * (1 / base[0] + 1 / cand[0]))
-    z = 0.0 if spread == 0 else (cand_rate - base_rate) / spread
-    level = adjusted_confidence(options.confidence, family_size)
-    critical = statistics.NormalDist().inv_cdf(1 - (1 - level) / 2)
-    if z > critical and cand_rate - base_rate >= options.min_failure_delta:
+    p_value = fisher_exact_p(base[1], base[0], cand[1], cand[0])
+    significant = p_value < (1 - options.confidence) / max(1, family_size)
+    if significant and cand_rate - base_rate >= options.min_failure_delta:
         verdict = HIGHER
-    elif z < -critical and base_rate - cand_rate >= options.min_failure_delta:
+    elif significant and base_rate - cand_rate >= options.min_failure_delta:
         verdict = LOWER
     else:
         verdict = NO_CHANGE
@@ -823,7 +906,7 @@ def compare_failure_rates(
             "baseline": base_rate,
             "candidate": cand_rate,
             "diff": cand_rate - base_rate,
-            "z": z,
+            "p_value": p_value,
             "verdict": verdict,
         }
     )
@@ -1003,6 +1086,7 @@ def compare_transaction(
         "p95": quantiles["p95"],
         "failure_rate": failure,
         "verdict": verdict,
+        "note": sample_shortfall(base_clusters, cand_clusters, options),
         "regression": verdict == SLOWER or failure["verdict"] == HIGHER,
     }
 
@@ -1093,15 +1177,18 @@ def build_report(
     sampled = [
         name
         for name in names
-        if min(
-            sample_size(base_samples.get(name, [])),
-            sample_size(cand_samples.get(name, [])),
+        if sample_shortfall(
+            base_samples.get(name, []), cand_samples.get(name, []), options
         )
-        >= options.min_count
+        is None
     ]
     quantile_family = len(QUANTILES) * len(sampled)
     failure_family = len(
         eligible_transactions(names, base_aggregates, cand_aggregates, options)
+    )
+    level = adjusted_confidence(options.confidence, quantile_family)
+    run_options = replace(
+        options, resamples=effective_resamples(options.resamples, level)
     )
     results = [
         compare_transaction(
@@ -1110,7 +1197,7 @@ def build_report(
             cand_aggregates.get(name),
             base_samples.get(name, []),
             cand_samples.get(name, []),
-            options,
+            run_options,
             quantile_family,
             failure_family,
         )
@@ -1147,14 +1234,14 @@ def build_report(
             "sample_cap": options.sample_cap,
             "sample_sort": SAMPLE_SORT,
             "min_count": options.min_count,
+            "min_traces": options.min_traces,
             "min_effect": options.min_effect,
             "min_failure_delta": options.min_failure_delta,
             "confidence": options.confidence,
             "comparisons": quantile_family,
-            "adjusted_confidence": adjusted_confidence(
-                options.confidence, quantile_family
-            ),
-            "resamples": options.resamples,
+            "failure_comparisons": failure_family,
+            "adjusted_confidence": level,
+            "resamples": run_options.resamples,
             "seed": options.seed,
         },
         "overview": [
@@ -1308,9 +1395,11 @@ def render_markdown(report: Dict[str, object]) -> str:
         failure_text = format_points(failure["diff"])
         if failure["verdict"] in (HIGHER, LOWER):
             failure_text += f" ({failure['verdict']})"
-        verdict = result["verdict"]
+        verdict = f"**{result['verdict']}**"
         if failure["verdict"] == HIGHER:
-            verdict += ", more failures"
+            verdict = f"**{result['verdict']}, more failures**"
+        if result.get("note"):
+            verdict += f" ({result['note']})"
         lines.append(
             "| "
             + " | ".join(
@@ -1324,7 +1413,7 @@ def render_markdown(report: Dict[str, object]) -> str:
                     format_change(result["p95"], suffix),
                     format_interval(result["p95"], suffix),
                     failure_text,
-                    f"**{verdict}**",
+                    verdict,
                 )
             )
             + " |"
@@ -1337,10 +1426,12 @@ def render_markdown(report: Dict[str, object]) -> str:
     lines += [f"- {reason}" for reason in overall["reasons"]]
     lines += [
         "",
-        f"Rules: a side needs {settings['min_count']} samples. Faster or slower "
-        "needs the CI to exclude zero, and the sample change and Sentry's "
-        f"change to both be at least {float(settings['min_effect']) * 100:g}% "
-        "in that direction. Up to "
+        f"Rules: a side needs {settings['min_count']} samples from "
+        f"{settings['min_traces']} traces. Faster or slower needs the CI to "
+        "exclude zero, and the sample change and Sentry's change to both be at "
+        f"least {float(settings['min_effect']) * 100:g}% in that direction. "
+        "Failure rates use Fisher's exact test over "
+        f"{settings['failure_comparisons']} transactions (Bonferroni). Up to "
         f"{settings['sample_cap']} samples per side in span-id order, resampled "
         f"by trace {settings['resamples']} times with seed {settings['seed']}. "
         f"{report['requests']} Sentry requests.",
@@ -1504,13 +1595,20 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=1000,
         help="raw values fetched per side per transaction, a random sample in "
-        "span-id order (default 1000)",
+        f"span-id order (default 1000, at most {MAX_SAMPLE_CAP})",
     )
     stats.add_argument(
         "--min-count",
         type=int,
         default=200,
         help="samples each side needs before any verdict (default 200)",
+    )
+    stats.add_argument(
+        "--min-traces",
+        type=int,
+        default=30,
+        help="distinct traces each side's samples must come from before any "
+        "verdict (default 30)",
     )
     stats.add_argument(
         "--min-effect",
@@ -1562,27 +1660,57 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def check_region_url(url: str) -> None:
+    """https with a host, or http only for a server on this machine."""
+    parts = urllib.parse.urlsplit(url)
+    secure = parts.scheme == "https" and bool(parts.hostname)
+    local = parts.scheme == "http" and parts.hostname in LOCAL_HOSTS
+    bare = parts.path in ("", "/") and not parts.query and not parts.fragment
+    if not ((secure or local) and bare):
+        raise UsageError(
+            f"bad --region-url {url!r}: use the scheme and host only, such as "
+            f"{DEFAULT_REGION_URL} (http is allowed only for localhost)"
+        )
+
+
 def build_options(args: argparse.Namespace) -> Options:
     checks = (
         (args.top >= 1, "--top must be at least 1"),
         (args.sample_cap >= 1, "--sample-cap must be at least 1"),
         (args.min_count >= 1, "--min-count must be at least 1"),
+        (args.min_traces >= 1, "--min-traces must be at least 1"),
         (args.min_effect >= 0, "--min-effect cannot be negative"),
         (args.min_failure_delta >= 0, "--min-failure-delta cannot be negative"),
         (0 < args.confidence < 1, "--confidence must be between 0 and 1"),
         (args.resamples >= 100, "--resamples must be at least 100"),
         (args.concurrency >= 1, "--concurrency must be at least 1"),
+        (args.timeout > 0, "--timeout must be more than 0 seconds"),
         (bool(FIELD_PATTERN.match(args.field)), f"bad --field {args.field!r}"),
     )
     for passed, message in checks:
         if not passed:
             raise UsageError(message)
+    check_region_url(args.region_url)
+    sample_cap = min(args.sample_cap, MAX_SAMPLE_CAP)
+    if sample_cap < args.min_count:
+        raise UsageError(
+            f"--sample-cap {sample_cap} is below --min-count {args.min_count}, "
+            "so no transaction could get a verdict"
+        )
+    most = len(QUANTILES) * (len(set(args.transaction)) or args.top)
+    level = adjusted_confidence(args.confidence, most)
+    if RESAMPLE_CAP * tail_share(level) < MIN_TAIL_DRAWS:
+        raise UsageError(
+            f"{most} percentile comparisons need more than {RESAMPLE_CAP} "
+            "bootstrap resamples; compare fewer transactions"
+        )
     return Options(
         field=args.field,
         transactions=list(args.transaction),
         top=args.top,
-        sample_cap=args.sample_cap,
+        sample_cap=sample_cap,
         min_count=args.min_count,
+        min_traces=args.min_traces,
         min_effect=args.min_effect,
         min_failure_delta=args.min_failure_delta,
         confidence=args.confidence,
@@ -1614,6 +1742,7 @@ def main(
     now: Optional[datetime] = None,
     stdout=None,
     stderr=None,
+    sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     environ = os.environ if environ is None else environ
     stdout = stdout or sys.stdout
@@ -1639,6 +1768,11 @@ def main(
     try:
         moment = (now or datetime.now(timezone.utc)).replace(microsecond=0)
         options = build_options(args)
+        if options.sample_cap < args.sample_cap:
+            stderr.write(
+                f"perf-compare: --sample-cap is limited to {MAX_SAMPLE_CAP}; "
+                f"using {options.sample_cap}\n"
+            )
         baseline, candidate = build_sides(args, moment)
         if args.print_queries:
             stdout.write(
@@ -1651,11 +1785,22 @@ def main(
         if not token:
             return fail("auth", MISSING_TOKEN_MESSAGE, EXIT_AUTH)
         client = SentryClient(
-            token, args.org, args.region_url, transport=transport, timeout=args.timeout
+            token,
+            args.org,
+            args.region_url,
+            transport=transport,
+            timeout=args.timeout,
+            sleep=sleep,
         )
         report = compare(client, baseline, candidate, options)
     except PerfCompareError as error:
         return fail(error.kind, f"perf-compare: {error}", error.exit_code)
+    except Exception as error:
+        return fail(
+            "internal",
+            f"perf-compare: unexpected {type(error).__name__}: {error}",
+            EXIT_API,
+        )
     report["generated_at"] = format_filter_time(moment)
     report["org"] = args.org
     if args.json:
