@@ -39,16 +39,24 @@ logger = logging.getLogger(__name__)
 SENTRY_TRACE_HEADER = "sentry-trace"
 BAGGAGE_HEADER = "baggage"
 
-_UNTRACED_PATHS = frozenset({"/", "/metrics"})
-_HEALTH_ENDPOINTS = frozenset(
+# The probe and scrape endpoints our services serve, matched by exact path: a
+# route that merely ends in one of these names (a store agent slugged
+# "health") is real traffic.
+_UNTRACED_PATHS = frozenset(
     {
-        "health",
-        "healthz",
-        "health_check",
-        "health_check_async",
-        "livez",
-        "readiness",
-        "readyz",
+        # WebSocket server: Kubernetes probe.
+        "/",
+        # Every FastAPI service: Prometheus scrape.
+        "/metrics",
+        # REST API and WebSocket server: Kubernetes probe, load balancer check.
+        "/health",
+        # Every RPC service (AppService): Kubernetes probe.
+        "/health_check",
+        "/health_check_async",
+        # Chat service health check.
+        "/api/chat/health",
+        # Codex compatibility gateway.
+        "/healthz",
     }
 )
 
@@ -79,29 +87,27 @@ def _is_untraced(sampling_context: Mapping[str, Any]) -> bool:
         or asgi_scope.get("type") == "websocket"
     ):
         return True
-    path = _request_path(asgi_scope, transaction)
-    if path is None:
-        return False
-    if path in _UNTRACED_PATHS:
-        return True
-    return path.rstrip("/").rsplit("/", 1)[-1] in _HEALTH_ENDPOINTS
+    return _request_path(sampling_context) in _UNTRACED_PATHS
 
 
-def _request_path(
-    asgi_scope: Mapping[str, Any], transaction: Mapping[str, Any]
-) -> str | None:
-    """The request path, from the ASGI scope or else the transaction name.
+def _request_path(sampling_context: Mapping[str, Any]) -> str | None:
+    """The request's path, without scheme, host or query string.
 
-    At sampling time an HTTP transaction is still named after its raw URL,
-    which can include the scheme and host.
+    It comes from the ASGI scope or the aiohttp request when the integration
+    passes one, or else from the transaction name, which at sampling time is
+    still the raw URL.
     """
-    path = asgi_scope.get("path")
+    path = (sampling_context.get("asgi_scope") or {}).get("path")
     if isinstance(path, str):
         return path
+    path = getattr(sampling_context.get("aiohttp_request"), "path", None)
+    if isinstance(path, str):
+        return path
+    transaction = sampling_context.get("transaction_context") or {}
     name = transaction.get("name")
     if transaction.get("op") != "http.server" or not isinstance(name, str):
         return None
-    return urlsplit(name).path if "://" in name else name
+    return urlsplit(name).path
 
 
 @contextmanager

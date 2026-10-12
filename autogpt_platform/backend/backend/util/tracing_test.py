@@ -7,6 +7,7 @@ in Sentry rather than which SDK functions were called.
 
 import asyncio
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -58,21 +59,106 @@ def test_a_websocket_is_recognised_by_op_without_an_asgi_scope() -> None:
     assert tracing.traces_sampler(context) == 0.0
 
 
-def test_a_probe_named_after_its_full_url_is_not_traced() -> None:
+@pytest.mark.parametrize(
+    "name",
+    ["http://10.0.0.5:8006/metrics", "http://10.0.0.5:8006/health?probe=1"],
+)
+def test_a_probe_named_after_its_full_url_is_not_traced(name: str) -> None:
     """Before routing, an HTTP transaction is named after its raw URL."""
     context = {
-        "transaction_context": {
-            "op": "http.server",
-            "name": "http://10.0.0.5:8006/metrics",
-        },
+        "transaction_context": {"op": "http.server", "name": name},
         "parent_sampled": None,
     }
 
     assert tracing.traces_sampler(context) == 0.0
 
 
+def test_a_probe_on_an_aiohttp_server_is_not_traced() -> None:
+    """aiohttp names a transaction generically until its route resolves; the
+    request it hands the sampler has the path."""
+    context = {
+        "transaction_context": {
+            "op": "http.server",
+            "name": "generic AIOHTTP request",
+        },
+        "parent_sampled": None,
+        "aiohttp_request": SimpleNamespace(path="/healthz"),
+    }
+
+    assert tracing.traces_sampler(context) == 0.0
+    context["aiohttp_request"] = SimpleNamespace(path="/v1/messages")
+    assert tracing.traces_sampler(context) == 1.0
+
+
 def test_a_dropped_endpoint_stays_dropped_even_with_a_sampled_parent() -> None:
     assert tracing.traces_sampler(_http("/metrics", parent_sampled=True)) == 0.0
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/store/agents/alice/health",
+        "/api/store/agents/alice/readyz",
+        "/api/store/agents/alice/healthz",
+        "/api/store/agents/alice/livez",
+        "/api/store/agents/alice/readiness",
+        "/api/store/agents/alice/health_check",
+        "/api/store/agents/alice/metrics",
+        "/health/",
+    ],
+)
+@pytest.mark.parametrize("parent_sampled", [None, True])
+def test_a_route_that_only_ends_like_a_probe_is_traced(
+    path: str, parent_sampled: bool | None
+) -> None:
+    """Only the exact probe paths are dropped: a store agent slugged "health"
+    is real traffic."""
+    context = _http(path, parent_sampled=parent_sampled)
+    url_named = {
+        "transaction_context": {
+            "op": "http.server",
+            "name": f"http://10.0.0.5:8006{path}",
+        },
+        "parent_sampled": parent_sampled,
+    }
+
+    assert tracing.traces_sampler(context) == 1.0
+    assert tracing.traces_sampler(url_named) == 1.0
+
+
+def test_through_the_asgi_middleware_only_the_probe_is_dropped(
+    sentry_transactions,
+) -> None:
+    """End to end through the SDK's ASGI middleware, as each service runs."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+
+    app = FastAPI()
+
+    @app.get("/health")
+    def health() -> dict:
+        return {"status": "healthy"}
+
+    @app.get("/api/store/agents/{username}/{agent_name}")
+    def agent(username: str, agent_name: str) -> dict:
+        return {"agent": agent_name}
+
+    client = TestClient(SentryAsgiMiddleware(app, transaction_style="url"))
+    for path in (
+        "/health",
+        "/api/store/agents/alice/health",
+        "/api/store/agents/alice/readyz",
+    ):
+        assert client.get(path).status_code == 200
+
+    assert [t["request"]["url"] for t in sentry_transactions] == [
+        "http://testserver/api/store/agents/alice/health",
+        "http://testserver/api/store/agents/alice/readyz",
+    ]
+    assert {t["transaction"] for t in sentry_transactions} == {
+        "/api/store/agents/{username}/{agent_name}"
+    }
 
 
 @pytest.mark.parametrize("parent_sampled, expected", [(True, 1.0), (False, 0.0)])
