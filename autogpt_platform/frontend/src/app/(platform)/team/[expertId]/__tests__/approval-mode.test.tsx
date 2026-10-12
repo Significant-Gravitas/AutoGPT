@@ -161,6 +161,44 @@ describe("Expert approval mode", () => {
     );
   });
 
+  test("keeps the choices locked until the expert refetch lands", async () => {
+    let releaseRefetch = () => {};
+    const refetchHeld = new Promise<void>((resolve) => {
+      releaseRefetch = resolve;
+    });
+    server.use(
+      getGetExpertMockHandler(async () => {
+        if (patchBodies.length > 0) await refetchHeld;
+        return expertResponse;
+      }),
+    );
+    render(<ExpertDetailPage />);
+    const user = await openSettings();
+
+    await user.click(await screen.findByRole("radio", { name: /ask first/i }));
+
+    await waitFor(() =>
+      expect(patchBodies).toEqual([{ autopilot_mode: "ask_first" }]),
+    );
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("radio", { name: /ask first/i }).closest("fieldset")
+        ?.disabled,
+    ).toBe(true);
+
+    releaseRefetch();
+
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith({
+        title: "Approval mode updated",
+      }),
+    );
+    expect(
+      screen.getByRole("radio", { name: /ask first/i }).closest("fieldset")
+        ?.disabled,
+    ).toBe(false);
+  });
+
   test("shows the stored default on load", async () => {
     expertResponse = { ...maria, autopilot_mode: "unsupervised" };
     render(<ExpertDetailPage />);

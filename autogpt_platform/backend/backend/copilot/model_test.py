@@ -1907,6 +1907,38 @@ async def test_get_or_create_builder_session_writes_pointer_on_create(
 
 
 @pytest.mark.asyncio
+async def test_get_or_create_builder_session_creates_on_the_picked_mode(
+    mocker: MockerFixture,
+) -> None:
+    """A builder session opened with an explicit mode is created on it."""
+    library_agent = mocker.MagicMock(
+        id="lib-1",
+        settings=mocker.MagicMock(builder_chat_session_id=None),
+    )
+    library_db_mock = mocker.MagicMock(
+        get_library_agent_by_graph_id=mocker.AsyncMock(return_value=library_agent),
+        update_library_agent=mocker.AsyncMock(),
+    )
+    mocker.patch("backend.copilot.model.library_db", return_value=library_db_mock)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=None,
+    )
+    create_mock = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=ChatSession.new(
+            "u1", dry_run=False, builder_graph_id="graph-mine"
+        ),
+    )
+
+    await get_or_create_builder_session("u1", "graph-mine", autopilot_mode="ask_first")
+
+    assert create_mock.call_args.kwargs["autopilot_mode"] == "ask_first"
+
+
+@pytest.mark.asyncio
 async def test_get_or_create_builder_session_recreates_when_pointer_stale(
     mocker: MockerFixture,
 ) -> None:
