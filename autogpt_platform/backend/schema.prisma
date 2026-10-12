@@ -111,6 +111,11 @@ model User {
   stripeCustomerId String?
   topUpConfig      Json?
 
+  // How Otto hands work to the team: approval mode, per-delegation cap,
+  // daily budget and the ask-first toggles. Null until the user saves them;
+  // readers fall back to the defaults in copilot/delegation_db.py.
+  delegationSettings Json?
+
   maxEmailsPerDay Int @default(3)
 
   // The volume knob from the Briefing footer: a frequency plus two switches,
