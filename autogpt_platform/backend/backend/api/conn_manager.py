@@ -206,10 +206,13 @@ class ConnectionManager:
         if self._opening >= _MAX_CONCURRENT_STREAM_OPENS:
             await self._refuse(websocket, cause="busy", reason="Server busy")
             return False
+        # Notifications that arrive before accept() wait for it instead of
+        # failing on a socket that is still connecting.
+        accepted = asyncio.Event()
         self._opening += 1
         try:
             opened = await self._start_notification_subscription(
-                websocket, user_id=user_id
+                websocket, user_id=user_id, accepted=accepted
             )
         finally:
             self._opening -= 1
@@ -219,6 +222,7 @@ class ConnectionManager:
             )
             return False
         await websocket.accept()
+        accepted.set()
         self.active_connections.add(websocket)
         self._ws_subs.setdefault(websocket, {})
         return True
@@ -381,12 +385,18 @@ class ConnectionManager:
             logger.exception("Failed to forward exec event on %s", channel_key)
 
     async def _start_notification_subscription(
-        self, websocket: WebSocket, *, user_id: str
+        self,
+        websocket: WebSocket,
+        *,
+        user_id: str,
+        accepted: asyncio.Event | None = None,
     ) -> bool:
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
         async def on_message(data: Optional[bytes | str]) -> None:
+            if accepted is not None:
+                await accepted.wait()
             await self._forward_notification(websocket, user_id, data)
 
         async def on_lost(cause: str) -> None:
