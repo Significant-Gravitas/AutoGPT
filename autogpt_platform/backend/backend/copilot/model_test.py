@@ -2158,3 +2158,9 @@ async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
     )
 
     assert flushed.stamps_pending_save is True
+
+
+def test_a_new_session_can_start_in_a_given_mode():
+    session = ChatSession.new("u1", dry_run=False, autopilot_mode="ask_first")
+
+    assert session.metadata.autopilot_mode == "ask_first"

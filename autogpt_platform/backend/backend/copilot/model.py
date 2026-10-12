@@ -94,6 +94,8 @@ class PendingQuestion(BaseModel):
 
     text: str
     asked_at: datetime
+    # Suggested answers to the first question, for a delegator's chips.
+    options: list[str] = Field(default_factory=list)
 
 
 class ChatSessionMetadata(BaseModel):
@@ -153,6 +155,16 @@ class ChatSessionMetadata(BaseModel):
     # find it with ``find_session``. Free text: the task spine (#14240) can
     # narrow it to its own ids later without a migration.
     purpose: str | None = None
+
+    # Set by ``delegate_to_expert`` from the user's delegation settings: what
+    # this delegated thread may spend before a poll stops it.
+    delegation_cap_usd: float | None = None
+    # The user answered the cap question with "Stop": the thread stays stopped
+    # at its cap rather than being asked about it again.
+    delegation_cap_stopped: bool = False
+    # The cap question (its asked_at) whose raise was applied, so a retried
+    # answer does not raise the cap twice.
+    delegation_cap_raised_for: str | None = None
 
     # Set by ``ask_question`` when a turn ends waiting on the user, cleared
     # when they reply. Drives the Home "Needs You" question item; one per
@@ -520,6 +532,8 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        autopilot_mode: AutopilotMode | None = None,
+        delegation_cap_usd: float | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -540,6 +554,8 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                autopilot_mode=autopilot_mode,
+                delegation_cap_usd=delegation_cap_usd,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1372,6 +1388,8 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    autopilot_mode: AutopilotMode | None = None,
+    delegation_cap_usd: float | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1396,6 +1414,10 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        autopilot_mode: The approval mode the session starts in; None is the
+            default mode.
+        delegation_cap_usd: What a delegated thread may spend, from the
+            user's delegation settings. None: no per-delegation cap.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1422,6 +1444,8 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        autopilot_mode=autopilot_mode,
+        delegation_cap_usd=delegation_cap_usd,
     )
 
     # Create in database first - fail fast if this fails
