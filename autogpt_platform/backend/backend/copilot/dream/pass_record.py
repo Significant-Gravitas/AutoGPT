@@ -279,7 +279,7 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
 
 def cleanup_finished() -> DreamPassUpdate:
     """The cleanup after a closed pass has finished: the mark and the lease
-    the row kept for it go. One of the two writes a closed row takes."""
+    the row kept for it go. The one write a closed row takes."""
     return DreamPassUpdate(
         closed_row=True,
         clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),

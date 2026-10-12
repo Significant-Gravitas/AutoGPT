@@ -66,9 +66,10 @@ CleanupStep = Literal["charge", "unlock", "delete", "provider"]
 # How long reading or deleting a pass's Redis state may take, the client's
 # retries included: a stalled Redis costs a cleanup seconds, not its turn.
 STATE_STEP_TIMEOUT_SECONDS = 5.0
-# How long the cleanup waits on its landed phases' charges. A phase whose
-# claim was made by then is charged all the same, in a task of its own
-# (``batch_costs._charge_phase``); the rest wait for the next cleanup.
+# How long the cleanup waits on its landed phases' charge. The charge goes on
+# without it, in a task of its own (``batch_costs.charge_landed_phases``),
+# claiming for ``batch_costs.CLAIM_WINDOW_SECONDS``; what it does not reach
+# waits for the next cleanup.
 CHARGE_STEP_TIMEOUT_SECONDS = 10.0
 
 
@@ -193,9 +194,9 @@ async def _charge(
             )
     except TimeoutError:
         logger.warning(
-            f"Dream pass {pass_id}: its charges outlasted "
-            f"{CHARGE_STEP_TIMEOUT_SECONDS:g} s; a claimed phase is charged on "
-            "its own, the rest are left for the next cleanup"
+            f"Dream pass {pass_id}: its charge outlasted "
+            f"{CHARGE_STEP_TIMEOUT_SECONDS:g} s; it goes on on its own, and "
+            "what it does not reach is left for the next cleanup"
         )
         return PhaseCharges(settled=False)
 

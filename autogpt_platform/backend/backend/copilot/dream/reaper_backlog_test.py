@@ -20,12 +20,13 @@ from prisma.enums import DreamPassRoute, DreamPassStatus
 
 from backend.util.llm.providers import BatchResultRow
 
+from . import batch_costs as batch_costs_mod
 from . import cleanup as cleanup_mod
 from . import locks as locks_mod
 from . import provider_batch as provider_batch_mod
 from . import reaper as reaper_mod
 from . import store as store_mod
-from .batch_state import state_key, write_phase_to_state
+from .batch_state import claim_per_phase_charging, state_key, write_phase_to_state
 from .reaper import (
     REAP_GRACE_SECONDS,
     REAPER_ROW_LIMIT,
@@ -143,6 +144,54 @@ class TestASlowCleanup:
         )
         assert calls == ["cancel", "status"]
         assert fake_dream_db.rows["slow-provider"]["cleanup_pending_at"] is None
+
+    async def test_whose_billing_gate_answers_slowly_charges_once_and_finishes(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """Codex's probe, every bound scaled to a tenth: an earlier cleanup
+        set the pass's billing gate and stopped before its phase's claim; the
+        state read takes 4 s, and each Redis command on the gate 4.5 s. Read
+        before it is set, the gate costs the retry one command, not two: one
+        charge and the mark cleared in the first run, nothing left after."""
+        _scale_every_bound(mocker, 0.1)
+        _pending(fake_dream_db, ["gated"])
+        await _consolidate_landed("gated")
+        assert await claim_per_phase_charging("gated")
+        _slow_the_gate(mocker, fake_dream_redis, "gated", seconds=0.45)
+        _slow_the_state_read(mocker, seconds=0.4)
+
+        runs = [await asyncio.wait_for(reap_expired_passes(), 10) for _ in range(3)]
+
+        assert [run.outcomes for run in runs] == [{"cleaned": 1}, {}, {}]
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["gated"]["cleanup_pending_at"] is None
+
+    async def test_whose_billing_gate_outlasts_the_attempt_is_charged_anyway(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """Every bound scaled to a tenth: the state read takes 4 s and the
+        gate's read 9 s, past the 12 s attempt. The charge runs on after the
+        cut and charges the phase; the next run, cut the same way, charges
+        nothing again, and the mark waits for a run the gate answers in."""
+        _scale_every_bound(mocker, 0.1)
+        _pending(fake_dream_db, ["gated"])
+        await _consolidate_landed("gated")
+        assert await claim_per_phase_charging("gated")
+        _slow_the_gate(mocker, fake_dream_redis, "gated", seconds=0.9)
+        _slow_the_state_read(mocker, seconds=0.4)
+
+        first = await asyncio.wait_for(reap_expired_passes(), 10)
+        await asyncio.wait_for(asyncio.gather(*batch_costs_mod._CHARGES_IN_FLIGHT), 5)
+
+        assert first.outcomes == {"out_of_budget": 1}
+        assert _charged(charges) == ["consolidate"]
+
+        second = await asyncio.wait_for(reap_expired_passes(), 10)
+        await asyncio.wait_for(asyncio.gather(*batch_costs_mod._CHARGES_IN_FLIGHT), 5)
+
+        assert second.outcomes == {"out_of_budget": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["gated"]["cleanup_pending_at"] is not None
 
     async def test_of_one_kind_leaves_the_other_its_share(
         self, mocker, fake_dream_db, fake_dream_redis, charges
@@ -505,6 +554,35 @@ def _hang_the_state_read_of(mocker, *hanging: str) -> list[str]:
     return tried
 
 
+def _slow_the_gate(mocker, fake_dream_redis, pass_id: str, *, seconds: float) -> None:
+    """Every Redis read and write of the pass's billing gate takes *seconds*."""
+    gate = f"dream:batch:costs_logged:{pass_id}"
+    get, set_ = fake_dream_redis.get, fake_dream_redis.set
+
+    async def slow_get(key: str):
+        if key == gate:
+            await asyncio.sleep(seconds)
+        return await get(key)
+
+    async def slow_set(key: str, *args, **kwargs):
+        if key == gate:
+            await asyncio.sleep(seconds)
+        return await set_(key, *args, **kwargs)
+
+    mocker.patch.object(fake_dream_redis, "get", slow_get)
+    mocker.patch.object(fake_dream_redis, "set", slow_set)
+
+
+def _slow_the_state_read(mocker, *, seconds: float) -> None:
+    read = cleanup_mod.read_state
+
+    async def slow_read(pass_id: str) -> dict:
+        await asyncio.sleep(seconds)
+        return await read(pass_id)
+
+    mocker.patch.object(cleanup_mod, "read_state", slow_read)
+
+
 async def _consolidate_landed(pass_id: str) -> None:
     await write_phase_to_state(
         pass_id=pass_id,
@@ -550,6 +628,7 @@ def _scale_every_bound(mocker, scale: float) -> None:
         (store_mod, "RECORD_WRITE_TIMEOUT_SECONDS", 10),
         (cleanup_mod, "STATE_STEP_TIMEOUT_SECONDS", 5),
         (cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 10),
+        (batch_costs_mod, "CLAIM_WINDOW_SECONDS", 30),
         (cleanup_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (locks_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (provider_batch_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),

@@ -31,9 +31,14 @@ logger = logging.getLogger(__name__)
 # unknown, its claim neither made nor refused, so the next cleanup tries.
 PhaseCharge = Literal["charged", "nothing", "failed", "claimed", "unknown"]
 
-# The phase charges under way. Each runs to its end whatever happens to the
-# caller that started it (``_charge_phase``), and is kept here until it does.
-_CHARGES_IN_FLIGHT: set[asyncio.Task[PhaseCharge]] = set()
+# How long a pass's charge goes on claiming, from its start: past it, the
+# pass's gate or a phase's claim still waiting on Redis is given up, and left
+# for the next cleanup. A phase claimed in time is charged all the same.
+CLAIM_WINDOW_SECONDS = 30.0
+
+# The passes' charges under way. Each runs on whatever happens to the caller
+# that started it (``charge_landed_phases``), and is kept here until it ends.
+_CHARGES_IN_FLIGHT: set[asyncio.Task[PhaseCharges]] = set()
 
 
 class PhaseCharges(BaseModel):
@@ -57,14 +62,18 @@ async def charge_landed_phases(
     ``anthropic_batch`` route, each phase charged at most once whichever
     terminal path the pass takes and however often its cleanup runs.
 
-    Each phase is claimed on its own (``claim_phase_charge``) right before it
-    is charged, so a cleanup cut short after some phases resumes with the
-    rest: the claimed ones are skipped, the others charged. A phase's claim
-    and charge run to their end even when the caller is cancelled (a reaper
-    run out of budget, the executor's bound on a drop hook), so no cut lands
-    between them. A pass an earlier build charged whole is not charged again
-    (``claim_per_phase_charging``). Not *settled* when a claim could not be
-    made or checked: the next cleanup tries again.
+    The charge (the pass's gate first, ``claim_per_phase_charging``, so a
+    pass an earlier build charged whole is not charged again; then each
+    landed phase claimed, ``claim_phase_charge``, and charged in turn) runs
+    in a task of its own, which the caller's cancellation does not reach (a
+    reaper run out of budget, the executor's bound on a drop hook): a cleanup
+    that has read the state makes the charge even when it is cut while Redis
+    answers slowly, and no cut lands between a claim and its charge. The task
+    gives up claiming ``CLAIM_WINDOW_SECONDS`` after it starts; a phase
+    claimed by then is charged to its end. Each phase is claimed on its own,
+    so a charge stopped part-way resumes with the rest: the claimed ones are
+    skipped, the others charged. Not *settled* when the gate or a claim could
+    not be made or checked: the next cleanup tries again.
 
     At most once, not exactly once. A process that dies between a phase's
     claim and its cost-log write leaves that phase uncharged, and a charge
@@ -79,8 +88,25 @@ async def charge_landed_phases(
     Anthropic's additive cache buckets, less the batch path's half-price
     discount.
     """
+    scope = InferenceScope(user_id=user_id, expert_id=expert_id)
+    task = asyncio.ensure_future(_charge_pass(scope, pass_id, state, phase_models))
+    _CHARGES_IN_FLIGHT.add(task)
+    task.add_done_callback(_CHARGES_IN_FLIGHT.discard)
+    return await asyncio.shield(task)
+
+
+async def _charge_pass(
+    scope: InferenceScope,
+    pass_id: str,
+    state: dict[str, dict[str, Any]],
+    phase_models: dict[str, str],
+) -> PhaseCharges:
+    """The gate, then each landed phase claimed and charged; claiming until
+    ``CLAIM_WINDOW_SECONDS`` after it starts."""
+    deadline = asyncio.get_running_loop().time() + CLAIM_WINDOW_SECONDS
     try:
-        per_phase = await claim_per_phase_charging(pass_id)
+        async with asyncio.timeout_at(deadline):
+            per_phase = await claim_per_phase_charging(pass_id)
     except Exception:
         logger.warning(
             f"Dream pass {pass_id}: could not claim its charging; left for the "
@@ -91,13 +117,12 @@ async def charge_landed_phases(
     if not per_phase:
         logger.info(f"Dream pass {pass_id}: charged whole by an earlier build")
         return PhaseCharges(settled=True)
-    scope = InferenceScope(user_id=user_id, expert_id=expert_id)
     charges: dict[DreamPhase, PhaseCharge] = {}
     for phase in PHASE_TIERS:
         row = state.get(phase)
         if row is not None:
-            charges[phase] = await _charge_phase(
-                scope, pass_id, phase, row, phase_models
+            charges[phase] = await _claim_and_charge(
+                scope, pass_id, phase, row, phase_models, deadline
             )
     return PhaseCharges(
         charged=[phase for phase, how in charges.items() if how == "charged"],
@@ -133,33 +158,25 @@ def landed_usage(
         return None
 
 
-async def _charge_phase(
-    scope: InferenceScope,
-    pass_id: str,
-    phase: DreamPhase,
-    row: dict[str, Any],
-    phase_models: dict[str, str],
-) -> PhaseCharge:
-    """Claim and charge one phase in a task of its own, which the caller's
-    cancellation does not reach: a claimed phase is charged even when its
-    caller stops waiting."""
-    task = asyncio.ensure_future(
-        _claim_and_charge(scope, pass_id, phase, row, phase_models)
-    )
-    _CHARGES_IN_FLIGHT.add(task)
-    task.add_done_callback(_CHARGES_IN_FLIGHT.discard)
-    return await asyncio.shield(task)
-
-
 async def _claim_and_charge(
     scope: InferenceScope,
     pass_id: str,
     phase: DreamPhase,
     row: dict[str, Any],
     phase_models: dict[str, str],
+    deadline: float,
 ) -> PhaseCharge:
+    """Claim one phase by *deadline* (loop time), then charge it; past the
+    deadline the phase is not claimed, and left for the next cleanup."""
+    if asyncio.get_running_loop().time() >= deadline:
+        logger.warning(
+            f"Dream pass {pass_id}: its charge stopped claiming before its "
+            f"{phase} phase; left for the next cleanup"
+        )
+        return "unknown"
     try:
-        claimed = await claim_phase_charge(pass_id, phase)
+        async with asyncio.timeout_at(deadline):
+            claimed = await claim_phase_charge(pass_id, phase)
     except Exception:
         logger.warning(
             f"Dream pass {pass_id}: could not claim the charge of its {phase} "

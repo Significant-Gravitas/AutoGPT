@@ -221,15 +221,18 @@ async def claim_per_phase_charging(pass_id: str) -> bool:
 
     Earlier builds claim that key before charging every phase, so claiming
     it here too keeps one pass from being charged both ways while two builds
-    run side by side."""
+    run side by side. The key is read before it is set: a cleanup that runs
+    again finds it set, and waits on one Redis command for it, not two."""
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
     key = f"{_COSTS_LOGGED_PREFIX}:{pass_id}"
-    if await redis.set(key, _PER_PHASE, nx=True, ex=_COSTS_LOGGED_TTL_SECONDS):
-        return True
     held = await redis.get(key)
-    return (held.decode() if isinstance(held, bytes) else held) == _PER_PHASE
+    if held is None:
+        if await redis.set(key, _PER_PHASE, nx=True, ex=_COSTS_LOGGED_TTL_SECONDS):
+            return True
+        held = await redis.get(key)
+    return held is not None and _text(held) == _PER_PHASE
 
 
 async def uncharged_phases(pass_id: str, phases: list[str]) -> list[str]:
