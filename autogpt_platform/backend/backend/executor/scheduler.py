@@ -2097,8 +2097,11 @@ def _submission(job_args: GraphExecutionJobArgs) -> dict:
     return job_args.model_dump(mode="json", exclude={"schedule_id"})
 
 
-def _trigger_timezone_name(trigger: CronTrigger | DateTrigger) -> str:
-    return str(trigger.timezone)
+def _trigger_timezone_name(trigger: CronTrigger | DateTrigger) -> str | None:
+    """IANA name of a cron trigger's timezone, as ``_job_timezone_name`` reads it."""
+    if isinstance(trigger, CronTrigger):
+        return str(trigger.timezone)
+    return None
 
 
 class Scheduler(AppService):
