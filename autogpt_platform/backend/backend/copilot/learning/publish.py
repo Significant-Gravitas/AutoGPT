@@ -41,7 +41,6 @@ from backend.data.db_accessors import (
     skill_use_db,
     skill_versions_db,
 )
-from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import ReviewStamp, VersionDraft
 from backend.data.skill_version_files import version_package_hash
 from backend.data.skill_versions import (
@@ -51,12 +50,6 @@ from backend.data.skill_versions import (
 )
 
 from .content_checks import check_metadata, check_skill_bundle, safe_diagnostic
-from .contract import (
-    EligibilityState,
-    LearningScope,
-    check_approval_precondition,
-    get_source_adapter,
-)
 from .fingerprint import (
     UNCERTAIN_EQUIVALENCE_THRESHOLD,
     behavior_fingerprint,
@@ -65,9 +58,10 @@ from .fingerprint import (
 )
 from .history import record_registry_write
 from .packages import restore_files, snapshot_files
+from .publication_eligibility import require_fresh_eligibility
 from .publication_models import PublishOutcome, PublishRequest
 from .publication_models import PublishStatus as PublishStatus
-from .publication_models import SourceSnapshot
+from .publication_models import SourceSnapshot as SourceSnapshot
 from .publication_validation import _validate_request, _validate_version_content
 
 logger = logging.getLogger(__name__)
@@ -195,7 +189,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     if suppression is not None and suppression.status == "suppressed":
         return suppression
 
-    stale = await require_fresh_eligibility(request)
+    stale = await require_fresh_eligibility(request, retry_changed_source=True)
     if stale is not None:
         return stale
 
@@ -290,61 +284,6 @@ async def _check_suppression(
                 reason="closely resembles a change the owner removed; needs a decision",
             )
     return None
-
-
-async def require_fresh_eligibility(request: PublishRequest) -> PublishOutcome | None:
-    scope = LearningScope(
-        user_id=request.user_id,
-        expert_id=request.expert_id,
-        owner_key=owner_key_for(request.expert_id),
-    )
-    for snapshot in request.sources:
-        adapter = get_source_adapter(snapshot.source_kind)
-        if adapter is None:
-            return PublishOutcome(
-                status="stale_eligibility", reason="unknown source kind"
-            )
-        eligibility = await adapter.revalidate(
-            source_id=snapshot.source_id,
-            revision=snapshot.revision,
-            scope=scope,
-            approval_event_id=(
-                snapshot.approval.event_id if snapshot.approval else None
-            ),
-        )
-        pinned = (
-            snapshot
-            if snapshot.epoch is not None
-            else snapshot.model_copy(update={"epoch": eligibility.epoch})
-        )
-        problem = check_approval_precondition(
-            adapter, eligibility, _as_source_revision(pinned, scope)
-        )
-        if problem is not None:
-            return PublishOutcome(
-                status=(
-                    "paused"
-                    if eligibility.state
-                    in (EligibilityState.PAUSED, EligibilityState.WAITING_APPROVAL)
-                    else "stale_eligibility"
-                ),
-                reason=problem,
-            )
-    return None
-
-
-def _as_source_revision(snapshot: SourceSnapshot, scope: LearningScope):
-    from .contract import SourceRevision
-
-    return SourceRevision(
-        source_id=snapshot.source_id,
-        source_kind=snapshot.source_kind,
-        source_ref=snapshot.source_ref,
-        scope=scope,
-        revision=snapshot.revision,
-        epoch=snapshot.epoch if snapshot.epoch is not None else -1,
-        approval=snapshot.approval,
-    )
 
 
 async def _record_untracked_edit(

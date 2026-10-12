@@ -1,6 +1,6 @@
 import pytest
 
-from backend.copilot.learning import owner_actions, publish
+from backend.copilot.learning import owner_actions, publication_eligibility, publish
 from backend.copilot.learning.contract import ApprovalCheckpoint
 from backend.copilot.learning.contract_test import FakeReviewedAdapter, _ReviewedSource
 from backend.copilot.learning.publication_models import PublishRequest, SourceSnapshot
@@ -38,7 +38,9 @@ async def test_stored_approval_is_revalidated_before_owner_application(monkeypat
         revision="r1", approved_revision="r1", approval_event_id="ev-1"
     )
     adapter = FakeReviewedAdapter(items={"item-1": item})
-    monkeypatch.setattr(publish, "get_source_adapter", lambda _: adapter)
+    monkeypatch.setattr(
+        publication_eligibility, "get_source_adapter", lambda _: adapter
+    )
     request = _saved_request()
     assert await publish.require_fresh_eligibility(request) is None
     item.approval_event_id = "replacement-event"

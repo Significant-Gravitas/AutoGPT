@@ -2,7 +2,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-from . import chat_source_test, nightly_test, owner_actions, publish
+from . import (
+    chat_source_test,
+    nightly_test,
+    owner_actions,
+    publication_eligibility,
+    publish,
+)
 from .chat_source import ChatSessionSourceAdapter, record_chat_turn
 from .chat_source_test import _messages, _session
 from .contract import register_source_adapter
@@ -95,7 +101,9 @@ async def test_owner_proposal_remains_open_while_expert_learning_is_paused(
 async def test_waiting_for_source_approval_is_retryable(monkeypatch):
     item = _ReviewedSource(revision="r1", approval_event_id="ev-1")
     adapter = FakeReviewedAdapter(items={"item-1": item})
-    monkeypatch.setattr(publish, "get_source_adapter", lambda _: adapter)
+    monkeypatch.setattr(
+        publication_eligibility, "get_source_adapter", lambda _: adapter
+    )
     request = _saved_request()
     waiting = await publish.require_fresh_eligibility(request)
     assert waiting is not None and waiting.status == "paused"
