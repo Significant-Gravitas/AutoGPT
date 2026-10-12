@@ -109,6 +109,11 @@ _in_flight: dict[
 ] = {}
 # Answers kept while Redis can't be used: customer -> (expires at, answer).
 _fallback: dict[str, tuple[float, ActiveSubscription | None]] = {}
+# Customers whose invalidation this process couldn't record in Redis, until
+# any entry written meanwhile has expired: customer -> until (monotonic).
+# A write already on its way when the change landed is stored under the old,
+# unchanged token, so until then this process reads them as if Redis were out.
+_unconfirmed: dict[str, float] = {}
 
 
 def summarize_subscription(
@@ -130,6 +135,8 @@ async def read_active_subscription(
     customer_id: str, fetch: Fetch
 ) -> ActiveSubscription | None:
     """The cached lookup, or ``fetch``'s answer when it isn't cached."""
+    if _is_unconfirmed(customer_id):
+        return await _read_without_redis(customer_id, fetch)
     try:
         version, cached = await _read_entry(customer_id)
         if version is None:
@@ -162,10 +169,19 @@ async def invalidate_active_subscription_cache(customer_id: str) -> None:
             skip_during_backoff=False,
         )
     except _RedisUnavailable:
+        # The old token still vouches for entries; outlive any written now
+        # (a write in flight finishes within the Redis deadline).
+        _unconfirmed[customer_id] = (
+            time.monotonic() + SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1
+        )
+        _bound(_unconfirmed)
         logger.warning(
             f"Could not invalidate the subscription lookup for {customer_id};"
-            f" it can stay stale for {SUBSCRIPTION_LOOKUP_TTL_SECONDS}s"
+            f" other workers can show it stale for {SUBSCRIPTION_LOOKUP_TTL_SECONDS}s"
         )
+    else:
+        # From now on the script refuses anything read under the old token.
+        _unconfirmed.pop(customer_id, None)
 
 
 async def _read_entry(customer_id: str) -> tuple[str | None, _CachedLookup | None]:
@@ -203,7 +219,7 @@ async def _fetch_and_store(
     if current == version and cached is not None and cached.version == version:
         return cached.subscription
     subscription = summarize_subscription(await fetch())
-    if not _still_current(customer_id, version):
+    if not _still_current(customer_id, version) or _is_unconfirmed(customer_id):
         return subscription
     entry = _CachedLookup(version=version, subscription=subscription)
     keys_and_args = (
@@ -238,9 +254,23 @@ async def _fetch_and_keep(customer_id: str, fetch: Fetch) -> ActiveSubscription 
     if not _still_current(customer_id, _NO_REDIS):
         return subscription
     _fallback[customer_id] = (time.monotonic() + _FALLBACK_TTL_SECONDS, subscription)
-    if len(_fallback) > _FALLBACK_MAXSIZE:
-        del _fallback[next(iter(_fallback))]
+    _bound(_fallback)
     return subscription
+
+
+def _is_unconfirmed(customer_id: str) -> bool:
+    until = _unconfirmed.get(customer_id)
+    if until is None:
+        return False
+    if until > time.monotonic():
+        return True
+    del _unconfirmed[customer_id]
+    return False
+
+
+def _bound(entries: dict[str, T]) -> None:
+    if len(entries) > _FALLBACK_MAXSIZE:
+        del entries[next(iter(entries))]
 
 
 async def _shared(

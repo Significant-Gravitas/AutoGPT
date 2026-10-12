@@ -491,3 +491,66 @@ async def test_an_answer_read_before_a_change_is_not_kept_during_an_outage(
         await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
     assert fake_stripe.lookups == 2
+
+
+class _BlippingRedis:
+    """The real Redis, except that the next script call can be held on its way
+    and SETs can be made to fail."""
+
+    def __init__(self, redis):
+        self.redis = redis
+        self.fail_sets = False
+        self.release_eval: asyncio.Event | None = None
+        self.eval_reached = asyncio.Event()
+
+    async def mget(self, *args, **kwargs):
+        return await self.redis.mget(*args, **kwargs)
+
+    async def get(self, *args, **kwargs):
+        return await self.redis.get(*args, **kwargs)
+
+    async def set(self, *args, **kwargs):
+        if self.fail_sets:
+            raise RedisConnectionError("blip")
+        return await self.redis.set(*args, **kwargs)
+
+    async def eval(self, *args):
+        if self.release_eval is not None:
+            release, self.release_eval = self.release_eval, None
+            self.eval_reached.set()
+            await asyncio.wait_for(release.wait(), WAIT)
+        return await self.redis.eval(*args)
+
+
+@pytest.mark.asyncio
+async def test_a_write_racing_an_unrecorded_invalidation_is_not_served_later(
+    trial, fake_stripe, worker_b, redis_up, monkeypatch
+):
+    """A lookup's write is on its way to Redis when this worker changes the
+    subscription, and Redis blips so the new token isn't stored: the write
+    lands under the old token. Once Redis is back, this worker must not
+    serve it."""
+    monkeypatch.setattr(cache_a, "_REDIS_DEADLINE_SECONDS", WAIT)
+    redis = _BlippingRedis(redis_up)
+    monkeypatch.setattr(cache_a, "get_redis_async", AsyncMock(return_value=redis))
+    redis.release_eval = release = asyncio.Event()
+    first = asyncio.create_task(worker_a.get_active_subscription_period_end("user-1"))
+    await asyncio.wait_for(redis.eval_reached.wait(), WAIT)
+
+    await fake_stripe.modify_async("sub_1", trial_end="now")
+    redis.fail_sets = True
+    await cache_a.invalidate_active_subscription_cache(trial.customer_id)
+    redis.fail_sets = False
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
+
+    release.set()
+    assert await asyncio.wait_for(first, WAIT) == TRIAL_END
+    # The old answer did land in Redis under the unchanged token.
+    assert await _cached_period_end(redis_up, trial.customer_id) == TRIAL_END
+
+    monkeypatch.setattr(cache_a._backoff, "until", 0.0)
+    assert (
+        await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
+    )
