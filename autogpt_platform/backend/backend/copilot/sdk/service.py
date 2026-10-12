@@ -1418,10 +1418,12 @@ class ReducedContext(NamedTuple):
     resume_file: str | None
     transcript_lost: bool
     tried_compaction: bool
-    # Token budget for history compression on the DB-message fallback path,
-    # from ``retry_target_tokens``; None until a retry has set it.  Smaller
-    # each retry so compress_context applies progressively more aggressive
-    # reduction (LLM summarize → truncate → middle-out delete → trim).
+    # Token budget for the retry's history compression, from the pinned
+    # window: ``compaction_target_tokens`` when the transcript compaction
+    # landed, else ``retry_target_tokens``, smaller each retry so
+    # compress_context applies progressively more aggressive reduction
+    # (LLM summarize → truncate → middle-out delete → trim).  None only when
+    # built outside ``_reduce_context``.
     target_tokens: int | None = None
 
 
@@ -1610,13 +1612,14 @@ async def _reduce_context(
     # retry runs without --resume.  The compacted builder state is still
     # useful for the eventual upload_transcript call that seeds future turns.
     if transcript_content and not tried_compaction:
+        compaction_target = _compaction_target_tokens(
+            target_model, codex_route=codex_route, codex_engine=codex_engine
+        )
         compacted = await compact_transcript(
             transcript_content,
             model=config.thinking_standard_model,
             log_prefix=log_prefix,
-            target_tokens=_compaction_target_tokens(
-                target_model, codex_route=codex_route, codex_engine=codex_engine
-            ),
+            target_tokens=compaction_target,
         )
         if (
             compacted
@@ -1629,7 +1632,10 @@ async def _reduce_context(
             )
             tb = TranscriptBuilder()
             tb.load_previous(compacted, log_prefix=log_prefix)
-            return ReducedContext(tb, False, None, False, True)
+            # The retry still rebuilds its history from the DB rows; it is
+            # held to the budget the transcript was compacted to, never to the
+            # catalog's window, which can be far past the pin (Codex).
+            return ReducedContext(tb, False, None, False, True, compaction_target)
         logger.warning("%s Compaction failed, dropping transcript", log_prefix)
 
     # Subsequent retry or compaction failed: drop transcript entirely.

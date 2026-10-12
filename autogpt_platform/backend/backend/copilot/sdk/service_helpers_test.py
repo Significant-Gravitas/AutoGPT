@@ -164,6 +164,31 @@ class TestReduceContext:
         assert ctx.tried_compaction is True
 
     @pytest.mark.asyncio
+    async def test_compaction_success_keeps_the_pinned_budget(self) -> None:
+        # The retry still rebuilds its history from the DB rows, held to the
+        # budget the transcript was compacted to: the pinned window's, never
+        # the compressor's catalog default (far past the pin on Codex).
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
+        compact = AsyncMock(return_value=compacted)
+        model = "anthropic/claude-sonnet-5-5"
+
+        with (
+            patch("backend.copilot.sdk.service.compact_transcript", new=compact),
+            patch(
+                "backend.copilot.sdk.service.validate_transcript",
+                return_value=True,
+            ),
+        ):
+            ctx = await _reduce_context(
+                transcript, False, "sess-123", "/tmp/cwd", "[test]", runtime_model=model
+            )
+
+        assert ctx.transcript_lost is False
+        assert ctx.target_tokens == _compaction_target_tokens(model)
+        assert ctx.target_tokens == compact.await_args.kwargs["target_tokens"]
+
+    @pytest.mark.asyncio
     async def test_compaction_fails_drops_transcript(self) -> None:
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
 

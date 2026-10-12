@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.service import ReducedContext
 from backend.copilot.sdk.turn_summary_model import short_hash
 from backend.copilot.sdk.turn_summary_wiring_test import (
@@ -64,6 +65,19 @@ async def test_a_context_retry_after_the_restart_keeps_the_guide(
     ]
     # Per launch: its options, the guide flag when it launched, its client.
     launches = []
+    # The budgets the window module hands the retry, and each query's budget.
+    budgets: list[tuple[int, int]] = []
+    builds: list[int | None] = []
+    real_budgets = sdk_service._retry_target_tokens
+    real_build = sdk_service._build_query_message
+
+    def _record_budgets(*args, **kwargs):
+        budgets.append(real_budgets(*args, **kwargs))
+        return budgets[-1]
+
+    async def _record_build(*args, **kwargs):
+        builds.append(kwargs.get("target_tokens"))
+        return await real_build(*args, **kwargs)
 
     def factory(*args, **kwargs):
         client = scripts[len(launches)]()
@@ -85,6 +99,8 @@ async def test_a_context_retry_after_the_restart_keeps_the_guide(
                     f"{_SVC}._rebuild_first_turn_prefix",
                     dict(new_callable=AsyncMock, return_value=""),
                 ),
+                (f"{_SVC}._retry_target_tokens", dict(side_effect=_record_budgets)),
+                (f"{_SVC}._build_query_message", dict(new=_record_build)),
                 *_recovery(recovery),
             ],
             config_overrides=_LIVE_PROMPT,
@@ -99,6 +115,10 @@ async def test_a_context_retry_after_the_restart_keeps_the_guide(
         assert (retry.resume, retry.session_id) == ("test-session-id", None)
     else:
         assert (retry.resume, retry.session_id) == (None, "test-session-id")
+        # The fresh retry rebuilds its history to the window module's first
+        # retry budget.
+        [(first_retry_budget, _)] = budgets
+        assert builds[-1] == first_retry_budget
 
     [summary] = _summaries(caplog)
     assert summary["outcome"] == "ok"
