@@ -15,6 +15,7 @@ import OnboardingProvider from "@/providers/onboarding/onboarding-provider";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { delay, http, HttpResponse } from "msw";
+import { parseAsString, useQueryStates } from "nuqs";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -64,24 +65,45 @@ function renderPanel({
     defaultOptions: { queries: { retry: false } },
   }),
   searchParams,
-}: { queryClient?: QueryClient; searchParams?: string } = {}) {
-  return render(<BuilderChatPanel />, {
-    wrapper: ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>
-        <NuqsTestingAdapter
-          hasMemory
-          resetUrlUpdateQueueOnMount={false}
-          searchParams={searchParams}
-        >
-          <BackendAPIProvider>
-            <OnboardingProvider>
-              <TooltipProvider>{children}</TooltipProvider>
-            </OnboardingProvider>
-          </BackendAPIProvider>
-        </NuqsTestingAdapter>
-      </QueryClientProvider>
-    ),
-  });
+  beside,
+}: {
+  queryClient?: QueryClient;
+  searchParams?: string;
+  beside?: ReactNode;
+} = {}) {
+  return render(
+    <>
+      {beside}
+      <BuilderChatPanel />
+    </>,
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <NuqsTestingAdapter
+            hasMemory
+            resetUrlUpdateQueueOnMount={false}
+            searchParams={searchParams}
+          >
+            <BackendAPIProvider>
+              <OnboardingProvider>
+                <TooltipProvider>{children}</TooltipProvider>
+              </OnboardingProvider>
+            </BackendAPIProvider>
+          </NuqsTestingAdapter>
+        </QueryClientProvider>
+      ),
+    },
+  );
+}
+
+// Opens another agent the way the builder does: through the URL.
+function OpenAgentButton({ id }: { id: string }) {
+  const [, setQuery] = useQueryStates({ flowID: parseAsString });
+  return (
+    <button type="button" onClick={() => void setQuery({ flowID: id })}>
+      Open {id}
+    </button>
+  );
 }
 
 async function expectNoModelNotice() {
@@ -239,6 +261,41 @@ describe("Builder chat with no AI model connected", () => {
       ),
     ).toBeDefined();
     expect(attempts).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a session that failed for one agent doesn't hold up the next agent's", async () => {
+    server.use(
+      getGetV2ListChatTransportsMockHandler({
+        transports: [{ ...SELF_HOSTED_CHAT, available: true, default: true }],
+      }),
+      http.post("/api/proxy/api/chat/sessions", async ({ request }) => {
+        const body = (await request.json()) as { builder_graph_id?: string };
+        return body.builder_graph_id === "graph-a"
+          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
+          : HttpResponse.json({
+              id: "session-b",
+              created_at: "2026-10-12T00:00:00Z",
+              user_id: "user-1",
+            });
+      }),
+    );
+
+    renderPanel({
+      searchParams: "?flowID=graph-a",
+      beside: <OpenAgentButton id="graph-b" />,
+    });
+    fireEvent.click(screen.getByLabelText("Chat with builder"));
+    expect(
+      await screen.findByText("Could not start the builder chat"),
+    ).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open graph-b" }));
+    expect(
+      await screen.findByPlaceholderText(
+        "Ask the builder to edit or run this agent…",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("Could not start the builder chat")).toBeNull();
   });
 
   it("still creates the agent and opens the chat when a model is connected", async () => {

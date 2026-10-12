@@ -218,6 +218,13 @@ export function useBuilderChatPanel({
     }
   }, [flowID, setMessages]);
 
+  // An error belongs to the graph it happened on: moving to another one, or
+  // to a blank builder, clears it so that graph's chat starts on its own.
+  useEffect(() => {
+    setBindError(null);
+    setBootstrapError(null);
+  }, [flowID]);
+
   // Bind the panel session to (flowID -> graph_id).  Navigating to a
   // different graph or clearing flowID drops the current session (above) so
   // the next panel open starts clean with the right graph.  Guards against:
