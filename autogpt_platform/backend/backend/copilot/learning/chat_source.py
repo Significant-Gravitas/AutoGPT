@@ -25,6 +25,7 @@ from backend.data.skill_learning import (
 )
 
 from .contract import (
+    VERIFYING_SIGNAL_KINDS,
     ApprovalCheckpoint,
     Eligibility,
     EligibilityState,
@@ -42,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 CHAT_SOURCE_KIND = "chat_session"
 MAX_EVIDENCE_MESSAGES = 120
-MAX_SPAN_CHARS = 2_000
+MAX_CONTEXT_SPAN_CHARS = 2_000
 
 
 class CapturedTurn(EvidenceRef):
@@ -168,10 +169,18 @@ class ChatSessionSourceAdapter:
         if page is None or page.session.user_id != source.scope.user_id:
             return EvidenceBundle(source=source)
         outcome_by_ref = {s.ref: s.kind for s in source.outcome_signals}
+        verifying_refs = {
+            s.ref for s in source.outcome_signals if s.kind in VERIFYING_SIGNAL_KINDS
+        }
+        positions = {message_ref(m): i for i, m in enumerate(page.messages)}
+        messages = sorted(
+            reversed(page.messages),
+            key=lambda m: message_ref(m) not in verifying_refs,
+        )
         spans: list[EvidenceSpan] = []
         clipped: list[str] = []
         used = 0
-        for message in reversed(page.messages):
+        for message in messages:
             if message.sequence is None or message.sequence > last_sequence:
                 continue
             text = (message.content or "").strip()
@@ -182,7 +191,8 @@ class ChatSessionSourceAdapter:
             if not text or message.role not in ("user", "assistant", "tool"):
                 continue
             ref = message_ref(message)
-            body = text[:MAX_SPAN_CHARS]
+            span_limit = max_chars if ref in verifying_refs else MAX_CONTEXT_SPAN_CHARS
+            body = text[:span_limit]
             if len(body) < len(text):
                 clipped.append(ref)
             if used + len(body) > max_chars:
@@ -203,7 +213,7 @@ class ChatSessionSourceAdapter:
         )
         return EvidenceBundle(
             source=source,
-            spans=list(reversed(spans)),
+            spans=sorted(spans, key=lambda span: positions[span.ref]),
             omitted_refs=omitted,
             clipped_refs=clipped,
         )

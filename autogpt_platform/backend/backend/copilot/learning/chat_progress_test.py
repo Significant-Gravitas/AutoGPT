@@ -39,6 +39,7 @@ async def _processed_chat(fake_store, recent, *, large_old_result=False):
 
 def _page(monkeypatch, rows):
     db = MagicMock()
+    db.get_chat_session_metadata = AsyncMock(return_value=_session_info())
     db.get_chat_messages_paginated = AsyncMock(
         return_value=PaginatedMessages(
             messages=rows,
@@ -97,7 +98,7 @@ async def test_new_clipped_verification_still_blocks_learning(fake_store, monkey
     _, current = await _processed_chat(fake_store, recent)
     _page(monkeypatch, recent)
     bundle = await ChatSessionSourceAdapter().load_evidence(
-        source_revision_from_record(current), max_chars=24_000
+        source_revision_from_record(current), max_chars=2_000
     )
     assert "msg:141" in bundle.clipped_refs
     assert not bundle.verification_complete

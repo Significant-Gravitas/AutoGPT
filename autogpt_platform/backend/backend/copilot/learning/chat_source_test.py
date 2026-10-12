@@ -131,7 +131,7 @@ async def test_evidence_is_bounded_to_the_reviewed_revision(fake_store, chat_db)
 async def test_clipped_verification_span_is_reported_not_claimed(fake_store, chat_db):
     record = await record_chat_turn(USER, _session(), _messages(3), "import the csv")
     source = source_revision_from_record(record)
-    bundle = await ChatSessionSourceAdapter().load_evidence(source, max_chars=40)
+    bundle = await ChatSessionSourceAdapter().load_evidence(source, max_chars=20)
     assert not bundle.verification_complete
     assert "msg:2" in bundle.omitted_refs
 
