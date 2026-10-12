@@ -5,8 +5,10 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 
 Both steps go through the recall policy (``graphiti/recall.py`` and
 ``graphiti/recall_forget.py``): the candidates are the facts recall would
-return, and a confirmed forget is ``recall_forget.retract``, with the
-guarantees and limits ``graphiti/AGENTS.md`` lists.
+return, and, when asked (``include_forgotten``), the forgotten ones
+(``recall.search_forgotten_facts``), so a soft forget can be made permanent;
+a confirmed forget is ``recall_forget.retract``, with the guarantees and
+limits ``graphiti/AGENTS.md`` lists.
 
 The demotion helpers below are the dream's writers. They write only over
 live facts, so a demotion can never overwrite a user's forget.
@@ -25,7 +27,11 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import live_fact_predicate, search_facts
+from backend.copilot.graphiti.recall import (
+    live_fact_predicate,
+    search_facts,
+    search_forgotten_facts,
+)
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
@@ -89,6 +95,10 @@ class MemoryForgetSearchTool(BaseTool):
                     "type": "string",
                     "description": "Natural language description of what to forget (e.g. 'the Q2 marketing budget')",
                 },
+                "include_forgotten": {
+                    "type": "boolean",
+                    "description": "Also find already-forgotten memories, to delete them permanently.",
+                },
             },
             "required": ["query"],
         }
@@ -103,6 +113,7 @@ class MemoryForgetSearchTool(BaseTool):
         session: ChatSession,
         *,
         query: str = "",
+        include_forgotten: bool = False,
         **kwargs,
     ) -> ToolResponseBase:
         if not user_id:
@@ -133,8 +144,14 @@ class MemoryForgetSearchTool(BaseTool):
 
         try:
             # Only facts recall would still return: a forgotten one is not
-            # offered for forgetting again.
+            # offered for forgetting again, unless asked for, so a soft
+            # forget can be made permanent.
             edges = await search_facts(memory_scope, query, limit=10)
+            forgotten = (
+                await search_forgotten_facts(memory_scope, query, limit=10)
+                if include_forgotten
+                else []
+            )
         except Exception:
             logger.warning(
                 "Memory forget search failed for user %s", user_id[:12], exc_info=True
@@ -144,7 +161,7 @@ class MemoryForgetSearchTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        if not edges:
+        if not edges and not forgotten:
             return MemoryForgetCandidatesResponse(
                 message="No matching memories found.",
                 session_id=session.session_id,
@@ -152,9 +169,13 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         candidates = [_candidate(edge) for edge in edges]
+        candidates += [_forgotten_candidate(edge) for edge in forgotten]
+        message = f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs."
+        if forgotten:
+            message += " Those marked forgotten are forgotten already: only hard_delete=true removes them further."
 
         return MemoryForgetCandidatesResponse(
-            message=f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs.",
+            message=message,
             session_id=session.session_id,
             candidates=candidates,
         )
@@ -310,6 +331,17 @@ def _candidate(edge: EntityEdge) -> dict[str, str]:
         "fact": fact_text(edge),
         "valid_from": valid_from,
         "valid_to": valid_to,
+    }
+
+
+def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:
+    """A forgotten fact as a candidate for a permanent delete: its sentence
+    from the audit copy the forget kept, marked forgotten."""
+    redacted = edge.attributes.get("fact_redacted")
+    return {
+        **_candidate(edge),
+        "fact": str(redacted) if redacted else fact_text(edge),
+        "forgotten": "true",
     }
 
 

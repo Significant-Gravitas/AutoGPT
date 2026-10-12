@@ -1,6 +1,7 @@
 """The ingestion worker hands graphiti's extraction only the earlier episodes
-the recall policy allows, and writes each episode holding the graph's write
-lock, mocked at the graphiti boundary and on the in-memory Redis.
+the recall policy allows, writes each episode holding the graph's write lock,
+and puts back to ``active`` any edge the extraction gave ``retracted``,
+mocked at the graphiti boundary and on the in-memory Redis.
 
 The live runs are ``ingest_recall_integration_test.py`` and
 ``recall_inflight_integration_test.py``.
@@ -8,6 +9,7 @@ The live runs are ``ingest_recall_integration_test.py`` and
 
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -77,6 +79,14 @@ def _graphiti_client() -> MagicMock:
     return client
 
 
+def _undo_calls(client: MagicMock) -> list:
+    return [
+        call
+        for call in client.driver.execute_query.await_args_list
+        if call.args[0] == ingest._UNDO_EXTRACTED_RETRACTIONS_QUERY
+    ]
+
+
 class TestExtractionContext:
     @pytest.mark.asyncio
     async def test_add_episode_gets_only_recallable_earlier_episodes(
@@ -112,6 +122,66 @@ class TestExtractionContext:
 
         assert client.add_episode.await_args is not None
         assert client.add_episode.await_args.kwargs["previous_episode_uuids"] == []
+
+
+class TestAnExtractedRetraction:
+    @pytest.mark.asyncio
+    async def test_is_put_back_to_active_while_the_lock_is_held(
+        self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """graphiti does not hold its extraction model to ``MemoryFact``'s
+        statuses, so the worker puts any edge the episode wrote back from
+        ``retracted`` to ``active``, under the lock the write held; the query
+        never touches an edge a forget marked."""
+        client = _graphiti_client()
+        written = [SimpleNamespace(uuid="e1"), SimpleNamespace(uuid="e2")]
+        client.add_episode.return_value = SimpleNamespace(edges=written)
+        held: list[bool] = []
+
+        async def store(query: str, **params: object):
+            if query == ingest._UNDO_EXTRACTED_RETRACTIONS_QUERY:
+                held.append(_LOCK in lock_redis.values)
+                return [], [], None
+            return await _policy_filtered_store(query, **params)
+
+        client.driver.execute_query = AsyncMock(side_effect=store)
+
+        await _run_worker(client, monkeypatch)
+
+        [undo] = _undo_calls(client)
+        assert undo.kwargs == {
+            "uuids": ["e1", "e2"],
+            "retracted": "retracted",
+            "active": "active",
+        }
+        assert held == [True]
+        assert "e.forgotten_at IS NULL" in ingest._UNDO_EXTRACTED_RETRACTIONS_QUERY
+
+    @pytest.mark.asyncio
+    async def test_that_cannot_be_checked_leaves_the_episode_written(
+        self,
+        lock_redis: FakeRedis,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        client = _graphiti_client()
+        client.add_episode.return_value = SimpleNamespace(
+            edges=[SimpleNamespace(uuid="e1")]
+        )
+
+        async def store(query: str, **params: object):
+            if query == ingest._UNDO_EXTRACTED_RETRACTIONS_QUERY:
+                raise ConnectionError("falkordb down")
+            return await _policy_filtered_store(query, **params)
+
+        client.driver.execute_query = AsyncMock(side_effect=store)
+
+        await _run_worker(client, monkeypatch)
+
+        client.add_episode.assert_awaited_once()
+        assert len(_undo_calls(client)) == 1
+        assert "Could not check the statuses" in caplog.text
+        assert "Graphiti ingestion failed" not in caplog.text
 
 
 class TestWriteLock:
@@ -173,6 +243,11 @@ class TestWriteLock:
 
         client.add_episode.assert_not_called()
         assert "requeued once" in caplog.text and "dropping" in caplog.text
+        # Never quietly: the drop is an error, which reaches Sentry.
+        assert any(
+            record.levelname == "ERROR" and "dropping" in record.getMessage()
+            for record in caplog.records
+        )
         assert await completion.wait(0), "a dropped episode is no longer pending"
 
     @pytest.mark.asyncio

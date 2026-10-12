@@ -60,6 +60,71 @@ async def test_a_writer_waits_for_the_lock_to_come_free(
 
 
 @pytest.mark.asyncio
+async def test_a_writer_that_lets_go_does_not_take_the_lock_back_from_a_waiter(
+    lock_redis: FakeRedis,
+) -> None:
+    """A worker writing a backlog lets the lock go and asks for it again at
+    once, within one Redis round trip: the writer already waiting has
+    claimed the next turn, so it goes first."""
+    order: list[str] = []
+
+    async def waiter() -> None:
+        async with graph_write_lock(_GROUP, wait_seconds=5) as lock:
+            assert lock is LockState.HELD
+            order.append("waiter")
+
+    async def turn_claimed() -> None:
+        while f"{_KEY}:next" not in lock_redis.values:
+            await asyncio.sleep(0.01)
+
+    async with graph_write_lock(_GROUP, wait_seconds=0) as lock:
+        assert lock is LockState.HELD
+        waiting = asyncio.create_task(waiter())
+        await asyncio.wait_for(turn_claimed(), 2)
+        assert lock_redis.ttls[f"{_KEY}:next"] == scope_lock._TURN_CLAIM_SECONDS
+    async with graph_write_lock(_GROUP, wait_seconds=5) as lock:
+        assert lock is LockState.HELD
+        order.append("backlog")
+    await waiting
+
+    assert order == ["waiter", "backlog"]
+    assert f"{_KEY}:next" not in lock_redis.values
+
+
+@pytest.mark.asyncio
+async def test_a_lock_a_timed_out_request_took_is_given_back(
+    lock_redis: FakeRedis, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Redis applied the SET but its answer came too late: the writer goes
+    ahead without the lock, and the key it was given is not left holding
+    every other writer off for the lock's whole expiry."""
+    stored = lock_redis.set
+
+    async def answers_late(
+        key: str,
+        value: object,
+        *,
+        nx: bool = False,
+        ex: int | None = None,
+        px: int | None = None,
+    ) -> bool | None:
+        result = await stored(key, value, nx=nx, ex=ex, px=px)
+        if key == _KEY:
+            await asyncio.sleep(60)
+        return result
+
+    with (
+        patch.object(lock_redis, "set", answers_late),
+        patch.object(scope_lock, "_REDIS_TIMEOUT_SECONDS", 0.05),
+    ):
+        async with graph_write_lock(_GROUP, wait_seconds=5) as lock:
+            assert lock is LockState.UNAVAILABLE
+
+    assert _KEY not in lock_redis.values
+    assert "write lock unavailable" in caplog.text
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failure", ["raises", "hangs"])
 async def test_without_redis_the_writer_goes_ahead_and_warns(
     failure: str, caplog: pytest.LogCaptureFixture

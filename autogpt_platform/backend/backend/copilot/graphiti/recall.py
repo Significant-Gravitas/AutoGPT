@@ -15,11 +15,11 @@ an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
 as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
 a forget stamps ``forgotten_at``, which only a forget writes
 (``recall_forget.py``, or the legacy-forget backfill for older ones), so no
-other writer's status or reason can make it look remembered again. An
-episode is recallable while no forget has stamped ``redacted_at`` on it and
-none of the facts extracted from it is forgotten: one forgotten fact hides
-the whole text, since nothing records which sentence it came from. The
-episode's other facts stay live.
+other writer's status or reason can make it look remembered again, nor make
+a fact look forgotten. An episode is recallable while no forget has stamped
+``redacted_at`` on it and none of the facts extracted from it is forgotten:
+one forgotten fact hides the whole text, since nothing records which
+sentence it came from. The episode's other facts stay live.
 """
 
 import asyncio
@@ -52,6 +52,10 @@ USER_FORGET_REASON = "user_signal"
 FORGOTTEN_FACT = "[forgotten]"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
+
+# How many of a search's best matches ``search_forgotten_facts`` reads for
+# each forgotten fact it may return: live facts take most of them.
+_FORGOTTEN_OVERFETCH = 5
 
 # The ``expired_at`` half of the live test, applied inside every graphiti
 # search method so a retired fact never takes one of the ``limit`` slots. The
@@ -93,17 +97,13 @@ def forgotten_fact_predicate(alias: str = "e") -> str:
     """The forgotten-fact test as a Cypher ``WHERE`` fragment on edge ``alias``.
 
     A user forgot the fact: a forget stamped ``forgotten_at`` (the marker
-    only a forget writes), or, from before that marker, it is ``retracted``,
-    its ``expiration_reason`` is ``USER_FORGET_REASON`` (a dream demotion made
-    on the user's word records that too), or it has the
-    ``legacy_forget_predicate`` shape.
+    only a forget writes), or, from before that marker, it has the
+    ``legacy_forget_predicate`` shape. Never its ``status`` or
+    ``expiration_reason``: graphiti's attribute extraction fills both from an
+    episode's text, and a dream demotion picks its reason, so neither may
+    make a fact (and every episode and session it came from) look forgotten.
     """
-    return (
-        f"({alias}.forgotten_at IS NOT NULL"
-        f" OR {alias}.status = '{MemoryStatus.retracted.value}'"
-        f" OR {alias}.expiration_reason = '{USER_FORGET_REASON}'"
-        f" OR ({legacy_forget_predicate(alias)}))"
-    )
+    return f"({alias}.forgotten_at IS NOT NULL OR ({legacy_forget_predicate(alias)}))"
 
 
 def legacy_forget_predicate(alias: str = "e") -> str:
@@ -124,11 +124,8 @@ def is_forgotten(fact: EntityEdge) -> bool:
     """The forgotten-fact test for an edge graphiti returned."""
     reason = fact.attributes.get("expiration_reason")
     legacy = fact.expired_at is not None and fact.invalid_at is None
-    return (
-        fact.attributes.get("forgotten_at") is not None
-        or fact_status(fact) == MemoryStatus.retracted.value
-        or reason == USER_FORGET_REASON
-        or (legacy and reason is None)
+    return fact.attributes.get("forgotten_at") is not None or (
+        legacy and reason is None
     )
 
 
@@ -190,6 +187,27 @@ async def search_facts(
     tentative = include_tentative
     found = [f for f in results.edges if is_live(f, include_tentative=tentative)]
     return await live_now(client.driver, found, include_tentative=tentative)
+
+
+async def search_forgotten_facts(
+    scope: MemoryScope, query: str, *, limit: int
+) -> list[EntityEdge]:
+    """Forgotten facts matching ``query``, best first, at most ``limit``: for
+    making a soft forget permanent (``recall_forget.retract(hard=True)``).
+
+    A forget leaves a fact's embedding, so graphiti still finds it by
+    meaning, though its sentence reads ``FORGOTTEN_FACT`` (the original is in
+    ``fact_redacted``). Live facts take most of a search's best matches, so
+    it reads ``_FORGOTTEN_OVERFETCH`` times ``limit`` of them.
+    """
+    client = await get_graphiti_client(scope.group_id)
+    config = EDGE_HYBRID_SEARCH_RRF.model_copy(
+        update={"limit": limit * _FORGOTTEN_OVERFETCH}
+    )
+    results = await client.search_(
+        query=query, config=config, group_ids=[scope.group_id]
+    )
+    return [fact for fact in results.edges if is_forgotten(fact)][:limit]
 
 
 async def live_now(

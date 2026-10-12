@@ -55,11 +55,13 @@ from .scope import MemoryScope
 
 _LONG_AGO = "2025-01-01T00:00:00+00:00"
 # (status, expiration_reason, expired_at, invalid_at, forgotten_at) -> forgotten?
+# Only the forget's marker, or the pre-policy shape, makes a fact forgotten.
 _EDGE_SHAPES = {
     ("active", None, None, None, None): False,
     ("retracted", "user_signal", _LONG_AGO, None, _LONG_AGO): True,
-    ("retracted", "user_signal", _LONG_AGO, None, None): True,
-    ("superseded", "user_signal", _LONG_AGO, None, None): True,
+    ("retracted", None, None, None, None): False,
+    ("retracted", "user_signal", _LONG_AGO, None, None): False,
+    ("superseded", "user_signal", _LONG_AGO, None, None): False,
     ("superseded", "stale_fact", _LONG_AGO, None, None): False,
     ("superseded", "stale_fact", _LONG_AGO, _LONG_AGO, _LONG_AGO): True,
     ("active", None, _LONG_AGO, _LONG_AGO, None): False,

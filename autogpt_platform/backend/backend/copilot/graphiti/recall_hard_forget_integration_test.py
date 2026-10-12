@@ -5,7 +5,8 @@ An episode no remaining edge cites is emptied into a tombstone, never
 deleted: its name, source description and envelope provenance say which
 chat session it came from, and the dream leaves that session out. The edge
 itself is deleted last, in one query with what it alone kept, so a forget
-that failed part-way finds it again. Each case was reproduced against the
+that failed part-way finds it again. A fact forgotten softly can still be
+found from chat and made permanent. Each case was reproduced against the
 previous commit by an independent validation (``r2-dream-atomicity.py``,
 ``r2-failure.py``).
 
@@ -28,10 +29,17 @@ from backend.api.features.admin.memory_admin_routes import (
 from backend.copilot.dream import fetch
 from backend.copilot.dream.hidden_sessions import hidden_session_ids
 from backend.copilot.dream.prompts import build_consolidate_prompt
+from backend.copilot.model import ChatSession
+from backend.copilot.tools import graphiti_forget
+from backend.copilot.tools.models import (
+    MemoryForgetCandidatesResponse,
+    MemoryForgetConfirmResponse,
+)
 
 from . import recall_hide, recall_orphans
 from .falkordb_driver import AutoGPTFalkorDriver
 from .memory_model import MemoryEnvelope, MemoryForgetFailureCode
+from .recall import FORGOTTEN_FACT
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -275,3 +283,42 @@ async def test_the_admin_audit_views_keep_what_a_forget_hid(
     assert episodes[kept_episode].hard_deleted_at is None
     [edge] = [edge for edge in graph.edges if edge.label == "RELATES_TO"]
     assert edge.fact == CAROL[2]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_soft_forget_can_still_be_made_permanent_from_chat(
+    scope_graph, stub_graphiti_client, mocker: MockerFixture
+) -> None:
+    """``memory_forget_search`` offers a softly forgotten fact again only when
+    asked for forgotten ones, by the sentence its forget kept for audit, and
+    the hard delete that follows removes the edge."""
+    driver, scope = scope_graph
+    _, edges = await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
+    alice, bob = edges[ALICE[2]], edges[BOB[2]]
+    await retract(scope, [alice])
+    assert (await edge_row(driver, alice))["fact"] == FORGOTTEN_FACT
+    enabled = AsyncMock(return_value=True)
+    mocker.patch.object(graphiti_forget, "is_enabled_for_user", enabled)
+    session = ChatSession.new(scope.owner_user_id, dry_run=False)
+    search = graphiti_forget.MemoryForgetSearchTool()
+
+    found = await search._execute(scope.owner_user_id, session, query="Atlas")
+    assert isinstance(found, MemoryForgetCandidatesResponse)
+    assert [c["uuid"] for c in found.candidates] == [bob]
+
+    found = await search._execute(
+        scope.owner_user_id, session, query="Atlas", include_forgotten=True
+    )
+    assert isinstance(found, MemoryForgetCandidatesResponse)
+    offered = [(c["uuid"], c["fact"], c.get("forgotten")) for c in found.candidates]
+    assert offered == [(bob, BOB[2], None), (alice, ALICE[2], "true")]
+
+    confirmed = await graphiti_forget.MemoryForgetConfirmTool()._execute(
+        scope.owner_user_id, session, uuids=[alice], hard_delete=True
+    )
+
+    assert isinstance(confirmed, MemoryForgetConfirmResponse)
+    assert confirmed.deleted_uuids == [alice] and confirmed.failures == []
+    assert await edge_row(driver, alice) == {}
+    assert (await edge_row(driver, bob))["fact"] == BOB[2]
