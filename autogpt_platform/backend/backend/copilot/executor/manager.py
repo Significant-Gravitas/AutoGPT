@@ -30,6 +30,7 @@ from backend.util.process import AppProcess
 from backend.util.retry import continuous_retry
 from backend.util.settings import Settings
 
+from .cli_warmup import start_cli_warmup
 from .processor import execute_copilot_turn, init_worker
 from .utils import (
     COPILOT_EXECUTION_QUEUE_NAME,
@@ -115,6 +116,7 @@ class CoPilotExecutor(AppProcess):
         logger.info(f"Spawn max-{self.pool_size} workers...")
 
         _load_catalog()
+        start_cli_warmup()
 
         # Materialise the active-tasks lock NOW, before any worker threads
         # exist, so subsequent multi-threaded reads of the lazy property
