@@ -105,7 +105,16 @@ class Handler(BaseHTTPRequestHandler):
                 HTTPStatus.BAD_REQUEST, dialect.error("body is not a JSON object")
             )
             return
-        conversation = dialect.conversation(body)
+        try:
+            conversation = dialect.conversation(body)
+        except (AttributeError, KeyError, TypeError) as error:
+            # A body this dialect can't read: answer it rather than leave the
+            # client waiting on a handler that died.
+            logger.error("unreadable %s request: %r", dialect.name, error)
+            self._send_json(
+                HTTPStatus.BAD_REQUEST, dialect.error(f"malformed request: {error!r}")
+            )
+            return
         try:
             planned = plan(conversation, self.model_server.scripts_dir)
         except ScriptError as error:

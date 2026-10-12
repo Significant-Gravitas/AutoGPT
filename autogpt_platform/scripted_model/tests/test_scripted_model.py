@@ -8,6 +8,8 @@ trips through both is one the copilot can follow.
 import json
 import re
 import threading
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import anthropic
@@ -267,6 +269,16 @@ def test_a_request_the_script_cannot_answer_fails_with_the_reason(scripted_model
             client.messages.create(
                 model=SONNET, max_tokens=64, messages=messages, tools=tools
             )
+
+    malformed = urllib.request.Request(
+        f"{scripted_model.url}/api/v1/messages",
+        data=json.dumps({"messages": ["not an object"]}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with pytest.raises(urllib.error.HTTPError) as refused:
+        urllib.request.urlopen(malformed, timeout=5)
+    assert refused.value.code == 400
+    assert "malformed request" in refused.value.read().decode()
 
     with pytest.raises(openai.BadRequestError, match="no script named 'nope'"):
         _openai(scripted_model).chat.completions.create(
