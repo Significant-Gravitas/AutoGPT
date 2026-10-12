@@ -31,6 +31,7 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
+from backend.util.url_redaction import redact_url
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
                 logger.exception(
                     "%s %s failed. Investigate and resolve the underlying issue: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     exc,
                     exc_info=exc,
                 )
@@ -95,7 +96,7 @@ def _error_handler(status_code: int, log_error: bool, server_error_detail: bool)
                 logger.warning(
                     "%s %s failed with %d: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     status_code,
                     exc,
                 )
@@ -127,7 +128,7 @@ async def _handle_validation_error(
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
-        request.url.path,
+        redact_url(request.url.path),
         exc,
     )
     errors: Sequence | str

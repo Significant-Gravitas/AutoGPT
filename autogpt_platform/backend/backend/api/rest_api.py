@@ -90,7 +90,6 @@ from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.monitoring.instrumentation import instrument_fastapi
 from backend.util.cloud_storage import shutdown_cloud_storage_handler
-from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
 from backend.util.workspace_storage import shutdown_workspace_storage
 
@@ -115,18 +114,6 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
-
-
-@contextlib.contextmanager
-def feature_flag_context():
-    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_feature_flags()
-        try:
-            yield
-        finally:
-            shutdown_feature_flags()
-    else:
-        yield
 
 
 @contextlib.asynccontextmanager
@@ -192,8 +179,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     backend.data.llm_registry.load_catalog()
 
     async with mcp_mount.running():
-        with feature_flag_context():
-            yield
+        yield
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
