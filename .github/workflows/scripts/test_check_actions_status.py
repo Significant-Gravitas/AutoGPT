@@ -1,7 +1,13 @@
+import re
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from check_actions_status import get_paginated_items, process_check_runs
+from check_actions_status import (
+    ADVISORY_CHECK_RUNS,
+    get_paginated_items,
+    process_check_runs,
+)
 
 
 PASSING_RUN = {
@@ -45,9 +51,7 @@ class ProcessCheckRunsTests(unittest.TestCase):
         self.assertEqual(process_check_runs([skipped_check]), (False, True))
 
     def test_accepts_cancellation_superseded_by_passing_workflow_run(self):
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, PASSING_RUN]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, PASSING_RUN])
 
         self.assertEqual(result, (False, True))
 
@@ -92,18 +96,14 @@ class ProcessCheckRunsTests(unittest.TestCase):
     def test_rejects_cancellation_replaced_by_failed_workflow_run(self):
         failed_run = {**PASSING_RUN, "conclusion": "failure"}
 
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, failed_run]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, failed_run])
 
         self.assertEqual(result, (False, False))
 
     def test_rejects_cancellation_replaced_by_different_workflow(self):
         unrelated_run = {**PASSING_RUN, "workflow_id": 8}
 
-        result = process_check_runs(
-            [CANCELED_CHECK], [CANCELED_RUN, unrelated_run]
-        )
+        result = process_check_runs([CANCELED_CHECK], [CANCELED_RUN, unrelated_run])
 
         self.assertEqual(result, (False, False))
 
@@ -113,9 +113,7 @@ class ProcessCheckRunsTests(unittest.TestCase):
             "details_url": "https://checks.example.com/result/1001",
         }
 
-        result = process_check_runs(
-            [external_check], [CANCELED_RUN, PASSING_RUN]
-        )
+        result = process_check_runs([external_check], [CANCELED_RUN, PASSING_RUN])
 
         self.assertEqual(result, (False, False))
 
@@ -147,7 +145,12 @@ class ProcessCheckRunsTests(unittest.TestCase):
             "status": "completed",
             "conclusion": "failure",
         }
-        failed = {"id": 8, "name": "test", "status": "completed", "conclusion": "failure"}
+        failed = {
+            "id": 8,
+            "name": "test",
+            "status": "completed",
+            "conclusion": "failure",
+        }
         self.assertEqual(process_check_runs([copilot, failed]), (False, False))
 
     def test_a_failing_journeys_leg_is_advisory_but_smoke_still_blocks(self):
@@ -160,6 +163,25 @@ class ProcessCheckRunsTests(unittest.TestCase):
         smoke = {**journeys, "id": 10, "name": "end-to-end tests (smoke)"}
         self.assertEqual(process_check_runs([journeys]), (False, True))
         self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
+
+    def test_the_flake_gate_never_blocks_a_merge(self):
+        gate = {
+            "id": 11,
+            "name": "flake gate (backend)",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        running = {**gate, "id": 12, "status": "in_progress", "conclusion": None}
+        self.assertEqual(process_check_runs([gate, running]), (False, True))
+
+    def test_every_flake_gate_job_is_advisory(self):
+        """A job added to or renamed in the flake gate's workflow without an
+        entry in ADVISORY_CHECK_RUNS would start blocking merges."""
+        workflow = Path(__file__).resolve().parents[1] / "platform-flake-gate.yml"
+        names = re.findall(r"^    name: (.+)$", workflow.read_text(), re.MULTILINE)
+        self.assertGreaterEqual(len(names), 4)
+        for name in names:
+            self.assertIn(name.strip(), ADVISORY_CHECK_RUNS)
 
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
