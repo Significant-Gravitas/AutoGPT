@@ -1632,7 +1632,7 @@ async def _cancel_customer_subscriptions(
     seen_ids: set[str] = set()
     try:
         await _cancel_listed_subscriptions(
-            customer_id, seen_ids, exclude_sub_id, at_period_end, cancellation_comment
+            customer_id, seen_ids, exclude_sub_id, at_period_end
         )
     finally:
         if seen_ids:
@@ -1645,7 +1645,6 @@ async def _cancel_listed_subscriptions(
     seen_ids: set[str],
     exclude_sub_id: str | None,
     at_period_end: bool,
-    cancellation_comment: str | None,
 ) -> None:
     for status in ("active", "trialing"):
         subscriptions = await stripe_call(
