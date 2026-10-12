@@ -1,6 +1,8 @@
 """Deleting an account ends its Stripe subscriptions now, and marks the cancel
 so the webhooks it sets off keep the tier sync but skip analytics."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,8 +10,15 @@ import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data import credit
+from backend.util.exceptions import InsufficientBalanceError
 
 CUSTOMER = "cus_123"
+COMMENT = {"comment": credit.ACCOUNT_DELETION_CANCELLATION_COMMENT}
+BILLABLE = ["active", "trialing"]
+# Still open in Stripe, so still able to bill or dun the customer.
+UNSETTLED = ["past_due", "unpaid", "paused", "incomplete"]
+# Terminal: Stripe refuses to cancel these.
+ENDED = ["incomplete_expired", "canceled"]
 
 
 def _user(stripe_customer_id: str | None) -> MagicMock:
@@ -28,10 +37,63 @@ def _page(*subscriptions: dict) -> MagicMock:
 
 
 def _stripe_lists(active: MagicMock, trialing: MagicMock):
+    pages = {"active": active, "trialing": trialing}
+
     def by_status(*_args, **kwargs):
-        return trialing if kwargs.get("status") == "trialing" else active
+        return pages.get(kwargs.get("status"), _page())
 
     return by_status
+
+
+def _one_per_status(*statuses: str):
+    """Holds one subscription in each status and, like Stripe, lists only the
+    ones in the status a call asks for."""
+
+    def by_status(*_args, **kwargs):
+        status = kwargs.get("status")
+        if status not in statuses:
+            return _page()
+        return _page({"id": f"sub_{status}", "status": status, "schedule": None})
+
+    return by_status
+
+
+def _listed_statuses(listed: MagicMock) -> list:
+    return [call.kwargs.get("status") for call in listed.call_args_list]
+
+
+def _touched(*stripe_methods: MagicMock) -> set[str]:
+    return {call.args[0] for method in stripe_methods for call in method.call_args_list}
+
+
+def _assert_nothing_invoiced(cancel: AsyncMock) -> None:
+    for call in cancel.await_args_list:
+        assert call.kwargs.get("invoice_now") is not True
+        assert call.kwargs.get("prorate") is not True
+
+
+@contextmanager
+def _stripe(list_by_status) -> Iterator[tuple[MagicMock, AsyncMock, AsyncMock]]:
+    with (
+        patch(
+            "backend.data.credit.get_user_by_id",
+            new_callable=AsyncMock,
+            return_value=_user(CUSTOMER),
+        ),
+        patch(
+            "backend.data.credit.stripe.Subscription.list_async",
+            side_effect=list_by_status,
+        ) as listed,
+        patch(
+            "backend.data.credit.stripe.Subscription.cancel_async",
+            new_callable=AsyncMock,
+        ) as cancel,
+        patch(
+            "backend.data.credit.stripe.Subscription.modify_async",
+            new_callable=AsyncMock,
+        ) as modify,
+    ):
+        yield listed, cancel, modify
 
 
 async def _cancelled(sub_id: str, **params) -> stripe.Subscription:
@@ -109,6 +171,90 @@ async def test_paid_and_trial_subscriptions_end_now_without_an_invoice():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("status", UNSETTLED)
+async def test_an_unsettled_plan_ends_now_with_the_comment_and_no_invoice(status):
+    """Cancelling stops Stripe collecting the plan's open invoices, so what
+    is still owed is written off; the cancel itself invoices nothing."""
+    with _stripe(_one_per_status(status)) as (_listed, cancel, modify):
+        assert await credit.cancel_all_subscriptions_now("user-1") == 1
+
+    cancel.assert_awaited_once_with(f"sub_{status}", cancellation_details=COMMENT)
+    _assert_nothing_invoiced(cancel)
+    modify.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_every_open_subscription_ends_and_ended_ones_are_never_touched():
+    every_status = (*BILLABLE, *UNSETTLED, *ENDED)
+    with _stripe(_one_per_status(*every_status)) as (listed, cancel, modify):
+        assert await credit.cancel_all_subscriptions_now("user-1") == 6
+
+    # Each open status is asked for once, by name: never "all", "ended" or
+    # no status at all, which would bring back subscriptions Stripe can no
+    # longer cancel.
+    assert sorted(_listed_statuses(listed)) == sorted([*BILLABLE, *UNSETTLED])
+    assert _touched(cancel, modify) == {f"sub_{s}" for s in (*BILLABLE, *UNSETTLED)}
+    assert all(
+        call.kwargs["cancellation_details"] == COMMENT
+        for call in cancel.await_args_list
+    )
+    _assert_nothing_invoiced(cancel)
+    modify.assert_not_called()
+
+
+async def _cancel_plan_at_period_end() -> None:
+    await credit.cancel_stripe_subscription("user-1")
+
+
+async def _clean_up_after_upgrade() -> None:
+    await credit._cleanup_stale_subscriptions(CUSTOMER, "sub_new")
+
+
+async def _fail_an_uncovered_renewal() -> None:
+    await credit.handle_subscription_payment_failure(
+        {
+            "id": "in_1",
+            "customer": CUSTOMER,
+            "subscription": "sub_active",
+            "amount_due": 2000,
+        }
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "caller",
+    [_cancel_plan_at_period_end, _clean_up_after_upgrade, _fail_an_uncovered_renewal],
+)
+async def test_other_cancels_still_reach_only_active_and_trialing_plans(caller):
+    """Only an account deletion ends a past-due or other unsettled plan."""
+    every_status = (*BILLABLE, *UNSETTLED, *ENDED)
+    user_row = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
+    uncovered = InsufficientBalanceError(
+        message="no balance", user_id="user-1", balance=0, amount=2000
+    )
+    with (
+        _stripe(_one_per_status(*every_status)) as (listed, cancel, modify),
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=user_row)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction",
+            new_callable=AsyncMock,
+            side_effect=uncovered,
+        ),
+        patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
+        patch("backend.data.credit._track_billing_event"),
+        patch.object(credit.get_pending_subscription_change, "cache_delete"),
+    ):
+        await caller()
+
+    assert _listed_statuses(listed) == BILLABLE
+    assert _touched(cancel, modify) == {"sub_active", "sub_trialing"}
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("failing", ["list_async", "cancel_async"])
 async def test_a_stripe_error_reaches_the_caller(failing):
     active = _page({"id": "sub_paid", "schedule": None})
@@ -175,21 +321,26 @@ async def test_an_enrolled_trial_still_syncs_its_tier_but_not_its_person():
     person_sync.assert_not_called()
 
 
-def _deleted_event(comment: str | None) -> dict:
+def _deleted_event(comment: str | None, status: str = "canceled") -> dict:
     details: dict = {"reason": "cancellation_requested"}
     if comment:
         details["comment"] = comment
     return {
         "id": "sub_paid",
         "customer": CUSTOMER,
-        "status": "canceled",
+        "status": status,
         "items": {"data": []},
         "cancellation_details": details,
     }
 
 
+# A past-due, unpaid or paused plan ends "canceled" like a paid one; an
+# incomplete one may end "incomplete_expired". All carry the same comment.
 @pytest.mark.asyncio
-async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person():
+@pytest.mark.parametrize("ended_status", ENDED)
+async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person(
+    ended_status,
+):
     user = MagicMock(id="user-1", subscriptionTier=SubscriptionTier.PRO)
     with (
         patch(
@@ -206,7 +357,7 @@ async def test_the_deletion_webhook_drops_the_tier_without_touching_the_person()
         patch("backend.data.credit.schedule_posthog_lifecycle_sync") as person_sync,
     ):
         await credit.sync_subscription_from_stripe(
-            _deleted_event(credit.ACCOUNT_DELETION_CANCELLATION_COMMENT)
+            _deleted_event(credit.ACCOUNT_DELETION_CANCELLATION_COMMENT, ended_status)
         )
 
     set_tier.assert_awaited_once_with(
