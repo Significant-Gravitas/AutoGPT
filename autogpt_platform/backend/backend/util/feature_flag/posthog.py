@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 settings = Settings()
 
-# Without the personal key every read is a remote /flags call; on the default
+# Without the secret key every read is a remote /flags call; on the default
 # executor a burst of those starves every other `asyncio.to_thread` caller.
 FLAG_READ_WORKERS = 8
 _read_executor = ThreadPoolExecutor(
@@ -96,10 +96,24 @@ async def evaluate_flag(
 
 
 def initialize_posthog_flags() -> None:
-    """Build the flag client eagerly so its definition poller is warm."""
+    """Build the flag client and load its definitions before any read needs them."""
     global _shut_down
     _shut_down = False
-    get_flag_client()
+    client = get_flag_client()
+    if client is None or not client.enable_local_evaluation:
+        return
+
+    # The SDK otherwise makes this same call on the first flag read, which then
+    # waits for it; going through it keeps the shared cache deciding who fetches.
+    try:
+        client.load_feature_flags()
+    except Exception as e:
+        logger.warning(f"Loading PostHog flag definitions at startup failed: {e}")
+    if client.feature_flags is None:
+        logger.warning(
+            "PostHog flag definitions did not load at startup; the first flag read "
+            "will retry"
+        )
 
 
 def shutdown_posthog_flags() -> None:
@@ -124,7 +138,7 @@ def get_flag_client() -> Posthog | None:
     """The flag client singleton, or None when PostHog is unconfigured.
 
     Separate from ``copilot.tracking``'s analytics client because only this
-    one carries the personal API key that enables local evaluation, and
+    one carries the secret key that enables local evaluation, and
     shutting one down must not silence the other.
     """
     global _client, _init_attempted
@@ -144,22 +158,22 @@ def _build_client() -> Posthog | None:
         logger.warning("PostHog API key not configured; flag reads will not resolve")
         return None
 
-    personal_api_key = settings.secrets.posthog_personal_api_key
+    secret_key = settings.secrets.posthog_secret_key
     # One shared refresher, so the definitions bill stops scaling with replica
     # count. Without a provider the SDK polls PostHog once per process.
-    definition_cache = get_flag_definition_cache() if personal_api_key else None
+    definition_cache = get_flag_definition_cache() if secret_key else None
     _client = Posthog(
         settings.secrets.posthog_api_key,
         host=settings.secrets.posthog_host,
-        personal_api_key=personal_api_key or None,
-        enable_local_evaluation=bool(personal_api_key),
+        secret_key=secret_key or None,
+        enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
     )
     _init_attempted = True
     logger.info(
         "PostHog feature flag client initialized "
-        f"(local evaluation: {'on' if personal_api_key else 'off'}, "
+        f"(local evaluation: {'on' if secret_key else 'off'}, "
         f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client

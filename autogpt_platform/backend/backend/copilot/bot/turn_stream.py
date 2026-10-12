@@ -20,7 +20,7 @@ from backend.data.sharing.workspace_refs import (
     WorkspaceArtifactLink,
     extract_artifact_links,
 )
-from backend.platform_linking.models import TurnDenial
+from backend.platform_linking.models import ChatTurnHandle, TurnDenial
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 from backend.util.settings import Settings
 
@@ -37,6 +37,9 @@ from .prompt import clamp_thread_name
 from .text import format_batch, iter_chunks, split_at_boundary
 
 logger = logging.getLogger(__name__)
+
+# What a channel shows for a held call whose card could not be opened.
+_NO_CARD = "⏸️ An action is waiting for approval."
 
 TITLE_RENAME_ATTEMPTS = 5
 TITLE_RENAME_INTERVAL_SECONDS = 1.0
@@ -142,8 +145,10 @@ class TurnStreamer:
         target_id: str,
         file_ids: list[str] | None = None,
         session_id: str | None = None,
+        turn: ChatTurnHandle | None = None,
     ) -> None:
-        prefixed = format_batch(batch, ctx.platform)
+        """Start a turn from ``batch`` and stream its reply here; with
+        ``turn``, stream that one instead, which something else started."""
 
         redis = await get_redis_async()
         cache_key = sessions.session_cache_key(ctx.platform, target_id)
@@ -257,23 +262,50 @@ class TurnStreamer:
             sent_any_content = True
             await _send_clarification(adapter, target_id, ctx, clarification_output)
 
+        async def _on_approval_needed(session_id: str, review_id: str) -> None:
+            nonlocal active_session_id, buffer, sent_any_content
+            active_session_id = session_id
+            # Drain pending text so the card follows the words that led to it.
+            if buffer.strip():
+                if await self._send_text_and_artifacts(
+                    adapter, target_id, buffer, ctx, session_id
+                ):
+                    sent_any_content = True
+                buffer = ""
+            if await _send_card(
+                self._api, adapter, target_id, ctx, session_id, review_id
+            ):
+                sent_any_content = True
+
         started_at = time.monotonic()
         reply_chars = 0
         draft = DraftStreamer(adapter, target_id)
         typing_task = asyncio.create_task(_keep_typing(adapter, target_id))
         try:
-            async for chunk in self._api.stream_chat(
-                platform=ctx.platform,
-                platform_user_id=ctx.user_id,
-                message=prefixed,
-                session_id=active_session_id,
-                platform_server_id=ctx.server_id,
-                file_ids=file_ids,
-                on_session_id=_on_session_id,
-                on_setup_required=_on_setup_required,
-                on_setup_dropped=_on_setup_dropped,
-                on_clarification_needed=_on_clarification_needed,
-            ):
+            if turn is not None:
+                await _on_session_id(turn.session_id)
+                chunks = self._api.stream_turn(
+                    turn,
+                    on_setup_required=_on_setup_required,
+                    on_setup_dropped=_on_setup_dropped,
+                    on_clarification_needed=_on_clarification_needed,
+                    on_approval_needed=_on_approval_needed,
+                )
+            else:
+                chunks = self._api.stream_chat(
+                    platform=ctx.platform,
+                    platform_user_id=ctx.user_id,
+                    message=format_batch(batch, ctx.platform),
+                    session_id=active_session_id,
+                    platform_server_id=ctx.server_id,
+                    file_ids=file_ids,
+                    on_session_id=_on_session_id,
+                    on_setup_required=_on_setup_required,
+                    on_setup_dropped=_on_setup_dropped,
+                    on_clarification_needed=_on_clarification_needed,
+                    on_approval_needed=_on_approval_needed,
+                )
+            async for chunk in chunks:
                 buffer += chunk
                 reply_chars += len(chunk)
                 await draft.update(buffer)
@@ -625,6 +657,51 @@ async def _send_clarification(
         await adapter.send_message(
             target_id, chunk, mentionable_users=ctx.mentionable_users
         )
+
+
+async def _send_card(
+    api: BotBackend,
+    adapter: PlatformAdapter,
+    target_id: str,
+    ctx: MessageContext,
+    session_id: str,
+    review_id: str,
+) -> bool:
+    """Post a held call's card as buttons; with no card, or buttons that fail,
+    a link to answer it in AutoGPT. Whether anything went out. Never raises:
+    the turn goes on."""
+    try:
+        card = await api.open_card(
+            ctx.platform, ctx.server_id, ctx.user_id, session_id, review_id
+        )
+    except Exception:
+        logger.exception(f"Could not open a channel card for {review_id}")
+        card = None
+    if card is not None:
+        try:
+            if adapter.supports_choice_buttons and await adapter.send_choice_buttons(
+                target_id,
+                card.text,
+                card.options,
+                card.token,
+                kind=choices.CARD_KIND,
+            ):
+                return True
+        except Exception:
+            logger.exception(f"Card buttons failed on {adapter.platform_name}")
+    text = card.text if card is not None else _NO_CARD
+    session_url = copilot_session_url(session_id)
+    try:
+        if session_url is None:
+            await adapter.send_message(target_id, text)
+        else:
+            await adapter.send_link(
+                target_id, text, link_label="Answer in AutoGPT", link_url=session_url
+            )
+    except Exception:
+        logger.exception(f"Card fallback failed on {adapter.platform_name}")
+        return False
+    return True
 
 
 def _fits_native(adapter: PlatformAdapter, question: Any) -> bool:

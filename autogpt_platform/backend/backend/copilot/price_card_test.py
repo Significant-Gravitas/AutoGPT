@@ -101,6 +101,34 @@ def test_sonnet_5_card_carries_the_authored_list_prices():
     )
 
 
+def test_sonnet_5_5_card_carries_anthropics_published_prices():
+    """The default standard model: $2/$10, cache writes (5m) $2.50, and cache
+    reads at 5% of input, $0.10, not the usual 10%."""
+    assert price_for("anthropic/claude-sonnet-5-5") == PriceCard(
+        input_usd_per_mtok=2.0,
+        output_usd_per_mtok=10.0,
+        cache_read_usd_per_mtok=0.10,
+        cache_creation_usd_per_mtok=2.50,
+    )
+
+
+@pytest.mark.parametrize(
+    "path, expected_usd",
+    [("sync_baseline", 0.10), ("anthropic_batch", 0.05)],
+)
+def test_sonnet_5_5_cache_reads_cost_the_published_rate(path, expected_usd):
+    card = price_for("claude-sonnet-5-5")
+    assert card is not None
+    cost = compute_cost_usd(
+        price=card,
+        input_tokens=0,
+        output_tokens=0,
+        cache_read_tokens=1_000_000,
+        discount=batch_discount(path),
+    )
+    assert cost == pytest.approx(expected_usd)
+
+
 def test_gpt_5_is_priced_at_openai_list_prices():
     """The deleted dream rate table priced ``gpt-5``; the catalog card
     keeps it priced, at OpenAI's list rates."""

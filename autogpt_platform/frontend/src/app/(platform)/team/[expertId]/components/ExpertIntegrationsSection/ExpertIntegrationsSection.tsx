@@ -20,9 +20,15 @@ import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
 interface Props {
   expertId: string;
   expertName: string;
+  /** The chat's side panel: a smaller title and no search. */
+  compact?: boolean;
 }
 
-export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
+export function ExpertIntegrationsSection({
+  expertId,
+  expertName,
+  compact = false,
+}: Props) {
   const {
     granted,
     grantable,
@@ -56,7 +62,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
   return (
     <section data-testid="expert-integrations-section">
       <div className="mb-2.5 flex flex-wrap items-center justify-between gap-3">
-        <Text variant="large-medium" tone="primary">
+        <Text variant={compact ? "body-medium" : "large-medium"} tone="primary">
           {expertName}&apos;s Integrations
         </Text>
         <div className="flex items-center gap-2">
@@ -98,13 +104,15 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           >
             Add integration
           </Button>
-          <SearchInput
-            size="small"
-            value={query}
-            onChange={setQuery}
-            placeholder="Search integrations"
-            className="w-48"
-          />
+          {compact ? null : (
+            <SearchInput
+              size="small"
+              value={query}
+              onChange={setQuery}
+              placeholder="Search integrations"
+              className="w-48"
+            />
+          )}
         </div>
       </div>
 

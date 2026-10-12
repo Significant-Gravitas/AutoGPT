@@ -261,29 +261,36 @@ class FakeDreamDb:
         ][:limit]
 
     async def list_expired_dream_passes(
-        self, expired_before: datetime, limit: int = 100
+        self,
+        expired_before: datetime,
+        limit: int = 100,
+        after_lapse: datetime | None = None,
+        after_id: str | None = None,
     ) -> list[DreamPassRecord]:
-        """Open rows whose lease lapsed before *expired_before*, oldest
-        lapse first, at most *limit*."""
+        """Open rows whose lease lapsed before *expired_before*, in lapse
+        order (the lapse, then the id), after *after_lapse* and *after_id*
+        when given, at most *limit*."""
         self._raise_if_down()
-        lapsed = [
+        lapsed = sorted(
             (row["lease_expires_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] in OPEN_STATUSES
             and row.get("lease_expires_at") is not None
             and row["lease_expires_at"] < expired_before
-        ]
-        return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
+        )
+        if after_lapse is not None and after_id is not None:
+            lapsed = [key for key in lapsed if key > (after_lapse, after_id)]
+        return [self.record(pass_id) for _, pass_id in lapsed[:limit]]
 
     async def list_dream_pass_cleanups(
         self, due_before: datetime, limit: int = 100
     ) -> list[DreamPassRecord]:
         """Closed rows marked for a cleanup that is due (marked, or holding
-        no lease or one that lapsed, before *due_before*), longest pending
-        first."""
+        no lease or one that lapsed, before *due_before*), the ones written
+        least recently first."""
         self._raise_if_down()
         pending = [
-            (row["cleanup_pending_at"], pass_id)
+            (row["updated_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] not in OPEN_STATUSES
             and row.get("cleanup_pending_at") is not None

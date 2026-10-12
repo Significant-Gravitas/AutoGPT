@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
@@ -29,7 +30,6 @@ import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  parseSpecialMarkers,
 } from "./helpers";
 import {
   isMidTurnSegmentRow,
@@ -37,7 +37,6 @@ import {
   turnMessagesForRow,
 } from "./midTurnSplit";
 import {
-  getLatestAssistantStatusMessage,
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
@@ -75,6 +74,7 @@ import {
 } from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -136,14 +136,6 @@ interface Props {
   /** The layout floats its sidebar/files controls over the chat's top-left
    *  corner on small viewports (see ThreadHeader). */
   hasFloatingControls?: boolean;
-  /** Set by the host that mounts the session activity card, so the thread
-   *  chip only becomes clickable where that card exists. */
-  canOpenActivity?: boolean;
-  /** The host's floating workspace-files card is open, so the column
-   *  slides aside for it. Only the copilot chat mounts that card;
-   *  every other host (share viewer, memory and builder panels) leaves this
-   *  off, whatever the persisted panel state says. */
-  areFilesOpen?: boolean;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -308,8 +300,6 @@ export function ChatMessagesContainer({
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
   hasFloatingControls = false,
-  canOpenActivity = false,
-  areFilesOpen = false,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -414,11 +404,6 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  // Surface the latest `data-status` message from the live assistant when
-  // the Thinking indicator is up — but only if it wasn't invalidated by a
-  // more recent content part (in which case the model has moved on and the
-  // status is stale).
-  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
 
   // A live compaction narrates itself via CompactionCard — the generic
@@ -443,11 +428,7 @@ export function ChatMessagesContainer({
     activeStreamStartedAt,
   );
   const indicator = (
-    <ThinkingIndicator
-      active={showThinking}
-      elapsedSeconds={elapsedSeconds}
-      statusMessage={latestStatusMessage}
-    />
+    <ThinkingIndicator active={showThinking} elapsedSeconds={elapsedSeconds} />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
   // stays out of the transcript for them wherever it would render.
@@ -489,10 +470,7 @@ export function ChatMessagesContainer({
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          readOnly={readOnly}
-          sessionId={sessionID}
           hasFloatingControls={hasFloatingControls}
-          canOpenActivity={canOpenActivity}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -508,10 +486,9 @@ export function ChatMessagesContainer({
       >
         <ConversationContent
           className={cn(
-            "ease-[cubic-bezier(0.32,0.72,0,1)] mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14 transition-transform duration-300 will-change-transform motion-reduce:transition-none",
+            "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
             !showThreadHeader && "pt-4",
-            areFilesOpen && "xl:-translate-x-40",
           )}
           style={
             bottomContentPadding
@@ -820,9 +797,7 @@ export function ChatMessagesContainer({
                     <ThinkingIndicator
                       active
                       elapsedSeconds={restoreElapsedSeconds}
-                      statusMessage={
-                        restoreStatusMessage ?? "Reconnecting to live stream..."
-                      }
+                      statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.
@@ -873,15 +848,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              <summary className="cursor-pointer font-medium">
-                The assistant encountered an error. Please try sending your
-                message again.
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
+            <ChatErrorBanner error={error} />
           )}
           <TailSpacer
             messageID={lastUserMessageID}

@@ -11,7 +11,7 @@ Per-pass state lives in two Redis keys:
     token usage, so the apply step has everything it needs and the cost log
     can record all three rows at once
 
-Both are TTL'd to an hour past the pass's lease (``INPUT_TTL_SECONDS``), so
+Both are TTL'd to twelve hours past the pass's lease (``INPUT_TTL_SECONDS``), so
 the reaper can still charge and delete them and a forgotten pass naturally
 falls off the radar. SETNX gates (7-day TTL) keep the side effects
 at-most-once should a finished batch be delivered twice or a cleanup run
@@ -103,8 +103,11 @@ async def read_state_or_none(pass_id: str) -> dict[str, dict[str, Any]] | None:
 
 
 async def write_phase_to_state(
-    *, pass_id: str, phase: DreamPhase, row: BatchResultRow
+    *, pass_id: str, phase: DreamPhase, row: BatchResultRow, model: str | None = None
 ) -> None:
+    """Keep a landed phase's result in the pass's state, with *model*, the
+    model the phase was submitted on, so whoever charges the phase later
+    (the pass's end, or the reaper long after) prices it on that model."""
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
@@ -117,10 +120,21 @@ async def write_phase_to_state(
             "cache_read_tokens": row.cache_read_tokens,
             "cache_creation_tokens": row.cache_creation_tokens,
             "error": row.error,
+            "model": model,
         }
     )
     await cast("Awaitable[int]", redis.hset(state_key(pass_id), phase, body))
     await redis.expire(state_key(pass_id), STATE_TTL_SECONDS)
+
+
+def recorded_phase_models(state: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """The model each landed phase's state row recorded; a row written before
+    rows recorded their model names none."""
+    return {
+        phase: model
+        for phase, row in state.items()
+        if isinstance(model := row.get("model"), str) and model
+    }
 
 
 async def delete_state(pass_id: str) -> None:
@@ -216,6 +230,34 @@ async def claim_per_phase_charging(pass_id: str) -> bool:
         return True
     held = await redis.get(key)
     return (held.decode() if isinstance(held, bytes) else held) == _PER_PHASE
+
+
+async def uncharged_phases(pass_id: str, phases: list[str]) -> list[str]:
+    """Those of *phases* nobody claimed the charge of, nor the pass's whole
+    charge under an earlier build; all of them when Redis cannot say. For
+    reporting usage that is gone, never for deciding to charge."""
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        whole = await redis.get(f"{_COSTS_LOGGED_PREFIX}:{pass_id}")
+        if whole is not None and _text(whole) != _PER_PHASE:
+            return []
+        return [
+            phase
+            for phase in phases
+            if not await redis.exists(f"{_PHASE_CHARGED_PREFIX}:{pass_id}:{phase}")
+        ]
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read which phases were charged",
+            exc_info=True,
+        )
+        return list(phases)
+
+
+def _text(value: Any) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 async def claim_phase_charge(pass_id: str, phase: str) -> bool:

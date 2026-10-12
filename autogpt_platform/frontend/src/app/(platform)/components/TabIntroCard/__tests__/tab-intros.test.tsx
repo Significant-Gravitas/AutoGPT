@@ -150,7 +150,7 @@ describe("BuildTabIntro", () => {
       screen.getByRole("button", { name: "Ask Otto to build it" }),
     );
 
-    expect(push).toHaveBeenCalledWith("/copilot");
+    expect(push).toHaveBeenCalledWith("/copilot?new=1");
     expect(startTutorial).not.toHaveBeenCalled();
     expect(completeStep).toHaveBeenCalledWith("BUILD_TAB_INTRO");
     expect(capture).toHaveBeenCalledWith("tab_intro_cta_clicked", {

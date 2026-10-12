@@ -67,13 +67,14 @@ export function DeviceAuthConnectButton({
         account.
       </Text>
 
-      <div className="flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      {/* The code is a live authorization code and the link's href can carry
+          it too (verification_uri_complete), so PostHog skips the whole panel
+          and Sentry masks the code (unmask={false}). */}
+      <div className="ph-no-capture flex flex-col gap-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="flex flex-col gap-1">
           <Text variant="small" className="font-medium text-zinc-500">
             Your code
           </Text>
-          {/* unmask={false}: Text unmasks for session replay by default, and
-              this is a live authorization code — it must not be recorded. */}
           <Text
             variant="h3"
             as="p"

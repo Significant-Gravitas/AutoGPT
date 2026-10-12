@@ -166,6 +166,13 @@ def build_sdk_env(
     env["CLAUDE_CODE_DISABLE_CLAUDE_MDS"] = "1"
     env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
     env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+    # Run sub-agents in the foreground.  Since Claude Code 2.1.198 the
+    # Agent/Task tool launches them in the background by default and returns
+    # ``async_launched`` at once; their report only arrives as a new CLI turn
+    # after the ``ResultMessage``, by which point the turn has ended and the
+    # CLI has been closed, killing the sub-agent and losing its work.  This
+    # also stops the CLI from moving long tool calls to the background.
+    env["CLAUDE_CODE_DISABLE_BACKGROUND_TASKS"] = "1"
     # Strip Anthropic-specific beta headers that OpenRouter rejects.
     # NOTE: this disables ALL experimental betas including
     # context-management-2025-06-27.  This is intentional: OpenRouter

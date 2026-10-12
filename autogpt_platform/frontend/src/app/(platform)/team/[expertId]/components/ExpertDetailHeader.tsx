@@ -25,7 +25,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
       <ExpertCover className="h-36" color={cover.color} art={cover.art} />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <span className="-mt-12 ml-14 block shrink-0">
+        <span className="relative z-10 -mt-12 ml-14 block shrink-0">
           <ExpertAvatarButton expert={expert} />
         </span>
         <div className="min-w-0 flex-1">
@@ -35,14 +35,14 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             jobTitle={expert.job_title}
             size="page"
             nameAlign="baseline"
-            nameAccessory={
-              <IntegrationIcons
-                expertName={expert.name}
-                providers={expert.credential_providers ?? []}
-              />
-            }
           />
-          {topic ? <CategoryTag category={topic} className="mt-2" /> : null}
+          <div className="mt-2 flex items-center gap-2 empty:hidden">
+            {topic ? <CategoryTag category={topic} /> : null}
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <Button

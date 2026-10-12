@@ -143,19 +143,19 @@ class RunBlockTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a block_id",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not isinstance(input_data, dict):
             return ErrorResponse(
                 message="input_data must be an object",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         logger.info("Preparing block %s for user %s", block_id, user_id)
 
@@ -191,7 +191,7 @@ class RunBlockTool(BaseTool):
                     "Use find_capability to discover blocks that are allowed."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Dry-run fast-path: skip credential/HITL checks — simulation never calls
         # the real service so credentials and review gates are not needed.
@@ -235,7 +235,7 @@ class RunBlockTool(BaseTool):
                     message=f"Block '{prep.block.name}' has an invalid output schema",
                     error=str(e),
                     session_id=session_id,
-                )
+                ).from_outside()
 
             credentials_meta = list(prep.matched_credentials.values())
             missing = sorted(
@@ -279,7 +279,7 @@ class RunBlockTool(BaseTool):
                     credentials=credentials_meta,
                 ),
                 user_authenticated=True,
-            )
+            ).from_outside()
 
         if not dry_run:
             spend_gate = await check_spend_approval(prep, user_id, session)

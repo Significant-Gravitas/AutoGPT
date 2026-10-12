@@ -55,12 +55,14 @@ _BILLED = InferenceUsage(
 
 
 class Graph:
-    """What apply wrote, one pass id per fact; a pass named in ``hold`` stops
-    in its session creation until ``resume`` is set."""
+    """What apply wrote, one pass id per fact; a pass named in ``hold``, or
+    the next to create its session when ``hold_next``, stops in its session
+    creation until ``resume`` is set."""
 
     def __init__(self) -> None:
         self.writes: list[str] = []
         self.hold: set[str] = set()
+        self.hold_next = False
         self.in_session = asyncio.Event()
         self.resume = asyncio.Event()
 
@@ -70,7 +72,8 @@ def graph(mocker) -> Graph:
     recorded = Graph()
 
     async def create_session(scope, pass_id: str) -> str:
-        if pass_id in recorded.hold:
+        if pass_id in recorded.hold or recorded.hold_next:
+            recorded.hold_next = False
             recorded.in_session.set()
             await recorded.resume.wait()
         return f"s-{pass_id}"
@@ -171,8 +174,9 @@ class TestTheSyncRoute:
         session is created, and a forced admin pass takes the scope and
         writes. Apply's renewal before its first write finds the lock gone:
         the old pass writes nothing."""
+        graph.hold_next = True
         old = asyncio.create_task(orchestrator_mod.execute_dream_pass("u1"))
-        await _hold_the_first_session(graph, fake_dream_db)
+        await asyncio.wait_for(graph.in_session.wait(), 5)
         await fake_dream_redis.delete(_LOCK_KEY)
 
         newer = await orchestrator_mod.execute_dream_pass(
@@ -260,14 +264,6 @@ class TestTheBatchRoute:
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None and status.state == "complete"
         assert _LOCK_KEY not in fake_dream_redis.store
-
-
-async def _hold_the_first_session(graph: Graph, fake_dream_db) -> None:
-    """Hold the first pass in its session creation, once it is there."""
-    while not fake_dream_db.rows:
-        await asyncio.sleep(0)
-    graph.hold.add(next(iter(fake_dream_db.rows)))
-    await asyncio.wait_for(graph.in_session.wait(), 5)
 
 
 async def _seed_batch_pass(fake_dream_db, fake_dream_redis) -> None:

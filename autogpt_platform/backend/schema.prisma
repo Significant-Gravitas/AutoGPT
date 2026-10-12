@@ -129,6 +129,18 @@ model User {
 
   timezone String @default("not-set")
 
+  // Consent captured at signup. termsVersion names the terms and privacy
+  // policy text the account agreed to (frontend lib/legal.ts TERMS_VERSION).
+  // A set marketingOptOutAt keeps the account out of MailerLite entirely.
+  termsAcceptedAt       DateTime?
+  termsVersion          String?
+  marketingOptOutAt     DateTime?
+  marketingOptOutSource String? // "signup" | "email_unsubscribe" | "settings"
+  // The first Iranian or Russian country a checkout saw for the account (its
+  // IP or billing country). Like an opt-out, it keeps the account out of
+  // MailerLite for good (backend/notifications/consent.py).
+  marketingExcludedCountry String?
+
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
   // the server picks, exactly as it did before this setting existed. The
@@ -315,6 +327,8 @@ model UserOnboarding {
   // means renames/adds/retires are code-only — legacy values become inert
   // strings instead of stuck enum members. See SECRT-2355.
   completedSteps                String[]  @default([])
+  wizardProgress                Json?
+  wizardRevision                Int       @default(0)
   walletShown                   Boolean   @default(false)
   notified                      String[]  @default([])
   rewardedFor                   String[]  @default([])
@@ -327,6 +341,13 @@ model UserOnboarding {
   agentRuns                     Int       @default(0)
   lastRunAt                     DateTime?
   consecutiveRunDays            Int       @default(0)
+
+  // The role picked in the wizard: one of RoleStep's option IDs, or "Other"
+  // with the typed text in roleOther. Written only by POST /onboarding/profile:
+  // AutoPilot rewrites the copy in CoPilotUnderstanding, so that is no record
+  // of the pick (backend/data/onboarding_role.py).
+  role      String?
+  roleOther String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1282,6 +1303,9 @@ model Expert {
   dayOne Json?
 
   isTemplate       Boolean  @default(false)
+  // Stable roster key from the skills catalog (`maria`, `alex`). Templates are
+  // resolved by this on every publish, never by display name. Null on hires.
+  templateKey      String?  @unique
   sourceTemplateId String?
   SourceTemplate   Expert?  @relation("ExpertFromTemplate", fields: [sourceTemplateId], references: [id])
   HiredCopies      Expert[] @relation("ExpertFromTemplate")
@@ -1475,6 +1499,10 @@ model ExpertRoutine {
   // Seeded and shared rows always arrive false; only an owner binding this
   // routine to their connections sets it.
   grantsCredentials     Boolean   @default(false)
+  // {provider: {id, title}}: the account each turn uses where the owner has
+  // several for one provider, chosen in the chat that set the routine up. A
+  // pinned account that is gone fails the step instead of switching accounts.
+  credentialPins        Json?
   // Mirrors AgentPreset.deactivatedByExpertArchive: re-hire resumes exactly
   // what archiving paused, never one the owner had switched off themselves.
   pausedByExpertArchive Boolean   @default(false)
@@ -2106,18 +2134,18 @@ model PlatformCostLog {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  userId       String?
-  User         User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
-  graphExecId  String?
+  userId        String?
+  User          User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  graphExecId   String?
   // The AutoPilot chat the cost came from, when it did not come from a graph run.
   chatSessionId String?
-  nodeExecId   String?
-  graphId      String?
-  nodeId       String?
-  blockId      String?
-  blockName    String?
-  provider     String
-  credentialId String?
+  nodeExecId    String?
+  graphId       String?
+  nodeId        String?
+  blockId       String?
+  blockName     String?
+  provider      String
+  credentialId  String?
 
   // Cost in microdollars (1 USD = 1,000,000). Null if unknown.
   costMicrodollars BigInt?
@@ -2519,6 +2547,18 @@ model SkillListingVersion {
   // scan; a later install writing the same bytes skips the scan.
   scannedSha256 String[] @default([])
 
+  // Content identity of the whole package: SHA-256 over the canonical JSON of
+  // the sorted `(path, sha256, executable)` file list, SKILL.md included. The
+  // same formula the skills catalog records as `tree_sha256`, so a package is
+  // identified identically in the repo, on this row and in a user's copy.
+  // A version with a hash is immutable; publishing re-uses it by hash.
+  // Null on creator submissions.
+  packageSha256 String?
+  // The SKILL.md exactly as published, installed byte-for-byte so a copy's
+  // checksum can be compared to the catalog's. Null on versions written
+  // before the catalog publisher, whose installs render from the fields.
+  skillMarkdown String?
+
   // The creator's own library skill slug this was published from, so a
   // re-publish can find its listing again. Null once that skill is deleted.
   sourceSkillSlug String?
@@ -2554,10 +2594,29 @@ model SkillListingVersion {
   Files SkillListingFile[]
 
   @@unique([skillListingId, version])
+  @@unique([skillListingId, packageSha256])
   @@index([skillListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([organizationId])
+}
+
+// One publish of the skills catalog into this database: which commit, which
+// manifest, and what changed. Append-only audit log; rollback is publishing an
+// older commit, since versions are immutable and content-addressed.
+model SkillCatalogRelease {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  repository     String
+  revision       String
+  releaseKey     String
+  manifestSha256 String
+  // {created: [slug], updated: [slug], unchanged: n, retired: [slug],
+  //  experts: {created: [key], updated: [key], retired: [key]}}
+  summary        Json
+
+  @@index([createdAt])
 }
 
 /// One file beside a published version's SKILL.md, snapshotted at submit time

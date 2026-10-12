@@ -23,8 +23,7 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
@@ -39,6 +38,7 @@ import { useCredentialFailureCounters } from "./useCredentialFailureCounters";
 import { HeldOutcomesContext } from "../ChatMessagesContainer/HeldOutcomesContext";
 import { ChainRowView } from "./ChainRowView";
 import { applyHeldOutcome } from "./heldRow";
+import { useHeldAnswersStore } from "../ApprovalQueue/heldAnswersStore";
 import {
   type ChainRow,
   getChainHeading,
@@ -68,6 +68,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
 
   const pendingQuestions = useContext(PendingQuestionsContext);
   const heldOutcomes = useContext(HeldOutcomesContext);
+  const heldAnswers = useHeldAnswersStore((state) => state.answers);
   const { onSend } = useCopilotChatActions();
   // The ref latches against a double effect run; the state re-renders Proceed.
   const autoSentRef = useRef(false);
@@ -170,7 +171,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
         parts
           .map((part, i) => toChainRow(part, i))
           .filter((row): row is ChainRow => row !== null)
-          .map((row) => applyHeldOutcome(row, heldOutcomes))
+          .map((row) => applyHeldOutcome(row, heldOutcomes, heldAnswers))
           // Unanswered clarifying questions and setup cards render their work
           // in the card below the chain — their rows are lifted out of view.
           .map((row) =>
@@ -181,7 +182,7 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
                 : row,
           ),
       ),
-    [parts, pendingQuestions, heldOutcomes],
+    [parts, pendingQuestions, heldOutcomes, heldAnswers],
   );
   if (rows.length === 0) return null;
 
@@ -223,13 +224,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // points at the thread rather than the composer.
   function sendReply(message: string) {
     void Promise.resolve(onSend(message)).catch((error: unknown) =>
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "it is still in the thread, use Retry to send it again",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
   }

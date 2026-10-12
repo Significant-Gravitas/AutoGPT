@@ -1,4 +1,5 @@
 import { getListExpertCredentialsMockHandler } from "@/app/api/__generated__/endpoints/experts/experts.msw";
+import { getListWorkspaceFilesMockHandler200 } from "@/app/api/__generated__/endpoints/workspace/workspace.msw";
 import type { ExpertCredentialRef } from "@/app/api/__generated__/models/expertCredentialRef";
 import { server } from "@/mocks/mock-server";
 import {
@@ -7,9 +8,11 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
-import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadHeader } from "../components/ChatMessagesContainer/components/ThreadHeader";
+import { ContextPanel } from "../components/ContextPanel/ContextPanel";
+import { ContextPanelToggle } from "../components/ContextPanel/ContextPanelToggle";
+import { useCopilotUIStore } from "../store";
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -19,9 +22,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return { ...actual, useGetFlag: () => true };
 });
 
+const maria = { id: "expert-maria", name: "Maria" };
+
 const mariaIdentity = {
-  id: "expert-maria",
-  name: "Maria",
+  ...maria,
   avatarUrl: null,
   role: "Marketing Strategist",
   isArchived: false,
@@ -37,14 +41,44 @@ function credential(provider: string): ExpertCredentialRef {
   };
 }
 
-function renderHeader() {
+function resetPanel() {
+  useCopilotUIStore.setState((s) => ({
+    contextPanelExpert: null,
+    artifactPanel: {
+      ...s.artifactPanel,
+      isOpen: false,
+      activeArtifact: null,
+      activeTab: "files",
+      mode: "artifact",
+      isComputerOpen: false,
+    },
+  }));
+}
+
+function renderControls() {
   return render(
-    <ThreadHeader expertIdentity={mariaIdentity} readOnly={false} />,
+    <>
+      <ContextPanelToggle sessionId="session-1" expert={maria} />
+      <ContextPanel sessionId="session-1" />
+    </>,
   );
 }
 
-describe("expert integrations in the thread header", () => {
-  it("shows the first three logos and counts the rest", async () => {
+beforeEach(() => {
+  server.use(
+    getListWorkspaceFilesMockHandler200({
+      files: [],
+      offset: 0,
+      has_more: false,
+    }),
+  );
+  resetPanel();
+});
+
+afterEach(resetPanel);
+
+describe("expert integrations in the chat controls", () => {
+  it("shows the first two logos and counts the rest", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         credential("linkedin"),
@@ -55,11 +89,11 @@ describe("expert integrations in the thread header", () => {
       ]),
     );
 
-    renderHeader();
+    renderControls();
 
     const cluster = await screen.findByTestId("expert-integrations");
-    expect(within(cluster).getAllByRole("img")).toHaveLength(3);
-    expect(within(cluster).getByText("+2")).toBeDefined();
+    expect(within(cluster).getAllByRole("img")).toHaveLength(2);
+    expect(within(cluster).getByText("+3")).toBeDefined();
   });
 
   it("omits the counter when everything fits", async () => {
@@ -70,60 +104,40 @@ describe("expert integrations in the thread header", () => {
       ]),
     );
 
-    renderHeader();
+    renderControls();
 
     const cluster = await screen.findByTestId("expert-integrations");
     expect(within(cluster).getAllByRole("img")).toHaveLength(2);
     expect(within(cluster).queryByText(/^\+/)).toBeNull();
   });
 
-  it("lists every integration by name once opened", async () => {
+  it("opens the side panel on the expert's integrations", async () => {
     server.use(
       getListExpertCredentialsMockHandler([
         credential("linkedin"),
         credential("notion"),
         credential("github"),
-        credential("slack"),
       ]),
     );
 
-    renderHeader();
-    await userEvent.click(await screen.findByTestId("expert-integrations"));
+    renderControls();
+    fireEvent.click(await screen.findByTestId("expert-integrations"));
 
-    expect(await screen.findByText("slack account")).toBeDefined();
-    expect(screen.getByText("linkedin account")).toBeDefined();
-    expect(
-      screen.getByRole("link", { name: /Manage what Maria can access/ }),
-    ).toBeDefined();
-  });
-
-  it("names an MCP integration after the service, not its URL", async () => {
-    server.use(
-      getListExpertCredentialsMockHandler([
-        {
-          credential_id: "cred-mcp",
-          provider: "mcp",
-          title: "MCP: mcp.sentry.dev",
-          type: "host_scoped",
-        },
-      ]),
+    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(await screen.findByText("github account")).toBeDefined();
+    expect(screen.getByLabelText("Hide integrations")).toBeDefined();
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe(
+      "integrations",
     );
-
-    renderHeader();
-    await userEvent.click(await screen.findByTestId("expert-integrations"));
-
-    expect(await screen.findByText("Sentry")).toBeDefined();
-    expect(screen.queryByText("MCP: mcp.sentry.dev")).toBeNull();
   });
 
   it("keeps the integration's name when its logo fails to load", async () => {
     server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
 
-    renderHeader();
+    renderControls();
 
     const cluster = await screen.findByTestId("expert-integrations");
-    const logo = within(cluster).getByRole("img", { name: "LinkedIn" });
-    fireEvent.error(logo);
+    fireEvent.error(within(cluster).getByRole("img", { name: "LinkedIn" }));
 
     // The PNG is missing for plenty of providers, so the fallback glyph must
     // still announce which integration it stands for.
@@ -132,12 +146,26 @@ describe("expert integrations in the thread header", () => {
     ).toBeDefined();
   });
 
-  it("renders nothing when the expert reaches no integrations", async () => {
+  it("shows a placeholder that still opens the panel when there are none", async () => {
     server.use(getListExpertCredentialsMockHandler([]));
 
-    renderHeader();
+    renderControls();
 
-    expect(await screen.findByTestId("expert-thread-header")).toBeDefined();
+    const placeholder = await screen.findByTestId("expert-integrations-empty");
     expect(screen.queryByTestId("expert-integrations")).toBeNull();
+    fireEvent.click(placeholder);
+
+    expect(await screen.findByText("Maria's Integrations")).toBeDefined();
+    expect(screen.getByLabelText("Hide integrations")).toBeDefined();
+  });
+
+  it("keeps integrations and actions out of the thread chip", async () => {
+    server.use(getListExpertCredentialsMockHandler([credential("linkedin")]));
+
+    render(<ThreadHeader expertIdentity={mariaIdentity} />);
+
+    const header = await screen.findByTestId("expert-thread-header");
+    expect(within(header).queryByRole("img", { name: "LinkedIn" })).toBeNull();
+    expect(within(header).queryByRole("button")).toBeNull();
   });
 });
