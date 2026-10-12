@@ -286,5 +286,5 @@ def test_route_reports_the_provider_revocation_result(
         test_user_id, creds, True, skip_failed_prunes=False
     )
     manager.delete.assert_awaited_once_with(test_user_id, "cred-oauth")
-    get_handler.assert_called_once_with(None, ProviderName.GITHUB)
+    get_handler.assert_called_once_with(ProviderName.GITHUB)
     handler.revoke_tokens.assert_awaited_once_with(creds)

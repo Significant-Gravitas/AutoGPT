@@ -141,7 +141,6 @@ async def login(
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
     ],
     user_id: Annotated[str, Security(get_user_id)],
-    request: Request,
     scopes: Annotated[
         str, Query(title="Comma-separated list of authorization scopes")
     ] = "",
@@ -154,7 +153,7 @@ async def login(
         await enforce_codex_access_http(user_id)
         return await _start_codex_login(user_id, scopes, credential_id)
 
-    handler = _get_provider_oauth_handler(request, provider)
+    handler = _get_provider_oauth_handler(provider)
 
     requested_scopes = scopes.split(",") if scopes else []
 
@@ -352,7 +351,6 @@ async def callback(
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
     state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
     user_id: Annotated[str, Security(get_user_id)],
-    request: Request,
 ) -> CredentialsMetaResponse:
     logger.debug(f"Received OAuth callback for provider: {provider}")
 
@@ -372,7 +370,7 @@ async def callback(
             redact.append(valid_state.code_verifier)
 
         failure_class = "provider_unavailable"
-        handler = _get_provider_oauth_handler(request, provider)
+        handler = _get_provider_oauth_handler(provider)
         client_secret = getattr(handler, "client_secret", None)
         if isinstance(client_secret, str) and client_secret:
             redact.append(client_secret)
@@ -1215,7 +1213,7 @@ def _revocation_handler(
         # *after* the local delete had already run, leaving a live token
         # at the provider with nothing left to revoke it with.
         return device_handler()
-    return _get_provider_oauth_handler(None, provider)
+    return _get_provider_oauth_handler(provider)
 
 
 # ------------------------- WEBHOOK STUFF -------------------------- #
@@ -1904,9 +1902,7 @@ async def _cleanup_orphaned_webhook_for_graph(
         )
 
 
-def _get_provider_oauth_handler(
-    req: Request | None, provider_name: ProviderName
-) -> "BaseOAuthHandler":
+def _get_provider_oauth_handler(provider_name: ProviderName) -> "BaseOAuthHandler":
     # Ensure blocks are loaded so SDK providers are available
     try:
         from backend.blocks import load_all_blocks
