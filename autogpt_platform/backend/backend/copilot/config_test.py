@@ -598,7 +598,7 @@ class TestLocalAuxModels:
             api_key="or-key",
             base_url="https://openrouter.ai/api/v1",
         )
-        assert cfg.title_model == "anthropic/claude-haiku-4-5"
+        assert cfg.title_model == "anthropic/claude-haiku-5-5"
         assert cfg.simulation_model == "google/gemini-2.5-flash-lite"
         assert cfg.fast_advanced_model == "anthropic/claude-opus-5-5"
 
