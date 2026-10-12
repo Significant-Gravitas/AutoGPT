@@ -1386,6 +1386,12 @@ async def _write_skill(
                 scanned_checksums=skill.scanned_checksums,
             )
             checksums.add(digest)
+        await _delete_paths(
+            manager,
+            {f.path for f in stale if f.path not in written},
+            stale,
+            strict=True,
+        )
         skill_md = skill.rendered.encode("utf-8")
         await manager.write_file(
             content=skill_md,
@@ -1403,9 +1409,6 @@ async def _write_skill(
         # the rest would turn a failed write into a lost file.
         await _delete_paths(manager, written - existing_paths)
         raise
-    await _delete_paths(
-        manager, {f.path for f in stale if f.path not in written}, stale, strict=True
-    )
     return frozenset(checksums)
 
 
