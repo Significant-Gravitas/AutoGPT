@@ -1118,44 +1118,28 @@ export function resolveDataType(schema: BlockIOSubSchema): {
       return { type: _handleStringSchema(strSchema), schema: strSchema };
     }
 
-    // (number|integer) & null
-    if (
-      (types.includes("number") || types.includes("integer")) &&
-      types.includes("null")
-    ) {
-      // Just reuse our single-type logic for whichever is not null
-      const numSchema = schema.anyOf.find(
-        (s) => s.type === "number" || s.type === "integer",
-      );
-      if (numSchema) {
-        return { type: _handleSingleTypeSchema(numSchema), schema: numSchema };
-      }
-      return { type: DataType.NUMBER, schema }; // fallback
+    // (number|integer) & null: reuse the single-type logic for the number
+    const numSchema = schema.anyOf.find(
+      (s) => s.type === "number" || s.type === "integer",
+    );
+    if (numSchema && types.includes("null")) {
+      return { type: _handleSingleTypeSchema(numSchema), schema: numSchema };
     }
 
     // (array | null)
-    if (types.includes("array") && types.includes("null")) {
-      const arrSchema = schema.anyOf.find((s) => s.type === "array");
+    const arrSchema = schema.anyOf.find((s) => s.type === "array");
+    if (arrSchema && types.includes("null")) {
       // Check for table format on the parent schema (where anyOf is)
       if ("format" in schema && schema.format === "table") {
-        return { type: DataType.TABLE, schema: arrSchema ?? schema };
+        return { type: DataType.TABLE, schema: arrSchema };
       }
-
-      if (arrSchema) {
-        return { type: _handleSingleTypeSchema(arrSchema), schema: arrSchema };
-      }
-      return { type: DataType.ARRAY, schema };
+      return { type: _handleSingleTypeSchema(arrSchema), schema: arrSchema };
     }
 
     // (object | null)
-    if (types.includes("object") && types.includes("null")) {
-      const objSchema = schema.anyOf.find(
-        (s) => s.type === "object",
-      ) as BlockIOObjectSubSchema;
-      if (objSchema) {
-        return { type: _handleSingleTypeSchema(objSchema), schema: objSchema };
-      }
-      return { type: DataType.OBJECT, schema };
+    const objSchema = schema.anyOf.find((s) => s.type === "object");
+    if (objSchema && types.includes("null")) {
+      return { type: _handleSingleTypeSchema(objSchema), schema: objSchema };
     }
   }
 

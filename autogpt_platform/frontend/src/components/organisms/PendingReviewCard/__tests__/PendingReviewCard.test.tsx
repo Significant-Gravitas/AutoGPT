@@ -112,6 +112,7 @@ function serveBlockSchema(properties: Record<string, unknown>) {
 // card used to look for them on the field, find none, and crash the chat on
 // /home and /copilot (BUILDER-93V).
 test("offers an optional choice from the block's schema as a select", async () => {
+  const onReviewDataChange = vi.fn();
   serveBlockSchema({
     priority: {
       title: "Priority",
@@ -125,14 +126,58 @@ test("offers an optional choice from the block's schema as a select", async () =
         block_id: "block-1",
         payload: { priority: "high" },
       })}
+      onReviewDataChange={onReviewDataChange}
+    />,
+  );
+
+  const priority = await screen.findByRole("combobox", { name: "Priority" });
+  expect(priority.textContent).toBe("high");
+
+  fireEvent.click(priority);
+  fireEvent.click(await screen.findByRole("option", { name: "low" }));
+
+  const [, data] = onReviewDataChange.mock.lastCall ?? [];
+  expect(JSON.parse(data)).toEqual({ priority: "low" });
+});
+
+// The same mismatch, in the other shapes a block's schema takes: an enum
+// wrapped in allOf and an enum with no members crashed the card too.
+test("gives wrapped, empty and untyped inputs a control instead of crashing", async () => {
+  vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  serveBlockSchema({
+    model: {
+      title: "Model",
+      allOf: [{ type: "string", enum: ["gpt", "claude"] }],
+    },
+    tone: { title: "Tone", type: "string", enum: ["formal", "casual"] },
+    region: { title: "Region", enum: [] },
+    notes: { title: "Notes" },
+  });
+
+  render(
+    <PendingReviewCard
+      review={makeReview({
+        block_id: "block-1",
+        payload: {
+          model: "claude",
+          tone: "casual",
+          region: "eu",
+          notes: "keep it short",
+        },
+      })}
       onReviewDataChange={() => {}}
     />,
   );
 
-  expect(await screen.findByText("Priority")).toBeDefined();
-  expect(screen.getByRole("combobox", { name: "Priority" }).textContent).toBe(
-    "high",
+  expect(
+    (await screen.findByRole("combobox", { name: "Model" })).textContent,
+  ).toBe("claude");
+  expect(screen.getByRole("combobox", { name: "Tone" }).textContent).toBe(
+    "casual",
   );
+  expect(screen.getByDisplayValue("eu")).toBeDefined();
+  expect(screen.getByDisplayValue("keep it short")).toBeDefined();
+  vi.mocked(console.warn).mockRestore();
 });
 
 test("offers an optional set of switches the payload left empty", async () => {
