@@ -25,11 +25,14 @@ async def is_account_closed(user_id: str) -> bool:
 
 
 async def close_account(user_id: str, source: AccountDeletionSource) -> bool:
-    """Record the deletion request, ban the sign-in and end every session.
+    """Record the deletion request, ban the sign-in, end every session and
+    take the user's Marketplace listings down.
 
-    All three happen in one transaction. Returns ``False``, having changed
-    nothing, when the account was already closed (including by a concurrent
-    call that won the race); ``True`` when this call closed it.
+    All of it happens in one transaction. Listings are soft-deleted, pending
+    ones too so they can't be approved later, and the erasure removes them
+    with the User. Returns ``False``, having changed nothing, when the account
+    was already closed (including by a concurrent call that won the race);
+    ``True`` when this call closed it.
     """
     try:
         async with transaction() as tx:
@@ -45,6 +48,14 @@ async def close_account(user_id: str, source: AccountDeletionSource) -> bool:
                 },
             )
             await tx.authsession.delete_many(where={"userId": user_id})
+            await tx.storelisting.update_many(
+                where={"owningUserId": user_id, "isDeleted": False},
+                data={"isDeleted": True},
+            )
+            await tx.skilllisting.update_many(
+                where={"owningUserId": user_id, "isDeleted": False},
+                data={"isDeleted": True},
+            )
     except UniqueViolationError:
         return False
     return True

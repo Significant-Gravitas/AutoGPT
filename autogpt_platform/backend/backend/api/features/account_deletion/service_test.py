@@ -4,6 +4,7 @@ Every step is mocked where the service uses it; routes_test.py runs the same
 flow against the real database.
 """
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -18,6 +19,7 @@ from backend.api.features.account_deletion.service import (
     PlanCancellationError,
     delete_account,
 )
+from backend.data.model import AutoTopUpConfig
 from backend.util.posthog_events import PostHogEvent
 
 MODULE = "backend.api.features.account_deletion.service"
@@ -28,6 +30,7 @@ TYPED = "  ada.lovelace@example.COM "
 LOAD = ["get_user_by_id", "is_account_closed"]
 BEFORE_CLOSE = [
     "cancel_all_subscriptions_now",
+    "set_auto_top_up",
     "revoke_connected_apps",
     "revoke_issued_access",
     "stop_user_work",
@@ -81,7 +84,8 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     steps.get_user_by_id.assert_awaited_once_with(USER_ID)
     steps.is_account_closed.assert_awaited_once_with(USER_ID)
     for name in BEFORE_CLOSE:
-        getattr(steps, name).assert_awaited_once_with(USER_ID)
+        if name != "set_auto_top_up":
+            getattr(steps, name).assert_awaited_once_with(USER_ID)
     steps.close_account.assert_awaited_once_with(
         USER_ID, AccountDeletionSource.SETTINGS
     )
@@ -257,3 +261,32 @@ async def test_neither_email_is_ever_logged(
     logged = caplog.text.lower()
     assert "typo@example.com" not in logged
     assert EMAIL.lower() not in logged
+
+
+@pytest.mark.asyncio
+async def test_auto_top_up_is_switched_off_before_the_close(steps: MagicMock):
+    """Work that outlives the deletion must not charge the saved card; the
+    order of the steps is checked with the others above."""
+    await _delete()
+
+    steps.set_auto_top_up.assert_awaited_once_with(
+        USER_ID, AutoTopUpConfig(threshold=0, amount=0)
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_confirmation_email_does_not_hold_the_request(
+    steps: MagicMock, mocker: MockerFixture, caplog: pytest.LogCaptureFixture
+):
+    mocker.patch(f"{MODULE}.CONFIRMATION_EMAIL_TIMEOUT_SECONDS", 0.05)
+
+    async def stall(email: str) -> None:
+        await asyncio.Event().wait()
+
+    steps.send_account_deleted_email.side_effect = stall
+
+    with caplog.at_level(logging.ERROR):
+        await asyncio.wait_for(_delete(), timeout=5)
+
+    assert _called(steps) == STEPS
+    assert "TimeoutError" in caplog.text

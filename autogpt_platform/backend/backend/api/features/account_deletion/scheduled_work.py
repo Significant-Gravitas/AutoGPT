@@ -56,8 +56,10 @@ async def stop_user_work(user_id: str) -> None:
     executor misses its cancel; a turn already running from a chat platform
     is not cancelled (it never takes a running slot, so it isn't listed; the
     unlink only stops new ones); a run can start an AutoPilot turn (AutoPilot
-    block) between steps 2 and 3; and until the account is closed, a request
-    from the user's own session can start work too.
+    block) between steps 2 and 3; until the account is closed, a request
+    from the user's own session can start work too; and a schedule or trigger
+    whose removal failed is not retried, while neither the scheduler nor the
+    webhook ingress checks for a closed account (the erasure reruns this).
 
     Best effort: each call that fails is logged and the rest still run, and
     this never raises, so the account can still be closed. Every call is

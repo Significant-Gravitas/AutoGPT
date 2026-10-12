@@ -20,6 +20,7 @@ from backend.api.features.integrations.router import (
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import NeedConfirmation
+from backend.util.request import HTTPClientError
 
 ROUTER = "backend.api.features.integrations.router"
 USER_ID = "user-1"
@@ -70,7 +71,9 @@ async def test_oauth2_tokens_are_revoked_after_the_local_delete():
         )
 
     assert revoked is True
-    remove_webhooks.assert_awaited_once_with(USER_ID, creds, True)
+    remove_webhooks.assert_awaited_once_with(
+        USER_ID, creds, True, skip_failed_prunes=False
+    )
     manager.delete.assert_awaited_once_with(USER_ID, "cred-oauth")
     handler.revoke_tokens.assert_awaited_once_with(creds)
     assert [name for name, _, _ in order.mock_calls] == ["delete", "revoke_tokens"]
@@ -92,6 +95,70 @@ async def test_webhooks_in_use_need_confirmation_and_nothing_is_deleted():
         with pytest.raises(NeedConfirmation):
             await delete_and_revoke_credentials(
                 USER_ID, creds, ProviderName.GITHUB, force=False
+            )
+
+    manager.delete.assert_not_awaited()
+    get_handler.assert_not_called()
+
+
+def _hook_the_provider_refuses_to_delete() -> MagicMock:
+    """A repo webhook GitHub answers with a 404 (repo gone) or 403 (admin lost)
+    on every attempt."""
+    manager = MagicMock()
+    manager.prune_webhook_if_dangling = AsyncMock(
+        side_effect=HTTPClientError("Not Found", 404)
+    )
+    return manager
+
+
+@pytest.mark.asyncio
+async def test_skipping_failed_prunes_still_deletes_and_revokes():
+    creds = _oauth2_cred()
+    hook = MagicMock(id="hook-1", triggered_nodes=[], triggered_presets=[])
+    handler = MagicMock()
+    handler.revoke_tokens = AsyncMock(return_value=True)
+    with (
+        patch(
+            f"{ROUTER}.get_all_webhooks_by_creds", new=AsyncMock(return_value=[hook])
+        ),
+        patch(
+            f"{ROUTER}.get_webhook_manager",
+            return_value=_hook_the_provider_refuses_to_delete(),
+        ),
+        patch(f"{ROUTER}.creds_manager") as manager,
+        patch(f"{ROUTER}._get_provider_oauth_handler", return_value=handler),
+    ):
+        manager.delete = AsyncMock()
+
+        revoked = await delete_and_revoke_credentials(
+            USER_ID, creds, ProviderName.GITHUB, force=True, skip_failed_prunes=True
+        )
+
+    assert revoked is True
+    manager.delete.assert_awaited_once_with(USER_ID, "cred-oauth")
+    handler.revoke_tokens.assert_awaited_once_with(creds)
+
+
+@pytest.mark.parametrize("force", [True, False])
+@pytest.mark.asyncio
+async def test_the_disconnect_route_still_stops_on_a_prune_error(force: bool):
+    creds = _oauth2_cred()
+    hook = MagicMock(id="hook-1", triggered_nodes=[], triggered_presets=[])
+    with (
+        patch(
+            f"{ROUTER}.get_all_webhooks_by_creds", new=AsyncMock(return_value=[hook])
+        ),
+        patch(
+            f"{ROUTER}.get_webhook_manager",
+            return_value=_hook_the_provider_refuses_to_delete(),
+        ),
+        patch(f"{ROUTER}.creds_manager") as manager,
+        patch(f"{ROUTER}._get_provider_oauth_handler") as get_handler,
+    ):
+        manager.delete = AsyncMock()
+        with pytest.raises(HTTPClientError):
+            await delete_and_revoke_credentials(
+                USER_ID, creds, ProviderName.GITHUB, force=force
             )
 
     manager.delete.assert_not_awaited()
@@ -215,7 +282,9 @@ def test_route_reports_the_provider_revocation_result(
 
     assert resp.status_code == 200
     assert resp.json() == {"deleted": True, "revoked": True}
-    remove_webhooks.assert_awaited_once_with(test_user_id, creds, True)
+    remove_webhooks.assert_awaited_once_with(
+        test_user_id, creds, True, skip_failed_prunes=False
+    )
     manager.delete.assert_awaited_once_with(test_user_id, "cred-oauth")
     get_handler.assert_called_once_with(None, ProviderName.GITHUB)
     handler.revoke_tokens.assert_awaited_once_with(creds)

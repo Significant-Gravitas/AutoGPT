@@ -31,10 +31,10 @@ async def unlink_chat_platforms(user_id: str) -> None:
 
     A message in a linked server (Discord, Slack, Telegram and the other
     chat platforms) or a linked DM starts an AutoPilot turn as the link's
-    owner with no login, and the bot's turn gate checks the plan and usage
-    limits but not a closed account. Uses the same unlink calls as the
-    platform-linking routes. Best effort and never raises: each call that
-    fails is logged and the rest still run.
+    owner with no login. The bot also treats a closed account's links as
+    unlinked, so one this fails to remove still runs no turn. Uses the same
+    unlink calls as the platform-linking routes. Best effort and never raises:
+    each call that fails is logged and the rest still run.
     """
     try:
         links = platform_linking_db()

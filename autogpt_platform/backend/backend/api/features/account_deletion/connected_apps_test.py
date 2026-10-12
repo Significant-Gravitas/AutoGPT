@@ -1,5 +1,6 @@
 """revoke_connected_apps: every app the user connected is revoked at its provider."""
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, MagicMock, call
 
@@ -103,8 +104,14 @@ async def test_each_user_owned_credential_is_revoked_once_with_force(
 
     get_all_creds.assert_awaited_once_with(USER_ID)
     assert revoke.await_args_list == [
-        call(USER_ID, github, ProviderName.GITHUB, force=True),
-        call(USER_ID, openai_key, ProviderName.OPENAI, force=True),
+        call(USER_ID, github, ProviderName.GITHUB, force=True, skip_failed_prunes=True),
+        call(
+            USER_ID,
+            openai_key,
+            ProviderName.OPENAI,
+            force=True,
+            skip_failed_prunes=True,
+        ),
     ]
 
 
@@ -157,7 +164,9 @@ async def test_a_legacy_stored_provider_is_revoked_under_its_canonical_name(
 
     await revoke_connected_apps(USER_ID)
 
-    revoke.assert_awaited_once_with(USER_ID, legacy, ProviderName.GITHUB, force=True)
+    revoke.assert_awaited_once_with(
+        USER_ID, legacy, ProviderName.GITHUB, force=True, skip_failed_prunes=True
+    )
 
 
 @pytest.mark.asyncio
@@ -170,10 +179,18 @@ async def test_managed_cleanup_runs_after_every_revoke(
 
     assert call_order.mock_calls == [
         call.revoke(
-            USER_ID, get_all_creds.return_value[0], ProviderName.GITHUB, force=True
+            USER_ID,
+            get_all_creds.return_value[0],
+            ProviderName.GITHUB,
+            force=True,
+            skip_failed_prunes=True,
         ),
         call.revoke(
-            USER_ID, get_all_creds.return_value[1], ProviderName.OPENAI, force=True
+            USER_ID,
+            get_all_creds.return_value[1],
+            ProviderName.OPENAI,
+            force=True,
+            skip_failed_prunes=True,
         ),
         call.cleanup(USER_ID),
     ]
@@ -194,3 +211,90 @@ async def test_managed_cleanup_runs_even_when_every_revoke_failed(
     assert revoke.await_count == 2
     cleanup.assert_awaited_once_with(USER_ID)
     assert call_order.mock_calls[-1] == call.cleanup(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_an_error_listing_credentials_propagates_and_nothing_is_revoked(
+    get_all_creds: AsyncMock, revoke: AsyncMock, cleanup: AsyncMock
+):
+    """The account must not close while the apps it connected are unknown."""
+    get_all_creds.side_effect = RuntimeError("database down")
+
+    with pytest.raises(RuntimeError, match="database down"):
+        await revoke_connected_apps(USER_ID)
+
+    revoke.assert_not_awaited()
+    cleanup.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_error_in_the_managed_cleanup_propagates(
+    get_all_creds: AsyncMock, revoke: AsyncMock, cleanup: AsyncMock
+):
+    get_all_creds.return_value = [_github()]
+    cleanup.side_effect = RuntimeError("cleanup failed")
+
+    with pytest.raises(RuntimeError, match="cleanup failed"):
+        await revoke_connected_apps(USER_ID)
+
+    revoke.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_provider_is_given_up_on_and_the_rest_still_run(
+    mocker: MockerFixture,
+    get_all_creds: AsyncMock,
+    revoke: AsyncMock,
+    cleanup: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    mocker.patch(f"{MODULE}.REVOKE_TIMEOUT_SECONDS", 0.05)
+    github, openai_key = _github(), _openai_key()
+    get_all_creds.return_value = [github, openai_key]
+
+    async def stall_on_github(user_id, creds, provider, *, force, skip_failed_prunes):
+        if creds is github:
+            await asyncio.Event().wait()
+
+    revoke.side_effect = stall_on_github
+    caplog.set_level(logging.WARNING, logger=MODULE)
+
+    await asyncio.wait_for(revoke_connected_apps(USER_ID), timeout=5)
+
+    assert [c.args[1] for c in revoke.await_args_list] == [github, openai_key]
+    cleanup.assert_awaited_once_with(USER_ID)
+    [record] = [r for r in caplog.records if r.name == MODULE]
+    assert "cred-1" in record.getMessage()
+    assert "TimeoutError" in record.getMessage()
+
+
+@pytest.mark.asyncio
+async def test_providers_are_waited_on_together(
+    mocker: MockerFixture,
+    get_all_creds: AsyncMock,
+    revoke: AsyncMock,
+    cleanup: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    """Each revoke here only returns once both have started, so revoking one
+    at a time would time both out."""
+    mocker.patch(f"{MODULE}.REVOKE_TIMEOUT_SECONDS", 1.0)
+    get_all_creds.return_value = [_github(), _openai_key()]
+    started: list[str] = []
+    both_started = asyncio.Event()
+
+    async def wait_for_the_other(
+        user_id, creds, provider, *, force, skip_failed_prunes
+    ):
+        started.append(creds.id)
+        if len(started) == 2:
+            both_started.set()
+        await both_started.wait()
+
+    revoke.side_effect = wait_for_the_other
+    caplog.set_level(logging.WARNING, logger=MODULE)
+
+    await asyncio.wait_for(revoke_connected_apps(USER_ID), timeout=5)
+
+    assert started == ["cred-1", "cred-2"]
+    assert not [r for r in caplog.records if r.name == MODULE]

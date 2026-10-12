@@ -1168,6 +1168,7 @@ async def delete_and_revoke_credentials(
     provider: ProviderName,
     *,
     force: bool,
+    skip_failed_prunes: bool = False,
 ) -> bool | None:
     """Delete the user's credentials, then revoke their tokens at the provider.
 
@@ -1181,8 +1182,13 @@ async def delete_and_revoke_credentials(
     Raises:
         NeedConfirmation: webhooks linked to the credentials are still in use
             and `force` is `False`. Nothing is deleted in that case.
+
+    `skip_failed_prunes` is for account deletion only: see
+    `remove_all_webhooks_for_credentials`.
     """
-    await remove_all_webhooks_for_credentials(user_id, creds, force)
+    await remove_all_webhooks_for_credentials(
+        user_id, creds, force, skip_failed_prunes=skip_failed_prunes
+    )
 
     if provider == ProviderName.CODEX:
         return await revoke_codex_credentials(creds_manager, user_id, creds.id)
@@ -1752,7 +1758,11 @@ async def _upgrade_existing_credential(
 
 
 async def remove_all_webhooks_for_credentials(
-    user_id: str, credentials: Credentials, force: bool = False
+    user_id: str,
+    credentials: Credentials,
+    force: bool = False,
+    *,
+    skip_failed_prunes: bool = False,
 ) -> None:
     """
     Remove and deregister all webhooks that were registered using the given credentials.
@@ -1761,6 +1771,10 @@ async def remove_all_webhooks_for_credentials(
         user_id: The ID of the user who owns the credentials and webhooks.
         credentials: The credentials for which to remove the associated webhooks.
         force: Whether to proceed if any of the webhooks are still in use.
+        skip_failed_prunes: Log and skip a webhook the provider fails to
+            deregister instead of raising, so it can't keep the credentials
+            from being deleted. Only account deletion sets it; the Disconnect
+            route keeps raising.
 
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
@@ -1781,9 +1795,19 @@ async def remove_all_webhooks_for_credentials(
 
         # Prune the webhook
         webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
-        success = await webhook_manager.prune_webhook_if_dangling(
-            user_id, webhook.id, credentials
-        )
+        try:
+            success = await webhook_manager.prune_webhook_if_dangling(
+                user_id, webhook.id, credentials
+            )
+        except Exception as e:
+            if not skip_failed_prunes:
+                raise
+            # A hook the provider won't delete (repo gone, admin lost, token
+            # revoked) answers the same on every retry, so it must not keep
+            # the credentials alive. The error type only: its message can
+            # echo the request.
+            logger.warning(f"Webhook #{webhook.id} failed to prune: {type(e).__name__}")
+            continue
         if not success:
             logger.warning(f"Webhook #{webhook.id} failed to prune")
 

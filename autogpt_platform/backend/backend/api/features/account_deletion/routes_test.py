@@ -44,6 +44,7 @@ from backend.data.notifications import NotificationResult
 from backend.data.user import get_user_by_id
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.integrations.credentials_store import ollama_credentials
+from backend.util.json import SafeJson
 from backend.util.posthog_events import PostHogEvent
 from backend.util.test import SpinTestServer
 
@@ -81,6 +82,7 @@ class Edges(BaseModel):
 
     stripe_list: AsyncMock
     stripe_cancel: AsyncMock
+    checkout_list: AsyncMock
     revoke: AsyncMock
     cleanup: AsyncMock
     scheduler: MagicMock
@@ -171,6 +173,11 @@ def edges(
             "backend.data.credit.stripe.Subscription.cancel_async",
             new_callable=AsyncMock,
         ),
+        checkout_list=mocker.patch(
+            "backend.data.subscription_checkout.stripe.checkout.Session.list_async",
+            new_callable=AsyncMock,
+            return_value=_no_open_checkouts(),
+        ),
         revoke=mocker.patch(
             f"{PACKAGE}.connected_apps.delete_and_revoke_credentials",
             new_callable=AsyncMock,
@@ -211,6 +218,10 @@ async def test_both_routes_need_a_signed_in_user():
 async def test_the_account_is_closed_and_left_for_erasure(
     account: Account, api: httpx.AsyncClient, edges: Edges
 ):
+    await _update(
+        account, {"topUpConfig": SafeJson({"amount": 2000, "threshold": 500})}
+    )
+
     response = await api.post(DELETE, json=account.confirm())
 
     assert response.status_code == 200
@@ -231,6 +242,10 @@ async def test_the_account_is_closed_and_left_for_erasure(
     assert user.briefingFrequency == BriefingFrequency.OFF
     assert user.maxEmailsPerDay == 0
     assert user.marketingOptOutSource == "account_deleted"
+    assert user.topUpConfig == {"amount": 0, "threshold": 0}
+    edges.checkout_list.assert_awaited_once_with(
+        customer=account.stripe_customer_id, status="open", limit=100
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -365,8 +380,8 @@ async def test_each_connected_app_is_revoked_even_when_one_fails(
         for call in edges.revoke.await_args_list
     ]
     assert revoked == [
-        (account.user_id, "cred-github", {"force": True}),
-        (account.user_id, "cred-openai", {"force": True}),
+        (account.user_id, "cred-github", {"force": True, "skip_failed_prunes": True}),
+        (account.user_id, "cred-openai", {"force": True, "skip_failed_prunes": True}),
     ]
 
 
@@ -507,6 +522,71 @@ async def test_with_the_flag_off_both_routes_are_hidden(
     assert (deleted.status_code, answered.status_code) == (404, 404)
     assert await _deletion_request(account) is None
     edges.stripe_list.assert_not_awaited()
+    posthog.capture.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_flag_is_off_when_no_flag_service_answers(
+    account: Account,
+    api: httpx.AsyncClient,
+    posthog: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+    mocker: MockerFixture,
+):
+    """The real gate, with no local override and no flag vendor (self-hosted,
+    CI): closing an account is permanent, so the gate must fail closed."""
+    for name in (
+        "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION",
+        "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION",
+        "FORCE_ALL_FLAGS",
+        "NEXT_PUBLIC_FORCE_ALL_FLAGS",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    mocker.patch(
+        "backend.util.feature_flag._evaluate_flag_value",
+        new_callable=AsyncMock,
+        side_effect=lambda key, user_id, default, **_: (default, False),
+    )
+    stripe_list = mocker.patch(
+        "backend.data.credit.stripe.Subscription.list_async", new_callable=AsyncMock
+    )
+
+    deleted = await api.post(DELETE, json=account.confirm())
+    answered = await api.post(FEEDBACK, json=ANSWER)
+
+    assert (deleted.status_code, answered.status_code) == (404, 404)
+    assert await _deletion_request(account) is None
+    stripe_list.assert_not_awaited()
+    posthog.capture.assert_not_called()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_admin_acting_as_the_account_can_neither_delete_nor_answer(
+    account: Account, flag: AsyncMock, posthog: MagicMock, mocker: MockerFixture
+):
+    """Impersonation is for support; closing an account is its owner's own act."""
+    delete = mocker.patch(f"{PACKAGE}.routes.delete_account", new_callable=AsyncMock)
+    answer = mocker.patch(f"{PACKAGE}.routes.record_feedback", new_callable=AsyncMock)
+    # No email claim, so the admin's own User row is never provisioned here.
+    admin = {"sub": f"admin-{uuid4()}", "role": "admin"}
+    app.dependency_overrides[get_jwt_payload] = lambda: admin
+    acting_as = {"X-Act-As-User-Id": account.user_id}
+    try:
+        async with _client() as client:
+            deleted = await client.post(
+                DELETE, json=account.confirm(), headers=acting_as
+            )
+            answered = await client.post(FEEDBACK, json=ANSWER, headers=acting_as)
+    finally:
+        app.dependency_overrides.pop(get_jwt_payload, None)
+
+    assert (deleted.status_code, answered.status_code) == (403, 403)
+    assert deleted.json() == {
+        "detail": "Account deletion isn't available while impersonating a user."
+    }
+    delete.assert_not_awaited()
+    answer.assert_not_awaited()
+    assert await _deletion_request(account) is None
     posthog.capture.assert_not_called()
 
 
@@ -705,6 +785,13 @@ def _stripe_holding(**subscription_by_status: str) -> Callable[..., MagicMock]:
         return page
 
     return list_by_status
+
+
+def _no_open_checkouts() -> MagicMock:
+    page = MagicMock()
+    page.has_more = False
+    page.data = []
+    return page
 
 
 def _scheduler(mocker: MockerFixture, user_id: str) -> MagicMock:

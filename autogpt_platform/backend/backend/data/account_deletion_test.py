@@ -1,10 +1,13 @@
 """Closing an account against the real database.
 
-The request row, the Better Auth ban and the session cleanup must land
-together or not at all, and a second close must change nothing.
+The request row, the Better Auth ban, the session cleanup and the Marketplace
+listings taken down must land together or not at all, and a second close must
+change nothing. The request row has no foreign key to User, so it outlives the
+erasure that removes the User.
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import AsyncIterator
 from uuid import uuid4
@@ -12,8 +15,17 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from prisma.enums import AccountDeletionSource
-from prisma.models import AccountDeletionRequest, AuthSession, AuthUser, User
+from prisma.models import (
+    AccountDeletionRequest,
+    AuthSession,
+    AuthUser,
+    Profile,
+    SkillListing,
+    StoreListing,
+    User,
+)
 
+import backend.data.account_deletion as account_deletion
 from backend.data.account_deletion import (
     ACCOUNT_DELETED_BAN_REASON,
     close_account,
@@ -34,11 +46,22 @@ async def _add_session(user_id: str) -> None:
     )
 
 
+def _tomorrow() -> datetime:
+    return datetime.now(timezone.utc) + timedelta(days=1)
+
+
 async def _create_account(user_id: str) -> None:
     email = f"deletion-{user_id}@example.com"
     await User.prisma().create(data={"id": user_id, "email": email})
+    # A temporary ban still running: Better Auth lifts a ban whose banExpires
+    # has passed at the next sign-in, so the close must clear it.
     await AuthUser.prisma().create(
-        data={"id": user_id, "name": "Deletion test", "email": email}
+        data={
+            "id": user_id,
+            "name": "Deletion test",
+            "email": email,
+            "banExpires": _tomorrow(),
+        }
     )
     await _add_session(user_id)
     await _add_session(user_id)
@@ -46,6 +69,9 @@ async def _create_account(user_id: str) -> None:
 
 async def _remove_account(user_id: str) -> None:
     await AccountDeletionRequest.prisma().delete_many(where={"userId": user_id})
+    # Before the User: StoreListing's owner foreign key restricts its delete.
+    await StoreListing.prisma().delete_many(where={"owningUserId": user_id})
+    await SkillListing.prisma().delete_many(where={"owningUserId": user_id})
     await AuthUser.prisma().delete_many(where={"id": user_id})
     await User.prisma().delete_many(where={"id": user_id})
 
@@ -118,7 +144,8 @@ async def test_a_second_close_returns_false_and_changes_nothing(
     # Undo the ban and sign in again, so a second close that still ran its
     # other statements would show.
     await AuthUser.prisma().update(
-        where={"id": user_id}, data={"banned": False, "banReason": None}
+        where={"id": user_id},
+        data={"banned": False, "banReason": None, "banExpires": _tomorrow()},
     )
     await _add_session(user_id)
 
@@ -128,6 +155,7 @@ async def test_a_second_close_returns_false_and_changes_nothing(
     auth_user = await AuthUser.prisma().find_unique_or_raise(where={"id": user_id})
     assert auth_user.banned is False
     assert auth_user.banReason is None
+    assert auth_user.banExpires is not None
     assert await _session_count(user_id) == 1
 
 
@@ -144,3 +172,114 @@ async def test_concurrent_closes_create_exactly_one_request(
 
     assert sorted(results) == [False, True]
     assert await AccountDeletionRequest.prisma().count(where={"userId": user_id}) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_failure_after_the_request_insert_changes_nothing(
+    accounts: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+):
+    """A half-committed close would leave the request row, so every retry
+    returns early while the person can still sign in."""
+    user_id, _ = accounts
+    real_transaction = account_deletion.transaction
+
+    @asynccontextmanager
+    async def failing_transaction():
+        async with real_transaction() as tx:
+            monkeypatch.setattr(tx, "authsession", _FailingSessionCleanup())
+            yield tx
+
+    monkeypatch.setattr(account_deletion, "transaction", failing_transaction)
+
+    with pytest.raises(RuntimeError, match="session cleanup failed"):
+        await close_account(user_id, AccountDeletionSource.SETTINGS)
+
+    assert await get_deletion_request(user_id) is None
+    assert await is_account_closed(user_id) is False
+    auth_user = await AuthUser.prisma().find_unique_or_raise(where={"id": user_id})
+    assert not auth_user.banned
+    assert auth_user.banReason is None
+    assert await _session_count(user_id) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_request_outlives_the_erased_user(accounts: tuple[str, str]):
+    """The row is the hand-off to the erasure, and what keeps rejecting the
+    account's tokens: deleting the User must not take it along."""
+    user_id, _ = accounts
+    assert await close_account(user_id, AccountDeletionSource.SETTINGS) is True
+
+    await AuthUser.prisma().delete(where={"id": user_id})
+    await User.prisma().delete(where={"id": user_id})
+
+    request = await get_deletion_request(user_id)
+    assert request is not None
+    assert request.completedAt is None
+    assert await is_account_closed(user_id) is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_close_takes_every_marketplace_listing_down(
+    accounts: tuple[str, str],
+):
+    """Approved ones leave the Marketplace now; pending ones can no longer be
+    approved. Another creator's listing stays up."""
+    user_id, bystander_id = accounts
+    approved = await _list_agent(user_id, approved=True)
+    pending = await _list_agent(user_id, approved=False)
+    skill = await SkillListing.prisma().create(
+        data={
+            "slug": f"skill-{uuid4()}",
+            "owningUserId": user_id,
+            "hasApprovedVersion": True,
+        }
+    )
+    bystanders = await _list_agent(bystander_id, approved=True)
+
+    assert await close_account(user_id, AccountDeletionSource.SETTINGS) is True
+
+    for listing_id in (approved, pending):
+        listing = await StoreListing.prisma().find_unique_or_raise(
+            where={"id": listing_id}
+        )
+        assert listing.isDeleted is True
+    skill = await SkillListing.prisma().find_unique_or_raise(where={"id": skill.id})
+    assert skill.isDeleted is True
+    untouched = await StoreListing.prisma().find_unique_or_raise(
+        where={"id": bystanders}
+    )
+    assert untouched.isDeleted is False
+
+
+class _FailingSessionCleanup:
+    """Stands in for the transaction's AuthSession actions: by the session
+    cleanup, the request insert and the ban have both run."""
+
+    async def delete_many(self, **_: object) -> int:
+        raise RuntimeError("session cleanup failed")
+
+
+async def _list_agent(user_id: str, *, approved: bool) -> str:
+    """A Marketplace agent listing of *user_id*'s; its creator profile first."""
+    await Profile.prisma().upsert(
+        where={"userId": user_id},
+        data={
+            "create": {
+                "userId": user_id,
+                "name": "Deletion test",
+                "username": f"deletion-{user_id}",
+                "description": "",
+                "links": [],
+            },
+            "update": {},
+        },
+    )
+    listing = await StoreListing.prisma().create(
+        data={
+            "slug": f"agent-{uuid4()}",
+            "agentGraphId": str(uuid4()),
+            "owningUserId": user_id,
+            "hasApprovedVersion": approved,
+        }
+    )
+    return listing.id

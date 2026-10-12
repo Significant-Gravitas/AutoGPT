@@ -1,5 +1,6 @@
 """Disconnect every app a user connected, as part of closing their account."""
 
+import asyncio
 import logging
 
 from backend.api.features.integrations.router import (
@@ -16,23 +17,33 @@ from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
+# Per credential: the provider calls have no timeout of their own, and the
+# deletion request must answer before the frontend proxy gives up on it.
+REVOKE_TIMEOUT_SECONDS = 10.0
+
 
 async def revoke_connected_apps(user_id: str) -> None:
     """Delete each credential the user connected and revoke it at its provider.
 
     Uses the same delete-then-revoke path as the "disconnect" button, with
-    `force=True` so webhooks still in use by an agent are unlinked too.
+    `force=True` so webhooks still in use by an agent are unlinked too, and a
+    webhook the provider refuses to deregister does not keep the credential.
     AutoGPT-managed, system and SDK-default credentials are not the user's
     own, so they are skipped here; managed ones are deprovisioned afterwards
     by `cleanup_user_managed_credentials`.
 
-    One credential failing is logged and does not stop the rest, and the
-    managed cleanup runs even when every revoke failed.
+    The credentials are handled together, each bounded by
+    `REVOKE_TIMEOUT_SECONDS`. One failing or timing out is logged and does not
+    stop the rest: a retry would meet the same refusal, and the erasure
+    (SECRT-2854) deletes whatever is still stored. Revoking at the provider is
+    best effort the same way, and some providers have no revoke endpoint at
+    all. An error listing the credentials or from the managed cleanup
+    propagates, so the account stays open.
     """
     credentials = await creds_manager.store.get_all_creds(user_id)
-    for creds in credentials:
-        if _is_user_connected(creds):
-            await _revoke_one(user_id, creds)
+    await asyncio.gather(
+        *(_revoke_one(user_id, c) for c in credentials if _is_user_connected(c))
+    )
     await cleanup_user_managed_credentials(user_id)
 
 
@@ -45,7 +56,12 @@ def _is_user_connected(creds: Credentials) -> bool:
 async def _revoke_one(user_id: str, creds: Credentials) -> None:
     provider = ProviderName(canonical_provider(creds.provider))
     try:
-        await delete_and_revoke_credentials(user_id, creds, provider, force=True)
+        await asyncio.wait_for(
+            delete_and_revoke_credentials(
+                user_id, creds, provider, force=True, skip_failed_prunes=True
+            ),
+            timeout=REVOKE_TIMEOUT_SECONDS,
+        )
     except Exception as e:
         # Only the id, provider and error type: a provider error message can
         # echo the token it was given.

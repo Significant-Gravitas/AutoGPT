@@ -1,16 +1,19 @@
 """Self-serve account deletion (SECRT-2877).
 
 Both routes 404 while the self-serve-account-deletion flag is off for the
-caller. The deletion route authenticates with ``get_user_id_allowing_closed``
-so a repeat call from an account it already closed still answers 200; every
-other route rejects a closed account. Neither route sits behind the payment
-paywall: an account without a plan must be able to delete itself.
+caller, and answer 403 to an admin acting as another user: closing an account
+is its owner's own act. The deletion route authenticates with
+``get_user_id_allowing_closed`` so a repeat call from an account it already
+closed still answers 200; every other route rejects a closed account. Neither
+route sits behind the payment paywall: an account without a plan must be able
+to delete itself.
 """
 
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, get_user_id_allowing_closed
-from fastapi import APIRouter, Depends, HTTPException, Security, status
+from autogpt_libs.auth.dependencies import IMPERSONATION_HEADER_NAME
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
 from prisma.enums import AccountDeletionSource
 
 from backend.api.features.account_deletion.feedback import record_feedback
@@ -30,6 +33,7 @@ EMAIL_MISMATCH_DETAIL = "That email doesn't match your account."
 PLAN_CANCELLATION_DETAIL = (
     "We couldn't cancel your plan. Nothing was deleted. Try again."
 )
+IMPERSONATION_DETAIL = "Account deletion isn't available while impersonating a user."
 
 
 async def require_account_deletion_flag(
@@ -41,10 +45,21 @@ async def require_account_deletion_flag(
         raise HTTPException(status_code=404, detail="Feature not available")
 
 
+async def reject_impersonation(request: Request) -> None:
+    """An admin acting as a user can neither close their account nor answer
+    the exit question for them. After the flag gate, so a flag that is off
+    still hides both routes from everyone."""
+    if request.headers.get(IMPERSONATION_HEADER_NAME, "").strip():
+        raise HTTPException(status.HTTP_403_FORBIDDEN, IMPERSONATION_DETAIL)
+
+
 router = APIRouter(
     prefix="/account/deletion",
     tags=["account"],
-    dependencies=[Depends(require_account_deletion_flag)],
+    dependencies=[
+        Depends(require_account_deletion_flag),
+        Depends(reject_impersonation),
+    ],
 )
 
 
