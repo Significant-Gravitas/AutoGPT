@@ -38,16 +38,18 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
         name: str = "Morning",
         graph_id: str = graph.id,
         cron: str = "0 9 * * *",
+        timezone: str = "UTC",
+        inputs: dict | None = None,
     ):
         return await scheduler.add_execution_schedule(
             graph_id=graph_id,
             user_id=user_id,
             graph_version=graph.version,
             cron=cron,
-            input_data={"input": "data"},
+            input_data=inputs or {"input": "data"},
             input_credentials={},
             name=name,
-            user_timezone="UTC",
+            user_timezone=timezone,
             schedule_id=key,
         )
 
@@ -71,8 +73,14 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
         # or answer a different submission with the schedule it doesn't match.
         with pytest.raises(ConflictError):
             await create(key, graph_id=other_graph.id)
-        with pytest.raises(ConflictError):
-            await create(key, cron="30 18 * * *")
+        for changed in (
+            {"cron": "30 18 * * *"},
+            {"timezone": "Europe/Paris"},
+            {"inputs": {"input": "other"}},
+            {"name": "Evening"},
+        ):
+            with pytest.raises(ConflictError):
+                await create(key, **changed)
         [kept] = [
             s
             for s in await scheduler.get_execution_schedules(graph.id, owner.id)

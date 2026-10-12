@@ -2092,24 +2092,13 @@ def _index_entry(
     )
 
 
-class _CreateSubmission(BaseModel):
-    """What a keyed create asked for, to tell a replay from a reused key."""
+def _submission(job_args: GraphExecutionJobArgs) -> dict:
+    """Everything a create persists, except the key itself."""
+    return job_args.model_dump(mode="json", exclude={"schedule_id"})
 
-    graph_id: str
-    graph_version: int
-    name: str | None
-    cron: str
-    input_data: GraphInput
 
-    @staticmethod
-    def of(info: GraphExecutionJobInfo) -> "_CreateSubmission":
-        return _CreateSubmission(
-            graph_id=info.graph_id,
-            graph_version=info.graph_version,
-            name=info.agent_name,
-            cron=info.cron,
-            input_data=info.input_data,
-        )
+def _trigger_timezone_name(trigger: CronTrigger | DateTrigger) -> str:
+    return str(trigger.timezone)
 
 
 class Scheduler(AppService):
@@ -2527,22 +2516,29 @@ class Scheduler(AppService):
         schedule that was made instead of adding a duplicate.
         """
         name = normalize_schedule_name(name)
-        submission = _CreateSubmission(
-            graph_id=graph_id,
-            graph_version=graph_version,
-            name=name,
-            cron=cron,
-            input_data=input_data,
-        )
-        if schedule_id is not None:
-            replayed = self._replayed_graph_schedule(schedule_id, user_id, submission)
-            if replayed is not None:
-                return replayed
-
         if expert_id is not None:
             organization_id, team_id = run_async(
                 experts_db().resolve_private_expert_tenancy(user_id, expert_id)
             )
+        user_timezone = _resolve_timezone(user_timezone, user_id)
+        trigger = _build_trigger(cron=cron, run_at=None, user_timezone=user_timezone)
+        job_args = GraphExecutionJobArgs(
+            schedule_id=schedule_id or str(uuid.uuid4()),
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version,
+            agent_name=name,
+            cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
+            organization_id=organization_id or "",
+            team_id=team_id,
+            expert_id=expert_id,
+        )
+        if schedule_id is not None:
+            replayed = self._replayed_graph_schedule(job_args, trigger)
+            if replayed is not None:
+                return replayed
 
         # Validate the graph before scheduling to prevent runtime failures
         # We don't need the return value, just want the validation to run
@@ -2556,35 +2552,18 @@ class Scheduler(AppService):
             )
         )
 
-        user_timezone = _resolve_timezone(user_timezone, user_id)
-        key = schedule_id or str(uuid.uuid4())
-        job_args = GraphExecutionJobArgs(
-            schedule_id=key,
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version,
-            agent_name=name,
-            cron=cron,
-            input_data=input_data,
-            input_credentials=input_credentials,
-            organization_id=organization_id or "",
-            team_id=team_id,
-            expert_id=expert_id,
-        )
         try:
             job = self._persist_schedule(
                 dispatch_func=execute_graph,
                 job_args=job_args,
-                trigger=_build_trigger(
-                    cron=cron, run_at=None, user_timezone=user_timezone
-                ),
+                trigger=trigger,
                 name=name,
                 # A caller-supplied key must never overwrite a schedule.
                 replace_existing=schedule_id is None,
             )
         except ConflictingIdError:
             # A concurrent copy of the same submission got there first.
-            replayed = self._replayed_graph_schedule(key, user_id, submission)
+            replayed = self._replayed_graph_schedule(job_args, trigger)
             if replayed is None:
                 raise
             return replayed
@@ -2598,21 +2577,29 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     def _replayed_graph_schedule(
-        self, schedule_id: str, user_id: str, submission: "_CreateSubmission"
+        self, job_args: GraphExecutionJobArgs, trigger: CronTrigger | DateTrigger
     ) -> GraphExecutionJobInfo | None:
         """The schedule an earlier submission with this key created, if any.
 
-        A key names one submission: reusing it for a different agent or with
-        different timing, name or inputs is a conflict, not a replay that
-        silently drops the new values.
+        A key names one submission. Reusing it with anything different (agent,
+        version, name, timing, timezone, inputs, credentials, tenancy or
+        expert) is a conflict, not a replay that keeps the old settings.
         """
+        assert job_args.schedule_id is not None
+        schedule_id = job_args.schedule_id
         try:
-            _, info = self._authorized_job(schedule_id, user_id, action="create")
+            job, info = self._authorized_job(
+                schedule_id, job_args.user_id, action="create"
+            )
         except NotFoundError:
             return None
         if not isinstance(info, GraphExecutionJobInfo):
             raise NotAuthorizedError(f"Schedule #{schedule_id} is not an agent run")
-        if submission != _CreateSubmission.of(info):
+        stored = GraphExecutionJobArgs.model_validate(job.kwargs)
+        same_submission = _submission(stored) == _submission(job_args) and (
+            _job_timezone_name(job) == _trigger_timezone_name(trigger)
+        )
+        if not same_submission:
             raise ConflictError(
                 f"Schedule #{schedule_id} already exists for a different submission"
             )

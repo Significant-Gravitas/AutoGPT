@@ -37,6 +37,7 @@ const agent = {
 } as unknown as LibraryAgent;
 
 afterEach(() => {
+  window.sessionStorage.clear();
   toastMock.mockClear();
   server.resetHandlers();
 });
@@ -79,7 +80,7 @@ describe("useScheduleAgentModal", () => {
     );
   });
 
-  test("a create the scheduler didn't confirm is re-read, and its retry can't add a duplicate", async () => {
+  test("a create the scheduler didn't confirm is re-read, and its retry can't add a duplicate, even after a reload", async () => {
     const sentKeys: unknown[] = [];
     let calls = 0;
     server.use(
@@ -114,19 +115,26 @@ describe("useScheduleAgentModal", () => {
       defaultOptions: { queries: { retry: false } },
     });
     const invalidate = vi.spyOn(client, "invalidateQueries");
-    const { result } = renderHook(() => useScheduleAgentModal(agent, {}, {}), {
-      wrapper: ({ children }: { children: ReactNode }) => (
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      ),
-    });
+    function renderModal() {
+      return renderHook(() => useScheduleAgentModal(agent, {}, {}), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={client}>{children}</QueryClientProvider>
+        ),
+      });
+    }
+    const first = renderModal();
 
     await act(async () => {
       await expect(
-        result.current.handleSchedule("My schedule", "0 9 * * *"),
+        first.result.current.handleSchedule("My schedule", "0 9 * * *"),
       ).rejects.toBeDefined();
     });
     // The create may have been applied, so the schedule lists are re-read.
     expect(invalidate).toHaveBeenCalled();
+
+    // The user reloads (the modal remounts) and submits the same schedule.
+    first.unmount();
+    const { result } = renderModal();
 
     await act(async () => {
       await result.current.handleSchedule("My schedule", "0 9 * * *");

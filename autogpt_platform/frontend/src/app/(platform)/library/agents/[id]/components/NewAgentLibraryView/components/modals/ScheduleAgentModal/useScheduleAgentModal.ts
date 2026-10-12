@@ -87,7 +87,13 @@ export function useScheduleAgentModal(
         createScheduleMutation.mutate(
           {
             graphId: agent.graph_id,
-            data: { ...data, schedule_id: submissionKeys.keyFor(data) },
+            data: {
+              ...data,
+              schedule_id: submissionKeys.keyFor({
+                graphId: agent.graph_id,
+                ...data,
+              }),
+            },
           },
           {
             onSuccess: () => resolve(),

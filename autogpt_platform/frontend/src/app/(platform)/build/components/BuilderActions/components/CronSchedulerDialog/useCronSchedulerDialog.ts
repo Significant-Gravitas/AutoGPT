@@ -126,7 +126,10 @@ export function useCronSchedulerDialog({
     };
     await createSchedule({
       graphId: flowID || "",
-      data: { ...data, schedule_id: submissionKeys.keyFor(data) },
+      data: {
+        ...data,
+        schedule_id: submissionKeys.keyFor({ graphId: flowID, ...data }),
+      },
     });
   }
 
