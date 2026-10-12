@@ -2243,8 +2243,28 @@ async def test_get_or_create_client_chat_session_refuses_a_different_expert(
         {"organization_id": "org-a", "team_id": "team-a"},
         {"organization_id": "org-b", "team_id": "team-a"},
         {"organization_id": "org-b", "team_id": "team-b", "builder_graph_id": "g-1"},
+        {"organization_id": "org-b", "team_id": "team-b", "origin": "automation"},
+        {"organization_id": "org-b", "team_id": "team-b", "source_platform": "slack"},
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "delegated_by_session_id": "sid-0",
+        },
+        {
+            "organization_id": "org-b",
+            "team_id": "team-b",
+            "handed_off_from_expert_id": "expert-0",
+        },
     ],
-    ids=["other-organization", "other-team", "builder-bound"],
+    ids=[
+        "other-organization",
+        "other-team",
+        "builder-bound",
+        "automation",
+        "external-platform",
+        "delegated",
+        "handed-off",
+    ],
 )
 async def test_get_or_create_client_chat_session_refuses_a_plain_session_out_of_scope(
     mocker: MockerFixture, persisted: dict[str, str]
@@ -2332,3 +2352,28 @@ async def test_get_or_create_client_chat_session_adopts_an_expert_session_in_its
 
     assert result is existing
     create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_an_automation_expert_session(
+    mocker: MockerFixture,
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        expert_id="expert-a",
+        origin="automation",
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, expert_id="expert-a"
+        )
