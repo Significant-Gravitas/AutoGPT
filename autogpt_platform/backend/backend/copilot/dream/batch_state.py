@@ -103,8 +103,11 @@ async def read_state_or_none(pass_id: str) -> dict[str, dict[str, Any]] | None:
 
 
 async def write_phase_to_state(
-    *, pass_id: str, phase: DreamPhase, row: BatchResultRow
+    *, pass_id: str, phase: DreamPhase, row: BatchResultRow, model: str | None = None
 ) -> None:
+    """Keep a landed phase's result in the pass's state, with *model*, the
+    model the phase was submitted on, so whoever charges the phase later
+    (the pass's end, or the reaper long after) prices it on that model."""
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
@@ -117,10 +120,21 @@ async def write_phase_to_state(
             "cache_read_tokens": row.cache_read_tokens,
             "cache_creation_tokens": row.cache_creation_tokens,
             "error": row.error,
+            "model": model,
         }
     )
     await cast("Awaitable[int]", redis.hset(state_key(pass_id), phase, body))
     await redis.expire(state_key(pass_id), STATE_TTL_SECONDS)
+
+
+def recorded_phase_models(state: dict[str, dict[str, Any]]) -> dict[str, str]:
+    """The model each landed phase's state row recorded; a row written before
+    rows recorded their model names none."""
+    return {
+        phase: model
+        for phase, row in state.items()
+        if isinstance(model := row.get("model"), str) and model
+    }
 
 
 async def delete_state(pass_id: str) -> None:

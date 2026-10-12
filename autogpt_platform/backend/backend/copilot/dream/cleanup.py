@@ -36,8 +36,9 @@ from pydantic import BaseModel
 from backend.copilot.graphiti.scope import MemoryScope
 
 from .batch_costs import PhaseCharges, charge_landed_phases
-from .batch_state import best_effort_cleanup, read_state
+from .batch_state import best_effort_cleanup, read_state, recorded_phase_models
 from .locks import LOCK_CHECK_TIMEOUT_SECONDS, read_dream_lock_token, release_dream_lock
+from .phase_jobs import PHASE_TIERS
 from .provider_batch import provider_batch_stopped
 from .schemas import DreamPhase
 from .store import read_open_passes, record_cleanup_finished
@@ -117,8 +118,10 @@ async def finish_cleanup(pass_id: str, cleanup: PassCleanup) -> None:
 async def _charge(
     pass_id: str, scope: MemoryScope, phase_models: dict[str, str] | None
 ) -> PhaseCharges:
-    """Charge the phases landed in the pass's state; not settled when the
-    state cannot be read, or a landed phase cannot be priced or claimed."""
+    """Charge the phases landed in the pass's state, each on the model its
+    state row recorded, else the one *phase_models* names; not settled when
+    the state cannot be read, or a landed phase has no model to price it
+    with or cannot be claimed."""
     try:
         state = await read_state(pass_id)
     except Exception:
@@ -129,15 +132,24 @@ async def _charge(
         return PhaseCharges(settled=False)
     if not state:
         return PhaseCharges(settled=True)
-    if phase_models is None:
-        logger.warning(f"Dream pass {pass_id}: no phase models to price it with")
+    models = {**(phase_models or {}), **recorded_phase_models(state)}
+    unpriced = [
+        phase
+        for phase in PHASE_TIERS
+        if (row := state.get(phase)) and not row.get("error") and phase not in models
+    ]
+    if unpriced:
+        logger.warning(
+            f"Dream pass {pass_id}: no model to price its {', '.join(unpriced)} "
+            "phase with"
+        )
         return PhaseCharges(settled=False)
     return await charge_landed_phases(
         user_id=scope.owner_user_id,
         expert_id=scope.expert_id,
         pass_id=pass_id,
         state=state,
-        phase_models=phase_models,
+        phase_models=models,
     )
 
 

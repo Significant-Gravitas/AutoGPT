@@ -150,6 +150,26 @@ class TestAPassThatOutlivedItsLease:
         assert state_key("p1") in fake_dream_redis.hashes
         assert _LOCK_KEY not in fake_dream_redis.store
 
+    async def test_prices_a_landed_phase_on_the_model_it_ran_on(
+        self, mocker, fake_dream_db, charges
+    ):
+        """The deployment's phase models moved since the pass was submitted,
+        here to ones the batch route cannot even read: the landed phase is
+        charged all the same, on the model its state row recorded."""
+        mocker.patch.object(
+            reaper_mod,
+            "phase_models_for_config",
+            side_effect=ValueError("the fast models are not Anthropic models"),
+        )
+        await _dead_batch_pass(fake_dream_db, model="claude-opus-5-5")
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"expired": 1}
+        assert [call.args[1].model for call in charges.await_args_list] == [
+            "claude-opus-5-5"
+        ]
+
     async def test_whose_provider_cancel_fails_is_closed_all_the_same(
         self, fake_dream_db, fake_dream_redis, provider_cancel, charges
     ):
@@ -336,10 +356,11 @@ async def _dead_batch_pass(
     status: DreamPassStatus = DreamPassStatus.SUBMITTED,
     phase: DreamPassPhase = DreamPassPhase.RECOMBINE,
     lapsed: int = REAP_GRACE_SECONDS + 600,
+    model: str | None = None,
 ) -> None:
-    """A batch pass that died at *phase*: consolidate landed in its state,
-    recombine's batch in flight, its bundle kept, its lease lapsed *lapsed*
-    seconds ago."""
+    """A batch pass that died at *phase*: consolidate landed in its state
+    (recording *model*, the one it ran on, when given), recombine's batch in
+    flight, its bundle kept, its lease lapsed *lapsed* seconds ago."""
     now = datetime.now(timezone.utc)
     await persist_input_bundle(
         pass_id,
@@ -357,6 +378,7 @@ async def _dead_batch_pass(
             input_tokens=10,
             output_tokens=20,
         ),
+        model=model,
     )
     _seed(
         fake_dream_db,

@@ -24,7 +24,11 @@ from prisma.enums import (
 
 from backend.copilot.dream import job_status
 from backend.copilot.dream.batch_callbacks import handle_dream_batch_result
-from backend.copilot.dream.batch_state import state_key, write_phase_to_state
+from backend.copilot.dream.batch_state import (
+    read_state,
+    state_key,
+    write_phase_to_state,
+)
 from backend.copilot.dream.batch_submit import input_bundle_key, persist_input_bundle
 from backend.copilot.dream.cancel import cancel_dream_pass
 from backend.copilot.dream.fetch import DreamInput
@@ -375,6 +379,9 @@ class TestPhaseChaining:
         update_status.assert_awaited_once()
         update_kwargs = update_status.call_args.kwargs
         assert update_kwargs["current_phase"] == "recombine"
+        # The landed phase keeps the model it ran on, to be charged on it.
+        state = await read_state("p1")
+        assert state["consolidate"]["model"] == "claude-sonnet-5"
 
     @pytest.mark.asyncio
     async def test_recombine_result_submits_sanitize_batch(self, fake_redis):

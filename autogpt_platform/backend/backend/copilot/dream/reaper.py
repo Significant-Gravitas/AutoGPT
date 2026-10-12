@@ -333,8 +333,10 @@ async def _release_within_bound(scope: MemoryScope, hold: str) -> None:
 
 
 def _phase_models(row: DreamPassRecord) -> dict[str, str] | None:
-    """The deployment's batch phase models, to price *row*'s landed phases
-    with; ``None`` when they cannot be read, and its charge waits."""
+    """The deployment's batch phase models, to price those of *row*'s landed
+    phases whose state rows recorded no model (rows written before they
+    did); the others are priced on the model they ran on. ``None`` when they
+    cannot be read, and such a phase's charge waits."""
     try:
         return phase_models_for_config(ChatConfig())
     except Exception:

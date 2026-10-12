@@ -202,7 +202,9 @@ async def _landed_output(
     """The phase's validated output, kept in the pass's Redis state and its
     record; ``None`` once an errored or malformed row has failed the pass."""
     if row.error:
-        await write_phase_to_state(pass_id=bp.pass_id, phase=phase, row=row)
+        await write_phase_to_state(
+            pass_id=bp.pass_id, phase=phase, row=row, model=bp.phase_models.get(phase)
+        )
         await fail_pass(bp, f"{phase}: {row.error}")
         return None
     # Validate the row's content matches the phase's Pydantic schema
@@ -215,11 +217,16 @@ async def _landed_output(
         payload = parse_json_with_prose_fallback(row.content)
         output = PHASE_RESPONSE_MODELS[phase].model_validate(payload)
     except (InferenceError, ValidationError) as exc:
-        await write_phase_to_state(pass_id=bp.pass_id, phase=phase, row=row)
+        await write_phase_to_state(
+            pass_id=bp.pass_id, phase=phase, row=row, model=bp.phase_models.get(phase)
+        )
         await fail_pass(bp, f"{phase}: invalid output shape — {type(exc).__name__}")
         return None
     await write_phase_to_state(
-        pass_id=bp.pass_id, phase=phase, row=row.with_content(json.dumps(payload))
+        pass_id=bp.pass_id,
+        phase=phase,
+        row=row.with_content(json.dumps(payload)),
+        model=bp.phase_models.get(phase),
     )
     await record_phase_output(bp.pass_id, phase, output)
     return output
