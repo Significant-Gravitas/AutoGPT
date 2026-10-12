@@ -24,6 +24,8 @@ already written to it. Failed transactions can retry without destructive cleanup
 The generation changes the namespace of the existing UTC daily and ISO-week
 counters. Configured Pro and Max limits and reset times stay the same. Work captures its
 billing origin before execution and propagates it into background and child work.
+Database FIFO turns persist that snapshot when queued and restore it at promotion,
+even when activation happens while they wait for a running slot.
 Delayed trial costs update the original lifetime trial ledger and retain their
 original usage attribution. Neither conversion nor recovery clears trial history,
 credits, runs, conversations, or historical costs.
@@ -202,7 +204,10 @@ reconciliation services and every worker/producer together, then resume admissio
 Scheduled Stripe payments during this window reconcile after the new code starts.
 Legacy batch callbacks without a stored accounting context fail closed, mark the
 job errored, and release the original lock without billing under a new context.
-They must still be drained before rollout. Mixed old/new usage writers must not account newly
+Legacy FIFO entries with missing, invalid, or foreign accounting snapshots remain
+queued without dispatch. Use the existing queue cancellation controls and submit
+a new turn; do not fabricate a snapshot from the user's current paid allowance.
+These entries must still be drained before rollout. Mixed old/new usage writers must not account newly
 admitted work after activation. Keep the
 generation-aware accounting code during rollback for accounts already activated;
 rolling back to readers of only the old Redis keys would lose correct enforcement.

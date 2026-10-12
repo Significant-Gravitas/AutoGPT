@@ -21,6 +21,9 @@ from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.trial_cost_context import TrialCostContext
+
+_COST_CONTEXT = TrialCostContext(user_id="u1", trial_id=None)
 
 
 class _NoopAsyncCM:
@@ -52,6 +55,10 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
         "sequence": 1,
     }
     base.update(overrides)
+    base["metadata"] = {
+        "cost_context": _COST_CONTEXT.model_dump(mode="json"),
+        **(base["metadata"] or {}),
+    }
     return PydanticChatMessage(**base)
 
 
@@ -84,6 +91,13 @@ def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     tracker = MagicMock()
     monkeypatch.setattr(turn_queue, "track_user_message", tracker)
     return tracker
+
+
+@pytest.fixture(autouse=True)
+def cost_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        turn_queue, "capture_cost_context", AsyncMock(return_value=_COST_CONTEXT)
+    )
 
 
 # ── enqueue_turn payload encoding ──────────────────────────────────────
@@ -136,10 +150,8 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_only_includes_default_transport_without_extra_params() -> (
-    None
-):
-    """A turn with no extra params only persists its default LLM transport."""
+async def test_enqueue_turn_includes_default_transport_and_attribution() -> None:
+    """A turn with no extra params persists transport and usage attribution."""
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_message = AsyncMock(return_value=_pyd_message())
@@ -151,7 +163,8 @@ async def test_enqueue_turn_only_includes_default_transport_without_extra_params
     ):
         await turn_queue.enqueue_turn(user_id="u1", session_id="s1", message="hello")
     assert db.add_chat_message.call_args.kwargs["metadata"] == {
-        "llm_auth_provider": "platform"
+        "llm_auth_provider": "platform",
+        "cost_context": _COST_CONTEXT.model_dump(mode="json"),
     }
 
 
