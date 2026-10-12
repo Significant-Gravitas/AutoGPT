@@ -287,7 +287,8 @@ class TestMCPOAuthRedirects:
         received: list[dict[str, str]] = []
 
         async def collect(request: web.Request) -> web.Response:
-            received.append(dict(await request.post()))
+            form = await request.post()
+            received.append({key: str(value) for key, value in form.items()})
             return web.json_response({"access_token": "attacker-token"})
 
         attacker = web.Application()
