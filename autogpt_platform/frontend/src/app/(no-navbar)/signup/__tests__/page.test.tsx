@@ -98,6 +98,7 @@ describe("SignupPage", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   test("shows existing user feedback from signup action", async () => {
@@ -130,6 +131,18 @@ describe("SignupPage", () => {
     expect(
       await screen.findByText("User with this email already exists"),
     ).toBeDefined();
+  });
+
+  test("leaves no timer pending once it unmounts after a signup attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await screen.findByText("User with this email already exists");
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   test("signs up without a terms checkbox", async () => {
