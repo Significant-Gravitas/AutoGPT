@@ -186,7 +186,7 @@ export default skipSentryPlugin
       // https://github.com/getsentry/sentry-webpack-plugin#options
 
       org: "significant-gravitas",
-      project: "builder",
+      project: process.env.SENTRY_PROJECT || "builder",
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,
