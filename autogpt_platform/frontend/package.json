@@ -37,6 +37,9 @@
   "dependencies": {
     "@ai-sdk/react": "3.0.61",
     "@better-auth/core": "1.6.22",
+    "@dnd-kit/core": "6.3.1",
+    "@dnd-kit/sortable": "10.0.0",
+    "@dnd-kit/utilities": "3.2.2",
     "@faker-js/faker": "10.0.0",
     "@ferrucc-io/emoji-picker": "0.0.48",
     "@hookform/resolvers": "5.2.2",
