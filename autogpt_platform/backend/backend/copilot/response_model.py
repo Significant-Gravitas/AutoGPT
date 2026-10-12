@@ -369,9 +369,7 @@ class StreamModeChanged(StreamBaseResponse):
     """
 
     type: ResponseType = ResponseType.MODE_CHANGED
-    mode: Literal["extended_thinking", "fast"] = Field(
-        ..., description="New effective mode"
-    )
+    mode: Literal["extended_thinking"] = Field(..., description="New effective mode")
 
     def to_sse(self) -> str:
         """Emit as an AI SDK v5 data part."""

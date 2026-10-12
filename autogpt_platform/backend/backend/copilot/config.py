@@ -214,14 +214,6 @@ _TRANSPORT_PROFILES: dict[TransportName, TransportProfile] = {
     ),
 }
 
-# Per-request routing mode for a single chat turn.
-# - 'fast': route to the baseline OpenAI-compatible path with the cheaper model.
-# - 'extended_thinking': route to the Claude Agent SDK path with the default
-#   (opus) model.
-# ``None`` means "no override"; the server falls back to the Claude Code
-# subscription flag → LaunchDarkly COPILOT_SDK → config.use_claude_agent_sdk.
-CopilotMode = Literal["fast", "extended_thinking"]
-
 # Per-request model tier set by the frontend model toggle.
 # 'standard' picks the cheaper everyday model for the active path —
 #   ``fast_standard_model`` on the baseline path, ``thinking_standard_model``
@@ -237,9 +229,9 @@ CopilotLLMModel = Literal["standard", "advanced"]
 class ChatConfig(BaseSettings):
     """Configuration for the chat system."""
 
-    # Chat model tiers — a 2×2 of (path, tier).  ``path`` = ``CopilotMode``
-    # (``"fast"`` → baseline OpenAI-compat / any OpenRouter model;
-    # ``"extended_thinking"`` → Claude Agent SDK, Anthropic-only CLI).
+    # Chat model tiers — a 2×2 of (engine, tier).  The ``fast_*`` cells serve
+    # the baseline OpenAI-compat engine (any OpenRouter model); the
+    # ``thinking_*`` cells serve the Claude Agent SDK (Anthropic-only CLI).
     # ``tier`` = ``CopilotLLMModel`` (``"standard"`` / ``"advanced"``).
     # Each cell has its own config so the two paths can evolve
     # independently (cheap provider on baseline, Anthropic on SDK) at each
@@ -804,8 +796,7 @@ class ChatConfig(BaseSettings):
         "(a) ``effective_transport`` is ``'local'`` regardless of OpenRouter "
         "or subscription credentials; (b) ``thinking_available`` is False — "
         "the Claude Agent SDK CLI speaks Anthropic's wire protocol and cannot "
-        "route to Ollama, so requests with ``mode='extended_thinking'`` are "
-        "downgraded to ``'fast'`` with a logged warning; (c) the "
+        "route to Ollama, so every turn runs on the baseline engine; (c) the "
         "``CHAT_*_MODEL`` fields should be set to bare names served by the "
         "local backend (e.g. ``llama3.2:3b``) — OpenRouter-style "
         "``provider/model`` slugs are passed through verbatim and will not "
@@ -1083,25 +1074,7 @@ class ChatConfig(BaseSettings):
     def get_e2b_api_key(cls, v):
         """Get E2B API key from environment if not provided."""
         if not v:
-            v = os.getenv("CHAT_E2B_API_KEY") or os.getenv("E2B_API_KEY")
-        return v
-
-    @field_validator("api_key", mode="before")
-    @classmethod
-    def get_api_key(cls, v):
-        """Pick up ``CHAT_API_KEY`` from env if the field is unset.
-
-        The transport-specific cross-key fallback (e.g. ``OPEN_ROUTER_API_KEY``,
-        ``OPENAI_API_KEY``) runs in the model_validator so it can consult
-        the resolved transport via ``self.transport.api_key_fallback_envs``
-        — see ``_apply_transport_api_key_fallback``. Note: ``ANTHROPIC_API_KEY``
-        is intentionally *never* in any fallback chain: it is the
-        direct-Anthropic key (``direct_anthropic_api_key``), and pairing it
-        with an OpenRouter base_url at the chat layer would cause auth
-        failures.
-        """
-        if not v:
-            v = os.getenv("CHAT_API_KEY")
+            v = os.getenv("E2B_API_KEY")
         return v
 
     @field_validator("base_url", mode="before")
@@ -1110,42 +1083,11 @@ class ChatConfig(BaseSettings):
         """Get base URL from environment if not provided."""
         if not v:
             # Check for OpenRouter or custom base URL
-            v = os.getenv("CHAT_BASE_URL")
-            if not v:
-                v = os.getenv("OPENROUTER_BASE_URL")
+            v = os.getenv("OPENROUTER_BASE_URL")
             if not v:
                 v = os.getenv("OPENAI_BASE_URL")
             if not v:
                 v = OPENROUTER_BASE_URL
-        return v
-
-    @field_validator("aux_api_key", mode="before")
-    @classmethod
-    def get_aux_api_key(cls, v):
-        """Auxiliary API key — explicit ``CHAT_AUX_API_KEY`` only.
-
-        Deliberately does NOT fall back to ``OPEN_ROUTER_API_KEY`` like
-        ``api_key`` does.  An explicit aux key signals "I'm splitting
-        the aux client from main"; an env-pulled OR key would silently
-        force aux to OR even in direct-Anthropic deployments where a
-        leftover ``OPEN_ROUTER_API_KEY`` happens to be in the env —
-        producing OR-key-with-Anthropic-URL 401s on every title call.
-
-        When unset, ``aux_client_credentials`` inherits
-        ``main_client_credentials`` (which itself reads
-        ``OPEN_ROUTER_API_KEY`` for OR mode), so single-key
-        deployments keep working unchanged.
-        """
-        if not v:
-            v = os.getenv("CHAT_AUX_API_KEY")
-        return v
-
-    @field_validator("aux_base_url", mode="before")
-    @classmethod
-    def get_aux_base_url(cls, v):
-        """Auxiliary base URL — defaults to OpenRouter."""
-        if not v:
-            v = os.getenv("CHAT_AUX_BASE_URL")
         return v
 
     @field_validator("direct_anthropic_api_key", mode="before")
@@ -1158,9 +1100,7 @@ class ChatConfig(BaseSettings):
         already consumes also drives the baseline OpenAI-compat client.
         """
         if not v:
-            v = os.getenv("CHAT_DIRECT_ANTHROPIC_API_KEY") or os.getenv(
-                "ANTHROPIC_API_KEY"
-            )
+            v = os.getenv("ANTHROPIC_API_KEY")
         return v
 
     @field_validator("claude_agent_cli_path", mode="before")
@@ -1178,9 +1118,7 @@ class ChatConfig(BaseSettings):
         ``cli_openrouter_compat_test.py`` refer to.
         """
         if not v:
-            v = os.getenv("CHAT_CLAUDE_AGENT_CLI_PATH")
-            if not v:
-                v = os.getenv("CLAUDE_AGENT_CLI_PATH")
+            v = os.getenv("CLAUDE_AGENT_CLI_PATH")
         if v:
             if not os.path.exists(v):
                 raise ValueError(
@@ -1261,11 +1199,14 @@ class ChatConfig(BaseSettings):
 
         Field validators see env vars before the model exists, so the
         per-transport policy ("openrouter falls back to OPEN_ROUTER_API_KEY,
-        local does not fall back at all") cannot live in
-        ``get_api_key``. Running it here keeps a single source of truth
+        local does not fall back at all") cannot live in a field
+        validator. Running it here keeps a single source of truth
         — ``self.transport.api_key_fallback_envs`` — and prevents the
         biggest local-transport footgun: a stray ``OPENAI_API_KEY`` set
         for graphiti / embedders silently overriding ``CHAT_API_KEY=ollama``.
+        ``ANTHROPIC_API_KEY`` is in no chain: it is the direct-Anthropic
+        key (``direct_anthropic_api_key``), and pairing it with an
+        OpenRouter base URL would fail auth.
         """
         if self.api_key:
             return self
@@ -1415,8 +1356,6 @@ class ChatConfig(BaseSettings):
         # Explicit direct-Anthropic mode — read the constraint from the
         # profile so the value is single-sourced (still ``"anthropic"``).
         constraint = _TRANSPORT_PROFILES["direct_anthropic"].sdk_model_vendor_constraint
-        if constraint is None:
-            return self
         for field_name in (
             "thinking_standard_model",
             "thinking_advanced_model",
@@ -1616,12 +1555,6 @@ class ChatConfig(BaseSettings):
         "per audio token, which the request does not report; ~$0.015/min of "
         "speech at ~750 chars/min is the estimate behind this default.",
     )
-
-    # Prompt paths for different contexts
-    PROMPT_PATHS: dict[str, str] = {
-        "default": "prompts/chat_system.md",
-        "onboarding": "prompts/onboarding_system.md",
-    }
 
     model_config = SettingsConfigDict(
         env_prefix="CHAT_",

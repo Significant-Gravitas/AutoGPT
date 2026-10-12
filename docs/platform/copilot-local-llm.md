@@ -38,16 +38,14 @@ four chat transports. When `CHAT_USE_LOCAL=true`:
 
 | Transport behaviour | Local |
 | --- | --- |
-| Routes the baseline (fast) path to `CHAT_BASE_URL` over OpenAI-compatible HTTP | ✅ |
-| Supports the SDK / extended-thinking path (Claude Agent SDK) | ❌ — auto-downgrades to fast |
+| Routes the baseline engine to `CHAT_BASE_URL` over OpenAI-compatible HTTP | ✅ |
+| Supports the SDK engine (Claude Agent SDK) | ❌ — every turn runs on the baseline engine |
 | `api_key` falls back to `OPEN_ROUTER_API_KEY` / `OPENAI_API_KEY` if `CHAT_API_KEY` is unset | ❌ — explicit `CHAT_API_KEY` only |
 | Aux + advanced models (`title_model`, `simulation_model`, `fast_advanced_model`) inherit `fast_standard_model` if left at a cloud default | ✅ |
 | Allows non-`anthropic/*` SDK model slugs (vendor validator skipped) | ✅ |
 
-The downgrade is logged at WARNING when an `extended_thinking` request
-arrives — there is no 500. The frontend toggle should already be hidden
-because the `CHAT_MODE_OPTION` LaunchDarkly flag defaults off in
-self-hosted deployments.
+A chat turn cannot ask for an engine: under the local transport every turn
+runs on the baseline engine.
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), `CHAT_*_MODEL` env
 vars are the *bottom* layer of model resolution: LaunchDarkly per-user

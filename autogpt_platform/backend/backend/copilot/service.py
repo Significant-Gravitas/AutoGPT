@@ -32,7 +32,7 @@ from backend.util.llm.providers import call_provider_openai_compat_sync
 from backend.util.settings import AppEnvironment, Settings
 
 from .anthropic_rate_card import compute_anthropic_cost_usd
-from .config import ChatConfig, CopilotLLMModel
+from .config import ChatConfig
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
@@ -57,21 +57,6 @@ _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 # A 20-token title must not inherit the block-sized LLM default; it runs in a
 # background task holding a slot in the shared aux-client pool.
 _TITLE_TIMEOUT_SECONDS = 30
-
-
-def resolve_chat_model(tier: CopilotLLMModel | None) -> str:
-    """Return the configured SDK model for the given tier.
-
-    The SDK (extended-thinking) path is Anthropic-only — the Claude Agent
-    SDK CLI refuses non-Anthropic endpoints — so both SDK tiers resolve
-    to the ``thinking_*_model`` cells.  Baseline has its own resolver
-    (``_resolve_baseline_model``) that reads the ``fast_*_model`` cells;
-    the two paths diverge deliberately at the config layer so a cheaper
-    baseline provider can't break SDK, or vice versa.
-    """
-    if tier == "advanced":
-        return config.thinking_advanced_model
-    return config.thinking_standard_model
 
 
 _main_client: LangfuseAsyncOpenAI | None = None
@@ -137,18 +122,6 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     return _aux_client
 
 
-# Back-compat alias.  Existing callers and tests import this name; new
-# code should pick the explicit ``_get_main_client`` / ``_get_aux_client``.
-_get_openai_client = _get_main_client
-
-
-def reset_clients() -> None:
-    """Test-only: drop the cached OpenAI clients so the next call re-reads config."""
-    global _main_client, _aux_client
-    _main_client = None
-    _aux_client = None
-
-
 def _get_langfuse():
     global _langfuse
     if _langfuse is None:
@@ -172,10 +145,9 @@ MEMORY_CONTEXT_TAG = "memory_context"
 # without polluting the cacheable system prompt.  Server-injected only.
 ENV_CONTEXT_TAG = "env_context"
 
-# Tag name for the per-turn budget hint block (baseline-only — the SDK CLI
-# has its own running-cost reminder via ``max_budget_usd``).  Kept as a
-# distinct tag so it does not nest inside ``<env_context>`` and so users
-# cannot spoof a fake budget figure to the model.  Server-injected only.
+# Tag name for the baseline engine's first-turn budget hint block.  Kept as
+# a distinct tag so it does not nest inside ``<env_context>``.
+# Server-injected only.
 BUDGET_CONTEXT_TAG = "budget_context"
 
 # Tag name for the per-session follow-up awareness block injected into the
@@ -222,10 +194,7 @@ SEEN_CAPABILITIES_TAG = "seen_capabilities"
 # User-specific context is injected into the first user message instead,
 # so the system prompt never changes and can be cached across all sessions.
 #
-# NOTE: This constant is part of the module's public API — it is imported by
-# sdk/service.py, baseline/service.py, dry_run_loop_test.py, and
-# prompt_cache_test.py. The leading underscore is retained for backwards
-# compatibility; CACHEABLE_SYSTEM_PROMPT is exported as the public alias.
+# Tests read it under this name; CACHEABLE_SYSTEM_PROMPT is the public alias.
 _CACHEABLE_SYSTEM_PROMPT = f"""You are Otto, the AI assistant on the AutoGPT platform, helping users build and run automations.
 
 Your goal is to help users automate tasks by:
@@ -255,19 +224,10 @@ CACHEABLE_SYSTEM_PROMPT = _CACHEABLE_SYSTEM_PROMPT
 # user_context prefix helpers
 # ---------------------------------------------------------------------------
 #
-# These two helpers are the *single source of truth* for the on-the-wire format
-# of the injected `<user_context>` block. `inject_user_context()` writes via
-# `format_user_context_prefix()`; the chat-history GET endpoint reads via
-# `strip_user_context_prefix()`. Keeping both behind a shared format prevents
-# silent drift between the writer and the reader.
-
-# Matches a `<user_context>...</user_context>` block at the very start of a
-# message followed by exactly the `\n\n` separator that the formatter writes.
-# `re.DOTALL` lets `.*?` span newlines; the leading `^` keeps embedded literal
-# blocks later in the message untouched.
-_USER_CONTEXT_PREFIX_RE = re.compile(
-    rf"^<{USER_CONTEXT_TAG}>.*?</{USER_CONTEXT_TAG}>\n\n", re.DOTALL
-)
+# `inject_user_context()` writes the `<user_context>` block through
+# `format_user_context_prefix()`; the display strip
+# (`strip_injected_context_for_display`) peels it, with every other block in
+# SERVER_INJECTED_BLOCK_TAGS, back off the stored message.
 
 # Every block the server injects into a prompt. Both directions read it: the
 # inbound sanitizer strips a user-typed copy before it reaches the model, and
@@ -323,19 +283,9 @@ def format_user_context_prefix(formatted_understanding: str) -> str:
     The input must already have been sanitised (callers should pipe
     `format_understanding_for_prompt()` output through
     `_sanitize_user_context_field()`). The output is the exact byte sequence
-    `inject_user_context()` prepends to the first user message and the same
-    sequence `strip_user_context_prefix()` is built to remove.
+    `inject_user_context()` prepends to the first user message.
     """
     return f"<{USER_CONTEXT_TAG}>\n{formatted_understanding}\n</{USER_CONTEXT_TAG}>\n\n"
-
-
-def strip_user_context_prefix(content: str) -> str:
-    """Remove a leading `<user_context>...</user_context>\\n\\n` block, if any.
-
-    Only the prefix at the very start of the message is stripped; embedded
-    `<user_context>` strings later in the message are intentionally preserved.
-    """
-    return _USER_CONTEXT_PREFIX_RE.sub("", content)
 
 
 def strip_server_injected_tags(text: str) -> str:

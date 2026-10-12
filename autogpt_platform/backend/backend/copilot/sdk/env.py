@@ -136,9 +136,9 @@ def build_sdk_env(
 
     # Transports that don't run the SDK at all (currently: ``local`` —
     # Ollama et al. don't implement Anthropic's wire protocol) must not
-    # reach this builder. The processor downgrades extended_thinking →
-    # fast for those transports, so an entry here indicates a bug
-    # upstream.  Fail loudly rather than constructing a doomed env.
+    # reach this builder: the engine choice (``engine.resolve_use_sdk``)
+    # sends their turns to the baseline engine, so an entry here indicates
+    # a bug upstream.  Fail loudly rather than constructing a doomed env.
     elif not config.transport.supports_sdk:
         raise RuntimeError(
             f"build_sdk_env() called under transport "
