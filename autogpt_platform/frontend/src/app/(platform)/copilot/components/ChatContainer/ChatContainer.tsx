@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -14,6 +13,7 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
+import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
@@ -44,7 +44,7 @@ import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -119,9 +119,9 @@ export interface ChatContainerProps {
   isKickoffStarting?: boolean;
   /** Follow a turn the server started, e.g. after an approval card is answered. */
   onBackendTurn?: () => void;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports; the thread header clears them. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports; the thread header lines up with them. */
+  floatingControls?: FloatingControls;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -163,7 +163,7 @@ export const ChatContainer = ({
   isAdoptingExpertSession,
   isKickoffStarting,
   onBackendTurn,
-  hasFloatingControls,
+  floatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -187,7 +187,14 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  // Only a hover made while the limit is reached may open the usage tooltip.
+  // Radix reports hovers while `open` holds it shut, and a lifted limit hides
+  // it without a close event; either would pop it open, unhovered, the next
+  // time the limit is reached.
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
+  useEffect(() => {
+    if (!isLimitReached) setIsUsageTooltipOpen(false);
+  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -272,8 +279,13 @@ export const ChatContainer = ({
     requestVoiceStart();
     try {
       await onCreateSession();
-    } catch {
+    } catch (error) {
       takeVoiceStart();
+      toastSendFailure({
+        title: "Could not start a new chat session",
+        error,
+        recovery: "voice mode did not start",
+      });
     }
   }
 
@@ -320,13 +332,10 @@ export const ChatContainer = ({
         );
       }
     } catch (error) {
-      toast({
+      toastSendFailure({
         title: "Couldn't retry message",
-        description: describeSendFailure(
-          error,
-          "your previous message is still in the chat",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your previous message is still in the chat",
       });
     } finally {
       isRetryingRef.current = false;
@@ -385,7 +394,7 @@ export const ChatContainer = ({
                     bottomContentPadding={usageCardHeight}
                     expertIdentity={expertIdentity}
                     isResolvingExpertIdentity={isResolvingExpertIdentity}
-                    hasFloatingControls={hasFloatingControls}
+                    floatingControls={floatingControls}
                   />
                 </NewChatOnboarding>
                 {archivedExpertIdentity ? (
@@ -429,7 +438,9 @@ export const ChatContainer = ({
                     )}
                     <Tooltip
                       open={Boolean(isLimitReached && isUsageTooltipOpen)}
-                      onOpenChange={setIsUsageTooltipOpen}
+                      onOpenChange={(open) =>
+                        setIsUsageTooltipOpen(open && isLimitReached)
+                      }
                     >
                       <TooltipTrigger asChild>
                         <div>

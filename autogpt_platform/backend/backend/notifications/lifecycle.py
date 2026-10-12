@@ -9,7 +9,8 @@ Trial enrollment and conversion notices are handled separately in `trial.py`.
 
 A customer who opted out of marketing still gets every one of these emails;
 only the MailerLite audience changes that ride along are skipped for them
-(`consent.py`).
+(`consent.py`). So does one a signal places in Iran or Russia, the checkout's
+billing address included.
 """
 
 import logging
@@ -32,6 +33,7 @@ from backend.data.notifications import (
 from backend.data.stripe_client import stripe_call
 from backend.data.user import BillingEmailRecipient
 from backend.notifications import subscriber_fields
+from backend.notifications.audience_enrichment import billing_country
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.dedupe import claim_once, release_claim
 from backend.notifications.lifecycle_plan import (
@@ -116,9 +118,10 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
     if user is None:
         return
     fields = subscriber_fields.subscribed(subscription.get("start_date"))
+    countries = (billing_country(session),)
 
     if user.welcome_email_sent_at is not None:
-        if not audience_change_allowed(user, AudienceAction.ADD_CHANGELOG):
+        if not audience_change_allowed(user, AudienceAction.ADD_CHANGELOG, countries):
             return
         event = audience_event(
             AudienceAction.ADD_CHANGELOG, user.email, user.id, fields
@@ -158,7 +161,7 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         await _release_welcome(user)
         raise
 
-    if not audience_change_allowed(user, AudienceAction.ENROLL_TOUR):
+    if not audience_change_allowed(user, AudienceAction.ENROLL_TOUR, countries):
         return
     # Must not propagate: the welcome is already out and the claim is durable,
     # so a Stripe retry would take the returning-customer branch and enrol them

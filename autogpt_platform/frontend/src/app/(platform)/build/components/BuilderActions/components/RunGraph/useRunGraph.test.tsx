@@ -142,6 +142,21 @@ describe("useRunGraph", () => {
     );
   });
 
+  it("does not run anything when the save is refused", async () => {
+    // A refused save resolves to null after telling the user why; running
+    // the URL's version would run the graph from before their edits.
+    mockSaveGraph.mockResolvedValue(null);
+
+    const { result } = renderHook(() => useRunGraph());
+
+    await act(async () => {
+      await result.current.handleRunGraph();
+    });
+
+    expect(mockExecuteGraph).not.toHaveBeenCalled();
+    expect(graphState.setIsGraphRunning).not.toHaveBeenCalled();
+  });
+
   it("records a successful real run with its builder surface", async () => {
     mockSaveGraph.mockResolvedValue({ id: "graph-1", version: 1 });
     const { result } = renderHook(() => useRunGraph());
