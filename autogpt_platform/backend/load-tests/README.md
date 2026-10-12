@@ -94,8 +94,9 @@ npm run cloud
 ### Environment Configuration
 
 - **LOCAL**: `http://localhost:8006` (local development)
-- **DEV**: `https://dev-api.agpt.co` (development environment)
+- **DEV**: `https://dev-server.agpt.co` (development environment)
 - **PROD**: `https://api.agpt.co` (production environment - coordinate with team!)
+- **PREVIEW**: `https://pr-<N>-server.agpt.co`, the `!deploy` preview of PR `<N>`. Set `PR_NUMBER=<N>` next to `K6_ENVIRONMENT=PREVIEW`. A preview starts with an empty database and has its own sign-in, so `generate-tokens.js` tokens are not valid there; `tests/marketplace/public-access-test.js` needs no token. `tests/basic/connectivity-test.js` also calls the preview's own Supabase project, so it needs `SUPABASE_URL` and `SUPABASE_ANON_KEY` for that project. Measuring a preview against a baseline is covered in `.claude/skills/perf-compare/SKILL.md`.
 
 ## 📊 Performance Testing Features
 

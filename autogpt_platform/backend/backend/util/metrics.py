@@ -296,6 +296,17 @@ def _before_send_transaction(event, hint):
     return event
 
 
+def _sentry_environment() -> str:
+    """The environment events are tagged with. A deployment that names itself
+    (a PR preview, say) takes precedence over the one computed from the app
+    environment and behaviour mode. A blank name counts as none."""
+    config = settings.config
+    return (
+        config.sentry_environment.strip()
+        or f"app:{config.app_env.value}-behave:{config.behave_as.value}"
+    )
+
+
 def sentry_init():
     if _running_under_pytest():
         return
@@ -315,7 +326,8 @@ def sentry_init():
         # block's request to a user-supplied URL, carry no Sentry headers.
         trace_propagation_targets=[],
         profiles_sample_rate=1.0,
-        environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
+        release=settings.config.sentry_release.strip() or None,
+        environment=_sentry_environment(),
         before_send=_before_send,
         before_send_transaction=_before_send_transaction,
         integrations=[
