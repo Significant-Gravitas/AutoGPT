@@ -10,8 +10,10 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util import tracing
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -340,6 +342,11 @@ class BaseTool:
         raise NotImplementedError
 
     @property
+    def model_parameters(self) -> dict[str, Any]:
+        """``parameters`` as the model is sent them: without the card's hints."""
+        return without_card_hints(self.parameters)
+
+    @property
     def requires_auth(self) -> bool:
         """Whether this tool requires authentication."""
         return False
@@ -392,7 +399,7 @@ class BaseTool:
             function={
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.model_parameters,
             },
         )
 
@@ -405,6 +412,9 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
+        Each call is its own Sentry ``copilot.tool`` transaction, named after
+        the tool, in the trace of the turn that made it.
+
         Args:
             user_id: User ID (None for anonymous users)
             session_id: Chat session ID
@@ -414,6 +424,20 @@ class BaseTool:
             Pydantic response object
 
         """
+        with tool_transaction(self.name, tool_call_id, session.session_id) as span:
+            output = await self._execute_checked(
+                user_id, session, tool_call_id, **kwargs
+            )
+            span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            return output
+
+    async def _execute_checked(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        **kwargs,
+    ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
         if self.requires_auth and not user_id:
             logger.warning(
@@ -513,6 +537,7 @@ class BaseTool:
             )
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            tracing.set_status("internal_error")
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
@@ -698,3 +723,21 @@ class BaseTool:
 
         """
         raise NotImplementedError
+
+
+# Read by the approval card (gate/review.py, gate/references.py), never by the
+# model: a label, how to show the value, and what platform thing an id names.
+CARD_HINTS = frozenset({"title", "format", "entity"})
+
+
+def without_card_hints(schema: dict[str, Any]) -> dict[str, Any]:
+    properties = schema.get("properties")
+    if not properties:
+        return schema
+    return {
+        **schema,
+        "properties": {
+            key: {k: v for k, v in spec.items() if k not in CARD_HINTS}
+            for key, spec in properties.items()
+        },
+    }

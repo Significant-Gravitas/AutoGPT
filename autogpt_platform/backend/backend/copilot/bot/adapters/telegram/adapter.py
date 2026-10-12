@@ -165,7 +165,9 @@ class TelegramAdapter(WebhookAdapter):
             # This runs as a fire-and-forget task — an unhandled error would
             # only surface as asyncio's deferred "exception never retrieved".
             try:
-                await commands.handle(self._api, self._client, message, command)
+                await commands.handle(
+                    self._api, self._client, message, command, self.send_link
+                )
             except Exception:
                 logger.exception("Telegram command handler failed")
             return

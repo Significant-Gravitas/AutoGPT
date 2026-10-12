@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { AccountMenu } from "@/components/layout/Navbar/components/AccountMenu/AccountMenu";
@@ -19,7 +20,12 @@ export function SidebarUserActions() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const logoutInProgress = isLogoutInProgress();
-  const dynamicMenuItems = getAccountMenuItems(user?.role, true);
+  const isBillingEnabled = useIsBillingEnabled();
+  const dynamicMenuItems = getAccountMenuItems(
+    user?.role,
+    true,
+    isBillingEnabled,
+  );
 
   const { data: profile, isLoading: isProfileLoading } = useGetV2GetUserProfile(
     {
@@ -50,7 +56,7 @@ export function SidebarUserActions() {
   );
 
   return (
-    <SidebarFooter className="border-t border-zinc-100 px-4">
+    <SidebarFooter className="sticky bottom-0 z-10 mt-auto shrink-0 border-t border-zinc-100 bg-sidebar px-4">
       <div className="flex w-full items-center justify-between group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1">
         {isCollapsed ? (
           <SidebarTooltip>

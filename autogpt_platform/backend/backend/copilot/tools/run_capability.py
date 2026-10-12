@@ -87,6 +87,7 @@ class RunCapabilityTool(BaseTool):
                 "id": {
                     "type": "string",
                     "description": "Capability id from find_capability, or an MCP server URL.",
+                    "entity": None,
                 },
                 "input": {
                     "type": "object",
@@ -317,7 +318,7 @@ async def _describe_tool(
     return CapabilityDetailsResponse(
         message=f"{tool.description} Call again without validate_only to run.",
         capability=entry.listing(),
-        parameters=tool.parameters,
+        parameters=tool.model_parameters,
         session_id=session.session_id,
     ).from_outside()
 

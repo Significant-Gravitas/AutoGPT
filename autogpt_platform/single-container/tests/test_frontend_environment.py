@@ -177,7 +177,12 @@ class FrontendEnvironmentTest(unittest.TestCase):
             'platform."UserAuthJwks"',
         ):
             self.assertEqual(policy.count(table), 1)
-        self.assertIn('GRANT SELECT (id, email), UPDATE (email, "updatedAt")', policy)
+        self.assertIn(
+            "GRANT SELECT (id, email),\n"
+            '  INSERT (id, email, name, "updatedAt"),\n'
+            '  UPDATE (email, "updatedAt")',
+            policy,
+        )
         self.assertIn(
             "ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL", policy
         )

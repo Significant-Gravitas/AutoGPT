@@ -17,7 +17,7 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, Iterable, Mapping
+from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -36,6 +36,7 @@ from backend.data.notification_bus import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str, hash_compare_and_set
+from backend.util import tracing
 
 from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX
@@ -49,6 +50,7 @@ from .response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamFollowUpQueued,
     StreamHeartbeat,
     StreamModeChanged,
     StreamPendingDrained,
@@ -350,6 +352,10 @@ async def publish_chunk(
 
     All delivery is via Redis Streams - no in-memory state.
 
+    A turn publishes every chunk it streams, so these Redis calls are kept
+    off the turn's Sentry transaction, which would otherwise outgrow the
+    SDK's span limit.
+
     Args:
         turn_id: Turn ID (per-turn UUID) identifying the stream
         chunk: The stream response chunk to publish
@@ -360,6 +366,16 @@ async def publish_chunk(
     Returns:
         The Redis Stream message ID
     """
+    with tracing.suppress_child_spans():
+        return await _publish_chunk(turn_id, chunk, session_id=session_id)
+
+
+async def _publish_chunk(
+    turn_id: str,
+    chunk: StreamBaseResponse,
+    *,
+    session_id: str | None,
+) -> str:
     start_time = time.perf_counter()
     chunk_type = type(chunk).__name__
     chunk_json = chunk.model_dump_json()
@@ -685,9 +701,19 @@ def _start_listener(
     turn_id: str,
 ) -> None:
     listener_task = asyncio.create_task(
-        _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+        _without_child_spans(
+            _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+        )
     )
     _listener_sessions[id(queue)] = (session_id, listener_task)
+
+
+async def _without_child_spans(listener: Coroutine[Any, Any, None]) -> None:
+    """Run a listener off its subscriber's Sentry transaction. It polls Redis
+    for as long as the turn streams, which would outgrow the SDK's span limit
+    on the ``/stream`` request relaying a long turn."""
+    with tracing.suppress_child_spans():
+        await listener
 
 
 def _chunk_from_fields(fields: dict[str, str]) -> StreamBaseResponse | None:
@@ -1320,6 +1346,7 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.STATUS.value: StreamStatus,
     ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
+    ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.COMPACTION.value: StreamCompactionProgress,

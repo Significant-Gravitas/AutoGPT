@@ -702,6 +702,7 @@ class BrowserActTool(BaseTool):
                 "target": {
                     "type": "string",
                     "description": "@ref ID (e.g. '@e3'), CSS selector, or text. Required for: click, dblclick, fill, type, hover, check, uncheck, select. For wait: CSS selector or milliseconds string (e.g. '1000').",
+                    "entity": None,
                 },
                 "value": {
                     "type": "string",
