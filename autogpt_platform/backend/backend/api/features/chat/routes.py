@@ -1,11 +1,10 @@
 """Chat API routes for chat session management and streaming via SSE."""
 
 import asyncio
-import functools
 import logging
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, ParamSpec, TypeVar
+from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
@@ -157,7 +156,7 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     save_default_chat_route,
 )
-from backend.copilot.trial_reads import trial_reads_shared
+from backend.copilot.trial_reads import sharing_trial_reads
 from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
@@ -220,28 +219,6 @@ async def _validate_and_get_writable_session(
     session = await _validate_and_get_session(session_id, user_id)
     await _validate_session_expert_writable_by_user(session, user_id)
     return session
-
-
-_P = ParamSpec("_P")
-_R = TypeVar("_R")
-
-
-def _sharing_trial_reads(
-    handler: Callable[_P, Awaitable[_R]],
-) -> Callable[_P, Awaitable[_R]]:
-    """Run *handler* with one trial read shared by its paywall and limit checks.
-
-    Each of those checks reads the user's subscription trial, a database round
-    trip apiece; inside the handler they share one. The scope ends when the
-    handler returns, before any response is streamed.
-    """
-
-    @functools.wraps(handler)
-    async def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> _R:
-        with trial_reads_shared():
-            return await handler(*args, **kwargs)
-
-    return wrapper
 
 
 # Minimum age before the orphan-reset paths (``get_session`` and
@@ -1750,7 +1727,9 @@ def _empty_ui_message_stream_response(
         },
     },
 )
-@_sharing_trial_reads
+# The paywall and the rate-limit checks below each read a trial user's
+# subscription trial; inside this handler they share one read.
+@sharing_trial_reads
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,

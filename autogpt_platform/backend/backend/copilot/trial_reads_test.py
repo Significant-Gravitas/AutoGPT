@@ -1,17 +1,23 @@
 """One trial read per ``trial_reads_shared`` block, and none shared outside it."""
 
 import asyncio
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.api.features.chat.routes import StreamChatRequest, stream_chat_post
 from backend.copilot.rate_limit import (
     SubscriptionTier,
     check_rate_limit,
     enforce_payment_paywall,
     get_global_rate_limits,
 )
-from backend.copilot.trial_reads import shared_trial_read, trial_reads_shared
+from backend.copilot.trial_reads import (
+    shared_trial_read,
+    sharing_trial_reads,
+    trial_reads_shared,
+)
 from backend.data.subscription_trial import TrialState
 
 
@@ -117,6 +123,49 @@ async def test_a_closed_block_reads_afresh():
         shared.close()
         await shared_trial_read("u1", read)
     assert read.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_wrapped_handler_shares_one_read_per_call():
+    read = AsyncMock(return_value=_trial())
+
+    async def handler(user_id: str, *, limit: int = 1) -> None:
+        await shared_trial_read(user_id, read)
+        await shared_trial_read(user_id, read)
+
+    wrapped = sharing_trial_reads(handler)
+    await wrapped("u1")
+    await wrapped("u1")
+
+    assert read.await_count == 2
+    assert inspect.signature(wrapped) == inspect.signature(handler)
+
+
+class _StopTheTurn(Exception):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_the_stream_route_runs_its_checks_in_one_block():
+    read = AsyncMock(return_value=_trial())
+
+    async def first_checks(session_id: str, user_id: str) -> None:
+        await shared_trial_read(user_id, read)
+        await shared_trial_read(user_id, read)
+        raise _StopTheTurn
+
+    with (
+        patch(
+            "backend.api.features.chat.routes._validate_and_get_writable_session",
+            new=first_checks,
+        ),
+        pytest.raises(_StopTheTurn),
+    ):
+        await stream_chat_post(
+            "session-1", StreamChatRequest(message="hi"), "u1", MagicMock()
+        )
+
+    assert read.await_count == 1
 
 
 @pytest.mark.asyncio
