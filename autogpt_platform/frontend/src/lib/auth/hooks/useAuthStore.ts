@@ -7,6 +7,7 @@ import {
   ImpersonationState,
   isImpersonationClearedEvent,
   isImpersonationUsableBy,
+  hasImpersonation,
 } from "@/lib/impersonation";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { create } from "zustand";
@@ -30,6 +31,26 @@ import {
 const RETRY_BASE_DELAY_MS = 1_000;
 const RETRY_MAX_DELAY_MS = 30_000;
 const MAX_RETRY_ATTEMPTS = 6;
+
+const SIGN_OUT_ATTEMPTS = 3;
+const SIGN_OUT_RETRY_DELAY_MS = 1_000;
+
+// The sign-out action itself never throws once delivered (it expires the
+// cookies even if revoking the session fails), so a throw means the request
+// didn't get through. Retry those before giving up.
+async function signOutOnServer(options: ServerLogoutOptions): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await serverLogout(options);
+      return;
+    } catch (error) {
+      if (attempt >= SIGN_OUT_ATTEMPTS) throw error;
+      await new Promise((resolve) =>
+        setTimeout(resolve, SIGN_OUT_RETRY_DELAY_MS * attempt),
+      );
+    }
+  }
+}
 
 interface InitializeParams {
   api: BackendAPI;
@@ -116,6 +137,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
             } else if (validationResult.user && validationResult.isValid) {
               adoptUser(validationResult.user);
               set({ hasLoadedUser: true, isUserLoading: false });
+            } else if (!validationResult.isValid && hasImpersonation()) {
+              // No session at startup: a target left from the last one goes.
+              clearImpersonationEverywhere();
             }
           }
         } else {
@@ -149,12 +173,19 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
     const api = params?.api ?? get().apiRef;
     const options = params?.options ?? {};
 
-    setWebSocketDisconnectIntent();
     cancelRetry();
 
-    if (api) {
-      api.disconnectWebSocket();
-    }
+    // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
+    // the next user signing in on this browser doesn't send X-Act-As-User-Id.
+    clearImpersonationEverywhere();
+
+    // Only a sign-out the server received ends the session. If the request
+    // never got through, the cookies are still live, so this tab stays signed
+    // in and no other tab is told otherwise; the caller reports the failure.
+    await signOutOnServer(options);
+
+    setWebSocketDisconnectIntent();
+    api?.disconnectWebSocket();
 
     const existingCleanup = get().listenersCleanup;
     if (existingCleanup) {
@@ -162,15 +193,10 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       set({ listenersCleanup: null });
     }
 
-    // Drop any admin impersonation (sessionStorage + cookie, in every tab) so
-    // the next user signing in on this browser doesn't send X-Act-As-User-Id.
-    clearImpersonationEverywhere();
-
     // Clear React Query cache to prevent stale data from old user
     if (typeof window !== "undefined") {
       const { getQueryClient } = await import("@/lib/react-query/queryClient");
-      const queryClient = getQueryClient();
-      queryClient.clear();
+      getQueryClient().clear();
     }
 
     set({
@@ -179,14 +205,9 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
       isUserLoading: false,
     });
 
-    try {
-      await serverLogout(options);
-    } finally {
-      // Other tabs reload onto /login when they hear this. Announce only once
-      // the server has expired the session cookies, or a reload can still
-      // see the old session and land straight back in the app.
-      broadcastLogout();
-    }
+    // Other tabs act on this at once. Sent only now that the server has
+    // expired the session cookies, or a tab could reload into the old session.
+    broadcastLogout();
   }
 
   async function validateSessionInternal(

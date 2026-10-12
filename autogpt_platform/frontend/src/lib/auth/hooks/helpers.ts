@@ -93,7 +93,11 @@ export async function validateSession(
     }
 
     if (result.user) {
-      const shouldUpdateUser = params.currentUser?.id !== result.user.id;
+      // A role change (e.g. an admin demoted) is a new identity too: it
+      // decides what this tab may do, impersonation included.
+      const shouldUpdateUser =
+        params.currentUser?.id !== result.user.id ||
+        params.currentUser?.role !== result.user.role;
       clearWebSocketDisconnectIntent();
       return {
         isValid: true,

@@ -102,7 +102,7 @@ describe("LoginPage sign-in guards", () => {
   );
 
   test("drops leftover admin impersonation before a password sign-in", async () => {
-    ImpersonationState.set("someone-elses-user-id");
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
     expect(impersonationCookiePresent()).toBe(true);
     let impersonationAtLogin: string | null = "unset";
     mockLoginAction.mockImplementation(async () => {
@@ -119,7 +119,7 @@ describe("LoginPage sign-in guards", () => {
   });
 
   test("drops leftover admin impersonation before a Google sign-in", async () => {
-    ImpersonationState.set("someone-elses-user-id");
+    ImpersonationState.set("someone-elses-user-id", "admin-1");
     expect(impersonationCookiePresent()).toBe(true);
     let stateAtProviderRequest: { session: string | null; cookie: boolean } = {
       session: "unset",

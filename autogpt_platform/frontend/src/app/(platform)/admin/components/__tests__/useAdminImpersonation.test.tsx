@@ -36,6 +36,8 @@ const reloadMock = vi.fn();
 let setSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
+  // Impersonation is recorded against the signed-in admin who starts it.
+  useAuthStore.setState({ user: { id: "admin-1", role: "admin" } as User });
   toastMock.mockClear();
   reloadMock.mockClear();
   // jsdom can't navigate; intercept the reload the hook fires on a successful swap.
@@ -74,9 +76,6 @@ describe("useAdminImpersonation", () => {
   });
 
   test("proceeds with the swap when the audit alert is delivered", async () => {
-    useAuthStore.setState({
-      user: { id: "admin-1", role: "admin" } as User,
-    });
     server.use(
       getPostV2NotifyImpersonationStartMockHandler200({ alerted: true }),
     );
@@ -90,7 +89,6 @@ describe("useAdminImpersonation", () => {
     await waitFor(() => expect(reloadMock).toHaveBeenCalledTimes(1));
     // Recorded against the admin who chose it, so no other account adopts it.
     expect(setSpy).toHaveBeenCalledWith(TARGET_USER_ID, "admin-1");
-    useAuthStore.setState({ user: null });
     expect(toastMock).not.toHaveBeenCalledWith(
       expect.objectContaining({ variant: "destructive" }),
     );
