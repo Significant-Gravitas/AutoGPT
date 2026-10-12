@@ -11,8 +11,11 @@ import asyncio
 import logging
 
 from backend.copilot.config import ChatConfig
+from backend.data import redis_client
 from backend.util.llm.providers import cancel_batch, poll_batch
 from backend.util.settings import Settings
+
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +25,9 @@ PROVIDER_CANCEL_TIMEOUT_SECONDS = 10.0
 # Anthropic ends every batch within 24 hours of its creation, expiring what
 # it has not processed; an hour more for the end to show.
 PROVIDER_BATCH_WINDOW_SECONDS = 25 * 60 * 60
+# A batch whose cancel was sent without being acknowledged, kept in Redis so
+# the next stop of it reads its status before sending another.
+CANCEL_SENT_PREFIX = "dream:batch:cancel_sent"
 
 
 def anthropic_api_key() -> str | None:
@@ -44,9 +50,30 @@ async def provider_batch_stopped(provider_batch_id: str) -> bool:
     acknowledged (the batch stops within minutes), or the batch has already
     ended. ``False`` when neither can be confirmed: no key, the provider
     unreachable or out of time, or the batch still running after a refused
-    cancel. Logged, never raised."""
-    if await cancel_provider_batch(provider_batch_id):
-        return True
+    cancel. Logged, never raised.
+
+    A cancel and a status read can each take ``PROVIDER_CANCEL_TIMEOUT_SECONDS``,
+    more together than a reaper attempt has, so they may be spread over two
+    calls: a cancel not acknowledged is noted (``CANCEL_SENT_PREFIX``), and
+    while the note stands a call reads the status without sending another.
+    A status read that answers clears it, and so does one that fails: the
+    note outlives only a call cut short during the read (an attempt's
+    deadline), so the next one goes straight to the read it did not finish,
+    and a batch still running gets the cancel again."""
+    if not await _cancel_sent(provider_batch_id):
+        if await cancel_provider_batch(provider_batch_id):
+            return True
+        await _note_cancel_sent(provider_batch_id, True)
+    stopped = await _batch_ended(provider_batch_id)
+    if not stopped:
+        await _note_cancel_sent(provider_batch_id, False)
+    return stopped
+
+
+async def _batch_ended(provider_batch_id: str) -> bool:
+    """Whether Anthropic reads the batch ended; ``False`` when it reads it
+    running, or cannot be asked or answer within
+    ``PROVIDER_CANCEL_TIMEOUT_SECONDS``."""
     api_key = anthropic_api_key()
     if api_key is None:
         return False
@@ -68,6 +95,41 @@ async def provider_batch_stopped(provider_batch_id: str) -> bool:
         return True
     logger.warning(f"Dream batch {provider_batch_id} is still {status}")
     return False
+
+
+async def _cancel_sent(provider_batch_id: str) -> bool:
+    """Whether a cancel of the batch was sent and not acknowledged since its
+    status last read running; ``False`` when Redis cannot say."""
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            redis = await redis_client.get_redis_async()
+            return bool(await redis.exists(f"{CANCEL_SENT_PREFIX}:{provider_batch_id}"))
+    except Exception:
+        logger.warning(
+            f"Could not read whether dream batch {provider_batch_id}'s cancel was "
+            "sent",
+            exc_info=True,
+        )
+        return False
+
+
+async def _note_cancel_sent(provider_batch_id: str, sent: bool) -> None:
+    """Note, or clear, that the batch's cancel was sent and not
+    acknowledged. Best-effort: without the note the next call sends the
+    cancel again."""
+    key = f"{CANCEL_SENT_PREFIX}:{provider_batch_id}"
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            redis = await redis_client.get_redis_async()
+            if sent:
+                await redis.set(key, "1", ex=PROVIDER_BATCH_WINDOW_SECONDS)
+            else:
+                await redis.delete(key)
+    except Exception:
+        logger.warning(
+            f"Could not note dream batch {provider_batch_id}'s cancel",
+            exc_info=True,
+        )
 
 
 async def cancel_provider_batch(provider_batch_id: str) -> bool:

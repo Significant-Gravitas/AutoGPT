@@ -22,7 +22,8 @@ whether it finished:
 
 The charge goes first because the state it reads lapses. The provider goes
 last because it is the slowest (two calls of up to
-``PROVIDER_CANCEL_TIMEOUT_SECONDS``) and none of the other steps needs it
+``PROVIDER_CANCEL_TIMEOUT_SECONDS``, spread over two cleanups when they do
+not fit one, ``provider_batch.py``) and none of the other steps needs it
 done first: the executor drops a closed pass's batch unpolled whether or not
 Anthropic has stopped it. A provider that hangs then costs a cleanup its
 last step, retried, and not the release of the user's lock.

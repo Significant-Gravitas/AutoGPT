@@ -66,8 +66,10 @@ others and the one that clears its mark once it has finished, have bounds of
 their own, outside it, so a slow write does not cost the cleanup its time.
 The release that may follow a cut has its own last seconds, and finishes
 even if the cut lands during it. A cleanup cut short resumes where it
-stopped: its steps are ordered and idempotent, and each phase is charged
-under its own claim. Every call a row makes is bounded by a timeout around
+stopped: its steps are ordered and idempotent, each phase is charged under
+its own claim, and a provider batch whose cancel was sent is next only
+asked for its status (``provider_batch.py``). Every call a row makes is
+bounded by a timeout around
 a direct await, never ``asyncio.wait_for``, which on Python 3.11 returns the
 result of a call that completes as a cut lands and so loses the cut. A row
 the budget does not reach, or cuts short, is listed again next run; a phase

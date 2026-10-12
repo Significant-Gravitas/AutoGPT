@@ -126,6 +126,48 @@ class TestASlowCleanup:
         assert state_key("slow") not in fake_dream_redis.hashes
         assert fake_dream_db.rows["slow"]["cleanup_pending_at"] is None
 
+    async def test_whose_provider_answers_slowly_finishes_over_two_runs(
+        self, mocker, fake_dream_db, fake_dream_redis
+    ):
+        """Every bound scaled to a tenth: Anthropic refuses the cancel in 8 s
+        of its 10 (the batch has ended) and answers the status read in 8 s
+        too. Both do not fit one 12 s attempt; the cancel is noted as sent,
+        so the next run only reads the status, and the cleanup finishes."""
+        _scale_every_bound(mocker, 0.1)
+        mocker.patch.object(provider_batch_mod, "anthropic_api_key", return_value="k")
+        _seed(
+            fake_dream_db,
+            "slow-provider",
+            route=DreamPassRoute.ANTHROPIC_BATCH,
+            status=DreamPassStatus.EXPIRED,
+            provider_batch_id="b-ended",
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        calls: list[str] = []
+
+        async def refused(**_kwargs) -> bool:
+            await asyncio.sleep(0.8)
+            calls.append("cancel")
+            return False
+
+        async def ended(**_kwargs) -> str:
+            await asyncio.sleep(0.8)
+            calls.append("status")
+            return "ended"
+
+        mocker.patch.object(provider_batch_mod, "cancel_batch", refused)
+        mocker.patch.object(provider_batch_mod, "poll_batch", ended)
+
+        first = await asyncio.wait_for(reap_expired_passes(), 10)
+        second = await asyncio.wait_for(reap_expired_passes(), 10)
+
+        assert (first.outcomes, second.outcomes) == (
+            {"out_of_budget": 1},
+            {"cleaned": 1},
+        )
+        assert calls == ["cancel", "status"]
+        assert fake_dream_db.rows["slow-provider"]["cleanup_pending_at"] is None
+
     async def test_that_cannot_be_moved_to_the_back_is_left_for_the_next_run(
         self, mocker, fake_dream_db, fake_dream_redis, charges, caplog
     ):
@@ -410,6 +452,7 @@ def _scale_every_bound(mocker, scale: float) -> None:
         (cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 10),
         (cleanup_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (locks_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
+        (provider_batch_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 2),
         (provider_batch_mod, "PROVIDER_CANCEL_TIMEOUT_SECONDS", 10),
     ):
         mocker.patch.object(module, name, seconds * scale)
