@@ -165,15 +165,23 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
     class's functions, as the service registers them."""
     cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=timezone.utc)
     manager = DatabaseManager()
-    for method, cutoff_name in (
-        (DatabaseManager.list_expired_dream_passes, "expired_before"),
-        (DatabaseManager.list_dream_pass_cleanups, "due_before"),
-        (DatabaseManager.delete_old_dream_passes, "created_before"),
+    # The open-pass scan also carries where the reaper's last scan stopped.
+    cursor = {"after_lapse": cutoff, "after_id": "p1"}
+    for method, args in (
+        (
+            DatabaseManager.list_expired_dream_passes,
+            {"expired_before": cutoff, "limit": 7, **cursor},
+        ),
+        (DatabaseManager.list_dream_pass_cleanups, {"due_before": cutoff, "limit": 7}),
+        (
+            DatabaseManager.delete_old_dream_passes,
+            {"created_before": cutoff, "limit": 7},
+        ),
     ):
         endpoint = manager._create_fastapi_endpoint(method)
         body = inspect.signature(endpoint).parameters["body"].annotation
-        sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
-        assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
+        sent = body.model_validate(to_dict(args))
+        assert sent.model_dump() == args
 
 
 def test_the_audience_consumer_can_read_the_opt_out() -> None:

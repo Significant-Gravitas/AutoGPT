@@ -94,6 +94,43 @@ class TestACleanupCutShort:
         assert row["status"] is DreamPassStatus.EXPIRED
         assert (await reap_expired_passes()).listed == 0
 
+    @pytest.mark.parametrize(
+        "step", ["_charge", "_unlock", "_deleted", "provider_batch_stopped"]
+    )
+    async def test_after_a_step_it_finished_resumes_from_the_next(
+        self, mocker, fake_dream_db, fake_dream_redis, charges, step
+    ):
+        """The process stops right after *step* finished (a cut there, a
+        deploy): the steps are ordered and idempotent, and each phase is
+        charged under its own claim, so the next run finishes the cleanup
+        from where it stopped. One charge in all; the lock, the state and the
+        mark gone."""
+        await _dead_batch_pass(fake_dream_db)
+        fake_dream_db.rows["p1"].update(
+            status=DreamPassStatus.EXPIRED,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        fake_dream_redis.store[_LOCK_KEY] = "dead-token"
+        finished = getattr(cleanup_mod, step)
+
+        async def stops_after(*args, **kwargs):
+            await finished(*args, **kwargs)
+            raise asyncio.CancelledError(f"the process stopped after {step}")
+
+        mocker.patch.object(cleanup_mod, step, stops_after)
+        with pytest.raises(asyncio.CancelledError):
+            await reap_expired_passes()
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None
+
+        mocker.patch.object(cleanup_mod, step, finished)
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert state_key("p1") not in fake_dream_redis.hashes
+        assert _LOCK_KEY not in fake_dream_redis.store
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+
     async def test_by_the_budget_after_the_close_is_resumed_next_run(
         self, mocker, fake_dream_db, fake_dream_redis, provider_cancel, charges
     ):

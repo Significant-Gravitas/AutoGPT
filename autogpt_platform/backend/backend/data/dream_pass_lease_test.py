@@ -3,7 +3,8 @@ database: a new row carries its lease, a renewal moves it, the sync route's
 own end empties it and the input bundle (the statement's ``clear``), a close
 that leaves a cleanup behind (a cancel, the reaper's expiry) marks the row
 and keeps its lease until the closed-row write of a finished cleanup clears
-both, the reaper lists open rows whose lease lapsed (oldest lapse first) and
+both, the reaper lists open rows whose lease lapsed (in lapse order, then by
+id, from a point it gives, so its scan goes on past rows it tried) and
 closed rows whose cleanup is due (least recently written first, so one it
 tried without finishing goes behind the others), on their indexes, and
 retention deletes closed rows past their retention, a batch at a time, none
@@ -164,6 +165,26 @@ async def test_the_reaper_lists_open_passes_whose_lease_lapsed_oldest_first(owne
 
     first = await list_expired_dream_passes(_NOW, limit=1)
     assert [row.id for row in first] == [oldest]
+
+
+async def test_the_reapers_scan_of_open_passes_goes_on_from_where_it_stopped(
+    owner,
+):
+    """Keyset pages in lapse order, then by id: rows that share a lapse are
+    neither skipped nor listed twice across the pages."""
+    lapse = _LONG_AGO - timedelta(days=1)
+    tied = sorted([await _new_pass(owner, lease_expires_at=lapse) for _ in range(3)])
+    later = await _new_pass(owner, lease_expires_at=lapse + timedelta(seconds=1))
+
+    first = await list_expired_dream_passes(_NOW, limit=2)
+    assert [row.id for row in first] == tied[:2]
+
+    after = (first[-1].lease_expires_at, first[-1].id)
+    assert after[0] == lapse
+    second = await list_expired_dream_passes(
+        _NOW, limit=2, after_lapse=after[0], after_id=after[1]
+    )
+    assert [row.id for row in second] == [tied[2], later]
 
 
 async def test_the_reaper_scans_an_index_on_status_and_lease_expiry():

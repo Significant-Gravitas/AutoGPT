@@ -57,16 +57,14 @@ class FakeAsyncRedis:
 
     Covers the surface the dream code uses: ``get``/``set`` (with ``nx``,
     ``xx`` and ``ex``), ``delete``, ``expire``, ``ttl``, ``exists``, ``incr``,
-    the hash commands, the sorted-set commands the reaper uses (``zadd``,
-    ``zrangebyscore``, ``zremrangebyscore``), and ``eval`` for the two
-    single-key lock scripts in ``locks.py`` (compare-and-delete,
-    compare-and-extend). TTLs are recorded, not enforced.
+    the hash commands, and ``eval`` for the two single-key lock scripts in
+    ``locks.py`` (compare-and-delete, compare-and-extend). TTLs are recorded,
+    not enforced.
     """
 
     def __init__(self) -> None:
         self.store: dict[str, str] = {}
         self.hashes: dict[str, dict[str, str]] = {}
-        self.zsets: dict[str, dict[str, float]] = {}
         self.ttls: dict[str, int] = {}
 
     @staticmethod
@@ -108,27 +106,22 @@ class FakeAsyncRedis:
                 removed += 1
             if self.hashes.pop(key, None) is not None:
                 removed += 1
-            if self.zsets.pop(key, None) is not None:
-                removed += 1
             self.ttls.pop(key, None)
         return removed
 
-    def _has(self, key: str) -> bool:
-        return key in self.store or key in self.hashes or key in self.zsets
-
     async def expire(self, key: str, ttl_seconds: int) -> bool:
-        if not self._has(key):
+        if key not in self.store and key not in self.hashes:
             return False
         self.ttls[key] = int(ttl_seconds)
         return True
 
     async def ttl(self, key: str) -> int:
-        if not self._has(key):
+        if key not in self.store and key not in self.hashes:
             return -2
         return self.ttls.get(key, -1)
 
     async def exists(self, *keys: str) -> int:
-        return sum(1 for key in keys if self._has(key))
+        return sum(1 for key in keys if key in self.store or key in self.hashes)
 
     async def incr(self, key: str) -> int:
         value = int(self.store.get(key, "0")) + 1
@@ -167,31 +160,6 @@ class FakeAsyncRedis:
             self.hashes.pop(name, None)
             self.ttls.pop(name, None)
         return removed
-
-    async def zadd(self, name: str, mapping: dict[str, float]) -> int:
-        bucket = self.zsets.setdefault(name, {})
-        added = sum(1 for member in mapping if self._s(member) not in bucket)
-        bucket.update({self._s(m): float(score) for m, score in mapping.items()})
-        return added
-
-    async def zrangebyscore(self, name: str, low: Any, high: Any) -> list[str]:
-        bucket = self.zsets.get(name, {})
-        return [
-            member
-            for member, score in sorted(bucket.items(), key=lambda item: item[1])
-            if float(low) <= score <= float(high)
-        ]
-
-    async def zremrangebyscore(self, name: str, low: Any, high: Any) -> int:
-        doomed = await self.zrangebyscore(name, low, high)
-        bucket = self.zsets.get(name, {})
-        for member in doomed:
-            del bucket[member]
-        if not bucket:
-            # Redis removes a sorted set once its last member is gone.
-            self.zsets.pop(name, None)
-            self.ttls.pop(name, None)
-        return len(doomed)
 
     async def eval(self, script: str, numkeys: int, *args: Any) -> int:
         keys = [self._s(a) for a in args[:numkeys]]
@@ -293,19 +261,26 @@ class FakeDreamDb:
         ][:limit]
 
     async def list_expired_dream_passes(
-        self, expired_before: datetime, limit: int = 100
+        self,
+        expired_before: datetime,
+        limit: int = 100,
+        after_lapse: datetime | None = None,
+        after_id: str | None = None,
     ) -> list[DreamPassRecord]:
-        """Open rows whose lease lapsed before *expired_before*, oldest
-        lapse first, at most *limit*."""
+        """Open rows whose lease lapsed before *expired_before*, in lapse
+        order (the lapse, then the id), after *after_lapse* and *after_id*
+        when given, at most *limit*."""
         self._raise_if_down()
-        lapsed = [
+        lapsed = sorted(
             (row["lease_expires_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] in OPEN_STATUSES
             and row.get("lease_expires_at") is not None
             and row["lease_expires_at"] < expired_before
-        ]
-        return [self.record(pass_id) for _, pass_id in sorted(lapsed)[:limit]]
+        )
+        if after_lapse is not None and after_id is not None:
+            lapsed = [key for key in lapsed if key > (after_lapse, after_id)]
+        return [self.record(pass_id) for _, pass_id in lapsed[:limit]]
 
     async def list_dream_pass_cleanups(
         self, due_before: datetime, limit: int = 100

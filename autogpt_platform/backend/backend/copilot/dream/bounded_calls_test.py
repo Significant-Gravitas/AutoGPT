@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
+from prisma.enums import DreamPassRoute
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import DreamPassUpdate
@@ -22,6 +23,7 @@ from . import provider_batch as provider_batch_mod
 from . import reaper as reaper_mod
 from . import store as store_mod
 from .batch_costs import PhaseCharges
+from .reaper_test import _seed
 
 _SCOPE = MemoryScope.build("u1")
 
@@ -92,20 +94,23 @@ async def test_the_reapers_take_of_a_scope(monkeypatch, cut, fake_dream_redis):
     assert task.cancelled()
 
 
-async def test_the_reapers_note_of_a_row_it_tries(monkeypatch, cut, fake_dream_redis):
-    monkeypatch.setattr(fake_dream_redis, "zadd", cut.answering(1))
+async def test_the_reapers_note_of_the_open_row_it_tries(
+    monkeypatch, cut, fake_dream_db, fake_dream_redis
+):
+    _seed(fake_dream_db, "p1", route=DreamPassRoute.SYNC)
+    monkeypatch.setattr(fake_dream_redis, "set", cut.answering(True))
 
-    task = await cut.run(reaper_mod._try_later("p1"))
+    task = await cut.run(reaper_mod._advance_cursor(fake_dream_db.record("p1")))
 
     assert task.cancelled()
 
 
-async def test_the_reapers_read_of_the_rows_it_tried(
+async def test_the_reapers_read_of_where_its_scan_stopped(
     monkeypatch, cut, fake_dream_redis
 ):
-    monkeypatch.setattr(fake_dream_redis, "zrangebyscore", cut.answering([]))
+    monkeypatch.setattr(fake_dream_redis, "get", cut.answering(None))
 
-    task = await cut.run(reaper_mod._tried_lately())
+    task = await cut.run(reaper_mod._read_cursor())
 
     assert task.cancelled()
 

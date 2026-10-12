@@ -458,6 +458,13 @@ class TestTheLeaseAndTheSweeps:
         assert await store.delete_old_passes(cutoff, limit=1000, timeout=60) == 3
 
         db.list_expired_dream_passes.assert_awaited_once_with(cutoff, limit=100)
+        cursor = (cutoff - timedelta(hours=1), "p0")
+        assert await store.read_expired_passes(cutoff, limit=5, after=cursor) == [
+            _row()
+        ]
+        db.list_expired_dream_passes.assert_awaited_with(
+            cutoff, limit=5, after_lapse=cursor[0], after_id="p0"
+        )
         db.list_dream_pass_cleanups.assert_awaited_once_with(cutoff, limit=100)
         db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
         db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)

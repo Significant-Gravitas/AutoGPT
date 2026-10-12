@@ -206,14 +206,22 @@ async def read_open_passes(
 
 
 async def read_expired_passes(
-    expired_before: datetime, *, limit: int
+    expired_before: datetime,
+    *,
+    limit: int,
+    after: tuple[datetime, str] | None = None,
 ) -> list[DreamPassRecord]:
     """Open passes, of every user, whose lease lapsed before
-    *expired_before*, the oldest lapse first. Raises when the read fails or
-    runs out of time."""
-    return await _bounded(
-        dream_db().list_expired_dream_passes(expired_before, limit=limit)
-    )
+    *expired_before*, in lapse order (the lapse, then the id): the first
+    ones, or those after *after*, a lapse and an id. Raises when the read
+    fails or runs out of time."""
+    if after is None:
+        listing = dream_db().list_expired_dream_passes(expired_before, limit=limit)
+    else:
+        listing = dream_db().list_expired_dream_passes(
+            expired_before, limit=limit, after_lapse=after[0], after_id=after[1]
+        )
+    return await _bounded(listing)
 
 
 async def read_pending_cleanups(

@@ -2,9 +2,9 @@
 
 The dream tests lean on ``FakeAsyncRedis`` for locks, markers, hit counters
 and batch bookkeeping, so its behaviour on the calls the dream code makes
-(NX/XX sets, TTLs, hashes, sorted sets and the two single-key lock scripts)
-is worth asserting directly rather than only through the tests that happen
-to use each call.
+(NX/XX sets, TTLs, hashes and the two single-key lock scripts) is worth
+asserting directly rather than only through the tests that happen to use
+each call.
 """
 
 import pytest
@@ -56,24 +56,6 @@ async def test_hash_commands():
     assert await redis.hdel("h", "b") == 1
     assert await redis.exists("h") == 0
     assert await redis.hgetall("h") == {}
-
-
-@pytest.mark.asyncio
-async def test_sorted_set_commands():
-    redis = FakeAsyncRedis()
-    assert await redis.zadd("z", {"a": 30.0, b"b": 10}) == 2
-    assert await redis.zadd("z", {"a": 20.0, "c": 40}) == 1
-    assert await redis.zrangebyscore("z", "-inf", "+inf") == ["b", "a", "c"]
-    assert await redis.zrangebyscore("z", 15, 30) == ["a"]
-    assert await redis.expire("z", 60) is True
-    assert await redis.ttl("z") == 60
-    assert await redis.zremrangebyscore("z", "-inf", 20) == 2
-    assert await redis.zrangebyscore("z", "-inf", "+inf") == ["c"]
-    assert await redis.zremrangebyscore("z", 40, 40) == 1
-    assert await redis.exists("z") == 0
-    assert await redis.ttl("z") == -2
-    await redis.zadd("z", {"d": 1})
-    assert await redis.delete("z") == 1
 
 
 @pytest.mark.asyncio
