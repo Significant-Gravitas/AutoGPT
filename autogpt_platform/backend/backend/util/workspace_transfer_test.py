@@ -119,6 +119,15 @@ def _patched(mock_db, mock_storage=None, storage_limit: int = 0, folder_valid=Tr
                 MagicMock(),
             )
         )
+        # A replaced file's embedding is dropped over the DatabaseManager when
+        # Prisma is not connected, which a unit test has no server for.
+        stack.enter_context(
+            patch(
+                "backend.api.features.workspace.embeddings"
+                ".delete_workspace_file_embedding",
+                AsyncMock(),
+            )
+        )
         stack.enter_context(
             patch(
                 "backend.util.workspace_transfer.get_workspace_storage",
