@@ -364,10 +364,19 @@ def _replace_worker(
         worker.stop()
         how = "stopped"
     else:
+        held = asyncio.run_coroutine_threadsafe(_loop_clients(), worker.loop)
         worker.shut_down()
+        # A loop that shuts down closes its clients rather than leaking them.
+        assert all(client.is_closed() for client in held.result(timeout=5))
         how = "shut down"
     workers[victim] = _WorkerLoop(loop_errors)
     return f"w{victim} {how} and replaced"
+
+
+async def _loop_clients() -> list[Any]:
+    helper = clients.get_openai_client(prefer_openrouter=True)
+    assert helper is not None
+    return [service._get_main_client(), service._get_aux_client(), helper]
 
 
 def _wait(future: "concurrent.futures.Future[str]") -> str:
