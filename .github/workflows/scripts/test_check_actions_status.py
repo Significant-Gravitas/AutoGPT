@@ -150,6 +150,17 @@ class ProcessCheckRunsTests(unittest.TestCase):
         failed = {"id": 8, "name": "test", "status": "completed", "conclusion": "failure"}
         self.assertEqual(process_check_runs([copilot, failed]), (False, False))
 
+    def test_a_failing_journeys_leg_is_advisory_but_smoke_still_blocks(self):
+        journeys = {
+            "id": 9,
+            "name": "end-to-end tests (journeys)",
+            "status": "completed",
+            "conclusion": "failure",
+        }
+        smoke = {**journeys, "id": 10, "name": "end-to-end tests (smoke)"}
+        self.assertEqual(process_check_runs([journeys]), (False, True))
+        self.assertEqual(process_check_runs([journeys, smoke]), (False, False))
+
     def test_rejects_real_failure(self):
         failed_check = {**CANCELED_CHECK, "conclusion": "failure"}
 
