@@ -64,6 +64,41 @@ class TestAttributionHeaderSwitch:
         assert result.get("CLAUDE_CODE_ATTRIBUTION_HEADER") == expected
 
 
+class TestCredentialAndWindowComeFromOneRoute:
+    """A launch's credential (``route_credentials``) and its window pin
+    (``context_window``) follow the same route decision: no route takes one
+    route's key with another route's window."""
+
+    @pytest.mark.parametrize(
+        "route, credential, base_url, window",
+        [
+            (
+                "openrouter",
+                ("ANTHROPIC_AUTH_TOKEN", "sk-or-test"),
+                "https://openrouter.ai/api",
+                "200000",
+            ),
+            ("direct", ("ANTHROPIC_API_KEY", "sk-ant-direct-key"), "", "1000000"),
+            ("subscription", ("ANTHROPIC_API_KEY", ""), "", "200000"),
+            (
+                "codex",
+                ("ANTHROPIC_AUTH_TOKEN", "t"),
+                "http://127.0.0.1:43210",
+                "272000",
+            ),
+        ],
+    )
+    def test_each_route_carries_its_credential_and_its_window(
+        self, route, credential, base_url, window
+    ):
+        env = _env_for_route(route)
+
+        key, value = credential
+        assert env[key] == value
+        assert env["ANTHROPIC_BASE_URL"] == base_url
+        assert env["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] == window
+
+
 # ---------------------------------------------------------------------------
 # build_user_key_sdk_env — the orchestrator block's launch
 # ---------------------------------------------------------------------------
