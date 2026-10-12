@@ -135,6 +135,28 @@ function loseCreateResponses(lost: number) {
   return bodies;
 }
 
+function refuseFirstCreate() {
+  const bodies: Array<{ session_id?: string }> = [];
+  server.use(
+    http.post("*/api/chat/sessions", async ({ request }) => {
+      const body = ((await request.json()) ?? {}) as { session_id?: string };
+      bodies.push(body);
+      if (bodies.length === 1) {
+        return HttpResponse.json(
+          { detail: "Session id already in use" },
+          { status: 409 },
+        );
+      }
+      return HttpResponse.json({
+        id: body.session_id ?? "server-minted",
+        created_at: "2026-09-30T11:03:02Z",
+        user_id: "user-1",
+      });
+    }),
+  );
+  return bodies;
+}
+
 function composerValue() {
   return (screen.getByTestId("textarea") as HTMLTextAreaElement).value;
 }
@@ -185,5 +207,39 @@ describe("creating a session when the response is lost", () => {
     });
     expect(bodies).toHaveLength(2);
     expect(bodies[1].session_id).toBe(bodies[0].session_id);
+  });
+
+  it("resends with the same session id after every response was lost", async () => {
+    const bodies = loseCreateResponses(2);
+    render(<ComposerHarness />);
+
+    send("Hi Anika");
+    await waitFor(() => expect(composerValue()).toBe("Hi Anika"), {
+      timeout: 3000,
+    });
+    send("Hi Anika");
+
+    await waitFor(() => expect(createdSession()).toBe(bodies[0].session_id), {
+      timeout: 3000,
+    });
+    expect(bodies).toHaveLength(3);
+    expect(bodies[2].session_id).toBe(bodies[0].session_id);
+  });
+
+  it("names a new session after the server answered with a refusal", async () => {
+    const bodies = refuseFirstCreate();
+    render(<ComposerHarness />);
+
+    send("Hi Anika");
+    await waitFor(() => expect(composerValue()).toBe("Hi Anika"), {
+      timeout: 3000,
+    });
+    send("Hi Anika");
+
+    await waitFor(() => expect(createdSession()).toBe(bodies[1].session_id), {
+      timeout: 3000,
+    });
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1].session_id).not.toBe(bodies[0].session_id);
   });
 });

@@ -2234,3 +2234,101 @@ async def test_get_or_create_client_chat_session_refuses_a_different_expert(
             "user-a", "sid-1", dry_run=False, expert_id="expert-b"
         )
     create_session.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "persisted",
+    [
+        {"organization_id": "org-a", "team_id": "team-a"},
+        {"organization_id": "org-b", "team_id": "team-a"},
+        {"organization_id": "org-b", "team_id": "team-b", "builder_graph_id": "g-1"},
+    ],
+    ids=["other-organization", "other-team", "builder-bound"],
+)
+async def test_get_or_create_client_chat_session_refuses_a_plain_session_out_of_scope(
+    mocker: MockerFixture, persisted: dict[str, str]
+) -> None:
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    existing = ChatSession.new("user-a", dry_run=False, session_id="sid-1", **persisted)
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a",
+            "sid-1",
+            dry_run=False,
+            organization_id="org-b",
+            team_id="team-b",
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_refuses_a_race_winner_out_of_scope(
+    mocker: MockerFixture,
+) -> None:
+    from backend.util.exceptions import DatabaseError
+
+    from .model import SessionIdConflictError, get_or_create_client_chat_session
+
+    winner = ChatSession.new(
+        "user-a", dry_run=False, session_id="sid-1", organization_id="org-a"
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=[None, winner],
+    )
+    mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+        side_effect=DatabaseError("duplicate session id"),
+    )
+
+    with pytest.raises(SessionIdConflictError):
+        await get_or_create_client_chat_session(
+            "user-a", "sid-1", dry_run=False, organization_id="org-b"
+        )
+
+
+@pytest.mark.asyncio
+async def test_get_or_create_client_chat_session_adopts_an_expert_session_in_its_private_tenancy(
+    mocker: MockerFixture,
+) -> None:
+    """Expert sessions are pinned to the expert's private tenancy at create
+    time, so a replay from a team context still adopts the same session."""
+    from .model import get_or_create_client_chat_session
+
+    existing = ChatSession.new(
+        "user-a",
+        dry_run=False,
+        session_id="sid-1",
+        expert_id="expert-a",
+        organization_id="personal-org",
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=existing,
+    )
+    create_session = mocker.patch(
+        "backend.copilot.model.create_chat_session",
+        new_callable=mocker.AsyncMock,
+    )
+
+    result = await get_or_create_client_chat_session(
+        "user-a",
+        "sid-1",
+        dry_run=False,
+        organization_id="team-org",
+        team_id="team-a",
+        expert_id="expert-a",
+    )
+
+    assert result is existing
+    create_session.assert_not_awaited()
