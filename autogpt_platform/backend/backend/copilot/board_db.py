@@ -23,6 +23,7 @@ from .board import (
     first_sentence,
     validate_columns,
 )
+from .board_reassign import REASSIGN_BRIEF_KIND
 from .db import exclude_dream_sessions_sql
 from .model import ChatSessionInfo
 
@@ -32,13 +33,15 @@ BOARD_SESSION_LIMIT = 500
 OLDER_SESSION_LIMIT = 50
 POSITION_GAP = 1024
 
-# Started = the user has written in it. Hidden rows (an expert kickoff, a
-# reassign brief) are the system talking, not the user.
+# Started = the user has written in it. A hidden row (an expert kickoff) is
+# the system talking, not the user; a reassign brief carries a task the user
+# already started elsewhere.
 _STARTED_SQL = (
     "EXISTS ("
     'SELECT 1 FROM {schema_prefix}"ChatMessage" m '
     'WHERE m."sessionId" = cs."id" AND m."role" = \'user\' '
-    "AND COALESCE(m.\"metadata\"->>'hidden', 'false') <> 'true'"
+    "AND (COALESCE(m.\"metadata\"->>'hidden', 'false') <> 'true' "
+    f"OR m.\"metadata\"->>'kind' = '{REASSIGN_BRIEF_KIND}')"
     ")"
 )
 
@@ -303,6 +306,20 @@ async def mark_session_reassigned(
         to_expert_id,
         DONE,
     )
+
+
+async def list_session_files(user_id: str, session_id: str) -> list[tuple[str, str]]:
+    """``(name, file_id)`` of the live files *user_id* keeps under a session."""
+    rows = await db.query_raw_with_schema(
+        'SELECT f."name", f."id" FROM {schema_prefix}"UserWorkspaceFile" f '
+        'JOIN {schema_prefix}"UserWorkspace" w ON w."id" = f."workspaceId" '
+        'WHERE w."userId" = $1 AND f."isDeleted" = FALSE '
+        "AND f.\"path\" LIKE '/sessions/' || $2::text || '/%' "
+        'ORDER BY f."createdAt" ASC, f."id" ASC',
+        user_id,
+        session_id,
+    )
+    return [(row["name"], row["id"]) for row in rows]
 
 
 async def _lock_unstarted_session(

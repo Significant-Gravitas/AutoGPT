@@ -4805,6 +4805,56 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/reassign": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Reassign session",
+        "description": "Hand a started task to another assignee in a new chat.\n\nThe new chat opens with a hidden brief of the old one and can read its\nfiles; the old card moves to Done.",
+        "operationId": "postV2Reassign session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReassignSessionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReassignSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session or expert not found" },
+          "409": {
+            "description": "The task is working, not started, or reassigned"
+          },
+          "422": { "description": "The task is already assigned to them" },
+          "503": {
+            "description": "The expert's workspace is still being set up"
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/share": {
       "delete": {
         "tags": ["v2", "chat", "share", "chat", "share"],
@@ -29014,6 +29064,34 @@
         "required": ["user_id", "started_at"],
         "title": "RatificationResult",
         "description": "Structured outcome of a single ratification pass.\n\nSurfaced via the scheduler wrapper so admin / future metrics can\nread promotion vs. supersession counts without re-scanning Graphiti."
+      },
+      "ReassignSessionRequest": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expert Id"
+          }
+        },
+        "type": "object",
+        "required": ["expert_id"],
+        "title": "ReassignSessionRequest",
+        "description": "Who takes the task over; ``None`` is Otto."
+      },
+      "ReassignSessionResponse": {
+        "properties": {
+          "old_session": {
+            "$ref": "#/components/schemas/SessionSummaryResponse"
+          },
+          "new_session": {
+            "$ref": "#/components/schemas/SessionSummaryResponse"
+          }
+        },
+        "type": "object",
+        "required": ["old_session", "new_session"],
+        "title": "ReassignSessionResponse"
       },
       "RebuildResult": {
         "properties": {

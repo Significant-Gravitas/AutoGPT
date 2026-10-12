@@ -527,6 +527,9 @@ class ChatSession(ChatSessionInfo):
         delegated_by_expert_id: str | None = None,
         delegated_by_session_id: str | None = None,
         handed_off_from_expert_id: str | None = None,
+        kind: str = "normal",
+        reassigned_from_session_id: str | None = None,
+        reassigned_from_expert_id: str | None = None,
     ) -> Self:
         return cls(
             session_id=session_id or str(uuid.uuid4()),
@@ -547,6 +550,9 @@ class ChatSession(ChatSessionInfo):
                 delegated_by_expert_id=delegated_by_expert_id,
                 delegated_by_session_id=delegated_by_session_id,
                 handed_off_from_expert_id=handed_off_from_expert_id,
+                kind=kind,
+                reassigned_from_session_id=reassigned_from_session_id,
+                reassigned_from_expert_id=reassigned_from_expert_id,
             ),
             organization_id=organization_id,
             team_id=team_id,
@@ -1379,6 +1385,9 @@ async def create_chat_session(
     delegated_by_expert_id: str | None = None,
     delegated_by_session_id: str | None = None,
     handed_off_from_expert_id: str | None = None,
+    kind: str = "normal",
+    reassigned_from_session_id: str | None = None,
+    reassigned_from_expert_id: str | None = None,
 ) -> ChatSession:
     """Create a new chat session and persist it.
 
@@ -1403,6 +1412,12 @@ async def create_chat_session(
             Doubles as the poll capability for cross-expert delegation.
         handed_off_from_expert_id: Expert that handed this work off for good,
             set only by ``handoff_to_expert``. Provenance only.
+        kind: The session's kind; see ``ChatSessionMetadata.kind``.
+        reassigned_from_session_id: Session a board reassign moved this task
+            from. Its files become readable here, so pass only a session the
+            caller checked *user_id* owns.
+        reassigned_from_expert_id: Expert that worked the task before the
+            reassign (None = plain Otto). Provenance only.
 
     Raises:
         DatabaseError: If the database write fails. We fail fast to ensure
@@ -1429,6 +1444,9 @@ async def create_chat_session(
         delegated_by_expert_id=delegated_by_expert_id,
         delegated_by_session_id=delegated_by_session_id,
         handed_off_from_expert_id=handed_off_from_expert_id,
+        kind=kind,
+        reassigned_from_session_id=reassigned_from_session_id,
+        reassigned_from_expert_id=reassigned_from_expert_id,
     )
 
     # Create in database first - fail fast if this fails

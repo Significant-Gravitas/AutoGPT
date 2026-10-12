@@ -25,11 +25,13 @@ from backend.copilot.board_db import (
     get_board_columns,
     get_board_session_extras,
     list_board_sessions,
+    list_session_files,
     mark_session_reassigned,
     save_board_columns,
     set_session_board,
     set_session_expert_if_unstarted,
 )
+from backend.copilot.board_reassign import reassign_brief_metadata
 from backend.data import db
 from backend.data.workspace import create_workspace_file, get_or_create_workspace
 from backend.util.json import SafeJson
@@ -156,6 +158,17 @@ async def test_a_hidden_kickoff_does_not_start_a_session(user_id: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_reassign_brief_starts_a_session(user_id: str):
+    reassigned = await _session(user_id)
+    await _message(reassigned, "user", 0, metadata=reassign_brief_metadata("e1"))
+
+    extras = await get_board_session_extras(user_id, [reassigned])
+
+    assert extras[reassigned].started is True
+    assert await board_db.session_is_started(reassigned) is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_pending_question_needs_you(user_id: str):
     asking = await _session(
         user_id,
@@ -223,6 +236,32 @@ async def test_the_file_count_skips_deleted_files(user_id: str):
     extras = await get_board_session_extras(user_id, [session])
 
     assert extras[session].file_count == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_session_files_list_live_files_under_that_session_only(user_id: str):
+    session = await _session(user_id)
+    other = await _session(user_id)
+    workspace = await get_or_create_workspace(user_id)
+    stored = {}
+    for owner, name in ((session, "live.txt"), (session, "gone.txt"), (other, "x")):
+        stored[name] = await create_workspace_file(
+            workspace_id=workspace.id,
+            file_id=str(uuid.uuid4()),
+            name=name,
+            path=f"/sessions/{owner}/{name}",
+            storage_path=f"{workspace.id}/{owner}/{name}",
+            mime_type="text/plain",
+            size_bytes=1,
+        )
+    await UserWorkspaceFile.prisma().update(
+        where={"id": stored["gone.txt"].id},
+        data={"isDeleted": True, "deletedAt": datetime.now(UTC)},
+    )
+
+    assert await list_session_files(user_id, session) == [
+        ("live.txt", stored["live.txt"].id)
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")

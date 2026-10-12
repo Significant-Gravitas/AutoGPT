@@ -15,7 +15,7 @@ from backend.api.features.chat.routes import (
     processing_session_ids,
     session_summary,
 )
-from backend.api.features.chat.server_turn import start_board_card
+from backend.api.features.chat.server_turn import dispatch_server_turn, start_board_card
 from backend.api.features.experts import experts_db
 from backend.copilot.board import BACKLOG, IN_PROGRESS, BoardColumn, BoardColumnsError
 from backend.copilot.board_db import (
@@ -24,13 +24,28 @@ from backend.copilot.board_db import (
     get_board_columns,
     get_board_session_extras,
     list_board_sessions,
+    list_session_files,
+    mark_session_reassigned,
     save_board_columns,
     set_session_board,
     set_session_expert_if_unstarted,
     top_position,
 )
+from backend.copilot.board_reassign import build_reassign_brief, reassign_brief_metadata
 from backend.copilot.constants import AUTOPILOT_NAME
-from backend.copilot.model import CHAT_STATUS_IDLE, invalidate_session_cache
+from backend.copilot.expert_kickoff import scoped_client_message_id
+from backend.copilot.model import (
+    CHAT_STATUS_IDLE,
+    create_chat_session,
+    delete_chat_session,
+    get_chat_session,
+    invalidate_session_cache,
+    update_session_title,
+)
+from backend.copilot.pending_message_helpers import (
+    StreamRegistryUnavailable,
+    is_turn_in_flight,
+)
 
 router = APIRouter(tags=["chat"])
 
@@ -65,6 +80,17 @@ class StartSessionRequest(BaseModel):
     """The first message; ``None`` sends the card's title."""
 
     message: str | None = Field(default=None, max_length=10000)
+
+
+class ReassignSessionRequest(BaseModel):
+    """Who takes the task over; ``None`` is Otto."""
+
+    expert_id: str | None = Field(max_length=128)
+
+
+class ReassignSessionResponse(BaseModel):
+    old_session: SessionSummaryResponse
+    new_session: SessionSummaryResponse
 
 
 @router.get(
@@ -272,6 +298,145 @@ async def start_session(
         position=await top_position(user_id, IN_PROGRESS),
     )
     return await _fresh_summary(session_id, user_id)
+
+
+@router.post(
+    "/sessions/{session_id}/reassign",
+    summary="Reassign session",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Session or expert not found"},
+        409: {"description": "The task is working, not started, or reassigned"},
+        422: {"description": "The task is already assigned to them"},
+        503: {"description": "The expert's workspace is still being set up"},
+    },
+)
+async def reassign_session(
+    session_id: str,
+    request: ReassignSessionRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+    ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
+) -> ReassignSessionResponse:
+    """Hand a started task to another assignee in a new chat.
+
+    The new chat opens with a hidden brief of the old one and can read its
+    files; the old card moves to Done.
+    """
+    old = await _validate_and_get_writable_session(session_id, user_id)
+    if old.metadata.reassigned_to_session_id:
+        raise HTTPException(
+            status_code=409, detail="This task has already been reassigned"
+        )
+    if old.chat_status != CHAT_STATUS_IDLE or await _turn_in_flight(session_id):
+        raise HTTPException(
+            status_code=409, detail="Reassign the task once it stops working"
+        )
+    if not (await _session_extras(user_id, session_id)).started:
+        raise HTTPException(
+            status_code=409,
+            detail="The task has not started; change its assignee instead",
+        )
+    expert_id = request.expert_id
+    if expert_id == old.expert_id:
+        raise HTTPException(
+            status_code=422, detail="The task is already assigned to them"
+        )
+    from_name = await _assignee_name(user_id, old.expert_id)
+    to_name = AUTOPILOT_NAME
+    if expert_id is not None:
+        expert = await experts_db.get_expert(
+            user_id, expert_id, include_workflows=False
+        )
+        if (
+            expert is None
+            or expert.is_archived
+            or expert.schedules_paused_at is not None
+        ):
+            raise HTTPException(status_code=404, detail="Expert not found")
+        to_name = expert.name
+
+    try:
+        new = await create_chat_session(
+            user_id,
+            dry_run=old.metadata.dry_run,
+            organization_id=ctx.org_id,
+            team_id=ctx.team_id,
+            llm_auth_provider=old.metadata.llm_auth_provider,
+            llm_credential_id=old.metadata.llm_credential_id,
+            expert_id=expert_id,
+            kind="reassigned",
+            # Only the session checked above: its files become readable there.
+            reassigned_from_session_id=old.session_id,
+            reassigned_from_expert_id=old.expert_id,
+        )
+    except experts_db.ExpertNotFoundError as e:
+        raise HTTPException(status_code=404, detail="Expert not found") from e
+    except experts_db.ExpertPrivateTenancyNotFoundError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Your expert workspace is still being set up. Try again shortly.",
+        ) from e
+    new_id = new.session_id
+
+    try:
+        if old.title:
+            await update_session_title(new_id, user_id, old.title)
+        await set_session_board(
+            new_id,
+            user_id,
+            column=IN_PROGRESS,
+            position=await top_position(user_id, IN_PROGRESS),
+        )
+        history = await get_chat_session(session_id, user_id)
+        brief = build_reassign_brief(
+            from_name=from_name,
+            to_name=to_name,
+            messages=history.messages if history else [],
+            files=await list_session_files(user_id, session_id),
+        )
+        await dispatch_server_turn(
+            new,
+            user_id,
+            org_id=ctx.org_id,
+            team_id=ctx.team_id,
+            message=brief,
+            message_id=scoped_client_message_id(user_id, new_id, "reassign-brief"),
+            message_metadata=reassign_brief_metadata(expert_id),
+        )
+    except Exception:
+        # A refused turn (paywall, limits) must not leave a half-made card.
+        await delete_chat_session(new_id, user_id)
+        raise
+
+    await mark_session_reassigned(
+        session_id, user_id, to_session_id=new_id, to_expert_id=expert_id
+    )
+    await invalidate_session_cache(session_id)
+    old_summary = await _fresh_summary(session_id, user_id)
+    return ReassignSessionResponse(
+        old_session=old_summary.model_copy(
+            update={"last_line": f"Reassigned to {to_name}"}
+        ),
+        new_session=await _fresh_summary(new_id, user_id),
+    )
+
+
+async def _turn_in_flight(session_id: str) -> bool:
+    try:
+        return await is_turn_in_flight(session_id)
+    except StreamRegistryUnavailable as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from e
+
+
+async def _assignee_name(user_id: str, expert_id: str | None) -> str:
+    if expert_id is None:
+        return AUTOPILOT_NAME
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    return expert.name if expert else "another expert"
 
 
 async def _session_extras(user_id: str, session_id: str) -> BoardExtras:

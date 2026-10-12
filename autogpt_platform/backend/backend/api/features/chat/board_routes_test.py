@@ -15,7 +15,14 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat import server_turn
 from backend.copilot.board import DEFAULT_COLUMNS, validate_columns
 from backend.copilot.board_db import BoardExtras, BoardSessionRow
-from backend.copilot.model import ChatSession, ChatSessionInfo, ChatSessionMetadata
+from backend.copilot.board_reassign import REASSIGN_BRIEF_KIND
+from backend.copilot.expert_kickoff import scoped_client_message_id
+from backend.copilot.model import (
+    ChatMessage,
+    ChatSession,
+    ChatSessionInfo,
+    ChatSessionMetadata,
+)
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.util.exceptions import NotFoundError
 
@@ -615,6 +622,267 @@ def test_start_session_rate_limited_leaves_card_in_place(
 
     assert response.status_code == 429
     mocks.set_board.assert_not_awaited()
+
+
+# ─── POST /sessions/{id}/reassign ─────────────────────────────────────
+
+NEW_SESSION_ID = "sess-new"
+
+
+def _expert(name: str, **overrides) -> SimpleNamespace:
+    fields = {"name": name, "is_archived": False, "schedules_paused_at": None}
+    return SimpleNamespace(**{**fields, **overrides})
+
+
+def _mock_reassign(
+    mocker: pytest_mock.MockerFixture,
+    *,
+    old: ChatSessionInfo | None = None,
+    started: bool = True,
+    in_flight: bool = False,
+    target: SimpleNamespace | None = None,
+) -> SimpleNamespace:
+    old = old or _session(
+        expert_id="e-old",
+        metadata=ChatSessionMetadata(llm_auth_provider="platform", dry_run=True),
+    )
+    experts = {"e-old": _expert("Nova"), "e-new": target or _expert("Priya")}
+    created: list[ChatSession] = []
+
+    async def _fake_create(user_id: str, **kwargs):
+        session = ChatSession.new(user_id, session_id=NEW_SESSION_ID, **kwargs)
+        created.append(session)
+        return session
+
+    async def _fake_validate(session_id: str, _user_id: str):
+        return old if session_id == old.session_id else created[-1]
+
+    full_old = ChatSession.new(TEST_USER_ID, dry_run=True, session_id=SESSION_ID)
+    full_old.messages = [
+        ChatMessage(role="user", content="hi"),
+        ChatMessage(role="assistant", content="hello"),
+    ]
+    return SimpleNamespace(
+        old=old,
+        created=created,
+        writable=mocker.patch.object(
+            board_routes,
+            "_validate_and_get_writable_session",
+            new=AsyncMock(return_value=old),
+        ),
+        validate=mocker.patch.object(
+            board_routes,
+            "_validate_and_get_session",
+            new=AsyncMock(side_effect=_fake_validate),
+        ),
+        in_flight=mocker.patch.object(
+            board_routes, "is_turn_in_flight", new=AsyncMock(return_value=in_flight)
+        ),
+        extras=mocker.patch.object(
+            board_routes,
+            "get_board_session_extras",
+            new=AsyncMock(
+                side_effect=lambda _user_id, ids: {
+                    sid: BoardExtras(started=started) for sid in ids
+                }
+            ),
+        ),
+        get_expert=mocker.patch.object(
+            board_routes.experts_db,
+            "get_expert",
+            new=AsyncMock(side_effect=lambda _user_id, eid, **_: experts.get(eid)),
+        ),
+        create=mocker.patch.object(
+            board_routes, "create_chat_session", new=AsyncMock(side_effect=_fake_create)
+        ),
+        title=mocker.patch.object(
+            board_routes, "update_session_title", new=AsyncMock(return_value=True)
+        ),
+        top=mocker.patch.object(
+            board_routes, "top_position", new=AsyncMock(return_value=-1024.0)
+        ),
+        set_board=mocker.patch.object(
+            board_routes, "set_session_board", new=AsyncMock(return_value=True)
+        ),
+        history=mocker.patch.object(
+            board_routes, "get_chat_session", new=AsyncMock(return_value=full_old)
+        ),
+        files=mocker.patch.object(
+            board_routes,
+            "list_session_files",
+            new=AsyncMock(return_value=[("plan.md", "f-1")]),
+        ),
+        dispatch=mocker.patch.object(
+            board_routes, "dispatch_server_turn", new=AsyncMock(return_value="turn-1")
+        ),
+        mark=mocker.patch.object(
+            board_routes, "mark_session_reassigned", new=AsyncMock()
+        ),
+        invalidate=mocker.patch.object(
+            board_routes, "invalidate_session_cache", new=AsyncMock()
+        ),
+        delete=mocker.patch.object(
+            board_routes, "delete_chat_session", new=AsyncMock(return_value=True)
+        ),
+    )
+
+
+def test_reassign_opens_a_new_session_briefed_by_the_old_one(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_reassign(mocker)
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 200
+    mocks.create.assert_awaited_once_with(
+        TEST_USER_ID,
+        dry_run=True,
+        organization_id="test-org",
+        team_id="test-team",
+        llm_auth_provider="platform",
+        llm_credential_id=None,
+        expert_id="e-new",
+        kind="reassigned",
+        reassigned_from_session_id=SESSION_ID,
+        reassigned_from_expert_id="e-old",
+    )
+    mocks.title.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID, "Write the PRD")
+    mocks.set_board.assert_awaited_once_with(
+        NEW_SESSION_ID, TEST_USER_ID, column="in_progress", position=-1024.0
+    )
+    mocks.history.assert_awaited_once_with(SESSION_ID, TEST_USER_ID)
+    mocks.files.assert_awaited_once_with(TEST_USER_ID, SESSION_ID)
+
+    mocks.dispatch.assert_awaited_once()
+    session, user_id = mocks.dispatch.await_args.args
+    kwargs = mocks.dispatch.await_args.kwargs
+    assert session.session_id == NEW_SESSION_ID
+    assert user_id == TEST_USER_ID
+    assert kwargs["org_id"] == "test-org"
+    assert kwargs["team_id"] == "test-team"
+    assert kwargs["message_id"] == scoped_client_message_id(
+        TEST_USER_ID, NEW_SESSION_ID, "reassign-brief"
+    )
+    assert kwargs["message_metadata"] == {
+        "hidden": True,
+        "kind": REASSIGN_BRIEF_KIND,
+        "expert_id": "e-new",
+    }
+    assert kwargs["message"].startswith(
+        "The user reassigned this task from Nova to you."
+    )
+    assert "User: hi\nNova: hello" in kwargs["message"]
+    assert "- plan.md (file_id: f-1)" in kwargs["message"]
+
+    mocks.mark.assert_awaited_once_with(
+        SESSION_ID, TEST_USER_ID, to_session_id=NEW_SESSION_ID, to_expert_id="e-new"
+    )
+    mocks.invalidate.assert_awaited_once_with(SESSION_ID)
+    mocks.delete.assert_not_awaited()
+    data = response.json()
+    assert data["old_session"]["id"] == SESSION_ID
+    assert data["old_session"]["last_line"] == "Reassigned to Priya"
+    assert data["new_session"]["id"] == NEW_SESSION_ID
+
+
+def test_reassign_to_otto_names_otto(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_reassign(mocker)
+
+    response = client.post(f"/sessions/{SESSION_ID}/reassign", json={"expert_id": None})
+
+    assert response.status_code == 200
+    assert mocks.create.await_args.kwargs["expert_id"] is None
+    assert mocks.dispatch.await_args.kwargs["message_metadata"]["expert_id"] is None
+    assert response.json()["old_session"]["last_line"] == "Reassigned to Otto"
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["running", "in_flight", "unstarted", "already_reassigned"],
+)
+def test_reassign_refuses_a_card_it_cannot_take_409(
+    mocker: pytest_mock.MockerFixture, case: str
+) -> None:
+    old = _session(
+        expert_id="e-old",
+        chat_status="running" if case == "running" else "idle",
+        metadata=ChatSessionMetadata(
+            reassigned_to_session_id=(
+                "sess-elsewhere" if case == "already_reassigned" else None
+            )
+        ),
+    )
+    mocks = _mock_reassign(
+        mocker,
+        old=old,
+        in_flight=case == "in_flight",
+        started=case != "unstarted",
+    )
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 409
+    mocks.create.assert_not_awaited()
+    mocks.dispatch.assert_not_awaited()
+    mocks.mark.assert_not_awaited()
+
+
+def test_reassign_to_the_same_assignee_422(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_reassign(mocker)
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-old"}
+    )
+
+    assert response.status_code == 422
+    mocks.create.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        _expert("Priya", schedules_paused_at=datetime.now(UTC)),
+        _expert("Priya", is_archived=True),
+        None,
+    ],
+    ids=["paused", "archived", "missing"],
+)
+def test_reassign_to_an_unavailable_expert_404(
+    mocker: pytest_mock.MockerFixture, target: SimpleNamespace | None
+) -> None:
+    mocks = _mock_reassign(mocker, target=target)
+    if target is None:
+        mocks.get_expert.side_effect = lambda _user_id, eid, **_: (
+            _expert("Nova") if eid == "e-old" else None
+        )
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 404
+    mocks.create.assert_not_awaited()
+
+
+def test_reassign_refused_turn_deletes_the_new_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_reassign(mocker)
+    mocks.dispatch.side_effect = fastapi.HTTPException(status_code=429, detail="limit")
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 429
+    mocks.delete.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID)
+    mocks.mark.assert_not_awaited()
+    mocks.invalidate.assert_not_awaited()
 
 
 # ─── POST /sessions with a board column ───────────────────────────────
