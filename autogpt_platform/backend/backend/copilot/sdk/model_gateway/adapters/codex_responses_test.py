@@ -171,6 +171,40 @@ async def test_a_transient_rate_limit_passes_on_the_backend_s_retry_after():
     assert error.headers == {"retry-after": "4"}
 
 
+async def test_an_in_stream_rate_limit_waits_as_long_as_its_message_says():
+    error_body = {
+        "code": "rate_limit_exceeded",
+        "message": "Rate limit reached for gpt-5 on tokens per min. Please try"
+        " again in 1.898s.",
+    }
+    response = {"id": "r", "status": "failed", "error": error_body}
+    error, _, _ = await _stream_against(
+        CannedReply.of_sse([{"type": "response.failed", "response": response}])
+    )
+    assert isinstance(error, GatewayError)
+    assert (error.status, error.error_type) == (429, "rate_limit_error")
+    assert error.headers == {"retry-after": "2"}
+
+
+async def test_a_refusal_still_records_the_quota_headers():
+    body = {"error": {"type": "usage_limit_reached", "message": "limit"}}
+    reply = CannedReply.of_json(
+        body,
+        status=429,
+        **{
+            "x-codex-primary-used-percent": "100",
+            "x-codex-primary-window-minutes": "300",
+            "x-codex-primary-reset-at": "1999999999",
+        },
+    )
+    error, adapter, _ = await _stream_against(reply)
+    assert isinstance(error, GatewayError)
+    assert adapter.rate_limits is not None
+    assert adapter.rate_limits.primary is not None
+    assert adapter.rate_limits.primary.used_percent == 100
+    assert adapter.rate_limits.primary.resets_at == 1999999999
+
+
 async def test_an_expired_login_says_so_and_names_the_failure():
     body = {"detail": "Could not validate your credentials"}
     error, _, _ = await _stream_against(CannedReply.of_json(body, status=401))

@@ -15,6 +15,8 @@ CLI, so its own policy and the ``retry-after`` the gateway passes on decide
 when to try again.
 """
 
+import math
+import re
 import time
 from collections.abc import AsyncGenerator, Mapping
 from typing import Any
@@ -61,6 +63,7 @@ from backend.integrations.codex.models import CodexRateLimitsSnapshot
 from backend.integrations.codex.transport import codex_credentials
 
 _USAGE_LIMITS = frozenset({"usage_limit_reached", "usage_not_included"})
+_TRY_AGAIN = re.compile(r"(?i)try again in (\d+(?:\.\d+)?)\s*(ms|s)\b")
 _STREAM_FAILURE_STATUS = {
     "rate_limit_exceeded": 429,
     "usage_limit_reached": 429,
@@ -131,6 +134,9 @@ class CodexResponses:
 
     def _refused(self, exc: APIStatusError, estimate: int) -> GatewayError:
         """An HTTP error from ChatGPT, before anything streamed."""
+        # A refusal carries the quota headers too, and a spent quota is when
+        # the platform most needs to show them.
+        self.rate_limits = parse_rate_limits(exc.response.headers)
         error = error_from_payload(exc.body) or UpstreamError(
             message=str(exc.body or "")
         )
@@ -203,10 +209,15 @@ def _rate_limited(
 
 
 def _reset_seconds(error: UpstreamError) -> int | None:
+    """The wait ChatGPT reported: a field on a quota error, or the
+    "try again in 1.9s" its rate-limit messages carry."""
     seconds = error.fields.get("resets_in_seconds")
     if isinstance(seconds, int) and not isinstance(seconds, bool) and seconds >= 0:
         return seconds
     resets_at = error.fields.get("resets_at")
     if isinstance(resets_at, int) and not isinstance(resets_at, bool):
         return max(0, resets_at - int(time.time()))
+    if match := _TRY_AGAIN.search(error.message):
+        scale = 0.001 if match.group(2).lower() == "ms" else 1.0
+        return math.ceil(float(match.group(1)) * scale)
     return None
