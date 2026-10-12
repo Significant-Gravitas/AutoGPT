@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Annotated, Optional
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
@@ -7,6 +7,7 @@ from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Query, Response, Security
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 
+from backend.api.features.graph_executions import sharing
 from backend.api.features.graph_executions.activity_gate import (
     hide_activity_summaries_if_disabled,
     hide_activity_summary_if_disabled,
@@ -27,13 +28,10 @@ from backend.data.onboarding import (
     complete_onboarding_step,
     get_user_onboarding,
 )
-from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN, generate_share_token
+from backend.data.sharing.tokens import SHARE_TOKEN_PATTERN
 from backend.data.workspace import get_workspace_file_by_id
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import NotFoundError
-from backend.util.settings import Settings
-
-settings = Settings()
 
 # No router-level auth dependency: the two /public/shared routes are
 # deliberately unauthenticated, so each route keeps its own.
@@ -241,9 +239,7 @@ async def delete_graph_execution(
     user_id: Annotated[str, Security(get_user_id)],
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
-    await execution_db.delete_graph_execution(
-        graph_exec_id=graph_exec_id, user_id=user_id
-    )
+    await sharing.delete_execution(user_id, graph_exec_id)
 
 
 @router.post(
@@ -258,48 +254,14 @@ async def enable_execution_sharing(
     _body: ExecutionShareRequest = Body(default=ExecutionShareRequest()),
 ) -> ExecutionShareResponse:
     """Enable sharing for a graph execution."""
-    # Verify the execution belongs to the user
-    execution = await execution_db.get_graph_execution(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not execution:
-        raise HTTPException(status_code=404, detail="Execution not found")
-
-    # Generate a unique share token
-    share_token = generate_share_token()
-
-    # Remove stale allowlist records before updating the token — prevents a
-    # window where old records + new token could coexist.
-    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
-
-    # Update the execution with share info — the underlying update_many
-    # also enforces (id, user_id) at the DB layer, so a TOCTOU delete
-    # between the pre-check above and this write surfaces as 404 rather
-    # than a silent no-op.
     try:
-        await execution_db.update_graph_execution_share_status(
-            execution_id=graph_exec_id,
-            user_id=user_id,
-            is_shared=True,
-            share_token=share_token,
-            shared_at=datetime.now(timezone.utc),
-        )
+        share_token = await sharing.share_execution(user_id, graph_exec_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
-    # Create allowlist of workspace files referenced in outputs
-    await execution_db.create_shared_execution_files(
-        execution_id=graph_exec_id,
-        share_token=share_token,
-        user_id=user_id,
-        outputs=execution.outputs,
+    return ExecutionShareResponse(
+        share_url=sharing.share_url(share_token), share_token=share_token
     )
-
-    # Return the share URL
-    frontend_url = settings.config.frontend_base_url or "http://localhost:3000"
-    share_url = f"{frontend_url}/share/{share_token}"
-
-    return ExecutionShareResponse(share_url=share_url, share_token=share_token)
 
 
 @router.delete(
@@ -314,26 +276,8 @@ async def disable_execution_sharing(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> None:
     """Disable sharing for a graph execution."""
-    # Verify the execution belongs to the user
-    execution = await execution_db.get_graph_execution(
-        user_id=user_id, execution_id=graph_exec_id
-    )
-    if not execution:
-        raise HTTPException(status_code=404, detail="Execution not found")
-
-    # Remove shared file allowlist records
-    await execution_db.delete_shared_execution_files(execution_id=graph_exec_id)
-
-    # Remove share info — owner-gated at the DB layer; TOCTOU delete
-    # after the pre-check surfaces as 404.
     try:
-        await execution_db.update_graph_execution_share_status(
-            execution_id=graph_exec_id,
-            user_id=user_id,
-            is_shared=False,
-            share_token=None,
-            shared_at=None,
-        )
+        await sharing.unshare_execution(user_id, graph_exec_id)
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

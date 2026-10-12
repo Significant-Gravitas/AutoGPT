@@ -6,13 +6,21 @@ request to `/external-api/v2/mcp/` was a 500: "Task group is not initialized".
 """
 
 import contextlib
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
 import pytest_mock
 from fastapi.testclient import TestClient
 
-from backend.api.external.v2.mcp_server import MCPMount, TenantedAccessToken
+from backend.api.external.middleware import VerifiedCredential
+from backend.api.external.v2.mcp_server import (
+    ExternalAPITokenVerifier,
+    MCPMount,
+    TenantedAccessToken,
+)
+from backend.data.auth.base import APIAuthorizationInfo
+from backend.data.auth.oauth import InvalidTokenError
 
 INITIALIZE = {
     "jsonrpc": "2.0",
@@ -32,15 +40,18 @@ HEADERS = {
 
 def _host(mount: MCPMount) -> fastapi.FastAPI:
     """A host app wired the way the platform's own app wires the mount."""
+    host = fastapi.FastAPI(lifespan=_lifespan(mount))
+    host.mount("/mcp", mount)
+    return host
 
+
+def _lifespan(mount: MCPMount):
     @contextlib.asynccontextmanager
     async def lifespan(_: fastapi.FastAPI):
         async with mount.running():
             yield
 
-    host = fastapi.FastAPI(lifespan=lifespan)
-    host.mount("/mcp", mount)
-    return host
+    return lifespan
 
 
 def test_an_authenticated_initialize_succeeds_through_the_mount(
@@ -75,6 +86,22 @@ def test_the_host_lifespan_can_run_more_than_once(
             pass
 
 
+def test_a_server_that_fails_to_start_leaves_the_host_up_answering_503(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The REST API must not go down with its MCP endpoint."""
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.create_mcp_app",
+        side_effect=RuntimeError("no tools today"),
+    )
+
+    with TestClient(_host(MCPMount())) as client:
+        response = client.post("/mcp/", headers=HEADERS, json=INITIALIZE)
+
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "service_unavailable"
+
+
 def test_before_the_lifespan_runs_the_mount_answers_in_the_v2_envelope() -> None:
     host = fastapi.FastAPI()
     host.mount("/mcp", MCPMount())
@@ -83,3 +110,53 @@ def test_before_the_lifespan_runs_the_mount_answers_in_the_v2_envelope() -> None
 
     assert response.status_code == 503
     assert response.json()["error"]["code"] == "service_unavailable"
+
+
+def test_a_credential_the_rate_limiter_verified_is_not_verified_again(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An API key costs a Scrypt hash; the request pays for one, not two."""
+    validate = mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.resolve_credential_tenancy",
+        new_callable=AsyncMock,
+        return_value=("org-1", None),
+    )
+    auth = APIAuthorizationInfo(
+        user_id="user-1", scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )
+
+    async def verified_by_the_limiter(scope, receive, send):
+        scope.setdefault("state", {})["external_api_auth"] = VerifiedCredential(
+            credential="agpt_test", auth=auth
+        )
+        await mount(scope, receive, send)
+
+    mount = MCPMount()
+    host = fastapi.FastAPI(lifespan=_lifespan(mount))
+    host.mount("/mcp", verified_by_the_limiter)
+
+    with TestClient(host, base_url="https://backend.agpt.co") as client:
+        response = client.post("/mcp/", headers=HEADERS, json=INITIALIZE)
+
+    assert response.status_code == 200, response.text
+    validate.assert_not_awaited()
+
+
+async def test_a_token_shaped_bearer_is_never_tried_as_an_api_key_over_mcp(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """FastMCP's own check follows the middleware's rule when it runs alone."""
+    validate_key = mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_api_key", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.external.v2.mcp_server.validate_access_token",
+        new_callable=AsyncMock,
+        side_effect=InvalidTokenError("not found"),
+    )
+
+    assert await ExternalAPITokenVerifier().verify_token("agpt_xt_forged") is None
+    validate_key.assert_not_awaited()

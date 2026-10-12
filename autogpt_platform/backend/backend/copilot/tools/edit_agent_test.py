@@ -6,6 +6,7 @@ fix+validate+save) is exercised by the agent-generation pipeline tests.
 """
 
 import pytest
+from prisma.enums import APIKeyPermission
 
 from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.tools.edit_agent import (
@@ -308,3 +309,42 @@ async def test_execute_allows_non_trigger_edit(tool, mocker) -> None:
 
     assert result is sentinel
     saved.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "external_caller, permissions, moves",
+    [
+        (False, set(), True),
+        (True, {APIKeyPermission.WRITE_GRAPH, APIKeyPermission.RUN_AGENT}, True),
+        (True, {APIKeyPermission.WRITE_GRAPH, APIKeyPermission.WRITE_LIBRARY}, False),
+    ],
+    ids=["chat", "external-with-run-agent", "external-without-run-agent"],
+)
+async def test_an_edit_moves_webhook_presets_only_if_the_caller_may_start_runs(
+    tool, mocker, external_caller, permissions, moves
+) -> None:
+    """A webhook preset runs the version it is pinned to with the credentials
+    stored on it, so moving it onto the edited version is a start."""
+    session = make_session(_USER_ID)
+    session.external_caller = external_caller
+    session.external_permissions = frozenset(permissions)
+    mocker.patch(f"{_EDIT_MODULE}.require_guide_read", return_value=None)
+    mocker.patch(
+        f"{_EDIT_MODULE}.get_agent_as_json",
+        return_value={"id": "graph-x", "version": 3, "nodes": [{"id": "n1"}]},
+    )
+    mocker.patch(f"{_EDIT_MODULE}.fetch_library_agents", return_value=[])
+    saved = mocker.patch(
+        f"{_EDIT_MODULE}.fix_validate_and_save",
+        return_value=ErrorResponse(message="stub", error="stub"),
+    )
+
+    await tool._execute(
+        user_id=_USER_ID,
+        session=session,
+        agent_id="graph-x",
+        agent_json={"nodes": [{"id": "n1"}], "links": []},
+    )
+
+    assert saved.call_args.kwargs["move_webhook_presets"] is moves

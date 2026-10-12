@@ -11,7 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, Security
 from prisma.enums import APIKeyPermission, ContentType
 from starlette import status
 
-from backend.api.features.search.hybrid_search import unified_hybrid_search
+from backend.api.features.library import db as library_db
+from backend.api.features.search.hybrid_search import (
+    HybridSearchRow,
+    unified_hybrid_search,
+)
 
 from .models import MarketplaceSearchResult, SearchContentType
 from .pagination import Page, PageRequest, page_request
@@ -68,6 +72,7 @@ async def search(
         page_size=page.limit,
         user_id=auth.user_id,
     )
+    results = await _in_tenant_results(results, auth)
 
     return page.paged(
         [
@@ -83,6 +88,36 @@ async def search(
         ],
         total_count=total_count,
     )
+
+
+async def _in_tenant_results(
+    results: list[HybridSearchRow], auth: TenantContext
+) -> list[HybridSearchRow]:
+    """Drop library agents the credential's organization can't see.
+
+    The search index records whose a row is but not its organization, so a
+    match from the user's other organization (or a deleted entry) is removed
+    here, as a direct read of it would answer 404.
+    """
+    agent_ids = [
+        r["content_id"]
+        for r in results
+        if r["content_type"] == SearchContentType.LIBRARY_AGENT.value
+    ]
+    if not agent_ids:
+        return results
+    organizations = await library_db.get_library_agent_organizations(
+        auth.user_id, agent_ids
+    )
+    return [
+        r
+        for r in results
+        if r["content_type"] != SearchContentType.LIBRARY_AGENT.value
+        or (
+            r["content_id"] in organizations
+            and organizations[r["content_id"]] in (None, auth.organization_id)
+        )
+    ]
 
 
 # Searching these reaches the caller's own rows, so each costs the permission

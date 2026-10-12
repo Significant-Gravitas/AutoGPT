@@ -13,7 +13,16 @@ How the AutoGPT Platform API docs at `agpt.co/docs/platform/api-and-integrations
 
 1. In GitBook, create an API token for an organization admin, and store it as the repository secret `GITBOOK_TOKEN`.
 2. Store the organization ID (the segment after `/o/` in GitBook app URLs) as the repository variable `GITBOOK_ORGANIZATION_ID`.
-3. Run "Docs - Publish the API spec to GitBook" from master once (`workflow_dispatch`) **before** the release that first ships the `builtin:openapi` entry to master, so the `autogpt-api-v2` spec exists when GitBook imports the new `SUMMARY.md`.
+3. Publish the spec once by hand **before** the release that first ships the `builtin:openapi` entry to master, so the `autogpt-api-v2` spec exists when GitBook imports the new `SUMMARY.md`. The workflow can't do this first publish: GitHub offers `workflow_dispatch` only for a workflow already on the default branch, and this one reaches master in that same release. From `autogpt_platform/backend` on the release branch, run the workflow's own two steps:
+
+   ```bash
+   poetry run export-api-schema --api v2 --pretty --output /tmp/autogpt-api-v2.json
+   GITBOOK_TOKEN=... npx --yes @gitbook/cli@0.32.9 openapi publish \
+     --spec autogpt-api-v2 --organization "$GITBOOK_ORGANIZATION_ID" \
+     /tmp/autogpt-api-v2.json
+   ```
+
+   After that release, every push to master that changes `backend/api/external/` republishes it, and the workflow can be run by hand from master.
 4. Make the spec public in GitBook (OpenAPI → `autogpt-api-v2` → visibility). "Test it" only appears for a spec with a public URL.
 
 ## Site settings worth keeping on

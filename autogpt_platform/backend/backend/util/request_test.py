@@ -622,3 +622,45 @@ async def test_post_follows_redirect_to_trailing_slash_without_looping():
     assert response.status == 401
     assert response.json() == {"error": "unauthorized"}
     assert seen == ["/mcp", "/mcp/"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("compressed", [False, True], ids=["plain", "gzip"])
+async def test_a_capped_read_stops_at_the_cap(compressed: bool):
+    """A capped caller holds at most the cap, however much the server sends.
+
+    Counted after decompression, so a short gzip body that expands is cut too.
+    """
+    import gzip
+
+    from aiohttp import web as aiohttp_web
+
+    from backend.util.request import Requests
+
+    body = b"x" * (5 * 1024 * 1024)
+
+    async def big(_request: aiohttp_web.Request) -> aiohttp_web.Response:
+        if compressed:
+            return aiohttp_web.Response(
+                body=gzip.compress(body),
+                headers={"Content-Encoding": "gzip", "Content-Type": "text/plain"},
+            )
+        return aiohttp_web.Response(body=body, content_type="text/plain")
+
+    app = aiohttp_web.Application()
+    app.router.add_get("/big", big)
+    runner = aiohttp_web.AppRunner(app)
+    await runner.setup()
+    site = aiohttp_web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    port = runner.addresses[0][1]
+
+    try:
+        requests = Requests(trusted_origins=["127.0.0.1"], raise_for_status=False)
+        capped = await requests.get(f"http://127.0.0.1:{port}/big", max_body_bytes=1024)
+        whole = await requests.get(f"http://127.0.0.1:{port}/big")
+    finally:
+        await runner.cleanup()
+
+    assert capped.content == b"x" * 1025
+    assert whole.content == body

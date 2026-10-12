@@ -3,6 +3,7 @@
 import { useGetOauthGetOauthAppInfo } from "@/app/api/__generated__/endpoints/oauth/oauth";
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
+import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
@@ -24,8 +25,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
  *
  * Query parameters:
  * - `providers`: base64-encoded JSON array of { provider, scopes? } objects
- * - `app_name`: (optional) Name of the requesting application
- * - `redirect_uri`: Where to redirect after completion
+ * - `client_id`: The requesting application's OAuth client ID
+ * - `redirect_uri`: Where to redirect after completion; must be one of the
+ *   application's registered redirect URIs
  * - `state`: Anti-CSRF token
  *
  * Example `providers` JSON:
@@ -35,7 +37,7 @@ import { Icon } from "@/components/atoms/Icon/Icon";
  * ]
  *
  * Example URL:
- * /auth/integrations/setup-wizard?app_name=My%20App&providers=W3sicHJvdmlkZXIiOiJnb29nbGUifV0=&redirect_uri=...
+ * /auth/integrations/setup-wizard?client_id=...&providers=W3sicHJvdmlkZXIiOiJnb29nbGUifV0=&redirect_uri=...
  */
 interface ProviderConfig {
   provider: string;
@@ -99,9 +101,15 @@ export default function IntegrationSetupWizardPage() {
   const redirectURI = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
 
-  const { data: appInfo } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: { enabled: !!clientID, select: okData },
-  });
+  const {
+    data: appInfo,
+    isLoading,
+    error,
+  } = useGetOauthGetOauthAppInfo(
+    clientID || "",
+    { redirect_uri: redirectURI },
+    { query: { enabled: !!clientID && !!redirectURI, select: okData } },
+  );
 
   // Parse providers from base64-encoded JSON
   const providerConfigs = useMemo<ProviderConfig[]>(() => {
@@ -138,7 +146,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Handle completion - redirect back to client
   const handleComplete = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
+    if (!appInfo || hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
 
     const params = new URLSearchParams({
@@ -153,7 +161,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Handle cancel - redirect back to client with error
   const handleCancel = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
+    if (!appInfo || hasRedirectedRef.current) return;
     hasRedirectedRef.current = true;
 
     const params = new URLSearchParams({
@@ -169,6 +177,7 @@ export default function IntegrationSetupWizardPage() {
 
   // Validate required parameters
   const missingParams: string[] = [];
+  if (!clientID) missingParams.push("client_id");
   if (!providersParam) missingParams.push("providers");
   if (!redirectURI) missingParams.push("redirect_uri");
 
@@ -181,6 +190,34 @@ export default function IntegrationSetupWizardPage() {
             responseError={{
               message: `Missing required parameters: ${missingParams.join(", ")}`,
             }}
+            hint="Please contact the administrator of the app that sent you here."
+            isOurProblem={false}
+          />
+        </AuthCard>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+        <AuthCard title="Loading...">
+          <div className="flex flex-col items-center gap-4 py-8">
+            <LoadingSpinner size="large" />
+          </div>
+        </AuthCard>
+      </div>
+    );
+  }
+
+  // appInfo loads only once the backend accepts redirectURI for this client
+  if (error || !appInfo) {
+    return (
+      <div className="flex h-full min-h-[85vh] flex-col items-center justify-center py-10">
+        <AuthCard title="Invalid Request">
+          <ErrorCard
+            context="application"
+            responseError={error ? error : { message: "Application not found" }}
             hint="Please contact the administrator of the app that sent you here."
             isOurProblem={false}
           />
@@ -216,14 +253,8 @@ export default function IntegrationSetupWizardPage() {
       <AuthCard title="Connect Your Accounts">
         <div className="flex w-full flex-col gap-6">
           <Text variant="body" className="text-center text-slate-600">
-            {appInfo ? (
-              <>
-                <strong>{appInfo.name}</strong> is requesting you to connect the
-                following integrations to your AutoGPT account.
-              </>
-            ) : (
-              "Please connect the following integrations to continue."
-            )}
+            <strong>{appInfo.name}</strong> is requesting you to connect the
+            following integrations to your AutoGPT account.
           </Text>
 
           {/* Provider credentials list */}

@@ -71,7 +71,14 @@ _BASE_WHERE = (
     ' AND "createdAt" >= $2::timestamp'
     ' AND "createdAt" <= $3::timestamp'
     " AND COALESCE((stats->>'is_dry_run')::boolean, false) = false"
+    # One organization's runs and the untagged ones, as its run list shows
+    # them; with no organization, all of them.
+    ' AND ($4::text IS NULL OR "organizationId" = $4::text'
+    ' OR "organizationId" IS NULL)'
 )
+
+# user_id, since, until, organization_id: $1 to $4 in _BASE_WHERE.
+_Params = tuple[str, datetime, datetime, str | None]
 
 
 async def get_user_cost_summary(
@@ -81,6 +88,7 @@ async def get_user_cost_summary(
     until: datetime | None = None,
     top_runs_limit: int = 10,
     include_by_expert: bool = False,
+    organization_id: str | None = None,
 ) -> UserExecutionCostSummary:
     """Aggregate per-user execution costs from AgentGraphExecution.stats JSON.
 
@@ -95,6 +103,9 @@ async def get_user_cost_summary(
     `include_by_expert` is opt-in because the expert rollup is its own query
     over the same rows: callers that never render per-expert spend would
     otherwise pay for a scan they throw away.
+
+    With `organization_id`, only that organization's runs count, and the
+    untagged ones that predate tagging, as `GET /runs` lists them.
     """
     # Hard cap top_runs_limit here too, not just at the FastAPI layer, since
     # this function is callable directly and an unbounded LIMIT would scan
@@ -107,7 +118,7 @@ async def get_user_cost_summary(
     if until is None:
         until = now
 
-    params = (user_id, since, until)
+    params: _Params = (user_id, since, until, organization_id)
     totals, by_agent, by_expert, top_runs, daily = await asyncio.gather(
         _fetch_totals(params),
         _fetch_by_agent(params),
@@ -132,7 +143,7 @@ async def get_user_cost_summary(
     )
 
 
-async def _fetch_totals(params: tuple[str, datetime, datetime]) -> dict:
+async def _fetch_totals(params: _Params) -> dict:
     rows = await query_raw_with_schema(
         "SELECT"
         "  COALESCE(SUM((stats->>'cost')::numeric), 0)::bigint AS total_cents,"
@@ -160,7 +171,7 @@ async def _fetch_totals(params: tuple[str, datetime, datetime]) -> dict:
 
 
 async def _fetch_by_agent(
-    params: tuple[str, datetime, datetime],
+    params: _Params,
 ) -> list[UserAgentCostRollup]:
     rows = await query_raw_with_schema(
         "SELECT"
@@ -189,7 +200,7 @@ async def _no_expert_rollup() -> list[UserExpertCostRollup]:
 
 
 async def _fetch_by_expert(
-    params: tuple[str, datetime, datetime],
+    params: _Params,
 ) -> list[UserExpertCostRollup]:
     """Every expert with spend in the window — deliberately uncapped.
 
@@ -224,9 +235,7 @@ async def _fetch_by_expert(
     ]
 
 
-async def _fetch_top_runs(
-    params: tuple[str, datetime, datetime], limit: int
-) -> list[UserTopRun]:
+async def _fetch_top_runs(params: _Params, limit: int) -> list[UserTopRun]:
     rows = await query_raw_with_schema(
         "SELECT"
         "  id AS execution_id,"
@@ -240,7 +249,7 @@ async def _fetch_top_runs(
         f" WHERE {_BASE_WHERE}"
         "  AND COALESCE((stats->>'cost')::numeric, 0) > 0"
         '  ORDER BY cost_cents DESC, "createdAt" DESC'
-        "  LIMIT $4",
+        "  LIMIT $5",
         *params,
         limit,
     )
@@ -259,7 +268,7 @@ async def _fetch_top_runs(
 
 
 async def _fetch_daily(
-    params: tuple[str, datetime, datetime],
+    params: _Params,
 ) -> list[UserDailyCost]:
     rows = await query_raw_with_schema(
         "SELECT"

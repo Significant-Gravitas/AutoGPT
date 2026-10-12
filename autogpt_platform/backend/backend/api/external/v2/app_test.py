@@ -151,6 +151,11 @@ def test_value_error_returns_400(
         return_value=Mock(organization_id=TEST_ORG_ID),
     )
     mocker.patch(
+        "backend.api.external.v2.library.agents.writable_organization_ids",
+        new_callable=AsyncMock,
+        return_value=frozenset({TEST_ORG_ID}),
+    )
+    mocker.patch(
         "backend.api.features.library.db.update_library_agent",
         new_callable=AsyncMock,
         side_effect=ValueError("Invalid graph version: -1"),

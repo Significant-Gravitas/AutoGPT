@@ -8,7 +8,10 @@ the database is the one bound to the credential: a key minted in org A never
 passes org B, and a key with no org passes the caller's personal org.
 """
 
+import ast
 import inspect
+import re
+import textwrap
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock
 
@@ -22,7 +25,7 @@ from backend.data.auth.base import APIAuthorizationInfo
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 
-from . import tenancy
+from . import runs, tenancy
 from .pagination import PageRequest
 from .routes import v2_router
 from .tenancy import TenantContext, resolve_tenant
@@ -482,6 +485,11 @@ async def test_org_a_key_cannot_see_or_delete_an_org_b_schedule(
         return_value=[],
     )
     mocker.patch(
+        "backend.api.external.v2.schedules.visible_graph_schedules",
+        new_callable=AsyncMock,
+        side_effect=lambda schedules, _user_id: schedules,
+    )
+    mocker.patch(
         "backend.api.external.v2.models.AgentRunSchedule.from_internal",
         side_effect=lambda s: s,
     )
@@ -556,7 +564,32 @@ def test_every_item_handler_checks_the_tenant() -> None:
 
 
 def _checks_tenant(source: str) -> bool:
-    return "in_tenant" in source or "organization_id=auth.organization_id" in source
+    return (
+        "in_tenant" in source
+        or "organization_id=auth.organization_id" in source
+        or any(f"{helper.__name__}(" in source for helper in _TENANT_CHECKING_HELPERS)
+    )
+
+
+# Helpers that fetch a row by id and check its tenant before returning it.
+_TENANT_CHECKING_HELPERS = [runs._assert_run_in_tenant, runs._assert_own_run_in_tenant]
+
+
+def test_the_tenant_checking_helpers_check_the_tenant() -> None:
+    """Each calls `in_tenant`, or another of them that does."""
+    for helper in _TENANT_CHECKING_HELPERS:
+        checks = ["in_tenant"] + [
+            other.__name__ for other in _TENANT_CHECKING_HELPERS if other is not helper
+        ]
+        body = _body(helper)
+        assert any(re.search(rf"\b{name}\(", body) for name in checks), helper.__name__
+
+
+def _body(function) -> str:
+    """The function's statements without its signature, whose name says "tenant"."""
+    definition = ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+    assert isinstance(definition, (ast.FunctionDef, ast.AsyncFunctionDef))
+    return "\n".join(ast.unparse(statement) for statement in definition.body)
 
 
 # Item handlers that touch nothing an organization owns: workspace files and
@@ -571,9 +604,6 @@ _ITEM_HANDLERS_WITHOUT_TENANTED_ROWS = {
     "get_agent_details",
     "get_creator_details",
     "get_marketplace_listing_for_graph",
-    # Adds a public listing to the caller's own library; the row it creates is
-    # untagged, like the internal route's.
-    "add_agent_to_library",
 }
 
 

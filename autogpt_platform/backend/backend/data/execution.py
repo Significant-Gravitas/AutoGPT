@@ -2026,11 +2026,22 @@ async def get_shared_execution_file(
     Returns the execution ID if the file is in the allowlist, None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
+
+    The run must still be shared under this same token and not deleted: an
+    allowlist row that outlived an unshare, a re-share or a delete (a write
+    that failed halfway, or two that raced) authorises nothing.
     """
     record = await SharedExecutionFile.prisma().find_first(
         where={
             "shareToken": share_token,
             "fileId": file_id,
+            "Execution": {
+                "is": {
+                    "isShared": True,
+                    "isDeleted": False,
+                    "shareToken": share_token,
+                }
+            },
         }
     )
     return record.executionId if record else None

@@ -412,6 +412,26 @@ def http_status_error(status: int, reason: str | None, body: bytes) -> Exception
     return Exception(message)
 
 
+_READ_CHUNK_BYTES = 64 * 1024
+
+
+async def _read_body(response: ClientResponse, limit: int | None) -> bytes:
+    """The response body, or its first ``limit + 1`` bytes when capped.
+
+    Read in chunks of the decompressed stream and stopped at the cap, so
+    neither a long body nor a short compressed one that expands is held
+    whole. Leaving the response context unread closes its connection.
+    """
+    if limit is None:
+        return await response.read()
+    body = bytearray()
+    async for chunk in response.content.iter_chunked(_READ_CHUNK_BYTES):
+        body.extend(chunk[: limit + 1 - len(body)])
+        if len(body) > limit:
+            break
+    return bytes(body)
+
+
 def _return_last_result(retry_state: RetryCallState) -> "Response":
     """
     Ensure the final attempt's response is returned when retrying stops.
@@ -469,8 +489,15 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
+        """Send a request, following redirects through the same SSRF checks.
+
+        ``max_body_bytes`` caps how much of a response body is read, counted
+        after decompression; a longer body comes back cut to that many bytes
+        plus one, so the caller can tell it was cut.
+        """
         retry_kwargs: dict[str, Any] = {
             "wait": wait_exponential_jitter(max=self.retry_max_wait),
             "retry": retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
@@ -493,6 +520,7 @@ class Requests:
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects,
                 drop_headers=drop_headers,
+                max_body_bytes=max_body_bytes,
                 **kwargs,
             )
 
@@ -510,6 +538,7 @@ class Requests:
         allow_redirects: bool = True,
         max_redirects: int = 10,
         drop_headers: frozenset[str] = frozenset(),
+        max_body_bytes: int | None = None,
         **kwargs,
     ) -> Response:
         # Convert auth tuple to aiohttp.BasicAuth if necessary
@@ -607,7 +636,7 @@ class Requests:
                     try:
                         response.raise_for_status()
                     except ClientResponseError as e:
-                        body = await response.read()
+                        body = await _read_body(response, max_body_bytes)
                         raise http_status_error(
                             response.status, response.reason, body
                         ) from e
@@ -622,7 +651,7 @@ class Requests:
                         return Response(
                             response=response,
                             url=original_url,
-                            body=await response.read(),
+                            body=await _read_body(response, max_body_bytes),
                         )
 
                     # The base URL is the pinned_url we just used
@@ -658,6 +687,7 @@ class Requests:
                         json=json,
                         drop_headers=drop_headers
                         | {k.lower() for k in req_headers.keys() - new_headers.keys()},
+                        max_body_bytes=max_body_bytes,
                         **redirect_kwargs,
                     )
 
@@ -671,7 +701,7 @@ class Requests:
                 return Response(
                     response=response,
                     url=original_url,
-                    body=await response.read(),
+                    body=await _read_body(response, max_body_bytes),
                 )
 
     async def get(self, url: str, *args, **kwargs) -> Response:

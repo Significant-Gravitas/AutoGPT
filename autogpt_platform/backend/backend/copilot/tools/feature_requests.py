@@ -13,6 +13,7 @@ from backend.data.model import APIKeyCredentials
 from backend.util.settings import Settings
 
 from .base import BaseTool
+from .external_scope import error_detail
 from .models import (
     ErrorResponse,
     FeatureRequestCreatedResponse,
@@ -220,11 +221,12 @@ class SearchFeatureRequestsTool(BaseTool):
             ).from_outside(results)
         except Exception as e:
             logger.exception("Failed to search feature requests")
+            detail = error_detail(e, session)
             return ErrorResponse(
                 message="Failed to search feature requests.",
-                error=str(e),
+                error=detail,
                 session_id=session_id,
-            ).from_outside(str(e))
+            ).from_outside(detail)
 
 
 class CreateFeatureRequestTool(BaseTool):
@@ -233,11 +235,6 @@ class CreateFeatureRequestTool(BaseTool):
     @property
     def name(self) -> str:
         return "create_feature_request"
-
-    @property
-    def allow_external_use(self):
-        # Reaches the platform's own Linear workspace, on the platform's key.
-        return True, [APIKeyPermission.USE_TOOLS]
 
     @property
     def description(self) -> str:

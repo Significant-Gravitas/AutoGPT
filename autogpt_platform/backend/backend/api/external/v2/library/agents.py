@@ -8,11 +8,18 @@ from prisma.enums import APIKeyPermission
 from starlette import status
 
 from backend.api.features.library import db as library_db
+from backend.api.features.library.model import LibraryAgentSort
 from backend.data import graph as graph_db
+from backend.data.tenancy import writable_organization_ids
 from backend.executor import utils as execution_utils
 
 from ..errors import ErrorResponse
-from ..idempotency import idempotency_key, idempotent_run, replayed_run
+from ..idempotency import (
+    idempotency_key,
+    idempotent_run,
+    replayed_run,
+    request_fingerprint,
+)
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
@@ -53,9 +60,12 @@ async def list_library_agents(
     page: PageRequest = Depends(page_request),
     auth: TenantContext = Security(require_permission(APIKeyPermission.READ_LIBRARY)),
 ) -> Page[LibraryAgent]:
-    """List agents in the user's library."""
+    """List agents in the user's library, oldest first."""
+    # Creation order, not the default last-updated: every run bumps an agent's
+    # updatedAt, which reshuffled the pages while a client walked them.
     result = await library_db.list_library_agents(
         user_id=auth.user_id,
+        sort_by=LibraryAgentSort.CREATED_AT,
         page=page.page,
         page_size=page.limit,
         published=published,
@@ -99,7 +109,21 @@ async def update_library_agent(
 ) -> LibraryAgent:
     """Update properties of a library agent."""
     await _assert_agent_in_tenant(agent_id, auth)
+    if request.folder_id:
+        in_tenant(
+            await library_db.get_folder(
+                folder_id=request.folder_id, user_id=auth.user_id
+            ),
+            auth,
+            f"Folder #{request.folder_id}",
+        )
 
+    # Only this organization's entries may give way to the chosen version.
+    organization_ids = (
+        await writable_organization_ids(auth.user_id, auth.organization_id)
+        if request.graph_version is not None
+        else None
+    )
     updated = await library_db.update_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
@@ -108,6 +132,7 @@ async def update_library_agent(
         is_favorite=request.is_favorite,
         is_archived=request.is_archived,
         folder_id=request.folder_id,
+        organization_ids=organization_ids,
     )
     return LibraryAgent.from_internal(updated)
 
@@ -152,6 +177,8 @@ async def fork_library_agent(
     forked = await library_db.fork_library_agent(
         library_agent_id=agent_id,
         user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        team_id=auth.team_id,
     )
     return LibraryAgent.from_internal(forked)
 
@@ -169,6 +196,10 @@ async def fork_library_agent(
         status.HTTP_409_CONFLICT: {
             "model": ErrorResponse,
             "description": "The `Idempotency-Key`'s run has not been recorded yet",
+        },
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ErrorResponse,
+            "description": "The `Idempotency-Key` cannot be checked right now",
         },
     },
 )
@@ -189,7 +220,10 @@ async def execute_agent(
     """
     await enforce(graph_exec_limiter, auth.user_id, response)
 
-    async with idempotent_run(idempotency, auth) as claim:
+    fingerprint = request_fingerprint(
+        agent_id=agent_id, request=request.model_dump(mode="json")
+    )
+    async with idempotent_run(idempotency, auth, fingerprint) as claim:
         if claim.existing_run_id:
             return await replayed_run(claim, auth)
 

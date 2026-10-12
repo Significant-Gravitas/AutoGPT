@@ -4,18 +4,21 @@ A cap the caller cannot see forces it to retry blind, and an anonymous bucket
 keyed on a header the caller writes is not a cap at all.
 """
 
+from datetime import UTC, datetime
 from unittest import mock
 
 import pytest
 import pytest_mock
 from fastapi import HTTPException, Response
 
+from backend.api.external.middleware import resolve_request_auth
 from backend.api.external.v2 import credits, global_rate_limit
 from backend.api.external.v2.global_rate_limit import (
     GlobalRateLimitMiddleware,
     client_ip,
 )
 from backend.api.utils.rate_limit import RateLimiter
+from backend.data.auth.base import APIAuthorizationInfo
 from backend.util.settings import Config
 
 PEER = "10.0.0.9"
@@ -110,8 +113,8 @@ def test_the_anonymous_bucket_ignores_caller_written_hops(
         hops,
     )
 
-    headers = {b"x-forwarded-for": forwarded.encode()} if forwarded else {}
-    assert client_ip(_scope(), headers) == expected
+    headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded else []
+    assert client_ip(_scope() | {"headers": headers}) == expected
 
 
 async def test_the_subscription_read_is_capped_before_it_reaches_stripe(
@@ -155,3 +158,274 @@ def _scope() -> dict:
 
 async def _receive() -> dict:
     return {"type": "http.request"}
+
+
+class _Counters:
+    """A fake Redis window store: counts per key, readable as the limiter reads them."""
+
+    def __init__(self) -> None:
+        self.counts: dict[str, int] = {}
+
+    async def set(self, name: str, value: int, ex: int = 0, nx: bool = False) -> bool:
+        if nx and name in self.counts:
+            return False
+        self.counts[name] = int(value)
+        return True
+
+    async def incr(self, name: str) -> int:
+        self.counts[name] = self.counts.get(name, 0) + 1
+        return self.counts[name]
+
+    async def get(self, name: str) -> bytes | None:
+        return str(self.counts[name]).encode() if name in self.counts else None
+
+    def total(self, fragment: str) -> int:
+        return sum(n for key, n in self.counts.items() if fragment in key)
+
+
+@pytest.fixture
+def counters(mocker: pytest_mock.MockFixture) -> _Counters:
+    store = _Counters()
+    mocker.patch(
+        "backend.api.utils.rate_limit.get_redis_async",
+        new=mock.AsyncMock(return_value=store),
+    )
+    return store
+
+
+async def _send_with_key(key: bytes, verify: mock.AsyncMock) -> int:
+    """One request carrying `key`; the status the middleware answered with."""
+    return await _send([(b"x-api-key", key)])
+
+
+async def _send_with_bearer(token: bytes) -> int:
+    """One request carrying `token` as a bearer; the status it was answered with."""
+    return await _send([(b"authorization", b"Bearer " + token)])
+
+
+async def _send(headers: list[tuple[bytes, bytes]]) -> int:
+    statuses: list[int] = []
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def send(message):
+        if message["type"] == "http.response.start":
+            statuses.append(message["status"])
+
+    scope = _scope()
+    scope["headers"] = headers
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
+    return statuses[0]
+
+
+async def test_a_valid_key_flooding_the_api_is_refused_before_the_hash(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """The per-user cap answers only after the hash it exists to bound."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    statuses = [await _send_with_key(b"agpt_validkey", verify) for _ in range(310)]
+
+    assert statuses.count(200) == 300
+    assert statuses[-1] == 429
+    assert verify.await_count == 300
+
+
+async def test_a_failing_key_is_refused_unhashed_without_locking_out_other_keys(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """A bad key behind a shared address throttles its own head, not the address."""
+    rejection = HTTPException(status_code=401, detail="Invalid API key")
+
+    async def resolve(scope, api_key, bearer):
+        if api_key.startswith("agpt_bad"):
+            raise rejection
+        return mock.Mock(user_id="user-1")
+
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=resolve),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    for _ in range(30):
+        await _send_with_key(b"agpt_badkey", verify)
+    hashed = verify.await_count
+
+    assert await _send_with_key(b"agpt_badkey", verify) == 429
+    assert verify.await_count == hashed
+    assert await _send_with_key(b"agpt_goodkey", verify) == 200
+
+
+async def test_an_address_failing_across_many_heads_is_refused_unhashed(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
+    )
+    counters.counts[
+        global_rate_limit._failed_auth_limiter._key(PEER, datetime.now(UTC))
+    ] = 300
+
+    assert await _send_with_key(b"agpt_fresh", verify) == 429
+    verify.assert_not_awaited()
+
+
+async def test_a_token_shaped_api_key_header_is_counted_as_a_key(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """Sent as X-API-Key it is tried as a key, so it can cost a hash."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    await _send_with_key(b"agpt_xt_value", verify)
+
+    assert counters.total("credential-presented") == 1
+
+
+async def test_a_valid_oauth_token_flooding_the_api_is_refused_before_the_lookup(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """A token costs a database lookup, which the per-user cap counts only after."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(return_value=mock.Mock(user_id="user-1")),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    statuses = [await _send_with_bearer(b"agpt_xt_token") for _ in range(310)]
+
+    assert statuses.count(200) == 300
+    assert statuses[-1] == 429
+    assert verify.await_count == 300
+    assert "agpt_xt_token" not in "".join(counters.counts)
+
+
+async def test_forged_oauth_tokens_stop_costing_lookups_once_the_address_keeps_failing(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    """Every forged token is new to its own counter; the address's is what fills."""
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=HTTPException(status_code=401, detail="no")),
+    )
+
+    for n in range(300):
+        await _send_with_bearer(b"agpt_xt_forged-%d" % n)
+
+    assert await _send_with_bearer(b"agpt_xt_forged-next") == 429
+    assert verify.await_count == 300
+
+
+async def test_one_failing_oauth_token_does_not_lock_out_another(
+    mocker: pytest_mock.MockFixture, counters: _Counters
+) -> None:
+    rejection = HTTPException(status_code=401, detail="Invalid token")
+
+    async def resolve(scope, api_key, bearer):
+        if bearer.credentials == "agpt_xt_expired":
+            raise rejection
+        return mock.Mock(user_id="user-1")
+
+    verify = mocker.patch(
+        "backend.api.external.v2.global_rate_limit.resolve_request_auth",
+        new=mock.AsyncMock(side_effect=resolve),
+    )
+    mocker.patch.object(
+        global_rate_limit._authenticated_limiter, "check", return_value=None
+    )
+
+    for _ in range(30):
+        await _send_with_bearer(b"agpt_xt_expired")
+    looked_up = verify.await_count
+
+    assert await _send_with_bearer(b"agpt_xt_expired") == 429
+    assert verify.await_count == looked_up
+    assert await _send_with_bearer(b"agpt_xt_current") == 200
+
+
+async def test_a_request_verifies_its_credential_once_even_when_rejected(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The rate limiter and the route both ask; an invalid key is hashed once."""
+    validate = mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new=mock.AsyncMock(return_value=None),
+    )
+    scope: dict = {"type": "http"}
+
+    for _ in range(2):
+        with pytest.raises(HTTPException) as raised:
+            await resolve_request_auth(scope, api_key="agpt_wrongkey", bearer=None)
+        assert raised.value.status_code == 401
+
+    validate.assert_awaited_once()
+
+
+async def test_a_cached_verification_is_reused_only_for_the_same_credential(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    validate = mocker.patch(
+        "backend.api.external.middleware.validate_api_key",
+        new=mock.AsyncMock(side_effect=[_principal("a"), _principal("b")]),
+    )
+    scope: dict = {"type": "http"}
+
+    first = await resolve_request_auth(scope, api_key="agpt_a", bearer=None)
+    again = await resolve_request_auth(scope, api_key="agpt_a", bearer=None)
+    other = await resolve_request_auth(scope, api_key="agpt_b", bearer=None)
+
+    assert first is again
+    assert other.user_id == "b"
+    assert validate.await_count == 2
+
+
+@pytest.mark.parametrize(
+    "path, bucket",
+    [
+        ("/external-api/v2/openapi.json", "anon-docs:"),
+        ("/external-api/v2/docs", "anon-docs:"),
+        ("/external-api/v2/library/agents", "anon:"),
+    ],
+)
+async def test_reading_the_docs_without_a_key_has_its_own_bucket(
+    redis: mock.AsyncMock, path: str, bucket: str
+) -> None:
+    """The docs send agents to the spec before they have a key; reading it must
+    not use up the five calls a minute everything else anonymous gets."""
+    redis.incr.return_value = 1
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+
+    async def send(message):
+        pass
+
+    scope = _scope()
+    scope.update(path=path, root_path="/external-api/v2")
+    await GlobalRateLimitMiddleware(app)(scope, _receive, send)
+
+    assert redis.incr.await_args.args[0].startswith(f"rl:v2:global:{bucket}")
+
+
+def _principal(user_id: str) -> APIAuthorizationInfo:
+    return APIAuthorizationInfo(
+        user_id=user_id, scopes=[], type="api_key", created_at=datetime.now(UTC)
+    )

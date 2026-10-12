@@ -5,7 +5,7 @@ This module defines the main FastAPI application for the external API,
 which mounts the v1 and v2 sub-applications.
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
 
 from backend.monitoring.instrumentation import instrument_fastapi
@@ -40,13 +40,24 @@ external_api = FastAPI(
     version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    # `/openapi.json` was v1's spec before v2 existed, and published docs and
+    # generated clients still fetch it there; see `v1_spec_redirect`.
+    openapi_url="/versions.json",
 )
 
 
 @external_api.get("/", include_in_schema=False)
-async def root_redirect() -> RedirectResponse:
-    """Redirect root to API documentation."""
-    return RedirectResponse(url="/docs")
+async def root_redirect(request: Request) -> RedirectResponse:
+    """Redirect root to this API's documentation, not the host app's."""
+    return RedirectResponse(url=f"{request.scope.get('root_path', '')}/docs")
+
+
+@external_api.get("/openapi.json", include_in_schema=False)
+async def v1_spec_redirect(request: Request) -> RedirectResponse:
+    """v1's spec, at the address it had before the API was versioned."""
+    return RedirectResponse(
+        url=f"{request.scope.get('root_path', '')}/v1/openapi.json", status_code=308
+    )
 
 
 # Mount versioned sub-applications

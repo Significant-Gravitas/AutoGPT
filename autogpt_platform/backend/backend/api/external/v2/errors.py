@@ -24,6 +24,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
+    LibraryAgentInAnotherOrganizationError,
 )
 from backend.api.features.store.exceptions import UnauthorizedError as StoreForbidden
 from backend.copilot.rate_limit import UserPaywalledError
@@ -68,6 +69,7 @@ def add_v2_exception_handlers(app: fastapi.FastAPI) -> None:
         PreconditionFailed: status.HTTP_428_PRECONDITION_REQUIRED,
         FolderAlreadyExistsError: status.HTTP_409_CONFLICT,
         ConflictError: status.HTTP_409_CONFLICT,
+        LibraryAgentInAnotherOrganizationError: status.HTTP_409_CONFLICT,
         FolderValidationError: status.HTTP_400_BAD_REQUEST,
         GraphActivationError: status.HTTP_400_BAD_REQUEST,
         WebhookRegistrationError: status.HTTP_400_BAD_REQUEST,

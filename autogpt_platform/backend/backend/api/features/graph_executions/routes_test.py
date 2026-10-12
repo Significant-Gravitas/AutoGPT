@@ -385,11 +385,36 @@ def test_delete_execution_returns_204(mocker: pytest_mock.MockFixture) -> None:
         "backend.api.features.graph_executions.routes.execution_db.delete_graph_execution",
         AsyncMock(),
     )
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(),
+    )
 
     response = client.delete("/executions/exec-1")
 
     assert response.status_code == 204
     assert deleted.await_args.kwargs["graph_exec_id"] == "exec-1"
+
+
+def test_deleting_an_execution_revokes_its_shared_file_downloads(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The public file download checks only the allowlist, so it has to go
+    with the run; the shared page already hides deleted runs."""
+    mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db.delete_graph_execution",
+        AsyncMock(),
+    )
+    delete_files = mocker.patch(
+        "backend.api.features.graph_executions.routes.execution_db"
+        ".delete_shared_execution_files",
+        AsyncMock(),
+    )
+
+    client.delete("/executions/exec-1")
+
+    delete_files.assert_awaited_once_with(execution_id="exec-1")
 
 
 def test_get_shared_execution_returns_404_for_an_unknown_token(

@@ -91,6 +91,8 @@ https://yourapp.com/callback?error=access_denied&error_description=User%20denied
 
 Always verify the `state` parameter matches what you sent in Step 1.
 
+If the `client_id` is unknown or the `redirect_uri` is not one of your app's registered redirect URIs, the platform shows the user an error instead and sends them nowhere, so your app gets no callback.
+
 ### Step 3: Exchange Code for Tokens
 
 Exchange the authorization code for access and refresh tokens:
@@ -206,7 +208,7 @@ https://platform.agpt.co/auth/integrations/setup-wizard?
 |-----------|----------|-------------|
 | `client_id` | Yes | Your OAuth application's client ID |
 | `providers` | Yes | Base64-encoded JSON array of provider configurations |
-| `redirect_uri` | Yes | URL to redirect after setup completes |
+| `redirect_uri` | Yes | URL to redirect after setup completes; must be one of your app's registered redirect URIs |
 | `state` | Yes | Random string to prevent CSRF attacks |
 
 #### Provider Configuration
@@ -233,11 +235,13 @@ After setup completes:
 https://yourapp.com/callback?success=true&state=RANDOM_STATE_TOKEN
 ```
 
-**Failure/Cancelled:**
+**Cancelled:**
 
 ```url
-https://yourapp.com/callback?success=false&state=RANDOM_STATE_TOKEN
+https://yourapp.com/callback?error=user_cancelled&error_description=User+cancelled+the+integration+setup&state=RANDOM_STATE_TOKEN
 ```
+
+As with authorization, an unknown `client_id` or unregistered `redirect_uri` gets the user an error page and your app no callback.
 
 ## Provider Scopes Reference
 
@@ -422,7 +426,7 @@ Content-Type: application/json
 | Error | Description | Solution |
 |-------|-------------|----------|
 | `invalid_client` | Client ID not found or inactive | Verify client ID is correct |
-| `invalid_redirect_uri` | Redirect URI not registered | Register URI with platform admin |
+| `invalid_redirect_uri` | Redirect URI not registered | Register URI with platform admin. The user sees an error and is not redirected, so no callback arrives |
 | `invalid_scope` | Requested scope not allowed | Check allowed scopes for your app |
 | `invalid_grant` | Code expired or already used | Authorization codes are single-use |
 | `access_denied` | User denied authorization | Handle gracefully in your UI |

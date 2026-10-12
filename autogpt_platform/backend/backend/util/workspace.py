@@ -239,6 +239,21 @@ class WorkspaceManager:
         storage = await get_workspace_storage()
         return await storage.retrieve(file.storage_path)
 
+    async def read_file_head_by_id(self, file_id: str, max_bytes: int) -> bytes:
+        """Read at most ``max_bytes`` from the start of a file, by file ID.
+
+        For a preview or a slice near the start, so a large file is not
+        loaded whole. Authorized exactly as ``read_file_by_id``.
+        """
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is None:
+            raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file)
+
+        storage = await get_workspace_storage()
+        return await storage.retrieve_partial(file.storage_path, max_bytes)
+
     async def write_file(
         self,
         content: bytes,

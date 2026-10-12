@@ -87,6 +87,22 @@ class RateLimiter:
             )
         return state
 
+    async def exhausted(self, user_id: str) -> bool:
+        """Whether the window is used up, without counting this call.
+
+        For a limiter that counts only some outcomes, checked before work the
+        count exists to bound. Fails open, like ``check``.
+        """
+        try:
+            redis = await get_redis_async()
+            count = await redis.get(self._key(user_id, datetime.now(UTC)))
+        except Exception as e:
+            logger.warning(
+                "Rate-limit peek (%s) failed open for %s: %s", self.name, user_id, e
+            )
+            return False
+        return count is not None and int(count) >= self.max_requests
+
     def _key(self, user_id: str, now: datetime) -> str:
         bucket = int(now.timestamp()) // self.window_seconds
         return f"rl:{self.name}:{user_id}:{bucket}"

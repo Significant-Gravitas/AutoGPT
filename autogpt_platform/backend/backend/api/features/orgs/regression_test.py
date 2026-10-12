@@ -1069,7 +1069,9 @@ class TestRegressionLibraryAgents:
             result = await fork_library_agent(LIBRARY_AGENT_ID, USER_ID)
 
         # fork_graph must be called with the caller's user_id
-        mock_fork.assert_called_once_with(GRAPH_ID, GRAPH_VERSION, USER_ID)
+        mock_fork.assert_called_once_with(
+            GRAPH_ID, GRAPH_VERSION, USER_ID, organization_id=None, team_id=None
+        )
         # create_library_agent must use the caller's user_id
         assert mock_create_lib.call_args.args[1] == USER_ID
         assert result.id == "lib-forked"
