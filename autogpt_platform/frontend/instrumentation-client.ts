@@ -7,6 +7,7 @@ import {
   isFromBot,
   isNextRSCNavigationFallback,
 } from "@/lib/sentry-filters";
+import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
@@ -19,6 +20,10 @@ Sentry.init({
   environment: environment.getEnvironmentStr(),
 
   enabled: Boolean(dsn),
+
+  // The tunnel is same-origin, so fetch would attach our cookies to every envelope.
+  tunnel: getSentryTunnelURL(dsn),
+  transportOptions: { fetchOptions: { credentials: "omit" } },
 
   // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
   // serializing DOM snapshots with cross-origin stylesheets

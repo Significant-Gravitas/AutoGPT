@@ -19,6 +19,7 @@ from backend.data.graph import (
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
+from backend.data.profile import ensure_user_profile
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
@@ -1216,6 +1217,22 @@ async def get_user_profile(
     except Exception as e:
         logger.error(f"Error getting user profile: {e}")
         raise DatabaseError("Failed to get user profile") from e
+
+
+async def get_or_create_user_profile(
+    user_id: str,
+) -> store_model.ProfileDetails | None:
+    """The user's profile, creating their default one if they have none yet.
+
+    A brand-new user's first page asks for it as soon as the session exists,
+    which can be before account setup (``POST /auth/user``) has created it.
+    None only for an id with no platform user, or if no free handle was found.
+    """
+    profile = await get_user_profile(user_id)
+    if profile is not None:
+        return profile
+    await ensure_user_profile(user_id)
+    return await get_user_profile(user_id)
 
 
 async def update_profile(

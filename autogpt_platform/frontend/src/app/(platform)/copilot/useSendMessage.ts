@@ -8,7 +8,7 @@ import {
   type PendingUploadAttachment,
   type PendingUploadSend,
 } from "./copilotStreamStore";
-import { describeSendFailure } from "./components/ChatInput/helpers";
+import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildStoredAttachmentParts,
@@ -349,15 +349,12 @@ export function recoverFailedDeferredSend(
   if (text) useCopilotUIStore.getState().setInitialPrompt(text);
   if (parts.length > 0)
     useCopilotStreamStore.getState().setPendingFileParts(parts);
-  toast({
+  toastSendFailure({
     title: "Couldn't send message",
-    description: describeSendFailure(
-      error,
-      text
-        ? "your message is back in the composer"
-        : "your files were not sent",
-    ),
-    variant: "destructive",
+    error,
+    recovery: text
+      ? "your message is back in the composer"
+      : "your files were not sent",
   });
 }
 
