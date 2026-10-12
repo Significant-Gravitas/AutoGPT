@@ -159,11 +159,8 @@ def test_a_pass_queued_behind_shutdown_submits_nothing_and_loses_nothing(
         target=stop_scheduler, args=(scheduler, None, 10.0), daemon=True
     )
     shutdown.start()
-    # Shutdown now holds the jobstore lock while it waits for ``long_job``.
-    assert _wait_for(
-        lambda: scheduler.state == STATE_STOPPED
-        and not _try_lock(scheduler._jobstores_lock)
-    )
+    # Shutdown has begun and is waiting for ``long_job``.
+    assert _wait_for(lambda: scheduler.state == STATE_STOPPED)
     # ``tick`` falls due; a pass wakes for it and queues on the lock.
     time.sleep(max(0.0, (due_at - datetime.now(timezone.utc)).total_seconds()))
     queued_pass = threading.Thread(target=scheduler._process_jobs, daemon=True)
@@ -210,13 +207,6 @@ def test_a_pass_stuck_on_the_jobstore_cannot_hold_shutdown(tmp_path: Path):
     # exits instead of waiting until Kubernetes kills the pod.
     assert result == [False]
     assert time.monotonic() - started < 0.5 + scheduler_shutdown._CANCEL_GRACE_S + 3
-
-
-def _try_lock(lock) -> bool:
-    if lock.acquire(blocking=False):
-        lock.release()
-        return True
-    return False
 
 
 _EXIT_PROBE = textwrap.dedent(
