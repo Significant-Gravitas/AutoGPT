@@ -356,6 +356,39 @@ describe("BackendAPI WebSocket failure logging", () => {
     );
   });
 
+  it("one ack confirms only the oldest pending subscribe for its channel", async () => {
+    const socket = await connect();
+    socket.readyState = FakeWebSocket.OPEN;
+    socket.onopen!();
+    const api = apis.at(-1)!;
+    const ack = () =>
+      socket.onmessage!({
+        data: JSON.stringify({
+          method: "subscribe_graph_executions",
+          success: true,
+          channel: "user-1|graph#graph-1|executions",
+        }),
+      } as MessageEvent);
+
+    let secondConfirmed = false;
+    const first = api.subscribeToGraphExecutions("graph-1" as GraphID);
+    const second = api
+      .subscribeToGraphExecutions("graph-1" as GraphID)
+      .then(() => (secondConfirmed = true));
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalledTimes(2), {
+      interval: 1,
+    });
+
+    ack();
+    await first;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(secondConfirmed).toBe(false);
+
+    ack();
+    await second;
+    expect(secondConfirmed).toBe(true);
+  });
+
   it("a failed send fails only its own subscribe", async () => {
     const socket = await connect();
     socket.readyState = FakeWebSocket.OPEN;

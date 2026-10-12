@@ -1032,13 +1032,15 @@ export default class BackendAPI {
     });
   }
 
+  // The server handles a socket's messages in order, so an ack belongs to the
+  // oldest pending request for that channel, not to every one of them.
   private _resolveAckWaiters(method: string, channel: string) {
-    this.wsAckWaiters
-      .filter((w) => w.method === method && channel.endsWith(w.channelSuffix))
-      .forEach((waiter) => {
-        this._removeAckWaiter(waiter);
-        waiter.resolve();
-      });
+    const waiter = this.wsAckWaiters.find(
+      (w) => w.method === method && channel.endsWith(w.channelSuffix),
+    );
+    if (!waiter) return;
+    this._removeAckWaiter(waiter);
+    waiter.resolve();
   }
 
   async sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(

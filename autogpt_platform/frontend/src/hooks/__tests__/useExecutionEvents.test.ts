@@ -49,28 +49,49 @@ describe("useExecutionEvents", () => {
     );
   });
 
+  test("refetches once the first subscriptions are confirmed", async () => {
+    // A run can finish between the page's initial fetch and the moment the
+    // subscription is live; that completion is never delivered.
+    const onSubscribed = vi.fn();
+    let confirm: () => void = () => {};
+    api.subscribeToGraphExecutions.mockImplementationOnce(
+      () =>
+        new Promise<undefined>(
+          (resolve) => (confirm = () => resolve(undefined)),
+        ),
+    );
+    renderHook(() => useExecutionEvents({ graphId: "graph-a", onSubscribed }));
+
+    api.open();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onSubscribed).not.toHaveBeenCalled();
+
+    confirm();
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
+  });
+
   test("resubscribes every graph after a reconnect, then asks for a refetch", async () => {
-    const onReconnect = vi.fn();
+    const onSubscribed = vi.fn();
     renderHook(() =>
-      useExecutionEvents({ graphIds: ["graph-a", "graph-b"], onReconnect }),
+      useExecutionEvents({ graphIds: ["graph-a", "graph-b"], onSubscribed }),
     );
 
     api.open();
     expect(api.subscribeToGraphExecutions).toHaveBeenCalledTimes(2);
-    await Promise.resolve();
-    expect(onReconnect).not.toHaveBeenCalled();
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
 
     // The server dropped every subscription with the old socket.
     api.open();
     expect(api.subscribeToGraphExecutions).toHaveBeenCalledTimes(4);
     expect(api.subscribeToGraphExecutions).toHaveBeenLastCalledWith("graph-b");
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(2));
   });
 
   test("refetches only once the server confirmed the resubscriptions", async () => {
-    const onReconnect = vi.fn();
-    renderHook(() => useExecutionEvents({ graphId: "graph-a", onReconnect }));
+    const onSubscribed = vi.fn();
+    renderHook(() => useExecutionEvents({ graphId: "graph-a", onSubscribed }));
     api.open();
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
     let confirm: () => void = () => {};
     api.subscribeToGraphExecutions.mockImplementationOnce(
       () =>
@@ -81,22 +102,23 @@ describe("useExecutionEvents", () => {
 
     api.open();
     await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(onReconnect).not.toHaveBeenCalled();
+    expect(onSubscribed).toHaveBeenCalledTimes(1);
 
     confirm();
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(2));
   });
 
   test("still asks for a refetch when a resubscribe fails", async () => {
-    const onReconnect = vi.fn();
-    renderHook(() => useExecutionEvents({ graphId: "graph-a", onReconnect }));
+    const onSubscribed = vi.fn();
+    renderHook(() => useExecutionEvents({ graphId: "graph-a", onSubscribed }));
     api.open();
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(1));
     api.subscribeToGraphExecutions.mockRejectedValueOnce(new Error("closed"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     api.open();
 
-    await waitFor(() => expect(onReconnect).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onSubscribed).toHaveBeenCalledTimes(2));
   });
 
   test("only forwards events for the graphs it watches", () => {

@@ -73,7 +73,7 @@ export function useAgentActivityDropdown() {
     graphIds: graphIds.length > 0 ? graphIds : undefined,
     enabled: graphIds.length > 0,
     onExecutionUpdate: handleExecutionEvent,
-    onReconnect: () => void refetchExecutions(),
+    onSubscribed: () => void refetchExecutions(),
   });
 
   return {
