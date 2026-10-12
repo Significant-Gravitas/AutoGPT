@@ -554,3 +554,46 @@ async def test_a_write_racing_an_unrecorded_invalidation_is_not_served_later(
     assert (
         await worker_a.get_active_subscription_period_end("user-1") == PAID_PERIOD_END
     )
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def redis_down(monkeypatch):
+    monkeypatch.setattr(
+        cache_a,
+        "get_redis_async",
+        AsyncMock(side_effect=RedisConnectionError("down")),
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_live_mark_survives_any_number_of_failed_invalidations(redis_down):
+    """A mark is what stops this worker serving an entry written under the
+    old token; other customers' failures must never push it out."""
+    await cache_a.invalidate_active_subscription_cache("cus_changed")
+    for i in range(2100):
+        await cache_a.invalidate_active_subscription_cache(f"cus_other_{i}")
+    assert cache_a._is_unconfirmed("cus_changed")
+
+
+@pytest.mark.asyncio
+async def test_a_renewed_mark_outlives_expired_ones(redis_down, monkeypatch):
+    """Expired marks must not crowd out a live one, whatever their order."""
+    clock = _Clock()
+    monkeypatch.setattr(cache_a, "time", clock)
+    monkeypatch.setattr(cache_a, "_UNCONFIRMED_MAXSIZE", 4, raising=False)
+    monkeypatch.setattr(cache_a, "_FALLBACK_MAXSIZE", 4)
+    for customer in ("cus_changed", "cus_1", "cus_2", "cus_3"):
+        await cache_a.invalidate_active_subscription_cache(customer)
+    clock.now += 60
+
+    await cache_a.invalidate_active_subscription_cache("cus_changed")
+    await cache_a.invalidate_active_subscription_cache("cus_4")
+    assert cache_a._is_unconfirmed("cus_changed")
