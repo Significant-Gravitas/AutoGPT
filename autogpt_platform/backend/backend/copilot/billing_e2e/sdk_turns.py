@@ -58,8 +58,10 @@ class SdkTurns:
         self._config = config
         self._transcripts: dict[str, TranscriptDownload] = {}
         self._lease = _codex_lease(provider) if codex else None
-        # The CLI session each launch resumed, None for a fresh one.
-        self.resumed: list[str | None] = []
+        # The turn of each launch, and the CLI session it resumed (None for a
+        # fresh one).
+        self.resumed: list[tuple[int, str | None]] = []
+        self._turn = -1
         # The CLI inherits these, and the platform reads the CLI's session
         # files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
@@ -76,6 +78,7 @@ class SdkTurns:
     async def __call__(
         self, session: ChatSession, prompt: str, *, new_pod: bool
     ) -> None:
+        self._turn += 1
         if new_pod:
             # Only what the turn uploaded survives a move to another pod.
             shutil.rmtree(self._config_dir / "projects", ignore_errors=True)
@@ -131,7 +134,7 @@ class SdkTurns:
     def _client(
         self, *args: Any, options: ClaudeAgentOptions, **kwargs: Any
     ) -> ClaudeSDKClient:
-        self.resumed.append(options.resume)
+        self.resumed.append((self._turn, options.resume))
         # The direct-Anthropic route sends no base URL, so its CLI would call
         # api.anthropic.com; this one calls the fake provider instead.
         if options.env.get("ANTHROPIC_BASE_URL") == "":

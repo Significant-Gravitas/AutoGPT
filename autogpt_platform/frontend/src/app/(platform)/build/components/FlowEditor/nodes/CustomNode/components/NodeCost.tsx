@@ -2,6 +2,7 @@ import { BlockCost } from "@/app/api/__generated__/models/blockCost";
 import { BlockCostType } from "@/app/api/__generated__/models/blockCostType";
 import { Text } from "@/components/atoms/Text/Text";
 import useCredits from "@/hooks/useCredits";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { isCostFilterMatch } from "../../../../helper";
 import { useNodeStore } from "@/app/(platform)/build/stores/nodeStore";
 import { useShallow } from "zustand/react/shallow";
@@ -112,6 +113,7 @@ export const NodeCost = ({
   nodeId: string;
 }) => {
   const { formatCredits } = useCredits();
+  const isBillingEnabled = useIsBillingEnabled();
   const hardcodedValues = useNodeStore(
     useShallow((state) => state.getHardCodedValues(nodeId)),
   );
@@ -122,7 +124,7 @@ export const NodeCost = ({
       isCostFilterMatch(cost.cost_filter, hardcodedValues),
     );
 
-  if (!blockCost) return null;
+  if (!isBillingEnabled || !blockCost) return null;
 
   const display = getDisplay(blockCost, formatCredits);
 
