@@ -4191,6 +4191,8 @@ async def _run_stream_attempt(
         `stream_chat_completion_sdk` — owns the retry loop that calls this
         function up to `_MAX_STREAM_ATTEMPTS` times with reduced context.
     """
+    # First, so whatever fails from here on is this launch's to absorb.
+    await state.generations.start_launch()
     acc = _StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],
@@ -4220,7 +4222,6 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    await state.generations.start_launch()
     sdk_client = ClaudeSDKClient(options=state.options)
     client = await sdk_client.__aenter__()
     try:
