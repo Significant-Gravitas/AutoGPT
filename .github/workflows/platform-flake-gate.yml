@@ -12,7 +12,7 @@ name: AutoGPT Platform - Flake Gate
 
 on:
   pull_request:
-    branches: [dev]
+    branches: [dev, ci/flake-gate]
     paths:
       - "autogpt_platform/backend/**/*_test.py"
       - "autogpt_platform/backend/**/test_*.py"
