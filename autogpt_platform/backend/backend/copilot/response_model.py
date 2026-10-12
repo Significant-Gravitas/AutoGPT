@@ -410,9 +410,9 @@ class StreamStatus(StreamBaseResponse):
     Emitted when the backend is about to enter a phase that would otherwise
     leave the user staring at a silent "Thinking…" bubble — e.g. the first
     LLM call, the continuation after a tool result, compacting conversation
-    context on retry, or activating a fallback model. The frontend reads
-    the latest `data-status` part on the current assistant message and uses
-    its `message` in place of the generic "Thinking…" copy.
+    context on retry, or activating a fallback model. The copilot UI does
+    not show `message` (it describes plumbing, not anything the user needs);
+    it shows a plain "Thinking…" instead.
     """
 
     type: ResponseType = ResponseType.STATUS
