@@ -298,8 +298,10 @@ class FrontendSuite(Suite):
         return ["pnpm", "exec", "vitest", "run"]
 
     def command(self, files: list[str], seed: Optional[int], report: Path) -> list[str]:
-        # Coverage on, as the integration test job runs Vitest; its report
-        # goes beside the run's own.
+        # Coverage on, as the integration test job runs Vitest, so the tests
+        # run as slowly as there. Its report covers only these files: one of
+        # every source file takes longer to build than most test files take
+        # to run, and nothing reads it.
         cmd = [
             *self.prefix,
             *files,
@@ -307,6 +309,7 @@ class FrontendSuite(Suite):
             "--coverage",
             "--coverage.reporter=json-summary",
             f"--coverage.reportsDirectory={report.with_suffix('')}-coverage",
+            *(f"--coverage.include={file}" for file in files),
             "--reporter=default",
             "--reporter=json",
             f"--outputFile.json={report}",
