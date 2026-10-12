@@ -25,6 +25,7 @@ from backend.copilot.tools.skills import (
     SkillContentBlockedError,
     SkillFile,
     SkillPackage,
+    SkillPackageError,
     SkillVersionConflictError,
     canonicalize_skill,
     invalidate_skills_index_cache,
@@ -107,9 +108,14 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         request.user_id, request.skill_name, expert_id=request.expert_id
     )
     current = parse_skill_markdown(current_text) if current_text else None
-    current_files = await read_user_skill_files(
-        request.user_id, request.skill_name, expert_id=request.expert_id
-    )
+    try:
+        current_files = await read_user_skill_files(
+            request.user_id, request.skill_name, expert_id=request.expert_id
+        )
+    except SkillPackageError as exc:
+        return PublishOutcome(
+            status="invalid_proposal", reason=safe_diagnostic(str(exc))
+        )
     if (
         request.expected_package_hash is not None
         and version_package_hash(current_text or "", snapshot_files(current_files))
