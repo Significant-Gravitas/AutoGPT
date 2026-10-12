@@ -16,6 +16,7 @@ from backend.copilot.rate_limit import (
 from backend.copilot.trial_reads import (
     shared_trial_read,
     sharing_trial_reads,
+    trial_reads_fresh,
     trial_reads_shared,
 )
 from backend.data.subscription_trial import TrialState
@@ -123,6 +124,18 @@ async def test_a_closed_block_reads_afresh():
         shared.close()
         await shared_trial_read("u1", read)
     assert read.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_a_fresh_block_reads_every_time_inside_a_shared_one():
+    read = AsyncMock(return_value=_trial())
+    with trial_reads_shared():
+        await shared_trial_read("u1", read)
+        with trial_reads_fresh():
+            await shared_trial_read("u1", read)
+            await shared_trial_read("u1", read)
+        await shared_trial_read("u1", read)
+    assert read.await_count == 3
 
 
 @pytest.mark.asyncio
