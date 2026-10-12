@@ -3,14 +3,11 @@ import { useEffect, useState } from "react";
 import * as Sentry from "@sentry/nextjs";
 import { getCurrentUser } from "@/lib/auth/actions";
 
-export function useTallyPopup() {
-  const [isFormVisible, setIsFormVisible] = useState(false);
+export function useTallyPageContext() {
   const [sentryReplayId, setSentryReplayId] = useState("");
   const [replayUrl, setReplayUrl] = useState("");
   const [pageUrl, setPageUrl] = useState("");
   const [userAgent, setUserAgent] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
-  const [userEmail, setUserEmail] = useState<string>("");
   const pathname = usePathname();
 
   useEffect(() => {
@@ -33,6 +30,15 @@ export function useTallyPopup() {
     }
   }, [pathname]);
 
+  return { sentryReplayId, replayUrl, pageUrl, userAgent };
+}
+
+export function useTallyContext() {
+  const page = useTallyPageContext();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [userEmail, setUserEmail] = useState<string>("");
+  const pathname = usePathname();
+
   useEffect(() => {
     // Check authentication status using server action (works with httpOnly cookies)
     getCurrentUser().then(({ user }) => {
@@ -40,6 +46,13 @@ export function useTallyPopup() {
       setUserEmail(user?.email || "");
     });
   }, [pathname]);
+
+  return { ...page, isAuthenticated, userEmail };
+}
+
+export function useTallyPopup() {
+  const context = useTallyContext();
+  const [isFormVisible, setIsFormVisible] = useState(false);
 
   useEffect(() => {
     // Load Tally script
@@ -99,13 +112,8 @@ export function useTallyPopup() {
 
   return {
     state: {
-      sentryReplayId,
-      replayUrl,
-      pageUrl,
-      userAgent,
-      isAuthenticated,
+      ...context,
       isFormVisible,
-      userEmail,
     },
     handlers: {},
   };
