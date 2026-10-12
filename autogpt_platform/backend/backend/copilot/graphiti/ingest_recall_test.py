@@ -173,6 +173,11 @@ class TestWriteLock:
 
         client.add_episode.assert_not_called()
         assert "requeued once" in caplog.text and "dropping" in caplog.text
+        # Never quietly: the drop is an error, which reaches Sentry.
+        assert any(
+            record.levelname == "ERROR" and "dropping" in record.getMessage()
+            for record in caplog.records
+        )
         assert await completion.wait(0), "a dropped episode is no longer pending"
 
     @pytest.mark.asyncio

@@ -408,15 +408,23 @@ def _requeue_once(
     retried: bool,
 ) -> bool:
     """Put an episode that found the graph locked at the back of the queue,
-    once; True when it was put back."""
+    once; True when it was put back. Waiters take turns at the lock
+    (``scope_lock.py``), so a second miss means one writer held it for two
+    whole waits: the episode is dropped, logged as an error, never quietly."""
     group = str(payload.get("group_id"))[:20]
     if retried:
-        logger.warning(f"Graph {group} still locked; dropping the episode")
+        logger.error(
+            f"Graph {group} still locked after two waits; dropping the episode "
+            f"{payload.get('name')!r}"
+        )
         return False
     try:
         queue.put_nowait({**payload, "_lock_retried": True, "_completion": completion})
     except asyncio.QueueFull:
-        logger.warning(f"Graph {group} locked and its queue full; episode dropped")
+        logger.error(
+            f"Graph {group} locked and its queue full; dropping the episode "
+            f"{payload.get('name')!r}"
+        )
         return False
     logger.warning(f"Graph {group} locked by another writer; requeued once")
     return True

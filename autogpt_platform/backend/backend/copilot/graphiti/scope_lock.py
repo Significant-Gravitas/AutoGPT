@@ -15,15 +15,27 @@ and renewed by the dream lock's compare-and-delete and compare-and-extend
 scripts (``dream/locks.py``), so a holder whose key expired never touches a
 newer holder's.
 
+Waiters take turns. A writer that finds the lock held claims the next turn
+(``MemoryScope.redis_key``'s ``write_lock`` key plus ``:next``, set NX with
+its token, renewed at every poll and lapsing ``_TURN_CLAIM_SECONDS`` after
+its waiter stops), and while another waiter holds that claim no one else
+takes the lock, the writer that just let it go included. So a worker
+writing a backlog episode after episode hands the lock to a waiter between
+two of them instead of taking it straight back within one Redis round trip,
+which a poll every ``_POLL_SECONDS`` almost never beat.
+
 A writer waits a bounded time: an ingestion ``INGEST_LOCK_WAIT_SECONDS``,
-then its episode goes to the back of the queue once; a forget
-``FORGET_LOCK_WAIT_SECONDS``, then it fails as ``busy`` with nothing
-written; the backfill skips the graph as busy. Two windows remain in which
-a forget can be written over, and neither has a bound. When Redis cannot be
-reached, the ingestion worker and a forget go ahead without the lock and
-log a warning. And a holder that loses its key (its renewals fail, or its
-event loop stalls past the expiry) keeps writing while another writer takes
-the lock: the renewal only warns, and nothing fences the graph write.
+then its episode goes to the back of the queue, up to
+``ingest.INGEST_LOCK_ATTEMPTS`` times in all, before it is dropped with an
+error; a forget ``FORGET_LOCK_WAIT_SECONDS``, then it fails as ``busy`` with
+nothing written; the backfill skips the graph as busy. Two windows remain
+in which a forget can be written over, and neither has a bound. When Redis
+cannot be reached, the ingestion worker and a forget go ahead without the
+lock and log a warning (a lock taken by a request that timed out after Redis
+applied it is released, best-effort). And a holder that loses its key (its
+renewals fail, or its event loop stalls past the expiry) keeps writing
+while another writer takes the lock: the renewal only warns, and nothing
+fences the graph write.
 """
 
 import asyncio
@@ -45,6 +57,8 @@ WRITE_LOCK_TTL_SECONDS = 300
 INGEST_LOCK_WAIT_SECONDS = 60
 FORGET_LOCK_WAIT_SECONDS = 20
 _POLL_SECONDS = 0.25
+# How long a waiter's claim on the next turn outlives its last poll.
+_TURN_CLAIM_SECONDS = 2
 _RENEW_EVERY_SECONDS = WRITE_LOCK_TTL_SECONDS / 3
 # ``get_redis_async`` retries a lost connection for minutes; every call here
 # is bounded, so Redis being down costs a writer seconds, not minutes.
@@ -89,21 +103,40 @@ async def _acquire(key: str, token: str, wait_seconds: float) -> LockState:
     while True:
         try:
             async with asyncio.timeout(_REDIS_TIMEOUT_SECONDS):
-                redis = await get_redis_async()
-                acquired = await redis.set(
-                    key, token, nx=True, px=WRITE_LOCK_TTL_SECONDS * 1000
-                )
+                acquired = await _take_or_wait_turn(key, token)
         except Exception:
             logger.warning(
                 f"Redis unreachable for {key[:48]}: write lock unavailable",
                 exc_info=True,
             )
+            # The SET may have landed before the request gave up: free it.
+            await _release(key, token)
             return LockState.UNAVAILABLE
         if acquired:
             return LockState.HELD
         if loop.time() >= deadline:
+            # Stop waiting, and let the next waiter have the turn at once.
+            await _release(f"{key}:next", token)
             return LockState.BUSY
         await asyncio.sleep(_POLL_SECONDS)
+
+
+async def _take_or_wait_turn(key: str, token: str) -> bool:
+    """One attempt at the lock: taken unless another waiter claimed the next
+    turn; else the next turn is claimed for this writer, or its claim kept."""
+    redis = await get_redis_async()
+    turn = f"{key}:next"
+    claimed = await redis.get(turn)
+    if claimed in (None, token):
+        if await redis.set(key, token, nx=True, px=WRITE_LOCK_TTL_SECONDS * 1000):
+            if claimed == token:
+                await cast(Any, redis.eval(UNLOCK_SCRIPT, 1, turn, token))
+            return True
+    if claimed is None:
+        await redis.set(turn, token, nx=True, px=_TURN_CLAIM_SECONDS * 1000)
+    elif claimed == token:
+        await cast(Any, redis.eval(EXTEND_SCRIPT, 1, turn, token, _TURN_CLAIM_SECONDS))
+    return False
 
 
 async def _renew(key: str, token: str) -> None:
