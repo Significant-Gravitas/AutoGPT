@@ -17517,11 +17517,11 @@
           "status": {
             "type": "string",
             "const": "scheduled",
-            "title": "Status",
-            "default": "scheduled"
+            "title": "Status"
           }
         },
         "type": "object",
+        "required": ["status"],
         "title": "AccountDeletionResponse"
       },
       "AccuracyAlertData": {

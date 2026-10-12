@@ -71,7 +71,7 @@ async def request_account_deletion(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, EMAIL_MISMATCH_DETAIL)
     except PlanCancellationError:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, PLAN_CANCELLATION_DETAIL)
-    return AccountDeletionResponse()
+    return AccountDeletionResponse(status="scheduled")
 
 
 @router.post(

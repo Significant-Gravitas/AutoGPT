@@ -25,7 +25,7 @@ class AccountDeletionRequestBody(BaseModel):
 
 
 class AccountDeletionResponse(BaseModel):
-    status: Literal["scheduled"] = "scheduled"
+    status: Literal["scheduled"]
 
 
 class DeletionFeedbackRequest(BaseModel):
