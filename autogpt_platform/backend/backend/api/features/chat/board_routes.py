@@ -13,11 +13,15 @@ from backend.api.features.chat.routes import (
     _validate_and_get_session,
     _validate_and_get_writable_session,
     _validate_session_expert_writable_by_user,
-    processing_session_ids,
-    session_summary,
+    session_summaries,
 )
-from backend.api.features.chat.server_turn import dispatch_server_turn, start_board_card
+from backend.api.features.chat.server_turn import (
+    dispatch_server_turn,
+    start_board_card,
+    turn_in_flight,
+)
 from backend.api.features.experts import experts_db
+from backend.api.features.experts.models import Expert
 from backend.copilot.board import (
     BACKLOG,
     DONE,
@@ -27,7 +31,6 @@ from backend.copilot.board import (
 )
 from backend.copilot.board_db import (
     BoardExtras,
-    BoardSessionRow,
     get_board_columns,
     get_board_session_extras,
     list_board_sessions,
@@ -48,10 +51,6 @@ from backend.copilot.model import (
     get_chat_session,
     invalidate_session_cache,
     update_session_title,
-)
-from backend.copilot.pending_message_helpers import (
-    StreamRegistryUnavailable,
-    is_turn_in_flight,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,18 +120,15 @@ async def get_board(
     rows = await list_board_sessions(
         user_id, organization_id=ctx.org_id, include_older=include_older
     )
-    processing = await processing_session_ids([row.session.session_id for row in rows])
-    expert_names = await _reassigned_expert_names(user_id, rows)
+    extras = {
+        row.session.session_id: BoardExtras(**row.model_dump(exclude={"session"}))
+        for row in rows
+    }
     return BoardResponse(
         columns=columns,
-        sessions=[
-            session_summary(
-                row.session,
-                is_processing=row.session.session_id in processing,
-                extras=_row_extras(row, expert_names),
-            )
-            for row in rows
-        ],
+        sessions=await session_summaries(
+            user_id, [row.session for row in rows], extras
+        ),
     )
 
 
@@ -189,6 +185,8 @@ async def update_session_board(
     )
     if starts:
         await _validate_session_expert_writable_by_user(session, user_id)
+        # Start first: a refused turn leaves the card where it was.
+        await start_board_card(session, user_id, org_id=ctx.org_id, team_id=ctx.team_id)
 
     if not await set_session_board(
         session_id, user_id, column=column, position=position
@@ -197,8 +195,6 @@ async def update_session_board(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
         )
-    if starts:
-        await start_board_card(session, user_id, org_id=ctx.org_id, team_id=ctx.team_id)
     return await _fresh_summary(session_id, user_id)
 
 
@@ -223,26 +219,15 @@ async def update_session_expert(
     if expert_id is None:
         organization_id, team_id = ctx.org_id, ctx.team_id
     else:
-        expert = await experts_db.get_expert(
-            user_id, expert_id, include_workflows=False
-        )
-        if (
-            expert is None
-            or expert.is_archived
-            or expert.schedules_paused_at is not None
-        ):
-            raise HTTPException(status_code=404, detail="Expert not found")
+        await _available_expert(user_id, expert_id)
         try:
             organization_id, team_id = await experts_db.resolve_private_expert_tenancy(
                 user_id, expert_id
             )
         except experts_db.ExpertNotFoundError as e:
-            raise HTTPException(status_code=404, detail="Expert not found") from e
+            raise _expert_not_found() from e
         except experts_db.ExpertPrivateTenancyNotFoundError as e:
-            raise HTTPException(
-                status_code=503,
-                detail="Your expert workspace is still being set up. Try again shortly.",
-            ) from e
+            raise _expert_workspace_pending() from e
 
     result = await set_session_expert_if_unstarted(
         session_id,
@@ -257,7 +242,7 @@ async def update_session_expert(
             detail="Assignee can only change before the task starts",
         )
     if result == "expert_not_found":
-        raise HTTPException(status_code=404, detail="Expert not found")
+        raise _expert_not_found()
     if result == "not_found":
         raise HTTPException(
             status_code=404,
@@ -336,7 +321,7 @@ async def reassign_session(
         raise HTTPException(
             status_code=409, detail="This task has already been reassigned"
         )
-    if old.chat_status != CHAT_STATUS_IDLE or await _turn_in_flight(session_id):
+    if old.chat_status != CHAT_STATUS_IDLE or await turn_in_flight(session_id):
         raise HTTPException(
             status_code=409, detail="Reassign the task once it stops working"
         )
@@ -353,16 +338,7 @@ async def reassign_session(
     from_name = await _assignee_name(user_id, old.expert_id)
     to_name = AUTOPILOT_NAME
     if expert_id is not None:
-        expert = await experts_db.get_expert(
-            user_id, expert_id, include_workflows=False
-        )
-        if (
-            expert is None
-            or expert.is_archived
-            or expert.schedules_paused_at is not None
-        ):
-            raise HTTPException(status_code=404, detail="Expert not found")
-        to_name = expert.name
+        to_name = (await _available_expert(user_id, expert_id)).name
 
     try:
         new = await create_chat_session(
@@ -379,12 +355,9 @@ async def reassign_session(
             reassigned_from_expert_id=old.expert_id,
         )
     except experts_db.ExpertNotFoundError as e:
-        raise HTTPException(status_code=404, detail="Expert not found") from e
+        raise _expert_not_found() from e
     except experts_db.ExpertPrivateTenancyNotFoundError as e:
-        raise HTTPException(
-            status_code=503,
-            detail="Your expert workspace is still being set up. Try again shortly.",
-        ) from e
+        raise _expert_workspace_pending() from e
     new_id = new.session_id
 
     try:
@@ -424,24 +397,29 @@ async def reassign_session(
         session_id, user_id, to_session_id=new_id, to_expert_id=expert_id
     )
     await invalidate_session_cache(session_id)
-    old_summary = await _fresh_summary(session_id, user_id)
     return ReassignSessionResponse(
-        old_session=old_summary.model_copy(
-            update={"last_line": f"Reassigned to {to_name}"}
-        ),
+        old_session=await _fresh_summary(session_id, user_id),
         new_session=await _fresh_summary(new_id, user_id),
     )
 
 
-async def _turn_in_flight(session_id: str) -> bool:
-    try:
-        return await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as e:
-        raise HTTPException(
-            status_code=503,
-            detail="Chat service degraded, retry shortly",
-            headers={"Retry-After": "30"},
-        ) from e
+def _expert_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Expert not found")
+
+
+def _expert_workspace_pending() -> HTTPException:
+    return HTTPException(
+        status_code=503,
+        detail="Your expert workspace is still being set up. Try again shortly.",
+    )
+
+
+async def _available_expert(user_id: str, expert_id: str) -> Expert:
+    """The expert, unless it is gone, archived or paused (404)."""
+    expert = await experts_db.get_expert(user_id, expert_id, include_workflows=False)
+    if expert is None or expert.is_archived or expert.schedules_paused_at is not None:
+        raise _expert_not_found()
+    return expert
 
 
 async def _assignee_name(user_id: str, expert_id: str | None) -> str:
@@ -458,40 +436,6 @@ async def _session_extras(user_id: str, session_id: str) -> BoardExtras:
 
 async def _fresh_summary(session_id: str, user_id: str) -> SessionSummaryResponse:
     session = await _validate_and_get_session(session_id, user_id)
-    processing = await processing_session_ids([session_id])
-    return session_summary(
-        session,
-        is_processing=session_id in processing,
-        extras=await _session_extras(user_id, session_id),
-    )
-
-
-async def _reassigned_expert_names(
-    user_id: str, rows: list[BoardSessionRow]
-) -> dict[str, str]:
-    if not any(
-        row.session.metadata.reassigned_to_session_id
-        and row.session.metadata.reassigned_to_expert_id
-        for row in rows
-    ):
-        return {}
-    experts = await experts_db.list_experts(user_id, with_metrics=False)
-    return {expert.id: expert.name for expert in experts}
-
-
-def _row_extras(row: BoardSessionRow, expert_names: dict[str, str]) -> BoardExtras:
-    last_line = row.last_line
-    metadata = row.session.metadata
-    if metadata.reassigned_to_session_id:
-        expert_id = metadata.reassigned_to_expert_id
-        name = AUTOPILOT_NAME if expert_id is None else expert_names.get(expert_id)
-        # An expert fired since then has no name to show.
-        last_line = f"Reassigned to {name}" if name else "Reassigned"
-    return BoardExtras(
-        board_column=row.board_column,
-        board_position=row.board_position,
-        started=row.started,
-        needs_you=row.needs_you,
-        last_line=last_line,
-        file_count=row.file_count,
-    )
+    extras = await get_board_session_extras(user_id, [session_id])
+    [summary] = await session_summaries(user_id, [session], extras)
+    return summary

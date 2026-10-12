@@ -88,21 +88,13 @@ async def dispatch_server_turn(
     """
     request_arrival_at = time.time()
     session_id = session.session_id
-    try:
-        in_flight = await is_turn_in_flight(session_id)
-    except StreamRegistryUnavailable as e:
-        raise HTTPException(
-            status_code=503,
-            detail="Chat service degraded, retry shortly",
-            headers={"Retry-After": "30"},
-        ) from e
-    if in_flight:
+    if await turn_in_flight(session_id):
         raise HTTPException(status_code=409, detail="This task is already working")
 
     llm_auth_provider = session.metadata.llm_auth_provider
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
-        await _check_platform_rate_limit(user_id)
+        await check_platform_rate_limit(user_id)
     elif llm_auth_provider == "codex":
         await enforce_codex_access_http(user_id)
 
@@ -170,7 +162,19 @@ async def dispatch_server_turn(
     return turn_id
 
 
-async def _check_platform_rate_limit(user_id: str) -> None:
+async def turn_in_flight(session_id: str) -> bool:
+    """Whether a turn runs or waits for *session_id*; 503 when Redis is out."""
+    try:
+        return await is_turn_in_flight(session_id)
+    except StreamRegistryUnavailable as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from e
+
+
+async def check_platform_rate_limit(user_id: str) -> None:
     # Twin of the rate-limit block in routes.stream_chat_post; keep them in step.
     try:
         daily_limit, weekly_limit, _ = await get_global_rate_limits(

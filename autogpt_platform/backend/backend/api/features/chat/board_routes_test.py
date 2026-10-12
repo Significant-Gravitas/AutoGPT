@@ -52,7 +52,7 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     mocker.patch.object(
-        board_routes, "processing_session_ids", new=AsyncMock(return_value=set())
+        chat_routes, "processing_session_ids", new=AsyncMock(return_value=set())
     )
     yield
     app.dependency_overrides.clear()
@@ -84,6 +84,7 @@ def _row(session: ChatSessionInfo, **overrides) -> BoardSessionRow:
         "board_column": "in_progress",
         "board_position": 0.0,
         "started": True,
+        "has_messages": True,
         "needs_you": False,
         "last_line": "Drafted the outline.",
         "file_count": 2,
@@ -170,6 +171,7 @@ def test_get_board_returns_columns_and_sessions(
     assert card["id"] == SESSION_ID
     assert card["board_column"] == "in_progress"
     assert card["started"] is True
+    assert card["has_messages"] is True
     assert card["last_line"] == "Drafted the outline."
     assert card["file_count"] == 2
     assert mock_list.await_args.kwargs == {
@@ -333,6 +335,47 @@ def test_patch_board_to_in_progress_starts_unstarted_card(
     mocks.start.assert_awaited_once_with(
         mocks.session, TEST_USER_ID, org_id="test-org", team_id="test-team"
     )
+
+
+def test_patch_board_refused_start_leaves_card_in_place(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker)
+    mocks.start.side_effect = fastapi.HTTPException(
+        status_code=402, detail="Add credits to keep going"
+    )
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"column": "in_progress"}
+    )
+
+    assert response.status_code == 402
+    assert response.json()["detail"] == "Add credits to keep going"
+    mocks.set_board.assert_not_awaited()
+
+
+def test_patch_board_reassigned_card_says_who_took_it(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    reassigned = _session(
+        metadata=ChatSessionMetadata(
+            reassigned_to_session_id="sess-new", reassigned_to_expert_id="e1"
+        ),
+    )
+    mocks = _mock_card(mocker, started=True, session=reassigned)
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(started=True, last_line="Drafted the outline.")
+    }
+    mocker.patch.object(
+        board_routes.experts_db,
+        "list_experts",
+        new=AsyncMock(return_value=[SimpleNamespace(id="e1", name="Priya")]),
+    )
+
+    response = client.patch(f"/sessions/{SESSION_ID}/board", json={"column": "done"})
+
+    assert response.status_code == 200
+    assert response.json()["last_line"] == "Reassigned to Priya"
 
 
 def test_patch_board_keeps_given_position(mocker: pytest_mock.MockerFixture) -> None:
@@ -672,6 +715,16 @@ def _mock_reassign(
     async def _fake_validate(session_id: str, _user_id: str):
         return old if session_id == old.session_id else created[-1]
 
+    async def _fake_mark(
+        _session_id: str,
+        _user_id: str,
+        *,
+        to_session_id: str,
+        to_expert_id: str | None,
+    ) -> None:
+        old.metadata.reassigned_to_session_id = to_session_id
+        old.metadata.reassigned_to_expert_id = to_expert_id
+
     full_old = ChatSession.new(TEST_USER_ID, dry_run=True, session_id=SESSION_ID)
     full_old.messages = [
         ChatMessage(role="user", content="hi"),
@@ -691,7 +744,7 @@ def _mock_reassign(
             new=AsyncMock(side_effect=_fake_validate),
         ),
         in_flight=mocker.patch.object(
-            board_routes, "is_turn_in_flight", new=AsyncMock(return_value=in_flight)
+            server_turn, "is_turn_in_flight", new=AsyncMock(return_value=in_flight)
         ),
         extras=mocker.patch.object(
             board_routes,
@@ -706,6 +759,16 @@ def _mock_reassign(
             board_routes.experts_db,
             "get_expert",
             new=AsyncMock(side_effect=lambda _user_id, eid, **_: experts.get(eid)),
+        ),
+        list_experts=mocker.patch.object(
+            board_routes.experts_db,
+            "list_experts",
+            new=AsyncMock(
+                side_effect=lambda _user_id, **_: [
+                    SimpleNamespace(id=eid, name=expert.name)
+                    for eid, expert in experts.items()
+                ]
+            ),
         ),
         create=mocker.patch.object(
             board_routes, "create_chat_session", new=AsyncMock(side_effect=_fake_create)
@@ -731,7 +794,9 @@ def _mock_reassign(
             board_routes, "dispatch_server_turn", new=AsyncMock(return_value="turn-1")
         ),
         mark=mocker.patch.object(
-            board_routes, "mark_session_reassigned", new=AsyncMock()
+            board_routes,
+            "mark_session_reassigned",
+            new=AsyncMock(side_effect=_fake_mark),
         ),
         invalidate=mocker.patch.object(
             board_routes, "invalidate_session_cache", new=AsyncMock()
@@ -931,6 +996,12 @@ def _mock_create_card(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
     )
     mocker.patch.object(chat_routes, "enforce_payment_paywall", new=AsyncMock())
     return SimpleNamespace(
+        rate_limit=mocker.patch.object(
+            chat_routes, "check_platform_rate_limit", new=AsyncMock()
+        ),
+        delete=mocker.patch.object(
+            chat_routes, "delete_chat_session", new=AsyncMock(return_value=True)
+        ),
         create=mocker.patch.object(
             chat_routes, "create_chat_session", new=AsyncMock(side_effect=_fake_create)
         ),
@@ -968,6 +1039,22 @@ def test_create_session_with_title_and_backlog_is_silent(
         session_id, TEST_USER_ID, column="backlog", position=-1024.0
     )
     mocks.start.assert_not_awaited()
+    mocks.rate_limit.assert_not_awaited()
+
+
+def test_create_session_with_title_and_done_is_silent(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+
+    response = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_column": "done"}
+    )
+
+    assert response.status_code == 200
+    mocks.set_board.assert_awaited_once()
+    mocks.start.assert_not_awaited()
+    mocks.rate_limit.assert_not_awaited()
 
 
 def test_create_session_with_title_and_in_progress_starts(
@@ -989,6 +1076,58 @@ def test_create_session_with_title_and_in_progress_starts(
         "team_id": "test-team",
         "message": "Write the PRD",
     }
+    mocks.rate_limit.assert_awaited_once_with(TEST_USER_ID)
+    mocks.delete.assert_not_awaited()
+
+
+def test_create_session_over_the_rate_limit_creates_nothing(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+    mocks.rate_limit.side_effect = fastapi.HTTPException(
+        status_code=429, detail="You've reached your daily limit"
+    )
+
+    response = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_column": "in_progress"}
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "You've reached your daily limit"
+    mocks.create.assert_not_awaited()
+    mocks.start.assert_not_awaited()
+
+
+def test_create_session_refused_start_deletes_the_new_session(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+    mocks.start.side_effect = fastapi.HTTPException(status_code=429, detail="limit")
+
+    response = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_column": "in_progress"}
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "limit"
+    session, _ = mocks.start.await_args.args
+    mocks.delete.assert_awaited_once_with(session.session_id, TEST_USER_ID)
+
+
+def test_create_session_failed_cleanup_keeps_the_original_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+    mocks.start.side_effect = fastapi.HTTPException(status_code=429, detail="limit")
+    mocks.delete.side_effect = RuntimeError("db down")
+
+    response = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_column": "in_progress"}
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "limit"
+    mocks.delete.assert_awaited_once()
 
 
 def test_create_session_board_column_with_builder_graph_422(
@@ -1030,3 +1169,66 @@ def test_create_session_without_board_fields_skips_board(
     mocks.title.assert_not_awaited()
     mocks.set_board.assert_not_awaited()
     mocks.start.assert_not_awaited()
+
+
+# ─── GET /sessions board facts ────────────────────────────────────────
+
+
+def _mock_session_list(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    mocker.patch.object(
+        chat_routes,
+        "get_user_sessions",
+        new=AsyncMock(return_value=([_session()], 1)),
+    )
+    return mocker.patch.object(
+        chat_routes,
+        "get_board_session_extras",
+        new=AsyncMock(
+            return_value={
+                SESSION_ID: BoardExtras(
+                    board_column="backlog", started=False, has_messages=True
+                )
+            }
+        ),
+    )
+
+
+def test_list_sessions_skips_board_facts_by_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    extras = _mock_session_list(mocker)
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    assert response.json()["sessions"][0]["board_column"] is None
+    extras.assert_not_awaited()
+
+
+def test_list_sessions_adds_board_facts_on_request(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    extras = _mock_session_list(mocker)
+
+    response = client.get("/sessions?include_board=true")
+
+    assert response.status_code == 200
+    card = response.json()["sessions"][0]
+    assert card["board_column"] == "backlog"
+    assert card["has_messages"] is True
+    extras.assert_awaited_once_with(TEST_USER_ID, [SESSION_ID])
+
+
+def test_list_sessions_falls_back_when_board_facts_fail(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    extras = _mock_session_list(mocker)
+    extras.side_effect = RuntimeError("db down")
+
+    response = client.get("/sessions?include_board=true")
+
+    assert response.status_code == 200
+    card = response.json()["sessions"][0]
+    assert card["id"] == SESSION_ID
+    assert card["board_column"] is None
+    assert card["started"] is False
