@@ -141,21 +141,29 @@ def stop_scheduler(
         f"Scheduler jobs still running after the {grace_seconds}s shutdown grace "
         "period; handing back the ones that haven't taken effect, then cancelling"
     )
-    if scheduler.ledger is not None:
-        scheduler.ledger.close(commit_wait=_COMMIT_WAIT_S)
-        # Always, even with nothing abandoned yet: taking the jobstore lock
-        # waits out a pass still in progress, and any run it submits from now
-        # on is abandoned too.
-        if not scheduler.ledger.give_back(scheduler, _GIVE_BACK_WAIT_S):
-            # Cancelling now would lose these runs; let the caller exit with
-            # them still running instead.
-            return False
+    if scheduler.ledger is not None and not _hand_back(scheduler.ledger, scheduler):
+        # Cancelling now would lose these runs; let the caller exit with them
+        # still running instead.
+        return False
     if job_loop is not None and not job_loop.is_closed():
+
         job_loop.call_soon_threadsafe(_cancel_all_tasks, job_loop)
     if finished.wait(_CANCEL_GRACE_S):
         return True
     logger.error("Scheduler jobs did not stop after being cancelled")
     return False
+
+
+def _hand_back(ledger: RunLedger, scheduler: DrainingBackgroundScheduler) -> bool:
+    try:
+        ledger.close(commit_wait=_COMMIT_WAIT_S)
+        # Always, even with nothing abandoned yet: taking the jobstore lock
+        # waits out a pass still in progress, and any run it submits from now
+        # on is abandoned too.
+        return ledger.give_back(scheduler, _GIVE_BACK_WAIT_S)
+    except Exception:
+        logger.exception("Could not hand abandoned runs back")
+        return False
 
 
 def exit_if_jobs_hung(stopped: bool) -> None:

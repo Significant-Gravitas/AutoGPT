@@ -14,6 +14,7 @@ maintenance) count as run when they start.
 """
 
 import contextlib
+import contextvars
 import logging
 import threading
 from collections.abc import Callable, Iterator
@@ -31,6 +32,10 @@ logger = logging.getLogger(__name__)
 RunState = Literal["pending", "committing", "done", "abandoned"]
 
 _bound = threading.local()
+# The run a dispatch coroutine belongs to, for helpers deep inside it.
+_dispatching: contextvars.ContextVar["ScheduledRun | None"] = contextvars.ContextVar(
+    "scheduled_run", default=None
+)
 
 
 class RunAbandoned(Exception):
@@ -47,6 +52,7 @@ class ScheduledRun:
         self.job_state: dict[str, Any] = job.__getstate__()
         self.run_time = run_time
         self.state: RunState = state
+        self.commit_depth = 0
 
 
 class RunLedger:
@@ -89,7 +95,7 @@ class RunLedger:
             return [r for r in self._runs if r.state == "abandoned"]
 
     def give_back(self, scheduler: BaseScheduler, lock_wait: float) -> bool:
-        """Return abandoned runs to the jobstore; False if it can't be done."""
+        """Return abandoned runs to the jobstore; False if any couldn't be."""
         lock = scheduler._jobstores_lock
         if not lock.acquire(timeout=lock_wait):
             logger.error("Could not hand abandoned runs back: jobstore is busy")
@@ -97,22 +103,32 @@ class RunLedger:
         try:
             with self._cond:
                 runs = [r for r in self._runs if r.state == "abandoned"]
+            returned = True
             for run in runs:
-                _give_back_run(scheduler, run)
-            return True
+                try:
+                    _give_back_run(scheduler, run)
+                except Exception:
+                    logger.exception(f"Could not hand back run of job {run.job_id}")
+                    returned = False
+            return returned
         finally:
             lock.release()
 
     def _begin_commit(self, run: ScheduledRun) -> None:
         with self._cond:
-            if self._closed or run.state != "pending":
+            if run.state == "abandoned" or (self._closed and run.state == "pending"):
                 raise RunAbandoned(f"Run of job {run.job_id} was handed back")
+            # A run can act more than once (a skip that unschedules, then
+            # reschedules); once it has, it is never handed back.
             run.state = "committing"
+            run.commit_depth += 1
 
     def _end_commit(self, run: ScheduledRun) -> None:
         with self._cond:
-            run.state = "done"
-            self._cond.notify_all()
+            run.commit_depth -= 1
+            if run.commit_depth == 0:
+                run.state = "done"
+                self._cond.notify_all()
 
 
 def current_run() -> ScheduledRun | None:
@@ -120,13 +136,22 @@ def current_run() -> ScheduledRun | None:
     return getattr(_bound, "run", None)
 
 
-@contextlib.contextmanager
-def committing(run: ScheduledRun | None) -> Iterator[None]:
-    """Mark the block that makes a scheduled run take effect.
+def dispatching(run: ScheduledRun | None) -> None:
+    """Bind ``run`` to the current dispatch coroutine for :func:`committing`."""
+    _dispatching.set(run)
 
-    Raises :class:`RunAbandoned` instead of entering when shutdown has handed
-    the run back. Keep the block to the effect itself: shutdown waits for it.
+
+@contextlib.contextmanager
+def committing() -> Iterator[None]:
+    """Mark a block that makes the current scheduled run take effect.
+
+    Wrap every step that acts on the outside world: creating or queueing the
+    work, but also deleting, pausing or rescheduling the schedule on an early
+    exit. Raises :class:`RunAbandoned` instead of entering once shutdown has
+    handed the run back. Keep each block to the action itself: shutdown waits
+    for it. Outside a scheduled dispatch it does nothing.
     """
+    run = _dispatching.get()
     if run is None:
         yield
         return

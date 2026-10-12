@@ -14,17 +14,23 @@ import time
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from apscheduler.job import Job
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
+from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_STOPPED
 
+from backend.executor import scheduler as scheduler_module
+from backend.executor import scheduler_runs
 from backend.executor.scheduler_runs import (
     LedgerThreadPoolExecutor,
+    RunAbandoned,
     RunLedger,
     committing,
     current_run,
+    dispatching,
 )
 from backend.executor.scheduler_shutdown import (
     DrainingBackgroundScheduler,
@@ -55,7 +61,8 @@ def dispatch(name: str) -> None:
 async def _dispatch(run, name: str) -> None:
     before, after = _world.stalls.get(name, (0.0, 0.0)) if _world.stalling else (0, 0)
     await asyncio.sleep(before)
-    with committing(run):
+    dispatching(run)
+    with committing():
         with _world.lock:
             _world.effects.append((name, run.run_time if run else None))
     await asyncio.sleep(after)
@@ -245,3 +252,64 @@ def test_shutdown_at_any_moment_runs_every_due_job_exactly_once(
 
     assert stopped
     assert Counter(world.effects) == {key: 1 for key in expected}
+
+
+@pytest.fixture
+def make_run():
+    """Runs of a real job, as the ledger records them at submission."""
+    jobs = BackgroundScheduler(timezone=timezone.utc)
+    jobs.start(paused=True)
+
+    def make(ledger: RunLedger):
+        job = jobs.add_job(dispatch, "date", run_date=_at(60), args=["acting"])
+        return ledger.open(job, [_at(0)])
+
+    yield make
+    jobs.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_an_early_exit_that_acts_counts_as_the_run_taking_effect(
+    monkeypatch: pytest.MonkeyPatch, make_run
+):
+    """A turn that skips by unscheduling itself has acted: shutdown must not
+    hand it back, or the next scheduler re-adds the schedule it deleted."""
+    delete = AsyncMock()
+    monkeypatch.setattr(
+        scheduler_module, "get_scheduler_client", lambda: Mock(delete_schedule=delete)
+    )
+    ledger = RunLedger(commit_aware=lambda job: True)
+    acted, refused = make_run(ledger), make_run(ledger)
+
+    dispatching(acted)
+    await scheduler_module._best_effort_unschedule("s1", None, "u", reason="gone")
+    assert acted.state == "done"
+
+    ledger.close(commit_wait=0)
+    assert ledger.close(commit_wait=0) == [refused]
+    dispatching(refused)
+    with pytest.raises(RunAbandoned):
+        await scheduler_module._best_effort_unschedule("s2", None, "u", reason="gone")
+    assert [c.kwargs["schedule_id"] for c in delete.await_args_list] == ["s1"]
+
+
+def test_a_run_that_cannot_be_handed_back_fails_the_stop_instead_of_raising(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, make_run
+):
+    ledger = RunLedger(commit_aware=lambda job: True)
+    broken, fine = make_run(ledger), make_run(ledger)
+    ledger.close(commit_wait=0)
+    handed_back = []
+
+    def give_back_run(scheduler, run):
+        if run is broken:
+            raise RuntimeError("unpicklable job")
+        handed_back.append(run)
+
+    monkeypatch.setattr(scheduler_runs, "_give_back_run", give_back_run)
+    scheduler, _ = _scheduler(tmp_path)
+    try:
+        assert ledger.give_back(scheduler, lock_wait=1) is False
+    finally:
+        scheduler.shutdown()
+    assert handed_back == [fine]
