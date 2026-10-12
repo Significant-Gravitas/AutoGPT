@@ -80,26 +80,6 @@ def session_segment(session: ChatSession) -> Segment:
     )
 
 
-def segment_boundaries(messages: list[ChatMessage], session: ChatSession) -> list[int]:
-    """Indexes where the connection changed, in order.
-
-    Only assistant turns carry a route, so user and tool rows are skipped
-    rather than treated as a change back to segment zero. The first assistant
-    turn is a boundary only when it ran somewhere other than where the chat
-    started.
-    """
-    boundaries: list[int] = []
-    current = session_segment(session)
-    for index, message in enumerate(messages):
-        if message.role != "assistant" or message.llm_auth_provider is None:
-            continue
-        segment = segment_of(message, session)
-        if segment != current:
-            boundaries.append(index)
-            current = segment
-    return boundaries
-
-
 def stamp_segment(
     messages: list[ChatMessage],
     start_index: int,

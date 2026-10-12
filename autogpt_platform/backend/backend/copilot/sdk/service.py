@@ -5640,11 +5640,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # actually sent them and avoids the "I typed A then B but it shows
         # up as B then A" confusion.  The already-saved user message in
         # the DB is updated via update_message_content_by_sequence to
-        # include the pending texts, avoiding a duplicate INSERT that
-        # would occur if we used insert_pending_before_last +
-        # persist_session_safe (routes.py has already saved the user
-        # message at sequence N before the executor runs, so an
-        # incremental upsert would write a second copy at N+1).
+        # include the pending texts, avoiding the duplicate INSERT that
+        # inserting them as rows and persisting would cause (routes.py has
+        # already saved the user message at sequence N before the executor
+        # runs, so an incremental upsert would write a second copy at N+1).
         # Narrate the context-assembly phase (pending drain, user-context
         # injection, attachment prep, query/transcript build) before the
         # SDK client spawns.

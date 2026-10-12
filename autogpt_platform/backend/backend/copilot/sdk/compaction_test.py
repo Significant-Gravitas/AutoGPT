@@ -26,7 +26,6 @@ from backend.copilot.sdk.compaction import (
     CompactionTracker,
     build_compaction_output,
     compaction_events,
-    emit_compaction,
     filter_compaction_messages,
     sdk_compaction_stats,
     transcript_stats,
@@ -73,32 +72,6 @@ class TestCompactionEvents:
         tool_start = evts[1]
         assert isinstance(tool_start, StreamToolInputStart)
         assert tool_start.toolName == COMPACTION_TOOL_NAME
-
-
-# ---------------------------------------------------------------------------
-# emit_compaction
-# ---------------------------------------------------------------------------
-
-
-class TestEmitCompaction:
-    def test_persists_to_session(self):
-        session = _make_session()
-        assert len(session.messages) == 0
-        evts = emit_compaction(session)
-        assert len(evts) == 5
-        # Should have appended 2 messages (assistant tool call + tool result)
-        assert len(session.messages) == 2
-        assert session.messages[0].role == "assistant"
-        assert session.messages[0].tool_calls is not None
-        assert (
-            session.messages[0].tool_calls[0]["function"]["name"]
-            == COMPACTION_TOOL_NAME
-        )
-        assert session.messages[1].role == "tool"
-        assert (
-            stdlib_json.loads(session.messages[1].content or "")["summary"]
-            == COMPACTION_DONE_MSG
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -319,11 +292,11 @@ class TestCompactionTracker:
         assert len(session.messages) == 2
         assert tracker.attempt_count == 1
         assert tracker.completed_count == 1
-        assert tracker.get_observability_metadata() == {
-            "compaction_attempt_count": 1,
-            "compaction_attempt_sources": "pre_query",
-            "compaction_count": 1,
-            "compaction_sources": "pre_query",
+        assert tracker.get_log_summary() == {
+            "attempt_count": 1,
+            "attempt_sources": "pre_query",
+            "completed_count": 1,
+            "completed_sources": "pre_query",
         }
 
     def test_reset_for_query(self):
@@ -493,22 +466,6 @@ class TestCompactionTracker:
         assert result3.just_ended is True
         assert result3.transcript_path == "/path/3"
         assert tracker.completed_count == 3
-
-    def test_get_observability_metadata_includes_attempts_and_completions(self):
-        tracker = CompactionTracker()
-        session = _make_session()
-
-        tracker.emit_pre_query_start()
-        tracker.emit_pre_query_end(session, None)
-        tracker.on_compact("/path/1")
-        tracker.on_compact("/path/2")
-
-        assert tracker.get_observability_metadata() == {
-            "compaction_attempt_count": 3,
-            "compaction_attempt_sources": "pre_query,sdk_internal:2",
-            "compaction_count": 1,
-            "compaction_sources": "pre_query",
-        }
 
     def test_get_log_summary_includes_attempts_and_completions(self):
         tracker = CompactionTracker()

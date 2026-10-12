@@ -529,22 +529,6 @@ def all_known_tool_names() -> frozenset[str]:
     return ALL_TOOL_NAMES
 
 
-def validate_tool_names(tools: list[str]) -> list[str]:
-    """Return entries in *tools* that are not valid tool names.
-
-    Args:
-        tools: List of short tool name strings to validate.
-
-    Returns:
-        List of invalid names (empty if all are valid).
-    """
-    return [
-        t
-        for t in tools
-        if t not in ALL_TOOL_NAMES and t not in DISABLED_LEGACY_TOOL_NAMES
-    ]
-
-
 _tool_names_checked = False
 
 

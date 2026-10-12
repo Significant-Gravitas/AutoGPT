@@ -8,7 +8,7 @@ engine-level codes that knows nothing about expired logins or spent quotas.
 
 from datetime import UTC, datetime
 
-from backend.copilot.markers import provider_failure_of
+from backend.copilot.markers import PROVIDER_FAILURE_KEY
 from backend.copilot.model import ChatSession
 from backend.copilot.provider_failure import ProviderFailureKind, classify
 from backend.copilot.sdk.service import (
@@ -66,8 +66,9 @@ class TestTheMarkerMatchesTheBaseline:
             failure=failure.as_part(),
         )
 
-        recorded = provider_failure_of(session.messages[-1])
-        assert recorded is not None
+        metadata = session.messages[-1].metadata
+        assert metadata is not None
+        recorded = metadata[PROVIDER_FAILURE_KEY]
         assert recorded["kind"] == ProviderFailureKind.INVALID_CREDENTIAL.value
         assert recorded["reconnectFixesIt"] is True
 
@@ -76,7 +77,7 @@ class TestTheMarkerMatchesTheBaseline:
         _append_error_marker(session, "the assistant stopped", retryable=True)
 
         assert session.messages, "an unclassified failure must still be recorded"
-        assert provider_failure_of(session.messages[-1]) is None
+        assert session.messages[-1].metadata is None
 
     def test_retry_finalizer_keeps_the_provider_envelope(self) -> None:
         session = _session()
@@ -90,7 +91,8 @@ class TestTheMarkerMatchesTheBaseline:
             failure=failure.as_part(),
         )
 
-        recorded = provider_failure_of(session.messages[-1])
-        assert recorded is not None
+        metadata = session.messages[-1].metadata
+        assert metadata is not None
+        recorded = metadata[PROVIDER_FAILURE_KEY]
         assert recorded["kind"] == ProviderFailureKind.INVALID_CREDENTIAL.value
         assert recorded["reconnectFixesIt"] is True

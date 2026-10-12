@@ -22,7 +22,6 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     format_pending_as_followup,
     format_pending_as_user_message,
-    peek_pending_count,
     peek_pending_messages,
     push_pending_message,
     stash_pending_for_persist,
@@ -170,12 +169,12 @@ def fake_redis(monkeypatch: pytest.MonkeyPatch) -> _FakeRedis:
 async def test_push_and_drain_single_message(fake_redis: _FakeRedis) -> None:
     length = await push_pending_message("sess1", PendingMessage(content="hello"))
     assert length == 1
-    assert await peek_pending_count("sess1") == 1
+    assert len(await peek_pending_messages("sess1")) == 1
 
     drained = await drain_pending_messages("sess1")
     assert len(drained) == 1
     assert drained[0].content == "hello"
-    assert await peek_pending_count("sess1") == 0
+    assert len(await peek_pending_messages("sess1")) == 0
 
 
 @pytest.mark.asyncio
@@ -240,7 +239,7 @@ async def test_cap_drops_oldest_when_exceeded(fake_redis: _FakeRedis) -> None:
         await push_pending_message("sess3", PendingMessage(content=f"m{i}"))
 
     # Buffer should be clamped to MAX
-    assert await peek_pending_count("sess3") == MAX_PENDING_MESSAGES
+    assert len(await peek_pending_messages("sess3")) == MAX_PENDING_MESSAGES
 
     drained = await drain_pending_messages("sess3")
     assert len(drained) == MAX_PENDING_MESSAGES
@@ -257,7 +256,7 @@ async def test_clear_removes_buffer(fake_redis: _FakeRedis) -> None:
     await push_pending_message("sess4", PendingMessage(content="x"))
     await push_pending_message("sess4", PendingMessage(content="y"))
     await clear_pending_messages_unsafe("sess4")
-    assert await peek_pending_count("sess4") == 0
+    assert len(await peek_pending_messages("sess4")) == 0
 
 
 @pytest.mark.asyncio
@@ -476,7 +475,7 @@ async def test_peek_pending_messages_returns_all_without_consuming(
     assert peeked[1].content == "second"
 
     # Buffer must not be consumed — count still 2
-    assert await peek_pending_count("peek1") == 2
+    assert len(await peek_pending_messages("peek1")) == 2
     drained = await drain_pending_messages("peek1")
     assert len(drained) == 2
 
@@ -590,7 +589,7 @@ async def test_persist_queue_isolated_from_primary_buffer(
     assert [m.content for m in drained_persist] == ["persist"]
 
     # Primary buffer untouched.
-    assert await peek_pending_count("sess-iso") == 1
+    assert len(await peek_pending_messages("sess-iso")) == 1
     drained_primary = await drain_pending_messages("sess-iso")
     assert [m.content for m in drained_primary] == ["primary"]
 
@@ -628,7 +627,7 @@ async def test_drain_and_format_for_injection_happy_path(
     assert "<user_follow_up>" in result
     assert "do X also" in result
     # Primary buffer drained.
-    assert await peek_pending_count("sess-share") == 0
+    assert len(await peek_pending_messages("sess-share")) == 0
     # Persist queue got a copy for the UI.
     persisted = await drain_pending_for_persist("sess-share")
     assert len(persisted) == 1

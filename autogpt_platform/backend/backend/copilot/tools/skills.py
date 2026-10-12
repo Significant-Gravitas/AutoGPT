@@ -131,9 +131,6 @@ MAX_PACKAGE_PATH_DEPTH = 8
 _COPY_CONCURRENCY = 16
 # Attempts at reading a package whose tree keeps moving under the read.
 _PACKAGE_READ_ATTEMPTS = 3
-# Passes delete_user_skill will make over a folder, each one page deep.
-# Bounded so a file that cannot be deleted can never spin the loop.
-_DELETE_PASSES = 20
 SKILL_FOLDER = "/skills"
 
 
@@ -2050,11 +2047,6 @@ async def list_user_skill_files(
             "[skills] failed to list package files for %s", slug, exc_info=True
         )
         return []
-
-
-async def find_user_skill_slug(user_id: str, name: str) -> str | None:
-    """Folder slug of personal Otto's skill called *name*."""
-    return (await find_user_skill_slugs(user_id, [name])).get(name.strip().lower())
 
 
 async def find_user_skill_slugs(user_id: str, names: list[str]) -> dict[str, str]:

@@ -254,19 +254,6 @@ def _summarize_sources(sources: list[str]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def emit_compaction(session: ChatSession) -> list[StreamBaseResponse]:
-    """Create, persist, and return a self-contained compaction tool call.
-
-    Convenience for callers that don't use ``CompactionTracker`` (e.g. the
-    legacy non-SDK streaming path in ``service.py``).
-    """
-    tc_id = _new_tool_call_id()
-    output = build_compaction_output(None)
-    evts = compaction_events(output, tool_call_id=tc_id)
-    _persist(session, tc_id, output)
-    return evts
-
-
 def compaction_events(
     message: str, tool_call_id: str | None = None
 ) -> list[StreamBaseResponse]:
@@ -426,19 +413,6 @@ class CompactionTracker:
     def landed_count(self) -> int:
         """Compactions that actually reduced the context."""
         return self.completed_count - self.failed_cycle_count
-
-    def get_observability_metadata(self) -> dict[str, Any]:
-        if not self._attempted_sources and not self._completed_sources:
-            return {}
-
-        metadata: dict[str, Any] = {
-            "compaction_attempt_count": self.attempt_count,
-            "compaction_attempt_sources": _summarize_sources(self._attempted_sources),
-        }
-        if self._completed_sources:
-            metadata["compaction_count"] = self.completed_count
-            metadata["compaction_sources"] = _summarize_sources(self._completed_sources)
-        return metadata
 
     def get_log_summary(self) -> dict[str, Any]:
         return {

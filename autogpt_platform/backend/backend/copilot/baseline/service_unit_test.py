@@ -28,7 +28,6 @@ from backend.copilot.baseline.service import (
     _fresh_anthropic_caching_headers,
     _fresh_ephemeral_cache_control,
     _is_anthropic_model,
-    _mark_system_message_with_cache_control,
     _mark_tools_with_cache_control,
     _natural_finish_empty_notice_text,
     _split_user_message_after_skills_block,
@@ -1499,37 +1498,6 @@ class TestApplyPromptCacheMarkers:
     """Tests for _apply_prompt_cache_markers — Anthropic ephemeral
     cache_control markers on baseline OpenRouter requests."""
 
-    def test_system_message_converted_to_content_blocks(self):
-        messages = [
-            {"role": "system", "content": "You are helpful."},
-            {"role": "user", "content": "hello"},
-        ]
-
-        cached_messages = _mark_system_message_with_cache_control(messages)
-
-        assert cached_messages[0]["role"] == "system"
-        assert cached_messages[0]["content"] == [
-            {
-                "type": "text",
-                "text": "You are helpful.",
-                "cache_control": {"type": "ephemeral", "ttl": "1h"},
-            }
-        ]
-        # User message must be untouched.
-        assert cached_messages[1] == {"role": "user", "content": "hello"}
-
-    def test_system_message_preserves_unknown_fields(self):
-        # Future-proofing: a system message with extra keys (e.g. "name") must
-        # keep them after the content-blocks conversion.
-        messages = [
-            {"role": "system", "content": "sys", "name": "developer"},
-        ]
-
-        cached_messages = _mark_system_message_with_cache_control(messages)
-
-        assert cached_messages[0]["name"] == "developer"
-        assert cached_messages[0]["role"] == "system"
-
     def test_last_tool_gets_cache_control(self):
         tools = [
             {"type": "function", "function": {"name": "a"}},
@@ -1547,36 +1515,14 @@ class TestApplyPromptCacheMarkers:
         assert cached_tools[-1]["function"] == {"name": "b"}
 
     def test_does_not_mutate_input(self):
-        messages = [{"role": "system", "content": "sys"}]
         tools = [{"type": "function", "function": {"name": "a"}}]
 
-        _mark_system_message_with_cache_control(messages)
         _mark_tools_with_cache_control(tools)
 
-        assert messages == [{"role": "system", "content": "sys"}]
         assert tools == [{"type": "function", "function": {"name": "a"}}]
-
-    def test_no_system_message_safe(self):
-        messages = [{"role": "user", "content": "hi"}]
-        cached_messages = _mark_system_message_with_cache_control(messages)
-        assert cached_messages == messages
 
     def test_empty_tools_safe(self):
         assert _mark_tools_with_cache_control([]) == []
-
-    def test_non_string_system_content_left_untouched(self):
-        # If the content is already a list of blocks (e.g. caller pre-marked),
-        # the helper must not overwrite it.
-        pre_marked = [
-            {
-                "type": "text",
-                "text": "sys",
-                "cache_control": {"type": "ephemeral", "ttl": "1h"},
-            }
-        ]
-        messages = [{"role": "system", "content": pre_marked}]
-        cached_messages = _mark_system_message_with_cache_control(messages)
-        assert cached_messages[0]["content"] == pre_marked
 
     def test_is_anthropic_model_matches_claude_and_anthropic_prefix(self):
         assert _is_anthropic_model("anthropic/claude-sonnet-4-6")

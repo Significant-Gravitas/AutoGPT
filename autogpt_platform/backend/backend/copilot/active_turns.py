@@ -95,15 +95,6 @@ def spawn_limit_message() -> str:
     )
 
 
-def queued_turn_message() -> str:
-    """User-facing message rendered when a turn is queued instead of
-    starting immediately because the running cap is full."""
-    return (
-        "Your task has been queued and will start automatically when one of "
-        "your current tasks finishes."
-    )
-
-
 class ConcurrentTurnLimitError(Exception):
     """User has reached the configured running Otto turn cap."""
 

@@ -660,8 +660,8 @@ def _mark_tools_with_cache_control(
     """Return a copy of *tools* with ``cache_control`` on the last entry.
 
     Marking the last tool is a cache breakpoint that covers the whole tool
-    schema block as a cacheable prefix segment.  Extracted from
-    :func:`_mark_system_message_with_cache_control` so callers can precompute
+    schema block as a cacheable prefix segment.  Separate from
+    :func:`_build_cached_system_message` so callers can precompute
     the marked tool list once per session — the tool set is static within a
     request and the ~43 dict-copies would otherwise run on every LLM round
     in the tool-call loop.
@@ -829,23 +829,6 @@ def _prepend_skills_notice_to_current_message(
             if isinstance(existing, str):
                 msg["content"] = notice + existing
             break
-
-
-def _mark_system_message_with_cache_control(
-    messages: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Return a copy of *messages* with ``cache_control`` on the system block.
-
-    Thin wrapper around :func:`_build_cached_system_message` that preserves
-    the original list shape.  Prefer the memoised path in
-    ``_baseline_llm_caller`` (which builds the cached system dict once per
-    session) for hot-loop callers; this function is retained for call sites
-    outside the tool-call loop where per-call copying is acceptable.
-    """
-    cached_messages: list[dict[str, Any]] = [dict(m) for m in messages]
-    if cached_messages and cached_messages[0].get("role") == "system":
-        cached_messages[0] = _build_cached_system_message(cached_messages[0])
-    return cached_messages
 
 
 async def _baseline_llm_caller(
@@ -1798,8 +1781,8 @@ async def stream_chat_completion_baseline(
     # message first, queued follow-ups second).  The already-saved user message
     # in the DB is updated via update_message_content_by_sequence rather than
     # inserting a new row, because routes.py has already saved the user message
-    # before the executor picks up the turn (using insert_pending_before_last +
-    # persist_session_safe would add a duplicate row at sequence N+1).
+    # before the executor picks up the turn (inserting the pending rows and
+    # persisting would add a duplicate row at sequence N+1).
     drained_at_start_pending = await drain_pending_safe(session_id, "[Baseline]")
     if drained_at_start_pending:
         logger.info(

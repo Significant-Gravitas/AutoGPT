@@ -6,13 +6,7 @@ import pytest_mock
 
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
-from backend.copilot.segments import (
-    Segment,
-    segment_boundaries,
-    segment_of,
-    session_segment,
-    stamp_segment,
-)
+from backend.copilot.segments import Segment, segment_of, session_segment, stamp_segment
 
 
 def _session(
@@ -114,49 +108,6 @@ class TestStamping:
         fresh = _assistant()
         stamp_segment([fresh], 0, Segment("codex", "cred-1", is_segment_zero=False))
         assert fresh.stamps_pending_save is False
-
-
-class TestBoundaries:
-    def test_a_chat_that_never_moved_has_none(self) -> None:
-        session = _session("platform", None)
-        messages = [_assistant("platform"), _assistant("platform")]
-        assert segment_boundaries(messages, session) == []
-
-    def test_the_turn_the_route_changed_on_is_a_boundary(self) -> None:
-        session = _session("platform", None)
-        messages = [
-            _assistant("platform"),
-            _assistant("codex", "cred-1"),
-            _assistant("codex", "cred-1"),
-        ]
-        assert segment_boundaries(messages, session) == [1]
-
-    def test_moving_back_is_a_boundary_too(self) -> None:
-        session = _session("platform", None)
-        messages = [
-            _assistant("codex", "cred-1"),
-            _assistant("platform"),
-        ]
-        assert segment_boundaries(messages, session) == [0, 1]
-
-    def test_switching_between_two_accounts_of_one_provider_counts(self) -> None:
-        # Same provider, different subscription -- a real change of who pays.
-        session = _session("codex", "cred-1")
-        messages = [_assistant("codex", "cred-1"), _assistant("codex", "cred-2")]
-        assert segment_boundaries(messages, session) == [1]
-
-    def test_unstamped_rows_do_not_read_as_a_change(self) -> None:
-        # User and tool rows carry no route, and neither do turns written
-        # before the columns existed. Treating either as "back to segment
-        # zero" would invent boundaries that never happened.
-        session = _session("codex", "cred-1")
-        messages = [
-            _assistant("codex", "cred-1"),
-            ChatMessage(role="user", content="next"),
-            ChatMessage(role="tool", content="{}", tool_call_id="t1"),
-            _assistant("codex", "cred-1"),
-        ]
-        assert segment_boundaries(messages, session) == []
 
 
 class TestSessionSegment:

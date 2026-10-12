@@ -16,7 +16,6 @@ from backend.copilot.permissions import (
     all_known_tool_names,
     apply_tool_permissions,
     validate_block_identifiers,
-    validate_tool_names,
 )
 from backend.copilot.sdk.tool_adapter import SDK_SUBAGENT_TOOLS, get_sdk_declared_tools
 from backend.copilot.tools import TOOL_REGISTRY
@@ -319,34 +318,6 @@ class TestIsEmpty:
         perms = CopilotPermissions()
         perms._parent = CopilotPermissions(tools=["bash_exec"])
         assert not perms.is_empty()
-
-
-# ---------------------------------------------------------------------------
-# validate_tool_names
-# ---------------------------------------------------------------------------
-
-
-class TestValidateToolNames:
-    def test_valid_registry_tool(self):
-        assert validate_tool_names(["run_block", "web_fetch"]) == []
-
-    def test_valid_sdk_builtin(self):
-        assert validate_tool_names(["Read", "Task", "WebSearch"]) == []
-
-    def test_disabled_legacy_tool_name_is_accepted(self):
-        assert validate_tool_names(["ask_question"]) == []
-
-    def test_invalid_tool(self):
-        result = validate_tool_names(["nonexistent_tool"])
-        assert "nonexistent_tool" in result
-
-    def test_mixed(self):
-        result = validate_tool_names(["run_block", "fake_tool"])
-        assert "fake_tool" in result
-        assert "run_block" not in result
-
-    def test_empty_list(self):
-        assert validate_tool_names([]) == []
 
 
 # ---------------------------------------------------------------------------

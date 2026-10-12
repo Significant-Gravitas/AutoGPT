@@ -54,7 +54,6 @@ class ResponseType(str, Enum):
     USAGE = "usage"
     HEARTBEAT = "heartbeat"
     STATUS = "data-status"
-    CURSOR = "data-cursor"
     # Dream/daydream pass snapshot — emitted from ``dream_events.py``.
     # Wired into the orchestrator in P6 (surface dreams) + P9 (daydreaming).
     DREAM_OPERATIONS = "data-dream-operations"
@@ -338,26 +337,6 @@ class StreamHeartbeat(StreamBaseResponse):
     def to_sse(self) -> str:
         """Convert to SSE comment format to keep connection alive."""
         return ": heartbeat\n\n"
-
-
-class StreamCursor(StreamBaseResponse):
-    """Deprecated Redis-stream cursor data part.
-
-    Kept so older stored chunks or tests can still be reconstructed, but new
-    stream subscriptions no longer emit it. AI SDK resume needs a full replay
-    from ``0-0`` so every ``*-delta`` has its matching ``*-start`` event.
-    """
-
-    type: ResponseType = ResponseType.CURSOR
-    chunkId: str = Field(..., description="Redis Stream message ID (XADD)")
-
-    def to_sse(self) -> str:
-        """Emit as an AI SDK v5 data part."""
-        data = {
-            "type": self.type.value,
-            "data": {"chunkId": self.chunkId},
-        }
-        return f"data: {json.dumps(data)}\n\n"
 
 
 class StreamModeChanged(StreamBaseResponse):

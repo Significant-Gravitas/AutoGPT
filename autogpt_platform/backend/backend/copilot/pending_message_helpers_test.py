@@ -15,7 +15,6 @@ from backend.copilot.pending_message_helpers import (
     check_pending_call_rate,
     combine_pending_with_current,
     drain_pending_safe,
-    insert_pending_before_last,
     is_turn_in_flight,
     persist_session_safe,
     queue_pending_for_http,
@@ -420,41 +419,6 @@ def test_combine_missing_request_arrival_falls_back_to_before() -> None:
     ]
     result = combine_pending_with_current(pending, "current", request_arrival_at=0.0)
     assert result == "a\n\nb\n\ncurrent"
-
-
-# ── insert_pending_before_last ─────────────────────────────────────────
-
-
-def _make_session(*contents: str) -> Any:
-    session = MagicMock()
-    session.messages = [MagicMock(role="user", content=c) for c in contents]
-    return session
-
-
-def test_insert_pending_before_last_single_existing_message() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, ["queued"])
-    assert session.messages[0].content == "queued"
-    assert session.messages[1].content == "current"
-
-
-def test_insert_pending_before_last_multiple_pending() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, ["p1", "p2"])
-    contents = [m.content for m in session.messages]
-    assert contents == ["p1", "p2", "current"]
-
-
-def test_insert_pending_before_last_empty_session() -> None:
-    session = _make_session()
-    insert_pending_before_last(session, ["queued"])
-    assert session.messages[0].content == "queued"
-
-
-def test_insert_pending_before_last_no_texts_is_noop() -> None:
-    session = _make_session("current")
-    insert_pending_before_last(session, [])
-    assert len(session.messages) == 1
 
 
 # ── persist_session_safe ───────────────────────────────────────────────

@@ -382,34 +382,6 @@ def combine_pending_with_current(
     return "\n\n".join(parts)
 
 
-def insert_pending_before_last(session: "ChatSession", texts: list[str]) -> None:
-    """Insert pending messages into *session* just before the last message.
-
-    Pending messages were queued during the previous turn, so they belong
-    chronologically before the current user message that was already
-    appended via ``maybe_append_user_message``.  Inserting at ``len-1``
-    preserves that order: [...history, pending_1, pending_2, current_msg].
-
-    The caller must have already appended the current user message before
-    calling this function.  If ``session.messages`` is unexpectedly empty,
-    a warning is logged and the messages are appended at index 0 so they
-    are not silently lost.
-    """
-    if not texts:
-        return
-    if not session.messages:
-        logger.warning(
-            "insert_pending_before_last: session.messages is empty — "
-            "current user message was not appended before drain; "
-            "inserting pending messages at index 0"
-        )
-    insert_idx = max(0, len(session.messages) - 1)
-    for i, content in enumerate(texts):
-        session.messages.insert(
-            insert_idx + i, ChatMessage(role="user", content=content)
-        )
-
-
 async def persist_session_safe(
     session: "ChatSession", log_prefix: str = ""
 ) -> "ChatSession":

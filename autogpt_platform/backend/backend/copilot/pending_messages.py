@@ -225,13 +225,6 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     return messages
 
 
-async def peek_pending_count(session_id: str) -> int:
-    """Return the current buffer length without consuming it."""
-    redis = await get_redis_async()
-    length = await cast("Any", redis.llen(_buffer_key(session_id)))
-    return int(length)
-
-
 async def peek_pending_messages(session_id: str) -> list[PendingMessage]:
     """Return pending messages without consuming them.
 

@@ -87,16 +87,3 @@ def append_error_marker(
         )
     )
     return True
-
-
-def provider_failure_of(message: ChatMessage) -> dict[str, Any] | None:
-    """The typed failure recorded on a marker row, if it carries one.
-
-    ``None`` for every marker written before this existed, and for a failure
-    the classifier declined to name. Callers fall back to the prefix, which
-    is what they had before.
-    """
-    if not is_error_marker(message) or not message.metadata:
-        return None
-    failure = message.metadata.get(PROVIDER_FAILURE_KEY)
-    return failure if isinstance(failure, dict) else None
