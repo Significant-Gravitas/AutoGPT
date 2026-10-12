@@ -37,12 +37,13 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
         user_id: str = owner.id,
         name: str = "Morning",
         graph_id: str = graph.id,
+        cron: str = "0 9 * * *",
     ):
         return await scheduler.add_execution_schedule(
             graph_id=graph_id,
             user_id=user_id,
             graph_version=graph.version,
-            cron="0 9 * * *",
+            cron=cron,
             input_data={"input": "data"},
             input_credentials={},
             name=name,
@@ -66,15 +67,22 @@ async def test_create_with_the_same_key_makes_one_schedule(server: SpinTestServe
         # A key can't be used to read or take over someone else's schedule.
         with pytest.raises(NotAuthorizedError):
             await create(key, user_id=other.id, name="Hijack")
-        # Nor can it pass off one agent's schedule as another agent's create.
+        # Nor can it pass off one agent's schedule as another agent's create,
+        # or answer a different submission with the schedule it doesn't match.
         with pytest.raises(ConflictError):
             await create(key, graph_id=other_graph.id)
+        with pytest.raises(ConflictError):
+            await create(key, cron="30 18 * * *")
         [kept] = [
             s
             for s in await scheduler.get_execution_schedules(graph.id, owner.id)
             if s.id == key
         ]
-        assert (kept.user_id, kept.name) == (owner.id, "Morning")
+        assert (kept.user_id, kept.name, kept.cron) == (
+            owner.id,
+            "Morning",
+            "0 9 * * *",
+        )
     finally:
         for schedule_id in (key, racing_key):
             try:

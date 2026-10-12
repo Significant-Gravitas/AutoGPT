@@ -2092,6 +2092,26 @@ def _index_entry(
     )
 
 
+class _CreateSubmission(BaseModel):
+    """What a keyed create asked for, to tell a replay from a reused key."""
+
+    graph_id: str
+    graph_version: int
+    name: str | None
+    cron: str
+    input_data: GraphInput
+
+    @staticmethod
+    def of(info: GraphExecutionJobInfo) -> "_CreateSubmission":
+        return _CreateSubmission(
+            graph_id=info.graph_id,
+            graph_version=info.graph_version,
+            name=info.agent_name,
+            cron=info.cron,
+            input_data=info.input_data,
+        )
+
+
 class Scheduler(AppService):
     scheduler: BackgroundScheduler
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
@@ -2507,8 +2527,15 @@ class Scheduler(AppService):
         schedule that was made instead of adding a duplicate.
         """
         name = normalize_schedule_name(name)
+        submission = _CreateSubmission(
+            graph_id=graph_id,
+            graph_version=graph_version,
+            name=name,
+            cron=cron,
+            input_data=input_data,
+        )
         if schedule_id is not None:
-            replayed = self._replayed_graph_schedule(schedule_id, user_id, graph_id)
+            replayed = self._replayed_graph_schedule(schedule_id, user_id, submission)
             if replayed is not None:
                 return replayed
 
@@ -2557,7 +2584,7 @@ class Scheduler(AppService):
             )
         except ConflictingIdError:
             # A concurrent copy of the same submission got there first.
-            replayed = self._replayed_graph_schedule(key, user_id, graph_id)
+            replayed = self._replayed_graph_schedule(key, user_id, submission)
             if replayed is None:
                 raise
             return replayed
@@ -2571,20 +2598,23 @@ class Scheduler(AppService):
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     def _replayed_graph_schedule(
-        self, schedule_id: str, user_id: str, graph_id: str
+        self, schedule_id: str, user_id: str, submission: "_CreateSubmission"
     ) -> GraphExecutionJobInfo | None:
-        """The schedule an earlier submission with this key created, if any."""
+        """The schedule an earlier submission with this key created, if any.
+
+        A key names one submission: reusing it for a different agent or with
+        different timing, name or inputs is a conflict, not a replay that
+        silently drops the new values.
+        """
         try:
             _, info = self._authorized_job(schedule_id, user_id, action="create")
         except NotFoundError:
             return None
         if not isinstance(info, GraphExecutionJobInfo):
             raise NotAuthorizedError(f"Schedule #{schedule_id} is not an agent run")
-        if info.graph_id != graph_id:
-            # The key belongs to a different submission; replaying it would
-            # report another agent's schedule as this create.
+        if submission != _CreateSubmission.of(info):
             raise ConflictError(
-                f"Schedule #{schedule_id} already exists for a different agent"
+                f"Schedule #{schedule_id} already exists for a different submission"
             )
         logger.info(f"Create for schedule {schedule_id} replayed; returning it")
         return info
