@@ -13,13 +13,15 @@ import {
 const SCRIPT: ModelScript = boardTaskScript;
 const ANSWER = SCRIPT.turns[0].text ?? "";
 const TITLE = "Write a haiku about boards";
+const PROJECT = "Launch";
+const PROJECT_TASK = "Draft the launch post";
 
 test.use({ flagOverrides: { "task-board": true } });
 
 test.describe("task board journey", () => {
   test.beforeAll(requireScriptedModel);
 
-  test("a task added to Backlog starts in In progress with its chat, and Mark done moves it to Done", async ({
+  test("a task added to Backlog starts in In progress with its chat, Mark done moves it to Done, and a new project's task moves to Home", async ({
     page,
     journeyUser,
   }) => {
@@ -27,17 +29,7 @@ test.describe("task board journey", () => {
     const firstMessage = `${TITLE} ${run.marker}`;
     await page.goto("/home");
 
-    // An empty board opens Backlog's input on its own.
-    const backlog = column(page, "Backlog");
-    const newTask = backlog.getByRole("textbox", { name: "New task" });
-    await backlog
-      .getByRole("button", { name: "Add a task…" })
-      .or(newTask)
-      .click();
-    await newTask.fill(TITLE);
-    await newTask.press("Enter");
-
-    const backlogCard = backlog.getByRole("article", { name: TITLE });
+    const backlogCard = await addTask(page, TITLE);
     await expect(
       backlogCard.getByText("Not started"),
       "a new task should wait in Backlog until it starts",
@@ -85,8 +77,61 @@ test.describe("task board journey", () => {
     expectEachTurnOnce(journal, SCRIPT);
     if (!journeyUser.id) throw new Error("the journey user should have an id");
     await expectChargedWhatWasBilled(journeyUser.id, journal);
+
+    await page.getByRole("button", { name: "New project" }).click();
+    await expect(page).toHaveURL(/\/boards\//);
+    const projectName = page.getByRole("textbox", { name: "Project name" });
+    await expect(
+      projectName,
+      "a new project should open with its name ready to type over",
+    ).toHaveValue("Untitled project");
+    await projectName.fill(PROJECT);
+    await projectName.press("Enter");
+    await expect(
+      page.getByRole("heading", { name: PROJECT, level: 1 }),
+      "Enter should save the project's name",
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: PROJECT, exact: true }),
+      "the sidebar should list the renamed project",
+    ).toBeVisible();
+
+    const projectCard = await addTask(page, PROJECT_TASK);
+    await projectCard.getByRole("button", { name: "Task actions" }).click();
+    await page.getByRole("menuitem", { name: "Move to project" }).click();
+    await page.getByRole("menuitem", { name: "Home", exact: true }).click();
+    await expect(
+      page
+        .getByRole("region", { name: /^Notifications/ })
+        .getByText("Moved to Home"),
+      "moving a task should say where it went",
+    ).toBeVisible();
+    await expect(
+      projectCard,
+      "a moved task should leave the project",
+    ).toHaveCount(0);
+
+    await page.getByRole("link", { name: "Home", exact: true }).click();
+    await expect(page).toHaveURL(/\/home/);
+    await expect(
+      column(page, "Backlog").getByRole("article", { name: PROJECT_TASK }),
+      "a task moved to Home should keep its Backlog column",
+    ).toBeVisible();
   });
 });
+
+// An empty board opens Backlog's input on its own.
+async function addTask(page: Page, title: string) {
+  const backlog = column(page, "Backlog");
+  const newTask = backlog.getByRole("textbox", { name: "New task" });
+  await backlog
+    .getByRole("button", { name: "Add a task…" })
+    .or(newTask)
+    .click();
+  await newTask.fill(title);
+  await newTask.press("Enter");
+  return backlog.getByRole("article", { name: title });
+}
 
 function column(page: Page, name: string) {
   return page.getByRole("region", { name, exact: true });
