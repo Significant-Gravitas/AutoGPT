@@ -4954,6 +4954,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     turn_cost_usd: float | None = None
     graphiti_enabled = False
     pre_attempt_msg_count = 0
+    # Checkpoint turn_start can span auto-continues; capture only this call.
+    learning_turn_start = len(session.messages)
     # State of the latest failed attempt: rolled-back messages + any
     # _HandledStreamError info to emit on final-failure exit. The retry loop
     # mutates this via capture()/clear(); the post-loop block calls
@@ -6581,7 +6583,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 capture_chat_turn(
                     user_id,
                     session,
-                    list(session.messages[pre_attempt_msg_count:]) if session else [],
+                    list(session.messages[learning_turn_start:]) if session else [],
                     message,
                 )
             )

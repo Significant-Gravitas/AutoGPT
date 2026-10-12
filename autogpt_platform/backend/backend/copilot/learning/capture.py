@@ -29,7 +29,7 @@ def turn_with_initiating_user_row(
     """The turn's messages including the persisted user row that started it.
 
     Both chat engines hand the capture hook only the rows generated during
-    the turn: the SDK slices ``session.messages`` after the attempt started
+    the turn: the SDK takes a fixed per-call slice of ``session.messages``
     and the baseline passes its per-turn state, while the initiating user
     message was appended (and persisted) before either slice begins. The
     user's own confirmation or acceptance lives on that row, so it is
