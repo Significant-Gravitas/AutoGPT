@@ -123,6 +123,39 @@ describe("Sentry environment tagging", () => {
 
     expect(environment.isVercelPreview()).toBe(true);
   });
+
+  it("tags events with the environment a deployment names for itself", () => {
+    stubDeployment("prod", "preview");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
+
+    expect(environment.getSentryEnvironment()).toBe("pr-123");
+  });
+
+  it("ignores whitespace around the environment a deployment names", () => {
+    stubDeployment("prod", "preview");
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "  pr-123 ");
+
+    expect(environment.getSentryEnvironment()).toBe("pr-123");
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["blank", "   "],
+  ])(
+    "keeps the computed environment when the override is %s",
+    (_, override) => {
+      stubDeployment("prod", "preview");
+      vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", override);
+
+      expect(environment.getSentryEnvironment()).toBe(
+        "app:preview-behave:cloud",
+      );
+      expect(environment.getSentryEnvironment()).toBe(
+        environment.getEnvironmentStr(),
+      );
+    },
+  );
 });
 
 describe("Sentry enablement", () => {

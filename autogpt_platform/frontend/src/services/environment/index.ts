@@ -67,6 +67,11 @@ function getEnvironmentStr() {
   return `app:${appEnv}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
+function getSentryEnvironment() {
+  const override = process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT?.trim();
+  return override || getEnvironmentStr();
+}
+
 function getPreviewStealingDev() {
   const branch = process.env.NEXT_PUBLIC_PREVIEW_STEALING_DEV || "";
   const appEnv = getAppEnv();
@@ -202,6 +207,7 @@ export const environment = {
   getCookiebotCBID,
   getCookiebotGeoRegions,
   getSentryDSN,
+  getSentryEnvironment,
   // Assertions
   isServerSide,
   isClientSide,
