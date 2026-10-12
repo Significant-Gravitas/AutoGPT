@@ -597,6 +597,39 @@ def test_stream_chat_does_not_queue_kickoff_behind_an_unrelated_turn(
     mocks.enqueue.assert_not_awaited()
 
 
+def test_stream_chat_marks_a_send_queued_behind_a_running_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.is_turn_in_flight",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    queue_pending = mocker.patch(
+        "backend.api.features.chat.routes.queue_pending_for_http",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/sessions/sess-1/stream", json={"message": "And example.org?"}
+    )
+
+    assert response.status_code == 200
+    queue_pending.assert_awaited_once()
+    mocks.enqueue.assert_not_awaited()
+    assert '"type": "data-follow-up-queued"' in response.text
+
+
+async def test_other_empty_streams_carry_no_follow_up_marker() -> None:
+    # The queued-at-cap and kicked-off-already streams are empty too.
+    response = chat_routes._empty_ui_message_stream_response()
+    body = "".join([str(chunk) async for chunk in response.body_iterator])
+
+    assert "data: [DONE]" in body
+    assert "data-follow-up-queued" not in body
+
+
 def test_stream_chat_rejects_kickoff_for_plain_session(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
