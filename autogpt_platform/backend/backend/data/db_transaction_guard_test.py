@@ -7,6 +7,7 @@ and still lets a transaction that is merely in flight finish.
 import asyncio
 
 import pytest
+from prisma import Prisma
 from prisma.errors import PrismaError
 
 from backend.data import db
@@ -59,6 +60,42 @@ async def test_an_aborted_transaction_left_open_is_found_and_ended(
 
     await release_leaked_transactions(db.prisma, leaks)
     assert await find_leaked_transactions(db.prisma) == []
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_leak_on_another_connection_of_this_session_is_terminated(
+    server: SpinTestServer,
+):
+    """The service processes' connections carry the session's name too."""
+    other = Prisma(datasource={"url": db.DATABASE_URL})
+    await other.connect()
+    try:
+        await other.execute_raw("BEGIN")
+
+        leaks = await find_leaked_transactions(db.prisma)
+        assert leaks, "an open transaction on another session connection went unnoticed"
+
+        assert await release_leaked_transactions(db.prisma, leaks) == []
+        assert await find_leaked_transactions(db.prisma) == []
+    finally:
+        await other.disconnect()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_transaction_held_by_another_client_is_left_alone(
+    server: SpinTestServer,
+):
+    """Someone else's session on the same database is not this test's leak."""
+    url = db.add_param(db.DATABASE_URL, "application_name", "someone-else")
+    outsider = Prisma(datasource={"url": url})
+    await outsider.connect()
+    try:
+        await outsider.execute_raw("BEGIN")
+
+        assert await find_leaked_transactions(db.prisma) == []
+    finally:
+        await outsider.execute_raw("ROLLBACK")
+        await outsider.disconnect()
 
 
 @pytest.mark.asyncio(loop_scope="session")

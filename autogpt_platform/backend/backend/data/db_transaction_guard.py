@@ -25,7 +25,10 @@ _OWN_CONNECTION_GAP_SECONDS = 0.002
 # A transaction still open this long after the first look was left open, not
 # caught mid-flight.
 _CONFIRM_AFTER_SECONDS = 0.5
+_TERMINATE_WAIT_MS = 5000
 
+# Only connections of this test session: conftest gives them all, the service
+# processes included, an application_name no other client of the database has.
 _OPEN_TRANSACTIONS_SQL = """
 SELECT a.pid,
        a.pid = pg_backend_pid() AS is_own,
@@ -35,7 +38,24 @@ SELECT a.pid,
        EXTRACT(EPOCH FROM (statement_timestamp() - now())) AS own_gap,
        left(a.query, 300) AS last_query
 FROM pg_stat_activity a
-WHERE a.datname = current_database() AND a.xact_start IS NOT NULL
+WHERE a.datname = current_database()
+  AND a.xact_start IS NOT NULL
+  AND (a.pid = pg_backend_pid()
+       OR (current_setting('application_name') <> ''
+           AND a.application_name = current_setting('application_name')))
+"""
+
+
+# CASE, not AND: Postgres doesn't promise to skip the termination when the
+# backend is this connection's own, and terminating that would kill this query.
+_TERMINATE_SQL = """
+SELECT CASE
+         WHEN target.pid = pg_backend_pid() THEN true
+         WHEN NOT EXISTS (SELECT 1 FROM pg_stat_activity a WHERE a.pid = target.pid)
+           THEN true
+         ELSE pg_terminate_backend(target.pid, $2::bigint)
+       END AS gone
+FROM (SELECT $1::int AS pid) AS target
 """
 
 
@@ -64,23 +84,31 @@ async def find_leaked_transactions(client: Prisma) -> list[LeakedTransaction]:
 
 async def release_leaked_transactions(
     client: Prisma, leaks: list[LeakedTransaction]
-) -> None:
+) -> list[int]:
     """End the leaked transactions and start the client on a fresh pool.
 
     Postgres rolls back a transaction whose connection closes: other backends
-    are terminated, and reconnecting closes this client's own.
+    are terminated, and reconnecting closes this client's own. Returns the
+    backends that were still running when the wait for termination ran out.
     """
-    for leak in leaks:
-        try:
-            await client.query_raw(
-                "SELECT pg_terminate_backend($1::int) AS terminated"
-                " WHERE $1::int <> pg_backend_pid()",
-                leak.pid,
-            )
-        except PrismaError:
-            pass  # This connection is the aborted one; the reconnect ends it.
+    survivors = [
+        leak.pid for leak in leaks if not await _terminate_backend(client, leak.pid)
+    ]
     await client.disconnect(DISCONNECT_TIMEOUT)
     await client.connect()
+    return survivors
+
+
+async def _terminate_backend(client: Prisma, pid: int) -> bool:
+    """Whether *pid* is gone. Waits for it to exit, not just to be signalled.
+
+    This client's own connection is left to the reconnect, which ends it.
+    """
+    try:
+        rows = await client.query_raw(_TERMINATE_SQL, pid, _TERMINATE_WAIT_MS)
+    except PrismaError:
+        return True  # This connection is the aborted one; the reconnect ends it.
+    return bool(rows[0]["gone"])
 
 
 async def _open_transactions(client: Prisma) -> list[LeakedTransaction]:

@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
 from threading import Thread
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 import pytest
@@ -16,6 +17,25 @@ from backend.data import subscription_lookup_cache
 from backend.util.logging import configure_logging
 
 load_dotenv()
+
+
+def _with_query_param(url: str, key: str, value: str) -> str:
+    parsed = urlparse(url)
+    query = dict(parse_qsl(parsed.query))
+    query[key] = value
+    return urlunparse(parsed._replace(query=urlencode(query)))
+
+
+# Every database connection this session opens, the server fixture's service
+# processes included, carries this name, so no_leaked_db_transaction can tell
+# them from any other client of the same database. Set before anything imports
+# backend.data.db, which reads the URL once.
+if os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = _with_query_param(
+        os.environ["DATABASE_URL"],
+        "application_name",
+        f"autogpt-tests-{uuid4().hex[:8]}",
+    )
 
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
 # Set up logging
@@ -89,7 +109,7 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     leaks = await find_leaked_transactions(client)
     if not leaks:
         return
-    await release_leaked_transactions(client, leaks)
+    survivors = await release_leaked_transactions(client, leaks)
     pytest.fail(
         f"{request.node.nodeid} left a database transaction open (test began "
         f"{started.isoformat()}); every later test would have run inside it:\n"
@@ -97,6 +117,12 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
             f"  pid {leak.pid}, {leak.state}, opened {leak.xact_start.isoformat()},"
             f" last statement: {leak.last_query}"
             for leak in leaks
+        )
+        + (
+            f"\nBackends {survivors} were still running after termination, so "
+            "later tests may still see their transactions."
+            if survivors
+            else ""
         ),
         pytrace=False,
     )
