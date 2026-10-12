@@ -229,6 +229,8 @@ async def delete_graph_execution_schedule(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
+    # A follow-up's failure streak is keyed by its schedule id.
+    await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
 
 

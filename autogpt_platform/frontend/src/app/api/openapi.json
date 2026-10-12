@@ -27442,6 +27442,11 @@
             "type": "string",
             "format": "date-time",
             "title": "Paused At"
+          },
+          "routine": {
+            "type": "boolean",
+            "title": "Routine",
+            "default": false
           }
         },
         "type": "object",

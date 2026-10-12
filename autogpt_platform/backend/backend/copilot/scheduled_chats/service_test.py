@@ -205,6 +205,8 @@ async def test_a_routine_pauses_every_fire_time_and_is_named_by_its_title(
         assert paused == {"job-a", "job-b"}
         notes = await _notes(session_id)
         assert notes[0].metadata["title"] == "Morning and noon sweep"
+        # Deleted with its expert, so the paused list offers no Delete.
+        assert [p.routine for p in await list_paused_scheduled_chats(user_id)] == [True]
     finally:
         await _cleanup(user_id)
 
@@ -587,7 +589,9 @@ async def test_a_deleted_chat_leaves_no_paused_ghost(
         assert await list_paused_scheduled_chats(user_id) == []
         assert await resume_scheduled_chat(user_id, "sched-1") is False
         # Only the owner's own chat goes.
-        assert len(await list_paused_scheduled_chats(other_id)) == 1
+        [left] = await list_paused_scheduled_chats(other_id)
+        # A follow-up, which the paused list can delete.
+        assert left.routine is False
     finally:
         await _cleanup(user_id)
         await _cleanup(other_id)

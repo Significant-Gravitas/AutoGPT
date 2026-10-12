@@ -88,7 +88,8 @@ def classify_run(
     tool_successes: int,
 ) -> RunOutcome:
     """*tool_failures* pairs each failing platform tool with what it said;
-    *tool_successes* counts the platform tool calls that worked."""
+    *tool_successes* counts the platform tool calls that worked, leaving out
+    the lookups that only got a run ready to work."""
     if cancelled:
         return RunOutcome(neutral=True)
     if turn_errored:

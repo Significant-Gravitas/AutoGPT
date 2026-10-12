@@ -4,7 +4,8 @@ import type { PausedScheduledChat } from "@/app/api/__generated__/models/pausedS
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { PauseIcon, PlayIcon } from "@hugeicons/core-free-icons";
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { Delete02Icon, PauseIcon, PlayIcon } from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import { usePausedChatListItem } from "./usePausedChatListItem";
 
@@ -13,9 +14,16 @@ interface Props {
 }
 
 export function PausedChatListItem({ paused }: Props) {
-  const { sessionHref, handleResume, isResuming } = usePausedChatListItem({
-    paused,
-  });
+  const {
+    sessionHref,
+    handleResume,
+    isResuming,
+    canDelete,
+    isDeleteOpen,
+    setIsDeleteOpen,
+    handleDelete,
+    isDeleting,
+  } = usePausedChatListItem({ paused });
 
   const detail = (
     <>
@@ -63,7 +71,49 @@ export function PausedChatListItem({ paused }: Props) {
           <Icon icon={PlayIcon} className="mr-1 h-4 w-4" />
           Resume
         </Button>
+        {canDelete ? (
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => setIsDeleteOpen(true)}
+            aria-label={`Delete ${paused.title}`}
+          >
+            <Icon icon={Delete02Icon} className="mr-1 h-4 w-4" />
+            Delete
+          </Button>
+        ) : null}
       </div>
+
+      <Dialog
+        controlled={{ isOpen: isDeleteOpen, set: setIsDeleteOpen }}
+        styling={{ maxWidth: "32rem" }}
+        title="Delete scheduled chat"
+      >
+        <Dialog.Content>
+          <div className="flex flex-col gap-4">
+            <Text variant="large">
+              Delete “{paused.title}”? It won&apos;t run again. You can recreate
+              it from chat if needed.
+            </Text>
+            <Dialog.Footer>
+              <Button
+                variant="secondary"
+                disabled={isDeleting}
+                onClick={() => setIsDeleteOpen(false)}
+              >
+                Keep it
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleDelete}
+                loading={isDeleting}
+              >
+                Yes, delete
+              </Button>
+            </Dialog.Footer>
+          </div>
+        </Dialog.Content>
+      </Dialog>
     </div>
   );
 }

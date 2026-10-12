@@ -232,6 +232,10 @@ def test_list_all_schedules_does_not_scope_to_a_graph(
 
 def test_delete_schedule_returns_the_id(mocker: pytest_mock.MockFixture) -> None:
     sched = _patch_scheduler(mocker, delete_schedule=AsyncMock())
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(),
+    )
 
     response = client.delete("/schedules/sched-1")
 

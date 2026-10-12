@@ -65,6 +65,8 @@ class PausedScheduledChat(BaseModel):
     # "Paused: can't use Twitter", and so on.
     summary: str
     paused_at: datetime
+    # A routine is deleted with its expert, not from this list.
+    routine: bool = False
 
 
 async def record_scheduled_run(run: ScheduledRun) -> None:
@@ -151,11 +153,23 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
     return True
 
 
+async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
+    """Drop the streak of a chat its owner deleted. Kept, a paused one would
+    stay listed as paused, with a Resume that says it runs again."""
+    await ScheduledChatStreak.prisma().delete_many(
+        where={"userId": user_id, "scheduleKey": schedule_key}
+    )
+
+
 async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]:
     rows = await ScheduledChatStreak.prisma().find_many(
         where={"userId": user_id, "NOT": [{"pausedAt": None}]},
         order={"pausedAt": "desc"},
     )
+    routines = await ExpertRoutine.prisma().find_many(
+        where={"id": {"in": [row.scheduleKey for row in rows]}}
+    )
+    routine_ids = {routine.id for routine in routines}
     paused: list[PausedScheduledChat] = []
     for row in rows:
         streak = _streak_of(row)
@@ -170,6 +184,7 @@ async def list_paused_scheduled_chats(user_id: str) -> list[PausedScheduledChat]
                 provider=streak.failure.provider,
                 summary=pause_summary(streak.failure),
                 paused_at=row.pausedAt,
+                routine=row.scheduleKey in routine_ids,
             )
         )
     return paused

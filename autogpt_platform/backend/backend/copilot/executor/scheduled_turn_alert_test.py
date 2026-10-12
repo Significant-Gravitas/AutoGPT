@@ -20,13 +20,13 @@ from backend.copilot.executor.utils import (
     ScheduledTurnOrigin,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.scheduled_chats.outcomes import RunOutcome
-from backend.copilot.scheduled_chats.streaks import advance
 from backend.copilot.response_model import (
     StreamError,
     StreamTextDelta,
     StreamToolOutputAvailable,
 )
+from backend.copilot.scheduled_chats.outcomes import RunOutcome
+from backend.copilot.scheduled_chats.streaks import advance
 from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
