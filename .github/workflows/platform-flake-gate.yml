@@ -193,16 +193,18 @@ jobs:
           wait_for Postgres docker exec postgres-test pg_isready -h 127.0.0.1 -U postgres
           wait_for RabbitMQ docker exec rabbitmq rabbitmq-diagnostics -q check_running
 
-      - name: Set up Python 3.12
+      # The slowest Python the backend tests run on, so a test with too
+      # little time to spare fails here first: #15427's failed only on 3.11.
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Set up Python dependency cache
         uses: actions/cache@v5
         with:
           path: ~/.cache/pypoetry
-          key: poetry-${{ runner.os }}-py3.12-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
+          key: poetry-${{ runner.os }}-py3.11-${{ hashFiles('autogpt_platform/backend/poetry.lock') }}
 
       - name: Install Poetry
         run: |
