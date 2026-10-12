@@ -14,6 +14,7 @@ from backend.copilot.sdk.model_gateway.tool_names import cli_tool_id
 from backend.copilot.sdk.model_gateway.usage import (
     GatewayUsage,
     count,
+    merge_stream_usage,
     usage_from_openai,
 )
 
@@ -45,6 +46,14 @@ class CodexStreamMapper:
         return self._usage
 
     def feed(self, event: Event) -> list[Event]:
+        response = event.get("response")
+        if isinstance(response, dict) and isinstance(response.get("usage"), dict):
+            incoming = responses_usage(response["usage"])
+            self._usage = (
+                merge_stream_usage(self._usage, incoming)
+                if self._usage is not None
+                else incoming
+            )
         kind = event.get("type")
         if kind == "response.output_item.added":
             return self._item_added(event.get("item"))
@@ -128,9 +137,6 @@ class CodexStreamMapper:
         self.completed = True
         if not isinstance(response, dict):
             return
-        usage = response.get("usage")
-        if isinstance(usage, dict):
-            self._usage = responses_usage(usage)
         details = response.get("incomplete_details")
         if isinstance(details, dict):
             reason = str(details.get("reason") or "")

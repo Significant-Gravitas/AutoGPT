@@ -1,12 +1,17 @@
 """HTTPX requests with no redirects, bounded errors and safe transport failures."""
 
 import json
-from collections.abc import AsyncIterator, Mapping
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 
 import httpx
 
-from backend.copilot.sdk.model_gateway.errors import timed_out, unreachable
+from backend.copilot.sdk.model_gateway.errors import (
+    GatewayError,
+    timed_out,
+    unreachable,
+)
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage
 
 _ERROR_BODY_LIMIT = 64 * 1024
 _CONNECT_TIMEOUT_SECONDS = 15.0
@@ -27,6 +32,16 @@ def build_http_client(
         # Only the fixed public Codex endpoint trusts operator-controlled egress proxy configuration.
         trust_env=codex,
     )
+
+
+@contextmanager
+def retain_usage(latest: Callable[[], GatewayUsage | None]) -> Iterator[None]:
+    try:
+        yield
+    except GatewayError as error:
+        if (usage := latest()) is not None:
+            error.usage = usage
+        raise
 
 
 @asynccontextmanager

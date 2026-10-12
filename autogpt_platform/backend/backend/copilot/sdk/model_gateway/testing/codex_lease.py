@@ -2,16 +2,17 @@
 
 import base64
 import json
+from unittest.mock import AsyncMock
 
 import httpx
-from openai import AsyncOpenAI
 from pydantic import SecretStr
+from redis.asyncio.lock import Lock
 
 from backend.copilot.sdk.model_gateway.route import CodexLeaseCredential, GatewayRoute
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
 from backend.integrations.codex.credential_codec import credentials_from_bundle
-from backend.integrations.codex.http_session import CodexHttpSession
-from backend.integrations.codex.transport import CodexAgentSession, CodexCredentialLease
+from backend.integrations.codex.transport import CodexCredentialLease
+from backend.integrations.credential_lease import CredentialLease
 
 
 def fake_access_token(account_id: str = "acct-test") -> str:
@@ -30,7 +31,7 @@ def fake_access_token(account_id: str = "acct-test") -> str:
 
 def fake_codex_lease(
     credential_id: str = "codex-credential", account_id: str = "acct-test"
-) -> CodexCredentialLease:
+) -> CredentialLease:
     token = SecretStr(fake_access_token(account_id))
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
@@ -41,19 +42,15 @@ def fake_codex_lease(
     credentials = credentials_from_bundle(bundle).model_copy(
         update={"id": credential_id}
     )
-    session = CodexHttpSession(
-        credentials,
-        turn_timeout_seconds=60,
-        tool_timeout_seconds=60,
-        client=AsyncOpenAI(api_key="unused", base_url="http://127.0.0.1:9/unused"),
-    )
-    return CodexCredentialLease(credentials, CodexAgentSession(session, credentials))
+    lock = AsyncMock(spec=Lock)
+    lock.locked.return_value = lock.owned.return_value = True
+    return CredentialLease(credentials, lock, AsyncMock())
 
 
 def codex_route(
     model: str,
     *,
-    lease: CodexCredentialLease | None = None,
+    lease: CodexCredentialLease | CredentialLease | None = None,
     context_window: int | None = None,
 ) -> GatewayRoute:
     return GatewayRoute(

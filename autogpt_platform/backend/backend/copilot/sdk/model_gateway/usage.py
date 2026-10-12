@@ -58,7 +58,10 @@ def usage_from_anthropic(raw: object) -> GatewayUsage | None:
 def merge_stream_usage(start: GatewayUsage, delta: GatewayUsage) -> GatewayUsage:
     """Reported fields replace earlier counts, including explicit zeros."""
     return GatewayUsage(
-        **{**start.model_dump(), **delta.model_dump(exclude_unset=True)}
+        **{
+            **start.model_dump(exclude_unset=True),
+            **delta.model_dump(exclude_unset=True),
+        }
     )
 
 

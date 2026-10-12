@@ -1,9 +1,21 @@
+from backend.copilot.sdk.model_gateway.stream import AnthropicStreamBuilder
 from backend.copilot.sdk.model_gateway.usage import (
     GatewayUsage,
     estimate_tokens,
     merge_stream_usage,
     usage_from_anthropic,
 )
+
+
+def test_output_only_progress_updates_leave_input_unknown():
+    usage = merge_stream_usage(
+        GatewayUsage(output_tokens=1), GatewayUsage(output_tokens=2)
+    )
+    events = AnthropicStreamBuilder(model="m", input_estimate=100).finish(
+        "end_turn", usage
+    )
+    assert events[-2]["usage"]["input_tokens"] == 100
+    assert events[-2]["usage"]["output_tokens"] == 2
 
 
 def test_the_estimate_counts_text_in_system_messages_and_tools():

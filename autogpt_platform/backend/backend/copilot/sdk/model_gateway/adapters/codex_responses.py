@@ -1,10 +1,15 @@
 """Stateless Responses over HTTPX, with current lease authentication per request."""
 
 from collections.abc import AsyncGenerator, Mapping
+from uuid import uuid4
 
 import httpx
 
-from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
+from backend.copilot.provider_failure import (
+    ProviderFailure,
+    ProviderFailureKind,
+    reset_time_from_headers,
+)
 from backend.copilot.sdk.model_gateway.adapters.codex_input import responses_payload
 from backend.copilot.sdk.model_gateway.adapters.codex_quota import rate_limited
 from backend.copilot.sdk.model_gateway.adapters.codex_signature import reasoning_tag
@@ -23,16 +28,17 @@ from backend.copilot.sdk.model_gateway.stream import (
     AnthropicStreamBuilder,
     Event,
     StreamItem,
+    Upstream,
     closing_items,
-    collect_message,
 )
 from backend.copilot.sdk.model_gateway.upstream_http import (
     build_http_client,
     post_json,
     read_error_body,
     response_lines,
+    retain_usage,
 )
-from backend.copilot.sdk.model_gateway.usage import GatewayUsage, estimate_tokens
+from backend.copilot.sdk.model_gateway.usage import estimate_tokens
 from backend.integrations.codex.http_client import (
     API_BASE,
     account_id_for,
@@ -58,12 +64,13 @@ _FAILURE_KINDS = {
 }
 
 
-class CodexResponses:
+class CodexResponses(Upstream):
     def __init__(
         self, route: GatewayRoute, *, client: httpx.AsyncClient | None = None
     ) -> None:
         if route.credential.kind != "codex_lease":
             raise ValueError("The Codex adapter needs the account's credential lease")
+        self._session_id = str(uuid4())
         self._route = route
         self._owns_client = client is None
         self._client = client or build_http_client(route.timeout_seconds, codex=True)
@@ -88,21 +95,21 @@ class CodexResponses:
         )
         headers = {
             **inference_headers(credentials),
+            "session_id": self._session_id,
             "authorization": f"Bearer {secrets[0]}",
             "accept": "text/event-stream",
         }
-        async with post_json(self._client, self._url, payload, headers) as response:
-            self.rate_limits = parse_rate_limits(response.headers)
-            async for item in self._read_response(
-                response, mapper, estimate, secrets, credentials.id
-            ):
+        with retain_usage(lambda: mapper.usage):
+            async with post_json(self._client, self._url, payload, headers) as response:
+                self.rate_limits = parse_rate_limits(response.headers)
+                async for item in self._read_response(
+                    response, mapper, estimate, secrets, credentials.id
+                ):
+                    yield item
+            if not mapper.completed:
+                raise GatewayError(502, "api_error", "ChatGPT ended the response early")
+            for item in closing_items(mapper.finish(), mapper.usage):
                 yield item
-        if not mapper.completed:
-            raise GatewayError(
-                502, "api_error", "ChatGPT ended the response early", usage=mapper.usage
-            )
-        for item in closing_items(mapper.finish(), mapper.usage):
-            yield item
 
     async def _read_response(
         self,
@@ -136,13 +143,11 @@ class CodexResponses:
                     {},
                     secrets,
                     credential_id,
-                    mapper.usage,
                 )
             for out in events:
                 yield StreamItem(event=out)
-
-    async def complete(self, body: Event) -> Event:
-        return await collect_message(self.stream(body))
+            if mapper.completed:
+                return
 
     async def aclose(self) -> None:
         if self._owns_client:
@@ -156,7 +161,6 @@ class CodexResponses:
         headers: Mapping[str, str],
         secrets: tuple[str, ...],
         credential_id: str,
-        usage: GatewayUsage | None = None,
     ) -> GatewayError:
         restated = upstream_failure(
             error,
@@ -175,8 +179,8 @@ class CodexResponses:
             restated.failure = ProviderFailure(
                 kind=kind,
                 message=redact(error.message, secrets) or "The ChatGPT request failed",
+                resets_at=reset_time_from_headers(headers),
                 auth_provider="codex",
                 credential_id=credential_id,
             )
-        restated.usage = usage
         return restated

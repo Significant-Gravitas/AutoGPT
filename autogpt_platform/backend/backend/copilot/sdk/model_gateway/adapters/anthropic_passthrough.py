@@ -28,8 +28,9 @@ from backend.copilot.sdk.model_gateway.upstream_http import (
     read_body,
     read_error_body,
     response_lines,
+    retain_usage,
 )
-from backend.copilot.sdk.model_gateway.usage import estimate_tokens
+from backend.copilot.sdk.model_gateway.usage import UsageMeter, estimate_tokens
 
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -45,23 +46,20 @@ class AnthropicPassthrough:
 
     async def stream(self, body: Event) -> AsyncGenerator[StreamItem, None]:
         payload = self._payload(body, stream=True)
-        async with post_json(
-            self._client, self._url, payload, self._headers(stream=True)
-        ) as response:
-            if not response.is_success:
-                raise self._failure(
-                    response.status_code,
-                    await read_error_body(response),
-                    response.headers,
-                    payload,
-                )
-            async for frame in read_frames(response_lines(response)):
-                event = frame.payload()
-                if not isinstance(event, dict):
-                    continue
-                if event.get("type") == "error":
-                    raise self._stream_failure(event, payload)
-                yield StreamItem(event=event, raw=frame.encoded())
+        meter = UsageMeter()
+        with retain_usage(lambda: meter.total):
+            async with post_json(
+                self._client, self._url, payload, self._headers(stream=True)
+            ) as response:
+                if not response.is_success:
+                    raise self._failure(
+                        response.status_code,
+                        await read_error_body(response),
+                        response.headers,
+                        payload,
+                    )
+                async for item in self._read_stream(response, payload, meter):
+                    yield item
 
     async def complete(self, body: Event) -> Event:
         payload = self._payload(body, stream=False)
@@ -86,6 +84,23 @@ class AnthropicPassthrough:
     async def aclose(self) -> None:
         if self._owns_client:
             await self._client.aclose()
+
+    async def _read_stream(
+        self, response: httpx.Response, payload: Event, meter: UsageMeter
+    ) -> AsyncGenerator[StreamItem, None]:
+        async for frame in read_frames(response_lines(response)):
+            event = frame.payload()
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") == "error":
+                raise self._stream_failure(event, payload)
+            meter.observe(event)
+            yield StreamItem(event=event, raw=frame.encoded())
+            if event.get("type") == "message_stop":
+                return
+        raise GatewayError(
+            502, "api_error", "The model server ended the stream before message_stop"
+        )
 
     def _payload(self, body: Event, *, stream: bool) -> Event:
         payload: Event = {**body, "model": self._route.model, "stream": stream}

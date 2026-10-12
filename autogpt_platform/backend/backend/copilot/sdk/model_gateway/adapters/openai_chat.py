@@ -26,19 +26,20 @@ from backend.copilot.sdk.model_gateway.stream import (
     AnthropicStreamBuilder,
     Event,
     StreamItem,
+    Upstream,
     closing_items,
-    collect_message,
 )
 from backend.copilot.sdk.model_gateway.upstream_http import (
     build_http_client,
     post_json,
     read_error_body,
     response_lines,
+    retain_usage,
 )
 from backend.copilot.sdk.model_gateway.usage import estimate_tokens
 
 
-class OpenAIChat:
+class OpenAIChat(Upstream):
     def __init__(
         self, route: GatewayRoute, *, client: httpx.AsyncClient | None = None
     ) -> None:
@@ -55,34 +56,32 @@ class OpenAIChat:
             AnthropicStreamBuilder(model=self._route.model, input_estimate=estimate),
             names,
         )
-        async with post_json(
-            self._client, self._url, payload, self._headers()
-        ) as response:
-            if not response.is_success:
-                error = parse_upstream_error(await read_error_body(response))
-                raise self._failure(
-                    error, response.status_code, estimate, response.headers
+        with retain_usage(lambda: mapper.usage):
+            async with post_json(
+                self._client, self._url, payload, self._headers()
+            ) as response:
+                if not response.is_success:
+                    error = parse_upstream_error(await read_error_body(response))
+                    raise self._failure(
+                        error, response.status_code, estimate, response.headers
+                    )
+                async for frame in read_frames(response_lines(response)):
+                    if frame.data.strip() == "[DONE]":
+                        mapper.saw_done = True
+                        break
+                    chunk = frame.payload()
+                    if not isinstance(chunk, dict):
+                        continue
+                    if "error" in chunk:
+                        raise self._chunk_failure(chunk, estimate)
+                    for event in mapper.feed(chunk):
+                        yield StreamItem(event=event)
+            if not mapper.complete:
+                raise GatewayError(
+                    502, "api_error", "The model server ended the stream early"
                 )
-            async for frame in read_frames(response_lines(response)):
-                if frame.data.strip() == "[DONE]":
-                    mapper.saw_done = True
-                    break
-                chunk = frame.payload()
-                if not isinstance(chunk, dict):
-                    continue
-                if "error" in chunk:
-                    raise self._chunk_failure(chunk, estimate)
-                for event in mapper.feed(chunk):
-                    yield StreamItem(event=event)
-        if not mapper.complete:
-            raise GatewayError(
-                502, "api_error", "The model server ended the stream early"
-            )
-        for item in closing_items(mapper.finish(), mapper.usage):
-            yield item
-
-    async def complete(self, body: Event) -> Event:
-        return await collect_message(self.stream(body))
+            for item in closing_items(mapper.finish(), mapper.usage):
+                yield item
 
     async def aclose(self) -> None:
         if self._owns_client:

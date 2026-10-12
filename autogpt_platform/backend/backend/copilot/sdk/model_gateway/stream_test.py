@@ -21,7 +21,6 @@ def _blocks(events: list[Event]) -> list[object]:
 def test_message_start_waits_for_the_first_content_with_zero_provisional_input():
     builder = AnthropicStreamBuilder(model="m", input_estimate=1234)
     assert builder.text("") == []
-    assert not builder.started
 
     events = builder.text("hi")
 

@@ -2,7 +2,7 @@
 
 - ``/anthropic/v1/messages``: what the pass-through forwards to;
 - ``/openai/v1/chat/completions``: the Chat Completions adapter's upstream;
-- ``/codex/responses``: the Codex adapter's, through an ``AsyncOpenAI``
+- ``/codex/responses``: the Codex adapter's, through an HTTPX client
   pointed at ``{url}/codex``.
 
 Every request is recorded with the decision it got, so a test can check what

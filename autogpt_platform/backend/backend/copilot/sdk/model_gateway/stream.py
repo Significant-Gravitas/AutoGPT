@@ -53,7 +53,7 @@ class Upstream(Protocol):
 
     async def complete(self, body: Event) -> Event:
         """The whole Anthropic message for a non-streaming request."""
-        ...
+        return await collect_message(self.stream(body))
 
     async def aclose(self) -> None: ...
 
@@ -69,10 +69,6 @@ class AnthropicStreamBuilder:
         self._open: BlockKind | None = None
         self.tool_used = False
         self.has_text = False
-
-    @property
-    def started(self) -> bool:
-        return self._started
 
     def start(self) -> list[Event]:
         if self._started:
