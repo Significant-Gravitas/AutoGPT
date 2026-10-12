@@ -4,14 +4,19 @@ import {
   type Card,
   cardColumnKey,
   cardState,
+  dragLabel,
   dropPosition,
   groupCards,
   isSessionId,
   moveCard,
   moveCardToTop,
+  newColumnKey,
+  nextColumnName,
   parseMention,
   patchCard,
+  planDrop,
   positionBetween,
+  resolveDrop,
   stateLineText,
 } from "./board-helpers";
 
@@ -173,6 +178,16 @@ describe("dropPosition", () => {
     expect(dropPosition(mixed, 1, "x")).toBe(1000 + 1024);
     expect(dropPosition(mixed, 0, "x")).toBe(1000 - 1024);
   });
+
+  it("drops among unplaced cards right after the last placed card", () => {
+    const mixed = [
+      card("placed", { board_position: 1000 }),
+      card("u1", { board_position: null }),
+      card("u2", { board_position: null }),
+    ];
+    expect(dropPosition(mixed, 2, "x")).toBe(1000 + 1024);
+    expect(dropPosition(mixed.slice(1), 1, "x")).toBe(0);
+  });
 });
 
 describe("cardState", () => {
@@ -287,6 +302,17 @@ describe("patchCard / moveCard", () => {
   it("returns the board unchanged for an unknown card", () => {
     expect(moveCard(board, "zzz", "done", 1).sessions).toEqual(board.sessions);
   });
+
+  it("leaves the input board and card alone", () => {
+    const next = moveCard(board, "a", "done", 7);
+    expect(next).not.toBe(board);
+    expect(next.sessions[0]).not.toBe(board.sessions[0]);
+    expect(board.sessions[0]).toMatchObject({
+      board_column: "backlog",
+      board_position: 0,
+    });
+    expect(next.columns).toBe(board.columns);
+  });
 });
 
 describe("moveCardToTop", () => {
@@ -347,5 +373,127 @@ describe("isSessionId", () => {
       false,
     );
     expect(isSessionId("s1")).toBe(false);
+  });
+});
+
+describe("resolveDrop / planDrop", () => {
+  const grouped = groupCards(
+    COLUMNS,
+    [
+      card("a", { board_column: "backlog", board_position: 0 }),
+      card("b", { board_column: "backlog", board_position: 1024 }),
+      card("c", { board_column: "in_progress", board_position: 0 }),
+      card("d", { board_column: "in_progress", board_position: 1024 }),
+      card("e", { board_column: "in_progress", board_position: 2048 }),
+    ],
+    NOW,
+  );
+
+  it("drops over a card in another column at that card's index", () => {
+    expect(resolveDrop(grouped, "a", "d")).toEqual({
+      column: "in_progress",
+      index: 1,
+    });
+  });
+
+  it("drops over a column at its end", () => {
+    expect(resolveDrop(grouped, "a", "in_progress")).toEqual({
+      column: "in_progress",
+      index: 3,
+    });
+    expect(resolveDrop(grouped, "a", "done")).toEqual({
+      column: "done",
+      index: 0,
+    });
+  });
+
+  it("does not count the moving card when it drops over its own column", () => {
+    expect(resolveDrop(grouped, "a", "backlog")).toEqual({
+      column: "backlog",
+      index: 1,
+    });
+  });
+
+  it("drops over itself at its own index", () => {
+    expect(resolveDrop(grouped, "d", "d")).toEqual({
+      column: "in_progress",
+      index: 1,
+    });
+  });
+
+  it("returns null over nothing known", () => {
+    expect(resolveDrop(grouped, "a", "nowhere")).toBeNull();
+  });
+
+  it("plans a move between the cards around the drop", () => {
+    expect(planDrop(grouped, "a", "d")).toEqual({
+      column: "in_progress",
+      position: 512,
+    });
+    expect(planDrop(grouped, "a", "in_progress")).toEqual({
+      column: "in_progress",
+      position: 2048 + 1024,
+    });
+  });
+
+  it("moves down within a column past the card it drops on", () => {
+    expect(planDrop(grouped, "c", "e")).toEqual({
+      column: "in_progress",
+      position: 2048 + 1024,
+    });
+  });
+
+  it("plans nothing when the card lands where it was", () => {
+    expect(planDrop(grouped, "d", "d")).toBeNull();
+    expect(planDrop(grouped, "b", "backlog")).toBeNull();
+    expect(planDrop(grouped, "a", "nowhere")).toBeNull();
+    expect(planDrop(grouped, "zzz", "d")).toBeNull();
+  });
+});
+
+describe("dragLabel", () => {
+  const grouped = groupCards(
+    COLUMNS,
+    [
+      card("a", { board_column: "backlog", title: "Write PRD" }),
+      card("b", { board_column: "backlog" }),
+    ],
+    NOW,
+  );
+
+  it("names a column, a card or neither", () => {
+    expect(dragLabel(grouped, "done")).toBe("Done");
+    expect(dragLabel(grouped, "a")).toBe("Write PRD");
+    expect(dragLabel(grouped, "b")).toBe("Untitled task");
+    expect(dragLabel(grouped, "zzz")).toBe("the board");
+  });
+});
+
+describe("nextColumnName", () => {
+  it("names the first new column plainly", () => {
+    expect(nextColumnName(COLUMNS)).toBe("New column");
+  });
+
+  it("numbers the next free name", () => {
+    expect(
+      nextColumnName([
+        ...COLUMNS,
+        { key: "col_1", name: "New column" },
+        { key: "col_2", name: "New column 2" },
+      ]),
+    ).toBe("New column 3");
+    expect(
+      nextColumnName([...COLUMNS, { key: "col_2", name: "New column 2" }]),
+    ).toBe("New column");
+  });
+});
+
+describe("newColumnKey", () => {
+  it("makes a unique col_<uuid> key", () => {
+    const key = newColumnKey();
+    expect(key).toMatch(
+      /^col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    expect(newColumnKey()).not.toBe(key);
   });
 });

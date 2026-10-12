@@ -7,7 +7,9 @@ export const BOARD_QUERY_KEY = ["copilot", "board"] as const;
 export const BOARD_REFETCH_INTERVAL_MS = 10_000;
 export const BOARD_MUTATION_KEY = ["copilot", "board", "mutation"];
 export const BOARD_MOVE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "move"];
+export const BOARD_COLUMNS_MUTATION_KEY = [...BOARD_MUTATION_KEY, "columns"];
 export const MAX_COLUMNS = 6;
+export const MAX_COLUMN_NAME = 40;
 export const BUILTIN_KEYS = ["backlog", "in_progress", "done"] as const;
 
 const SESSION_ID_PATTERN =
@@ -93,10 +95,81 @@ export function dropPosition(
   movingId: string,
 ): number {
   const others = cards.filter((card) => card.id !== movingId);
+  // Placed cards come first, so a card dropped among the unplaced ones lands
+  // right after the last placed card above it.
+  const before = others
+    .slice(0, targetIndex)
+    .findLast((card) => card.board_position != null);
   return positionBetween(
-    others[targetIndex - 1]?.board_position ?? null,
+    before?.board_position ?? null,
     others[targetIndex]?.board_position ?? null,
   );
+}
+
+export interface DropTarget {
+  column: string;
+  index: number;
+}
+
+export function resolveDrop(
+  grouped: ColumnWithCards[],
+  activeId: string,
+  overId: string,
+): DropTarget | null {
+  for (const { column, cards } of grouped) {
+    if (column.key === overId) {
+      return {
+        column: column.key,
+        index: cards.filter((card) => card.id !== activeId).length,
+      };
+    }
+    const index = cards.findIndex((card) => card.id === overId);
+    if (index !== -1) return { column: column.key, index };
+  }
+  return null;
+}
+
+export function planDrop(
+  grouped: ColumnWithCards[],
+  activeId: string,
+  overId: string,
+): { column: string; position: number } | null {
+  const target = resolveDrop(grouped, activeId, overId);
+  const source = grouped.find(({ cards }) =>
+    cards.some((card) => card.id === activeId),
+  );
+  if (!target || !source) return null;
+  const fromIndex = source.cards.findIndex((card) => card.id === activeId);
+  if (source.column.key === target.column && fromIndex === target.index) {
+    return null;
+  }
+  const cards =
+    grouped.find(({ column }) => column.key === target.column)?.cards ?? [];
+  return {
+    column: target.column,
+    position: dropPosition(cards, target.index, activeId),
+  };
+}
+
+export function dragLabel(grouped: ColumnWithCards[], id: string): string {
+  for (const { column, cards } of grouped) {
+    if (column.key === id) return column.name;
+    const card = cards.find((item) => item.id === id);
+    if (card) return card.title || "Untitled task";
+  }
+  return "the board";
+}
+
+export function nextColumnName(columns: BoardColumn[]): string {
+  const names = new Set(columns.map((column) => column.name));
+  if (!names.has("New column")) return "New column";
+  let n = 2;
+  while (names.has(`New column ${n}`)) n += 1;
+  return `New column ${n}`;
+}
+
+export function newColumnKey(): string {
+  return `col_${crypto.randomUUID()}`;
 }
 
 export function patchCard(

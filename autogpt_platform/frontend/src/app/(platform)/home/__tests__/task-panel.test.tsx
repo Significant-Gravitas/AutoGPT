@@ -298,6 +298,41 @@ describe("task panel", () => {
     expect(cardIn("In progress", "Research competitors")).toBeNull();
   });
 
+  test("moving a draft card to In progress says it started", async () => {
+    const moves = captureBodies<Record<string, unknown>>();
+    const moved = {
+      ...DRAFT,
+      board_column: "in_progress",
+      board_position: -1024,
+      started: true,
+      is_processing: true,
+    };
+    serveBoard(board(DRAFT), board(moved));
+    server.use(
+      getPatchV2UpdateSessionBoardMockHandler(async ({ request }) => {
+        await moves.push(request);
+        return moved;
+      }),
+    );
+    renderPanel();
+
+    const dialog = await screen.findByRole("dialog", { name: "Write PRD" });
+    await userEvent.click(
+      within(dialog).getByRole("combobox", { name: "Column" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: "In progress" }),
+    );
+
+    await waitFor(() => expect(moves.bodies).toHaveLength(1));
+    expect(moves.bodies[0]).toEqual({ column: "in_progress" });
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Started" }),
+      ),
+    );
+  });
+
   test("Mark done moves the card to Done and hides itself there", async () => {
     const moves = captureBodies<Record<string, unknown>>();
     const moved = { ...RUNNING, board_column: "done", board_position: -1024 };
@@ -323,6 +358,9 @@ describe("task panel", () => {
       expect(
         within(dialog).queryByRole("button", { name: "Mark done" }),
       ).toBeNull(),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Started" }),
     );
   });
 

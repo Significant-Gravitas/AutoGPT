@@ -1,0 +1,84 @@
+import {
+  type Announcements,
+  type DragEndEvent,
+  type DragStartEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  BOARD_QUERY_KEY,
+  type ColumnWithCards,
+  dragLabel,
+  planDrop,
+} from "./board-helpers";
+import { useMoveCard } from "./useMoveCard";
+
+// Enter stays free to open the card; Space picks it up.
+const KEYBOARD_CODES = {
+  start: ["Space"],
+  cancel: ["Escape"],
+  end: ["Space", "Enter"],
+};
+
+const SCREEN_READER_INSTRUCTIONS =
+  "To pick up a task, press Space. Use the arrow keys to move it, Space or Enter to drop it, and Escape to cancel.";
+
+interface Args {
+  columns: ColumnWithCards[];
+  onDraggingChange: (cardId: string | null) => void;
+}
+
+export function useBoardDrag({ columns, onDraggingChange }: Args) {
+  const queryClient = useQueryClient();
+  const { move } = useMoveCard();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+      keyboardCodes: KEYBOARD_CODES,
+    }),
+  );
+
+  function label(id: string | number) {
+    return dragLabel(columns, String(id));
+  }
+
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${label(active.id)}.`,
+    onDragOver: ({ active, over }) =>
+      over ? `${label(active.id)} is over ${label(over.id)}.` : undefined,
+    onDragEnd: ({ active, over }) =>
+      over
+        ? `Dropped ${label(active.id)} on ${label(over.id)}.`
+        : `Dropped ${label(active.id)}.`,
+    onDragCancel: ({ active }) => `Put ${label(active.id)} back.`,
+  };
+
+  function handleDragStart({ active }: DragStartEvent) {
+    onDraggingChange(String(active.id));
+    void queryClient.cancelQueries({ queryKey: BOARD_QUERY_KEY });
+  }
+
+  function handleDragEnd({ active, over }: DragEndEvent) {
+    onDraggingChange(null);
+    if (!over) return;
+    const drop = planDrop(columns, String(active.id), String(over.id));
+    if (drop) move(String(active.id), drop.column, drop.position);
+  }
+
+  return {
+    sensors,
+    accessibility: {
+      announcements,
+      screenReaderInstructions: { draggable: SCREEN_READER_INSTRUCTIONS },
+    },
+    onDragStart: handleDragStart,
+    onDragEnd: handleDragEnd,
+    onDragCancel: () => onDraggingChange(null),
+  };
+}

@@ -1,6 +1,5 @@
 import {
   getGetV2GetSessionQueryKey,
-  usePatchV2UpdateSessionBoard,
   usePatchV2UpdateSessionExpert,
   usePatchV2UpdateSessionTitle,
   useGetV2GetSession,
@@ -12,14 +11,13 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  BOARD_MOVE_MUTATION_KEY,
   BOARD_MUTATION_KEY,
   type Card,
   cardColumnKey,
-  moveCardToTop,
   patchCard,
 } from "../../board-helpers";
 import { useBoardCache } from "../../useBoardCache";
+import { useMoveCard } from "../../useMoveCard";
 
 interface Args {
   card: Card | null;
@@ -47,20 +45,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     },
   });
 
-  const { mutate: moveTask } = usePatchV2UpdateSessionBoard({
-    mutation: {
-      mutationKey: BOARD_MOVE_MUTATION_KEY,
-      onMutate: ({ data }) =>
-        applyOptimistic((board) =>
-          moveCardToTop(board, sessionId, data.column ?? ""),
-        ),
-      onError: (_error, _variables, snapshot) => {
-        rollback(snapshot);
-        toast({ title: "Couldn't move the task", variant: "destructive" });
-      },
-      onSettled: () => settleBoard(),
-    },
-  });
+  const { move } = useMoveCard();
 
   const { mutate: assignTask } = usePatchV2UpdateSessionExpert({
     mutation: {
@@ -129,7 +114,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
 
   function handleMove(column: string) {
     if (column === columnKey) return;
-    moveTask({ sessionId, data: { column } });
+    move(sessionId, column);
   }
 
   function handleStart(message: string) {

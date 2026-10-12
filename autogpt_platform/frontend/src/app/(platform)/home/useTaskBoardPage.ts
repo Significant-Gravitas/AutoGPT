@@ -11,9 +11,11 @@ import {
   groupCards,
   isSessionId,
 } from "./board-helpers";
+import { useBoardDrag } from "./useBoardDrag";
 
 export function useTaskBoardPage() {
   const [includeOlder, setIncludeOlder] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const [reassignTarget, setReassignTarget] = useState<Card | null>(null);
   const [sessionParam, setSessionId] = useQueryState(
     "sessionId",
@@ -21,24 +23,29 @@ export function useTaskBoardPage() {
   );
   // The id ends up in API paths; anything but a UUID opens nothing.
   const sessionId = isSessionId(sessionParam) ? sessionParam : null;
-  // A poll landing mid-change would snap the card back until the next one.
+  // A poll landing mid-drag or mid-change would snap the card back.
   const changesInFlight = useIsMutating({ mutationKey: BOARD_MUTATION_KEY });
+  const isPollPaused = draggingId !== null || changesInFlight > 0;
   const { showNewLayout } = usePlatformChrome();
   const params = { include_older: includeOlder };
 
   const boardQuery = useGetV2GetBoard(params, {
     query: {
       queryKey: boardQueryKey(params),
-      refetchInterval: changesInFlight > 0 ? false : BOARD_REFETCH_INTERVAL_MS,
+      refetchInterval: isPollPaused ? false : BOARD_REFETCH_INTERVAL_MS,
+      refetchOnWindowFocus: !isPollPaused,
       placeholderData: keepPreviousData,
       select: (res) => (res.status === 200 ? res.data : undefined),
     },
   });
   const board = boardQuery.data;
+  const columns = board ? groupCards(board.columns, board.sessions) : [];
   const isPanelReady = !!sessionId && (!!board || boardQuery.isError);
 
+  const drag = useBoardDrag({ columns, onDraggingChange: setDraggingId });
+
   return {
-    columns: board ? groupCards(board.columns, board.sessions) : [],
+    columns,
     isEmpty: !!board && board.sessions.length === 0,
     isLoading: boardQuery.isLoading,
     isError: boardQuery.isError && !board,
@@ -51,6 +58,9 @@ export function useTaskBoardPage() {
     retry: () => void boardQuery.refetch(),
     toggleOlder: () => setIncludeOlder((value) => !value),
     openCard: (id: string) => void setSessionId(id),
+    drag,
+    draggingCard:
+      board?.sessions.find((card) => card.id === draggingId) ?? null,
     panel: isPanelReady
       ? {
           sessionId,
