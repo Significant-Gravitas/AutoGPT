@@ -20,6 +20,7 @@ except ImportError:
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
+from backend.util.tracing import traces_sampler
 from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
@@ -308,6 +309,11 @@ def sentry_init():
     _sentry_init(
         dsn=sentry_dsn,
         traces_sample_rate=1.0,
+        traces_sampler=traces_sampler,
+        # Traces reach our own services only, through the RPC client's headers
+        # (backend.util.service); outbound calls to third parties, such as a
+        # block's request to a user-supplied URL, carry no Sentry headers.
+        trace_propagation_targets=[],
         profiles_sample_rate=1.0,
         environment=f"app:{settings.config.app_env.value}-behave:{settings.config.behave_as.value}",
         before_send=_before_send,

@@ -22,7 +22,7 @@ from sentry_sdk.utils import event_from_exception, json_dumps
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
-from backend.util import feature_flag, metrics
+from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -399,6 +399,30 @@ def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
 
     assert len(calls) == 1
     assert calls[0]["dsn"] == _FAKE_DSN
+
+
+def test_sentry_init_samples_through_the_shared_sampler(monkeypatch) -> None:
+    """Probes, scrapes and WebSocket connections are dropped by the sampler;
+    see tracing_test for its rules."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["traces_sampler"] is tracing.traces_sampler
+
+
+def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> None:
+    """Only the RPC client attaches trace headers (service_test covers it), so a
+    block calling a user-supplied URL never hands it Sentry's trace or key."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["trace_propagation_targets"] == []
 
 
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
