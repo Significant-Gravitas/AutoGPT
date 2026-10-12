@@ -20,7 +20,10 @@ REASSIGN_BRIEF_KIND = "reassign_brief"
 _CUSTOM_KEY = re.compile(
     r"col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 )
-_LIST_MARKER = re.compile(r"(?m)^\s*(?:\d+[.)]|[-*+])\s+")
+# Horizontal whitespace only: ``\s`` would span lines and go quadratic.
+_LIST_MARKER = re.compile(r"(?m)^[ \t]*(?:\d+[.)]|[-*+])[ \t]+")
+# The state line only needs the start of a reply.
+_SCAN_MAX = 2000
 _MARKDOWN_NOISE = re.compile(r"[#*_`>~]+")
 _SENTENCE_END = re.compile(r"[.!?](?=\s|$)")
 
@@ -73,7 +76,8 @@ def first_sentence(text: str | None) -> str | None:
     """The card's state line: the first sentence of a reply, one line, clipped."""
     if not text:
         return None
-    flat = " ".join(_MARKDOWN_NOISE.sub("", _LIST_MARKER.sub("", text)).split())
+    head = text.lstrip()[:_SCAN_MAX]
+    flat = " ".join(_MARKDOWN_NOISE.sub("", _LIST_MARKER.sub("", head)).split())
     if not flat:
         return None
     end = _SENTENCE_END.search(flat)

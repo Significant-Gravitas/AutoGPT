@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from backend.copilot.board import (
@@ -92,3 +94,21 @@ def test_first_sentence(text, expected):
 def test_first_sentence_clips_long_text():
     line = first_sentence("word " * 100)
     assert line is not None and len(line) <= LAST_LINE_MAX and line.endswith("…")
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [("\n" * 100_000 + "x", "x"), (" \n" * 100_000 + "1. x", "x")],
+)
+def test_first_sentence_stays_fast_on_long_blank_runs(text, expected):
+    started = time.perf_counter()
+    line = first_sentence(text)
+    assert time.perf_counter() - started < 0.5
+    assert line == expected
+
+
+def test_first_sentence_reads_only_the_start_of_a_long_reply():
+    started = time.perf_counter()
+    line = first_sentence("- " + "a" * 500_000)
+    assert time.perf_counter() - started < 0.5
+    assert line is not None and len(line) <= LAST_LINE_MAX
