@@ -160,13 +160,19 @@ class TestBuildSdkEnvOpenRouter:
             result = build_sdk_env()
 
         assert result["CLAUDE_CODE_PROMPT_CACHE_TTL"] == ttl
-        # Sub-agents and helper requests keep the CLI's own 5 minutes.
+        # Sub-agents and other requests keep the CLI's own 5 minutes.
         assert "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL" not in result
         assert "ENABLE_PROMPT_CACHING_1H" not in result
 
-    def test_prompt_cache_ttl_defaults_to_an_hour(self):
-        field = ChatConfig.model_fields["claude_agent_prompt_cache_ttl"]
-        assert field.default == "1h"
+    def test_prompt_cache_ttl_defaults_to_an_hour(self, monkeypatch):
+        monkeypatch.delenv("CHAT_CLAUDE_AGENT_PROMPT_CACHE_TTL", raising=False)
+        cfg = self._openrouter_config()
+        with patch("backend.copilot.sdk.env.config", cfg):
+            from backend.copilot.sdk.env import build_sdk_env
+
+            result = build_sdk_env()
+
+        assert result["CLAUDE_CODE_PROMPT_CACHE_TTL"] == "1h"
 
     def test_strips_trailing_v1(self):
         """The /v1 suffix is stripped from the base URL."""

@@ -154,8 +154,9 @@ def build_sdk_env(
         if parts:
             env["ANTHROPIC_CUSTOM_HEADERS"] = "\n".join(parts)
 
-        # The main conversation's cache TTL; sub-agents and helper requests
-        # keep the CLI's 5 minutes. See ``claude_agent_prompt_cache_ttl``.
+        # The main conversation's cache TTL; sub-agents and other requests
+        # outside it keep the CLI's 5 minutes. See
+        # ``claude_agent_prompt_cache_ttl``.
         env["CLAUDE_CODE_PROMPT_CACHE_TTL"] = config.claude_agent_prompt_cache_ttl
 
     # --- Common: workspace isolation + security hardening (all modes) ---

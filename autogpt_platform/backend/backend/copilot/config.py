@@ -630,8 +630,9 @@ class ChatConfig(BaseSettings):
         "after its last request re-sends its whole prompt as a cache write: "
         "slower to the first token (4-6 s instead of 1-1.5 s) and billed at "
         "the write price. 1h keeps it readable for an hour, at 2x input price "
-        "per write instead of 1.25x; sub-agents and helper requests keep 5m. "
-        "Same trade-off as `baseline_prompt_cache_ttl`.",
+        "per write instead of 1.25x. The CLI applies it to main-conversation "
+        "requests, including inline helpers it counts as such; sub-agents and "
+        "other requests keep 5m. Same trade-off as `baseline_prompt_cache_ttl`.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",
