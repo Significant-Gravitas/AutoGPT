@@ -125,8 +125,11 @@ function mcpRequest(
     error: null,
     showManualToken: false,
     authScheme: "bearer",
+    grantable: false,
+    granting: false,
     onConnect: vi.fn(),
     onUseToken: vi.fn(),
+    onGrant: vi.fn(),
     ...overrides,
   };
 }
@@ -399,6 +402,15 @@ describe("ChainActionCard", () => {
     it("shows the error message while disconnected", () => {
       renderCard({ mcp: [mcpRequest({ error: "OAuth failed" })] });
       expect(screen.getByText("OAuth failed")).toBeDefined();
+    });
+
+    it("offers Grant access in place of Connect when an expert can be granted the account's server", () => {
+      const request = mcpRequest({ grantable: true });
+      renderCard({ mcp: [request] });
+
+      expect(screen.queryByRole("button", { name: "Connect" })).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Grant access" }));
+      expect(request.onGrant).toHaveBeenCalled();
     });
 
     it("submits a trimmed manual token via the Use Token button", () => {

@@ -569,8 +569,6 @@ export const useCopilotUIStore = create<CopilotUIState>((set, get) => ({
     }),
   clearLastArtifact: () =>
     set((state) => ({
-      // Expert-wide panel sections belong to the previous chat's expert.
-      contextPanelExpert: null,
       artifactPanel: {
         ...state.artifactPanel,
         activeTab:

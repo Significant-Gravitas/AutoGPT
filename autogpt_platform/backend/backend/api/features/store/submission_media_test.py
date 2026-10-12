@@ -81,6 +81,63 @@ async def test_private_media_read_serves_the_owner(mocker):
     assert response.headers["content-length"] == "13"
 
 
+async def test_oversized_private_media_uses_short_lived_signed_redirect(mocker):
+    size = submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES + 1
+    mocker.patch.object(
+        submission_media,
+        "metadata",
+        new=AsyncMock(return_value={"size": str(size)}),
+    )
+    signed_url = mocker.patch.object(
+        submission_media,
+        "signed_url",
+        new=AsyncMock(return_value="https://storage.example/signed"),
+    )
+    stream = mocker.patch.object(submission_media, "stream")
+
+    response = await store_routes.get_private_submission_media(
+        owner_user_id="owner",
+        media_type="images",
+        filename="large.png",
+        request=fastapi.Request({"type": "http", "headers": []}),
+        user=OWNER,
+    )
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://storage.example/signed"
+    assert response.headers["cache-control"] == "private, no-store"
+    signed_url.assert_awaited_once_with("owner", "images", "large.png")
+    stream.assert_not_called()
+
+
+async def test_oversized_private_media_fails_closed_when_signing_fails(mocker):
+    size = submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES + 1
+    mocker.patch.object(
+        submission_media,
+        "metadata",
+        new=AsyncMock(return_value={"size": str(size)}),
+    )
+    mocker.patch.object(
+        submission_media,
+        "signed_url",
+        new=AsyncMock(side_effect=RuntimeError("signing unavailable")),
+    )
+    stream = mocker.patch.object(submission_media, "stream")
+
+    with pytest.raises(fastapi.HTTPException) as error:
+        await store_routes.get_private_submission_media(
+            owner_user_id="owner",
+            media_type="images",
+            filename="large.png",
+            request=fastapi.Request({"type": "http", "headers": []}),
+            user=OWNER,
+        )
+
+    assert error.value.status_code == 503
+    assert error.value.detail == "Private media is temporarily unavailable"
+    stream.assert_not_called()
+
+
 async def test_private_media_read_returns_not_found_for_missing_object(mocker):
     mocker.patch.object(
         submission_media,
@@ -129,8 +186,11 @@ def test_private_media_range_rejects_invalid_or_unsatisfiable_values(value, tota
 
 
 async def test_private_media_read_serves_single_byte_range(mocker):
+    total_size = submission_media.PRIVATE_MEDIA_PROXY_BUFFER_BYTES + 1
     mocker.patch.object(
-        submission_media, "metadata", new=AsyncMock(return_value={"size": "13"})
+        submission_media,
+        "metadata",
+        new=AsyncMock(return_value={"size": str(total_size)}),
     )
 
     async def chunks(*args):
@@ -149,7 +209,7 @@ async def test_private_media_read_serves_single_byte_range(mocker):
     )
 
     assert response.status_code == 206
-    assert response.headers["content-range"] == "bytes 2-5/13"
+    assert response.headers["content-range"] == f"bytes 2-5/{total_size}"
     assert response.headers["content-length"] == "4"
     assert response.headers["accept-ranges"] == "bytes"
     assert b"".join([chunk async for chunk in response.body_iterator]) == b"ivat"
@@ -231,6 +291,27 @@ async def test_private_media_range_stream_uses_gcs_range_header(
         "users/owner/videos/preview.mp4",
         headers={"Range": "bytes=2-5"},
         timeout=submission_media._STREAM_TIMEOUT,
+    )
+
+
+async def test_private_media_signed_url_targets_private_bucket(mock_settings, mocker):
+    client = mocker.patch.object(
+        submission_media.gcs_storage.Client, "create_anonymous_client"
+    ).return_value
+    generate = mocker.patch.object(
+        submission_media,
+        "generate_iam_signed_url",
+        new=AsyncMock(return_value="https://storage.example/signed"),
+    )
+
+    result = await submission_media.signed_url("owner", "images", "image.jpeg")
+
+    assert result == "https://storage.example/signed"
+    generate.assert_awaited_once_with(
+        client,
+        "private-media",
+        "users/owner/images/image.jpeg",
+        submission_media.PRIVATE_MEDIA_SIGNED_URL_TTL_SECONDS,
     )
 
 

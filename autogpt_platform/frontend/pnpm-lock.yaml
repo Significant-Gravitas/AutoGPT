@@ -19,6 +19,9 @@ importers:
       '@ai-sdk/react':
         specifier: 3.0.61
         version: 3.0.61(react@18.3.1)(zod@3.25.76)
+      '@better-auth/core':
+        specifier: 1.6.22
+        version: 1.6.22(@better-auth/utils@0.4.2)(@better-fetch/fetch@1.3.1)(@opentelemetry/api@1.9.0)(better-call@1.3.7(zod@3.25.76))(jose@6.2.3)(kysely@0.28.17)(nanostores@1.3.0)
       '@faker-js/faker':
         specifier: 10.0.0
         version: 10.0.0

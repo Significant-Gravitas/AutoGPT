@@ -75,6 +75,12 @@ class ProviderMetadata(BaseModel):
             "no auth types declared."
         ),
     )
+    service: str = Field(
+        default="",
+        description="Grouping key shared by a block provider and its MCP server.",
+    )
+    service_name: str | None = Field(default=None)
+    service_icon: str | None = Field(default=None)
 
 
 def get_supported_auth_types(name: str) -> list[CredentialsType]:

@@ -1,5 +1,6 @@
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetSearchGlobalSearch } from "@/app/api/__generated__/endpoints/search/search";
 import type { GlobalSearchResponse } from "@/app/api/__generated__/models/globalSearchResponse";
 import { buildActionsBucket } from "./actions";
@@ -11,6 +12,7 @@ const PER_TYPE_LIMIT = 4;
 
 export function useGlobalSearch(isOpen: boolean) {
   const pathname = usePathname();
+  const isBillingEnabled = useIsBillingEnabled();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -65,7 +67,7 @@ export function useGlobalSearch(isOpen: boolean) {
   // the search results; otherwise it trails them so search stays the
   // primary intent. Priority order on exact match: navigation, actions.
   const commandBuckets = [
-    buildNavigationBucket(query, pathname),
+    buildNavigationBucket(query, pathname, isBillingEnabled),
     buildActionsBucket(query),
   ];
   const topBuckets = commandBuckets.flatMap((entry) =>

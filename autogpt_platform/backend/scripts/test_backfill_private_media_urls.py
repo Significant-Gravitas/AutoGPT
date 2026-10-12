@@ -19,15 +19,15 @@ PRIVATE_BUCKET = "private-media"
         "gs://private-media/users/owner/images/photo.jpeg",
         "https://storage.cloud.google.com/private-media/users/owner/images/photo.jpeg",
         "https://commondatastorage.googleapis.com/private-media/"
-        "users/owner/images/photo.jpeg",
+        + "users/owner/images/photo.jpeg",
         "https://storage.googleapis.com/storage/v1/b/private-media/o/"
-        "users%2Fowner%2Fimages%2Fphoto.jpeg?alt=media",
+        + "users%2Fowner%2Fimages%2Fphoto.jpeg?alt=media",
         "https://www.googleapis.com/download/storage/v1/b/private-media/o/"
-        "users%2Fowner%2Fimages%2Fphoto.jpeg",
+        + "users%2Fowner%2Fimages%2Fphoto.jpeg",
         "  https://storage.googleapis.com/private-media/users/owner/images/photo.jpeg ",
         "https://storage.googleapis.com/private-media/users/owner/images/photo.jpeg?v=2",
         "/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Fprivate-media"
-        "%2Fusers%2Fowner%2Fimages%2Fphoto.jpeg&w=640&q=75",
+        + "%2Fusers%2Fowner%2Fimages%2Fphoto.jpeg&w=640&q=75",
     ],
 )
 def test_parse_accepts_every_backend_gcs_url_form(url: str):
@@ -79,15 +79,15 @@ def test_parse_holds_malformed_managed_urls(url: str):
         "https://storage.cloud.google.com/private-media/users/o/images/a.png#x",
         "https://commondatastorage.googleapis.com/private-media/users/o/images/a.png",
         "https://storage.googleapis.com/storage/v1/b/private-media/o/"
-        "users%2Fo%2Fimages%2Fa.png?alt=media",
+        + "users%2Fo%2Fimages%2Fa.png?alt=media",
         "https://www.googleapis.com/download/storage/v1/b/private-media/o/"
-        "users%2Fo%2Fimages%2Fa.png",
+        + "users%2Fo%2Fimages%2Fa.png",
         "gs://private-media/users/owner/images/photo.jpeg",
         " gs://private-media/users/owner/images/photo.jpeg\n",
         "/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Fprivate-media"
-        "%2Fusers%2Fo%2Fimages%2Fa.png&w=640",
+        + "%2Fusers%2Fo%2Fimages%2Fa.png&w=640",
         "https://platform.example/_next/image?url=gs%3A%2F%2Fprivate-media"
-        "%2Fusers%2Fo%2Fimages%2Fa.png",
+        + "%2Fusers%2Fo%2Fimages%2Fa.png",
         "/api/store/submissions/media/owner/images/photo.jpeg",
         "/api/store/submissions/media/owner/images/photo.txt",
         "/api/store/submissions/media/owner/images/a/b.png",

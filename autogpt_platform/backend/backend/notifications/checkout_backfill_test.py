@@ -13,6 +13,7 @@ from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 OPENED = int(datetime(2026, 7, 15, 9, 0, tzinfo=UTC).timestamp())
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
 
 
 def _opener(email="sam@acme.com", subscriptions=None, **kwargs):
@@ -24,6 +25,8 @@ def _opener(email="sam@acme.com", subscriptions=None, **kwargs):
             subscriptions=subscriptions or [],
             stripe_customer_id="cus_1",
             timezone=kwargs.pop("timezone", "Asia/Kolkata"),
+            marketing_opt_out_at=kwargs.pop("opted_out_at", None),
+            excluded_country=kwargs.pop("excluded_country", None),
         ),
         opened_at=OPENED,
         signin_providers=["google"],
@@ -246,7 +249,7 @@ async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog
 ACTIVE = [Subscription(id="sub_1", status="active", start_date=OPENED)]
 
 
-async def _apply_with(monkeypatch, plan, *, held, refresh):
+async def _apply_with(monkeypatch, plan, *, held, refresh, kept_out=None):
     monkeypatch.setattr(checkout_backfill.asyncio, "sleep", AsyncMock())
     client = MagicMock(post=AsyncMock(return_value=MagicMock(status=200)))
     with (
@@ -256,7 +259,7 @@ async def _apply_with(monkeypatch, plan, *, held, refresh):
         ),
     ):
         result = await checkout_backfill.apply(
-            plan.changes, "grp_checkout", refresh=refresh
+            plan.changes, "grp_checkout", refresh=refresh, kept_out=kept_out
         )
     return result, client
 
@@ -306,6 +309,87 @@ async def test_a_failed_stripe_refresh_is_counted_and_retried_later(monkeypatch)
         plan,
         held=None,
         refresh=AsyncMock(side_effect=RuntimeError("Stripe down")),
+    )
+    assert result == (0, 1, 0)
+    client.post.assert_not_awaited()
+
+
+def _with_an_opted_out_opener() -> checkout_backfill.OpenerPlan:
+    """Held by MailerLite but outside the group, and German: every reason to
+    be written and tallied, had they not opted out."""
+    opted_out = _opener(
+        email="out@acme.com", stripe_country="DE", opted_out_at=OPTED_OUT
+    )
+    return checkout_backfill.plan(
+        [opted_out, _opener()], current={"out@acme.com": {}}, members={}
+    )
+
+
+def test_an_opted_out_opener_is_counted_but_never_planned_or_tallied():
+    plan = _with_an_opted_out_opener()
+    assert [c.opener.person.email for c in plan.changes] == ["sam@acme.com"]
+    assert plan.openers == 2
+    assert plan.opted_out == 1
+    assert plan.invalid == 0
+    assert plan.countries == {"IN": 1}
+    assert plan.exclude_de_at == 0
+    assert sum(plan.email_types.values()) == 1
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_opener_is_never_written(monkeypatch):
+    plan = _with_an_opted_out_opener()
+    result, client = await _apply_with(monkeypatch, plan, held=None, refresh=None)
+    assert result == (1, 0, 0)
+    written = [c.kwargs["json"]["email"] for c in client.post.await_args_list]
+    assert written == ["sam@acme.com"]
+
+
+@pytest.mark.parametrize(
+    "excluded",
+    [
+        _opener(email="ru@acme.com", stripe_country="RU", timezone="Europe/London"),
+        _opener(email="ir@acme.com", timezone="Asia/Tehran"),
+        _opener(email="sam@firma.ru"),
+        _opener(email="seen@acme.com", excluded_country="IR"),
+    ],
+    ids=["billing", "timezone", "email", "recorded-by-a-checkout"],
+)
+def test_an_opener_placed_in_iran_or_russia_is_counted_but_never_planned(excluded):
+    email = excluded.person.email
+    plan = checkout_backfill.plan(
+        [excluded, _opener()], current={email: {}}, members={}
+    )
+    assert [c.opener.person.email for c in plan.changes] == ["sam@acme.com"]
+    assert plan.openers == 2
+    assert plan.excluded_country == 1
+    assert plan.opted_out == 0
+    assert plan.countries == {"IN": 1}
+
+
+@pytest.mark.asyncio
+async def test_an_opener_who_may_no_longer_be_written_is_skipped(monkeypatch):
+    """The plan is old by the time a paced run reaches someone: an opt-out or
+    an Iranian or Russian checkout since then is read right before the write."""
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    kept_out = AsyncMock(return_value=True)
+    result, client = await _apply_with(
+        monkeypatch, plan, held=None, refresh=None, kept_out=kept_out
+    )
+    assert result == (0, 0, 1)
+    kept_out.assert_awaited_once_with("user-1")
+    client.post.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_account_is_retried_later_not_written(monkeypatch):
+    plan = checkout_backfill.plan([_opener()], current={}, members={})
+    result, client = await _apply_with(
+        monkeypatch,
+        plan,
+        held=None,
+        refresh=None,
+        kept_out=AsyncMock(side_effect=RuntimeError("db down")),
     )
     assert result == (0, 1, 0)
     client.post.assert_not_awaited()

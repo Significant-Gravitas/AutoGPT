@@ -375,10 +375,10 @@ async def test_issuer_mismatch_rejected_before_registration(client, oauth_mocks)
 @pytest.mark.parametrize(
     "server_url,scope_override,expected",
     [
-        ("https://mcp.customer.io/mcp", None, ["read"]),
-        ("https://MCP.CUSTOMER.IO:443/mcp/", None, ["read"]),
-        ("https://mcp-eu.customer.io/mcp", None, ["read"]),
-        ("https://mcp.customer.io/mcp", ["read", "write"], ["read", "write"]),
+        ("https://mcp.customer.io/mcp", None, ["read", "write"]),
+        ("https://MCP.CUSTOMER.IO:443/mcp/", None, ["read", "write"]),
+        ("https://mcp-eu.customer.io/mcp", None, ["read", "write"]),
+        ("https://mcp.customer.io/mcp", ["read"], ["read"]),
         ("https://mcp.customer.io/mcp", [], []),
         ("https://mcp.craft.do/my/mcp", None, []),
         ("https://unknown.example.com/mcp", None, ["discovered"]),
