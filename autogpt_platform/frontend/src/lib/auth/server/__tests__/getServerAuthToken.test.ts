@@ -1,3 +1,4 @@
+import { APIError } from "better-auth/api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const getTokenMock = vi.fn();
@@ -116,17 +117,46 @@ describe("getServerAuthToken", () => {
     expect(token).toBeNull();
   });
 
-  it("returns null instead of throwing when the token mint fails", async () => {
+  it("returns null when Better Auth rejects the session", async () => {
     cookiesMock.mockResolvedValue(
       cookieStore([
-        { name: "better-auth.session_token", value: "session-error" },
+        { name: "better-auth.session_token", value: "session-expired" },
       ]),
     );
-    getTokenMock.mockRejectedValue(new Error("jwks unavailable"));
+    getTokenMock.mockRejectedValue(
+      APIError.from("UNAUTHORIZED", {
+        message: "Unauthorized",
+        code: "UNAUTHORIZED",
+      }),
+    );
     const { getServerAuthToken } = await importModule();
 
     const token = await getServerAuthToken();
 
     expect(token).toBeNull();
+  });
+
+  it("throws a retryable 503 when a live session's token cannot be minted", async () => {
+    // What the appliance logged when its frontend role ran out of
+    // connections: the signing-key read failed after the session checked out.
+    // Returning null sent the request to the backend without a token.
+    cookiesMock.mockResolvedValue(
+      cookieStore([
+        { name: "better-auth.session_token", value: "session-error" },
+      ]),
+    );
+    getTokenMock.mockRejectedValue(
+      Object.assign(
+        new Error('too many connections for role "autogpt_frontend"'),
+        { code: "53300" },
+      ),
+    );
+    const { getServerAuthToken } = await importModule();
+
+    await expect(getServerAuthToken()).rejects.toMatchObject({
+      name: "AuthTokenUnavailableError",
+      status: 503,
+      response: { code: "auth_token_unavailable" },
+    });
   });
 });
