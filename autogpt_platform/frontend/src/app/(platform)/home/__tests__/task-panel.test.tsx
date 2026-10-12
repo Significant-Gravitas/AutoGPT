@@ -252,6 +252,71 @@ describe("task panel", () => {
     expect(await within(dialog).findByText("chat host")).toBeDefined();
   });
 
+  test("a not-started card with a greeting shows the chat and can start", async () => {
+    const starts = captureBodies<Record<string, unknown>>();
+    const greeted = { ...DRAFT, has_messages: true };
+    const started = { ...greeted, started: true, board_column: "in_progress" };
+    serveBoard(board(greeted), board(started));
+    server.use(
+      getPostV2StartSessionMockHandler(async ({ request }) => {
+        await starts.push(request);
+        return started;
+      }),
+    );
+    renderPanel();
+
+    const dialog = await screen.findByRole("dialog", { name: "Write PRD" });
+    expect(within(dialog).getByText("chat host")).toBeDefined();
+    expect(
+      within(dialog).queryByRole("textbox", { name: "First message" }),
+    ).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Start" }),
+    );
+
+    await waitFor(() => expect(starts.bodies).toHaveLength(1));
+    expect(starts.bodies[0]).toEqual({ message: "Write PRD" });
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByRole("button", { name: "Start" }),
+      ).toBeNull(),
+    );
+    expect(within(dialog).getByText("chat host")).toBeDefined();
+  });
+
+  test("a start over the usage limit says why", async () => {
+    serveBoard(board(DRAFT));
+    server.use(
+      http.post("*/api/chat/sessions/:sessionId/start", () =>
+        HttpResponse.json(
+          {
+            detail: {
+              kind: "usage_limit",
+              message: "You've reached your daily limit",
+            },
+          },
+          { status: 429 },
+        ),
+      ),
+    );
+    renderPanel();
+
+    const dialog = await screen.findByRole("dialog", { name: "Write PRD" });
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Start" }),
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "You've reached your daily limit" }),
+      ),
+    );
+    expect(
+      within(dialog).getByRole("textbox", { name: "First message" }),
+    ).toBeDefined();
+  });
+
   test("a board poll during a move does not snap the card back", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
@@ -386,6 +451,36 @@ describe("task panel", () => {
       ),
     );
     expect(cardIn("In progress", "Research competitors")).not.toBeNull();
+  });
+
+  test("a move refused by the paywall says why", async () => {
+    serveBoard(board(DRAFT));
+    server.use(
+      http.patch("*/api/chat/sessions/:sessionId/board", () =>
+        HttpResponse.json(
+          { detail: "A subscription is required to use this feature." },
+          { status: 402 },
+        ),
+      ),
+    );
+    renderPanel();
+
+    const dialog = await screen.findByRole("dialog", { name: "Write PRD" });
+    await userEvent.click(
+      within(dialog).getByRole("combobox", { name: "Column" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("option", { name: "In progress" }),
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "A subscription is required to use this feature.",
+        }),
+      ),
+    );
+    expect(cardIn("Backlog", "Write PRD")).not.toBeNull();
   });
 
   test("assigns a draft card to an expert", async () => {

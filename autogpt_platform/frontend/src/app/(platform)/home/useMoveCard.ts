@@ -4,6 +4,7 @@ import {
   BOARD_MOVE_MUTATION_KEY,
   moveCard,
   moveCardToTop,
+  refusalReason,
 } from "./board-helpers";
 import { type BoardSnapshot, useBoardCache } from "./useBoardCache";
 
@@ -33,9 +34,12 @@ export function useMoveCard() {
           toast({ title: "Started" });
         }
       },
-      onError: (_error, _variables, snapshot) => {
+      onError: (error, _variables, snapshot) => {
         rollback(snapshot);
-        toast({ title: "Couldn't move the task", variant: "destructive" });
+        toast({
+          title: refusalReason(error) ?? "Couldn't move the task",
+          variant: "destructive",
+        });
       },
       onSettled: () => settleBoard(),
     },

@@ -1,10 +1,14 @@
+import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
 import { usePostV2CreateSession } from "@/app/api/__generated__/endpoints/chat/chat";
-import { useToast } from "@/components/molecules/Toast/use-toast";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { isKey } from "@/lib/keyboard";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
-import { useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { BOARD_QUERY_KEY, parseMention } from "../../board-helpers";
+import {
+  BOARD_CREATE_MUTATION_KEY,
+  parseMention,
+  refusalReason,
+} from "../../board-helpers";
+import { useBoardCache } from "../../useBoardCache";
 
 interface Args {
   columnKey: string;
@@ -17,20 +21,23 @@ export function useAddTaskCard({ columnKey, autoExpand }: Args) {
   const [expertId, setExpertId] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
-  const isExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { isExpertsEnabled } = useExpertMap();
+  const { settleBoard } = useBoardCache();
 
   const { mutate: createTask, isPending } = usePostV2CreateSession({
     mutation: {
+      mutationKey: BOARD_CREATE_MUTATION_KEY,
       onSuccess: () => {
         setTitle("");
         setExpertId(null);
-        void queryClient.invalidateQueries({ queryKey: BOARD_QUERY_KEY });
       },
-      onError: () => {
-        toast({ title: "Couldn't add the task", variant: "destructive" });
+      onError: (error) => {
+        toast({
+          title: refusalReason(error) ?? "Couldn't add the task",
+          variant: "destructive",
+        });
       },
+      onSettled: () => settleBoard(),
     },
   });
 

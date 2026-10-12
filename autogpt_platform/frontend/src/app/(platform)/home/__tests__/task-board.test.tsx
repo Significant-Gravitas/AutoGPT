@@ -20,6 +20,18 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import { TaskBoardPage } from "../TaskBoardPage";
 
 const flags = vi.hoisted(() => ({ hireExperts: true }));
+const toastSpy = vi.hoisted(() => vi.fn());
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: Parameters<typeof actual.toast>) => toastSpy(...args),
+  };
+});
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -139,6 +151,7 @@ beforeEach(() => {
   flags.hireExperts = true;
   boardRequests = [];
   createBodies = [];
+  toastSpy.mockReset();
   server.use(
     getListExpertIdentitiesMockHandler([PRIYA]),
     getPostV2CreateSessionMockHandler(async ({ request }) => {
@@ -238,6 +251,39 @@ describe("task board", () => {
       title: "Call the printer",
       board_column: "in_progress",
     });
+  });
+
+  test("a task refused over the usage limit says why", async () => {
+    serveBoard(BOARD);
+    server.use(
+      http.post("*/api/chat/sessions", () =>
+        HttpResponse.json(
+          {
+            detail: {
+              kind: "usage_limit",
+              message: "You've reached your daily limit",
+            },
+          },
+          { status: 429 },
+        ),
+      ),
+    );
+    renderBoard();
+
+    const inProgress = await findColumn("In progress");
+    await userEvent.click(
+      within(inProgress).getByRole("button", { name: "Add a task…" }),
+    );
+    await userEvent.type(
+      within(inProgress).getByRole("textbox", { name: "New task" }),
+      "Call the printer{Enter}",
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "You've reached your daily limit" }),
+      ),
+    );
   });
 
   test("does not add a blank task", async () => {

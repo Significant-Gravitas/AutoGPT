@@ -15,6 +15,7 @@ import {
   type Card,
   cardColumnKey,
   patchCard,
+  refusalReason,
 } from "../../board-helpers";
 import { useBoardCache } from "../../useBoardCache";
 import { useMoveCard } from "../../useMoveCard";
@@ -88,7 +89,10 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
           setStartedLocally(true);
           return;
         }
-        toast({ title: "Couldn't start the task", variant: "destructive" });
+        toast({
+          title: refusalReason(error) ?? "Couldn't start the task",
+          variant: "destructive",
+        });
       },
       onSettled: () => {
         void settleBoard();
@@ -99,6 +103,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     },
   });
 
+  const isUnstarted = !!card && !card.started && !startedLocally;
   const columnKey = card
     ? cardColumnKey(card, new Set(columns.map((column) => column.key)))
     : null;
@@ -121,6 +126,10 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     startTask({ sessionId, data: { message } });
   }
 
+  function handleStartWithTitle() {
+    if (card?.title) handleStart(card.title);
+  }
+
   // Radix closes the sheet from a document-level capture listener, so
   // Escape meant for an input (a mention menu, an IME, the title editor)
   // would close the whole panel.
@@ -139,7 +148,9 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
       renamedTitle ??
       (card ? card.title || "Untitled task" : sessionTitle || "Untitled chat"),
     columnKey,
-    isDraft: !!card && !card.started && !startedLocally,
+    // A kickoff greeting is already in the chat, so show it, not a draft.
+    isDraft: isUnstarted && !card?.has_messages,
+    canStart: isUnstarted && !!card?.has_messages && !!card.title,
     isStarting,
     showFiles,
     toggleFiles: () => setShowFiles((value) => !value),
@@ -147,6 +158,7 @@ export function useTaskPanel({ card, sessionId, columns }: Args) {
     handleAssign,
     handleMove,
     handleStart,
+    handleStartWithTitle,
     handleEscapeKeyDown,
   };
 }

@@ -9,6 +9,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import dynamic from "next/dynamic";
 import type { Card } from "../../board-helpers";
 import { DraftStart } from "./components/DraftStart/DraftStart";
+import { StartBar } from "./components/StartBar/StartBar";
 import { TaskPanelHeader } from "./components/TaskPanelHeader/TaskPanelHeader";
 import { useTaskPanel } from "./useTaskPanel";
 
@@ -41,6 +42,7 @@ export function TaskPanel({
     title,
     columnKey,
     isDraft,
+    canStart,
     isStarting,
     showFiles,
     toggleFiles,
@@ -48,6 +50,7 @@ export function TaskPanel({
     handleAssign,
     handleMove,
     handleStart,
+    handleStartWithTitle,
     handleEscapeKeyDown,
   } = useTaskPanel({ card, sessionId, columns });
 
@@ -61,7 +64,7 @@ export function TaskPanel({
         side="right"
         aria-describedby={undefined}
         onEscapeKeyDown={handleEscapeKeyDown}
-        className="flex w-1/2 min-w-[560px] max-w-none flex-col gap-0 p-0 sm:max-w-none"
+        className="flex w-1/2 min-w-[560px] max-w-none flex-col gap-0 p-0 max-md:w-full max-md:min-w-0 sm:max-w-none"
       >
         <TaskPanelHeader
           sessionId={sessionId}
@@ -90,6 +93,9 @@ export function TaskPanel({
               isStarting={isStarting}
               onStart={handleStart}
             />
+          )}
+          {!showFiles && canStart && (
+            <StartBar isStarting={isStarting} onStart={handleStartWithTitle} />
           )}
           {!showFiles && !isDraft && (
             <CopilotChatHost
