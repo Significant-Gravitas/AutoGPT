@@ -754,9 +754,7 @@ async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
     taken for one that landed."""
     mocker.patch.object(apply_mod, "LOCK_CHECK_TIMEOUT_SECONDS", 0.05)
     drain = mocker.patch.object(apply_mod, "_drain_ingestion", AsyncMock())
-    demote = mocker.patch.object(
-        apply_mod, "_filter_demotions_to_known_facts", AsyncMock()
-    )
+    demote = mocker.patch.object(apply_mod, "apply_demotions", AsyncMock())
 
     async def never_answers(_ttl_seconds: int) -> bool:
         await asyncio.Event().wait()
