@@ -128,3 +128,26 @@ async def _collect(block: AgentExecutorBlock) -> list[tuple[str, object]]:
             logger=MagicMock(),
         )
     ]
+
+
+class _BrokenBus:
+    async def listen(self, on_subscribed=None, **_):
+        raise RuntimeError("listener bug")
+        yield  # pragma: no cover — unreachable
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_listener_error_fails_the_block_instead_of_hiding():
+    """Only a lost stream is retried; anything else must surface."""
+    with (
+        patch(
+            "backend.executor.utils.get_async_execution_event_bus",
+            return_value=_BrokenBus(),
+        ),
+        patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=MagicMock(),
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="listener bug"):
+            await asyncio.wait_for(_collect(AgentExecutorBlock()), timeout=5)

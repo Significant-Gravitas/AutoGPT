@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Optional
 
 from backend.blocks._base import (
@@ -174,7 +175,7 @@ class AgentExecutorBlock(Block):
         # This block has no execution timeout, so the sub-agent's completion
         # must not hinge on a single pub/sub message: whenever the stream is
         # lost or goes quiet, the database says where the sub-agent is.
-        events: asyncio.Queue["ExecutionEvent | None"] = asyncio.Queue()
+        events: asyncio.Queue["ExecutionEvent | Exception | None"] = asyncio.Queue()
         reader = asyncio.create_task(
             self._read_events(events, user_id, graph_id, graph_exec_id, log_id, logger)
         )
@@ -186,6 +187,9 @@ class AgentExecutorBlock(Block):
                     )
                 except asyncio.TimeoutError:
                     event = None
+
+                if isinstance(event, Exception):
+                    raise event
 
                 if event is None:
                     outputs, finished = await self._catch_up(
@@ -219,10 +223,12 @@ class AgentExecutorBlock(Block):
                     yield output
         finally:
             reader.cancel()
+            with suppress(asyncio.CancelledError):
+                await reader
 
     async def _read_events(
         self,
-        events: asyncio.Queue["ExecutionEvent | None"],
+        events: asyncio.Queue["ExecutionEvent | Exception | None"],
         user_id: str,
         graph_id: str,
         graph_exec_id: str,
@@ -230,7 +236,8 @@ class AgentExecutorBlock(Block):
         logger: "LogMetadata",
     ) -> None:
         """Feed the sub-agent's events into ``events``, resubscribing whenever
-        the stream is lost; ``None`` marks a gap to catch up on."""
+        the stream is lost; ``None`` marks a gap to catch up on. Any other
+        error is handed to ``_run`` to raise rather than retried."""
         from backend.executor import utils as execution_utils
 
         event_bus = execution_utils.get_async_execution_event_bus()
@@ -247,6 +254,9 @@ class AgentExecutorBlock(Block):
                     events.put_nowait(event)
             except EventStreamLostError as e:
                 logger.warning(f"Execution {log_id} lost its event stream: {e}")
+            except Exception as e:
+                events.put_nowait(e)
+                return
             await asyncio.sleep(_RESUBSCRIBE_DELAY_S)
 
     async def _catch_up(
