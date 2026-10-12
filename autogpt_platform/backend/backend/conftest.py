@@ -11,6 +11,7 @@ import pytest_asyncio
 from dotenv import load_dotenv
 
 from backend.data import subscription_lookup_cache
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.util.logging import configure_logging
 
 load_dotenv()
@@ -80,7 +81,9 @@ def isolated_subscription_lookup_cache(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         subscription_lookup_cache,
         "_unconfirmed",
-        subscription_lookup_cache._UnconfirmedInvalidations(),
+        UnconfirmedInvalidations(
+            lifetime=subscription_lookup_cache.SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1
+        ),
     )
 
 

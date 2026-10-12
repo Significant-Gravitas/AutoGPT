@@ -32,6 +32,7 @@ import stripe
 from pydantic import BaseModel, ValidationError
 
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,6 @@ _REDIS_BACKOFF_SECONDS = 5.0
 # long another worker can show the old state after a change in that time.
 _FALLBACK_TTL_SECONDS = 5.0
 _FALLBACK_MAXSIZE = 2048
-_UNCONFIRMED_MAXSIZE = 2048
 _VERSION_TTL_SECONDS = 24 * 60 * 60
 KEY_PREFIX = "active_subscription"
 # The in-flight key for reads while Redis can't be used; tokens are hex.
@@ -112,51 +112,10 @@ _in_flight: dict[
 _fallback: dict[str, tuple[float, ActiveSubscription | None]] = {}
 
 
-class _UnconfirmedInvalidations:
-    """Customers whose invalidation this process couldn't record in Redis.
-
-    A write already on its way when the change landed is stored under the
-    old, unchanged token, so until any such entry has expired this process
-    reads the customer as if Redis were out. A mark is never dropped while it
-    is live: with no room left, every customer is covered until the latest
-    mark would have expired.
-    """
-
-    def __init__(self) -> None:
-        self.until: dict[str, float] = {}
-        self.everyone_until = 0.0
-
-    def add(self, customer_id: str) -> None:
-        now = time.monotonic()
-        # Outlives any entry written now: a write in flight finishes within
-        # the Redis deadline, and entries live for the lookup TTL.
-        until = now + SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1
-        self._purge(now)
-        # Re-inserted at the end, so insertion order stays expiry order.
-        self.until.pop(customer_id, None)
-        if len(self.until) >= _UNCONFIRMED_MAXSIZE:
-            self.everyone_until = max(self.everyone_until, until)
-            return
-        self.until[customer_id] = until
-
-    def clear(self, customer_id: str) -> None:
-        self.until.pop(customer_id, None)
-
-    def covers(self, customer_id: str) -> bool:
-        now = time.monotonic()
-        if now < self.everyone_until:
-            return True
-        until = self.until.get(customer_id)
-        return until is not None and until > now
-
-    def _purge(self, now: float) -> None:
-        for customer_id, until in list(self.until.items()):
-            if until > now:
-                break
-            del self.until[customer_id]
-
-
-_unconfirmed = _UnconfirmedInvalidations()
+# Customers whose invalidation this process couldn't record in Redis. A mark
+# outlives any entry written meanwhile: a write in flight finishes within the
+# Redis deadline, and entries live for the lookup TTL.
+_unconfirmed = UnconfirmedInvalidations(lifetime=SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1)
 
 
 def summarize_subscription(
@@ -213,7 +172,7 @@ async def invalidate_active_subscription_cache(customer_id: str) -> None:
         )
     except _RedisUnavailable:
         # The old token still vouches for entries written under it.
-        _unconfirmed.add(customer_id)
+        _unconfirmed.add(customer_id, time.monotonic())
         logger.warning(
             f"Could not invalidate the subscription lookup for {customer_id};"
             f" other workers can show it stale for {SUBSCRIPTION_LOOKUP_TTL_SECONDS}s"
@@ -300,7 +259,7 @@ async def _fetch_and_keep(customer_id: str, fetch: Fetch) -> ActiveSubscription 
 
 
 def _is_unconfirmed(customer_id: str) -> bool:
-    return _unconfirmed.covers(customer_id)
+    return _unconfirmed.covers(customer_id, time.monotonic())
 
 
 async def _shared(

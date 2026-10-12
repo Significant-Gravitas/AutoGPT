@@ -16,6 +16,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from backend.data import subscription_lookup_cache as cache
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 
 SEEDS = range(300)
 STEPS = 80
@@ -133,9 +134,14 @@ class Run:
         monkeypatch.setattr(cache, "get_redis_async", get_redis)
         monkeypatch.setattr(cache, "_REDIS_DEADLINE_SECONDS", 3600)
         monkeypatch.setattr(cache, "_FALLBACK_MAXSIZE", 1)
-        monkeypatch.setattr(cache, "_UNCONFIRMED_MAXSIZE", 1)
         monkeypatch.setattr(cache, "_backoff", cache._Backoff())
-        monkeypatch.setattr(cache, "_unconfirmed", cache._UnconfirmedInvalidations())
+        monkeypatch.setattr(
+            cache,
+            "_unconfirmed",
+            UnconfirmedInvalidations(
+                lifetime=cache.SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1, maxsize=1
+            ),
+        )
         monkeypatch.setattr(cache, "_fallback", {})
         monkeypatch.setattr(cache, "_in_flight", {})
 

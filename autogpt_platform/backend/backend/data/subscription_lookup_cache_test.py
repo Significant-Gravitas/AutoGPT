@@ -27,6 +27,7 @@ from backend.data import credit as worker_a
 from backend.data import subscription_lookup_cache as cache_a
 from backend.data import subscription_trial_conversion as conversion
 from backend.data.redis_client import get_redis_async
+from backend.data.subscription_lookup_unconfirmed import UnconfirmedInvalidations
 from backend.data.subscription_trial import TrialState
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
@@ -588,8 +589,13 @@ async def test_a_renewed_mark_outlives_expired_ones(redis_down, monkeypatch):
     """Expired marks must not crowd out a live one, whatever their order."""
     clock = _Clock()
     monkeypatch.setattr(cache_a, "time", clock)
-    monkeypatch.setattr(cache_a, "_UNCONFIRMED_MAXSIZE", 4, raising=False)
-    monkeypatch.setattr(cache_a, "_FALLBACK_MAXSIZE", 4)
+    monkeypatch.setattr(
+        cache_a,
+        "_unconfirmed",
+        UnconfirmedInvalidations(
+            lifetime=cache_a.SUBSCRIPTION_LOOKUP_TTL_SECONDS + 1, maxsize=4
+        ),
+    )
     for customer in ("cus_changed", "cus_1", "cus_2", "cus_3"):
         await cache_a.invalidate_active_subscription_cache(customer)
     clock.now += 60
