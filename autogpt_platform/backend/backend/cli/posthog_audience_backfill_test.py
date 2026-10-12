@@ -35,18 +35,6 @@ SESSIONS = [
 ]
 
 
-# The root conftest spins a full test server for every test via an autouse
-# session fixture; these never touch it.
-@pytest.fixture(scope="session")
-def server():
-    yield None
-
-
-@pytest.fixture(scope="session", autouse=True)
-def graph_cleanup():
-    yield
-
-
 @pytest.fixture
 def wired(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """Stripe, the database and PostHog as the run sees them; returns where
