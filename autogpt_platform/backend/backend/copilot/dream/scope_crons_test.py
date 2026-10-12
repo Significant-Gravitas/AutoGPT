@@ -51,6 +51,23 @@ async def test_the_gate_follows_the_row_state(env):
 
 
 @pytest.mark.asyncio
+async def test_a_cron_that_outlived_its_scopes_pause_is_removed_when_it_fires(
+    env, monkeypatch
+):
+    """A pause whose removal failed left the crons behind a PAUSED row: the
+    first one to fire is skipped and takes the scope's crons down."""
+    await registry.ensure_scope_scheduled(EXPERT)
+    monkeypatch.setattr(registry, "remove_scope_jobs", AsyncMock(return_value=False))
+    assert not await registry.pause_scope(EXPERT)
+    assert env.scheduler.jobs  # the pause's removal failed
+
+    assert not await scope_crons.memory_scope_may_fire(EXPERT, _status("active"))
+
+    assert env.scheduler.jobs == {}
+    assert env.db.rows[EXPERT.scope_key].state.value == "PAUSED"
+
+
+@pytest.mark.asyncio
 async def test_a_legacy_account_without_row_still_fires(env):
     status = _status("active")
 
