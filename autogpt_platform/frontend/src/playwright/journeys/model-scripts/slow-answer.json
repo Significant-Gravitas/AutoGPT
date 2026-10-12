@@ -1,0 +1,15 @@
+{
+  "description": "One answer streamed a word at a time over about five seconds, so a journey can lose the connection mid-reply. copilot-reconnect-journey.spec.ts follows it.",
+  "title": "Slow answer",
+  "turns": [
+    {
+      "text": "Here is a long answer that arrives slowly, one word at a time, so that you can drop the connection halfway through and check that every word still reaches the chat exactly once after the connection comes back.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 48,
+        "cache_read_input_tokens": 24000
+      },
+      "stream": { "chunk_words": 1, "delay_ms": 120 }
+    }
+  ]
+}

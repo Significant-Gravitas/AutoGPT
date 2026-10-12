@@ -21,6 +21,7 @@ import { LoadingSelectedContent } from "../LoadingSelectedContent";
 import { RunDetailCard } from "../RunDetailCard/RunDetailCard";
 import { RunDetailHeader } from "../RunDetailHeader/RunDetailHeader";
 import { SelectedViewLayout } from "../SelectedViewLayout";
+import { RunFailures } from "./components/RunFailures/RunFailures";
 import { RunOutputs } from "./components/RunOutputs";
 import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
@@ -102,6 +103,8 @@ export function SelectedRunView({
                   triggerSetupInfo={agent.trigger_setup_info}
                 />
               )}
+
+            {run ? <RunFailures run={run} /> : null}
 
             <ScrollableTabs
               defaultValue={withReviews ? "reviews" : "output"}
