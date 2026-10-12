@@ -934,7 +934,8 @@ class TestEphemeralEventTypesConstant:
         of the chat: the row's tool events count, its progress phases do not.
 
         Not relaunching keeps only a row that closed. A compaction cut short
-        never closes or persists its row (the next test).
+        never closes or persists its row: see
+        ``test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished``.
 
         A pre-query compaction row never reaches this count: the retry loop
         yields it outside the attempt.
