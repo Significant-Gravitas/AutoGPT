@@ -1,20 +1,7 @@
-"""The CLI's Anthropic request, read into the form both translators share.
+"""Read CLI Anthropic requests into a shared neutral form.
 
-Three of the CLI's habits are settled here, once:
-
-- The first system block is ``x-anthropic-billing-header: cc_version=...``.
-  It is Anthropic's billing metadata, not an instruction, and its suffix
-  changes whenever the first user message does (after every compaction), so
-  forwarding it would invalidate every upstream prefix cache at the very
-  first token. It is dropped.
-- For a model id it does not recognise, the CLI puts its environment block,
-  hook output and reminders in ``role: "system"`` messages inside
-  ``messages``. Those become ``<system-reminder>`` text in a user turn, the
-  form Claude models get the same notes in.
-- Consecutive messages of one role are merged, as Anthropic's API does, so a
-  reminder joins the user turn it follows and never splits a tool call from
-  its result.
-"""
+Drop billing metadata to preserve prefix caches; turn inline system notes into
+user reminders and merge adjacent roles without splitting tool results."""
 
 import json
 from collections.abc import Mapping
@@ -177,10 +164,45 @@ def _image(source: object) -> TextPart | ImagePart:
         data, media_type = source.get("data"), source.get("media_type")
         if source.get("type") == "base64" and isinstance(data, str):
             return ImagePart(url=f"data:{media_type or 'image/png'};base64,{data}")
-        url = source.get("url")
-        if source.get("type") == "url" and isinstance(url, str):
-            return ImagePart(url=url)
     return TextPart(text="[image omitted: its source cannot be forwarded]")
+
+
+def inline_images(raw: object) -> object:
+    """Rewrite image content, preserving tool inputs and all other body fields."""
+    if not isinstance(raw, list):
+        return raw
+    return [
+        (
+            {**message, "content": _inline_content(message["content"])}
+            if isinstance(message, dict) and "content" in message
+            else message
+        )
+        for message in raw
+    ]
+
+
+def _inline_content(content: object) -> object:
+    if not isinstance(content, list):
+        return content
+    return [_inline_block(block) for block in content]
+
+
+def _inline_block(block: object) -> object:
+    if not isinstance(block, dict):
+        return block
+    source = block.get("source")
+    if (
+        block.get("type") == "image"
+        and isinstance(source, dict)
+        and source.get("type") == "url"
+    ):
+        return {
+            "type": "text",
+            "text": "[image omitted: its source cannot be forwarded]",
+        }
+    if block.get("type") == "tool_result" and "content" in block:
+        return {**block, "content": _inline_content(block["content"])}
+    return block
 
 
 def _document(source: object) -> TextPart | DocumentPart:

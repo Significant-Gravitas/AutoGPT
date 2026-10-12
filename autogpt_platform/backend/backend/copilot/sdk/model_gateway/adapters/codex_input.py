@@ -1,17 +1,13 @@
-"""The CLI's conversation as a Codex Responses request body.
+"""Full-history Responses input with authenticated reasoning and store:false."""
 
-The rules are the ones CLIProxyAPI's Claude-to-Codex translator runs against
-the same backend (re-implemented here, not copied): ``store: false`` with the
-full history every call, encrypted reasoning back as ``reasoning`` items,
-tool rounds as ``function_call``/``function_call_output`` pairs, images as
-data-URL ``input_image`` parts. ``max_tokens``, ``temperature`` and stop
-sequences are not sent: the Codex backend rejects them.
-"""
-
-from backend.copilot.sdk.model_gateway.adapters.codex_signature import unseal
-from backend.copilot.sdk.model_gateway.adapters.openai_request import (
+from backend.copilot.sdk.model_gateway.adapters.codex_signature import (
+    ReasoningIdentity,
+    unseal,
+)
+from backend.copilot.sdk.model_gateway.adapters.openai_tools import (
     arguments_json,
-    tool_parameters,
+    history_names,
+    tool_fields,
 )
 from backend.copilot.sdk.model_gateway.neutral import (
     DocumentPart,
@@ -33,7 +29,7 @@ from backend.copilot.sdk.model_gateway.tool_names import (
 
 
 def responses_payload(
-    request: NeutralRequest, route: GatewayRoute, tag: str
+    request: NeutralRequest, route: GatewayRoute, tag: ReasoningIdentity
 ) -> tuple[Event, dict[str, str]]:
     """The Responses body, and upstream tool name -> CLI tool name."""
     reasoning: Event = {"summary": "auto"}
@@ -53,14 +49,11 @@ def responses_payload(
         # One chat keeps one key, so the backend can route its calls to the
         # same prompt cache.
         payload["prompt_cache_key"] = request.session_id
-    payload.update(_tool_fields(request))
-    names = [tool.name for tool in request.tools]
-    for message in request.messages:
-        names.extend(p.name for p in message.parts if isinstance(p, ToolCallPart))
-    return payload, name_map(names)
+    payload.update(tool_fields(request, responses=True))
+    return payload, name_map(history_names(request))
 
 
-def input_items(messages: list[NeutralMessage], tag: str) -> list[Event]:
+def input_items(messages: list[NeutralMessage], tag: ReasoningIdentity) -> list[Event]:
     items: list[Event] = []
     for message in messages:
         if message.role == "user":
@@ -105,7 +98,7 @@ def _function_call_output(part: ToolResultPart) -> Event:
     }
 
 
-def _assistant_items(message: NeutralMessage, tag: str) -> list[Event]:
+def _assistant_items(message: NeutralMessage, tag: ReasoningIdentity) -> list[Event]:
     items: list[Event] = []
     text: list[str] = []
 
@@ -139,36 +132,3 @@ def _function_call(part: ToolCallPart) -> Event:
         "name": upstream_tool_name(part.name),
         "arguments": arguments_json(part.arguments),
     }
-
-
-def _tool_fields(request: NeutralRequest) -> Event:
-    if not request.tools:
-        return {}
-    fields: Event = {
-        "tools": [
-            {
-                "type": "function",
-                "name": upstream_tool_name(tool.name),
-                "description": tool.description,
-                "parameters": tool_parameters(tool.parameters),
-                "strict": False,
-            }
-            for tool in request.tools
-        ],
-        "tool_choice": "auto",
-    }
-    choice = request.tool_choice
-    if choice is None:
-        return fields
-    if choice.mode == "any":
-        fields["tool_choice"] = "required"
-    elif choice.mode == "none":
-        fields["tool_choice"] = "none"
-    elif choice.mode == "tool" and choice.name:
-        fields["tool_choice"] = {
-            "type": "function",
-            "name": upstream_tool_name(choice.name),
-        }
-    if not choice.parallel:
-        fields["parallel_tool_calls"] = False
-    return fields

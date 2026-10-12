@@ -96,6 +96,7 @@ class ScriptedUpstream:
             tool=_tool_name(tools),
             n=len(self.seen),
             prompt_tokens=self.script.input_tokens(size),
+            fully_cached=self.script.fully_cached,
         )
         return await _stream(request, sse(chunks, named=False) + b"data: [DONE]\n\n")
 
@@ -115,6 +116,7 @@ class ScriptedUpstream:
             input_tokens=self.script.input_tokens(size),
             encrypted=encrypted,
             summarize=self.script.reasoning_summary,
+            fully_cached=self.script.fully_cached,
         )
         return await _stream(request, sse(events))
 

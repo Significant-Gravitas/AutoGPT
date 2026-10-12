@@ -36,8 +36,7 @@ _WINDOW, _OUTPUT = 272_000, 8_000
 @pytest.fixture
 def cli(monkeypatch: pytest.MonkeyPatch) -> Path:
     path = _resolve_cli_path()
-    if path is None:
-        pytest.skip("No Claude Code CLI binary bundled or configured")
+    assert path is not None, "The bundled or configured Claude Code CLI is required"
     for key in [k for k in os.environ if k.startswith(("CLAUDE", "ANTHROPIC"))]:
         monkeypatch.delenv(key)
     return path

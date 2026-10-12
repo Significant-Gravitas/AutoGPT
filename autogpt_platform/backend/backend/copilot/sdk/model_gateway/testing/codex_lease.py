@@ -3,6 +3,7 @@
 import base64
 import json
 
+import httpx
 from openai import AsyncOpenAI
 from pydantic import SecretStr
 
@@ -64,6 +65,8 @@ def codex_route(
     )
 
 
-def fake_backend_client(base_url: str) -> AsyncOpenAI:
+def fake_backend_client(base_url: str) -> httpx.AsyncClient:
     """A client for a fake Responses endpoint; the caller closes it."""
-    return AsyncOpenAI(api_key="codex-test", base_url=base_url, max_retries=0)
+    return httpx.AsyncClient(
+        base_url=base_url, trust_env=False, follow_redirects=False, timeout=15
+    )

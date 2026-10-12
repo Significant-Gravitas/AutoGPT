@@ -1,49 +1,22 @@
-"""For the ChatGPT Codex backend, on the connected account's own lease.
+"""Stateless Responses over HTTPX, with current lease authentication per request."""
 
-Every call sends the whole conversation as Responses ``input`` items with
-``store: false``, so ChatGPT holds no state between calls and neither does
-the gateway: system text becomes ``instructions``, user and assistant turns
-become messages with their real roles, tool rounds become ``function_call``
-and ``function_call_output`` items, images become ``input_image`` parts, and
-the model's earlier reasoning comes back from the thinking blocks' sealed
-signatures (``include: ["reasoning.encrypted_content"]``).
-
-The endpoint, headers, account id and client come from
-``backend.integrations.codex.http_client.build_client``; the model and
-effort come from the route the platform resolved. Retries are left to the
-CLI, so its own policy and the ``retry-after`` the gateway passes on decide
-when to try again.
-"""
-
-import math
-import re
-import time
 from collections.abc import AsyncGenerator, Mapping
-from typing import Any
 
 import httpx
-from openai import APIConnectionError, APIStatusError, APITimeoutError, AsyncOpenAI
 
-from backend.copilot.provider_failure import (
-    ProviderFailure,
-    ProviderFailureKind,
-    classify,
-)
+from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.sdk.model_gateway.adapters.codex_input import responses_payload
+from backend.copilot.sdk.model_gateway.adapters.codex_quota import rate_limited
 from backend.copilot.sdk.model_gateway.adapters.codex_signature import reasoning_tag
 from backend.copilot.sdk.model_gateway.adapters.codex_stream import CodexStreamMapper
 from backend.copilot.sdk.model_gateway.errors import (
     GatewayError,
     UpstreamError,
-    error_for_status,
-    error_from_payload,
+    parse_upstream_error,
     redact,
-    retry_headers,
-    timed_out,
-    unreachable,
 )
 from backend.copilot.sdk.model_gateway.normalize import normalize_request
-from backend.copilot.sdk.model_gateway.overflow import detect_overflow, prompt_too_long
+from backend.copilot.sdk.model_gateway.overflow import upstream_failure
 from backend.copilot.sdk.model_gateway.route import GatewayRoute
 from backend.copilot.sdk.model_gateway.sse import read_frames
 from backend.copilot.sdk.model_gateway.stream import (
@@ -53,17 +26,23 @@ from backend.copilot.sdk.model_gateway.stream import (
     closing_items,
     collect_message,
 )
-from backend.copilot.sdk.model_gateway.usage import estimate_tokens
+from backend.copilot.sdk.model_gateway.upstream_http import (
+    build_http_client,
+    post_json,
+    read_error_body,
+    response_lines,
+)
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage, estimate_tokens
 from backend.integrations.codex.http_client import (
+    API_BASE,
     account_id_for,
-    build_client,
+    inference_headers,
     parse_rate_limits,
 )
 from backend.integrations.codex.models import CodexRateLimitsSnapshot
 from backend.integrations.codex.transport import codex_credentials
 
 _USAGE_LIMITS = frozenset({"usage_limit_reached", "usage_not_included"})
-_TRY_AGAIN = re.compile(r"(?i)try again in (\d+(?:\.\d+)?)\s*(ms|s)\b")
 _STREAM_FAILURE_STATUS = {
     "rate_limit_exceeded": 429,
     "usage_limit_reached": 429,
@@ -71,100 +50,103 @@ _STREAM_FAILURE_STATUS = {
     "invalid_prompt": 400,
     "server_error": 500,
 }
+_FAILURE_KINDS = {
+    401: ProviderFailureKind.AUTH_EXPIRED,
+    403: ProviderFailureKind.POLICY_DENIED,
+    404: ProviderFailureKind.MODEL_UNAVAILABLE,
+    429: ProviderFailureKind.USAGE_LIMIT,
+}
 
 
 class CodexResponses:
     def __init__(
-        self, route: GatewayRoute, *, client: AsyncOpenAI | None = None
+        self, route: GatewayRoute, *, client: httpx.AsyncClient | None = None
     ) -> None:
-        credential = route.credential
-        if credential.kind != "codex_lease":
+        if route.credential.kind != "codex_lease":
             raise ValueError("The Codex adapter needs the account's credential lease")
-        credentials = codex_credentials(credential.lease)
         self._route = route
-        self._credential_id = credentials.id
-        self._tag = reasoning_tag(
-            account_id_for(credentials) or credentials.id, route.model
-        )
         self._owns_client = client is None
-        self._client = client or build_client(credentials).with_options(max_retries=0)
+        self._client = client or build_http_client(route.timeout_seconds, codex=True)
+        self._url = f"{str(client.base_url).rstrip('/') if client is not None and str(client.base_url) else API_BASE}/responses"
         self.rate_limits: CodexRateLimitsSnapshot | None = None
 
     async def stream(self, body: Event) -> AsyncGenerator[StreamItem, None]:
-        request = normalize_request(body)
-        payload, names = responses_payload(request, self._route, self._tag)
-        estimate = estimate_tokens(body)
-        builder = AnthropicStreamBuilder(
-            model=self._route.model, input_estimate=estimate
+        credential = self._route.credential
+        if credential.kind != "codex_lease":
+            raise ValueError("The Codex adapter needs the account's credential lease")
+        credentials = codex_credentials(credential.lease)
+        secrets = (credentials.access_token.get_secret_value(),)
+        tag = reasoning_tag(
+            account_id_for(credentials) or credentials.id, self._route.model
         )
-        mapper = CodexStreamMapper(builder, names, self._tag)
-        # The body is built as plain JSON; the SDK only forwards it.
-        arguments: dict[str, Any] = {**payload}
-        try:
-            async with self._client.responses.with_streaming_response.create(
-                **arguments
-            ) as response:
-                self.rate_limits = parse_rate_limits(response.headers)
-                async for frame in read_frames(response.iter_lines()):
-                    event = frame.payload()
-                    if not isinstance(event, dict):
-                        continue
-                    events = mapper.feed(event)
-                    if mapper.failure is not None:
-                        raise self._reported(mapper.failure, estimate)
-                    for out in events:
-                        yield StreamItem(event=out)
-        except APIStatusError as exc:
-            raise self._refused(exc, estimate) from None
-        except (APITimeoutError, httpx.TimeoutException):
-            raise timed_out() from None
-        except (APIConnectionError, httpx.HTTPError):
-            raise unreachable() from None
+        payload, names = responses_payload(normalize_request(body), self._route, tag)
+        estimate = estimate_tokens(body)
+        mapper = CodexStreamMapper(
+            AnthropicStreamBuilder(model=self._route.model, input_estimate=estimate),
+            names,
+            tag,
+        )
+        headers = {
+            **inference_headers(credentials),
+            "authorization": f"Bearer {secrets[0]}",
+            "accept": "text/event-stream",
+        }
+        async with post_json(self._client, self._url, payload, headers) as response:
+            self.rate_limits = parse_rate_limits(response.headers)
+            async for item in self._read_response(
+                response, mapper, estimate, secrets, credentials.id
+            ):
+                yield item
         if not mapper.completed:
-            raise GatewayError(502, "api_error", "ChatGPT ended the response early")
+            raise GatewayError(
+                502, "api_error", "ChatGPT ended the response early", usage=mapper.usage
+            )
         for item in closing_items(mapper.finish(), mapper.usage):
             yield item
+
+    async def _read_response(
+        self,
+        response: httpx.Response,
+        mapper: CodexStreamMapper,
+        estimate: int,
+        secrets: tuple[str, ...],
+        credential_id: str,
+    ) -> AsyncGenerator[StreamItem, None]:
+        if not response.is_success:
+            error = parse_upstream_error(await read_error_body(response))
+            raise self._restated(
+                error,
+                response.status_code,
+                estimate,
+                response.headers,
+                secrets,
+                credential_id,
+            )
+        async for frame in read_frames(response_lines(response)):
+            event = frame.payload()
+            if not isinstance(event, dict):
+                continue
+            events = mapper.feed(event)
+            if mapper.failure is not None:
+                code = mapper.failure.code or mapper.failure.error_type or ""
+                raise self._restated(
+                    mapper.failure,
+                    _STREAM_FAILURE_STATUS.get(code, 500),
+                    estimate,
+                    {},
+                    secrets,
+                    credential_id,
+                    mapper.usage,
+                )
+            for out in events:
+                yield StreamItem(event=out)
 
     async def complete(self, body: Event) -> Event:
         return await collect_message(self.stream(body))
 
     async def aclose(self) -> None:
         if self._owns_client:
-            await self._client.close()
-
-    def _refused(self, exc: APIStatusError, estimate: int) -> GatewayError:
-        """An HTTP error from ChatGPT, before anything streamed."""
-        # A refusal carries the quota headers too, and a spent quota is when
-        # the platform most needs to show them.
-        self.rate_limits = parse_rate_limits(exc.response.headers)
-        error = error_from_payload(exc.body) or UpstreamError(
-            message=str(exc.body or "")
-        )
-        message = redact(error.message, self._route.secret_values())
-        failure = classify(
-            exc,
-            auth_provider="codex",
-            credential_id=self._credential_id,
-            message=message or None,
-        )
-        return self._restated(
-            error, exc.status_code, estimate, dict(exc.response.headers), failure
-        )
-
-    def _reported(self, error: UpstreamError, estimate: int) -> GatewayError:
-        """A failure ChatGPT reported inside the stream."""
-        code = error.code or error.error_type or ""
-        failure = None
-        if code in _USAGE_LIMITS:
-            failure = ProviderFailure(
-                kind=ProviderFailureKind.USAGE_LIMIT,
-                message=redact(error.message, self._route.secret_values())
-                or "Your ChatGPT usage limit has been reached.",
-                auth_provider="codex",
-                credential_id=self._credential_id,
-            )
-        status = _STREAM_FAILURE_STATUS.get(code, 500)
-        return self._restated(error, status, estimate, {}, failure)
+            await self._client.aclose()
 
     def _restated(
         self,
@@ -172,52 +154,29 @@ class CodexResponses:
         status: int,
         estimate: int,
         headers: Mapping[str, str],
-        failure: ProviderFailure | None,
+        secrets: tuple[str, ...],
+        credential_id: str,
+        usage: GatewayUsage | None = None,
     ) -> GatewayError:
-        overflow = detect_overflow(error)
-        if overflow is not None:
-            return prompt_too_long(
-                overflow, estimate=estimate, window=self._route.context_window
+        restated = upstream_failure(
+            error,
+            status=status,
+            estimate=estimate,
+            window=self._route.context_window,
+            secrets=secrets,
+            headers=headers,
+        )
+        if restated.status == 429 or (error.code or error.error_type) in _USAGE_LIMITS:
+            restated = rate_limited(error, restated.message, headers)
+        kind = _FAILURE_KINDS.get(restated.status)
+        if kind is None and restated.status >= 500:
+            kind = ProviderFailureKind.TRANSIENT
+        if kind is not None:
+            restated.failure = ProviderFailure(
+                kind=kind,
+                message=redact(error.message, secrets) or "The ChatGPT request failed",
+                auth_provider="codex",
+                credential_id=credential_id,
             )
-        message = redact(error.message, self._route.secret_values())
-        if status == 429 or (error.code or error.error_type) in _USAGE_LIMITS:
-            return _rate_limited(error, message, headers, failure)
-        restated = error_for_status(status, message, headers=headers)
-        restated.failure = failure
+        restated.usage = usage
         return restated
-
-
-def _rate_limited(
-    error: UpstreamError,
-    message: str,
-    headers: Mapping[str, str],
-    failure: ProviderFailure | None,
-) -> GatewayError:
-    """429 with the wait ChatGPT reported, and no retries against a quota."""
-    hints = retry_headers(headers)
-    if "retry-after" not in hints and (seconds := _reset_seconds(error)) is not None:
-        hints["retry-after"] = str(seconds)
-    if (error.code or error.error_type) in _USAGE_LIMITS:
-        hints["x-should-retry"] = "false"
-    return GatewayError(
-        429,
-        "rate_limit_error",
-        message or "ChatGPT's rate limit was reached",
-        headers=hints,
-        failure=failure,
-    )
-
-
-def _reset_seconds(error: UpstreamError) -> int | None:
-    """The wait ChatGPT reported: a field on a quota error, or the
-    "try again in 1.9s" its rate-limit messages carry."""
-    seconds = error.fields.get("resets_in_seconds")
-    if isinstance(seconds, int) and not isinstance(seconds, bool) and seconds >= 0:
-        return seconds
-    resets_at = error.fields.get("resets_at")
-    if isinstance(resets_at, int) and not isinstance(resets_at, bool):
-        return max(0, resets_at - int(time.time()))
-    if match := _TRY_AGAIN.search(error.message):
-        scale = 0.001 if match.group(2).lower() == "ms" else 1.0
-        return math.ceil(float(match.group(1)) * scale)
-    return None

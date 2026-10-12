@@ -1,10 +1,4 @@
-"""What one gateway serves: an upstream adapter, its credential and its model.
-
-The route profile builds one of these per CLI launch. Everything the gateway
-sends upstream -- the URL, the key, the model -- comes from here and never
-from the CLI's request. The Codex endpoint is fixed in
-``backend.integrations.codex.http_client``, so a Codex route carries no URL.
-"""
+"""Operator-selected upstream, model and in-memory credential for one CLI launch."""
 
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -52,22 +46,11 @@ GatewayCredential = Annotated[
 
 
 class GatewayRoute(BaseModel):
-    """One upstream for one CLI process's lifetime.
+    """The route's URL, credential, model and actual context window.
 
-    ``base_url`` follows each ecosystem's own convention, so operators can copy
-    it from the server's documentation: the Anthropic root for the
-    pass-through (``http://127.0.0.1:8080``, the value ``ANTHROPIC_BASE_URL``
-    would take) and the OpenAI base for Chat Completions
-    (``http://127.0.0.1:8080/v1``, the value an OpenAI client's ``base_url``
-    would take).
-
-    ``context_window`` is the upstream's real window when the route knows it.
-    The gateway uses it only to state the limit in a rewritten over-long
-    error; the CLI's own window comes from its environment.
-
-    ``effort`` is the reasoning effort the platform chose for this route. The
-    CLI's own ``output_config.effort`` is its default for an unknown model,
-    not anyone's choice, so it is not forwarded.
+    Pass-through takes an Anthropic root; Chat takes an OpenAI API base.
+    The context window fills gaps in overflow errors; the CLI gets its window
+    through environment variables. Effort comes from the platform route.
     """
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
@@ -83,6 +66,10 @@ class GatewayRoute(BaseModel):
     @model_validator(mode="after")
     def _check_upstream(self) -> "GatewayRoute":
         codex_credential = self.credential.kind == "codex_lease"
+        if self.credential.kind == "api_key":
+            key = self.credential.api_key.get_secret_value()
+            if 0 < len(key) < 4:
+                raise ValueError("An operator key must have at least four characters")
         if self.adapter == "codex_responses":
             if self.base_url is not None:
                 raise ValueError("The Codex endpoint is fixed; a route cannot set it")

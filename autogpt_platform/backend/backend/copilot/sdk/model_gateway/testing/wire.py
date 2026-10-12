@@ -93,7 +93,13 @@ def anthropic_events(message: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def chat_chunks(
-    decision: Decision, *, model: str, tool: str, n: int, prompt_tokens: int
+    decision: Decision,
+    *,
+    model: str,
+    tool: str,
+    n: int,
+    prompt_tokens: int,
+    fully_cached: bool = False,
 ) -> list[dict[str, Any]]:
     base = {"id": f"chatcmpl-{n}", "object": "chat.completion.chunk", "model": model}
 
@@ -126,7 +132,7 @@ def chat_chunks(
             chunk({"content": decision.text[half:]}),
             chunk({}, "stop"),
         ]
-    cached = prompt_tokens // 3
+    cached = prompt_tokens if fully_cached else prompt_tokens // 3
     usage = {
         "prompt_tokens": prompt_tokens,
         "completion_tokens": 9,
@@ -145,6 +151,7 @@ def responses_events(
     input_tokens: int,
     encrypted: str,
     summarize: bool = True,
+    fully_cached: bool = False,
 ) -> list[dict[str, Any]]:
     response = {"id": f"resp_{n}", "object": "response", "model": model}
     created = {
@@ -162,7 +169,9 @@ def responses_events(
     )
     usage = {
         "input_tokens": input_tokens,
-        "input_tokens_details": {"cached_tokens": input_tokens // 4},
+        "input_tokens_details": {
+            "cached_tokens": input_tokens if fully_cached else input_tokens // 4
+        },
         "output_tokens": 12,
         "output_tokens_details": {"reasoning_tokens": 3},
         "total_tokens": input_tokens + 12,

@@ -1,19 +1,4 @@
-"""The loopback Anthropic endpoint one CLI process talks to.
-
-One gateway per CLI process: it binds 127.0.0.1 on a free port, answers only
-requests carrying its random token (compared in constant time, on every
-route), and holds one user's credential in memory for that process's
-lifetime. It serves what the CLI calls -- ``POST /v1/messages``,
-``POST /v1/messages/count_tokens``, ``GET /v1/models`` and
-``HEAD /api/hello`` -- plus ``GET /healthz``. The CLI's ``/api/hello`` probe
-carries no credentials; the 401 it gets still tells the CLI the gateway is up.
-
-Nothing about a conversation is kept between requests. What is kept is the
-running usage across them and the last provider failure, which the turn reads
-once the CLI exits. Request bodies, prompts and credentials are never logged:
-a request's log line carries the adapter, model, status, timing and token
-counts only.
-"""
+"""Authenticated loopback front; meters successful and failed requests separately."""
 
 import asyncio
 import logging
@@ -29,10 +14,9 @@ from backend.copilot.sdk.model_gateway.adapters.anthropic_passthrough import (
 )
 from backend.copilot.sdk.model_gateway.adapters.codex_responses import CodexResponses
 from backend.copilot.sdk.model_gateway.adapters.openai_chat import OpenAIChat
-from backend.copilot.sdk.model_gateway.errors import GatewayError
+from backend.copilot.sdk.model_gateway.errors import GatewayError, redact
 from backend.copilot.sdk.model_gateway.relay import (
     SSE_HEADERS,
-    UsageMeter,
     end_quietly,
     error_response,
     json_body,
@@ -41,8 +25,17 @@ from backend.copilot.sdk.model_gateway.relay import (
 )
 from backend.copilot.sdk.model_gateway.route import GatewayRoute
 from backend.copilot.sdk.model_gateway.sse import encode_event
-from backend.copilot.sdk.model_gateway.stream import Event, StreamItem, Upstream
-from backend.copilot.sdk.model_gateway.usage import GatewayUsage, estimate_tokens
+from backend.copilot.sdk.model_gateway.stream import (
+    Event,
+    StreamItem,
+    Upstream,
+    collect_message,
+)
+from backend.copilot.sdk.model_gateway.usage import (
+    GatewayUsage,
+    UsageMeter,
+    estimate_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +63,7 @@ class ModelGateway:
         self._base_url: str | None = None
         self._closed = False
         self.usage = GatewayUsage()
+        self.failed_usage = GatewayUsage()
         self.requests = 0
         self.peak_prompt_tokens = 0
         self.last_failure: ProviderFailure | None = None
@@ -177,20 +171,22 @@ class ModelGateway:
             first = await anext(items)
         except StopAsyncIteration:
             return self._failed(
-                GatewayError(502, "api_error", "The model sent nothing")
+                GatewayError(502, "api_error", "The model sent nothing"), meter
             )
         except Exception as exc:
             await items.aclose()
-            return self._failed(self._as_gateway_error(exc))
+            return self._failed(self._as_gateway_error(exc), meter)
         response = web.StreamResponse(status=200, headers=SSE_HEADERS)
         await response.prepare(request)
         try:
             await relay(response, first, items, meter)
         except ConnectionError:
+            meter.fail()
             # The CLI hung up (an interrupt, or its own retry); nothing to say.
             return response
         except Exception as exc:
             error = self._as_gateway_error(exc)
+            meter.fail(error.usage)
             self._note(error)
             await write_quietly(response, encode_event(error.body()))
         finally:
@@ -202,10 +198,13 @@ class ModelGateway:
         self, upstream: Upstream, body: Event, meter: UsageMeter
     ) -> web.Response:
         try:
-            message = await upstream.complete(body)
+            if self._route.adapter == "anthropic_passthrough":
+                message = await upstream.complete(body)
+                meter.observe_message(message)
+            else:
+                message = await collect_message(upstream.stream(body), meter)
         except Exception as exc:
-            return self._failed(self._as_gateway_error(exc))
-        meter.observe_message(message)
+            return self._failed(self._as_gateway_error(exc), meter)
         return web.json_response(message)
 
     def _as_gateway_error(self, exc: Exception) -> GatewayError:
@@ -255,24 +254,38 @@ class ModelGateway:
         key_ok = secrets.compare_digest(api_key.encode("utf-8", "replace"), expected)
         return bearer_ok or key_ok
 
-    def _failed(self, error: GatewayError) -> web.Response:
+    def _failed(
+        self, error: GatewayError, meter: UsageMeter | None = None
+    ) -> web.Response:
+        if meter is not None:
+            meter.fail(error.usage)
         self._note(error)
         return error_response(error)
 
     def _note(self, error: GatewayError) -> None:
         if error.failure is not None:
-            self.last_failure = error.failure
+            self.last_failure = error.failure.model_copy(
+                update={
+                    "message": redact(
+                        error.failure.message, self._route.secret_values()
+                    )
+                    or "The model server request failed"
+                }
+            )
 
     def _account(
         self, meter: UsageMeter, status: int, streamed: bool, started: float
     ) -> None:
         usage = meter.total
         self.requests += 1
-        self.usage = self.usage.plus(usage)
+        if meter.failed:
+            self.failed_usage = self.failed_usage.plus(usage)
+        else:
+            self.usage = self.usage.plus(usage)
         self.peak_prompt_tokens = max(self.peak_prompt_tokens, usage.prompt_tokens)
         logger.info(
             f"model gateway: adapter={self._route.adapter} model={self._route.model} "
-            f"status={status} stream={streamed} "
+            f"status={status} stream={streamed} failed={meter.failed} "
             f"ms={int((time.monotonic() - started) * 1000)} "
             f"input={usage.input_tokens} cache_read={usage.cache_read_tokens} "
             f"cache_write={usage.cache_write_tokens} output={usage.output_tokens} "

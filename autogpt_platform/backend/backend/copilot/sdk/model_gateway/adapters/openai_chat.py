@@ -1,27 +1,8 @@
-"""For servers that only speak OpenAI Chat Completions.
+"""Chat Completions translation for operator-configured upstreams.
 
-The mapping follows the rules LiteLLM's Anthropic adapter proved against the
-real CLI (re-implemented here, not copied):
-
-- a user turn's tool results go first, as ``tool`` messages, then its text;
-- the CLI's in-conversation system notes reach the model as
-  ``<system-reminder>`` user text (``normalize`` does this for both
-  translators);
-- the stream asks for ``stream_options.include_usage``, and input tokens are
-  the prompt tokens minus cache reads (and cache writes, where reported);
-- tool-use and tool-result ids are kept as they are wherever they are valid;
-- images go as data-URL ``image_url`` parts. Chat Completions has no image
-  part in a ``tool`` message, so a tool result's images follow it in the
-  user message instead;
-- errors come back in Anthropic's envelope, an over-long prompt in its exact
-  wording.
-
-Reasoning, deliberately: the upstream's ``reasoning_content``/``reasoning``
-deltas reach the CLI as thinking blocks, so the user sees them; on the way
-back those blocks are dropped. Chat Completions has no standard field for
-prior reasoning, and some servers reject one they do not expect. The
-reasoning effort sent is the route's, never the CLI's default.
-"""
+Tool results precede user text; inline images follow tool outputs.
+Reasoning deltas are displayed, but history reasoning is dropped because
+Chat Completions has no standard field for it. Effort comes from the route."""
 
 from collections.abc import AsyncGenerator
 

@@ -1,9 +1,4 @@
-"""HTTP to an operator-configured upstream, failing only as ``GatewayError``.
-
-Used by the pass-through and the Chat Completions adapter. Transport errors
-are restated without their text: an httpx message names the URL and can
-carry whatever the far side said.
-"""
+"""HTTPX requests with no redirects, bounded errors and safe transport failures."""
 
 import json
 from collections.abc import AsyncIterator, Mapping
@@ -17,7 +12,9 @@ _ERROR_BODY_LIMIT = 64 * 1024
 _CONNECT_TIMEOUT_SECONDS = 15.0
 
 
-def build_http_client(timeout_seconds: float) -> httpx.AsyncClient:
+def build_http_client(
+    timeout_seconds: float, *, codex: bool = False
+) -> httpx.AsyncClient:
     """A client that follows no redirect and reads no ambient credentials.
 
     ``trust_env=False`` keeps proxy variables and ``.netrc`` away from a
@@ -27,7 +24,8 @@ def build_http_client(timeout_seconds: float) -> httpx.AsyncClient:
     return httpx.AsyncClient(
         timeout=httpx.Timeout(timeout_seconds, connect=_CONNECT_TIMEOUT_SECONDS),
         follow_redirects=False,
-        trust_env=False,
+        # Only the fixed public Codex endpoint trusts operator-controlled egress proxy configuration.
+        trust_env=codex,
     )
 
 
@@ -46,7 +44,7 @@ async def post_json(
         headers={**headers, "content-type": "application/json"},
     )
     try:
-        response = await client.send(request, stream=True)
+        response = await client.send(request, stream=True, follow_redirects=False)
     except httpx.TimeoutException:
         raise timed_out() from None
     except httpx.HTTPError:

@@ -40,10 +40,12 @@ class Script:
         overflow_chars: int | None = None,
         usage_scale: float = 1.0,
         reasoning_summary: bool = True,
+        fully_cached: bool = False,
     ) -> None:
         self.pages = pages
         self.overflow_chars = overflow_chars
         self.usage_scale = usage_scale
+        self.fully_cached = fully_cached
         # Whether the Responses backend summarises its reasoning; without a
         # summary a reasoning item is encrypted content alone.
         self.reasoning_summary = reasoning_summary

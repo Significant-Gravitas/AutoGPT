@@ -1,10 +1,4 @@
-"""The provider-neutral request both translating adapters build from.
-
-``normalize.normalize_request`` reads the CLI's Anthropic body into these;
-the Chat Completions and Responses adapters each turn them into their own
-wire format. Only user and assistant turns exist here: the CLI's
-in-conversation system notes are already user text by this point.
-"""
+"""Provider-neutral requests used by both translating adapters."""
 
 from typing import Annotated, Literal
 
@@ -17,7 +11,7 @@ class TextPart(BaseModel):
 
 
 class ImagePart(BaseModel):
-    """An image as a URL: a ``data:`` URL for inline bytes, or http(s)."""
+    """An inline image, expressed as a base64 data URL."""
 
     type: Literal["image"] = "image"
     url: str

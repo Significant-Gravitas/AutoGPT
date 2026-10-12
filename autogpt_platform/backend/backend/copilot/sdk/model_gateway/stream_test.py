@@ -18,7 +18,7 @@ def _blocks(events: list[Event]) -> list[object]:
     return [e["content_block"] for e in events if e["type"] == "content_block_start"]
 
 
-def test_message_start_waits_for_the_first_content_and_carries_the_estimate():
+def test_message_start_waits_for_the_first_content_with_zero_provisional_input():
     builder = AnthropicStreamBuilder(model="m", input_estimate=1234)
     assert builder.text("") == []
     assert not builder.started
@@ -41,7 +41,7 @@ def test_message_start_waits_for_the_first_content_and_carries_the_estimate():
         "stop_reason": None,
         "stop_sequence": None,
         "usage": {
-            "input_tokens": 1234,
+            "input_tokens": 0,
             "output_tokens": 0,
             "cache_read_input_tokens": 0,
             "cache_creation_input_tokens": 0,
@@ -103,7 +103,7 @@ def test_an_empty_response_still_frames_a_message():
         "end_turn", None
     )
     assert _types(events) == ["message_start", "message_delta", "message_stop"]
-    assert events[1]["usage"] == {"output_tokens": 0}
+    assert events[1]["usage"] == GatewayUsage(input_tokens=3).anthropic()
 
 
 def test_the_exact_usage_rides_only_on_the_message_delta():
@@ -128,8 +128,9 @@ async def test_a_stream_folds_into_the_non_streaming_message():
         *builder.text("Hel"),
         *builder.text("lo"),
     ]
-    tool = builder.tool_use("call_9", "lookup", '{"q": ')
+    tool = builder.tool_use("call_9", "lookup", '{"q": 1}')
     # A tool's JSON may arrive split; the fold joins it before parsing.
+    tool[-2]["delta"]["partial_json"] = '{"q": '
     tool.insert(
         -1,
         {

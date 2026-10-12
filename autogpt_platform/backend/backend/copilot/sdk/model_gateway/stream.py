@@ -1,16 +1,4 @@
-"""The Anthropic stream an upstream adapter hands the front.
-
-An adapter yields ``StreamItem``s: Anthropic stream events in order, each
-optionally carrying the exact bytes to relay (the pass-through keeps the
-upstream's own frames). Translating adapters build their events with
-``AnthropicStreamBuilder``, which owns the block indexes and the
-``message_start``/``message_delta``/``message_stop`` framing.
-
-``message_start`` is emitted lazily, with the first content. Until then
-nothing has been written to the CLI, so a failure the upstream reports
-before producing anything can still become a real HTTP error status --
-which is what the CLI's compact-and-retry needs.
-"""
+"""Anthropic events and collection, with one usage accumulator for both modes."""
 
 import json
 from collections.abc import AsyncGenerator, AsyncIterable
@@ -19,7 +7,12 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
 
-from backend.copilot.sdk.model_gateway.usage import GatewayUsage
+from backend.copilot.sdk.model_gateway.errors import GatewayError
+from backend.copilot.sdk.model_gateway.usage import (
+    GatewayUsage,
+    UsageMeter,
+    merge_stream_usage,
+)
 
 Event = dict[str, object]
 BlockKind = Literal["text", "thinking", "tool_use"]
@@ -75,6 +68,7 @@ class AnthropicStreamBuilder:
         self._index = -1
         self._open: BlockKind | None = None
         self.tool_used = False
+        self.has_text = False
 
     @property
     def started(self) -> bool:
@@ -84,7 +78,7 @@ class AnthropicStreamBuilder:
         if self._started:
             return []
         self._started = True
-        usage = GatewayUsage(input_tokens=self._estimate).anthropic()
+        usage = GatewayUsage().anthropic()
         message: Event = {
             "id": f"msg_gateway_{uuid4().hex}",
             "type": "message",
@@ -100,6 +94,7 @@ class AnthropicStreamBuilder:
     def text(self, delta: str) -> list[Event]:
         if not delta:
             return []
+        self.has_text = True
         events = self._ensure_open("text", {"type": "text", "text": ""})
         return events + [self._delta({"type": "text_delta", "text": delta})]
 
@@ -117,6 +112,7 @@ class AnthropicStreamBuilder:
 
     def tool_use(self, call_id: str, name: str, arguments: str) -> list[Event]:
         """A whole ``tool_use`` block: start, its JSON input, stop."""
+        tool_arguments(arguments)
         self.tool_used = True
         block = {"type": "tool_use", "id": call_id, "name": name, "input": {}}
         events = self.close_block() + self._open_block("tool_use", block)
@@ -132,9 +128,11 @@ class AnthropicStreamBuilder:
         return [{"type": "content_block_stop", "index": self._index}]
 
     def finish(self, stop_reason: str, usage: GatewayUsage | None) -> list[Event]:
-        reported: Event = {"output_tokens": 0}
-        if usage is not None:
-            reported = {**usage.anthropic()}
+        reported: Event = {
+            **merge_stream_usage(
+                GatewayUsage(input_tokens=self._estimate), usage or GatewayUsage()
+            ).anthropic()
+        }
         return [
             *self.start(),
             *self.close_block(),
@@ -171,12 +169,16 @@ class AnthropicStreamBuilder:
 _THINKING_START: Event = {"type": "thinking", "thinking": "", "signature": ""}
 
 
-async def collect_message(items: AsyncIterable[StreamItem]) -> Event:
+async def collect_message(
+    items: AsyncIterable[StreamItem], meter: UsageMeter | None = None
+) -> Event:
     """Fold a stream into the message a non-streaming request returns."""
     message: Event = {}
     blocks: list[Event] = []
     partial: dict[int, str] = {}
+    meter = meter if meter is not None else UsageMeter()
     async for item in items:
+        meter.observe(item.event, item.usage)
         event = item.event
         kind = event.get("type")
         started, block = event.get("message"), event.get("content_block")
@@ -191,6 +193,7 @@ async def collect_message(items: AsyncIterable[StreamItem]) -> Event:
         elif kind == "message_delta":
             _apply_message_delta(message, event)
     message["content"] = blocks
+    message["usage"] = meter.total.anthropic()
     return message
 
 
@@ -213,10 +216,23 @@ def _apply_delta(
 def _finish_block(block: Event, arguments: str | None) -> None:
     if block.get("type") != "tool_use" or arguments is None:
         return
+    block["input"] = tool_arguments(arguments)
+
+
+def tool_arguments(arguments: str) -> dict[str, object]:
+    if not arguments.strip():
+        return {}
     try:
-        block["input"] = json.loads(arguments) if arguments.strip() else {}
+        parsed = json.loads(arguments)
     except ValueError:
-        block["input"] = {}
+        raise GatewayError(
+            502, "api_error", "The model server returned invalid tool arguments"
+        ) from None
+    if not isinstance(parsed, dict):
+        raise GatewayError(
+            502, "api_error", "The model server returned non-object tool arguments"
+        )
+    return parsed
 
 
 def _apply_message_delta(message: Event, event: Event) -> None:
@@ -224,10 +240,3 @@ def _apply_message_delta(message: Event, event: Event) -> None:
     if isinstance(delta, dict):
         message["stop_reason"] = delta.get("stop_reason")
         message["stop_sequence"] = delta.get("stop_sequence")
-    usage = event.get("usage")
-    if isinstance(usage, dict):
-        current = message.get("usage")
-        merged = dict(current) if isinstance(current, dict) else {}
-        merged.update({k: v for k, v in usage.items() if v})
-        merged["output_tokens"] = usage.get("output_tokens", 0)
-        message["usage"] = merged

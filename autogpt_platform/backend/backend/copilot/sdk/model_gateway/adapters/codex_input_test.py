@@ -2,6 +2,7 @@ from typing import Any
 
 from backend.copilot.sdk.model_gateway.adapters.codex_input import responses_payload
 from backend.copilot.sdk.model_gateway.adapters.codex_signature import (
+    ReasoningIdentity,
     reasoning_tag,
     seal,
 )
@@ -13,7 +14,7 @@ _TAG = reasoning_tag("acct-test", "gpt-test")
 _ENCRYPTED = "gAAAAABo-encrypted-" + "r" * 3000
 
 
-def _payload(body: dict[str, Any], tag: str = _TAG) -> dict[str, Any]:
+def _payload(body: dict[str, Any], tag: ReasoningIdentity = _TAG) -> dict[str, Any]:
     payload, _ = responses_payload(
         normalize_request(body), codex_route("gpt-test"), tag
     )
@@ -96,7 +97,11 @@ def test_the_compaction_request_reaches_codex_with_results_then_instruction():
 
 
 def test_reasoning_from_another_source_is_left_out():
-    for signature in ("", "EqQBCkYIBRgCIkDanthropic", seal(_ENCRYPTED, "other-tag")):
+    for signature in (
+        "",
+        "EqQBCkYIBRgCIkDanthropic",
+        seal(_ENCRYPTED, reasoning_tag("other-account", "gpt-test")),
+    ):
         items = _payload(cli.continuation_request(signature))["input"]
         assert all(item["type"] != "reasoning" for item in items)
 

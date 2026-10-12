@@ -1,26 +1,18 @@
-"""Chat Completions stream chunks, restated as Anthropic stream events.
-
-Text and reasoning stream through as they arrive. Tool calls are collected
-whole and emitted when the response ends: servers differ in how they split a
-call's id, name and arguments across chunks, and Anthropic's blocks cannot
-interleave, so a call is only safe to emit once nothing more can arrive for
-it. The CLI runs a tool only after its block closes either way.
-"""
-
-import json
+"""Chat deltas mapped to Anthropic blocks; tool fragments accumulate until complete."""
 
 from pydantic import BaseModel
 
+from backend.copilot.sdk.model_gateway.adapters.openai_tools import arguments_json
 from backend.copilot.sdk.model_gateway.stream import AnthropicStreamBuilder, Event
 from backend.copilot.sdk.model_gateway.tool_names import cli_tool_id
-from backend.copilot.sdk.model_gateway.usage import GatewayUsage
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage, usage_from_openai
 
 _STOP_REASONS = {
     "stop": "end_turn",
     "length": "max_tokens",
     "tool_calls": "tool_use",
     "function_call": "tool_use",
-    "content_filter": "refusal",
+    "content_filter": "end_turn",
 }
 
 
@@ -66,6 +58,8 @@ class ChatStreamMapper:
 
     def finish(self) -> list[Event]:
         events: list[Event] = []
+        if self._finish_reason == "content_filter" and not self._builder.has_text:
+            events += self._builder.text("The model server declined to answer.")
         for _, call in sorted(self._calls.items()):
             name = self._names.get(call.name, call.name)
             events += self._builder.tool_use(
@@ -85,6 +79,9 @@ class ChatStreamMapper:
         content = delta.get("content")
         if isinstance(content, str) and content:
             events += self._builder.text(content)
+        refusal = delta.get("refusal")
+        if isinstance(refusal, str):
+            events += self._builder.text(refusal)
         calls = delta.get("tool_calls")
         if isinstance(calls, list):
             for position, call in enumerate(calls):
@@ -97,49 +94,18 @@ class ChatStreamMapper:
         key = index if isinstance(index, int) else position
         pending = self._calls.setdefault(key, _PendingCall())
         if isinstance(call.get("id"), str) and call["id"]:
-            pending.id = str(call["id"])
+            pending.id = (pending.id or "") + str(call["id"])
         function = call.get("function")
         if not isinstance(function, dict):
             return
         if isinstance(function.get("name"), str) and function["name"]:
-            pending.name = str(function["name"])
+            pending.name += str(function["name"])
         arguments = function.get("arguments")
         if isinstance(arguments, str):
             pending.arguments += arguments
-        elif isinstance(arguments, dict):
-            # A few servers send the parsed object instead of JSON text.
-            pending.arguments = _json(arguments)
+        elif "arguments" in function:
+            pending.arguments = arguments_json(arguments)
 
 
 def chat_usage(raw: dict[object, object]) -> GatewayUsage:
-    """OpenAI usage in Anthropic's buckets: the cached share comes out of input."""
-    details = raw.get("prompt_tokens_details")
-    details = details if isinstance(details, dict) else {}
-    cached = _count(details.get("cached_tokens")) or _count(
-        raw.get("cache_read_input_tokens")
-    )
-    written = (
-        _count(details.get("cache_write_tokens"))
-        or _count(details.get("cache_creation_tokens"))
-        or _count(details.get("cache_creation_input_tokens"))
-        or _count(raw.get("cache_creation_input_tokens"))
-    )
-    completion = raw.get("completion_tokens_details")
-    completion = completion if isinstance(completion, dict) else {}
-    return GatewayUsage(
-        input_tokens=max(0, _count(raw.get("prompt_tokens")) - cached - written),
-        cache_read_tokens=cached,
-        cache_write_tokens=written,
-        output_tokens=_count(raw.get("completion_tokens")),
-        reasoning_tokens=_count(completion.get("reasoning_tokens")),
-    )
-
-
-def _count(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        return 0
-    return max(0, value)
-
-
-def _json(value: object) -> str:
-    return json.dumps(value, ensure_ascii=False)
+    return usage_from_openai(raw, responses=False)

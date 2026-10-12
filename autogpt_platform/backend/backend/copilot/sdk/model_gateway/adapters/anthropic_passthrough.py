@@ -1,16 +1,7 @@
-"""For servers that serve Anthropic's ``/v1/messages`` themselves.
+"""Anthropic upstream relay with route authentication and model selection.
 
-llama.cpp, Ollama 0.14.3+, vLLM, LM Studio 0.4.1+ and LiteLLM all do, and
-the real CLI completes tool rounds, compaction and resume against them
-directly. The request and the stream go through unchanged, with four
-exceptions:
-
-- the upstream's own key is added here, so it never enters the CLI's env;
-- the CLI's billing line is dropped from ``system`` (see ``normalize``);
-- ``model`` is the route's, whatever the CLI asked for;
-- an over-long-prompt error is rewritten into the only wording the CLI
-  compacts on, and every other error is restated in Anthropic's envelope.
-"""
+Drop CLI billing metadata, replace URL images in content with omission notes,
+and restate errors, including the exact overflow wording the CLI compacts on."""
 
 import json
 from collections.abc import AsyncGenerator
@@ -23,7 +14,10 @@ from backend.copilot.sdk.model_gateway.errors import (
     parse_upstream_error,
     status_for_type,
 )
-from backend.copilot.sdk.model_gateway.normalize import strip_billing_header
+from backend.copilot.sdk.model_gateway.normalize import (
+    inline_images,
+    strip_billing_header,
+)
 from backend.copilot.sdk.model_gateway.overflow import upstream_failure
 from backend.copilot.sdk.model_gateway.route import GatewayRoute
 from backend.copilot.sdk.model_gateway.sse import read_frames
@@ -95,6 +89,8 @@ class AnthropicPassthrough:
 
     def _payload(self, body: Event, *, stream: bool) -> Event:
         payload: Event = {**body, "model": self._route.model, "stream": stream}
+        if "messages" in body:
+            payload["messages"] = inline_images(body["messages"])
         if "system" in body:
             payload["system"] = strip_billing_header(body["system"])
         return payload

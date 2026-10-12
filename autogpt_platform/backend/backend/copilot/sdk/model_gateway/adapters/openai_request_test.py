@@ -116,7 +116,7 @@ def test_images_are_data_url_parts_and_a_tool_result_s_images_follow_it():
         "role": "user",
         "content": [
             {"type": "text", "text": "Look at this too:"},
-            {"type": "image_url", "image_url": {"url": "https://img/x.png"}},
+            {"type": "text", "text": "[image omitted: its source cannot be forwarded]"},
             {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBOR"}},
         ],
     }

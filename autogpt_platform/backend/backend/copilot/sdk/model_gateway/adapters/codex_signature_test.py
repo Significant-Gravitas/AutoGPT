@@ -43,7 +43,7 @@ def test_signatures_from_anything_else_are_dropped(signature):
     assert unseal(signature, reasoning_tag("acct-1", "m")) is None
 
 
-def test_the_tag_reveals_neither_account_nor_model():
-    tag = reasoning_tag("acct-secret-123", "model")
-    assert len(tag) == 16
-    assert "acct" not in tag
+def test_the_signature_reveals_neither_account_nor_model():
+    signature = seal("encrypted", reasoning_tag("acct-secret-123", "model"))
+    assert len(signature.split(".")[1]) == 64
+    assert "acct-secret-123" not in signature and "model" not in signature

@@ -1,6 +1,9 @@
 from typing import Any
 
-from backend.copilot.sdk.model_gateway.adapters.codex_signature import seal
+from backend.copilot.sdk.model_gateway.adapters.codex_signature import (
+    reasoning_tag,
+    seal,
+)
 from backend.copilot.sdk.model_gateway.adapters.codex_stream import (
     CodexStreamMapper,
     responses_usage,
@@ -10,7 +13,7 @@ from backend.copilot.sdk.model_gateway.testing.script import Decision
 from backend.copilot.sdk.model_gateway.testing.wire import responses_events
 from backend.copilot.sdk.model_gateway.usage import GatewayUsage
 
-_TAG = "tag0123456789abc"
+_TAG = reasoning_tag("acct-test", "m")
 _ENCRYPTED = "gAAAAAB-" + "e" * 5000
 
 

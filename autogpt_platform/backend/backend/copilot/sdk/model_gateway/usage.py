@@ -1,9 +1,4 @@
-"""Token usage in Anthropic's buckets, and the request-size estimate.
-
-Anthropic splits the prompt into uncached input, cache reads and cache writes;
-OpenAI-style upstreams report one prompt count with the cached share inside
-it. Everything here is held in Anthropic's terms, because the CLI reads it.
-"""
+"""Anthropic token buckets, exact-usage accumulation and request-size estimates."""
 
 from collections.abc import Iterable, Mapping
 
@@ -30,11 +25,10 @@ class GatewayUsage(BaseModel):
 
     def plus(self, other: "GatewayUsage") -> "GatewayUsage":
         return GatewayUsage(
-            input_tokens=self.input_tokens + other.input_tokens,
-            cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
-            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
-            output_tokens=self.output_tokens + other.output_tokens,
-            reasoning_tokens=self.reasoning_tokens + other.reasoning_tokens,
+            **{
+                key: value + other.model_dump()[key]
+                for key, value in self.model_dump().items()
+            }
         )
 
     def anthropic(self) -> dict[str, int]:
@@ -50,37 +44,104 @@ def usage_from_anthropic(raw: object) -> GatewayUsage | None:
     """Read an Anthropic ``usage`` object; ``None`` when there is none."""
     if not isinstance(raw, Mapping):
         return None
+    names = {
+        "input_tokens": "input_tokens",
+        "output_tokens": "output_tokens",
+        "cache_read_input_tokens": "cache_read_tokens",
+        "cache_creation_input_tokens": "cache_write_tokens",
+    }
     return GatewayUsage(
-        input_tokens=_count(raw.get("input_tokens")),
-        cache_read_tokens=_count(raw.get("cache_read_input_tokens")),
-        cache_write_tokens=_count(raw.get("cache_creation_input_tokens")),
-        output_tokens=_count(raw.get("output_tokens")),
+        **{field: count(raw[name]) for name, field in names.items() if name in raw}
     )
 
 
 def merge_stream_usage(start: GatewayUsage, delta: GatewayUsage) -> GatewayUsage:
-    """Combine ``message_start`` and ``message_delta`` usage as the CLI does.
-
-    A positive count in the delta replaces the start's; output always comes
-    from the delta.
-    """
+    """Reported fields replace earlier counts, including explicit zeros."""
     return GatewayUsage(
-        input_tokens=delta.input_tokens or start.input_tokens,
-        cache_read_tokens=delta.cache_read_tokens or start.cache_read_tokens,
-        cache_write_tokens=delta.cache_write_tokens or start.cache_write_tokens,
-        output_tokens=delta.output_tokens,
-        reasoning_tokens=delta.reasoning_tokens or start.reasoning_tokens,
+        **{**start.model_dump(), **delta.model_dump(exclude_unset=True)}
     )
 
 
-def estimate_tokens(body: Mapping[str, object]) -> int:
-    """A rough count of what the request will cost the model to read.
+def usage_from_openai(raw: Mapping[object, object], *, responses: bool) -> GatewayUsage:
+    input_key = "input_tokens" if responses else "prompt_tokens"
+    output_key = "output_tokens" if responses else "completion_tokens"
+    details = raw.get(f"{input_key}_details")
+    details = details if isinstance(details, dict) else {}
+    output = raw.get(f"{output_key}_details")
+    output = output if isinstance(output, dict) else {}
+    cached = count(details.get("cached_tokens")) or count(
+        raw.get("cache_read_input_tokens")
+    )
+    written = None if responses else _cache_write(details, raw)
+    fields = {}
+    if input_key in raw:
+        fields["input_tokens"] = max(0, count(raw[input_key]) - cached - (written or 0))
+    if output_key in raw:
+        fields["output_tokens"] = count(raw[output_key])
+    if "reasoning_tokens" in output:
+        fields["reasoning_tokens"] = count(output["reasoning_tokens"])
+    if "cached_tokens" in details or "cache_read_input_tokens" in raw:
+        fields["cache_read_tokens"] = cached
+    if written is not None:
+        fields["cache_write_tokens"] = written
+    return GatewayUsage(**fields)
 
-    Characters over four, with a flat price per image. Used where nothing
-    better exists: ``count_tokens``, the provisional figure in
-    ``message_start``, and the prompt size in a rewritten over-long error
-    when the upstream did not state one.
-    """
+
+def _cache_write(
+    details: Mapping[object, object], raw: Mapping[object, object]
+) -> int | None:
+    names = (
+        "cache_write_tokens",
+        "cache_creation_tokens",
+        "cache_creation_input_tokens",
+    )
+    return next(
+        (
+            count(source[name])
+            for source in (details, raw)
+            for name in names
+            if name in source
+        ),
+        None,
+    )
+
+
+class UsageMeter:
+    """The same accumulator for streaming, collection and failed attempts."""
+
+    def __init__(self) -> None:
+        self._usage = GatewayUsage()
+        self._exact: GatewayUsage | None = None
+        self.failed = False
+
+    @property
+    def total(self) -> GatewayUsage:
+        return self._exact if self._exact is not None else self._usage
+
+    def observe(
+        self, event: Mapping[str, object], exact: GatewayUsage | None = None
+    ) -> None:
+        if event.get("type") == "message_start":
+            message = event.get("message")
+            if isinstance(message, dict):
+                self.observe_message(message)
+        elif event.get("type") == "message_delta":
+            self.observe_message(event)
+        if exact is not None:
+            self._exact = merge_stream_usage(self._usage, exact)
+
+    def observe_message(self, message: Mapping[str, object]) -> None:
+        if (usage := usage_from_anthropic(message.get("usage"))) is not None:
+            self._usage = merge_stream_usage(self._usage, usage)
+
+    def fail(self, usage: GatewayUsage | None = None) -> None:
+        self.failed = True
+        if usage is not None:
+            self._exact = usage
+
+
+def estimate_tokens(body: Mapping[str, object]) -> int:
+    """Fallback prompt size for final usage, count_tokens and overflow errors."""
     chars, images = _measure(
         [body.get("system"), body.get("messages"), body.get("tools")]
     )
@@ -107,7 +168,7 @@ def _total(pairs: Iterable[tuple[int, int]]) -> tuple[int, int]:
     return chars, images
 
 
-def _count(value: object) -> int:
+def count(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         return 0
     return max(0, value)

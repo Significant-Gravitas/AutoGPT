@@ -14,6 +14,7 @@ from collections.abc import Iterable, Mapping
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.copilot.provider_failure import ProviderFailure
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage
 
 REDACTED = "[REDACTED]"
 _MAX_MESSAGE_CHARS = 1_000
@@ -65,6 +66,7 @@ class GatewayError(Exception):
         *,
         headers: Mapping[str, str] | None = None,
         failure: ProviderFailure | None = None,
+        usage: GatewayUsage | None = None,
     ) -> None:
         super().__init__(message)
         self.status = status
@@ -72,6 +74,7 @@ class GatewayError(Exception):
         self.message = message
         self.headers = dict(headers or {})
         self.failure = failure
+        self.usage = usage
 
     def body(self) -> dict[str, object]:
         return {

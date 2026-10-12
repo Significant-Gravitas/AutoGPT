@@ -9,11 +9,7 @@ from aiohttp import web
 from backend.copilot.sdk.model_gateway.errors import GatewayError
 from backend.copilot.sdk.model_gateway.sse import PING, encode_event
 from backend.copilot.sdk.model_gateway.stream import Event, StreamItem
-from backend.copilot.sdk.model_gateway.usage import (
-    GatewayUsage,
-    merge_stream_usage,
-    usage_from_anthropic,
-)
+from backend.copilot.sdk.model_gateway.usage import UsageMeter
 
 PING_INTERVAL_SECONDS = 15.0
 SSE_HEADERS = {
@@ -21,36 +17,6 @@ SSE_HEADERS = {
     "Cache-Control": "no-cache",
     "Connection": "keep-alive",
 }
-
-
-class UsageMeter:
-    """One request's usage: the adapter's exact count when it gave one,
-    otherwise what the events the CLI received said."""
-
-    def __init__(self) -> None:
-        self._start = GatewayUsage()
-        self._delta = GatewayUsage()
-        self._exact: GatewayUsage | None = None
-
-    @property
-    def total(self) -> GatewayUsage:
-        if self._exact is not None:
-            return self._exact
-        return merge_stream_usage(self._start, self._delta)
-
-    def observe(self, item: StreamItem) -> None:
-        if item.usage is not None:
-            self._exact = item.usage
-        event = item.event
-        kind = event.get("type")
-        message = event.get("message")
-        if kind == "message_start" and isinstance(message, dict):
-            self._start = usage_from_anthropic(message.get("usage")) or self._start
-        elif kind == "message_delta":
-            self._delta = usage_from_anthropic(event.get("usage")) or self._delta
-
-    def observe_message(self, message: Event) -> None:
-        self._delta = usage_from_anthropic(message.get("usage")) or self._delta
 
 
 async def relay(
@@ -84,7 +50,7 @@ class _SseWriter:
         self._last_write = time.monotonic()
 
     async def write(self, item: StreamItem) -> None:
-        self._meter.observe(item)
+        self._meter.observe(item.event, item.usage)
         async with self._lock:
             await self._response.write(item.raw or encode_event(item.event))
             self._last_write = time.monotonic()

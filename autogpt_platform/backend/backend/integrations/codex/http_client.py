@@ -70,6 +70,11 @@ def _inference_headers(credentials: OAuth2Credentials) -> dict[str, str]:
     return headers
 
 
+def inference_headers(credentials: OAuth2Credentials) -> dict[str, str]:
+    """Current inference headers for callers using a direct HTTP transport."""
+    return _inference_headers(credentials)
+
+
 def account_id_for(credentials: OAuth2Credentials) -> str | None:
     try:
         bundle = bundle_from_credentials(credentials)

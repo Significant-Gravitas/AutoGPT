@@ -1,7 +1,6 @@
 import time
 from collections.abc import AsyncIterator
 from typing import Any
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -20,7 +19,6 @@ from backend.copilot.sdk.model_gateway.testing.canned_upstream import (
 from backend.copilot.sdk.model_gateway.testing.codex_lease import (
     codex_route,
     fake_backend_client,
-    fake_codex_lease,
 )
 from backend.copilot.sdk.model_gateway.testing.wire import CODEX_OVERFLOW
 from backend.copilot.sdk.model_gateway.usage import GatewayUsage
@@ -291,16 +289,13 @@ async def test_each_call_sends_the_full_history_with_nothing_stored():
     ]
 
 
-def test_the_client_is_the_codex_integration_s_own_built_from_the_lease():
-    lease = fake_codex_lease()
-    built = MagicMock()
-    with patch(
-        "backend.copilot.sdk.model_gateway.adapters.codex_responses.build_client",
-        return_value=built,
-    ) as build_client:
-        CodexResponses(codex_route(_MODEL, lease=lease))
-    build_client.assert_called_once_with(lease.credentials)
-    built.with_options.assert_called_once_with(max_retries=0)
+async def test_the_client_is_hardened_and_allows_operator_egress_proxies():
+    adapter = CodexResponses(codex_route(_MODEL))
+    try:
+        assert not adapter._client.follow_redirects
+        assert adapter._client.trust_env
+    finally:
+        await adapter.aclose()
 
 
 def test_the_adapter_refuses_a_route_without_a_lease():

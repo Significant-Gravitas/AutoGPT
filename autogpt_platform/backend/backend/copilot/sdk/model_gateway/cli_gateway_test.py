@@ -54,8 +54,7 @@ _RECALL = "Without calling any tools: which code words did you find?"
 @pytest.fixture
 def cli(monkeypatch: pytest.MonkeyPatch) -> Path:
     path = _resolve_cli_path()
-    if path is None:
-        pytest.skip("No Claude Code CLI binary bundled or configured")
+    assert path is not None, "The bundled or configured Claude Code CLI is required"
     # A run inside Claude Code would hand the CLI its own settings and keys.
     for key in [k for k in os.environ if k.startswith(("CLAUDE", "ANTHROPIC"))]:
         monkeypatch.delenv(key)
@@ -127,6 +126,9 @@ async def test_a_tool_round_trip_compacts_mid_turn_and_resumes(adapter, cli, tmp
     assert gateway.requests == len(upstream.seen)
     if adapter == "codex_responses":
         _assert_reasoning_came_back_intact(upstream)
+        assert {seen.body["prompt_cache_key"] for seen in upstream.seen} == {
+            first.session_id
+        }
 
 
 @pytest.mark.parametrize("adapter", _ADAPTERS)

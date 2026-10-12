@@ -148,7 +148,8 @@ def test_length_and_content_filter_stops():
         == "max_tokens"
     )
     assert (
-        _stop(_run(_mapper(), _chunk({}, "content_filter")))["stop_reason"] == "refusal"
+        _stop(_run(_mapper(), _chunk({}, "content_filter")))["stop_reason"]
+        == "end_turn"
     )
 
 

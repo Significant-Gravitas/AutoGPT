@@ -139,7 +139,7 @@ def test_images_and_documents_in_user_turns_and_tool_results():
     (turn,) = normalize_request(body).messages
     assert turn.parts[:5] == [
         ImagePart(url="data:image/jpeg;base64,QUJD"),
-        ImagePart(url="https://x/y.png"),
+        TextPart(text="[image omitted: its source cannot be forwarded]"),
         TextPart(text="[image omitted: its source cannot be forwarded]"),
         DocumentPart(media_type="application/pdf", data="UERG"),
         TextPart(text="plain doc"),
