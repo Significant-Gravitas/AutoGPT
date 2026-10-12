@@ -8,7 +8,6 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
-import { useEffect } from "react";
 
 interface Props {
   sessionId?: string | null;
@@ -30,11 +29,6 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const { deliverables, documentCount: liveDocumentCount } =
     useSessionFiles(sessionId);
   const documentCount = Math.max(deliverables.length, liveDocumentCount);
-  const expertId = expert?.id ?? null;
-  const expertName = expert?.name ?? null;
-  const setContextPanelExpert = useCopilotUIStore(
-    (s) => s.setContextPanelExpert,
-  );
   const isFilesOpen = useCopilotUIStore(
     (s) =>
       s.artifactPanel.isOpen &&
@@ -54,12 +48,6 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const isMobile = useIsMobile();
   // The mobile sheet has no computer face to open.
   const showComputerToggle = !!sessionId && !isMobile;
-
-  useEffect(() => {
-    setContextPanelExpert(
-      expertId && expertName ? { id: expertId, name: expertName } : null,
-    );
-  }, [expertId, expertName, setContextPanelExpert]);
 
   function handleComputerToggle() {
     // Back to whatever the computer was covering: the preview, the tab, or

@@ -12,6 +12,7 @@ import {
   tiersAreDistinct,
   visibleOffers,
 } from "./helpers";
+import { useLockedTierFallback } from "./useLockedTierFallback";
 
 export function useConnectionPicker() {
   const query = useGetV2ListChatConnections({
@@ -45,6 +46,7 @@ export function useConnectionPicker() {
   const fallback = choosable.find((offer) => offer.is_default) ?? choosable[0];
 
   const active = selected ?? fallback;
+  useLockedTierFallback(active);
 
   const { connect: connectChatGPT, isPending: isConnecting } = useOAuthConnect({
     provider: "codex",

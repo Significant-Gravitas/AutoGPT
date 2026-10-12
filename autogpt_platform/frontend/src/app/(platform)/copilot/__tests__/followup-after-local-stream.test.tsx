@@ -151,6 +151,7 @@ vi.mock("../helpers/queueFollowUpMessage", () => ({ queueFollowUpMessage }));
 
 import { useCopilotUIStore } from "../store";
 import { useCopilotPage } from "../useCopilotPage";
+import * as copilotHelpers from "../helpers";
 
 function noActiveTurn() {
   const error = new Error("Session has no active turn to queue against.");
@@ -177,10 +178,74 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.restoreAllMocks();
   window.sessionStorage.clear();
 });
 
 describe("useCopilotPage — follow-up refused by the backend mid-stream", () => {
+  it.each(["ready", "error"] as const)(
+    "starts a new turn directly after the stream settles with status %s",
+    async (status) => {
+      const { result, rerender } = renderHook(() => useCopilotPage());
+
+      streamState.status = status;
+      rerender();
+      await result.current.onSend("Retry the failed request");
+
+      expect(queueFollowUpMessage).not.toHaveBeenCalled();
+      expect(sendNewMessage).toHaveBeenCalledWith(
+        "Retry the failed request",
+        undefined,
+        undefined,
+        undefined,
+      );
+    },
+  );
+
+  it.each(["ready", "error"] as const)(
+    "starts a new turn after a real pending-message 409 and local status %s",
+    async (status) => {
+      const actualQueue = await vi.importActual<
+        typeof import("../helpers/queueFollowUpMessage")
+      >("../helpers/queueFollowUpMessage");
+      queueFollowUpMessage.mockImplementation(actualQueue.queueFollowUpMessage);
+      vi.spyOn(copilotHelpers, "getCopilotAuthHeaders").mockResolvedValue({});
+      const fetchMock = vi.spyOn(global, "fetch").mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            detail:
+              "Session has no active turn. Start a new turn with POST /stream.",
+          }),
+          { status: 409 },
+        ),
+      );
+      const { result, rerender } = renderHook(() => useCopilotPage());
+
+      const send = result.current.onSend("Retry the failed request");
+      await flush();
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "/api/chat/sessions/session-1/messages/pending",
+        ),
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(sendNewMessage).not.toHaveBeenCalled();
+
+      streamState.status = status;
+      rerender();
+      await send;
+
+      expect(sendNewMessage).toHaveBeenCalledWith(
+        "Retry the failed request",
+        undefined,
+        undefined,
+        undefined,
+      );
+      expect(queueMessage).not.toHaveBeenCalled();
+      expect(toast).not.toHaveBeenCalled();
+    },
+  );
+
   it("holds the follow-up until this tab's stream has settled", async () => {
     const { result, rerender } = renderHook(() => useCopilotPage());
 

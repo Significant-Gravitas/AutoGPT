@@ -165,7 +165,9 @@ class TelegramAdapter(WebhookAdapter):
             # This runs as a fire-and-forget task — an unhandled error would
             # only surface as asyncio's deferred "exception never retrieved".
             try:
-                await commands.handle(self._api, self._client, message, command)
+                await commands.handle(
+                    self._api, self._client, message, command, self.send_link
+                )
             except Exception:
                 logger.exception("Telegram command handler failed")
             return
@@ -207,7 +209,7 @@ class TelegramAdapter(WebhookAdapter):
         answer = await choices.answer_button(
             self._api, "telegram", kind, token, index, ctx.user_id, ctx.server_id
         )
-        if answer.reply is None:
+        if not answer.answered:
             if query_id:
                 await self._answer_callback_query(
                     query_id, text=answer.text, show_alert=True
@@ -233,7 +235,8 @@ class TelegramAdapter(WebhookAdapter):
                 )
         if self._on_message_callback is None:
             return
-        ctx.text = answer.reply
+        ctx.text = answer.reply or ""
+        ctx.follow = answer.follow
         await self._on_message_callback(ctx, self)
 
     async def _answer_callback_query(self, query_id: str, **kwargs: Any) -> None:

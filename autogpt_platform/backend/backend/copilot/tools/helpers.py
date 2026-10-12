@@ -275,7 +275,7 @@ async def execute_block(
                     message=sim_error[0],
                     error=sim_error[0],
                     session_id=session_id,
-                )
+                ).from_outside(sim_error[0])
 
             return BlockOutputResponse(
                 message=f"Block '{block.name}' executed successfully",
@@ -286,14 +286,14 @@ async def execute_block(
                 success=True,
                 is_dry_run=True,
                 session_id=session_id,
-            )
+            ).from_outside(outputs)
         except Exception as e:
             logger.error("Dry-run simulation failed: %s", e, exc_info=True)
             return ErrorResponse(
                 message=f"Dry-run simulation failed: {e}",
                 error=str(e),
                 session_id=session_id,
-            )
+            ).from_outside(str(e))
 
     try:
         workspace = await workspace_db().get_or_create_workspace(user_id)
@@ -393,7 +393,7 @@ async def execute_block(
                     return ErrorResponse(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
-                    )
+                    ).from_outside()
                 if not (
                     credentials is not None
                     and provider_matches(credentials.provider, cred_meta.provider)
@@ -403,14 +403,14 @@ async def execute_block(
                     return ErrorResponse(
                         message=f"Failed to retrieve credentials for {field_name}",
                         session_id=session_id,
-                    )
+                    ).from_outside()
                 exec_kwargs[field_name] = credentials
         except ValueError:
             await _release_credential_leases(credential_leases)
             return ErrorResponse(
                 message=f"Failed to retrieve credentials for {credential_field_name}",
                 session_id=session_id,
-            )
+            ).from_outside()
         except BaseException:
             await _release_credential_leases(credential_leases)
             raise
@@ -458,10 +458,13 @@ async def execute_block(
                 ),
                 graph_id=None,
                 graph_version=None,
-            )
+            ).from_outside()
         except ValueError as e:
             await _release_credential_leases(credential_leases)
-            return ErrorResponse(message=str(e), error=str(e), session_id=session_id)
+            # Our wording around the model's own input: nothing from outside.
+            return ErrorResponse(
+                message=str(e), error=str(e), session_id=session_id
+            ).from_outside()
         except BaseException:
             await _release_credential_leases(credential_leases)
             raise
@@ -496,7 +499,7 @@ async def execute_block(
                             "Please top up your credits to continue."
                         ),
                         session_id=session_id,
-                    )
+                    ).from_outside()
 
             # Execute the block under the shared MCP wait cap. A block is
             # expected to finish in MAX_TOOL_WAIT_SECONDS; if it doesn't, the
@@ -541,7 +544,7 @@ async def execute_block(
                     provider=get_block_provider(block),
                     success=True,
                     session_id=session_id,
-                )
+                ).from_outside(outputs)
             except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that
@@ -567,7 +570,7 @@ async def execute_block(
                         "so nothing blocks the chat stream."
                     ),
                     session_id=session_id,
-                )
+                ).from_outside()
             finally:
                 # Sentry r3105079148: asyncio.wait_for raises CancelledError
                 # into the generator. Normal `except Exception` doesn't catch
@@ -624,14 +627,14 @@ async def execute_block(
             message=f"Block execution failed: {e}",
             error=str(e),
             session_id=session_id,
-        )
+        ).from_outside(str(e))
     except Exception as e:
         logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
             message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
-        )
+        ).from_outside(str(e))
 
 
 def _credential_rejected_response(
@@ -685,7 +688,7 @@ def _credential_rejected_response(
         ),
         error="credential_rejected",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 def _rejected_credential(
@@ -727,6 +730,7 @@ def _build_credential_rejected_card(
     rejected, provider = _rejected_credential(block, matched_credentials)
     provider_name = provider.replace("_", " ").title() or "The provider"
     named = f" '{rejected.title}'" if rejected and rejected.title else ""
+    detail = sanitize_provider_message(str(exc))
     return SetupRequirementsResponse(
         message=(
             f"{provider_name} rejected the saved credential{named} "
@@ -752,12 +756,12 @@ def _build_credential_rejected_card(
         ),
         rejection=CredentialRejection(
             provider=provider or "unknown",
-            detail=sanitize_provider_message(str(exc)),
+            detail=detail,
             status_code=status_code,
             credential_id=rejected.id if rejected else None,
             credential_title=rejected.title if rejected else None,
         ),
-    )
+    ).from_outside(detail)
 
 
 async def _collect_block_outputs(
@@ -877,7 +881,7 @@ async def unattended_missing_credentials_error(
         + grant_hint,
         error="missing_credentials",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 async def _pinned_account_error(
@@ -937,7 +941,7 @@ async def _pinned_account_error(
         ),
         error="pinned_credential_missing" if lost else "pinned_credential_unusable",
         session_id=session_id,
-    )
+    ).from_outside()
 
 
 @dataclass
@@ -1012,11 +1016,11 @@ async def prepare_block_for_execution(
     if not block:
         return ErrorResponse(
             message=f"Block '{block_id}' not found", session_id=session_id
-        )
+        ).from_outside()
     if block.disabled:
         return ErrorResponse(
             message=f"Block '{block_id}' is disabled", session_id=session_id
-        )
+        ).from_outside()
 
     if (
         block.block_type in COPILOT_EXCLUDED_BLOCK_TYPES
@@ -1034,7 +1038,7 @@ async def prepare_block_for_execution(
         return ErrorResponse(
             message=f"Block '{block.name}' cannot be run directly.{hint}",
             session_id=session_id,
-        )
+        ).from_outside()
 
     emit_tool_display_name(block.name)
 
@@ -1058,7 +1062,7 @@ async def prepare_block_for_execution(
             message=f"Block '{block.name}' has an invalid input schema",
             error=str(e),
             session_id=session_id,
-        )
+        ).from_outside()
 
     # Expand @@agptfile: refs using the block's input schema so string/list
     # fields get the correct deserialization.
@@ -1074,7 +1078,7 @@ async def prepare_block_for_execution(
                     "Ensure the file exists before referencing it."
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
     credentials_fields = set(block.input_schema.get_credentials_fields().keys())
     required_non_credential_keys = required_input_keys(block)
@@ -1154,7 +1158,7 @@ async def prepare_block_for_execution(
             ),
             graph_id=None,
             graph_version=None,
-        )
+        ).from_outside()
 
     valid_fields = set(input_schema.get("properties", {}).keys()) - credentials_fields
     unrecognized_fields = provided_input_keys - valid_fields
@@ -1167,7 +1171,7 @@ async def prepare_block_for_execution(
             session_id=session_id,
             unrecognized_fields=sorted(unrecognized_fields),
             inputs=input_schema,
-        )
+        ).from_outside()
 
     synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     synthetic_node_id = f"{COPILOT_NODE_PREFIX}{block_id}"
@@ -1237,7 +1241,7 @@ async def check_hitl_review(
             block_name=block.name,
             review_id=existing_review.node_exec_id,
             input_data=input_data,
-        )
+        ).from_outside()
 
     synthetic_node_exec_id = (
         f"{synthetic_node_id}{COPILOT_NODE_EXEC_ID_SEPARATOR}{uuid.uuid4().hex[:8]}"
@@ -1275,7 +1279,7 @@ async def check_hitl_review(
             block_name=block.name,
             review_id=synthetic_node_exec_id,
             input_data=input_data,
-        )
+        ).from_outside()
 
     return synthetic_node_exec_id, input_data
 
@@ -1315,7 +1319,7 @@ async def check_spend_approval(
         block_name=prep.block.name,
         review_id=review_id,
         input_data=prep.input_data,
-    )
+    ).from_outside()
 
 
 async def metered_expert_id(user_id: str, expert_id: str | None) -> str | None:

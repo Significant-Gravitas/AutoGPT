@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import stream_registry
 from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
@@ -67,6 +68,17 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_forwards_include_account(self, api: BotBackend):
+        api._client.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        result = await api.resolve_user("telegram", "u1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert api._client.resolve_user_link.await_args.kwargs["include_account"]
 
 
 class TestListLinkedServerIds:
@@ -162,9 +174,9 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         # Same block id — a continuous text stream, no separator inserted.
-        await queue.put(StreamTextDelta(id="1", delta="Hello "))
-        await queue.put(StreamTextDelta(id="1", delta="world"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="Hello ")))
+        await queue.put((None, StreamTextDelta(id="1", delta="world")))
+        await queue.put((None, StreamFinish()))
 
         captured_session_ids: list[str] = []
 
@@ -173,7 +185,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -203,13 +215,13 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamTextDelta(id="1", delta="first thought."))
-        await queue.put(StreamTextDelta(id="2", delta="second thought."))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="first thought.")))
+        await queue.put((None, StreamTextDelta(id="2", delta="second thought.")))
+        await queue.put((None, StreamFinish()))
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -233,11 +245,11 @@ class TestStreamChat:
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         queue: asyncio.Queue = asyncio.Queue()
-        await queue.put(StreamError(errorText="executor crashed"))
+        await queue.put((None, StreamError(errorText="executor crashed")))
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -261,14 +273,17 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect GitHub"}',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect GitHub"}',
+                ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After setup"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After setup")))
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
 
@@ -277,7 +292,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -310,13 +325,16 @@ class TestStreamChat:
 
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="connect_integration",
-                output='{"type":"setup_requirements","message":"Connect Goo',
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="connect_integration",
+                    output='{"type":"setup_requirements","message":"Connect Goo',
+                ),
             )
         )
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamFinish()))
 
         setup_calls: list[tuple[str, dict, str | None]] = []
         dropped_calls: list[tuple[str, str | None]] = []
@@ -329,7 +347,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -365,20 +383,23 @@ class TestStreamChat:
         ]
         queue: asyncio.Queue = asyncio.Queue()
         await queue.put(
-            StreamToolOutputAvailable(
-                toolCallId="tool-1",
-                toolName="ask_question",
-                output=json.dumps(
-                    {
-                        "type": "agent_builder_clarification_needed",
-                        "message": "Which region?",
-                        "questions": questions,
-                    }
+            (
+                None,
+                StreamToolOutputAvailable(
+                    toolCallId="tool-1",
+                    toolName="ask_question",
+                    output=json.dumps(
+                        {
+                            "type": "agent_builder_clarification_needed",
+                            "message": "Which region?",
+                            "questions": questions,
+                        }
+                    ),
                 ),
             )
         )
-        await queue.put(StreamTextDelta(id="1", delta="After question"))
-        await queue.put(StreamFinish())
+        await queue.put((None, StreamTextDelta(id="1", delta="After question")))
+        await queue.put((None, StreamFinish()))
 
         clarification_calls: list[tuple[str, dict, str | None]] = []
 
@@ -389,7 +410,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -446,7 +467,7 @@ class TestStreamChat:
             ),
             StreamFinish(),
         ):
-            await queue.put(chunk)
+            await queue.put((None, chunk))
         cards: list[tuple[str, str]] = []
 
         async def on_approval(session_id: str, review_id: str) -> None:
@@ -454,7 +475,7 @@ class TestStreamChat:
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
                 new=AsyncMock(return_value=queue),
             ),
             patch(
@@ -500,14 +521,20 @@ class TestStreamChat:
                 pass
 
     @pytest.mark.asyncio
-    async def test_subscribe_returns_none_raises(self, api: BotBackend):
+    @pytest.mark.parametrize(
+        "unavailable",
+        [stream_registry.TurnStreamGone(), stream_registry.TurnStreamTrimmed(None)],
+    )
+    async def test_a_turn_stream_gone_or_trimmed_raises(
+        self, api: BotBackend, unavailable: Exception
+    ):
         handle = ChatTurnHandle(session_id="sess", turn_id="turn", user_id="u1")
         api._client.start_chat_turn = AsyncMock(return_value=handle)
 
         with (
             patch(
-                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_session",
-                new=AsyncMock(return_value=None),
+                "backend.copilot.bot.bot_backend.stream_registry.subscribe_to_turn",
+                new=AsyncMock(side_effect=unavailable),
             ),
             patch(
                 "backend.copilot.bot.bot_backend.stream_registry.unsubscribe_from_session",

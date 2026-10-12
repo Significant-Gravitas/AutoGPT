@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../helpers/messageMarkers";
 import { CredentialMentionText } from "../CredentialMention/CredentialMentionText";
 import { cn } from "@/lib/utils";
 import { useMemo, useState } from "react";
@@ -29,7 +30,6 @@ import {
   getLastCompactionCallId,
   getLatestCompactionPhase,
   getLatestCompactionStats,
-  parseSpecialMarkers,
 } from "./helpers";
 import {
   isMidTurnSegmentRow,
@@ -37,7 +37,6 @@ import {
   turnMessagesForRow,
 } from "./midTurnSplit";
 import {
-  getLatestAssistantStatusMessage,
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
@@ -75,6 +74,7 @@ import {
 } from "../../helpers/workspaceAttachments";
 import { Clock01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { ChatErrorBanner } from "./components/ChatErrorBanner/ChatErrorBanner";
 
 interface Props {
   messages: UIMessage<unknown, UIDataTypes, UITools>[];
@@ -404,11 +404,6 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  // Surface the latest `data-status` message from the live assistant when
-  // the Thinking indicator is up — but only if it wasn't invalidated by a
-  // more recent content part (in which case the model has moved on and the
-  // status is stale).
-  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
 
   // A live compaction narrates itself via CompactionCard — the generic
@@ -433,11 +428,7 @@ export function ChatMessagesContainer({
     activeStreamStartedAt,
   );
   const indicator = (
-    <ThinkingIndicator
-      active={showThinking}
-      elapsedSeconds={elapsedSeconds}
-      statusMessage={latestStatusMessage}
-    />
+    <ThinkingIndicator active={showThinking} elapsedSeconds={elapsedSeconds} />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
   // stays out of the transcript for them wherever it would render.
@@ -497,6 +488,7 @@ export function ChatMessagesContainer({
           className={cn(
             "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
+            showThreadHeader && hasFloatingControls && "max-lg:pt-32",
             !showThreadHeader && "pt-4",
           )}
           style={
@@ -806,9 +798,7 @@ export function ChatMessagesContainer({
                     <ThinkingIndicator
                       active
                       elapsedSeconds={restoreElapsedSeconds}
-                      statusMessage={
-                        restoreStatusMessage ?? "Reconnecting to live stream..."
-                      }
+                      statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.
@@ -859,15 +849,7 @@ export function ChatMessagesContainer({
               </Message>
             ))}
           {!readOnly && error && !lastAssistantHasErrorMarker && (
-            <details className="rounded-lg bg-red-50 p-4 text-sm text-red-700">
-              <summary className="cursor-pointer font-medium">
-                The assistant encountered an error. Please try sending your
-                message again.
-              </summary>
-              <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-xs text-red-600">
-                {error instanceof Error ? error.message : String(error)}
-              </pre>
-            </details>
+            <ChatErrorBanner error={error} />
           )}
           <TailSpacer
             messageID={lastUserMessageID}
