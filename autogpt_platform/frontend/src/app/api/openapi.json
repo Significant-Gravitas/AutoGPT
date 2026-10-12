@@ -15646,7 +15646,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user, creating their\ndefault profile if account setup hasn't yet.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {

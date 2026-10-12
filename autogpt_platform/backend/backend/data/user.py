@@ -217,6 +217,22 @@ _PROFILE_USERNAME_ANIMALS = (
 )
 
 
+async def ensure_user_profile(user_id: str) -> None:
+    """Give *user_id* their default marketplace Profile if they have none yet.
+
+    Account setup (``get_or_create_user``, via ``POST /auth/user``) creates it,
+    but Better Auth issues the session as soon as the identity exists, so a
+    first page can ask for the Profile before that call has run, or after its
+    best-effort attempt failed. The default name comes from the user's own
+    row, never from a token's claims, so it is also right for an admin acting
+    as the user. No-op for an id with no platform ``User`` row.
+    """
+    user = await prisma.user.find_unique(where={"id": user_id})
+    if user is None:
+        return
+    await _ensure_user_profile(user.id, user.email)
+
+
 async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
     """Create a default marketplace Profile for *user_id* if none exists.
 
