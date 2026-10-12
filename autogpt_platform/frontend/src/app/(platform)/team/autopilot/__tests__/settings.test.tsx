@@ -8,8 +8,18 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, test, vi } from "vitest";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import AutopilotPage from "../page";
 import { mockOttoApi, SETTINGS } from "./delegationFixtures";
+
+// The tabs live in ?tab=; a remembering adapter keeps a clicked tab open.
+function renderPage() {
+  return render(
+    <NuqsTestingAdapter hasMemory>
+      <AutopilotPage />
+    </NuqsTestingAdapter>,
+  );
+}
 
 const { toastSpy } = vi.hoisted(() => ({ toastSpy: vi.fn() }));
 
@@ -52,7 +62,7 @@ async function openSettings() {
 describe("Otto's Settings tab", () => {
   test("shows the saved mode, caps and toggles", async () => {
     mockOttoApi();
-    render(<AutopilotPage />);
+    renderPage();
     await openSettings();
 
     expect(
@@ -77,7 +87,7 @@ describe("Otto's Settings tab", () => {
 
   test("saves the whole settings object with the changed cap", async () => {
     const { saved } = mockOttoApi();
-    render(<AutopilotPage />);
+    renderPage();
     await openSettings();
 
     fireEvent.click(
@@ -91,7 +101,7 @@ describe("Otto's Settings tab", () => {
 
   test("flips a toggle and saves it", async () => {
     const { saved } = mockOttoApi();
-    render(<AutopilotPage />);
+    renderPage();
     await openSettings();
 
     const toggle = await screen.findByRole("switch", {
@@ -110,7 +120,7 @@ describe("Otto's Settings tab", () => {
   test("puts the toggle back and says so when the save fails", async () => {
     mockOttoApi();
     server.use(getUpdateDelegationSettingsMockHandler422());
-    render(<AutopilotPage />);
+    renderPage();
     await openSettings();
 
     const toggle = await screen.findByRole("switch", {

@@ -11,8 +11,18 @@ import {
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
+import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import AutopilotPage from "../page";
 import { mockOttoApi } from "./delegationFixtures";
+
+// The tabs live in ?tab=; a remembering adapter keeps a clicked tab open.
+function renderPage() {
+  return render(
+    <NuqsTestingAdapter hasMemory>
+      <AutopilotPage />
+    </NuqsTestingAdapter>,
+  );
+}
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   const actual =
@@ -45,7 +55,7 @@ async function openTab(name: string) {
 
 describe("Otto's Delegations tab", () => {
   test("sums up today's hand-offs and lists every one with its route and status", async () => {
-    render(<AutopilotPage />);
+    renderPage();
     expect(await screen.findByText("3 delegations today")).toBeDefined();
 
     await openTab("Delegations");
@@ -76,7 +86,7 @@ describe("Otto's Delegations tab", () => {
   });
 
   test("filters by what needs you, what is working and what failed", async () => {
-    render(<AutopilotPage />);
+    renderPage();
     await openTab("Delegations");
     const filters = await screen.findByRole("group", {
       name: "Filter delegations",
@@ -117,7 +127,7 @@ describe("Otto's Delegations tab", () => {
         },
       }),
     );
-    render(<AutopilotPage />);
+    renderPage();
     await openTab("Delegations");
 
     expect(await screen.findByText(/No hand-offs yet/)).toBeDefined();
@@ -126,7 +136,7 @@ describe("Otto's Delegations tab", () => {
 
   test("offers a retry when the hand-offs fail to load", async () => {
     server.use(getListDelegationsMockHandler422());
-    render(<AutopilotPage />);
+    renderPage();
     await openTab("Delegations");
 
     expect(
@@ -135,7 +145,7 @@ describe("Otto's Delegations tab", () => {
   });
 
   test("Change opens the Settings tab", async () => {
-    render(<AutopilotPage />);
+    renderPage();
     await openTab("Delegations");
     await userEvent.click(
       await screen.findByRole("button", { name: "Change" }),
