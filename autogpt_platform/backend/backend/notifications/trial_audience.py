@@ -3,7 +3,9 @@
 Every transition in and out of a trial already produces exactly one trial
 notice, deduped by its own claim, so the group change rides on that notice:
 join on start and on un-cancel, leave on cancel, conversion, failed conversion
-and end. The backend owns both edges of this group (see `mailerlite.py`).
+and end. A trial ended by buying another plan sends no notice, so it leaves
+the group on its own. The backend owns both edges of this group (see
+`mailerlite.py`).
 
 A conversion is also the customer's first paid subscription, so it joins the
 paying audience the way a first checkout does.
@@ -62,9 +64,25 @@ async def queue_trial_audience_change(
     settings: only the notification service holds them.
     """
     action = _TRIAL_GROUP_CHANGES.get(kind)
-    if action is None or not audience_change_allowed(user, action):
+    if action is None:
         return
-    fields = _TRIAL_FIELDS[kind](subscription)
+    await _queue_group_change(action, user, _TRIAL_FIELDS[kind](subscription))
+
+
+async def leave_trial_group(user: MarketingContact) -> None:
+    """The trial ended because another plan was bought: leave the trial group
+    without writing any fields, so that plan's status and dates stay.
+
+    No notice or claim rides on it: a repeated removal changes nothing. Raises
+    when it cannot be queued, so Stripe retries the event."""
+    await _queue_group_change(AudienceAction.REMOVE_TRIAL, user, None)
+
+
+async def _queue_group_change(
+    action: AudienceAction, user: MarketingContact, fields: Fields | None
+) -> None:
+    if not audience_change_allowed(user, action):
+        return
     event = audience_event(action, user.email, user.id, fields)
     if event is None:
         return

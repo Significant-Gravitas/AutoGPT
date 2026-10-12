@@ -1,5 +1,5 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MessageResponse } from "../message";
 
 // KaTeX keeps the TeX source in a MathML annotation, so prose assertions have to
@@ -46,6 +46,18 @@ describe("MessageResponse math", () => {
       expect(container.querySelector(".katex-display")).toBeTruthy(),
     );
     expect(texOf(container)).toEqual(["\\frac{1}{s+1}"]);
+  });
+
+  it("renders a formula holding non-Latin text without a console warning", async () => {
+    // Console capture filed each of KaTeX's strict-mode warnings as a Sentry
+    // issue, fourteen for one Bengali reader's replies (BUILDER-94S…956).
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+
+    const container = await renderReply("ধরা যাক $ভ + ২ = x$ তাহলে");
+
+    await waitFor(() => expect(texOf(container)).toEqual(["ভ + ২ = x"]));
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
   });
 
   it("leaves two currency amounts in one sentence as literal text", async () => {
