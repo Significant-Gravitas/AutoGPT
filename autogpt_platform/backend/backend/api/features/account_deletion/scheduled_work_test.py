@@ -1,4 +1,5 @@
-"""stop_user_work: a closing account's schedules are removed and its runs stopped."""
+"""stop_user_work: a closing account's schedules and triggers are removed, its
+AutoPilot turns cancelled and its runs stopped."""
 
 import asyncio
 import logging
@@ -7,6 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from pytest_mock import MockerFixture
 
+from backend.api.features.account_deletion.autopilot_work import (
+    cancel_autopilot_turns,
+    unlink_chat_platforms,
+)
 from backend.api.features.account_deletion.scheduled_work import (
     STOP_WAIT_TIMEOUT_SECONDS,
     stop_user_work,
@@ -16,6 +21,7 @@ from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.exceptions import NotFoundError
 
 MODULE = "backend.api.features.account_deletion.scheduled_work"
+AUTOPILOT_MODULE = "backend.api.features.account_deletion.autopilot_work"
 USER_ID = "user-1"
 
 
@@ -66,6 +72,12 @@ def _run(run_id: str) -> MagicMock:
     return run
 
 
+def _node(node_id: str) -> MagicMock:
+    node = MagicMock()
+    node.id = node_id
+    return node
+
+
 @pytest.fixture
 def scheduler(mocker: MockerFixture) -> MagicMock:
     client = MagicMock()
@@ -88,6 +100,37 @@ def list_runs(mocker: MockerFixture) -> AsyncMock:
 @pytest.fixture
 def stop_run(mocker: MockerFixture) -> AsyncMock:
     return mocker.patch(f"{MODULE}.stop_graph_execution", new_callable=AsyncMock)
+
+
+@pytest.fixture(autouse=True)
+def deactivate_presets(mocker: MockerFixture) -> AsyncMock:
+    model = mocker.patch(f"{MODULE}.AgentPreset")
+    model.prisma.return_value.update_many = AsyncMock(return_value=0)
+    return model.prisma.return_value.update_many
+
+
+@pytest.fixture(autouse=True)
+def list_triggered_nodes(mocker: MockerFixture) -> AsyncMock:
+    model = mocker.patch(f"{MODULE}.AgentNode")
+    model.prisma.return_value.find_many = AsyncMock(return_value=[])
+    return model.prisma.return_value.find_many
+
+
+@pytest.fixture(autouse=True)
+def detach_node(mocker: MockerFixture) -> AsyncMock:
+    return mocker.patch(f"{MODULE}.set_node_webhook", new_callable=AsyncMock)
+
+
+@pytest.fixture(autouse=True)
+def unlink_chats(mocker: MockerFixture) -> AsyncMock:
+    """Tested in autopilot_work_test; it never raises."""
+    return mocker.patch(f"{MODULE}.unlink_chat_platforms", new_callable=AsyncMock)
+
+
+@pytest.fixture(autouse=True)
+def cancel_turns(mocker: MockerFixture) -> AsyncMock:
+    """Tested in autopilot_work_test; it never raises."""
+    return mocker.patch(f"{MODULE}.cancel_autopilot_turns", new_callable=AsyncMock)
 
 
 def _assert_per_user_jobs_removed(scheduler: MagicMock) -> None:
@@ -328,18 +371,22 @@ async def test_nothing_raises_when_every_step_fails(
     scheduler: MagicMock,
     list_runs: AsyncMock,
     stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+    list_triggered_nodes: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
     scheduler.get_execution_schedules.side_effect = RuntimeError("down")
     scheduler.remove_morning_briefing_schedule.side_effect = RuntimeError("down")
     scheduler.delete_nightly_batch_schedule.side_effect = RuntimeError("down")
     scheduler.delete_community_rebuild_schedule.side_effect = RuntimeError("down")
+    deactivate_presets.side_effect = RuntimeError("db down")
+    list_triggered_nodes.side_effect = RuntimeError("db down")
     list_runs.side_effect = RuntimeError("db down")
     caplog.set_level(logging.INFO, logger=MODULE)
 
     await stop_user_work(USER_ID)
 
-    assert len(_errors(caplog)) == 5
+    assert len(_errors(caplog)) == 7
 
 
 @pytest.mark.asyncio
@@ -372,6 +419,10 @@ async def test_an_empty_user_id_stops_nothing(
     scheduler: MagicMock,
     list_runs: AsyncMock,
     stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    unlink_chats: AsyncMock,
+    cancel_turns: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
     caplog.set_level(logging.INFO, logger=MODULE)
@@ -380,6 +431,199 @@ async def test_an_empty_user_id_stops_nothing(
 
     scheduler.get_execution_schedules.assert_not_awaited()
     scheduler.remove_morning_briefing_schedule.assert_not_awaited()
+    deactivate_presets.assert_not_awaited()
+    list_triggered_nodes.assert_not_awaited()
+    unlink_chats.assert_not_awaited()
+    cancel_turns.assert_not_awaited()
     list_runs.assert_not_awaited()
     stop_run.assert_not_awaited()
     assert _errors(caplog)
+
+
+@pytest.mark.asyncio
+async def test_every_active_preset_is_switched_off_with_the_users_id(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+):
+    await stop_user_work(USER_ID)
+
+    deactivate_presets.assert_awaited_once_with(
+        where={"userId": USER_ID, "isActive": True},
+        data={"isActive": False},
+    )
+
+
+@pytest.mark.asyncio
+async def test_nodes_on_the_users_webhooks_are_detached(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    detach_node: AsyncMock,
+):
+    list_triggered_nodes.return_value = [_node("node-1"), _node("node-2")]
+
+    await stop_user_work(USER_ID)
+
+    list_triggered_nodes.assert_awaited_once_with(
+        where={"Webhook": {"is": {"userId": USER_ID}}}
+    )
+    assert detach_node.await_args_list == [
+        call("node-1", None),
+        call("node-2", None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_links_and_autopilot_turns_are_stopped_with_the_users_id(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    unlink_chats: AsyncMock,
+    cancel_turns: AsyncMock,
+):
+    await stop_user_work(USER_ID)
+
+    unlink_chats.assert_awaited_once_with(USER_ID)
+    cancel_turns.assert_awaited_once_with(USER_ID)
+
+
+@pytest.mark.asyncio
+async def test_triggers_go_before_turns_and_turns_before_runs(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    detach_node: AsyncMock,
+    unlink_chats: AsyncMock,
+    cancel_turns: AsyncMock,
+):
+    scheduler.get_execution_schedules.return_value = [_follow_up()]
+    list_triggered_nodes.return_value = [_node("node-1")]
+    order = MagicMock()
+    order.attach_mock(scheduler.delete_schedule, "delete_schedule")
+    order.attach_mock(deactivate_presets, "deactivate_presets")
+    order.attach_mock(detach_node, "detach_node")
+    order.attach_mock(unlink_chats, "unlink_chats")
+    order.attach_mock(cancel_turns, "cancel_turns")
+    order.attach_mock(list_runs, "list_runs")
+
+    await stop_user_work(USER_ID)
+
+    names = [c[0] for c in order.mock_calls]
+    assert sorted(names[:4]) == [
+        "deactivate_presets",
+        "delete_schedule",
+        "detach_node",
+        "unlink_chats",
+    ]
+    assert names[4:] == ["cancel_turns", "list_runs"]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_trigger_step_is_logged_and_the_rest_still_run(
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    detach_node: AsyncMock,
+    unlink_chats: AsyncMock,
+    cancel_turns: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    scheduler.get_execution_schedules.return_value = [_follow_up()]
+    deactivate_presets.side_effect = RuntimeError("db down")
+    list_triggered_nodes.return_value = [_node("node-1"), _node("node-2")]
+    detach_node.side_effect = [RuntimeError("update failed"), None]
+    list_runs.return_value = [_run("run-1")]
+    caplog.set_level(logging.INFO, logger=MODULE)
+
+    await stop_user_work(USER_ID)
+
+    assert detach_node.await_count == 2
+    scheduler.delete_schedule.assert_awaited_once()
+    _assert_per_user_jobs_removed(scheduler)
+    unlink_chats.assert_awaited_once_with(USER_ID)
+    cancel_turns.assert_awaited_once_with(USER_ID)
+    stop_run.assert_awaited_once()
+    errors = _errors(caplog)
+    assert len(errors) == 2
+    assert all(USER_ID in error for error in errors)
+    assert any("preset" in error and "db down" in error for error in errors)
+    assert any("node-1" in error and "update failed" in error for error in errors)
+
+
+@pytest.mark.asyncio
+async def test_a_hung_trigger_listing_is_cut_off(
+    mocker: MockerFixture,
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    cancel_turns: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+
+    async def hang(**_: object) -> list[object]:
+        await asyncio.sleep(10)
+        return []
+
+    list_triggered_nodes.side_effect = hang
+    list_runs.return_value = [_run("run-1")]
+    caplog.set_level(logging.INFO, logger=MODULE)
+
+    await asyncio.wait_for(stop_user_work(USER_ID), timeout=2)
+
+    cancel_turns.assert_awaited_once_with(USER_ID)
+    stop_run.assert_awaited_once()
+    [error] = _errors(caplog)
+    assert "webhook-triggered nodes" in error and USER_ID in error
+
+
+@pytest.mark.asyncio
+async def test_with_every_call_hung_it_still_returns_promptly(
+    mocker: MockerFixture,
+    scheduler: MagicMock,
+    list_runs: AsyncMock,
+    stop_run: AsyncMock,
+    deactivate_presets: AsyncMock,
+    list_triggered_nodes: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    for module in (MODULE, AUTOPILOT_MODULE):
+        mocker.patch(f"{module}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{AUTOPILOT_MODULE}.TURN_STOP_WAIT_SECONDS", 0.05)
+    mocker.patch(f"{MODULE}.unlink_chat_platforms", unlink_chat_platforms)
+    mocker.patch(f"{MODULE}.cancel_autopilot_turns", cancel_autopilot_turns)
+
+    async def hang(*_: object, **__: object) -> None:
+        await asyncio.sleep(10)
+
+    links = MagicMock()
+    links.list_server_links = AsyncMock(side_effect=hang)
+    links.list_user_links = AsyncMock(side_effect=hang)
+    mocker.patch(f"{AUTOPILOT_MODULE}.platform_linking_db", return_value=links)
+    mocker.patch(f"{AUTOPILOT_MODULE}.list_queued_sessions", side_effect=hang)
+    mocker.patch(f"{AUTOPILOT_MODULE}.get_running_session_ids", side_effect=hang)
+    for step in (
+        scheduler.get_execution_schedules,
+        scheduler.remove_morning_briefing_schedule,
+        scheduler.delete_nightly_batch_schedule,
+        scheduler.delete_community_rebuild_schedule,
+        deactivate_presets,
+        list_triggered_nodes,
+        list_runs,
+    ):
+        step.side_effect = hang
+    caplog.set_level(logging.INFO, logger=MODULE)
+
+    await asyncio.wait_for(stop_user_work(USER_ID), timeout=2)
+
+    assert len(_errors(caplog)) == 10
+    warnings = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("AutoPilot turn" in w and USER_ID in w for w in warnings)

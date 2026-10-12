@@ -1,11 +1,18 @@
-"""Stop a closing account's scheduled and running work."""
+"""Stop a closing account's scheduled, triggered and running work."""
 
 import asyncio
 import logging
 from collections.abc import Awaitable
 from typing import TypeVar
 
+from prisma.models import AgentNode, AgentPreset
+
+from backend.api.features.account_deletion.autopilot_work import (
+    cancel_autopilot_turns,
+    unlink_chat_platforms,
+)
 from backend.data.execution import ExecutionStatus, get_graph_executions
+from backend.data.graph import set_node_webhook
 from backend.executor.scheduler import SchedulerClient
 from backend.executor.utils import stop_graph_execution
 from backend.util.clients import get_scheduler_client
@@ -36,18 +43,37 @@ _UNFINISHED_STATUSES = [
 
 
 async def stop_user_work(user_id: str) -> None:
-    """Remove every schedule the user owns, then stop their unfinished runs.
+    """Stop everything that can start or keep doing work for the user.
 
-    Schedules go first so none can fire again after the runs are listed; a
-    fire already under way when its schedule is removed can still add a run.
+    In order, so nothing new starts after its kind is listed:
+    1. What starts work without a login: every schedule, the webhook
+       triggers, and the chat links that start AutoPilot turns.
+    2. AutoPilot turns, queued then running (they can start runs).
+    3. Unfinished graph runs.
+
+    Residual gaps: a schedule fire or webhook delivery already under way can
+    still add a run or turn; a turn dispatched but not yet picked up by an
+    executor misses its cancel; a turn already running from a chat platform
+    is not cancelled (it never takes a running slot, so it isn't listed; the
+    unlink only stops new ones); a run can start an AutoPilot turn (AutoPilot
+    block) between steps 2 and 3; and until the account is closed, a request
+    from the user's own session can start work too.
+
     Best effort: each call that fails is logged and the rest still run, and
-    this never raises, so the account can still be closed.
+    this never raises, so the account can still be closed. Every call is
+    bounded in time: it waits up to 5 s for running AutoPilot turns to end,
+    and with every service hung it returns in about a minute.
     """
     if not user_id:
         # An empty id would turn the run listing into "every user's runs".
         logger.error("Account deletion stopped no work: no user id was given")
         return
-    await _remove_schedules(user_id)
+    await asyncio.gather(
+        _remove_schedules(user_id),
+        _stop_webhook_triggers(user_id),
+        unlink_chat_platforms(user_id),
+    )
+    await cancel_autopilot_turns(user_id)
     await _stop_unfinished_runs(user_id)
 
 
@@ -93,6 +119,49 @@ async def _remove_listed_schedules(scheduler: SchedulerClient, user_id: str) -> 
                 scheduler.delete_schedule(schedule_id=schedule.id, user_id=user_id),
             )
             for schedule in schedules or []
+        )
+    )
+
+
+async def _stop_webhook_triggers(user_id: str) -> None:
+    """Stop the user's webhooks from starting runs.
+
+    A delivery to a webhook's ingress URL needs no login. Disconnecting the
+    user's apps removes the webhooks registered with those credentials; this
+    also covers the credential-free ones (the generic webhook block, Compass,
+    AllQuiet) and any the disconnect missed. The webhooks themselves are left
+    for data erasure.
+    """
+    await asyncio.gather(
+        _attempt("switch off presets", user_id, _deactivate_presets(user_id)),
+        _detach_triggered_nodes(user_id),
+    )
+
+
+async def _deactivate_presets(user_id: str) -> int:
+    # The switch the expert archive flips: a webhook skips an inactive preset.
+    return await AgentPreset.prisma().update_many(
+        where={"userId": user_id, "isActive": True},
+        data={"isActive": False},
+    )
+
+
+async def _detach_triggered_nodes(user_id: str) -> None:
+    """Legacy triggered nodes (migrated to presets at startup, but still run
+    by the webhook ingress) have no on/off switch, so they are detached."""
+    nodes = await _attempt(
+        "list webhook-triggered nodes",
+        user_id,
+        AgentNode.prisma().find_many(where={"Webhook": {"is": {"userId": user_id}}}),
+    )
+    await asyncio.gather(
+        *(
+            _attempt(
+                f"detach node #{node.id} from its webhook",
+                user_id,
+                set_node_webhook(node.id, None),
+            )
+            for node in nodes or []
         )
     )
 
