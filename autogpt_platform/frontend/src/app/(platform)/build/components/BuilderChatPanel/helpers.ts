@@ -24,7 +24,8 @@ export function getDeploymentModelStatus({
 }: TransportsQuery): DeploymentModelStatus {
   if (transports) {
     return transports.some(
-      (transport) => transport.auth_provider === "platform" && transport.available,
+      (transport) =>
+        transport.auth_provider === "platform" && transport.available,
     )
       ? "available"
       : "missing";
