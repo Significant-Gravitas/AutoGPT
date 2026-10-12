@@ -133,18 +133,6 @@ describe("SignupPage", () => {
     ).toBeDefined();
   });
 
-  test("leaves no timer pending once it unmounts after a signup attempt", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { unmount } = render(<SignupPage />);
-
-    fillValidForm();
-    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
-    await screen.findByText("User with this email already exists");
-    unmount();
-
-    expect(vi.getTimerCount()).toBe(0);
-  });
-
   test("signs up without a terms checkbox", async () => {
     render(<SignupPage />);
 
@@ -487,6 +475,18 @@ describe("SignupPage", () => {
     expect(capture.mock.calls).toEqual([
       ["marketing_opted_out", { surface: "signup" }],
     ]);
+  });
+
+  test("leaves no timer pending once it unmounts after a signup attempt", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { unmount } = render(<SignupPage />);
+
+    fillValidForm();
+    fireEvent.click(screen.getByRole("button", { name: "Sign up" }));
+    await screen.findByText("User with this email already exists");
+    unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   test("does not link to the demo tour", () => {
