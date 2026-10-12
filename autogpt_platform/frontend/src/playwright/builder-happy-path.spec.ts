@@ -1,8 +1,18 @@
 import { expect, test } from "./coverage-fixture";
 import { E2E_AUTH_STATES } from "./credentials/accounts";
-import { BuildPage } from "./pages/build.page";
+import { BuildPage, SIMPLE_AGENT } from "./pages/build.page";
 
 test.use({ storageState: E2E_AUTH_STATES.builder });
+
+interface SavedGraph {
+  nodes: { id: string; block_id: string }[];
+  links: {
+    source_id: string;
+    sink_id: string;
+    source_name: string;
+    sink_name: string;
+  }[];
+}
 
 test("builder happy path: user can walk through the builder tutorial and cancel midway, persisting canceled state", async ({
   page,
@@ -41,15 +51,14 @@ test("builder happy path: user can create a simple agent in builder with core bl
   await expect(buildPage.getNodeLocator()).toHaveCount(2);
   await expect(
     buildPage
-      .getNodeLocator(0)
-      .locator('input[placeholder="Enter string value..."]'),
-  ).toHaveValue("smoke-value");
-  await expect(buildPage.getNodeTextInput("Add to Dictionary", 0)).toHaveValue(
-    "smoke-key",
-  );
-  await expect(buildPage.getNodeTextInput("Add to Dictionary", 1)).toHaveValue(
-    "smoke-value",
-  );
+      .getNodeLocatorByTitle("Store Value")
+      .getByRole("textbox", { name: "Input", exact: true }),
+  ).toHaveValue(SIMPLE_AGENT.value);
+  await expect(
+    buildPage
+      .getNodeLocatorByTitle("Agent Output")
+      .getByRole("textbox", { name: "Name", exact: true }),
+  ).toHaveValue(SIMPLE_AGENT.outputName);
 });
 
 test("builder happy path: user can save the created agent", async ({
@@ -58,10 +67,22 @@ test("builder happy path: user can save the created agent", async ({
   test.setTimeout(120000);
 
   const buildPage = new BuildPage(page);
-  await buildPage.createAndSaveSimpleAgent("Smoke Save Agent");
+  const { graphId, graphVersion } =
+    await buildPage.createAndSaveSimpleAgent("Smoke Save Agent");
 
   await expect(page).toHaveURL(/flowID=/);
   expect(await buildPage.isRunButtonEnabled()).toBeTruthy();
+
+  const response = await page.request.get(
+    `/api/proxy/api/graphs/${graphId}?version=${graphVersion}`,
+  );
+  expect(response.ok(), `GET saved graph: ${response.status()}`).toBe(true);
+  const graph = (await response.json()) as SavedGraph;
+  expect(graph.nodes).toHaveLength(2);
+  expect(
+    graph.links.map((link) => `${link.source_name} -> ${link.sink_name}`),
+    "the saved graph should keep the edge the user drew",
+  ).toEqual(["output -> value"]);
 });
 
 test("builder happy path: user can run the saved agent from builder and see execution state", async ({
@@ -73,11 +94,16 @@ test("builder happy path: user can run the saved agent from builder and see exec
   await buildPage.createAndSaveSimpleAgent("Smoke Run Agent");
 
   await buildPage.startRun();
-  await expect(
-    page.locator('[data-id="stop-graph-button"], [data-id="run-graph-button"]'),
-  ).toBeVisible({ timeout: 15000 });
+  const run = await buildPage.waitForRunToEnd();
 
-  await expect
-    .poll(() => buildPage.getExecutionState(), { timeout: 15000 })
-    .not.toBe("unknown");
+  expect(run.status).toBe("COMPLETED");
+  expect(run.outputs, "the run should output the stored value").toEqual({
+    [SIMPLE_AGENT.outputName]: [SIMPLE_AGENT.value],
+  });
+  await expect(
+    buildPage
+      .getNodeLocatorByTitle("Agent Output")
+      .getByText("COMPLETED", { exact: true }),
+    "the canvas should show the output node's run state",
+  ).toBeVisible({ timeout: 15000 });
 });
