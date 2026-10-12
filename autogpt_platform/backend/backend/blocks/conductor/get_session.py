@@ -88,7 +88,7 @@ class ConductorGetSessionBlock(Block):
             f"{MAX_WAIT_SECONDS}). Coding agents typically run 5-30 minutes: "
             "prefer a single long wait over repeated short polls or scheduled "
             "follow-ups; if timed_out is true, call again with after=next_after "
-            "to keep waiting.",
+            "and the same prompt_message_id to keep waiting.",
             default=DEFAULT_WAIT_SECONDS,
             ge=1,
             le=MAX_WAIT_SECONDS,
@@ -131,7 +131,7 @@ class ConductorGetSessionBlock(Block):
         timed_out: bool = SchemaField(
             description="True when wait_until_idle was set and the session was "
             "still working when timeout_seconds elapsed; call again with "
-            "after=next_after to keep waiting"
+            "after=next_after and the same prompt_message_id to keep waiting"
         )
         message: dict = SchemaField(
             description="The single message requested by message_id"

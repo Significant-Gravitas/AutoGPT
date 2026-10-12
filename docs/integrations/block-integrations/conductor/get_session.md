@@ -24,7 +24,7 @@ The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then
 | include_messages | Also return the raw transcript rows in messages. Off by default: status, latest_reply and next_after cover a poll loop without the rows, which can be hundreds of kilobytes | bool | No |
 | wait_until_idle | Block until the session is idle or errored before reading it, instead of polling from outside. Use this to keep waiting after a Send Message or Create Session wait timed out: pass its next_after as after (the newest messages following it are returned) and the prompt's message id as prompt_message_id. Returns at once when the session is already idle. | bool | No |
 | prompt_message_id | With wait_until_idle: the message_id (or initial_message_id) of the prompt being waited for. Idle is then accepted only once that prompt's turn has produced agent output, so a session that is idle because the prompt is still queued keeps being waited on. | str | No |
-| timeout_seconds | How long wait_until_idle waits, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single long wait over repeated short polls or scheduled follow-ups; if timed_out is true, call again with after=next_after to keep waiting. | int | No |
+| timeout_seconds | How long wait_until_idle waits, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single long wait over repeated short polls or scheduled follow-ups; if timed_out is true, call again with after=next_after and the same prompt_message_id to keep waiting. | int | No |
 | poll_interval_seconds | Seconds between status checks while waiting; 0 scales it with timeout_seconds (10-60s) | int | No |
 
 ### Outputs
@@ -40,7 +40,7 @@ The block calls `GET /v0/sessions/{id}` and `GET /v0/sessions/{id}/status`, then
 | latest_reply | Text of the newest agent message with visible text in the read transcript slice | str |
 | has_more | True when the transcript has messages beyond the read slice: older ones by default, newer ones when after is set, and with wait_until_idle older ones following after | bool |
 | next_after | Transcript row ID of the last returned message (or the row `after` resolved to when nothing followed it); pass it as after to read what follows, or to continue a wait that timed out | str |
-| timed_out | True when wait_until_idle was set and the session was still working when timeout_seconds elapsed; call again with after=next_after to keep waiting | bool |
+| timed_out | True when wait_until_idle was set and the session was still working when timeout_seconds elapsed; call again with after=next_after and the same prompt_message_id to keep waiting | bool |
 | message | The single message requested by message_id | Dict[str, Any] |
 | deep_link | Link that opens the session | str |
 
