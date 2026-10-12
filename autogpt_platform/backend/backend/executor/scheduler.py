@@ -2529,8 +2529,9 @@ class Scheduler(AppService):
         )
 
         user_timezone = _resolve_timezone(user_timezone, user_id)
+        key = schedule_id or str(uuid.uuid4())
         job_args = GraphExecutionJobArgs(
-            schedule_id=schedule_id or str(uuid.uuid4()),
+            schedule_id=key,
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
@@ -2555,7 +2556,7 @@ class Scheduler(AppService):
             )
         except ConflictingIdError:
             # A concurrent copy of the same submission got there first.
-            replayed = self._replayed_graph_schedule(job_args.schedule_id, user_id)
+            replayed = self._replayed_graph_schedule(key, user_id)
             if replayed is None:
                 raise
             return replayed
