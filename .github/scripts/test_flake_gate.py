@@ -18,6 +18,7 @@ from flake_gate import (
     BackendSuite,
     FrontendSuite,
     Outcome,
+    Pressure,
     Run,
     annotation_commands,
     changed_files,
@@ -256,7 +257,8 @@ class GateTests(unittest.TestCase):
         """Run the gate with ``execute`` answering from ``runs_by_index``."""
         calls = []
 
-        def execute(suite, files, *, index, seed, load, timeout, out_dir):
+        def execute(suite, files, *, index, seed, pressure, timeout, out_dir):
+            load = pressure.load if pressure else 0
             calls.append(
                 SimpleNamespace(index=index, seed=seed, load=load, timeout=timeout)
             )
@@ -273,7 +275,7 @@ class GateTests(unittest.TestCase):
                 self.FILES,
                 runs=runs,
                 budget=budget,
-                load=8,
+                pressure=Pressure(load=8),
                 seed=100,
                 out_dir=Path(tmp),
                 clock=lambda: next(values),
@@ -307,8 +309,8 @@ class GateTests(unittest.TestCase):
         self.assertIn("E   assert 1.62 < 1.5", report)
         self.assertIn(
             "PYTHONHASHSEED=100 python3 ../../.github/scripts/flake_gate.py stress "
-            "--load 8 -- poetry run test --cov=backend --cov-branch "
-            "-p flake_gate_pytest --flake-gate-seed=100 a_test.py",
+            "--load 8 -- poetry run test -p flake_gate_pytest "
+            "--flake-gate-seed=100 a_test.py",
             report,
         )
         (annotation,) = annotation_commands(result)
@@ -323,9 +325,7 @@ class GateTests(unittest.TestCase):
         }
         result, _ = self.gate({0: _run(0, None, failed), 1: _run(1, 0, ok)}, runs=1)
         self.assertEqual([v.test for v in result.of_kind("flaky")], ["a_test.py::t"])
-        self.assertIn(
-            "\npoetry run test --cov=backend --cov-branch a_test.py\n", render(result)
-        )
+        self.assertIn("\npoetry run test a_test.py\n", render(result))
 
     def test_a_test_that_fails_every_run_is_listed_but_not_counted(self):
         broken = {
@@ -361,7 +361,7 @@ class GateTests(unittest.TestCase):
             "a_test.py::t": Outcome(FAILED, "The test never finished"),
             "a_test.py": Outcome(PASSED),
         }
-        # 10 s without load: stuck means 120 s, the floor, not 5 x 10 s.
+        # 10 s without load: stuck means 120 s, the floor, not 10 x 10 s.
         result, calls = self.gate(
             {
                 0: _run(0, None, ok, duration=10),
@@ -464,7 +464,7 @@ class EndToEndTests(unittest.TestCase):
                     ["sample_test.py"],
                     runs=3,
                     budget=600,
-                    load=0,
+                    pressure=Pressure(load=0),
                     seed=41,
                     out_dir=suite_dir / "out",
                     log=lambda line: None,
@@ -527,11 +527,36 @@ class DetectCommandTests(unittest.TestCase):
 
 class LoadTests(unittest.TestCase):
     def test_starts_busy_processes_and_stops_them(self):
-        with flake_gate.Load(2) as load:
+        with flake_gate.Load(Pressure(load=2)) as load:
             procs = list(load._procs)
             self.assertEqual(len(procs), 2)
             self.assertTrue(all(p.poll() is None for p in procs))
         self.assertTrue(all(p.poll() is not None for p in procs))
+
+    @unittest.skipUnless(hasattr(os, "sched_getaffinity"), "Linux only")
+    def test_holds_the_tests_and_the_load_to_the_pressures_cores(self):
+        pressure = Pressure(load=1, cores=1)
+        (cpu,) = pressure.cpus() or {None}
+        command = [
+            sys.executable,
+            "-c",
+            "import os; print(sorted(os.sched_getaffinity(0)))",
+        ]
+        tests = subprocess.run(
+            command, capture_output=True, text=True, preexec_fn=pressure.pin()
+        )
+        self.assertEqual(tests.stdout.strip(), f"[{cpu}]")
+        with flake_gate.Load(pressure) as load:
+            (busy,) = load._procs
+            self.assertEqual(os.sched_getaffinity(busy.pid), {cpu})
+        self.assertIn("sharing 1 core with the tests", pressure.describe())
+        self.assertEqual(pressure.flags(), "--load 1 --cores 1")
+
+    def test_each_suite_has_its_own_pressure(self):
+        self.assertEqual(FrontendSuite().pressure(), Pressure(load=2, cores=1))
+        backend = BackendSuite().pressure()
+        self.assertEqual(backend.cores, 0)
+        self.assertEqual(backend.load, 3 * (os.cpu_count() or 1))
 
 
 if __name__ == "__main__":
