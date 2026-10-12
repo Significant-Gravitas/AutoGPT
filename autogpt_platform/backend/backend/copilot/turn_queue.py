@@ -10,7 +10,7 @@ text column:
 
 The user's pending message itself is just a normal ChatMessage row (no
 status of its own).  The dispatcher's submit-time payload (``file_ids``,
-``model``, ``permissions``, ``context``, ``request_arrival_at``)
+``model``, ``permissions``, ``context``, ``request_arrival_at``, ``cost_context``)
 is stashed in that row's ``metadata`` JSONB so a later promotion can
 replay the turn faithfully.
 
@@ -54,6 +54,11 @@ from backend.copilot.rate_limit import (
     is_user_paywalled,
 )
 from backend.copilot.tracking import track_user_message
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
 
@@ -165,6 +170,9 @@ async def enqueue_turn(
     ``metadata`` JSONB so a later promotion replays the turn faithfully.
     """
     metadata = dict(message_metadata or {})
+    metadata["cost_context"] = (await capture_cost_context(user_id)).model_dump(
+        mode="json"
+    )
     if context is not None:
         metadata["context"] = dict(context)
     if file_ids is not None:
@@ -384,27 +392,31 @@ async def dispatch_next_for_user(user_id: str) -> bool:
         # ``mark_session_completed`` → ``release_turn_slot``.
         slot = TurnSlot(user_id, head.session_id)
         slot.admitted = True
-        await dispatch_turn(
-            slot,
-            session_id=head.session_id,
-            user_id=user_id,
-            turn_id=turn_id,
-            message=pending.content,
-            is_user_message=pending.role == "user",
-            context=metadata.get("context"),
-            file_ids=metadata.get("file_ids"),
-            # Session-anchored tenancy: promoted turns attribute to the
-            # session's org/team, same as directly-dispatched turns —
-            # without this, capped users' queued turns would lose their
-            # org context on promotion.
-            organization_id=head.organization_id,
-            team_id=head.team_id,
-            model=metadata.get("model"),
-            llm_auth_provider=head.metadata.llm_auth_provider,
-            llm_credential_id=head.metadata.llm_credential_id,
-            permissions=metadata.get("permissions"),
-            request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
-        )
+        # Missing legacy attribution must not be guessed from today's plan or
+        # the completing turn's context. Keep such work queued for recovery.
+        cost_context = TrialCostContext.model_validate(metadata.get("cost_context"))
+        with restore_cost_context(user_id, cost_context):
+            await dispatch_turn(
+                slot,
+                session_id=head.session_id,
+                user_id=user_id,
+                turn_id=turn_id,
+                message=pending.content,
+                is_user_message=pending.role == "user",
+                context=metadata.get("context"),
+                file_ids=metadata.get("file_ids"),
+                # Session-anchored tenancy: promoted turns attribute to the
+                # session's org/team, same as directly-dispatched turns —
+                # without this, capped users' queued turns would lose their
+                # org context on promotion.
+                organization_id=head.organization_id,
+                team_id=head.team_id,
+                model=metadata.get("model"),
+                llm_auth_provider=head.metadata.llm_auth_provider,
+                llm_credential_id=head.metadata.llm_credential_id,
+                permissions=metadata.get("permissions"),
+                request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            )
     except BaseException:
         # Roll the claim back so a missed-dispatch tick or the next
         # slot-free event can retry.  ``BaseException`` (not just
