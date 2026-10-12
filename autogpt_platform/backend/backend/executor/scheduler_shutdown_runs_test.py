@@ -12,7 +12,6 @@ import random
 import threading
 import time
 from collections import Counter
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -35,14 +34,14 @@ from backend.executor.scheduler_shutdown import (
 RunKey = tuple[str, datetime | None]
 
 
-@dataclass
 class _World:
-    loop: asyncio.AbstractEventLoop
-    # Per job: seconds stalled before and after the effect, first run only.
-    stalls: dict[str, tuple[float, float]] = field(default_factory=dict)
-    stalling: bool = True
-    effects: list[RunKey] = field(default_factory=list)
-    lock: threading.Lock = field(default_factory=threading.Lock)
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self.loop = loop
+        # Per job: seconds stalled before and after the effect, first run only.
+        self.stalls: dict[str, tuple[float, float]] = {}
+        self.stalling = True
+        self.effects: list[RunKey] = []
+        self.lock = threading.Lock()
 
 
 _world: _World
@@ -128,6 +127,15 @@ def _restart_and_settle(tmp_path: Path, world: _World, expected: set[RunKey]):
     assert stop_scheduler(scheduler, world.loop, 5.0)
 
 
+def _wait_for(condition, timeout: float = 5.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if condition():
+            return True
+        time.sleep(0.01)
+    return False
+
+
 def _at(seconds: float) -> datetime:
     return datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
@@ -159,8 +167,7 @@ def test_a_run_cut_short_before_its_effect_is_replayed_once(
     scheduler.add_job(
         dispatch, "interval", id="hourly", hours=1, next_run_time=due, args=["hourly"]
     )
-    while not scheduler.ledger or not scheduler.ledger._runs:
-        time.sleep(0.01)
+    assert _wait_for(lambda: bool(scheduler.ledger and scheduler.ledger._runs))
 
     stopped = stop_scheduler(scheduler, world.loop, grace_seconds=0.2)
     assert world.effects == []
@@ -180,8 +187,7 @@ def test_a_run_cut_short_after_its_effect_is_not_replayed(
     scheduler.add_job(
         dispatch, "interval", id="hourly", hours=1, next_run_time=due, args=["hourly"]
     )
-    while not world.effects:
-        time.sleep(0.01)
+    assert _wait_for(lambda: bool(world.effects))
 
     stopped = stop_scheduler(scheduler, world.loop, grace_seconds=0.2)
     _restart_and_settle(tmp_path, world, {("hourly", due)})
