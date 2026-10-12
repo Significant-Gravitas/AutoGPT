@@ -144,6 +144,7 @@ def responses_events(
     n: int,
     input_tokens: int,
     encrypted: str,
+    summarize: bool = True,
 ) -> list[dict[str, Any]]:
     response = {"id": f"resp_{n}", "object": "response", "model": model}
     created = {
@@ -153,7 +154,7 @@ def responses_events(
     if decision.kind == "overflow":
         failed = {**response, "status": "failed", "error": CODEX_OVERFLOW}
         return [created, {"type": "response.failed", "response": failed}]
-    events = [created, *_reasoning_item(n, encrypted)]
+    events = [created, *_reasoning_item(n, encrypted, summarize)]
     events += (
         _function_call_item(n, tool, decision.page)
         if decision.kind == "tool"
@@ -170,36 +171,34 @@ def responses_events(
     return events + [{"type": "response.completed", "response": done}]
 
 
-def _reasoning_item(n: int, encrypted: str) -> list[dict[str, Any]]:
+def _reasoning_item(n: int, encrypted: str, summarize: bool) -> list[dict[str, Any]]:
+    """A reasoning item; without a summary it is encrypted content alone."""
     item_id = f"rs_{n}"
-    summary = [{"type": "summary_text", "text": "Planning the next step."}]
+    text = "Planning the next step."
+    summary = [{"type": "summary_text", "text": text}] if summarize else []
+    added = {
+        "type": "response.output_item.added",
+        "output_index": 0,
+        "item": {"type": "reasoning", "id": item_id, "summary": []},
+    }
+    done = {
+        "type": "response.output_item.done",
+        "output_index": 0,
+        "item": {
+            "type": "reasoning",
+            "id": item_id,
+            "summary": summary,
+            "encrypted_content": encrypted,
+        },
+    }
+    if not summarize:
+        return [added, done]
+    part = {"item_id": item_id, "summary_index": 0}
     return [
-        {
-            "type": "response.output_item.added",
-            "output_index": 0,
-            "item": {"type": "reasoning", "id": item_id, "summary": []},
-        },
-        {
-            "type": "response.reasoning_summary_part.added",
-            "item_id": item_id,
-            "summary_index": 0,
-        },
-        {
-            "type": "response.reasoning_summary_text.delta",
-            "item_id": item_id,
-            "summary_index": 0,
-            "delta": "Planning the next step.",
-        },
-        {
-            "type": "response.output_item.done",
-            "output_index": 0,
-            "item": {
-                "type": "reasoning",
-                "id": item_id,
-                "summary": summary,
-                "encrypted_content": encrypted,
-            },
-        },
+        added,
+        {"type": "response.reasoning_summary_part.added", **part},
+        {"type": "response.reasoning_summary_text.delta", **part, "delta": text},
+        done,
     ]
 
 

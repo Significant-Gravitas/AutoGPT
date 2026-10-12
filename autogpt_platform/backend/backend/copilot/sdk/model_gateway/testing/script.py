@@ -39,10 +39,14 @@ class Script:
         pages: int = 2,
         overflow_chars: int | None = None,
         usage_scale: float = 1.0,
+        reasoning_summary: bool = True,
     ) -> None:
         self.pages = pages
         self.overflow_chars = overflow_chars
         self.usage_scale = usage_scale
+        # Whether the Responses backend summarises its reasoning; without a
+        # summary a reasoning item is encrypted content alone.
+        self.reasoning_summary = reasoning_summary
 
     def decide(self, latest: str, everything: str, size: int) -> Decision:
         """``latest`` is the newest user turn's text, tool results included."""
