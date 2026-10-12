@@ -19,13 +19,16 @@ import httpx
 import pytest
 import sentry_sdk
 from fastapi import FastAPI
-from prisma.models import IntegrationWebhook
+from prisma.errors import ClientNotConnectedError
+from prisma.models import AgentGraphExecution, IntegrationWebhook
+from pydantic import BaseModel, ValidationError
 
 from backend.api import rest_api
 from backend.data import redis_client
 from backend.data.model import APIKeyCredentials
 from backend.integrations.webhooks.github import GithubWebhooksManager
 from backend.util import metrics
+from backend.util.logging import describe_validation_errors
 from backend.util.logging_test_helpers import CapturingTransport, serve
 from backend.util.service import AppService
 from backend.util.url_redaction import REDACTED
@@ -46,12 +49,14 @@ SESSION_COOKIE = "cookie-SECRET8901"
 async def test_sentry_gets_no_credential_from_a_failing_routes_variables(
     sentry: CapturingTransport, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # With the database down, each route raises with the credential in its own
+    # variables and in the query it was building.
+    for table in (AgentGraphExecution, IntegrationWebhook):
+        monkeypatch.setattr(table, "prisma", lambda: _UnreachableTable())
     async with (
         serve(rest_api.AgentServer(), monkeypatch) as host,
         httpx.AsyncClient(base_url=f"http://{host}") as client,
     ):
-        # No database is connected, so each route raises with the credential
-        # in its own variables and in the query it was building.
         shared = await client.get(f"/api/public/shared/{SHARE_TOKEN}")
         # Telegram signs each delivery with a secret token in a header of its
         # own, which Sentry's own scrubbing doesn't know; and the ASGI scope
@@ -147,6 +152,25 @@ async def test_a_service_logs_no_input_that_failed_validation(
         "POST /store_credentials failed: 1 validation error: provider (missing) "
         "for APIKeyCredentials"
     ) in logs
+
+
+def test_a_validation_error_is_described_without_a_mappings_keys() -> None:
+    """A mapping's keys are the client's own data, and a location names them."""
+
+    class Limits(BaseModel):
+        per_key: dict[str, int]
+
+    with pytest.raises(ValidationError) as error:
+        Limits.model_validate({"per_key": {API_KEY: "many", "daily": 5}})
+    with pytest.raises(ValidationError) as missing:
+        Limits.model_validate({})
+
+    assert describe_validation_errors(error.value.errors()) == (
+        "1 validation error: per_key.* (int_parsing)"
+    )
+    assert describe_validation_errors(missing.value.errors()) == (
+        "1 validation error: per_key (missing)"
+    )
 
 
 @pytest.mark.parametrize("log_level", ["DEBUG"])
@@ -337,6 +361,16 @@ def _webhook_row(webhook_id: str, provider: str) -> IntegrationWebhook:
         AgentPresets=[],
         visibility="PRIVATE",
     )
+
+
+class _UnreachableTable:
+    """What a table reads with the database down."""
+
+    async def find_first(self, where: dict, **kwargs: object) -> None:
+        raise ClientNotConnectedError()
+
+    async def find_unique(self, where: dict, **kwargs: object) -> None:
+        raise ClientNotConnectedError()
 
 
 class _WebhookTable:
