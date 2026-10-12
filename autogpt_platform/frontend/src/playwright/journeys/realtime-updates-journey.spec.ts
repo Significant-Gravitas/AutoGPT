@@ -26,14 +26,18 @@ test.describe("realtime updates journey", () => {
 
     const library = new LibraryPage(page);
     await library.openSavedAgent(agentName);
-    await clickRunButton(page);
-    const pageInstance = await markPageInstance(page);
+    // Land on the agent page with a full load, as from a link or a refresh,
+    // so the page sets up its live connection from scratch.
+    const openedBeforeReload = liveConnection.opened();
+    await page.reload();
     await expect
       .poll(() => liveConnection.opened(), {
         message: "the page never opened its live connection",
         timeout: 30_000,
       })
-      .toBeGreaterThan(0);
+      .toBeGreaterThan(openedBeforeReload);
+    await clickRunButton(page);
+    const pageInstance = await markPageInstance(page);
     // In flight (queued or running) right before the drop, so the completion
     // has to cross it.
     await expect(
@@ -50,7 +54,7 @@ test.describe("realtime updates journey", () => {
     await expect.poll(() => library.getRunStatus()).toBe("completed");
     await expectActivity(page, agentName, /completed/i);
 
-    expect(liveConnection.opened()).toBeGreaterThan(1);
+    expect(liveConnection.opened()).toBeGreaterThan(openedBeforeReload + 1);
     expect(await markPageInstance(page)).toBe(pageInstance);
   });
 });
