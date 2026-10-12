@@ -33,6 +33,7 @@ from backend.copilot.board import (
     BoardColumn,
     BoardColumnsError,
     BoardNameError,
+    unplaced_column,
 )
 from backend.copilot.board_db import (
     DEFAULT_BOARD_REF,
@@ -287,21 +288,25 @@ async def update_session_board(
 ) -> SessionSummaryResponse:
     """Move a card, within its board or onto ``board_id``. A card moved to
     another board keeps its column if that board has it, else goes to
-    Backlog, and goes on top. A card that has not started yet starts with
-    its title as the first message when it moves to any column but Backlog
-    or Done."""
+    Backlog, and goes on top; a Home card with no column takes the one Home
+    shows it in and does not start. A card that has not started yet starts
+    with its title as the first message when it moves to any column but
+    Backlog or Done."""
     session = await _validate_and_get_session(session_id, user_id)
     extras = await _session_extras(user_id, session_id)
     column = request.column
     position = request.position
     moving = request.board_id is not None
+    unplaced = moving and column is None and extras.board_column is None
     target = UNSET
     if moving or column is not None:
         board = await _resolve_board(
             user_id, request.board_id or extras.board_id or DEFAULT_BOARD_REF
         )
         keys = {c.key for c in board.columns}
-        if column is None:
+        if unplaced:
+            column = unplaced_column(session.updated_at)
+        elif column is None:
             column = extras.board_column if extras.board_column in keys else BACKLOG
         elif column not in keys:
             raise HTTPException(status_code=422, detail="Unknown board column")
@@ -312,7 +317,8 @@ async def update_session_board(
             position = await top_position(user_id, board_id, column)
 
     starts = (
-        column is not None
+        not unplaced
+        and column is not None
         and column not in (BACKLOG, DONE)
         and bool((session.title or "").strip())
         and session.chat_status == CHAT_STATUS_IDLE

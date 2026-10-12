@@ -1,7 +1,7 @@
 """Tests for the task board routes and board fields on POST /sessions."""
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -18,6 +18,7 @@ from backend.copilot import board_db
 from backend.copilot.board import (
     DEFAULT_COLUMNS,
     REASSIGN_BRIEF_KIND,
+    UNPLACED_WINDOW,
     BoardColumn,
     validate_columns,
 )
@@ -1595,7 +1596,7 @@ def test_move_to_a_project_without_the_column_lands_in_backlog(
     )
 
 
-def test_move_an_unplaced_card_to_a_project_lands_in_backlog(
+def test_move_a_recent_unplaced_card_to_a_project_lands_in_progress(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocks = _mock_card(mocker)
@@ -1605,7 +1606,26 @@ def test_move_an_unplaced_card_to_a_project_lands_in_backlog(
     )
 
     assert response.status_code == 200
-    assert mocks.set_board.await_args.kwargs["column"] == "backlog"
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, "in_progress")
+    assert mocks.set_board.await_args.kwargs["column"] == "in_progress"
+    assert mocks.set_board.await_args.kwargs["board_id"] == PROJECT_ID
+    mocks.start.assert_not_awaited()
+
+
+def test_move_an_older_unplaced_card_to_a_project_lands_in_done(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    session = _session()
+    session.updated_at = datetime.now(UTC) - UNPLACED_WINDOW - timedelta(minutes=1)
+    mocks = _mock_card(mocker, session=session)
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 200
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, "done")
+    assert mocks.set_board.await_args.kwargs["column"] == "done"
     mocks.start.assert_not_awaited()
 
 

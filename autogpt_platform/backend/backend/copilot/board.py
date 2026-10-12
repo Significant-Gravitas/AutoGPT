@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel
 
@@ -57,6 +57,14 @@ def validate_board_name(name: str) -> str:
     if not stripped or len(stripped) > MAX_BOARD_NAME:
         raise BoardNameError(f"Project names must be 1 to {MAX_BOARD_NAME} characters")
     return stripped
+
+
+def unplaced_column(updated_at: datetime, now: datetime | None = None) -> str:
+    """The column Home shows a card with no column in."""
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=UTC)
+    recent = (now or datetime.now(UTC)) - updated_at < UNPLACED_WINDOW
+    return IN_PROGRESS if recent else DONE
 
 
 def new_column_key() -> str:
