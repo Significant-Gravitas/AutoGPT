@@ -160,6 +160,23 @@ export const ImpersonationSession = {
 /**
  * Main impersonation state management
  */
+/**
+ * The target and the admin who chose it, always read from the same place:
+ * this tab's sessionStorage if it holds a target, otherwise the cookies. An
+ * owner is never borrowed from the other source.
+ */
+function readImpersonation(): { target: string; owner: string | null } | null {
+  const sessionTarget = ImpersonationSession.get();
+  if (sessionTarget) {
+    return { target: sessionTarget, owner: ImpersonationSession.getOwner() };
+  }
+  const cookieTarget = ImpersonationCookie.get();
+  if (cookieTarget) {
+    return { target: cookieTarget, owner: ImpersonationCookie.getOwner() };
+  }
+  return null;
+}
+
 export const ImpersonationState = {
   /**
    * Get the current impersonation target, falling back to the cookie (and
@@ -167,29 +184,23 @@ export const ImpersonationState = {
    * tied to the admin who chose it is dropped, never sent.
    */
   get(): string | null {
-    let target = ImpersonationSession.get();
-    let owner = ImpersonationSession.getOwner();
+    const stored = readImpersonation();
+    if (!stored) return null;
 
-    if (!target) {
-      target = ImpersonationCookie.get();
-      owner = ImpersonationCookie.getOwner();
-      if (target) {
-        ImpersonationSession.set(target);
-        if (owner) ImpersonationSession.setOwner(owner);
-      }
-    }
-
-    if (!target) return null;
-    if (!owner) {
+    if (!stored.owner) {
       ImpersonationState.clear();
       return null;
     }
-    return target;
+    if (!ImpersonationSession.get()) {
+      ImpersonationSession.set(stored.target);
+      ImpersonationSession.setOwner(stored.owner);
+    }
+    return stored.target;
   },
 
-  /** The admin who chose the current target, if one is recorded. */
+  /** The admin who chose the current target, from the same source as it. */
   getOwner(): string | null {
-    return ImpersonationSession.getOwner() ?? ImpersonationCookie.getOwner();
+    return readImpersonation()?.owner ?? null;
   },
 
   /**

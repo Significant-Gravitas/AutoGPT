@@ -123,6 +123,36 @@ describe("useAdminImpersonation", () => {
     expect(reloadMock).not.toHaveBeenCalled();
   });
 
+  test("logs no audit alert when no admin is signed in to own the swap", async () => {
+    useAuthStore.setState({ user: null });
+    const apiHit = vi.fn();
+    server.use(
+      http.post(NOTIFY_URL, () => {
+        apiHit();
+        return new HttpResponse(JSON.stringify({ alerted: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useAdminImpersonation(), { wrapper });
+
+    await act(async () => {
+      void result.current.startImpersonating(TARGET_USER_ID);
+    });
+
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "Couldn't start impersonation",
+        variant: "destructive",
+      }),
+    );
+    expect(apiHit).not.toHaveBeenCalled();
+    expect(setSpy).not.toHaveBeenCalled();
+    expect(reloadMock).not.toHaveBeenCalled();
+  });
+
   test("drops a re-entrant second start so only one audit alert is sent", async () => {
     let calls = 0;
     server.use(

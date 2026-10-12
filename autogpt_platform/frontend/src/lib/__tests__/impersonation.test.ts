@@ -13,6 +13,7 @@ import {
   ImpersonationSession,
   ImpersonationState,
   getSystemHeaders,
+  isImpersonationUsableBy,
 } from "../impersonation";
 import {
   IMPERSONATION_COOKIE_NAME,
@@ -210,6 +211,20 @@ describe("ImpersonationState", () => {
       sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "orphan");
       expect(ImpersonationState.get()).toBeNull();
       expect(sessionStorage.getItem(IMPERSONATION_STORAGE_KEY)).toBeNull();
+    });
+
+    it("never borrows the owner of a different cookie target", () => {
+      sessionStorage.setItem(IMPERSONATION_STORAGE_KEY, "session-target");
+      setCookiesRaw({
+        [IMPERSONATION_COOKIE_NAME]: "cookie-target",
+        [IMPERSONATION_OWNER_COOKIE_NAME]: "admin-1",
+      });
+
+      expect(ImpersonationState.getOwner()).toBeNull();
+      expect(isImpersonationUsableBy({ id: "admin-1", role: "admin" })).toBe(
+        false,
+      );
+      expect(ImpersonationState.get()).toBeNull();
     });
 
     it("drops a cookie target with no owner cookie", () => {
