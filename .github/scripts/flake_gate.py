@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import random
+import re
 import shlex
 import signal
 import subprocess
@@ -41,7 +42,7 @@ SCRIPTS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPTS_DIR.parents[1]
 
 DEFAULT_RUNS = 10
-DEFAULT_BUDGET_SECONDS = 300
+DEFAULT_BUDGET_SECONDS = 360
 # Busy processes per CPU core during a loaded run. Two per core leave the
 # tests about a third of a core: slower than an idle runner, as slow as a busy
 # one gets, so a test that only fits an idle runner fails here.
@@ -54,6 +55,9 @@ HANG_FLOOR_SECONDS = 120
 # the run without load when deciding whether another fits the budget.
 FIRST_LOADED_RUN_FACTOR = 2
 MAX_FILES = 40
+MAX_ROWS_PER_FILE = 10
+MAX_EXCERPTS_PER_FILE = 3
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 
 GATE_FILES = {
     ".github/workflows/platform-flake-gate.yml",
@@ -185,7 +189,9 @@ class Suite:
     def file_of(self, test: str, files: list[str]) -> str:
         return max((f for f in files if test.startswith(f)), key=len, default=test)
 
-    def repro(self, file: str, seed: int, load: int) -> str:
+    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+        """The command that repeats a run: under load in the seed's order, or
+        as usual when the run that failed was the one without load."""
         raise NotImplementedError
 
 
@@ -265,7 +271,9 @@ class BackendSuite(Suite):
                 )
         return outcomes
 
-    def repro(self, file: str, seed: int, load: int) -> str:
+    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+        if seed is None:
+            return f"poetry run test {shlex.quote(file)}"
         return (
             f"PYTHONHASHSEED={seed} python3 ../../.github/scripts/flake_gate.py "
             f"stress --load {load} -- poetry run test -p flake_gate_pytest "
@@ -320,7 +328,9 @@ class FrontendSuite(Suite):
                 outcomes[file] = Outcome(FAILED, result.get("message", ""))
         return outcomes
 
-    def repro(self, file: str, seed: int, load: int) -> str:
+    def repro(self, file: str, seed: Optional[int], load: int) -> str:
+        if seed is None:
+            return f"pnpm exec vitest run {shlex.quote(file)}"
         return (
             f"python3 ../../.github/scripts/flake_gate.py stress --load {load} -- "
             f"pnpm exec vitest run {shlex.quote(file)} "
@@ -518,7 +528,7 @@ def run_gate(
     seed: Optional[int],
     out_dir: Path,
     clock: Callable[[], float] = time.monotonic,
-    log: Callable[[str], None] = print,
+    log: Callable[[str], None] = lambda line: print(line, flush=True),
 ) -> GateResult:
     files = sorted({_suite_relative(f, suite) for f in files})
     result = GateResult(suite, files[:MAX_FILES], files[MAX_FILES:], budget, load)
@@ -653,8 +663,7 @@ def _status(run: Run, test: str) -> Optional[str]:
 
 
 def render(result: GateResult) -> str:
-    suite = result.suite
-    flaky, broken = result.of_kind("flaky"), result.of_kind("broken")
+    flaky = result.of_kind("flaky")
     loaded = [r for r in result.runs if r.seed is not None]
     if result.error:
         headline = "⚠️ could not run the tests"
@@ -665,7 +674,7 @@ def render(result: GateResult) -> str:
     else:
         headline = "not re-run"
     lines = [
-        f"### Flake gate ({suite.name}): {headline}",
+        f"### Flake gate ({result.suite.name}): {headline}",
         "",
         f"Re-ran {_count(len(result.files), 'changed test file')} once in file "
         f"order without load, then {_count(len(loaded), 'time')} under CPU load "
@@ -681,35 +690,46 @@ def render(result: GateResult) -> str:
             f"Only the first {MAX_FILES} files were re-run; "
             f"{len(result.left_out)} more were left out.",
         ]
+    lines += _flaky_section(result)
+    lines += _broken_section(result)
+    stable = [v for v in result.of_kind("stable") if v.test not in result.files]
+    if stable:
+        lines += ["", f"**Stable**: {_count(len(stable), 'test')} passed in every run."]
+    return "\n".join(lines) + "\n"
 
-    if flaky:
-        lines += [
-            "",
-            "**Flaky**: passed in some runs and failed in others. CI runners "
-            "get this busy, and other tests change the order, so expect these "
-            "to fail in the merge queue or on dev. Assert what the code does "
-            "(call counts, order, state) rather than how fast it does it, and "
-            "wait for events rather than for time to pass.",
-            "",
-            "| Test | Failed | Failing runs |",
-            "| --- | --- | --- |",
-        ]
-        for verdict in flaky:
+
+def _flaky_section(result: GateResult) -> list[str]:
+    by_file = _by_file(result.of_kind("flaky"))
+    if not by_file:
+        return []
+    lines = [
+        "",
+        "**Flaky**: passed in some runs and failed in others. CI runners get "
+        "this busy, and other tests change the order, so expect these to fail "
+        "in the merge queue or on dev. Assert what the code does (call counts, "
+        "order, state) rather than how fast it does it, and wait for events "
+        "rather than for time to pass.",
+    ]
+    for file, verdicts in by_file.items():
+        lines += ["", f"`{file}`", "", "| Test | Failed | Failing runs |"]
+        lines.append("| --- | --- | --- |")
+        for verdict in verdicts[:MAX_ROWS_PER_FILE]:
             total = len(verdict.passes) + len(verdict.failures)
-            unloaded = (
-                " (passed without load)"
-                if any(r.seed is None for r in verdict.passes)
-                else ""
-            )
+            unloaded = any(r.seed is None for r in verdict.passes)
             failing = ", ".join(r.label for r, _ in verdict.failures[:5])
             if len(verdict.failures) > 5:
                 failing += ", …"
             lines.append(
-                f"| `{_cell(verdict.test)}` | {len(verdict.failures)} of {total} "
-                f"runs{unloaded} | {failing} |"
+                f"| {_cell(_test_name(verdict))} | {len(verdict.failures)} of "
+                f"{total} runs{' (passed without load)' if unloaded else ''} "
+                f"| {failing} |"
             )
-        lines += ["", "<details><summary>First failure of each</summary>", ""]
-        for verdict in flaky:
+        if len(verdicts) > MAX_ROWS_PER_FILE:
+            lines.append(f"| … and {len(verdicts) - MAX_ROWS_PER_FILE} more | | |")
+
+    lines += ["", "<details><summary>First failures</summary>", ""]
+    for verdicts in by_file.values():
+        for verdict in verdicts[:MAX_EXCERPTS_PER_FILE]:
             run, outcome = verdict.failures[0]
             lines += [
                 f"`{verdict.test}` ({run.label}):",
@@ -719,60 +739,82 @@ def render(result: GateResult) -> str:
                 "```",
                 "",
             ]
-        lines += ["</details>", ""]
-        where = f"`{_repo_path(suite.directory)}`"
-        if suite.name == "backend":
-            where += " (`poetry run test` brings the test stack up)"
-        lines += [f"**Reproduce** a failing run, from {where}:", "", "```bash"]
-        commands = []
-        for verdict in flaky:
-            run = next((r for r, _ in verdict.failures if r.seed is not None), None)
-            if run is not None and run.seed is not None:
-                command = suite.repro(verdict.file, run.seed, result.load)
-                if command not in commands:
-                    commands.append(command)
-        lines += commands
-        lines += [
-            "```",
-            "",
-            f"To repeat the whole gate on a file, see the flake gate section of "
-            f"`{_repo_path(suite.directory)}/TESTING.md`.",
-        ]
+    lines += ["</details>", ""]
 
-    if broken:
-        lines += [
-            "",
-            "**Not counted**: failed in every run, including the one without "
-            "load. That is a real failure, which the regular CI reports too, or "
-            "a test that needs something this gate doesn't provide (ClamAV, "
-            "FalkorDB, API keys).",
-            "",
-        ]
-        lines += [f"- `{v.test}`" for v in broken[:20]]
-        if len(broken) > 20:
-            lines.append(f"- … and {len(broken) - 20} more")
+    suite = result.suite
+    where = f"`{_repo_path(suite.directory)}`"
+    if suite.name == "backend":
+        where += " (`poetry run test` brings the test stack up)"
+    lines += [f"**Reproduce** a failing run, from {where}:", "", "```bash"]
+    for file, verdicts in by_file.items():
+        failed = [r for v in verdicts for r, _ in v.failures]
+        loaded = next((r for r in failed if r.seed is not None), failed[0])
+        lines.append(suite.repro(file, loaded.seed, result.load))
+    lines += [
+        "```",
+        "",
+        "To repeat the whole gate on a file, see the flake gate section of "
+        f"`{_repo_path(suite.directory)}/TESTING.md`.",
+    ]
+    return lines
 
-    stable = [v for v in result.of_kind("stable") if v.test not in result.files]
-    if stable:
-        lines += ["", f"**Stable**: {_count(len(stable), 'test')} passed in every run."]
-    return "\n".join(lines) + "\n"
+
+def _broken_section(result: GateResult) -> list[str]:
+    broken = result.of_kind("broken")
+    if not broken:
+        return []
+    lines = [
+        "",
+        "**Not counted**: failed in every run, including the one without load. "
+        "That is a real failure, which the regular CI reports too, or a test "
+        "that needs something this gate doesn't provide (ClamAV, FalkorDB, API "
+        "keys).",
+        "",
+    ]
+    lines += [f"- `{v.test}`" for v in broken[:20]]
+    if len(broken) > 20:
+        lines.append(f"- … and {len(broken) - 20} more")
+    return lines
 
 
 def annotation_commands(result: GateResult) -> list[str]:
+    """One error annotation per file with flaky tests, on the PR's diff."""
     out = []
-    for verdict in result.of_kind("flaky"):
-        total = len(verdict.passes) + len(verdict.failures)
-        props = f"file={_escape_property(_repo_path(result.suite.directory / verdict.file))}"
-        if verdict.line:
-            props += f",line={verdict.line}"
+    for file, verdicts in _by_file(result.of_kind("flaky")).items():
+        path = _repo_path(result.suite.directory / file)
+        props = f"file={_escape_property(path)}"
+        line = next((v.line for v in verdicts if v.line), None)
+        if line:
+            props += f",line={line}"
         props += ",title=Flaky under CPU load"
+        names = "; ".join(_test_name(v) for v in verdicts[:3])
+        if len(verdicts) > 3:
+            names += f"; and {len(verdicts) - 3} more"
         message = (
-            f"{verdict.test} failed {len(verdict.failures)} of {total} runs "
-            "under CPU load, in random order. The flake gate job summary says "
-            "how to reproduce it."
+            f"{_count(len(verdicts), 'test')} passed in some runs and failed in "
+            f"others, under CPU load and in random order: {names}. The flake "
+            "gate job summary says how to reproduce it."
         )
         out.append(f"::error {props}::{_escape_data(message)}")
     return out
+
+
+def _by_file(verdicts: list[Verdict]) -> dict[str, list[Verdict]]:
+    by_file: dict[str, list[Verdict]] = {}
+    for verdict in verdicts:
+        by_file.setdefault(verdict.file, []).append(verdict)
+    return by_file
+
+
+def _test_name(verdict: Verdict) -> str:
+    """The test's id without its file, which a heading or path already says."""
+    if verdict.test == verdict.file:
+        return "(the file as a whole)"
+    rest = verdict.test[len(verdict.file) :]
+    for separator in ("::", " > "):
+        if rest.startswith(separator):
+            return rest[len(separator) :]
+    return verdict.test
 
 
 def _count(n: int, noun: str) -> str:
@@ -789,7 +831,9 @@ def _duration(seconds: float) -> str:
 
 
 def _excerpt(message: str, limit: int = 12) -> str:
-    lines = message.strip().splitlines()
+    # Testing Library follows its message with a dump of the whole DOM.
+    text = _ANSI_ESCAPE.sub("", message).split("\nIgnored nodes:", 1)[0]
+    lines = text.strip().splitlines()
     # pytest marks the lines that explain a failure with "E". Vitest puts the
     # message first and a stack of "at ..." frames after it.
     errors = [line for line in lines if line.startswith("E ")]

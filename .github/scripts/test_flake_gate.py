@@ -315,6 +315,16 @@ class GateTests(unittest.TestCase):
         self.assertTrue(annotation.startswith("::error file="), annotation)
         self.assertIn("a_test.py,line=4,title=Flaky under CPU load::", annotation)
 
+    def test_a_test_that_failed_only_without_load_is_flaky_too(self):
+        ok = {"a_test.py::t": Outcome(PASSED), "a_test.py": Outcome(PASSED)}
+        failed = {
+            "a_test.py::t": Outcome(FAILED, "E   boom"),
+            "a_test.py": Outcome(PASSED),
+        }
+        result, _ = self.gate({0: _run(0, None, failed), 1: _run(1, 0, ok)}, runs=1)
+        self.assertEqual([v.test for v in result.of_kind("flaky")], ["a_test.py::t"])
+        self.assertIn("\npoetry run test a_test.py\n", render(result))
+
     def test_a_test_that_fails_every_run_is_listed_but_not_counted(self):
         broken = {
             "a_test.py::t": Outcome(FAILED, "E   needs ClamAV"),
