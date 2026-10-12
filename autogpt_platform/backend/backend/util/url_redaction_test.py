@@ -12,6 +12,7 @@ import logging
 import random
 import re
 import sys
+import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock
@@ -231,6 +232,11 @@ async def test_sentry_gets_no_credentials_from_request_urls(
             f"http://x/api/invitations/{REDACTED}/public/shared/chats/{REDACTED}"
             "/messages",
         ),
+        # The query is masked first, so its result is checked for paths too.
+        (
+            "/ws?/api/integrations/a=x/y&/webhooks/t",
+            f"/ws?/api/integrations/a={REDACTED}&/webhooks/{REDACTED}",
+        ),
         # Characters that can end a URL in a message don't end this one.
         ("/ws?q=it's&token=a", f"/ws?q={REDACTED}&token={REDACTED}"),
         ('/ws?q="&token=a', f"/ws?q={REDACTED}&token={REDACTED}"),
@@ -336,13 +342,27 @@ def test_no_request_target_keeps_its_credential_whatever_surrounds_it(
 ) -> None:
     """Random request targets with the credential in a query value, in a path
     segment or both, among junk chosen to end a match early. Masked on their
-    own and inside an access log line, the credential never survives."""
+    own and inside an access log line, the credential never survives, and
+    masking again changes nothing."""
     rng = random.Random(seed)
     for _ in range(200):
         target = _random_request_target(rng)
-        assert _SECRET not in redact_url(target), target
+        masked = redact_url(target)
+        assert _SECRET not in masked, target
+        assert redact_url(masked) == masked, target
         line = f'1.2.3.4:5 - "GET {target} HTTP/1.1" 200'
-        assert _SECRET not in redact_urls_in_text(line), line
+        masked_line = redact_urls_in_text(line)
+        assert _SECRET not in masked_line, line
+        assert redact_urls_in_text(masked_line) == masked_line, line
+
+
+def test_masking_stays_linear_in_a_url_stacked_with_prefixes() -> None:
+    """A client can send a URL made of thousands of prefixes, and the filter
+    masks it on the event loop; quadratic work took seconds here."""
+    url = "/api/invitations/x" * 50_000
+    started = time.monotonic()
+    assert redact_url(url) == f"/api/invitations/{REDACTED}" * 50_000
+    assert time.monotonic() - started < 2
 
 
 @asynccontextmanager

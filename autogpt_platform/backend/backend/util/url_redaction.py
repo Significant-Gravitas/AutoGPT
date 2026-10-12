@@ -34,26 +34,30 @@ def redact_url(url: str) -> str:
     Every query value is masked and its key kept, so ``/ws?token=abc&page=2``
     becomes ``/ws?token=[REDACTED]&page=[REDACTED]``, and so is every path
     segment that is a credential in its own right. Paths are masked across the
-    whole string: Sentry builds a URL from the Host header, which can hold a
-    ``?`` of its own.
+    whole string, after the query: Sentry builds a URL from the Host header,
+    which can hold a ``?`` of its own.
     """
-    target, question_mark, query = _redact_path(url).partition("?")
-    return target + question_mark + _redact_query(query)
+    target, question_mark, query = url.partition("?")
+    return _redact_path(target + question_mark + _redact_query(query))
 
 
 def redact_urls_in_text(text: str) -> str:
     """Mask the credentials in every request URL inside a longer message."""
-    return _QUERY_IN_TEXT.sub(
-        lambda match: "?" + _redact_query(match[1]), _redact_path(text)
+    return _redact_path(
+        _QUERY_IN_TEXT.sub(lambda match: "?" + _redact_query(match[1]), text)
     )
 
 
 def _redact_path(text: str) -> str:
-    # Right to left, so each span still points at the original text.
-    for match in reversed(list(_CREDENTIAL_PATH_SEGMENT.finditer(text))):
+    # Built once from the spans, so a URL stacked with prefixes stays linear.
+    parts: list[str] = []
+    done = 0
+    for match in _CREDENTIAL_PATH_SEGMENT.finditer(text):
         start, end = match.span(1)
-        text = text[:start] + REDACTED + text[end:]
-    return text
+        if end > done:
+            parts += [text[done : max(start, done)], REDACTED]
+            done = end
+    return "".join(parts) + text[done:]
 
 
 def _redact_query(query: str) -> str:
