@@ -149,9 +149,11 @@ export const customMutator = async <
           .join("; ")
       : typeof rawDetail === "string"
         ? rawDetail
-        : rawDetail != null
-          ? JSON.stringify(rawDetail)
-          : undefined;
+        : typeof rawDetail?.message === "string"
+          ? rawDetail.message
+          : rawDetail != null
+            ? JSON.stringify(rawDetail)
+            : undefined;
 
     const errorMessage =
       detail ||
