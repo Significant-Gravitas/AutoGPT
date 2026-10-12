@@ -2,10 +2,14 @@ import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
 import { describe, expect, it } from "vitest";
 import {
   type Card,
+  cardColumnKey,
   cardState,
   dropPosition,
   groupCards,
+  moveCard,
+  moveCardToTop,
   parseMention,
+  patchCard,
   positionBetween,
   stateLineText,
 } from "./board-helpers";
@@ -229,5 +233,101 @@ describe("parseMention", () => {
 
   it("opens on a lone @", () => {
     expect(parseMention("@")).toEqual({ text: "", mentionOpen: true });
+  });
+});
+
+describe("cardColumnKey", () => {
+  const keys = new Set(COLUMNS.map((column) => column.key));
+
+  it("uses the placed column", () => {
+    expect(cardColumnKey(card("a", { board_column: "done" }), keys, NOW)).toBe(
+      "done",
+    );
+  });
+
+  it("sends an unknown column to Backlog", () => {
+    expect(
+      cardColumnKey(card("a", { board_column: "col_gone" }), keys, NOW),
+    ).toBe("backlog");
+  });
+
+  it("places unplaced cards by age", () => {
+    expect(cardColumnKey(card("a"), keys, NOW)).toBe("in_progress");
+    expect(
+      cardColumnKey(card("a", { updated_at: daysAgo(8) }), keys, NOW),
+    ).toBe("done");
+  });
+});
+
+describe("patchCard / moveCard", () => {
+  const board = {
+    columns: COLUMNS,
+    sessions: [
+      card("a", { board_column: "backlog", board_position: 0 }),
+      card("b", { board_column: "done", board_position: 5 }),
+    ],
+  };
+
+  it("patches only the matching card and leaves the input alone", () => {
+    const next = patchCard(board, "a", { title: "Renamed" });
+    expect(next.sessions[0].title).toBe("Renamed");
+    expect(next.sessions[1]).toBe(board.sessions[1]);
+    expect(board.sessions[0].title).toBeUndefined();
+  });
+
+  it("moves a card to a column and position", () => {
+    const next = moveCard(board, "a", "in_progress", 42);
+    expect(next.sessions[0]).toMatchObject({
+      board_column: "in_progress",
+      board_position: 42,
+    });
+  });
+
+  it("returns the board unchanged for an unknown card", () => {
+    expect(moveCard(board, "zzz", "done", 1).sessions).toEqual(board.sessions);
+  });
+});
+
+describe("moveCardToTop", () => {
+  it("goes above the column's first placed card", () => {
+    const board = {
+      columns: COLUMNS,
+      sessions: [
+        card("a", { board_column: "backlog", board_position: 0 }),
+        card("b", { board_column: "done", board_position: 5 }),
+        card("c", { board_column: "done", board_position: 9 }),
+      ],
+    };
+    const next = moveCardToTop(board, "a", "done");
+    expect(next.sessions[0]).toMatchObject({
+      board_column: "done",
+      board_position: 5 - 1024,
+    });
+    expect(idsByColumn(groupCards(COLUMNS, next.sessions, NOW)).done).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+  });
+
+  it("lands at 0 in a column with no placed cards", () => {
+    const board = { columns: COLUMNS, sessions: [card("a")] };
+    expect(moveCardToTop(board, "a", "done").sessions[0]).toMatchObject({
+      board_column: "done",
+      board_position: 0,
+    });
+  });
+
+  it("ignores the moving card's own position", () => {
+    const board = {
+      columns: COLUMNS,
+      sessions: [
+        card("a", { board_column: "done", board_position: 3 }),
+        card("b", { board_column: "done", board_position: 7 }),
+      ],
+    };
+    expect(moveCardToTop(board, "b", "done").sessions[1].board_position).toBe(
+      3 - 1024,
+    );
   });
 });

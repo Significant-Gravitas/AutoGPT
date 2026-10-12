@@ -1,9 +1,11 @@
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
+import type { BoardResponse } from "@/app/api/__generated__/models/boardResponse";
 import type { GetV2GetBoardParams } from "@/app/api/__generated__/models/getV2GetBoardParams";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 
 export const BOARD_QUERY_KEY = ["copilot", "board"] as const;
 export const BOARD_REFETCH_INTERVAL_MS = 10_000;
+export const BOARD_MOVE_MUTATION_KEY = ["patchV2UpdateSessionBoard"];
 export const MAX_COLUMNS = 6;
 export const BUILTIN_KEYS = ["backlog", "in_progress", "done"] as const;
 
@@ -29,6 +31,19 @@ function byNewest(a: Card, b: Card) {
   return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
 }
 
+export function cardColumnKey(
+  card: Card,
+  columnKeys: Set<string>,
+  now = new Date(),
+): string {
+  if (card.board_column) {
+    return columnKeys.has(card.board_column) ? card.board_column : "backlog";
+  }
+  const isRecent =
+    now.getTime() - new Date(card.updated_at).getTime() <= RECENT_WINDOW_MS;
+  return isRecent ? "in_progress" : "done";
+}
+
 export function groupCards(
   columns: BoardColumn[],
   sessions: Card[],
@@ -38,24 +53,12 @@ export function groupCards(
   const placed = new Map<string, Card[]>();
   const unplaced = new Map<string, Card[]>();
 
-  function push(target: Map<string, Card[]>, key: string, card: Card) {
+  for (const card of sessions) {
+    const target = card.board_column ? placed : unplaced;
+    const key = cardColumnKey(card, keys, now);
     const list = target.get(key);
     if (list) list.push(card);
     else target.set(key, [card]);
-  }
-
-  for (const card of sessions) {
-    if (card.board_column) {
-      push(
-        placed,
-        keys.has(card.board_column) ? card.board_column : "backlog",
-        card,
-      );
-      continue;
-    }
-    const isRecent =
-      now.getTime() - new Date(card.updated_at).getTime() <= RECENT_WINDOW_MS;
-    push(unplaced, isRecent ? "in_progress" : "done", card);
   }
 
   return columns.map((column) => ({
@@ -87,6 +90,47 @@ export function dropPosition(
     others[targetIndex - 1]?.board_position ?? null,
     others[targetIndex]?.board_position ?? null,
   );
+}
+
+export function patchCard(
+  data: BoardResponse,
+  cardId: string,
+  patch: Partial<Card>,
+): BoardResponse {
+  return {
+    ...data,
+    sessions: data.sessions.map((card) =>
+      card.id === cardId ? { ...card, ...patch } : card,
+    ),
+  };
+}
+
+export function moveCard(
+  data: BoardResponse,
+  cardId: string,
+  column: string,
+  position: number,
+): BoardResponse {
+  return patchCard(data, cardId, {
+    board_column: column,
+    board_position: position,
+  });
+}
+
+export function moveCardToTop(
+  data: BoardResponse,
+  cardId: string,
+  column: string,
+): BoardResponse {
+  const positions = data.sessions.flatMap((card) =>
+    card.id !== cardId &&
+    card.board_column === column &&
+    card.board_position != null
+      ? [card.board_position]
+      : [],
+  );
+  const top = positions.length > 0 ? Math.min(...positions) : null;
+  return moveCard(data, cardId, column, positionBetween(null, top));
 }
 
 export type CardState =

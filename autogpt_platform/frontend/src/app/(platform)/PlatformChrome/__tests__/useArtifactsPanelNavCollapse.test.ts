@@ -7,6 +7,7 @@ import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 const mockUsePathname = vi.fn<() => string | null>();
 const mockSetOpen = vi.fn<(open: boolean) => void>();
 let sidebarOpen = true;
+let isTaskBoardEnabled = false;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockUsePathname(),
@@ -15,6 +16,18 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({ open: sidebarOpen, setOpen: mockSetOpen }),
 }));
+
+vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/services/feature-flags/use-get-flag")
+    >();
+  return {
+    ...actual,
+    useGetFlag: (flag: string) =>
+      flag === actual.Flag.TASK_BOARD && isTaskBoardEnabled,
+  };
+});
 
 /** The docked panel — an open artifact preview, or the artifacts tab. */
 function setPanelOpen(isOpen: boolean) {
@@ -37,6 +50,7 @@ beforeEach(() => {
   mockUsePathname.mockReset();
   mockSetOpen.mockReset();
   sidebarOpen = true;
+  isTaskBoardEnabled = false;
   setPanelOpen(false);
 });
 
@@ -109,6 +123,23 @@ describe("useArtifactsPanelNavCollapse", () => {
   it("ignores an artifacts panel left open on another route", () => {
     setPanelOpen(true);
     renderAt("/library");
+
+    expect(mockSetOpen).not.toHaveBeenCalled();
+  });
+
+  it("collapses the nav on /home while it is the chat", () => {
+    const { rerender } = renderAt("/home");
+    setPanelOpen(true);
+    rerender();
+
+    expect(mockSetOpen).toHaveBeenCalledWith(false);
+  });
+
+  it("leaves the nav alone on the task board", () => {
+    isTaskBoardEnabled = true;
+    const { rerender } = renderAt("/home");
+    setPanelOpen(true);
+    rerender();
 
     expect(mockSetOpen).not.toHaveBeenCalled();
   });

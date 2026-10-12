@@ -7,6 +7,7 @@ import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
 import { BoardSkeleton } from "./components/BoardSkeleton/BoardSkeleton";
+import { TaskPanel } from "./components/TaskPanel/TaskPanel";
 import { useTaskBoardPage } from "./useTaskBoardPage";
 
 export function TaskBoardPage() {
@@ -21,6 +22,9 @@ export function TaskBoardPage() {
     retry,
     toggleOlder,
     openCard,
+    panel,
+    closePanel,
+    startReassign,
   } = useTaskBoardPage();
 
   return (
@@ -78,6 +82,16 @@ export function TaskBoardPage() {
           </div>
         )}
       </div>
+      {panel && (
+        <TaskPanel
+          key={panel.sessionId}
+          card={panel.card}
+          sessionId={panel.sessionId}
+          columns={panel.columns}
+          onClose={closePanel}
+          onReassign={startReassign}
+        />
+      )}
     </div>
   );
 }
