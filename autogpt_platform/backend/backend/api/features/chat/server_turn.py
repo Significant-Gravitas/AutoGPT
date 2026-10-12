@@ -20,6 +20,10 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.executor.utils import schedule_chat_turn
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import ChatSessionInfo
+from backend.copilot.pending_message_helpers import (
+    StreamRegistryUnavailable,
+    is_turn_in_flight,
+)
 from backend.copilot.provider_failure import ProviderFailure, ProviderFailureKind
 from backend.copilot.rate_limit import (
     RateLimitExceeded,
@@ -79,10 +83,22 @@ async def dispatch_server_turn(
     """Start a user turn with the stream route's checks, without its stream.
 
     Returns the new turn id, or None when *message_id* was already saved or
-    the user's running cap queued the turn for later.
+    the user's running cap queued the turn for later. 409 while a turn runs:
+    the slot would be re-acquired and a second turn would start alongside.
     """
     request_arrival_at = time.time()
     session_id = session.session_id
+    try:
+        in_flight = await is_turn_in_flight(session_id)
+    except StreamRegistryUnavailable as e:
+        raise HTTPException(
+            status_code=503,
+            detail="Chat service degraded, retry shortly",
+            headers={"Retry-After": "30"},
+        ) from e
+    if in_flight:
+        raise HTTPException(status_code=409, detail="This task is already working")
+
     llm_auth_provider = session.metadata.llm_auth_provider
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)

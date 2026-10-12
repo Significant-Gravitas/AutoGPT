@@ -4958,7 +4958,9 @@
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
           "404": { "description": "Session not found or access denied" },
-          "409": { "description": "The task has already started" },
+          "409": {
+            "description": "The task has already started or is working"
+          },
           "422": { "description": "Nothing to send: no message and no title" }
         }
       }

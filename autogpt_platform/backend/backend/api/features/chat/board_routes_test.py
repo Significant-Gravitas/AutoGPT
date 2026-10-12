@@ -58,6 +58,7 @@ def _session(
     title: str | None = "Write the PRD",
     expert_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
+    chat_status: str = "idle",
 ) -> ChatSessionInfo:
     return ChatSessionInfo(
         session_id=session_id,
@@ -68,6 +69,7 @@ def _session(
         updated_at=datetime.now(UTC),
         metadata=metadata or ChatSessionMetadata(),
         expert_id=expert_id,
+        chat_status=chat_status,
     )
 
 
@@ -363,6 +365,21 @@ def test_patch_board_started_card_does_not_restart(
     mocks.start.assert_not_awaited()
 
 
+def test_patch_board_running_unstarted_card_moves_without_starting(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Only hidden rows (an expert kickoff) so far, but a turn is running.
+    mocks = _mock_card(mocker, session=_session(chat_status="running"))
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"column": "in_progress"}
+    )
+
+    assert response.status_code == 200
+    mocks.set_board.assert_awaited_once()
+    mocks.start.assert_not_awaited()
+
+
 def test_patch_board_untitled_card_does_not_start(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -492,6 +509,9 @@ def _mock_turn_dispatch(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
     )
     mocker.patch.object(server_turn, "check_rate_limit", new=AsyncMock())
     return SimpleNamespace(
+        in_flight=mocker.patch.object(
+            server_turn, "is_turn_in_flight", new=AsyncMock(return_value=False)
+        ),
         schedule=mocker.patch.object(
             server_turn,
             "schedule_chat_turn",
@@ -553,6 +573,36 @@ def test_start_session_already_started_409(
     assert response.status_code == 409
     mocks.start.assert_not_awaited()
     mocks.set_board.assert_not_awaited()
+
+
+def test_start_session_running_409(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_card(mocker, session=_session(chat_status="running"))
+
+    response = client.post(f"/sessions/{SESSION_ID}/start", json={})
+
+    assert response.status_code == 409
+    mocks.start.assert_not_awaited()
+    mocks.set_board.assert_not_awaited()
+
+
+async def test_dispatch_server_turn_refuses_while_a_turn_runs(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    dispatch = _mock_turn_dispatch(mocker)
+    dispatch.in_flight.return_value = True
+
+    with pytest.raises(fastapi.HTTPException) as exc:
+        await server_turn.dispatch_server_turn(
+            _session(),
+            TEST_USER_ID,
+            org_id="test-org",
+            team_id="test-team",
+            message="Write the PRD",
+            message_id="m-1",
+        )
+
+    assert exc.value.status_code == 409
+    dispatch.schedule.assert_not_awaited()
 
 
 def test_start_session_rate_limited_leaves_card_in_place(

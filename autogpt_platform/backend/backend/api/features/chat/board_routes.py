@@ -30,7 +30,7 @@ from backend.copilot.board_db import (
     top_position,
 )
 from backend.copilot.constants import AUTOPILOT_NAME
-from backend.copilot.model import invalidate_session_cache
+from backend.copilot.model import CHAT_STATUS_IDLE, invalidate_session_cache
 
 router = APIRouter(tags=["chat"])
 
@@ -149,6 +149,7 @@ async def update_session_board(
         column is not None
         and column != BACKLOG
         and bool((session.title or "").strip())
+        and session.chat_status == CHAT_STATUS_IDLE
         and not (await _session_extras(user_id, session_id)).started
     )
     if starts:
@@ -238,7 +239,7 @@ async def update_session_expert(
     dependencies=[Security(auth.requires_user)],
     responses={
         404: {"description": "Session not found or access denied"},
-        409: {"description": "The task has already started"},
+        409: {"description": "The task has already started or is working"},
         422: {"description": "Nothing to send: no message and no title"},
     },
 )
@@ -251,7 +252,10 @@ async def start_session(
     """Start a card: send *message* (or the title) and move it to the top of
     In progress. The title stays as it is."""
     session = await _validate_and_get_writable_session(session_id, user_id)
-    if (await _session_extras(user_id, session_id)).started:
+    if (
+        session.chat_status != CHAT_STATUS_IDLE
+        or (await _session_extras(user_id, session_id)).started
+    ):
         raise HTTPException(status_code=409, detail="The task has already started")
     # Start first: a refused turn leaves the card where it was.
     await start_board_card(
