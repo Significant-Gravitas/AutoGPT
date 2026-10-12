@@ -174,3 +174,8 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
         body = inspect.signature(endpoint).parameters["body"].annotation
         sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
         assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
+
+
+def test_the_audience_consumer_can_read_the_opt_out() -> None:
+    assert hasattr(DatabaseManager, "is_marketing_opted_out")
+    assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")

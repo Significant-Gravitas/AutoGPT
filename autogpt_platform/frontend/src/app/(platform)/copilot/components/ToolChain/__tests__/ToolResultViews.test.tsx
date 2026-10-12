@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ChainRow } from "../helpers";
 import {
   FileCard,
@@ -36,6 +36,31 @@ describe("SearchResults", () => {
     const link = screen.getByRole("link", { name: "Wiki page" });
     expect(link.getAttribute("href")).toBe("https://en.wikipedia.org/wiki/X");
     expect(screen.getByText("en.wikipedia.org")).toBeDefined();
+  });
+
+  it("labels each cited source with its [n] number, even when URLs repeat", () => {
+    const consoleError = vi.spyOn(console, "error");
+    render(
+      <SearchResults
+        items={[
+          { n: 3, title: "First cite", url: "https://example.com/a" },
+          { n: 12, title: "Same page again", url: "https://example.com/a" },
+          { title: "Stored before numbering", url: "https://example.com/old" },
+        ]}
+        answer="Claim.[3] Another claim.[12]"
+      />,
+    );
+
+    expect(screen.getByText("[3]")).toBeDefined();
+    expect(screen.getByText("[12]")).toBeDefined();
+    expect(screen.getAllByText(/^\[\d+\]$/)).toHaveLength(2);
+    expect(
+      screen
+        .getByRole("link", { name: "Same page again" })
+        .getAttribute("href"),
+    ).toBe("https://example.com/a");
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("renders unlinked results as plain text", () => {

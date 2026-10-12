@@ -185,6 +185,33 @@ services:
     ports:
       - "5672:5672"
 
+  # One-shot: publishes the public skills catalog (marketplace skills and the
+  # expert roster) once the schema is migrated, the same way a deploy does
+  # after `prisma migrate deploy`. Idempotent, so a restart that changes
+  # nothing is a no-op. Needs GitHub; offline, set SKILLS_CATALOG_PATH in
+  # backend/.env to a local checkout. Fails once and visibly rather than
+  # looping, and nothing else waits on it: copies catch up lazily.
+  publish_skills:
+    image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["publish-skills-catalog", "--skip-missing-preloads"]
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      redis-0:
+        condition: service_healthy
+    <<: *backend-env-files
+    environment:
+      <<: *backend-env
+    networks:
+      - app-network
+    restart: "no"
+
   rest_server:
     image: ${COMPOSE_PROJECT_NAME:-autogpt_platform}-backend:latest
     build:

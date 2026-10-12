@@ -872,6 +872,46 @@ describe("ToolResult", () => {
       expect(screen.getByLabelText("Open link").getAttribute("href")).toBe(
         "https://example.com/page",
       );
+      expect(
+        screen.getByLabelText("Open link").closest(".ph-no-capture"),
+      ).toBeNull();
+    });
+
+    it("keeps an update_preset webhook URL out of session replays", () => {
+      const url =
+        "https://backend.agpt.co/api/integrations/generic_webhook/webhooks/wh-1/ingress";
+      render(
+        <ToolResult
+          row={row(
+            {
+              type: "preset_updated",
+              message: "Preset updated",
+              preset_id: "p1",
+              name: "My Trigger",
+              is_active: true,
+              webhook_url: url,
+            },
+            "update_preset",
+          )}
+        />,
+      );
+
+      expect(screen.getByText(url).closest(".ph-no-capture")).not.toBeNull();
+      expect(
+        screen.getByLabelText("Open link").closest(".ph-no-capture"),
+      ).not.toBeNull();
+    });
+
+    it("blocks a webhook_url link card even off the ingress path", () => {
+      render(
+        <ToolResult
+          row={row({ webhook_url: "https://hooks.example.com/h1" })}
+        />,
+      );
+
+      expect(
+        screen.getByLabelText("Open link").closest(".ph-no-capture"),
+      ).not.toBeNull();
     });
 
     it("renders a size for link outputs reporting bytes", () => {

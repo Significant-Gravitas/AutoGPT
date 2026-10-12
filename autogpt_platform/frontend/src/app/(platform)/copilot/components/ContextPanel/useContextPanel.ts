@@ -16,7 +16,6 @@ export function useContextPanel() {
     artifactPanel.isOpen && !hasArtifact && !artifactPanel.isComputerOpen;
 
   return {
-    isOpen: artifactPanel.isOpen,
     activeTab: artifactPanel.activeTab,
     showExpanded,
     closeArtifactPanel,

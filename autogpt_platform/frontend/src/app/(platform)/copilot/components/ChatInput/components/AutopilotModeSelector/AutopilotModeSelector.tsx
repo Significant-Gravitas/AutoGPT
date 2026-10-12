@@ -25,7 +25,6 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
     mode,
     isDefault,
     selectMode,
-    handleMenuClosed,
     isConfirmOpen,
     confirmUnsupervised,
     cancelUnsupervised,
@@ -55,11 +54,7 @@ export function AutopilotModeSelector({ sessionId, persistedMode }: Props) {
             {!isDefault && <span>{current.label}</span>}
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-72"
-          onCloseAutoFocus={handleMenuClosed}
-        >
+        <DropdownMenuContent align="end" className="w-72">
           <DropdownMenuLabel className="text-xs font-medium text-zinc-500">
             Approvals in this chat
           </DropdownMenuLabel>

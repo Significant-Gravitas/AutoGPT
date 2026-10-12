@@ -10,6 +10,7 @@ import { ContextualActionButton } from "../ContextualActionButton/ContextualActi
 import styles from "./SitrepItem.module.css";
 import { buildAutoPilotPrompt } from "./helpers";
 import {
+  Alert02Icon,
   AlertCircleIcon,
   Calendar03Icon,
   Chatting01Icon,
@@ -51,6 +52,11 @@ const PRIORITY_CONFIG: Record<
     color: "text-yellow-600",
     bg: "bg-yellow-50",
   },
+  warning: {
+    icon: Alert02Icon,
+    color: "text-amber-600",
+    bg: "bg-amber-50",
+  },
   success: {
     icon: CheckmarkCircle02Icon,
     color: "text-green-600",
@@ -81,7 +87,7 @@ export function SitrepItem({ item }: Props) {
   function handleAskAutoPilot() {
     const prompt = buildAutoPilotPrompt(item);
     const encoded = encodeURIComponent(prompt);
-    router.push(`/copilot?autosubmit=true#prompt=${encoded}`);
+    router.push(`/home?autosubmit=true#prompt=${encoded}`);
   }
 
   return (
@@ -133,7 +139,7 @@ export function SitrepItem({ item }: Props) {
       </div>
 
       <div className="flex flex-shrink-0 flex-wrap items-center justify-center gap-1.5 sm:flex-nowrap sm:justify-end">
-        {item.priority === "success" ? (
+        {item.priority === "success" || item.priority === "warning" ? (
           <NextLink
             href={`/library/agents/${item.agentID}${item.executionID ? `?activeItem=${item.executionID}` : ""}`}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"

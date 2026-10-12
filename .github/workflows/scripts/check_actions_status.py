@@ -7,6 +7,23 @@ from typing import Dict, List, Optional, Tuple
 
 CHECK_INTERVAL = 30
 PASSING_CONCLUSIONS = {"success", "skipped", "neutral"}
+# Check runs whose outcome says nothing about the code: they post review
+# comments, and they conclude "failure" when the reviewer itself could not
+# run. GitHub's Copilot code review did exactly that on 2026-09-26 (HTTP 402,
+# "You have exceeded your monthly quota") and blocked every PR in the repo
+# through this check. Other review bots report "neutral" in that case, which
+# PASSING_CONCLUSIONS already accepts; this is the same treatment for one
+# that does not.
+# The journeys e2e leg is advisory while it beds in: its failures show on the
+# PR but don't block merging. Drop it from here once it has proven stable.
+ADVISORY_CHECK_RUNS = {
+    "copilot-pull-request-reviewer",
+    "end-to-end tests (journeys)",
+}
+
+
+def is_advisory(check_run: Dict) -> bool:
+    return str(check_run.get("name")) in ADVISORY_CHECK_RUNS
 
 
 def get_environment_variables() -> Tuple[str, str, str, str, str]:
@@ -130,6 +147,12 @@ def process_check_runs(
     all_others_passed = True
 
     for run in check_runs:
+        if is_advisory(run):
+            print(
+                f"Ignoring advisory check run {run['name']} (ID: {run['id']}): "
+                "its result never gates a merge."
+            )
+            continue
         if str(run["name"]) != "Check PR Status":
             status = run["status"]
             conclusion = run["conclusion"]
@@ -186,6 +209,7 @@ def main():
 
         runs_in_progress = any(
             str(run["name"]) != "Check PR Status"
+            and not is_advisory(run)
             and run["status"] != "completed"
             for run in check_runs
         )
