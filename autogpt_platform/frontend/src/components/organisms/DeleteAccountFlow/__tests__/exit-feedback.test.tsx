@@ -196,8 +196,12 @@ describe("DeleteAccountFlow exit feedback", () => {
   test("keyboard focus is kept clear of the sticky footer", () => {
     renderFlow();
 
-    expect(screen.getByRole("dialog").className).toContain(
-      "[&_.overflow-y-auto]:scroll-pb-24",
+    const classes = screen.getByRole("dialog").className.split(" ");
+    expect(classes).toContain("[&_.overflow-y-auto]:scroll-pb-24");
+    // Where the footer stops being sticky the padding would push a focused
+    // row above the top of the tiny scroll area instead (400% zoom).
+    expect(classes).toContain(
+      "[@media(max-height:300px)]:[&_.overflow-y-auto]:scroll-pb-0",
     );
   });
 

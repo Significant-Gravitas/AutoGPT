@@ -30,8 +30,9 @@ export function DeleteAccountFlow({ source, open, onOpenChange }: Props) {
       styling={{ maxWidth: "28rem", minWidth: "auto" }}
       // Autocapture would tie the anonymous exit answer to the person. The
       // scroll padding keeps a row or button reached by keyboard from landing
-      // under the sticky footer on short screens.
-      className="ph-no-capture [&_.overflow-y-auto]:scroll-pb-24"
+      // under the sticky footer on short screens; below 300px tall the footer
+      // is static, so the padding goes too.
+      className="ph-no-capture [&_.overflow-y-auto]:scroll-pb-24 [@media(max-height:300px)]:[&_.overflow-y-auto]:scroll-pb-0"
       autoFocus
       forceOpen={isDeleting}
       controlled={{ isOpen: open, set: handleOpenChange }}
