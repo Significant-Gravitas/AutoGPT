@@ -144,9 +144,12 @@ async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -
     FastAPI dependency that requires a valid authenticated user.
 
     Raises:
-        HTTPException: 401 for authentication failures
+        HTTPException: 401 for authentication failures, or for a user who
+            closed their account
     """
-    return verify_user(jwt_payload, admin_only=False)
+    user = verify_user(jwt_payload, admin_only=False)
+    await _reject_closed_account(user.user_id)
+    return user
 
 
 async def requires_admin_user(
@@ -156,9 +159,19 @@ async def requires_admin_user(
     FastAPI dependency that requires a valid admin user.
 
     Raises:
-        HTTPException: 401 for authentication failures, 403 for insufficient permissions
+        HTTPException: 401 for authentication failures, or for an admin who
+            closed their account; 403 for insufficient permissions
     """
-    return verify_user(jwt_payload, admin_only=True)
+    user = verify_user(jwt_payload, admin_only=True)
+    await _reject_closed_account(user.user_id)
+    return user
+
+
+async def _reject_closed_account(user_id: str) -> None:
+    """401 when *user_id* closed their account. Never heals: routes guarded
+    only by ``requires_user`` (POST /auth/user) provision the row themselves."""
+    if await get_account_state(user_id) is AccountState.CLOSED:
+        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
 
 
 async def get_user_id(

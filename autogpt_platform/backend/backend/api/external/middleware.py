@@ -1,3 +1,8 @@
+from autogpt_libs.auth.closed_accounts import (
+    ACCOUNT_CLOSED_DETAIL,
+    AccountState,
+    get_account_state,
+)
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
@@ -29,6 +34,7 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> API
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
+    await _reject_closed_account(api_key_obj)
     return api_key_obj
 
 
@@ -47,6 +53,7 @@ async def require_access_token(
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
+    await _reject_closed_account(token_info)
     return token_info
 
 
@@ -68,6 +75,7 @@ async def require_auth(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await _reject_closed_account(api_key_info)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -77,9 +85,10 @@ async def require_auth(
     if bearer is not None:
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
-            return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await _reject_closed_account(token_info)
+        return token_info
 
     # No credentials provided
     raise HTTPException(
@@ -108,3 +117,15 @@ def require_permission(*permissions: APIKeyPermission):
         return auth
 
     return check_permissions
+
+
+async def _reject_closed_account(auth: APIAuthorizationInfo) -> None:
+    """401 when the key's or token's user closed their account.
+
+    Deletion revokes every key and grant, but one issued while the account was
+    closing would otherwise keep working until the account's data is erased.
+    """
+    if await get_account_state(auth.user_id) is AccountState.CLOSED:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail=ACCOUNT_CLOSED_DETAIL
+        )

@@ -22,6 +22,8 @@ from autogpt_libs.auth.dependencies import (
     get_user_id,
     get_user_id_allowing_closed,
     remember_account_closed,
+    requires_admin_user,
+    requires_user,
 )
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
@@ -143,6 +145,54 @@ class TestClosedAccountIsRejected:
 
         assert response.status_code == 401
         assert response.json() == {"detail": "This account is closed."}
+
+
+class TestRouteLevelDependencies:
+    """``requires_user`` and ``requires_admin_user`` guard routes that never
+    reach ``get_user_id``: POST /auth/user provisions a User row straight from
+    the token, and the admin routes act on other users' data."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("dependency", [requires_user, requires_admin_user])
+    async def test_reject_a_closed_subject(self, backend, dependency):
+        with pytest.raises(HTTPException) as exc_info:
+            await dependency(_payload(CLOSED, "admin"))
+
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.detail == "This account is closed."
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("dependency", [requires_user, requires_admin_user])
+    async def test_an_open_subject_passes_without_a_heal(self, backend, dependency):
+        user = await dependency(_payload(OPEN, "admin"))
+
+        assert user.user_id == OPEN
+        backend.heal.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_check_lets_the_request_through(
+        self, backend, mocker: MockerFixture
+    ):
+        mocker.patch("autogpt_libs.auth.closed_accounts.logger")
+        backend.is_closed.side_effect = RuntimeError("db down")
+
+        assert (await requires_user(_payload(CLOSED))).user_id == CLOSED
+
+    def test_a_route_that_provisions_from_the_token_answers_401(self, backend):
+        app = FastAPI()
+        provision = Mock()
+
+        @app.post("/auth/user", dependencies=[Security(requires_user)])
+        def get_or_create_user(payload: dict = Security(get_jwt_payload)):
+            provision(payload)
+            return {}
+
+        app.dependency_overrides[get_jwt_payload] = lambda: _payload(CLOSED)
+        response = TestClient(app).post("/auth/user")
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "This account is closed."}
+        provision.assert_not_called()
 
 
 class TestImpersonation:
