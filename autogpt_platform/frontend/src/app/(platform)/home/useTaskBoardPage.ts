@@ -2,11 +2,7 @@ import {
   useGetV2GetBoard,
   useGetV2GetSession,
 } from "@/app/api/__generated__/endpoints/chat/chat";
-import {
-  keepPreviousData,
-  useIsMutating,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useIsMutating } from "@tanstack/react-query";
 import { parseAsString, useQueryState } from "nuqs";
 import { useState } from "react";
 import { usePlatformChrome } from "../PlatformChrome/usePlatformChrome";
@@ -41,7 +37,6 @@ export function useTaskBoardPage(boardRef: string) {
   const isPollPaused = draggingId !== null || changesInFlight > 0;
   const { showNewLayout } = usePlatformChrome();
   const params = { include_older: includeOlder };
-  const defaultRetry = useQueryClient().getDefaultOptions().queries?.retry;
 
   const boardQuery = useGetV2GetBoard(boardRef, params, {
     query: {
@@ -50,16 +45,18 @@ export function useTaskBoardPage(boardRef: string) {
       refetchInterval: isPollPaused ? false : BOARD_REFETCH_INTERVAL_MS,
       refetchOnWindowFocus: !isPollPaused,
       placeholderData: keepPreviousData,
-      retry: retryUnlessNotFound(defaultRetry),
+      retry: retryUnlessNotFound,
       select: (res) => (res.status === 200 ? res.data : undefined),
     },
   });
-  const board = boardQuery.data;
+  // A refetch that finds the board gone keeps the last data, so drop it.
+  const isNotFound = !isValidRef || isNotFoundError(boardQuery.error);
+  const board = isNotFound ? undefined : boardQuery.data;
   const isDefault = boardRef === DEFAULT_BOARD_REF || !!board?.board.is_default;
   const columns = board ? groupCards(board.columns, board.sessions) : [];
   const openCard = board?.sessions.find((card) => card.id === sessionId);
   const isOffBoard =
-    !!sessionId && !openCard && (!!board || boardQuery.isError);
+    !!sessionId && !openCard && !isNotFound && (!!board || boardQuery.isError);
 
   // A link to a session on another board goes to that board.
   const sessionBoardQuery = useGetV2GetSession(sessionId ?? "", undefined, {
@@ -99,8 +96,8 @@ export function useTaskBoardPage(boardRef: string) {
     columns,
     isEmpty: !!board && board.sessions.length === 0,
     isLoading: boardQuery.isLoading,
-    isNotFound: !isValidRef || isNotFoundError(boardQuery.error),
-    isError: boardQuery.isError && !board && !isNotFoundError(boardQuery.error),
+    isNotFound,
+    isError: boardQuery.isError && !board && !isNotFound,
     errorMessage:
       boardQuery.error instanceof Error
         ? boardQuery.error.message

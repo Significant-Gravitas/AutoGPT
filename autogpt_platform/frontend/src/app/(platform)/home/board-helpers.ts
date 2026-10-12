@@ -20,7 +20,7 @@ const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const POSITION_GAP = 1024;
-const DEFAULT_RETRIES = 3;
+const MAX_RETRIES = 3;
 // Parameters only the chat page acts on: a link carrying one must not land
 // on the board.
 const CHAT_ONLY_PARAMS = ["expertId", "kickoff", "new", "autosubmit", "source"];
@@ -57,16 +57,9 @@ export function isNotFoundError(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
-// Retries as the app's query client would, but a missing board stays missing.
-export function retryUnlessNotFound(defaultRetry: unknown) {
-  const limit =
-    defaultRetry === false
-      ? 0
-      : typeof defaultRetry === "number"
-        ? defaultRetry
-        : DEFAULT_RETRIES;
-  return (failureCount: number, error: unknown) =>
-    !isNotFoundError(error) && failureCount < limit;
+// A missing board stays missing, so only other errors are retried.
+export function retryUnlessNotFound(failureCount: number, error: unknown) {
+  return !isNotFoundError(error) && failureCount < MAX_RETRIES;
 }
 
 function byPosition(a: Card, b: Card) {

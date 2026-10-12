@@ -61,6 +61,7 @@ export function useBoardHeader(name: string) {
         mutationKey: [...BOARD_MUTATION_KEY, "delete-board"],
         onSuccess: () => {
           setIsDeleteOpen(false);
+          queryClient.removeQueries({ queryKey: boardScopeKey(boardRef) });
           void invalidateBoardList();
           void queryClient.invalidateQueries({
             queryKey: boardScopeKey(DEFAULT_BOARD_REF),

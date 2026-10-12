@@ -16,7 +16,7 @@ import {
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter, type UrlUpdateEvent } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TaskBoardPage } from "../TaskBoardPage";
 
 const flags = vi.hoisted(() => ({ hireExperts: true }));
@@ -167,6 +167,10 @@ beforeEach(() => {
       return { id: "s-new", created_at: NOW, user_id: "user-1" };
     }),
   );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("task board", () => {
@@ -439,12 +443,15 @@ describe("task board", () => {
   });
 
   test("shows an error with a retry when the board fails to load", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     server.use(
       http.get("*/api/chat/boards/:boardId", () =>
         HttpResponse.json({ detail: "boom" }, { status: 500 }),
       ),
     );
     renderBoard();
+    // The board retries a failed load three times before giving up.
+    await vi.advanceTimersByTimeAsync(10_000);
 
     const retry = await screen.findByRole("button", { name: /try again/i });
     serveBoard(BOARD);

@@ -20,7 +20,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { boardQueryKey } from "../board-helpers";
 import { TaskBoardPage } from "../TaskBoardPage";
 
@@ -146,6 +146,10 @@ beforeEach(() => {
   boardPaths = [];
   routerReplace.mockClear();
   server.use(getListExpertIdentitiesMockHandler([]));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe("task board projects", () => {
@@ -407,6 +411,30 @@ describe("task board projects", () => {
       await screen.findByRole("dialog", { name: "Pick a venue" }),
     ).toBeDefined();
     expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("a project deleted elsewhere drops its cards on the next poll", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let requests = 0;
+    server.use(
+      http.get("*/api/chat/boards/:boardId", () => {
+        requests += 1;
+        return requests === 1
+          ? HttpResponse.json(PROJECT)
+          : HttpResponse.json({ detail: "Board not found" }, { status: 404 });
+      }),
+    );
+    renderBoard(B1);
+
+    expect(
+      await screen.findByRole("article", { name: "Write launch post" }),
+    ).toBeDefined();
+    await vi.advanceTimersByTimeAsync(11_000);
+
+    expect(await screen.findByText("This project doesn't exist")).toBeDefined();
+    expect(screen.queryAllByRole("region")).toHaveLength(0);
+    expect(screen.queryByRole("article")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Launch" })).toBeNull();
   });
 
   test("an unknown project says it doesn't exist", async () => {

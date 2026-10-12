@@ -479,15 +479,13 @@ describe("retryUnlessNotFound", () => {
 
   it("never retries a missing board", () => {
     expect(isNotFoundError(notFound)).toBe(true);
-    expect(retryUnlessNotFound(undefined)(0, notFound)).toBe(false);
+    expect(retryUnlessNotFound(0, notFound)).toBe(false);
   });
 
-  it("follows the client's retry setting for other errors", () => {
-    expect(retryUnlessNotFound(undefined)(2, serverError)).toBe(true);
-    expect(retryUnlessNotFound(undefined)(3, serverError)).toBe(false);
-    expect(retryUnlessNotFound(false)(0, serverError)).toBe(false);
-    expect(retryUnlessNotFound(1)(0, serverError)).toBe(true);
-    expect(retryUnlessNotFound(1)(1, serverError)).toBe(false);
+  it("retries other errors up to three times", () => {
+    expect(isNotFoundError(serverError)).toBe(false);
+    expect(retryUnlessNotFound(2, serverError)).toBe(true);
+    expect(retryUnlessNotFound(3, serverError)).toBe(false);
   });
 });
 
