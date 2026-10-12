@@ -25,6 +25,7 @@ from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from .after_compaction import fit_after_compaction, utf16_len
 from .cli_openrouter_compat_test import _resolve_cli_path
+from .compaction import CompactionTracker
 from .security_hooks import create_security_hooks
 
 _CLI_HOOK_CAP = 10_000
@@ -80,10 +81,44 @@ async def test_over_cap_context_reaches_the_model_whole(
     assert _REMINDER + "\n".join(fitted.parts) in reminder
 
 
+@pytest.mark.asyncio
+async def test_each_compaction_counts_once_for_the_tracker_and_the_resend(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """The PreCompact hook (what ``CompactionTracker`` counts) and the
+    SessionStart re-send each fire once per compaction the CLI runs, so the
+    turn summary's compaction and re-send counts describe the same ones."""
+    cli = _resolve_cli_path()
+    if cli is None:
+        pytest.skip("No Claude Code CLI binary bundled or configured")
+    for key in [k for k in os.environ if k.startswith("CLAUDE")]:
+        monkeypatch.delenv(key)
+    tracker = CompactionTracker()
+    rebuilds: list[int] = []
+
+    async def _context() -> list[str]:
+        rebuilds.append(len(rebuilds))
+        return [_LEAD + _block("user_context", 4, "Business detail")]
+
+    requests = await asyncio.wait_for(
+        _requests_around_a_compaction(
+            cli, tmp_path, _context, on_compact=tracker.on_compact, turns=5
+        ),
+        timeout=180,
+    )
+
+    summaries = sum(1 for r in requests if _is_summary_request(r))
+    assert summaries >= 2
+    assert tracker.attempt_count == len(rebuilds) == summaries
+
+
 async def _requests_around_a_compaction(
     cli: Path,
     tmp_path: Path,
     context_after_compaction: Callable[[], Awaitable[list[str]]],
+    *,
+    on_compact: Callable[[str], None] | None = None,
+    turns: int = 3,
 ) -> list[dict]:
     requests: list[dict] = []
     runner, port = await _start_stub_api(requests)
@@ -106,6 +141,7 @@ async def _requests_around_a_compaction(
         hooks=create_security_hooks(
             "u1",
             sdk_cwd=str(work),
+            on_compact=on_compact,
             context_after_compaction=context_after_compaction,
             allowed_tools=(),
         ),
@@ -116,8 +152,8 @@ async def _requests_around_a_compaction(
     )
     try:
         async with ClaudeSDKClient(options=options) as client:
-            for turn in (_BIG_TURN, _BIG_TURN, _BIG_TURN):
-                await client.query(turn)
+            for _ in range(turns):
+                await client.query(_BIG_TURN)
                 async for _ in client.receive_response():
                     pass
     finally:
@@ -132,9 +168,7 @@ async def _start_stub_api(requests: list[dict]) -> tuple[web.AppRunner, int]:
     async def messages(request: web.Request) -> web.StreamResponse:
         payload = await request.json()
         requests.append(payload)
-        compacting = "detailed summary of the conversation" in json.dumps(
-            (payload.get("messages") or [{}])[-1]
-        )
+        compacting = _is_summary_request(payload)
         text = "<summary>Earlier turns.</summary>" if compacting else "noted"
         tokens = 1 if compacting else len(json.dumps(payload.get("messages"))) // 4
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
@@ -157,6 +191,12 @@ async def _start_stub_api(requests: list[dict]) -> tuple[web.AppRunner, int]:
     site = web.TCPSite(runner, "127.0.0.1", 0)
     await site.start()
     return runner, runner.addresses[0][1]
+
+
+def _is_summary_request(payload: dict) -> bool:
+    """The CLI's compaction request: its last message asks for the summary."""
+    last = (payload.get("messages") or [{}])[-1]
+    return "detailed summary of the conversation" in json.dumps(last)
 
 
 def _reply_events(model: str, text: str, input_tokens: int) -> list[dict]:
