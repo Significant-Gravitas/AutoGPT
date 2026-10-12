@@ -347,6 +347,10 @@ async def _record_untracked_edit(
             pattern_class=exc.failure.pattern_class,
             blocked_step=exc.failure.step,
         )
+    except ValueError as exc:
+        return PublishOutcome(
+            status="invalid_proposal", reason=safe_diagnostic(str(exc))
+        )
     return PublishOutcome(
         status="conflict",
         reason="the skill was edited concurrently; the edit was kept",
