@@ -404,8 +404,9 @@ class CreateSessionRequest(BaseModel):
     ``expert_id``.
 
     ``title`` and ``board_column`` create a task board card in one call. A
-    card outside Backlog starts at once with its title as the first message.
-    Neither combines with ``builder_graph_id`` or ``expert_kickoff`` (422).
+    card outside Backlog and Done starts at once with its title as the first
+    message; if that start is refused the card is not kept. Neither combines
+    with ``builder_graph_id`` or ``expert_kickoff`` (422).
 
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
