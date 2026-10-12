@@ -2,7 +2,7 @@ import asyncio
 import logging
 from abc import ABC, abstractmethod
 from contextlib import aclosing
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
+from typing import Any, AsyncGenerator, Callable, Generator, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
@@ -174,7 +174,12 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
         except Exception:
             logger.exception(f"Failed to publish event to Redis channel {channel_key}")
 
-    async def listen_events(self, channel_key: str) -> AsyncGenerator[M, None]:
+    async def listen_events(
+        self, channel_key: str, on_subscribed: Callable[[], None] | None = None
+    ) -> AsyncGenerator[M, None]:
+        """Yield the channel's events. ``on_subscribed`` runs once Redis has
+        confirmed the subscription: state read after it can't miss an event,
+        so that is the moment to (re)fetch."""
         _assert_no_wildcard(channel_key)
         full_channel_name = self._build_channel_name(channel_key)
 
@@ -194,6 +199,8 @@ class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
                 f"could not subscribe to {full_channel_name}: {e!r}"
             ) from e
         try:
+            if on_subscribed is not None:
+                on_subscribed()
             async with aclosing(
                 self._listen_subscribed(pubsub, full_channel_name, channel_key)
             ) as events:

@@ -589,3 +589,34 @@ async def test_async_wait_for_event_returns_none_when_the_stream_is_lost():
 
     with patch.object(_BusUnderTest, "listen_events", _lost):
         assert await _BusUnderTest().wait_for_event("chan", timeout=1) is None
+
+
+@pytest.mark.asyncio
+async def test_async_listen_events_reports_the_confirmed_subscription_first():
+    """on_subscribed fires once the subscription is confirmed and before any
+    event, so a refetch started from it can't miss one."""
+    order: list[str] = []
+    message = _BusUnderTest().Message(payload=SampleEvent(message="hi"))
+
+    async def _subscribe(_channel: str):
+        order.append("subscribed")
+        return client, pubsub
+
+    async def _listen():
+        yield {"type": "smessage", "data": message.model_dump_json()}
+        raise ConnectionError("dropped")
+
+    pubsub = MagicMock()
+    pubsub.aclose = AsyncMock()
+    pubsub.listen = _listen
+    client = MagicMock()
+    client.aclose = AsyncMock()
+
+    with patch("backend.data.event_bus.redis.subscribe_sharded_async", _subscribe):
+        with pytest.raises(EventStreamLostError):
+            async for _ in _BusUnderTest().listen_events(
+                "chan", on_subscribed=lambda: order.append("on_subscribed")
+            ):
+                order.append("event")
+
+    assert order == ["subscribed", "on_subscribed", "event"]

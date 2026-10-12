@@ -160,10 +160,12 @@ class _LostThenSilentBus:
     def __init__(self) -> None:
         self.listens = 0
 
-    async def listen_events(self, channel_key: str):
+    async def listen_events(self, channel_key: str, on_subscribed=None):
         self.listens += 1
         if self.listens == 1:
             raise EventStreamLostError("connection dropped")
+        if on_subscribed is not None:
+            on_subscribed()
         await asyncio.sleep(3600)
         yield  # pragma: no cover — unreachable
 

@@ -149,6 +149,18 @@ async def _subscribe_and_wait(
     done = asyncio.Event()
     result_execution: GraphExecution | None = None
 
+    async def _recheck_when(subscribed: asyncio.Event) -> None:
+        nonlocal result_execution
+        await subscribed.wait()
+        execution = await exec_db.get_graph_execution(
+            user_id=user_id,
+            execution_id=execution_id,
+            include_node_executions=False,
+        )
+        if execution and execution.status in STOP_WAITING_STATUSES:
+            result_execution = execution
+            done.set()
+
     async def _consume() -> None:
         nonlocal result_execution
         events = listen_iter
@@ -166,24 +178,21 @@ async def _subscribe_and_wait(
                             done.set()
                             return
             except EventStreamLostError as e:
-                # Events sent while the stream was down are gone: check the
-                # database, then listen again.
+                # Events sent while the stream was down are gone: listen
+                # again, then check the database.
                 logger.warning(f"Execution {execution_id} event stream lost: {e}")
             except Exception as e:
                 logger.error(f"Error in execution consumer: {e}", exc_info=True)
                 done.set()
                 return
-            execution = await exec_db.get_graph_execution(
-                user_id=user_id,
-                execution_id=execution_id,
-                include_node_executions=False,
-            )
-            if execution and execution.status in STOP_WAITING_STATUSES:
-                result_execution = execution
-                done.set()
-                return
             await asyncio.sleep(_RESUBSCRIBE_DELAY)
-            events = event_bus.listen_events(channel_key).__aiter__()
+            resubscribed = asyncio.Event()
+            events = event_bus.listen_events(
+                channel_key, on_subscribed=resubscribed.set
+            ).__aiter__()
+            # Checked only once the new subscription is live, so a status
+            # change can't fall between the check and the subscription.
+            task_holder.append(asyncio.create_task(_recheck_when(resubscribed)))
 
     consume_task = asyncio.create_task(_consume())
     task_holder.append(consume_task)

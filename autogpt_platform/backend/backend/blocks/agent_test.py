@@ -36,13 +36,15 @@ def _output_node(name: str, value: object) -> NodeExecutionResult:
 
 
 class _LostStreamBus:
-    """Every listen loses its stream straight away."""
+    """Every listen subscribes, then loses its stream straight away."""
 
     def __init__(self) -> None:
         self.listens = 0
 
-    async def listen(self, **_):
+    async def listen(self, on_subscribed=None, **_):
         self.listens += 1
+        if on_subscribed is not None:
+            on_subscribed()
         raise EventStreamLostError("connection dropped")
         yield  # pragma: no cover — unreachable
 

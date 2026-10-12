@@ -236,13 +236,17 @@ class AgentExecutorBlock(Block):
         event_bus = execution_utils.get_async_execution_event_bus()
         while True:
             try:
+                # Once subscribed, a catch-up from the database can't miss
+                # anything: earlier events are stored, later ones stream in.
                 async for event in event_bus.listen(
-                    user_id=user_id, graph_id=graph_id, graph_exec_id=graph_exec_id
+                    user_id=user_id,
+                    graph_id=graph_id,
+                    graph_exec_id=graph_exec_id,
+                    on_subscribed=lambda: events.put_nowait(None),
                 ):
                     events.put_nowait(event)
             except EventStreamLostError as e:
                 logger.warning(f"Execution {log_id} lost its event stream: {e}")
-            events.put_nowait(None)
             await asyncio.sleep(_RESUBSCRIBE_DELAY_S)
 
     async def _catch_up(
