@@ -68,10 +68,10 @@ export function decideOnboardingRedirect({
   isOnOnboardingRoute: boolean;
   isOnAuthRoute: boolean;
   hasPendingAuthDeepLink: boolean;
-}): "/onboarding" | "/copilot" | null {
+}): "/onboarding" | "/home" | null {
   if (hasPendingAuthDeepLink) return null;
   if (!isCompleted && !isOnOnboardingRoute) return "/onboarding";
-  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/copilot";
+  if (isCompleted && (isOnOnboardingRoute || isOnAuthRoute)) return "/home";
   return null;
 }
 

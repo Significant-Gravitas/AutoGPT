@@ -34,7 +34,7 @@ DESIGN_SYSTEM_PALETTE = {
     "otto": "#B6A4C8",
 }
 DESIGN_SYSTEM_ASSIGNMENT = {
-    "marketing": {"Maria", "Jules", "Remy", "Maya", "Zara", "Marco", "Noor"},
+    "marketing": {"Maria", "Jules", "Remy", "Maya", "Zara", "Marco", "Noor", "Clip"},
     "sales": {"Max", "Jordan", "Anika", "Omar"},
     "finance": {"Mina", "Theo", "Daniel"},
     "support": {"Riley", "Robin", "Sasha", "Kai"},
@@ -131,8 +131,8 @@ def test_palette_and_assignments_follow_the_design_system():
         assert {
             i.name for i in CATALOG.identities if i.visual_category == category
         } == names
-    assert len(CATALOG.identities) == 34
-    assert len({i.url for i in CATALOG.identities}) == 34
+    assert len(CATALOG.identities) == 35
+    assert len({i.url for i in CATALOG.identities}) == 35
 
 
 def test_each_builtin_seeds_its_own_managed_identity(real_roster):

@@ -178,6 +178,30 @@ async def test_locked_refresh_reloads_after_waiting_for_rotating_provider(mocker
 
 
 @pytest.mark.asyncio
+async def test_linear_refresh_uses_locked_path_even_when_copilot_requests_unlocked(
+    mocker,
+):
+    from backend.blocks.linear._oauth import LinearOAuthHandler
+
+    manager = IntegrationCredentialsManager()
+    credentials = _provider_runtime_credentials().model_copy(
+        update={"provider": "linear", "refresh_strategy": "oauth_handler"}
+    )
+    handler = LinearOAuthHandler("client", "secret", "redirect")
+    mocker.patch.object(manager, "_get_oauth_handler", AsyncMock(return_value=handler))
+    locked = mocker.patch.object(
+        manager, "_refresh_locked", AsyncMock(return_value=credentials)
+    )
+    unlocked = mocker.patch.object(manager, "_refresh_unlocked", AsyncMock())
+
+    result = await manager.refresh_if_needed("user-a", credentials, lock=False)
+
+    assert result is credentials
+    locked.assert_awaited_once_with("user-a", credentials, handler=handler)
+    unlocked.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_locked_refresh_reports_a_credential_type_change(mocker):
     manager = IntegrationCredentialsManager()
     stale = _provider_runtime_credentials().model_copy(

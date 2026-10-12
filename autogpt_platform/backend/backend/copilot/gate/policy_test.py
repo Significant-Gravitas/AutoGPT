@@ -30,7 +30,7 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("web_search", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("write_workspace_file", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("Write", Verdict.RUN, Verdict.RUN, Verdict.RUN),
-        ("bash_exec", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("bash_exec", Verdict.JUDGE, Verdict.JUDGE, Verdict.RUN),
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
         ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
     ],

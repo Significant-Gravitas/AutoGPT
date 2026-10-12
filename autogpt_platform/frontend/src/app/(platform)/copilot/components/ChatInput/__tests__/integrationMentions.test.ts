@@ -73,6 +73,21 @@ describe("connectedIntegrationsFromCredentials", () => {
     ).toEqual(result);
   });
 
+  it("names an MCP credential by its service and server", () => {
+    const [sentry] = connectedIntegrationsFromCredentials([
+      credential("mcp", {
+        id: "cred-sentry",
+        type: "oauth2",
+        title: "MCP: mcp.sentry.dev",
+        service: "sentry",
+        service_name: "Sentry",
+      }),
+    ]);
+    expect(sentry.providerName).toBe("Sentry");
+    expect(sentry.name).toBe("mcp.sentry.dev");
+    expect(sentry.token).toBe("[mcp.sentry.dev](credential://mcp/cred-sentry)");
+  });
+
   it("skips platform credit credentials, which are not something to address", () => {
     const result = connectedIntegrationsFromCredentials([
       credential("openai", { title: "Use Credits for OpenAI" }),

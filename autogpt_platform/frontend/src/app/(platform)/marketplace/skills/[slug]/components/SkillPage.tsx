@@ -268,6 +268,7 @@ export function SkillPage({ slug }: Props) {
       />
 
       <ConnectServiceDialog
+        preferMcp
         open={isConnectOpen}
         onOpenChange={setIsConnectOpen}
         title={`Connect ${formatProviderList(providers)}`}

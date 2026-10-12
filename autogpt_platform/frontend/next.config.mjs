@@ -14,11 +14,17 @@ const nextConfig = {
   // tag preview deployments as previews rather than as production.
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    // Sentry initialises in the browser too, so its kill switch must reach it.
+    DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
   async rewrites() {
     return [
+      {
+        source: "/api/store/submissions/media/:path*",
+        destination: "/api/proxy/api/store/submissions/media/:path*",
+      },
       {
         source: "/api/store/media/:path*",
         destination: "/api/proxy/api/store/media/:path*",
@@ -196,11 +202,7 @@ export default skipSentryPlugin
         enabled: true,
       },
 
-      // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-      // This can increase your server load as well as your hosting bill.
-      // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-      // side errors will fail.
-      tunnelRoute: "/store",
+      // Browser Sentry envelopes use the tunnel in src/lib/sentry-tunnel.ts, relayed by src/middleware.ts.
 
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)

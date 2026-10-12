@@ -152,7 +152,7 @@ export function LibraryAgentCard({
                 const prompt = encodeURIComponent(
                   `Tell me about my agent "${name}" (library agent ID: ${id}). Use find_library_agent with this exact agent_id to look it up, then summarize its current status, recent runs, and how I can get the most out of it.`,
                 );
-                router.push(`/copilot?autosubmit=true#prompt=${prompt}`);
+                router.push(`/home?autosubmit=true#prompt=${prompt}`);
               }}
               className="inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-1.5 text-[13px] font-medium text-zinc-600 transition-colors hover:bg-zinc-50 hover:text-zinc-800"
             >

@@ -421,17 +421,16 @@ async def _create_dream_session(
     """
     # Lazy import — avoids circular dependency at module-import time
     # AND keeps the dream-pass / chat-model coupling explicit. Routing
-    # through ``chat_db()`` means the dream pass (running in the
-    # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
+    # through ``chat_db()``/``orgs_db()`` means the dream pass (running in
+    # the Scheduler subprocess) auto-uses the DatabaseManager RPC client;
     # the DatabaseManager process itself uses the direct module.
-    from backend.api.features.orgs.db import get_user_default_team
     from backend.copilot.model import ChatSessionMetadata
-    from backend.data.db_accessors import chat_db
+    from backend.data.db_accessors import chat_db, orgs_db
 
     # Dream passes run per-user with no request context; the user's
     # default (personal) org is the correct tenant for their dreams.
     try:
-        org_id, team_id = await get_user_default_team(user_id)
+        org_id, team_id = await orgs_db().get_user_default_team(user_id)
     except Exception:
         logger.warning(
             f"Could not resolve default team for dream session (user {user_id}); "

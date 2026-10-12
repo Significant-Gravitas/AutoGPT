@@ -58,7 +58,8 @@ export function DrawerWrap({
         )}
         data-testid={testId}
         onEscapeKeyDown={handleEscapeKeyDown}
-        onInteractOutside={handleClose}
+        // No onInteractOutside close: Radix dismisses outside taps itself and
+        // vetoes the focus a closing DropdownMenu hands back to its trigger.
       >
         <div
           className={cn(

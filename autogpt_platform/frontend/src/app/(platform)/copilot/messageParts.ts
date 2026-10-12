@@ -3,7 +3,7 @@ import type { UIMessage } from "ai";
 import { COMPACTION_DATA_PART_TYPE } from "./components/CompactionCard/helpers";
 import { DREAM_OPERATIONS_PART_TYPE } from "./dreamOperations";
 
-/** Transient copy for the Thinking indicator — never rendered inline. */
+/** Backend progress line ("Preparing workspace…"). Never shown to the user. */
 export const STATUS_PART_TYPE = "data-status";
 export const TOOL_DISPLAY_PART_TYPE = "data-tool-display";
 /**
@@ -40,9 +40,10 @@ export function isBookkeepingPart(part: { type: string }): boolean {
 }
 
 /**
- * Surface the latest backend-emitted status message for the trailing assistant
- * message, if that status has not already been invalidated by newer visible
- * parts. Used to show progress during restore/replay before answer text lands.
+ * The latest backend-emitted status message for the trailing assistant
+ * message, if newer visible parts have not already overtaken it. A non-null
+ * result proves the stream is live before any answer text lands; the text
+ * itself is never shown.
  */
 export function getLatestAssistantStatusMessage(
   messages: UIMessage[],

@@ -27,5 +27,7 @@ export function sanitizeAuthNext(
   // could slip past the checks above and then resolve as "//evil.com".
   // eslint-disable-next-line no-control-regex
   if (/[\u0000-\u001F\u007F]/.test(rawNext)) return null;
-  return rawNext;
+  // /copilot is only a server redirect to /home; a client navigation into that
+  // redirect from a (no-navbar) page crashes the App Router (React #310).
+  return rawNext.replace(/^\/copilot\/?(?=[?#]|$)/, "/home");
 }
