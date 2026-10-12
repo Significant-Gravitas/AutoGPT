@@ -1590,6 +1590,15 @@ async def set_subscription_tier(
         schedule_posthog_lifecycle_sync(user_id)
 
 
+async def invalidate_billing_lookups(customer_id: str) -> None:
+    """Drop the customer's cached billing lookups on every worker: the active
+    subscription and any pending change. Every path that changes the
+    customer's subscription in Stripe calls this after the change; it never
+    raises."""
+    await invalidate_active_subscription_cache(customer_id)
+    await invalidate_pending_subscription_change(customer_id)
+
+
 def invalidate_subscription_caches(user_id: str) -> None:
     get_user_by_id.cache_delete(user_id)
     # Also invalidate the rate-limit tier cache so CoPilot picks up the new
@@ -1597,9 +1606,9 @@ def invalidate_subscription_caches(user_id: str) -> None:
     from backend.copilot.rate_limit import get_user_tier  # local import avoids circular
 
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # The pending-change cache needs nothing here: it is read from the Stripe
-    # subscription alone, and every Stripe change reaches it through
-    # sync_subscription_from_stripe.
+    # The billing lookups need nothing here: they are read from the Stripe
+    # subscription alone, and every path that changes it in Stripe
+    # (including the payment-failure cancel) calls invalidate_billing_lookups.
 
 
 # Stripe stamps ``cancellation_details.reason = "cancellation_requested"`` on
@@ -1642,7 +1651,7 @@ async def _cancel_customer_subscriptions(
         )
     finally:
         if seen_ids:
-            await invalidate_active_subscription_cache(customer_id)
+            await invalidate_billing_lookups(customer_id)
     return len(seen_ids)
 
 
@@ -1745,7 +1754,6 @@ async def cancel_stripe_subscription(user_id: str) -> bool:
             customer_id, at_period_end=True
         )
         if cancelled_count > 0:
-            await invalidate_pending_subscription_change(customer_id)
             current_tier = user.subscription_tier or SubscriptionTier.NO_TIER
             _track_billing_event(
                 PostHogEvent.SUBSCRIPTION_CANCELLATION_SCHEDULED,
@@ -2261,8 +2269,7 @@ async def modify_stripe_subscription_for_tier(
             )
         return True
     finally:
-        await invalidate_pending_subscription_change(user.stripe_customer_id)
-        await invalidate_active_subscription_cache(user.stripe_customer_id)
+        await invalidate_billing_lookups(user.stripe_customer_id)
 
 
 async def release_pending_subscription_schedule(user_id: str) -> bool:
@@ -2331,8 +2338,7 @@ async def release_pending_subscription_schedule(user_id: str) -> bool:
             )
     finally:
         if did_anything:
-            await invalidate_pending_subscription_change(user.stripe_customer_id)
-            await invalidate_active_subscription_cache(user.stripe_customer_id)
+            await invalidate_billing_lookups(user.stripe_customer_id)
     return did_anything
 
 
@@ -2355,19 +2361,25 @@ async def get_pending_subscription_change(
     *Invalidation contract.* The answer is read from the customer's Stripe
     subscription alone (``cancel_at_period_end`` and its schedule), never from
     the DB tier. Every call-site that changes those in Stripe MUST await
-    ``invalidate_pending_subscription_change(customer_id)`` after the change,
+    ``invalidate_billing_lookups(customer_id)`` after the change,
     so the UI never shows a stale pending badge after a user-visible action;
     a read already in flight then can't store its old answer. Current
-    invalidators (keep this list in sync when adding new mutators):
+    invalidators (keep this list in sync when adding new mutators), each
+    through ``invalidate_billing_lookups``, which drops the active-subscription
+    lookup too:
 
     - ``sync_subscription_from_stripe`` — ``finally`` block: every
       subscription and schedule webhook, Stripe-side changes (billing portal,
       dashboard) and trial transitions, whether or not the tier changed.
+    - ``_cancel_customer_subscriptions`` — ``finally`` block: user cancels,
+      stale-subscription cleanup, and the payment-failure cancel.
     - ``modify_stripe_subscription_for_tier`` — ``finally`` block (covers
       upgrade path clear + downgrade-schedule create + any partial failure).
     - ``release_pending_subscription_schedule`` — ``finally`` block when a
       schedule release OR ``cancel_at_period_end`` clear succeeded.
-    - ``cancel_stripe_subscription`` — after scheduling period-end cancel.
+    - ``handle_subscription_payment_failure`` — after paying a past-due
+      invoice from the balance; ``handle_subscription_payment_success``.
+    - The trial conversion (``_save_conversion``), after saving the plan.
 
     ``PendingChangeUnknown`` and Stripe errors reach every caller and are not
     cached, so the next request retries.
@@ -2825,8 +2837,7 @@ async def sync_subscription_from_stripe(
         await _sync_subscription_tier_from_stripe(stripe_subscription)
     finally:
         if isinstance(customer_id, str) and customer_id:
-            await invalidate_active_subscription_cache(customer_id)
-            await invalidate_pending_subscription_change(customer_id)
+            await invalidate_billing_lookups(customer_id)
     if track_lifecycle:
         schedule_posthog_lifecycle_sync(
             stripe_customer_id=stripe_subscription.get("customer")
@@ -3313,6 +3324,8 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 await stripe_call(
                     stripe.Invoice.pay_async, invoice_id, paid_out_of_band=True
                 )
+                # A past-due subscription is active again.
+                await invalidate_billing_lookups(customer_id)
             except stripe.StripeError:
                 logger.warning(
                     "handle_subscription_payment_failure: balance deducted for user"
@@ -3409,9 +3422,9 @@ async def handle_subscription_payment_success(invoice: dict) -> None:
         return
     # A paid invoice can start a new period (a renewal, a plan's first
     # charge). Nothing below changes Stripe, so dropping the billing page's
-    # cached lookup now is as good as after; it doesn't wait for the
+    # cached lookups now is as good as after; it doesn't wait for the
     # customer.subscription.updated webhook that usually follows.
-    await invalidate_active_subscription_cache(customer_id)
+    await invalidate_billing_lookups(customer_id)
     user = await User.prisma().find_first(where={"stripeCustomerId": customer_id})
     if not user:
         logger.warning(

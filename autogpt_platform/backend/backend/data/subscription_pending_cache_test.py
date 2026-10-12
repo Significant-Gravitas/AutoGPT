@@ -22,6 +22,7 @@ from backend.data import credit as worker_a
 from backend.data import versioned_cache
 from backend.data.redis_client import get_redis_async
 from backend.data.subscription_pending_cache import PENDING_CHANGES
+from backend.util.exceptions import InsufficientBalanceError
 
 PERIOD_END = int((datetime.now(UTC) + timedelta(days=20)).timestamp())
 WAIT = 5  # seconds; no wait in these tests may hang the suite
@@ -86,6 +87,10 @@ class FakeStripe:
         self.subscription = {**self.subscription, **changes}
         return self.current()
 
+    async def cancel_async(self, subscription_id: str, **params):
+        self.subscription = {**self.subscription, "status": "canceled"}
+        return self.current()
+
     def hold_next_lookup(
         self, monkeypatch: pytest.MonkeyPatch, worker: ModuleType
     ) -> asyncio.Event:
@@ -140,6 +145,7 @@ async def worker_b(user_id: str, fake_stripe: FakeStripe, monkeypatch):
     with (
         patch.object(stripe.Subscription, "list_async", fake_stripe.list_async),
         patch.object(stripe.Subscription, "modify_async", fake_stripe.modify_async),
+        patch.object(stripe.Subscription, "cancel_async", fake_stripe.cancel_async),
         patch.object(worker_a, "get_user_by_id", lookup_user),
         patch.object(worker, "get_user_by_id", lookup_user),
         patch.object(worker_a, "get_subscription_price_id", _price_id),
@@ -190,3 +196,41 @@ async def test_a_cancellation_made_in_stripe_shows_on_every_worker(
     pending = await worker_b.get_pending_subscription_change(user_id)
     assert pending is not None and pending[0] == SubscriptionTier.NO_TIER
     assert fake_stripe.lookups == 2
+
+
+@pytest.mark.asyncio
+async def test_a_renewal_the_balance_cant_cover_clears_the_pending_change(
+    user_id, fake_stripe, worker_b
+):
+    """A cancellation is scheduled, then the renewal fails and the balance
+    can't cover it, so we end the plan in Stripe now: the "cancels on" badge
+    must go on every worker, not linger until it expires."""
+    fake_stripe.subscription["cancel_at_period_end"] = True
+    pending = await worker_b.get_pending_subscription_change(user_id)
+    assert pending is not None and pending[0] == SubscriptionTier.NO_TIER
+
+    users = MagicMock()
+    users.prisma.return_value.find_first = AsyncMock(
+        return_value=MagicMock(id=user_id, subscriptionTier=SubscriptionTier.PRO)
+    )
+    balance = MagicMock()
+    balance._add_transaction = AsyncMock(
+        side_effect=InsufficientBalanceError("no balance", user_id, 0, 5000)
+    )
+    renewal = {
+        "id": "in_renewal",
+        "customer": fake_stripe.subscription["customer"],
+        "amount_due": 5000,
+        "billing_reason": "subscription_cycle",
+        "subscription": "sub_pro",
+    }
+    with (
+        patch.object(worker_a, "User", users),
+        patch.object(worker_a, "UserCredit", MagicMock(return_value=balance)),
+        patch.object(worker_a, "set_subscription_tier", AsyncMock()) as set_tier,
+    ):
+        await worker_a.handle_subscription_payment_failure(renewal)
+
+    assert fake_stripe.subscription["status"] == "canceled"
+    set_tier.assert_awaited_once_with(user_id, SubscriptionTier.NO_TIER)
+    assert await worker_b.get_pending_subscription_change(user_id) is None

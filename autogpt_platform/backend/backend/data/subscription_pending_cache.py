@@ -6,6 +6,13 @@ A queued downgrade (a Subscription Schedule phase) or cancellation
 and takes two Subscription lists plus a Schedule retrieve, so it is cached
 briefly; see :mod:`backend.data.versioned_cache` for how a change reaches
 every worker on its next read.
+
+Rolling out from the previous cache (a shared ``@cached`` with a plain
+delete, under other keys): until every pod runs this code, an old pod's
+invalidation doesn't replace the token new pods read, so a slow read on a
+new pod that started before such a change can still store the old answer.
+That entry lives for the TTL from when it was written, so the bound is
+30 seconds after the last such write, not after the change.
 """
 
 from datetime import datetime
