@@ -16,6 +16,7 @@ import {
   BlockIOSubSchema,
   BlockIOTableSubSchema,
   DataType,
+  GoogleDrivePickerSchema,
   resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
@@ -109,9 +110,9 @@ export function RunAgentInputs({
       break;
 
     case DataType.GOOGLE_DRIVE_PICKER: {
-      const pickerSchema = valueSchema as any;
-      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
-        pickerSchema.google_drive_picker_config || {};
+      const config =
+        (valueSchema as GoogleDrivePickerSchema).google_drive_picker_config ??
+        {};
 
       innerInputElement = (
         <GoogleDrivePickerInput
