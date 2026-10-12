@@ -154,6 +154,7 @@ describe.each([
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
     vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
     vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "");
 
     await load();
 
