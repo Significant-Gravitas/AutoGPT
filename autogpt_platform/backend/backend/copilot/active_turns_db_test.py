@@ -76,7 +76,6 @@ async def test_a_chat_fanning_out_six_sub_sessions_leaves_the_user_a_slot():
                         timeout=0,
                         tool_call_id=f"sub:{spawner.session_id}",
                         tool_name="run_sub_session",
-                        allow_queue=False,
                     )
                 )[0]
                 for sub in subs

@@ -1,10 +1,9 @@
 """AutoPilotBlock must treat a refused turn as terminal.
 
-``allow_queue=False`` (autopilot.py) made ``refused`` reachable for this block:
-``run_copilot_turn_via_queue`` returns it when the target session already has a
-turn in flight, and when the tree ledger refuses the spawn. Without a branch for
-it the block falls through and renders an empty ``SessionResult`` as a
-successful turn, dropping the refusal.
+``run_copilot_turn_via_queue`` returns ``refused`` when the target session
+already has a turn in flight, and when the tree ledger refuses the spawn.
+Without a branch for it the block falls through and renders an empty
+``SessionResult`` as a successful turn, dropping the refusal.
 """
 
 from unittest.mock import AsyncMock, patch
