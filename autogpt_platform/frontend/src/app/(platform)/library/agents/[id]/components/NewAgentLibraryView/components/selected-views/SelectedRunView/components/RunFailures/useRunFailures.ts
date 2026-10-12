@@ -1,6 +1,7 @@
 import { useGetV2GetSpecificBlocks } from "@/app/api/__generated__/endpoints/default/default";
 import type { GetV1GetExecutionDetails200 } from "@/app/api/__generated__/models/getV1GetExecutionDetails200";
 import { okData } from "@/app/api/helpers";
+import { getFailedStepCount, isCompletedWithErrors } from "@/lib/run-health";
 import { formatStepName, getFailedSteps, getRunError } from "./helpers";
 
 export function useRunFailures(run: GetV1GetExecutionDetails200) {
@@ -23,9 +24,17 @@ export function useRunFailures(run: GetV1GetExecutionDetails200) {
     return { ...step, name: block ? formatStepName(block.name) : null };
   });
 
+  // The run's own tally still counts a failed step whose details are missing,
+  // which keeps this notice in step with the run list and the status badge.
+  const countedFailures = isCompletedWithErrors(run)
+    ? getFailedStepCount(run)
+    : 0;
+  const failedStepCount = Math.max(steps.length, countedFailures);
+
   return {
     steps,
-    runError: steps.length > 0 ? null : getRunError(run),
+    failedStepCount,
+    runError: failedStepCount > 0 ? null : getRunError(run),
     isLoadingNames: blocksQuery.isLoading,
   };
 }

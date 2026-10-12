@@ -223,6 +223,18 @@ test("a clean run shows no failure notice and a plain completed state", async ()
   expect(within(runItem).queryByText(/step failed/)).toBeNull();
 });
 
+test("a completed run that counted a failed step says so even without the step's details", async () => {
+  renderRun({
+    run: makeRun({ stats: { node_exec_count: 2, node_error_count: 1 } }),
+    nodeExecutions: [makeNodeExecution({ output_data: { positive: ["ok"] } })],
+  });
+
+  const failures = await screen.findByTestId("run-failures");
+  expect(within(failures).getByText("1 step failed")).toBeDefined();
+  expect(within(failures).queryByRole("listitem")).toBeNull();
+  expect(screen.getByText("Completed with errors")).toBeDefined();
+});
+
 test("steps swept to FAILED when the user stops a run are not reported as errors", async () => {
   renderRun({
     run: makeRun({ status: AgentExecutionStatus.TERMINATED }),

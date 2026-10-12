@@ -26,9 +26,10 @@ interface Props {
 }
 
 export function RunFailures({ run }: Props) {
-  const { steps, runError, isLoadingNames } = useRunFailures(run);
+  const { steps, failedStepCount, runError, isLoadingNames } =
+    useRunFailures(run);
 
-  if (steps.length === 0 && !runError) return null;
+  if (failedStepCount === 0 && !runError) return null;
 
   const runFailed = run.status === AgentExecutionStatus.FAILED;
 
@@ -40,8 +41,8 @@ export function RunFailures({ run }: Props) {
         className="[&>svg]:top-3 [&>svg]:translate-y-0"
       >
         <AlertTitle>
-          {steps.length > 0
-            ? describeFailedSteps(steps.length)
+          {failedStepCount > 0
+            ? describeFailedSteps(failedStepCount)
             : "This run failed"}
         </AlertTitle>
         <AlertDescription className="flex flex-col gap-3">
@@ -58,7 +59,7 @@ export function RunFailures({ run }: Props) {
             >
               {runError}
             </ShowMoreText>
-          ) : (
+          ) : steps.length > 0 ? (
             <ul className="flex flex-col gap-3">
               {steps.map((step) => (
                 <li key={step.id} className="flex flex-col gap-1">
@@ -79,7 +80,7 @@ export function RunFailures({ run }: Props) {
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
         </AlertDescription>
       </Alert>
     </div>
