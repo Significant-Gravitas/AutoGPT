@@ -89,6 +89,52 @@ describe("/home with the task board flag", () => {
   });
 });
 
+describe("chat links on /home with the task board flag", () => {
+  beforeEach(() => {
+    navigation.pathname = "/home";
+  });
+
+  test.each([
+    ["/home?expertId=e1&kickoff=1", "/chat?expertId=e1&kickoff=1"],
+    ["/home?expertId=e1", "/chat?expertId=e1"],
+    [
+      "/home?source=import&autosubmit=true",
+      "/chat?source=import&autosubmit=true",
+    ],
+    ["/home#prompt=Draft%20a%20plan", "/chat#prompt=Draft%20a%20plan"],
+    ["/home?autosubmit=true#prompt=Hi", "/chat?autosubmit=true#prompt=Hi"],
+  ])("sends %s to the full-page chat", async (from, to) => {
+    setFlag(true);
+    window.history.replaceState({}, "", from);
+    render(<HomePage />);
+
+    await waitFor(() => expect(routerReplace).toHaveBeenCalledWith(to));
+    expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
+  });
+
+  test("opens the board for a session link", () => {
+    setFlag(true);
+    window.history.replaceState(
+      {},
+      "",
+      "/home?sessionId=3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b",
+    );
+    render(<HomePage />);
+
+    expect(screen.getByRole("heading", { name: /board/i })).toBeDefined();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+
+  test("leaves chat links to the chat page when the flag is off", () => {
+    setFlag(false);
+    window.history.replaceState({}, "", "/home?expertId=e1&kickoff=1");
+    render(<HomePage />);
+
+    expect(screen.getByText("chat page")).toBeDefined();
+    expect(routerReplace).not.toHaveBeenCalled();
+  });
+});
+
 describe("/chat with the task board flag", () => {
   beforeEach(() => {
     navigation.pathname = "/chat";
