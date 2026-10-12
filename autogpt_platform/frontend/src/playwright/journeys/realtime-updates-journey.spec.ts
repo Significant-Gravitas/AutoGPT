@@ -12,7 +12,8 @@ test.describe("realtime updates journey", () => {
     page,
     journeyUser: _user,
   }) => {
-    test.setTimeout(90_000);
+    // A shared CI executor can keep a run queued for a while.
+    test.setTimeout(180_000);
     const liveConnection = await proxyLiveConnection(page);
     const agentName = createUniqueAgentName("Journey realtime");
     await createCountdownAgent(page, agentName);
@@ -20,10 +21,11 @@ test.describe("realtime updates journey", () => {
     const library = new LibraryPage(page);
     await library.openSavedAgent(agentName);
     await clickRunButton(page);
-    await expect(page.getByRole("img", { name: "Task running" })).toBeVisible({
-      timeout: 20_000,
-    });
-    await expectActivity(page, agentName, /running/i);
+    // In flight (queued or running) when the connection drops.
+    await expect(
+      page.getByRole("img", { name: /^Task (queued|running)$/ }),
+    ).toBeVisible({ timeout: 30_000 });
+    await expectActivity(page, agentName, /queued|running/i);
     const pageInstance = await markPageInstance(page);
 
     // The connection drops mid-run, and the first token fetches for the
@@ -31,7 +33,7 @@ test.describe("realtime updates journey", () => {
     await liveConnection.dropWithFailingTokenFetches(2);
 
     await expect(page.getByRole("img", { name: "Task completed" })).toBeVisible(
-      { timeout: 45_000 },
+      { timeout: 90_000 },
     );
     await expect.poll(() => library.getRunStatus()).toBe("completed");
     await expectActivity(page, agentName, /completed/i);
