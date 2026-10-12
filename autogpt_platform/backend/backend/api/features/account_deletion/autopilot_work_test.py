@@ -16,6 +16,7 @@ from backend.platform_linking.models import PlatformLinkInfo, PlatformUserLinkIn
 from backend.util.exceptions import NotFoundError
 
 MODULE = "backend.api.features.account_deletion.autopilot_work"
+BEST_EFFORT_MODULE = "backend.api.features.account_deletion.best_effort"
 USER_ID = "user-1"
 LINKED_AT = datetime(2026, 10, 1, tzinfo=timezone.utc)
 
@@ -289,7 +290,7 @@ async def test_a_hung_queue_listing_is_cut_off(
     cancel: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
 
     async def hang(_: str) -> list[object]:
         await asyncio.sleep(10)
@@ -330,7 +331,7 @@ async def test_every_turn_step_hung_is_still_bounded(
     list_running: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
     mocker.patch(f"{MODULE}.TURN_STOP_WAIT_SECONDS", 0.05)
 
     async def hang(_: str) -> object:
@@ -391,7 +392,7 @@ async def test_a_link_already_gone_is_not_an_error(
 ):
     links.list_user_links.return_value = [_dm_link("d1")]
     links.delete_user_link.side_effect = NotFoundError("Link not found.")
-    caplog.set_level(logging.INFO, logger=MODULE)
+    caplog.set_level(logging.INFO, logger=BEST_EFFORT_MODULE)
 
     await unlink_chat_platforms(USER_ID)
 
@@ -437,7 +438,7 @@ async def test_a_hung_link_listing_is_cut_off(
     links: MagicMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
 
     async def hang(_: str) -> list[object]:
         await asyncio.sleep(10)

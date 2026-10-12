@@ -37,8 +37,14 @@ BEFORE_CLOSE = [
     "stop_account_emails",
 ]
 CLOSE = ["close_account", "remember_account_closed"]
-AFTER_CLOSE = ["send_account_deleted_email", "capture_anonymous"]
+AFTER_CLOSE = [
+    "send_account_deleted_email",
+    "mark_confirmation_sent",
+    "capture_anonymous",
+]
 STEPS = LOAD + BEFORE_CLOSE + CLOSE + AFTER_CLOSE
+# A confirmation that did not go out is left unmarked for the erasure routine.
+UNSENT = [name for name in STEPS if name != "mark_confirmation_sent"]
 SYNC_STEPS = {"remember_account_closed", "capture_anonymous"}
 
 
@@ -91,6 +97,7 @@ async def test_every_step_runs_once_in_order(steps: MagicMock):
     )
     steps.remember_account_closed.assert_called_once_with(USER_ID)
     steps.send_account_deleted_email.assert_awaited_once_with(EMAIL)
+    steps.mark_confirmation_sent.assert_awaited_once_with(USER_ID)
     steps.capture_anonymous.assert_called_once_with(
         PostHogEvent.ACCOUNT_DELETION_COMPLETED,
         {"plan_state": "pro", "surface": "settings"},
@@ -224,9 +231,23 @@ async def test_a_failed_confirmation_email_still_succeeds(
     with caplog.at_level(logging.DEBUG):
         await _delete()
 
-    assert _called(steps) == STEPS
+    assert _called(steps) == UNSENT
     assert USER_ID in caplog.text
     assert EMAIL.lower() not in caplog.text.lower()
+
+
+@pytest.mark.asyncio
+async def test_a_failure_to_mark_the_confirmation_sent_still_succeeds(
+    steps: MagicMock, caplog: pytest.LogCaptureFixture
+):
+    """The email went out; at worst the erasure routine sends a second one."""
+    steps.mark_confirmation_sent.side_effect = RuntimeError("db down")
+
+    with caplog.at_level(logging.ERROR):
+        await _delete()
+
+    assert _called(steps) == STEPS
+    assert "RuntimeError" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -288,5 +309,5 @@ async def test_a_stalled_confirmation_email_does_not_hold_the_request(
     with caplog.at_level(logging.ERROR):
         await asyncio.wait_for(_delete(), timeout=5)
 
-    assert _called(steps) == STEPS
+    assert _called(steps) == UNSENT
     assert "TimeoutError" in caplog.text

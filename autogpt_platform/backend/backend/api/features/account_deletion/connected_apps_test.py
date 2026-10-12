@@ -156,6 +156,31 @@ async def test_one_failure_is_logged_without_secrets_and_the_rest_still_run(
 
 
 @pytest.mark.asyncio
+async def test_a_provider_refusing_the_revoke_is_logged_without_secrets(
+    get_all_creds: AsyncMock,
+    revoke: AsyncMock,
+    cleanup: AsyncMock,
+    caplog: pytest.LogCaptureFixture,
+):
+    """revoke_tokens reports a refusal (expired token, no revoke endpoint)
+    as False rather than raising; the grant may still be live, so say so."""
+    get_all_creds.return_value = [_github(), _openai_key()]
+    revoke.side_effect = [False, None]
+    caplog.set_level(logging.WARNING, logger=MODULE)
+
+    await revoke_connected_apps(USER_ID)
+
+    cleanup.assert_awaited_once_with(USER_ID)
+    [record] = [r for r in caplog.records if r.name == MODULE]
+    assert record.levelno == logging.WARNING
+    assert "cred-1" in record.getMessage()
+    assert "github" in record.getMessage()
+    assert "cred-2" not in caplog.text
+    for secret in SECRETS:
+        assert secret not in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_a_legacy_stored_provider_is_revoked_under_its_canonical_name(
     get_all_creds: AsyncMock, revoke: AsyncMock, cleanup: AsyncMock
 ):

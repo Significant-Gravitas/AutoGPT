@@ -7,6 +7,7 @@ CREATE TABLE "AccountDeletionRequest" (
     "userId" TEXT NOT NULL,
     "requestedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "source" "AccountDeletionSource" NOT NULL,
+    "confirmationSentAt" TIMESTAMP(3),
     "completedAt" TIMESTAMP(3),
 
     CONSTRAINT "AccountDeletionRequest_pkey" PRIMARY KEY ("id")

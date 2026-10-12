@@ -48,9 +48,11 @@ step is safe to repeat:
 
 The steps after the close are best effort: the account is closed, so the call
 succeeds even when the email cannot be sent, and it stops waiting for the email
-after ``CONFIRMATION_EMAIL_TIMEOUT_SECONDS``. When two calls race, the one whose
-``close_account`` loses returns without sending anything; the winner sends the
-email and records the count.
+after ``CONFIRMATION_EMAIL_TIMEOUT_SECONDS``. A sent email is recorded on the
+request row (``confirmationSentAt``); one that failed is left for the erasure
+routine to send. When two calls race, the one whose ``close_account`` loses
+returns without sending anything; the winner sends the email and records the
+count.
 
 Hand-off to data erasure (SECRT-2854): the AccountDeletionRequest row is the
 whole hand-off. That routine (not built yet) processes every row whose
@@ -58,7 +60,9 @@ whole hand-off. That routine (not built yet) processes every row whose
 first rerun ``stop_user_work``: a schedule or trigger whose removal failed here
 is not retried, and neither the scheduler nor the webhook ingress checks for a
 closed account. It must also delete the user's auth identities with the User
-row, or the auth-identity monitor re-creates the User.
+row, or the auth-identity monitor re-creates the User. For a row whose
+``confirmationSentAt`` is still null it must send ``send_account_deleted_email``
+before it erases the User row (the address goes with it), then set the column.
 
 Neither the typed email nor the account's email is ever logged.
 """
@@ -75,7 +79,11 @@ from backend.api.features.account_deletion.connected_apps import revoke_connecte
 from backend.api.features.account_deletion.email_opt_out import stop_account_emails
 from backend.api.features.account_deletion.issued_access import revoke_issued_access
 from backend.api.features.account_deletion.scheduled_work import stop_user_work
-from backend.data.account_deletion import close_account, is_account_closed
+from backend.data.account_deletion import (
+    close_account,
+    is_account_closed,
+    mark_confirmation_sent,
+)
 from backend.data.credit import cancel_all_subscriptions_now, set_auto_top_up
 from backend.data.model import AutoTopUpConfig
 from backend.data.user import get_user_by_id
@@ -181,15 +189,17 @@ async def _close(user_id: str, source: AccountDeletionSource) -> bool:
 
 
 async def _send_confirmation(user_id: str, email: str) -> None:
-    """Best effort: the account is already closed."""
+    """Best effort: the account is already closed. One that did not go out
+    stays unmarked on the request row, for the erasure routine to send."""
     try:
         await asyncio.wait_for(
             send_account_deleted_email(email),
             timeout=CONFIRMATION_EMAIL_TIMEOUT_SECONDS,
         )
+        await mark_confirmation_sent(user_id)
     except Exception as e:
         # The error type only: a delivery error can quote the address.
         logger.error(
             f"Account deletion closed the account of user {user_id} but could "
-            f"not send the confirmation email: {type(e).__name__}"
+            f"not send or record the confirmation email: {type(e).__name__}"
         )

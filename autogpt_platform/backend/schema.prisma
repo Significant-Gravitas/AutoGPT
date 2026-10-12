@@ -325,12 +325,15 @@ enum AccountDeletionSource {
 // processes rows with completedAt null. No relation to User: the row must
 // outlive the erasure of the User it names.
 model AccountDeletionRequest {
-  id          String                @id @default(uuid())
-  userId      String                @unique
-  requestedAt DateTime              @default(now())
-  source      AccountDeletionSource
+  id                 String                @id @default(uuid())
+  userId             String                @unique
+  requestedAt        DateTime              @default(now())
+  source             AccountDeletionSource
+  // Set once the confirmation email went out. The erasure routine sends it
+  // for a row where this is still null, before it erases the User.
+  confirmationSentAt DateTime?
   // Set by the erasure routine once the user's data is gone.
-  completedAt DateTime?
+  completedAt        DateTime?
 
   @@index([completedAt])
 }

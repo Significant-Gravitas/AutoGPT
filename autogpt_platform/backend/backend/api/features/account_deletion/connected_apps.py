@@ -56,7 +56,7 @@ def _is_user_connected(creds: Credentials) -> bool:
 async def _revoke_one(user_id: str, creds: Credentials) -> None:
     provider = ProviderName(canonical_provider(creds.provider))
     try:
-        await asyncio.wait_for(
+        revoked = await asyncio.wait_for(
             delete_and_revoke_credentials(
                 user_id, creds, provider, force=True, skip_failed_prunes=True
             ),
@@ -68,4 +68,12 @@ async def _revoke_one(user_id: str, creds: Credentials) -> None:
         logger.error(
             f"Account deletion could not revoke credential #{creds.id} "
             f"(provider {provider.value}): {type(e).__name__}"
+        )
+        return
+    # None means there was nothing to revoke (an API key); False means the
+    # provider refused or has no revoke endpoint, so the grant may be live.
+    if revoked is False:
+        logger.warning(
+            f"Account deletion deleted credential #{creds.id} but provider "
+            f"{provider.value} did not revoke it"
         )

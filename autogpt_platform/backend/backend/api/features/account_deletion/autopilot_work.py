@@ -2,22 +2,17 @@
 
 import asyncio
 import logging
-from collections.abc import Awaitable
-from typing import TypeVar
 
+from backend.api.features.account_deletion.best_effort import (
+    attempt_step,
+    log_step_failure,
+)
 from backend.copilot.active_turns import get_running_session_ids
 from backend.copilot.executor.utils import enqueue_cancel_task
 from backend.copilot.turn_queue import cancel_queued_turn, list_queued_sessions
 from backend.data.db_accessors import platform_linking_db
-from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
-
-T = TypeVar("T")
-
-# The most any one call may take, as in scheduled_work: these run inside the
-# deletion request.
-STEP_TIMEOUT_SECONDS = 10.0
 
 # How long to keep cancelling until the user has no running turn: the same 5 s
 # the chat's Stop button waits for its turn to end. It holds back the run
@@ -39,15 +34,17 @@ async def unlink_chat_platforms(user_id: str) -> None:
     try:
         links = platform_linking_db()
     except Exception as e:
-        _log_failure("reach the chat platform links", user_id, e)
+        log_step_failure("reach the chat platform links", user_id, e)
         return
     servers, dms = await asyncio.gather(
-        _attempt("list linked chat servers", user_id, links.list_server_links(user_id)),
-        _attempt("list linked chat DMs", user_id, links.list_user_links(user_id)),
+        attempt_step(
+            "list linked chat servers", user_id, links.list_server_links(user_id)
+        ),
+        attempt_step("list linked chat DMs", user_id, links.list_user_links(user_id)),
     )
     await asyncio.gather(
         *(
-            _attempt(
+            attempt_step(
                 f"unlink {link.platform} server link #{link.id}",
                 user_id,
                 links.delete_server_link(link.id, user_id),
@@ -55,7 +52,7 @@ async def unlink_chat_platforms(user_id: str) -> None:
             for link in servers or []
         ),
         *(
-            _attempt(
+            attempt_step(
                 f"unlink {link.platform} DM link #{link.id}",
                 user_id,
                 links.delete_user_link(link.id, user_id),
@@ -88,16 +85,16 @@ async def cancel_autopilot_turns(user_id: str) -> None:
             f"{user_id} had ended"
         )
     except Exception as e:
-        _log_failure("list running AutoPilot turns", user_id, e)
+        log_step_failure("list running AutoPilot turns", user_id, e)
 
 
 async def _dequeue_turns(user_id: str) -> None:
-    queued = await _attempt(
+    queued = await attempt_step(
         "list queued AutoPilot turns", user_id, list_queued_sessions(user_id)
     )
     await asyncio.gather(
         *(
-            _attempt(
+            attempt_step(
                 f"dequeue the AutoPilot turn in chat #{chat.session_id}",
                 user_id,
                 cancel_queued_turn(user_id=user_id, session_id=chat.session_id),
@@ -115,7 +112,7 @@ async def _cancel_until_none_run(user_id: str) -> None:
     while running := await get_running_session_ids(user_id):
         await asyncio.gather(
             *(
-                _attempt(
+                attempt_step(
                     f"cancel the AutoPilot turn in chat #{session_id}",
                     user_id,
                     enqueue_cancel_task(session_id),
@@ -125,23 +122,3 @@ async def _cancel_until_none_run(user_id: str) -> None:
         )
         cancelled |= running
         await asyncio.sleep(TURN_STOP_POLL_SECONDS)
-
-
-async def _attempt(what: str, user_id: str, step: Awaitable[T]) -> T | None:
-    """Await one call, bounded by STEP_TIMEOUT_SECONDS; log it if it fails."""
-    try:
-        return await asyncio.wait_for(step, timeout=STEP_TIMEOUT_SECONDS)
-    except NotFoundError:
-        logger.info(
-            f"Account deletion did not need to {what} for user {user_id}: already gone"
-        )
-    except Exception as e:
-        _log_failure(what, user_id, e)
-    return None
-
-
-def _log_failure(what: str, user_id: str, error: Exception) -> None:
-    logger.error(
-        f"Account deletion could not {what} for user {user_id}: "
-        f"{type(error).__name__}: {error}"
-    )

@@ -6,9 +6,9 @@ from prisma.enums import BriefingFrequency
 
 from backend.data.notifications import NotificationPreferenceDTO
 from backend.data.user import (
-    _unsubscribe_from_marketing,
     get_user_notification_preference,
     record_marketing_opt_out_by_email,
+    unsubscribe_from_marketing,
     update_user_notification_preference,
 )
 
@@ -49,5 +49,5 @@ async def stop_account_emails(user_id: str) -> None:
     await record_marketing_opt_out_by_email(
         current.email, MARKETING_OPT_OUT_SOURCE_ACCOUNT_DELETED
     )
-    await _unsubscribe_from_marketing(user_id, current.email)
+    await unsubscribe_from_marketing(user_id, current.email)
     logger.info(f"Account deletion stopped product and marketing email for {user_id}")

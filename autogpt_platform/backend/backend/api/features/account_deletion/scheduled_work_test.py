@@ -22,6 +22,7 @@ from backend.util.exceptions import NotFoundError
 
 MODULE = "backend.api.features.account_deletion.scheduled_work"
 AUTOPILOT_MODULE = "backend.api.features.account_deletion.autopilot_work"
+BEST_EFFORT_MODULE = "backend.api.features.account_deletion.best_effort"
 USER_ID = "user-1"
 
 
@@ -355,7 +356,7 @@ async def test_a_schedule_or_run_already_gone_is_not_an_error(
     scheduler.delete_schedule.side_effect = NotFoundError("Job not found.")
     list_runs.return_value = [_run("run-1")]
     stop_run.side_effect = NotFoundError("Graph execution not found.")
-    caplog.set_level(logging.INFO, logger=MODULE)
+    caplog.set_level(logging.INFO, logger=BEST_EFFORT_MODULE)
 
     await stop_user_work(USER_ID)
 
@@ -397,7 +398,7 @@ async def test_a_hung_step_is_cut_off(
     stop_run: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
 
     async def hang(**_: object) -> list[object]:
         await asyncio.sleep(10)
@@ -567,7 +568,7 @@ async def test_a_hung_trigger_listing_is_cut_off(
     cancel_turns: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    mocker.patch(f"{MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
 
     async def hang(**_: object) -> list[object]:
         await asyncio.sleep(10)
@@ -595,8 +596,7 @@ async def test_with_every_call_hung_it_still_returns_promptly(
     list_triggered_nodes: AsyncMock,
     caplog: pytest.LogCaptureFixture,
 ):
-    for module in (MODULE, AUTOPILOT_MODULE):
-        mocker.patch(f"{module}.STEP_TIMEOUT_SECONDS", 0.05)
+    mocker.patch(f"{BEST_EFFORT_MODULE}.STEP_TIMEOUT_SECONDS", 0.05)
     mocker.patch(f"{AUTOPILOT_MODULE}.TURN_STOP_WAIT_SECONDS", 0.05)
     mocker.patch(f"{MODULE}.unlink_chat_platforms", unlink_chat_platforms)
     mocker.patch(f"{MODULE}.cancel_autopilot_turns", cancel_autopilot_turns)

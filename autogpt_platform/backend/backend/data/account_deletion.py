@@ -5,6 +5,8 @@ its user, and the data erasure routine (SECRT-2854) later processes every row
 whose ``completedAt`` is still null.
 """
 
+from datetime import datetime, timezone
+
 from prisma.enums import AccountDeletionSource
 from prisma.errors import UniqueViolationError
 from prisma.models import AccountDeletionRequest
@@ -59,3 +61,12 @@ async def close_account(user_id: str, source: AccountDeletionSource) -> bool:
     except UniqueViolationError:
         return False
     return True
+
+
+async def mark_confirmation_sent(user_id: str) -> None:
+    """Record that the account-deleted email went out. The erasure routine
+    sends it for a request still unmarked, before it erases the address."""
+    await AccountDeletionRequest.prisma().update(
+        where={"userId": user_id},
+        data={"confirmationSentAt": datetime.now(timezone.utc)},
+    )

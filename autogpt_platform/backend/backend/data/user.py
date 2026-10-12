@@ -1018,7 +1018,7 @@ async def record_signup_consent(
             # would let a checkout opened right after signup through.
             _invalidate_user_caches(user_id, current.email)
         if opted_out and current.email:
-            await _unsubscribe_from_marketing(user_id, current.email)
+            await unsubscribe_from_marketing(user_id, current.email)
 
         user = await PrismaUser.prisma().find_unique(where={"id": user_id})
         if user is None:
@@ -1069,7 +1069,7 @@ async def _write_signup_consent(
     return terms_stamped, opted_out
 
 
-async def _unsubscribe_from_marketing(user_id: str, email: str) -> None:
+async def unsubscribe_from_marketing(user_id: str, email: str) -> None:
     """Queue the change that marks an existing MailerLite subscriber
     unsubscribed (it never creates one). The refusal is already stored, so a
     failure here is logged rather than raised: the consumer re-reads it before

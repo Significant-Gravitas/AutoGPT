@@ -31,6 +31,7 @@ from backend.data.account_deletion import (
     close_account,
     get_deletion_request,
     is_account_closed,
+    mark_confirmation_sent,
 )
 from backend.util.test import SpinTestServer
 
@@ -200,6 +201,28 @@ async def test_a_failure_after_the_request_insert_changes_nothing(
     assert not auth_user.banned
     assert auth_user.banReason is None
     assert await _session_count(user_id) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_sent_confirmation_is_recorded_on_the_request_only(
+    accounts: tuple[str, str],
+):
+    """A null confirmationSentAt is what the erasure routine resends from."""
+    user_id, bystander_id = accounts
+    assert await close_account(user_id, AccountDeletionSource.SETTINGS) is True
+    assert await close_account(bystander_id, AccountDeletionSource.PAYWALL) is True
+    request = await get_deletion_request(user_id)
+    assert request is not None and request.confirmationSentAt is None
+
+    before = datetime.now(timezone.utc)
+    await mark_confirmation_sent(user_id)
+
+    request = await get_deletion_request(user_id)
+    assert request is not None
+    assert request.confirmationSentAt is not None
+    assert request.confirmationSentAt >= before - timedelta(seconds=5)
+    bystander = await get_deletion_request(bystander_id)
+    assert bystander is not None and bystander.confirmationSentAt is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
