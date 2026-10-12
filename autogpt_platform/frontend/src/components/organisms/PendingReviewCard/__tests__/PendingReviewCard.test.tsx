@@ -94,6 +94,75 @@ test("a non-editable payload is displayed in full", () => {
   expect(screen.queryByRole("textbox")).toBeNull();
 });
 
+function serveBlockSchema(properties: Record<string, unknown>) {
+  server.use(
+    http.get("*/api/builder/blocks/batch", () =>
+      HttpResponse.json([
+        {
+          id: "block-1",
+          name: "NotifyBlock",
+          inputSchema: { type: "object", properties },
+        },
+      ]),
+    ),
+  );
+}
+
+// An optional field's options live on its anyOf member, not on the field. The
+// card used to look for them on the field, find none, and crash the chat on
+// /home and /copilot (BUILDER-93V).
+test("offers an optional choice from the block's schema as a select", async () => {
+  serveBlockSchema({
+    priority: {
+      title: "Priority",
+      anyOf: [{ type: "string", enum: ["low", "high"] }, { type: "null" }],
+    },
+  });
+
+  render(
+    <PendingReviewCard
+      review={makeReview({
+        block_id: "block-1",
+        payload: { priority: "high" },
+      })}
+      onReviewDataChange={() => {}}
+    />,
+  );
+
+  expect(await screen.findByText("Priority")).toBeDefined();
+  expect(screen.getByRole("combobox", { name: "Priority" }).textContent).toBe(
+    "high",
+  );
+});
+
+test("offers an optional set of switches the payload left empty", async () => {
+  serveBlockSchema({
+    channels: {
+      title: "Channels",
+      anyOf: [
+        {
+          type: "object",
+          properties: {
+            email: { type: "boolean", title: "Email" },
+            sms: { type: "boolean", title: "SMS" },
+          },
+        },
+        { type: "null" },
+      ],
+    },
+  });
+
+  render(
+    <PendingReviewCard
+      review={makeReview({ block_id: "block-1", payload: { channels: null } })}
+      onReviewDataChange={() => {}}
+    />,
+  );
+
+  expect(await screen.findByText("Email")).toBeDefined();
+  expect(screen.getByText("SMS")).toBeDefined();
+});
+
 test("uses the block's input schema and never shows the credential id", async () => {
   server.use(
     http.get("*/api/builder/blocks/batch", () =>
