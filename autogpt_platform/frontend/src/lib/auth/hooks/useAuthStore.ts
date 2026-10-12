@@ -167,10 +167,18 @@ export const useAuthStore = create<AuthStoreState>((set, get) => {
             if (validationResult.user && validationResult.isValid) {
               adoptUser(validationResult.user);
               set({ hasLoadedUser: true, isUserLoading: false });
-            } else if (!validationResult.isValid && hasImpersonation()) {
-              // No session at startup: a target left from the last one goes.
-              endSessionEpoch();
-              clearImpersonationEverywhere();
+            } else if (!validationResult.isValid) {
+              // No session at startup: a target left from the last one goes,
+              // and a protected page sends the user to sign in (the
+              // middleware only checks that a session cookie exists, which an
+              // expired or revoked one still does).
+              if (hasImpersonation()) {
+                endSessionEpoch();
+                clearImpersonationEverywhere();
+              }
+              if (validationResult.redirectPath) {
+                params.router.push(validationResult.redirectPath);
+              }
             }
           }
         } else {
