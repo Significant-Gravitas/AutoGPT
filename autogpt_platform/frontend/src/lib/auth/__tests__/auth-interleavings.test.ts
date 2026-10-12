@@ -391,12 +391,14 @@ class World {
     } else if (roll < 0.4) {
       this.log.push(`${tab.name}: refresh`);
       await this.inTab(tab, () => tab.store.getState().refreshSession());
-    } else if (roll < 0.46) {
+    } else if (roll < 0.43) {
       this.log.push(`${tab.name}: back online`);
       const handlers = [...(tab.listeners.get("online") ?? [])];
       await this.inTab(tab, () =>
         handlers.forEach((h) => h(new Event("online"))),
       );
+    } else if (roll < 0.46) {
+      await this.focus(tab);
     } else if (roll < 0.54) {
       this.log.push(`${tab.name}: sign out`);
       await this.inTab(tab, () => tab.store.getState().logOut());
@@ -479,6 +481,46 @@ class World {
       const reloading = this.reloadRequests.shift()!;
       if (reloading.alive) await this.reload(reloading);
     }
+  }
+
+  /**
+   * The tab comes back into view. If a retry was waiting (and no check is in
+   * flight), the user shouldn't wait it out: that timer must be gone and
+   * exactly one check must go out now, so no stale timer fires a duplicate.
+   */
+  async focus(tab: Tab) {
+    this.log.push(`${tab.name}: focus`);
+    const before = tab.store.getState() as {
+      retryTimer?: unknown;
+      isValidating?: boolean;
+    };
+    const waitingRetry =
+      before.retryTimer != null && !before.isValidating
+        ? before.retryTimer
+        : null;
+    const checksBefore = this.pendingChecks(tab);
+
+    const handlers = [...(tab.listeners.get("visibilitychange") ?? [])];
+    await this.inTab(tab, () =>
+      handlers.forEach((h) => h(new Event("visibilitychange"))),
+    );
+
+    if (waitingRetry != null) {
+      expect(
+        this.timers.some((t) => t.id === waitingRetry),
+        `${tab.name} kept waiting on its old retry after coming back`,
+      ).toBe(false);
+      expect(
+        this.pendingChecks(tab) - checksBefore,
+        `${tab.name} should check exactly once on coming back`,
+      ).toBe(1);
+    }
+  }
+
+  pendingChecks(tab: Tab): number {
+    return this.pending.filter(
+      (p) => p.tab === tab && p.kind === "validateSession",
+    ).length;
   }
 
   peekCookieOwner(): string | null {
@@ -568,6 +610,10 @@ describe("auth state machine under random interleavings", () => {
     localStorage.clear();
     sessionStorage.clear();
     expireAuthCookies();
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      get: () => "visible",
+    });
   });
 
   afterEach(() => {
