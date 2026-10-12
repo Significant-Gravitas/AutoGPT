@@ -260,7 +260,7 @@ async def test_the_rpc_server_stops_waiting_for_a_hung_call(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.setattr(
-        "backend.executor.scheduler.config.scheduler_rpc_drain_seconds", 0.5
+        "backend.executor.scheduler.config.scheduler_rpc_drain_seconds", 1
     )
     app = FastAPI()
     entered = asyncio.Event()

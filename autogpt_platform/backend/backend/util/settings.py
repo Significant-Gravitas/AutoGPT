@@ -624,8 +624,8 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ),
     )
 
-    scheduler_rpc_drain_seconds: float = Field(
-        default=10.0,
+    scheduler_rpc_drain_seconds: int = Field(
+        default=10,
         gt=0,
         description=(
             "On SIGTERM, how long the scheduler's RPC server waits for in-flight "

@@ -22,7 +22,6 @@ from apscheduler.events import (
 )
 from apscheduler.job import Job as JobObj
 from apscheduler.jobstores.memory import MemoryJobStore
-from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
@@ -2096,7 +2095,7 @@ def _index_entry(
 
 
 class Scheduler(AppService):
-    scheduler: BackgroundScheduler
+    scheduler: DrainingBackgroundScheduler
     _persistent_jobstores: dict[str, ResilientSQLAlchemyJobStore] = {}
 
     # Sidecar index for filtered schedule reads. ``None`` (not set up or
@@ -2434,7 +2433,7 @@ class Scheduler(AppService):
                 )
 
     @classmethod
-    def rpc_graceful_shutdown_seconds(cls) -> float | None:
+    def rpc_graceful_shutdown_seconds(cls) -> int | None:
         return config.scheduler_rpc_drain_seconds
 
     def cleanup(self):

@@ -467,7 +467,7 @@ class AppService(BaseAppService, ABC):
         logger.info(f"[{self.service_name}] ✅ FastAPI has finished")
 
     @classmethod
-    def rpc_graceful_shutdown_seconds(cls) -> float | None:
+    def rpc_graceful_shutdown_seconds(cls) -> int | None:
         """How long the RPC server waits for in-flight calls on shutdown.
 
         ``None`` waits for all of them. While it waits it refuses new
