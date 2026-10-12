@@ -51,6 +51,13 @@ async function proxyLiveConnection(page: Page) {
   const open: { client: WebSocketRoute; server: WebSocketRoute }[] = [];
   let opened = 0;
 
+  // The client's own account of its connection, in the test output.
+  page.on("console", (message) => {
+    if (/BackendAPI|WebSocket|Heartbeat/.test(message.text())) {
+      console.log(`[browser] ${message.text()}`);
+    }
+  });
+
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
     const server = client.connectToServer();
     opened += 1;
