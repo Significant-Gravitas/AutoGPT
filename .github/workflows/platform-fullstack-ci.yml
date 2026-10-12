@@ -215,6 +215,14 @@ jobs:
           # Used by E2E test data script to generate embeddings for approved store agents
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
+      # Flags that ship off but have an E2E spec. Written before the compose
+      # file is resolved and the images are built, since the frontend inlines
+      # NEXT_PUBLIC_* at build time.
+      - name: Set up Platform - Force on the flags the E2E suite covers
+        run: |
+          echo "NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> .env
+          echo "FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION=true" >> ../backend/.env
+
       # A failed login leaves buildx anonymous, which still reads a public cache.
       # A cache that can't be read or written only makes the build cold.
       - name: Set up Platform - Log in to the GHCR build cache
