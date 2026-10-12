@@ -1,6 +1,7 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
+import base64
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -1854,3 +1855,15 @@ class TestFindOrphanedAuthIdentities:
 
         assert found[0].email_owner_id == "user-old"
         assert found[0].has_email_collision is True
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_error_does_not_repeat_the_token():
+    """The one-click route logs this error on any failure, and the token in it
+    never expires."""
+    token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
+
+    with pytest.raises(DatabaseError) as exc:
+        await user_module.unsubscribe_user_by_token(token)
+
+    assert token not in str(exc.value)
