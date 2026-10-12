@@ -210,7 +210,9 @@ def _assignments(node: ast.AST) -> list[tuple[str, ast.expr | None]]:
 
 def _process_cache(function: ast.FunctionDef | ast.AsyncFunctionDef) -> str | None:
     for decorator in function.decorator_list:
-        name = _called_name(decorator.func if isinstance(decorator, ast.Call) else decorator)
+        name = _called_name(
+            decorator.func if isinstance(decorator, ast.Call) else decorator
+        )
         if name in PROCESS_CACHES:
             return name
     return None

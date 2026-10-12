@@ -9,16 +9,8 @@ export async function startChat(page: Page, message: string) {
   await page.goto("/home");
   const input = page.getByRole("textbox", { name: "Chat message input" });
   await expect(input).toBeVisible();
-  // Just after the page loads, the composer locks for a moment while it
-  // resolves the selected expert, and Enter then leaves the message where it
-  // is. Sending clears the composer, so type and send until it does; typing
-  // waits out the lock, and a started chat is never sent to again.
-  await expect(async () => {
-    if (new URL(page.url()).searchParams.has("sessionId")) return;
-    await input.fill(message);
-    await input.press("Enter");
-    await expect(input).toHaveValue("", { timeout: 2_000 });
-  }).toPass({ timeout: 20_000 });
+  await input.fill(message);
+  await input.press("Enter");
 }
 
 interface RecordedStream {
