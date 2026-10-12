@@ -1566,6 +1566,27 @@ async def test_sdk_prepend_noop_when_index_current():
 
 
 @pytest.mark.asyncio
+async def test_sdk_prepend_noop_when_the_query_sends_a_fresh_index():
+    """A turn that re-sends the first turn's context leads its query with a
+    fresh index; a notice calling the index stale would contradict it."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
+        ParsedSkill(name="mine", description="my skill", body="x")
+    ).encode()
+    session = _session_with_user_history(
+        [_history_with_index("- name: agent_building_guide — guide")]
+    )
+    query = (
+        "<budget_status>\nok\n</budget_status>\n\n"
+        "<available_skills>\n- name: mine — my skill\n</available_skills>\n\n"
+        "do the thing"
+    )
+    with _patch_skills_path(fake_manager):
+        result = await _maybe_prepend_skills_update(session, "user-1", True, query)
+    assert result == query
+
+
+@pytest.mark.asyncio
 async def test_sdk_prepend_noop_for_non_user_message():
     """Tool-result turns never carry the notice (and never hit the registry)."""
     session = _session_with_user_history(["hello"])

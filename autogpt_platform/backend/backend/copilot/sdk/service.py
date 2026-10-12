@@ -192,6 +192,7 @@ from ..builder_context import (
 from ..expert_context import build_expert_identity_suffix
 from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
+    SKILLS_CONTEXT_TAG,
     _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
@@ -245,6 +246,7 @@ from .compaction import (
 )
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
+from .query_blocks import scan_context_blocks
 from .response_adapter import SDKResponseAdapter
 from .resume_gap import missing_range, sendable_gap, uncovered_rows
 from .security_hooks import create_security_hooks
@@ -4863,12 +4865,17 @@ async def _maybe_prepend_skills_update(
     Compares the live skill registry against the ``<available_skills>``
     index baked into the session history at session start. No-op for
     non-user turns, anonymous turns, and steady-state sessions — and for
-    the first turn, where ``inject_user_context`` just wrote a fresh index
-    into history so the diff is empty by construction. Query-only: the
-    notice is never persisted, so a later turn re-diffs from the same
-    baseline and the reminder clears itself once the session restarts.
+    a query that already leads with a fresh index: the first turn, and a
+    turn that could not resume and re-sends the first turn's context.
+    Query-only: the notice is never persisted, so a later turn re-diffs
+    from the same baseline and the reminder clears itself once the
+    session restarts.
     """
     if not is_user_message or not user_id:
+        return query_message
+    if any(
+        tag == SKILLS_CONTEXT_TAG for tag, _ in scan_context_blocks(query_message)[0]
+    ):
         return query_message
     try:
         notice = await build_skills_update_notice(
