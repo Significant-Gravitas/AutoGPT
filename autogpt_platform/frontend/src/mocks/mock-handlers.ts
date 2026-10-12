@@ -1,3 +1,4 @@
+import { http, HttpResponse } from "msw";
 import { getAdminMock } from "@/app/api/__generated__/endpoints/admin/admin.msw";
 import { getAnalyticsMock } from "@/app/api/__generated__/endpoints/analytics/analytics.msw";
 import { getApiKeysMock } from "@/app/api/__generated__/endpoints/api-keys/api-keys.msw";
@@ -75,4 +76,8 @@ export const mockHandlers = [
   ...getSkillsMock(),
   ...getStoreMock(),
   ...getWorkspaceMock(),
+  // The WebSocket client gets its token from Better Auth's token route.
+  http.get("*/api/auth/token", () =>
+    HttpResponse.json({ token: "test-token" }),
+  ),
 ];

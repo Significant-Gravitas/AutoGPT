@@ -165,8 +165,14 @@ describe("post-cancel popup", () => {
     mockCancelFlow();
     render(<TrialCard />);
     const popup = await cancelThroughConfirmation();
-    fireEvent.keyDown(popup, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // Radix handles Escape only from a render or two after the dialog
+    // appears, and those renders can still be queued when `findByRole`
+    // resolves, so a press made at once can go unheard. Press until the
+    // dialog closes.
+    await waitFor(() => {
+      fireEvent.keyDown(popup, { key: "Escape" });
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
     expect(screen.getByRole("button", { name: "Resume trial" })).toBeDefined();
   });
 

@@ -187,7 +187,14 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  // Only a hover made while the limit is reached may open the usage tooltip.
+  // Radix reports hovers while `open` holds it shut, and a lifted limit hides
+  // it without a close event; either would pop it open, unhovered, the next
+  // time the limit is reached.
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
+  useEffect(() => {
+    if (!isLimitReached) setIsUsageTooltipOpen(false);
+  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -429,7 +436,9 @@ export const ChatContainer = ({
                     )}
                     <Tooltip
                       open={Boolean(isLimitReached && isUsageTooltipOpen)}
-                      onOpenChange={setIsUsageTooltipOpen}
+                      onOpenChange={(open) =>
+                        setIsUsageTooltipOpen(open && isLimitReached)
+                      }
                     >
                       <TooltipTrigger asChild>
                         <div>
