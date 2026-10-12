@@ -991,3 +991,91 @@ async def test_a_notification_arriving_before_accept_waits_for_it(
         await asyncio.wait_for(delivered, timeout=1)
 
     assert order == ["accept", "forward"]
+
+
+def _gated_subscription_factory(captured: list[dict], release: asyncio.Event):
+    """Fake subscriptions whose stop() blocks on ``release`` (so teardown
+    can be interleaved) and that expose their on_lost callback."""
+
+    def _factory(full_channel: str) -> MagicMock:
+        entry: dict = {}
+        sub = MagicMock()
+
+        async def _start(on_message, on_lost) -> None:
+            entry["on_lost"] = on_lost
+
+        async def _stop() -> None:
+            entry["stop_started"] = True
+            await release.wait()
+
+        sub.start = _start
+        sub.stop = _stop
+        captured.append(entry)
+        return sub
+
+    return _factory
+
+
+@pytest.mark.asyncio
+async def test_a_stream_lost_during_disconnect_leaves_nothing_behind(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    """A sibling pump losing its stream while disconnect is stopping the
+    first one must not re-add the socket to _closing (a leak) or close it
+    again; afterwards no bookkeeping refers to the socket."""
+    captured: list[dict] = []
+    release = asyncio.Event()
+    with patch(
+        "backend.api.conn_manager._Subscription",
+        side_effect=_gated_subscription_factory(captured, release),
+    ):
+        for graph_id in ("graph-1", "graph-2"):
+            await connection_manager.subscribe_graph_execs(
+                user_id="user-1", graph_id=graph_id, websocket=mock_websocket
+            )
+        disconnect = asyncio.create_task(
+            connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        )
+        while not captured[0].get("stop_started"):
+            await asyncio.sleep(0)
+        # Mid-teardown, the second subscription loses its stream.
+        await captured[1]["on_lost"]("redis_error")
+        release.set()
+        await asyncio.wait_for(disconnect, timeout=1)
+
+    assert mock_websocket not in connection_manager._closing
+    mock_websocket.close.assert_not_awaited()
+    assert mock_websocket not in connection_manager._ws_subs
+    assert mock_websocket not in connection_manager._ws_notifications
+    assert all(
+        mock_websocket not in subscribers
+        for subscribers in connection_manager.subscriptions.values()
+    )
+
+
+@pytest.mark.asyncio
+async def test_concurrent_disconnects_leave_nothing_behind(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    captured: list[dict] = []
+    release = asyncio.Event()
+    with patch(
+        "backend.api.conn_manager._Subscription",
+        side_effect=_gated_subscription_factory(captured, release),
+    ):
+        await connection_manager.subscribe_graph_execs(
+            user_id="user-1", graph_id="graph-1", websocket=mock_websocket
+        )
+        first = asyncio.create_task(
+            connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        )
+        while not captured[0].get("stop_started"):
+            await asyncio.sleep(0)
+        # A second disconnect runs to completion while the first is mid-stop.
+        await connection_manager.disconnect_socket(mock_websocket, user_id="user-1")
+        release.set()
+        await asyncio.wait_for(first, timeout=1)
+
+    assert mock_websocket not in connection_manager._closing
+    assert mock_websocket not in connection_manager._ws_subs
+    assert connection_manager.subscriptions == {}
