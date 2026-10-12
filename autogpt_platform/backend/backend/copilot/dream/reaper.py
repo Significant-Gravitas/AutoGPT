@@ -18,9 +18,10 @@ time (``_reap_both``), so neither can spend the other's: cleanups that keep
 failing (a provider that hangs on every cancel) do not keep a dead pass from
 being closed and charged before its batch state lapses, and a stream of
 lapsing passes does not keep the pending cleanups waiting. Within its kind,
-a pending cleanup is written once more (``_to_the_back``) before it is tried,
-so one that does not finish, however its attempt ends, is not the first
-tried next run either.
+each row is tried for ``ROW_ATTEMPT_SECONDS`` at most, so one that hangs
+leaves the rows behind it their turn; and a pending cleanup is written once
+more (``_to_the_back``) before it is tried, so one that does not finish,
+however its attempt ends, is not the first tried next run either.
 A cleanup is due once its lease lapsed a grace ago, or it was marked a grace
 ago: time for a pass stopped while it ran to reach its next check, and for
 the executor's drop to clean up after it. The grace is a bound, not a fence:
@@ -51,18 +52,20 @@ can be matched to, so such a row stays marked until its lock lapses, 24 h
 Bounded: a run takes at most ``REAPER_BUDGET_SECONDS``, from before its
 listing to the release of its hold on a scope. Rows are worked until
 ``RELEASE_TIMEOUT_SECONDS`` before the end, each started only with
-``ROW_RESERVE_SECONDS`` left in its kind's share and cut off at the end of
-that share; the release that may follow a cut has its own last seconds, and
-finishes even if the cut lands during it. A row the budget does not reach,
-or cuts short, is listed again next run; a phase charge it cuts into
-finishes on its own (``batch_costs.py``).
+``ROW_RESERVE_SECONDS`` left in its kind's share and cut off after
+``ROW_ATTEMPT_SECONDS`` or at the end of that share, whichever comes first;
+the release that may follow a cut has its own last seconds, and finishes
+even if the cut lands during it. A row the budget does not reach, or cuts
+short, is listed again next run; a phase charge it cuts into finishes on
+its own (``batch_costs.py``).
 
 Not bounded here: the scheduler's ``run_async`` stops waiting on a timeout
 but does not cancel the run, so the run's own budget is what stops it; rows
 past ``REAPER_ROW_LIMIT`` wait for later runs; and a batch pass's state
-outlives its lease by an hour (``INPUT_TTL_SECONDS``), which leaves a first
-attempt, after the grace, an interval and a budget, about 1,140 s of nominal
-margin to charge the landed phases, an interval less per resumed attempt.
+outlives its lease by twelve hours (``INPUT_TTL_SECONDS``), so a pass's
+landed phases are still there to charge behind about seventy runs' worth of
+cleanups that keep failing. One whose state lapsed all the same is reported
+as lost usage, an error (``cleanup.py``).
 
 One line per row (INFO when it expired, was cleaned or moved; WARNING when it
 failed, is to be retried, or the budget left it), then one with the counts
@@ -93,6 +96,7 @@ from .locks import (
 )
 from .pass_record import reaped
 from .provider_batch import PROVIDER_BATCH_WINDOW_SECONDS
+from .schemas import DreamPhase
 from .store import (
     read_expired_passes,
     read_pending_cleanups,
@@ -111,8 +115,11 @@ REAPER_ROW_LIMIT = 100
 REAP_GRACE_SECONDS = DEFAULT_LOCK_TTL_SECONDS
 # The reaper's own hold on a scope while it closes one row.
 REAPER_LOCK_TTL_SECONDS = 120
-# The budget a row needs left for the reaper to start it.
-ROW_RESERVE_SECONDS = 15.0
+# The most one row's attempt may take, well under a kind's share of the
+# budget, so a row that hangs leaves the others behind it their turn; and
+# the budget a row needs left in its kind's share for the reaper to start it.
+ROW_ATTEMPT_SECONDS = 12.0
+ROW_RESERVE_SECONDS = ROW_ATTEMPT_SECONDS
 # Giving back the reaper's hold on a scope, carved out of the budget.
 RELEASE_TIMEOUT_SECONDS = 2.0
 
@@ -177,24 +184,26 @@ async def _reap_rows(
     rows: list[DreamPassRecord], done: dict[str, ReapOutcome], until: float
 ) -> None:
     """Work the *rows* not yet done, in turn, each started only with
-    ``ROW_RESERVE_SECONDS`` left before *until* and cut off there; a row cut
-    off is done for this run."""
+    ``ROW_RESERVE_SECONDS`` left before *until*, and cut off after
+    ``ROW_ATTEMPT_SECONDS`` or at *until*, whichever comes first; a row cut
+    off is done for this run, and the next one gets its turn."""
     loop = asyncio.get_running_loop()
     for row in rows:
         if row.id in done:
             continue
         if loop.time() > until - ROW_RESERVE_SECONDS:
             return
+        cutoff = min(until, loop.time() + ROW_ATTEMPT_SECONDS)
         try:
-            async with asyncio.timeout_at(until):
+            async with asyncio.timeout_at(cutoff):
                 await _reap(row, done)
         except TimeoutError:
             logger.warning(
-                f"Dream pass reaper: pass {row.id} cut short by its share of the "
-                "budget; listed again next run"
+                f"Dream pass reaper: pass {row.id} cut short after "
+                f"{ROW_ATTEMPT_SECONDS:g} s or its share of the budget; listed "
+                "again next run"
             )
             done[row.id] = "out_of_budget"
-            return
 
 
 def _summary(rows: list[DreamPassRecord], done: dict[str, ReapOutcome]) -> ReaperRun:
@@ -282,6 +291,7 @@ async def _clean_up(
         lock_token=row.lease_token,
         release=release,
         attribute_tokenless=True,
+        landed=_landed(row),
     )
     if cleanup.finished:
         await record_cleanup_finished(row.id)
@@ -382,6 +392,18 @@ def _phase_models(row: DreamPassRecord) -> dict[str, str] | None:
             exc_info=True,
         )
         return None
+
+
+def _landed(row: DreamPassRecord) -> list[DreamPhase]:
+    """The phases whose output *row* recorded: landed, so their usage is
+    lost should their batch state be gone before they were charged."""
+    outputs = row.phase_outputs
+    recorded: dict[DreamPhase, object] = {
+        "consolidate": outputs.consolidate,
+        "recombine": outputs.recombine,
+        "sanitize": outputs.sanitize,
+    }
+    return [phase for phase, output in recorded.items() if output is not None]
 
 
 def _batch_to_stop(row: DreamPassRecord) -> str | None:

@@ -11,7 +11,7 @@ Per-pass state lives in two Redis keys:
     token usage, so the apply step has everything it needs and the cost log
     can record all three rows at once
 
-Both are TTL'd to an hour past the pass's lease (``INPUT_TTL_SECONDS``), so
+Both are TTL'd to twelve hours past the pass's lease (``INPUT_TTL_SECONDS``), so
 the reaper can still charge and delete them and a forgotten pass naturally
 falls off the radar. SETNX gates (7-day TTL) keep the side effects
 at-most-once should a finished batch be delivered twice or a cleanup run
@@ -230,6 +230,34 @@ async def claim_per_phase_charging(pass_id: str) -> bool:
         return True
     held = await redis.get(key)
     return (held.decode() if isinstance(held, bytes) else held) == _PER_PHASE
+
+
+async def uncharged_phases(pass_id: str, phases: list[str]) -> list[str]:
+    """Those of *phases* nobody claimed the charge of, nor the pass's whole
+    charge under an earlier build; all of them when Redis cannot say. For
+    reporting usage that is gone, never for deciding to charge."""
+    from backend.data.redis_client import get_redis_async
+
+    try:
+        redis = await get_redis_async()
+        whole = await redis.get(f"{_COSTS_LOGGED_PREFIX}:{pass_id}")
+        if whole is not None and _text(whole) != _PER_PHASE:
+            return []
+        return [
+            phase
+            for phase in phases
+            if not await redis.exists(f"{_PHASE_CHARGED_PREFIX}:{pass_id}:{phase}")
+        ]
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read which phases were charged",
+            exc_info=True,
+        )
+        return list(phases)
+
+
+def _text(value: Any) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 async def claim_phase_charge(pass_id: str, phase: str) -> bool:

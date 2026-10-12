@@ -2,14 +2,13 @@
 leaves behind (its provider batch, its landed phases' state and charges, its
 lock), and the lock of a sync pass that stopped without giving it back.
 
-Four steps, each idempotent and each saying whether it finished:
+Four steps, in this order, each idempotent, each bounded, and each saying
+whether it finished:
 
-  provider  the batch the pass has in flight stopped at Anthropic: the cancel
-            acknowledged, or the batch found ended
-            (``provider_batch.provider_batch_stopped``)
   charge    every phase landed in the pass's Redis state charged once
             (``batch_costs.charge_landed_phases``); a state that cannot be
-            read is not an empty one
+            read is not an empty one, and one that is gone while the row
+            says phases landed is usage lost, logged as an error
   unlock    the pass's dream lock released by compare-and-delete on its
             token, or found no longer the pass's; with no token anywhere
             the pass's ownership is unknown, and the lock is left held and
@@ -17,6 +16,16 @@ Four steps, each idempotent and each saying whether it finished:
             another open pass's
   delete    the state and the input bundle deleted, once every landed phase
             is charged: a charge left unfinished keeps what it needs
+  provider  the batch the pass has in flight stopped at Anthropic: the cancel
+            acknowledged, or the batch found ended
+            (``provider_batch.provider_batch_stopped``)
+
+The charge goes first because the state it reads lapses. The provider goes
+last because it is the slowest (two calls of up to
+``PROVIDER_CANCEL_TIMEOUT_SECONDS``) and none of the other steps needs it
+done first: the executor drops a closed pass's batch unpolled whether or not
+Anthropic has stopped it. A provider that hangs then costs a cleanup its
+last step, retried, and not the release of the user's lock.
 
 Every transition that may leave this cleanup behind marks the row for it
 (``cleanupPendingAt``) and keeps its lease token (``pass_record.py``): a stop
@@ -29,6 +38,7 @@ doing nothing (``reaper.py``).
 
 import asyncio
 import logging
+from collections.abc import Sequence
 from typing import Literal
 
 from pydantic import BaseModel
@@ -36,7 +46,12 @@ from pydantic import BaseModel
 from backend.copilot.graphiti.scope import MemoryScope
 
 from .batch_costs import PhaseCharges, charge_landed_phases
-from .batch_state import best_effort_cleanup, read_state, recorded_phase_models
+from .batch_state import (
+    best_effort_cleanup,
+    read_state,
+    recorded_phase_models,
+    uncharged_phases,
+)
 from .locks import LOCK_CHECK_TIMEOUT_SECONDS, read_dream_lock_token, release_dream_lock
 from .phase_jobs import PHASE_TIERS
 from .provider_batch import provider_batch_stopped
@@ -45,7 +60,15 @@ from .store import read_open_passes, record_cleanup_finished
 
 logger = logging.getLogger(__name__)
 
-CleanupStep = Literal["provider", "charge", "unlock", "delete"]
+CleanupStep = Literal["charge", "unlock", "delete", "provider"]
+
+# How long reading or deleting a pass's Redis state may take, the client's
+# retries included: a stalled Redis costs a cleanup seconds, not its turn.
+STATE_STEP_TIMEOUT_SECONDS = 5.0
+# How long the cleanup waits on its landed phases' charges. A phase whose
+# claim was made by then is charged all the same, in a task of its own
+# (``batch_costs._charge_phase``); the rest wait for the next cleanup.
+CHARGE_STEP_TIMEOUT_SECONDS = 10.0
 
 
 class PassCleanup(BaseModel):
@@ -69,29 +92,37 @@ async def clean_up_pass(
     lock_token: str | None,
     release: bool,
     attribute_tokenless: bool = False,
+    landed: Sequence[DreamPhase] = (),
 ) -> PassCleanup:
-    """Every step of the cleanup after pass *pass_id* of *scope*, each run
-    whatever became of the others but the delete, which waits on the charge.
-    Never raises.
+    """Every step of the cleanup after pass *pass_id* of *scope*, in order,
+    each run whatever became of the others but the delete, which waits on
+    the charge. Each is bounded: the state read and delete by
+    ``STATE_STEP_TIMEOUT_SECONDS``, the charges by
+    ``CHARGE_STEP_TIMEOUT_SECONDS``, each lock call by
+    ``LOCK_CHECK_TIMEOUT_SECONDS``, each provider call by
+    ``PROVIDER_CANCEL_TIMEOUT_SECONDS``. Never raises.
 
     *provider_batch_id* names the batch to stop, if any; *phase_models*
     prices the landed phases (``None``: they cannot be priced, and the
     charge stays unfinished while any landed); the lock is released under
     *lock_token* only when *release*. Without a token the unlock stays
     unfinished, unless *attribute_tokenless* (the reaper, for a row that kept
-    no token) and the lock is found not to be the pass's."""
+    no token) and the lock is found not to be the pass's. *landed* are the
+    phases the pass's row says landed: should their state be gone before
+    they were charged, that usage is reported lost (an error), not taken for
+    nothing to charge."""
     unfinished: list[CleanupStep] = []
-    if provider_batch_id and not await provider_batch_stopped(provider_batch_id):
-        unfinished.append("provider")
-    charges = await _charge(pass_id, scope, phase_models)
+    charges = await _charge(pass_id, scope, phase_models, landed)
     if not charges.settled:
         unfinished.append("charge")
     if release and not await _unlock(
         pass_id, scope, lock_token, attribute=attribute_tokenless
     ):
         unfinished.append("unlock")
-    if not charges.settled or not await best_effort_cleanup(pass_id):
+    if not charges.settled or not await _deleted(pass_id):
         unfinished.append("delete")
+    if provider_batch_id and not await provider_batch_stopped(provider_batch_id):
+        unfinished.append("provider")
     return PassCleanup(charged=charges.charged, unfinished=unfinished)
 
 
@@ -116,14 +147,19 @@ async def finish_cleanup(pass_id: str, cleanup: PassCleanup) -> None:
 
 
 async def _charge(
-    pass_id: str, scope: MemoryScope, phase_models: dict[str, str] | None
+    pass_id: str,
+    scope: MemoryScope,
+    phase_models: dict[str, str] | None,
+    landed: Sequence[DreamPhase],
 ) -> PhaseCharges:
     """Charge the phases landed in the pass's state, each on the model its
     state row recorded, else the one *phase_models* names; not settled when
-    the state cannot be read, or a landed phase has no model to price it
-    with or cannot be claimed."""
+    the state cannot be read, a landed phase has no model to price it with
+    or cannot be claimed, or the charges outlast
+    ``CHARGE_STEP_TIMEOUT_SECONDS``."""
     try:
-        state = await read_state(pass_id)
+        async with asyncio.timeout(STATE_STEP_TIMEOUT_SECONDS):
+            state = await read_state(pass_id)
     except Exception:
         logger.warning(
             f"Dream pass {pass_id}: could not read its batch state to charge it",
@@ -131,6 +167,7 @@ async def _charge(
         )
         return PhaseCharges(settled=False)
     if not state:
+        await _report_lost_usage(pass_id, scope, landed)
         return PhaseCharges(settled=True)
     models = {**(phase_models or {}), **recorded_phase_models(state)}
     unpriced = [
@@ -144,25 +181,68 @@ async def _charge(
             "phase with"
         )
         return PhaseCharges(settled=False)
-    return await charge_landed_phases(
-        user_id=scope.owner_user_id,
-        expert_id=scope.expert_id,
-        pass_id=pass_id,
-        state=state,
-        phase_models=models,
-    )
+    try:
+        async with asyncio.timeout(CHARGE_STEP_TIMEOUT_SECONDS):
+            return await charge_landed_phases(
+                user_id=scope.owner_user_id,
+                expert_id=scope.expert_id,
+                pass_id=pass_id,
+                state=state,
+                phase_models=models,
+            )
+    except TimeoutError:
+        logger.warning(
+            f"Dream pass {pass_id}: its charges outlasted "
+            f"{CHARGE_STEP_TIMEOUT_SECONDS:g} s; a claimed phase is charged on "
+            "its own, the rest are left for the next cleanup"
+        )
+        return PhaseCharges(settled=False)
+
+
+async def _report_lost_usage(
+    pass_id: str, scope: MemoryScope, landed: Sequence[DreamPhase]
+) -> None:
+    """An error naming the landed phases whose batch state lapsed before
+    anyone charged them: their usage cannot be recovered. Nothing more can
+    be done for them, so the cleanup goes on as settled."""
+    if not landed:
+        return
+    lost = await uncharged_phases(pass_id, list(landed))
+    if lost:
+        logger.error(
+            f"Dream pass {pass_id} of user {scope.owner_user_id} "
+            f"(expert {scope.expert_id or 'none'}): the batch state of landed "
+            f"phase(s) {', '.join(lost)} lapsed before they were charged; their "
+            "usage cannot be recovered"
+        )
+
+
+async def _deleted(pass_id: str) -> bool:
+    """The state and input bundle deleted (``best_effort_cleanup``), within
+    ``STATE_STEP_TIMEOUT_SECONDS``."""
+    try:
+        async with asyncio.timeout(STATE_STEP_TIMEOUT_SECONDS):
+            return await best_effort_cleanup(pass_id)
+    except TimeoutError:
+        logger.warning(f"Dream pass {pass_id}: deleting its batch state timed out")
+        return False
 
 
 async def _unlock(
     pass_id: str, scope: MemoryScope, lock_token: str | None, *, attribute: bool
 ) -> bool:
-    """Release the pass's lock by compare-and-delete under *lock_token*.
-    Without a token the pass's ownership is unknown: the step finishes only
-    when *attribute* and the lock is found not to be the pass's
-    (``_lock_is_not_the_passes``); otherwise it stays unfinished and the
-    lock is left alone."""
+    """Release the pass's lock by compare-and-delete under *lock_token*,
+    within ``LOCK_CHECK_TIMEOUT_SECONDS``. Without a token the pass's
+    ownership is unknown: the step finishes only when *attribute* and the
+    lock is found not to be the pass's (``_lock_is_not_the_passes``);
+    otherwise it stays unfinished and the lock is left alone."""
     if lock_token is not None:
-        return await release_dream_lock(scope, lock_token)
+        try:
+            async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+                return await release_dream_lock(scope, lock_token)
+        except TimeoutError:
+            logger.warning(f"Dream pass {pass_id}: releasing its lock timed out")
+            return False
     if not attribute:
         logger.warning(
             f"Dream pass {pass_id}: no lock token to release its lock with; "

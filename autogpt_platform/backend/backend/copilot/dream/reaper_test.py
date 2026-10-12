@@ -251,11 +251,12 @@ def test_a_batch_passs_state_outlives_its_lease_until_the_reaper_comes():
     """A dead batch pass's state was written at its last callback, with its
     lease: the reaper takes it for dead a grace after the lease, and may come
     one interval later still. Its landed phases are charged and its keys
-    deleted only if they are still there."""
-    reaped_by = (
-        BATCH_LOCK_TTL_SECONDS + REAP_GRACE_SECONDS + REAPER_INTERVAL_MINUTES * 60
-    )
-    assert min(STATE_TTL_SECONDS, INPUT_TTL_SECONDS) > reaped_by
+    deleted only if they are still there, so they stay for some sixty runs
+    more, should a backlog of cleanups that keep failing come first."""
+    interval = REAPER_INTERVAL_MINUTES * 60
+    reaped_by = BATCH_LOCK_TTL_SECONDS + REAP_GRACE_SECONDS + interval
+    kept = min(STATE_TTL_SECONDS, INPUT_TTL_SECONDS)
+    assert (kept - reaped_by) // interval >= 60
 
 
 class TestARun:

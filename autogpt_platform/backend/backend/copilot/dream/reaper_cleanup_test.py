@@ -98,8 +98,10 @@ class TestACleanupCutShort:
         self, mocker, fake_dream_db, fake_dream_redis, provider_cancel, charges
     ):
         """Codex's case: the budget runs out while the provider cancel of a
-        row the run just closed hangs. The row keeps its mark, so the next
-        run finds it again and charges its landed phase, once."""
+        row the run just closed hangs. The cancel is the cleanup's last step,
+        so the landed phase was charged and the state deleted before it; the
+        row keeps its mark, and the next run stops the batch, charging
+        nothing more."""
         _scale_the_budget(mocker, budget=0.3, release=0.05)
         await _dead_batch_pass(fake_dream_db)
 
@@ -114,15 +116,15 @@ class TestACleanupCutShort:
         assert first.outcomes == {"out_of_budget": 1}
         assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.EXPIRED
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None
-        assert state_key("p1") in fake_dream_redis.hashes
-        charges.assert_not_awaited()
+        assert _charged(charges) == ["consolidate"]
+        assert state_key("p1") not in fake_dream_redis.hashes
 
         provider_cancel.side_effect = None
         second = await reap_expired_passes()
 
         assert second.outcomes == {"cleaned": 1}
         assert _charged(charges) == ["consolidate"]
-        assert state_key("p1") not in fake_dream_redis.hashes
+        assert provider_cancel.await_count == 2
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
 
 

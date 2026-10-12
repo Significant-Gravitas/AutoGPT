@@ -18,6 +18,7 @@ import pytest
 from backend.util.llm.providers import BatchResultRow
 
 from . import batch_costs as costs_mod
+from . import cleanup as cleanup_mod
 from . import reaper as reaper_mod
 from .batch_costs import charge_landed_phases
 from .batch_state import read_state, state_key, write_phase_to_state
@@ -132,6 +133,35 @@ class TestACleanupCutShortInItsCharge:
 
         assert second.outcomes == {"cleaned": 1}
         assert _charged(charges) == ["consolidate", "recombine"]
+
+    async def test_by_its_own_bound_the_claimed_phase_is_charged_on_its_own(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """A cost write that stalls keeps the cleanup no longer than its
+        charge step's bound: the step is left unfinished (the state kept for
+        it), the write lands on its own once it can, and the next run finds
+        the phase charged and finishes."""
+        mocker.patch.object(cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 0.05)
+        await _dead_batch_pass(fake_dream_db)
+        stalled = asyncio.Event()
+
+        async def stalls(*_args, **_kwargs) -> None:
+            await stalled.wait()
+
+        charges.side_effect = stalls
+
+        first = await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert first.outcomes == {"retry": 1}
+        assert state_key("p1") in fake_dream_redis.hashes
+        stalled.set()
+        await asyncio.wait_for(asyncio.gather(*costs_mod._CHARGES_IN_FLIGHT), 5)
+
+        second = await reap_expired_passes()
+
+        assert second.outcomes == {"cleaned": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert state_key("p1") not in fake_dream_redis.hashes
 
     async def test_a_crash_between_a_claim_and_its_charge_loses_that_phase(
         self, fake_dream_db, fake_dream_redis, charges
