@@ -221,6 +221,10 @@ def test_get_board_overrides_last_line_for_reassigned_cards(
         "sess-priya": "Reassigned to Priya",
         "sess-otto": "Reassigned to Otto",
     }
+    reassigned_to = {
+        s["id"]: s["reassigned_to_session_id"] for s in response.json()["sessions"]
+    }
+    assert reassigned_to == {"sess-priya": "sess-new-1", "sess-otto": "sess-new-2"}
     assert mock_list.await_args.kwargs["include_older"] is True
 
 

@@ -479,6 +479,7 @@ class SessionSummaryResponse(BaseModel):
     needs_you: bool = False
     last_line: str | None = None
     file_count: int = 0
+    reassigned_to_session_id: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -538,6 +539,7 @@ def session_summary(
         needs_you=extras.needs_you,
         last_line=extras.last_line,
         file_count=extras.file_count,
+        reassigned_to_session_id=session.metadata.reassigned_to_session_id,
     )
 
 

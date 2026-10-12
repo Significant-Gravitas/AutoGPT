@@ -30216,6 +30216,10 @@
             "type": "integer",
             "title": "File Count",
             "default": 0
+          },
+          "reassigned_to_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Reassigned To Session Id"
           }
         },
         "type": "object",
