@@ -154,25 +154,48 @@ async def list_expired_dream_passes(
 
 
 async def list_dream_pass_cleanups(
-    due_before: datetime, limit: int = 100
+    due_before: datetime,
+    limit: int = 100,
+    marked_through: datetime | None = None,
+    after_mark: datetime | None = None,
+    after_id: str | None = None,
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked before *due_before*, or holding no lease or
-    one that lapsed before it. The ones written least recently first, at
-    most *limit*: a closed row is written when it closes and each time the
-    reaper tries its cleanup without finishing it, so a cleanup that keeps
-    failing goes behind the others instead of heading every run."""
-    rows = await prisma.models.DreamPass.prisma().find_many(
-        where={
-            "status": {"in": list(CLOSED_STATUSES)},
-            "cleanupPendingAt": {"not": None},
+    one that lapsed before it. In mark order (the mark, then the id), at
+    most *limit*: given *marked_through*, only those marked by then, and,
+    given *after_mark* and *after_id*, only those after that point (keyset
+    pagination, so the reaper can go on past cleanups it tried)."""
+    where: list[DreamPassWhereInput] = [
+        {
             "OR": [
                 {"cleanupPendingAt": {"lte": due_before}},
                 {"leaseExpiresAt": None},
                 {"leaseExpiresAt": {"lte": due_before}},
-            ],
+            ]
+        }
+    ]
+    if marked_through is not None:
+        where.append({"cleanupPendingAt": {"lte": marked_through}})
+    if after_mark is not None and after_id is not None:
+        where.append(
+            {
+                "OR": [
+                    {"cleanupPendingAt": {"gt": after_mark}},
+                    {
+                        "cleanupPendingAt": {"equals": after_mark},
+                        "id": {"gt": after_id},
+                    },
+                ]
+            }
+        )
+    rows = await prisma.models.DreamPass.prisma().find_many(
+        where={
+            "status": {"in": list(CLOSED_STATUSES)},
+            "cleanupPendingAt": {"not": None},
+            "AND": where,
         },
-        order={"updatedAt": "asc"},
+        order=[{"cleanupPendingAt": "asc"}, {"id": "asc"}],
         take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]

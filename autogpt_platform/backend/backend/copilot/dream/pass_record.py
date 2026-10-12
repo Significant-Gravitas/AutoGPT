@@ -286,14 +286,6 @@ def cleanup_finished() -> DreamPassUpdate:
     )
 
 
-def cleanup_unfinished() -> DreamPassUpdate:
-    """The reaper tried the cleanup after a closed pass and did not finish
-    it: nothing changes but the row's write time, which puts the row behind
-    the cleanups the reaper has tried less recently. The other write a
-    closed row takes."""
-    return DreamPassUpdate(closed_row=True)
-
-
 def stop_error(row: DreamPassRecord) -> str | None:
     """Why the row says its pass was stopped from outside, as the pass's
     error (``cancelled: <reason>``, ``expired: <reason>``); ``None`` while its

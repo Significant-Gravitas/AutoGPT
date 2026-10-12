@@ -94,23 +94,23 @@ async def test_the_reapers_take_of_a_scope(monkeypatch, cut, fake_dream_redis):
     assert task.cancelled()
 
 
-async def test_the_reapers_note_of_the_open_row_it_tries(
+async def test_the_reapers_note_of_the_row_it_tries(
     monkeypatch, cut, fake_dream_db, fake_dream_redis
 ):
     _seed(fake_dream_db, "p1", route=DreamPassRoute.SYNC)
-    monkeypatch.setattr(fake_dream_redis, "set", cut.answering(True))
+    monkeypatch.setattr(fake_dream_redis, "hset", cut.answering(1))
 
-    task = await cut.run(reaper_mod._advance_cursor(fake_dream_db.record("p1")))
+    task = await cut.run(reaper_mod._note_tried(fake_dream_db.record("p1")))
 
     assert task.cancelled()
 
 
-async def test_the_reapers_read_of_where_its_scan_stopped(
+async def test_the_reapers_read_of_where_its_scan_stands(
     monkeypatch, cut, fake_dream_redis
 ):
-    monkeypatch.setattr(fake_dream_redis, "get", cut.answering(None))
+    monkeypatch.setattr(fake_dream_redis, "hgetall", cut.answering({}))
 
-    task = await cut.run(reaper_mod._read_cursor())
+    task = await cut.run(reaper_mod._read_scan("open"))
 
     assert task.cancelled()
 
