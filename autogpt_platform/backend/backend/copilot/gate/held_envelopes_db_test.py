@@ -32,6 +32,7 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import (
@@ -401,6 +402,26 @@ async def test_a_call_with_nothing_recorded_runs_only_under_a_root_of_the_users_
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_call_with_nothing_recorded_is_bound_by_the_chats_permissions_now(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """The root standing in for its turn is narrowed as a recorded envelope is,
+    so a tool the chat revoked since the call was held does not run."""
+    chat = await _thread(test_user_id, delegated=False)
+    review_id = await _hold(chat, test_user_id, "revoked since", None)
+    await _answer(review_id)
+    revoked = CopilotPermissions(tools=[_TOOL], tools_exclude=True)
+
+    with patch(
+        "backend.copilot.gate.held.resolve_session_permissions", return_value=revoked
+    ):
+        [delivered] = await _fold(chat, test_user_id, _root(chat))
+
+    assert post_tool.runs == []
+    _refused_for(delivered, "no longer allowed")
+
+
 @pytest.mark.parametrize(
     "delegated", [True, False], ids=["a delegated thread", "the user's own chat"]
 )

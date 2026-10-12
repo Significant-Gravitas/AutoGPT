@@ -409,7 +409,14 @@ def _check(
         assert any(r.envelope is None for r in runnable), f"{where} ran as {in_effect}"
         assert session.metadata.delegated_by_session_id is None, f"{where} ran"
         assert turn is None or turn.depth == 0, f"{where} ran under {turn}"
-        assert in_effect == turn, f"{where} ran under {in_effect}"
+        # A root stands in, the folding turn's or, outside one, its own: as the
+        # chat's permissions allow it now.
+        assert in_effect is not None, f"{where} ran unbounded"
+        root = turn or root_envelope(in_effect.tree_id, session_id=session.session_id)
+        assert in_effect == narrowed_by(
+            root, permissions
+        ), f"{where} ran as {in_effect}"
+        assert in_effect.permits(call.tool_name), f"{where} ran a tool it may not"
         return
     envelope = matches[0]
     assert envelope.tree_id and 0 <= envelope.depth <= MAX_DEPTH, f"{where} ran"

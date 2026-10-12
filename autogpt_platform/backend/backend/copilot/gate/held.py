@@ -30,6 +30,7 @@ from backend.copilot.tree import (
     TurnEnvelope,
     narrowed_by,
     readmit_turn,
+    root_envelope,
 )
 from backend.copilot.turn_queue import is_users_own_chat
 from backend.data.db_accessors import chat_db, review_db
@@ -467,19 +468,37 @@ async def _outcome(
 
 async def _own_envelope(
     user_id: str, session: ChatSession, call: HeldCall
-) -> TurnEnvelope | None:
+) -> TurnEnvelope:
     """The envelope an approved call runs under: the one it was held under,
     re-checked now and narrowed by the session's permissions now, never the
     one of whichever turn folds it. Raises :class:`TreeRefusal`."""
     envelope = call.envelope
     if envelope is None:
         # Held before envelopes were kept, or rebuilt from its card. Every turn
-        # in the user's own chat is a root, so a root runs it there as one held
-        # it; anywhere else nothing says what it was allowed to do.
+        # in the user's own chat is a root, so a root stands in there for the
+        # one that held it; anywhere else nothing says what it was allowed.
         running = get_current_envelope()
-        if is_users_own_chat(session) and (running is None or running.depth == 0):
-            return running
-        raise TreeRefusal(_UNRECORDED)
+        if not is_users_own_chat(session) or (
+            running is not None and running.depth != 0
+        ):
+            raise TreeRefusal(_UNRECORDED)
+        envelope = running or root_envelope(
+            call.review_id, session_id=session.session_id
+        )
+    else:
+        await _readmitted(user_id, envelope)
+    envelope = narrowed_by(envelope, resolve_session_permissions(session))
+    if not envelope.permits(call.tool_name):
+        raise TreeRefusal(
+            f"{call.tool_name} is no longer allowed where it was proposed."
+        )
+    return envelope
+
+
+async def _readmitted(user_id: str, envelope: TurnEnvelope) -> None:
+    """A recorded envelope that may still act: well formed, before its
+    deadline, its tree open and its ceiling unspent. Raises
+    :class:`TreeRefusal`."""
     if not _well_formed(envelope):
         raise TreeRefusal(_UNREADABLE)
     # A root's re-check below never reads its deadline.
@@ -491,12 +510,6 @@ async def _own_envelope(
         raise TreeRefusal(
             f"the task that proposed it may no longer act. Its limits: {refused.message}"
         ) from refused
-    envelope = narrowed_by(envelope, resolve_session_permissions(session))
-    if not envelope.permits(call.tool_name):
-        raise TreeRefusal(
-            f"{call.tool_name} is no longer allowed where it was proposed."
-        )
-    return envelope
 
 
 def _well_formed(envelope: TurnEnvelope) -> bool:
