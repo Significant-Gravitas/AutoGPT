@@ -39,7 +39,6 @@ class TrialAccount:
         self.tier = SubscriptionTier.TRIAL
         self.trial = _trial(user_id, spent=spent_before)
         self.charges: list[TrialCharge] = []
-        self.reads: list[int] = []
         self._counters: dict[str, int] = {}
 
     def install(self, monkeypatch: pytest.MonkeyPatch, ledger: PlatformLedger) -> None:
@@ -53,7 +52,9 @@ class TrialAccount:
             rate_limit, "_fetch_user_tier", AsyncMock(side_effect=self._read_tier)
         )
         redis = MagicMock(get=AsyncMock(side_effect=self._read_counter))
-        monkeypatch.setattr(rate_limit, "get_redis_async", AsyncMock(return_value=redis))
+        monkeypatch.setattr(
+            rate_limit, "get_redis_async", AsyncMock(return_value=redis)
+        )
         monkeypatch.setattr(
             rate_limit, "_incr_counter_atomic", AsyncMock(side_effect=self._increment)
         )
@@ -64,6 +65,7 @@ class TrialAccount:
         monkeypatch.setattr(
             rate_limit, "_fetch_tier_multipliers_flag", AsyncMock(return_value=None)
         )
+
         # The ledger keeps each charge, then the real recording runs: that is
         # where a turn's spend is put on the trial.
         async def charge(user_id: str, cost_microdollars: int, **kwargs: Any) -> None:
@@ -97,7 +99,6 @@ class TrialAccount:
 
     async def _read_trial(self, user_id: str) -> TrialState | None:
         assert user_id == self.user_id
-        self.reads.append(self.turn)
         return self.trial
 
     async def _read_tier(self, user_id: str) -> SubscriptionTier:
@@ -110,7 +111,9 @@ class TrialAccount:
         """``record_subscription_trial_cost``: the same rows its update matches."""
         assert user_id == self.user_id
         self.charges.append(
-            TrialCharge(turn=self.turn, microdollars=cost_microdollars, trial_id=trial_id)
+            TrialCharge(
+                turn=self.turn, microdollars=cost_microdollars, trial_id=trial_id
+            )
         )
         matches = (
             self.trial.status == "trialing"
@@ -119,7 +122,10 @@ class TrialAccount:
         )
         if matches:
             self.trial = self.trial.model_copy(
-                update={"cost_microdollars": self.trial.cost_microdollars + cost_microdollars}
+                update={
+                    "cost_microdollars": self.trial.cost_microdollars
+                    + cost_microdollars
+                }
             )
 
     async def _read_counter(self, key: str) -> int | None:

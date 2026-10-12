@@ -21,7 +21,7 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.copilot import model as chat_model
-from backend.copilot import rate_limit, stream_registry
+from backend.copilot import rate_limit, stream_registry, tools
 from backend.copilot.baseline import service as baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.executor import processor
@@ -152,5 +152,6 @@ class BaselineTurnsViaExecutor(BaselineTurns):
     ) -> None:
         await self._executor.run(session, prompt)
 
-    def answer_tools_with(self, monkeypatch: pytest.MonkeyPatch, tool: Any) -> None:
-        monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=tool))
+    def run_registry_tools(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Run the model's tool calls through the copilot's tool registry."""
+        monkeypatch.setattr(baseline, "execute_tool", tools.execute_tool)

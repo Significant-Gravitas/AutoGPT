@@ -12,6 +12,7 @@ it was when the turn started.
 """
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -21,17 +22,22 @@ from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.tools import TOOL_REGISTRY
+from backend.copilot.tools.base import BaseTool
+from backend.copilot.tools.models import NoResultsResponse, ToolResponseBase
 
 from .audit import audit_thread
-from .baseline_turns import _answer_tool
 from .executor_turns import BaselineTurnsViaExecutor, Executor, SdkTurnsViaExecutor
 from .ledger import PlatformLedger
 from .provider import FakeProvider
 from .scenarios import SCENARIOS, Scenario
 from .thread_billing_test import PROMPTS, _config, _session
 from .trial_account import TRIAL_ID, TrialAccount
+from .wire import TOOL_NAME
 
-TRIAL_SCENARIOS = [s for s in SCENARIOS if s.id in ("sdk-openrouter", "baseline-openrouter")]
+TRIAL_SCENARIOS = [
+    s for s in SCENARIOS if s.id in ("sdk-openrouter", "baseline-openrouter")
+]
 CONVERTED_TURN = 2
 # Spent on earlier days, so the trial's total is what limits the turns.
 SPENT_BEFORE = 700_000
@@ -51,7 +57,9 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
     session = _session(scenario)
     account = TrialAccount(session.user_id, spent_before=SPENT_BEFORE)
     account.install(monkeypatch, ledger)
-    run_turn, executor = _turn_runner(scenario, provider, session, tmp_path, monkeypatch)
+    run_turn, executor = _turn_runner(
+        scenario, provider, session, tmp_path, monkeypatch
+    )
     remaining_at_start: list[float] = []
     usage_by_turn: list[list[Usage]] = []
 
@@ -72,7 +80,9 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
         if isinstance(run_turn, SdkTurnsViaExecutor)
         else None
     )
-    findings = audit_thread(scenario, provider, ledger, session, usage_by_turn, cli_resumed)
+    findings = audit_thread(
+        scenario, provider, ledger, session, usage_by_turn, cli_resumed
+    )
     assert not findings, "\n".join(f.message for f in findings)
 
     for turn in range(CONVERTED_TURN):
@@ -81,13 +91,17 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
         assert spent > 0
         assert [c.trial_id for c in charged] == [TRIAL_ID] * len(charged)
         assert sum(c.microdollars for c in charged) == spent
-        assert [row.metadata["subscription_trial_id"] for row in ledger.rows_in(turn)] == [TRIAL_ID]
+        assert [
+            row.metadata["subscription_trial_id"] for row in ledger.rows_in(turn)
+        ] == [TRIAL_ID]
     assert account.charged_in(CONVERTED_TURN) == []
     assert [
         row.metadata.get("subscription_trial_id")
         for row in ledger.rows_in(CONVERTED_TURN)
     ] == [None]
-    trial_spend = sum(c.microdollars for t in range(CONVERTED_TURN) for c in ledger.spend_in(t))
+    trial_spend = sum(
+        c.microdollars for t in range(CONVERTED_TURN) for c in ledger.spend_in(t)
+    )
     assert account.trial.cost_microdollars == SPENT_BEFORE + trial_spend
 
     if isinstance(run_turn, SdkTurnsViaExecutor):
@@ -116,30 +130,56 @@ async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
     session = _session(scenario)
     account = TrialAccount(session.user_id, spent_before=SPENT_BEFORE)
     account.install(monkeypatch, ledger)
-    run_turn, executor = _turn_runner(scenario, provider, session, tmp_path, monkeypatch)
+    run_turn, executor = _turn_runner(
+        scenario, provider, session, tmp_path, monkeypatch
+    )
     assert isinstance(run_turn, BaselineTurnsViaExecutor)
-    paywalled_when_the_tool_ran: list[bool] = []
-
-    async def tool_after_the_trial_ended(**kwargs: object):
-        # The trial ends while the model is choosing the tool.
-        account.end_trial()
-        paywalled_when_the_tool_ran.append(
-            await rate_limit.is_user_paywalled(session.user_id)
-        )
-        return await _answer_tool(**kwargs)
-
-    run_turn.answer_tools_with(monkeypatch, tool_after_the_trial_ended)
+    tool = _PaywalledLookup(account)
+    monkeypatch.setitem(TOOL_REGISTRY, TOOL_NAME, tool)
+    run_turn.run_registry_tools(monkeypatch)
     prompt = PROMPTS[1]
     session.messages.append(ChatMessage(role="user", content=prompt))
+
     await run_turn(session, prompt)
     await ledger.settle()
 
     assert executor.errors == [None]
-    assert paywalled_when_the_tool_ran == [True]
+    assert tool.paywalled == [True]
     # The turn started on the trial, so it is still spent from it.
     spent = sum(charge.microdollars for charge in ledger.spend_in(0))
     assert spent > 0
     assert sum(c.microdollars for c in account.charged_in(0)) == spent
+
+
+class _PaywalledLookup(BaseTool):
+    """A tool that checks the paywall, after the trial ended mid-turn."""
+
+    def __init__(self, account: TrialAccount) -> None:
+        self._account = account
+        self.paywalled: list[bool] = []
+
+    @property
+    def name(self) -> str:
+        return TOOL_NAME
+
+    @property
+    def description(self) -> str:
+        return "Look a fact up."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {"type": "object", "properties": {}}
+
+    async def _execute(
+        self, user_id: str | None, session: ChatSession, **kwargs: Any
+    ) -> ToolResponseBase:
+        # The trial ends while the model is choosing this tool.
+        self._account.end_trial()
+        assert user_id is not None
+        self.paywalled.append(await rate_limit.is_user_paywalled(user_id))
+        return NoResultsResponse(
+            message="The fact is 42.", session_id=session.session_id
+        )
 
 
 def _turn_runner(
@@ -162,4 +202,7 @@ def _turn_runner(
         return runner, executor
     config = _config(sdk_service.config, scenario, provider)
     executor = Executor(monkeypatch, config, session, use_sdk=True)
-    return SdkTurnsViaExecutor(tmp_path, monkeypatch, provider, config, executor), executor
+    return (
+        SdkTurnsViaExecutor(tmp_path, monkeypatch, provider, config, executor),
+        executor,
+    )

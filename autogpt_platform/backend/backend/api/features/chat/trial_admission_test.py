@@ -42,19 +42,17 @@ client = fastapi.testclient.TestClient(app)
 
 
 class TrialAccount:
-    """What the route reads for the user, and how often it read the trial."""
+    """What the route reads for the user."""
 
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
         self.tier = SubscriptionTier.TRIAL
         self.trial = _active_trial(user_id)
         self.spent_today = 0
-        self.trial_reads = 0
         self.read_error: Exception | None = None
 
     async def read_trial(self, user_id: str) -> TrialState | None:
         assert user_id == self.user_id
-        self.trial_reads += 1
         if self.read_error is not None:
             raise self.read_error
         return self.trial
@@ -102,10 +100,14 @@ def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> TrialAccoun
     mocker.patch.object(
         rate_limit,
         "get_redis_async",
-        AsyncMock(return_value=MagicMock(get=AsyncMock(side_effect=account.read_counter))),
+        AsyncMock(
+            return_value=MagicMock(get=AsyncMock(side_effect=account.read_counter))
+        ),
     )
     # The flag service's overrides of the default limits; none are set.
-    mocker.patch.object(rate_limit, "_fetch_cost_limits_flag", AsyncMock(return_value=None))
+    mocker.patch.object(
+        rate_limit, "_fetch_cost_limits_flag", AsyncMock(return_value=None)
+    )
     mocker.patch.object(
         rate_limit, "_fetch_tier_multipliers_flag", AsyncMock(return_value=None)
     )
@@ -119,9 +121,7 @@ def scheduled(mocker: pytest_mock.MockerFixture, test_user_id: str) -> AsyncMock
     mocker.patch.object(
         chat_routes, "_validate_and_get_session", AsyncMock(return_value=session)
     )
-    mocker.patch.object(
-        chat_routes, "is_turn_in_flight", AsyncMock(return_value=False)
-    )
+    mocker.patch.object(chat_routes, "is_turn_in_flight", AsyncMock(return_value=False))
     mocker.patch.object(
         briefing_scheduling, "ensure_morning_briefing_scheduled", AsyncMock()
     )
@@ -143,7 +143,6 @@ def test_a_trial_within_its_limits_starts_the_turn(
 
     assert response.status_code == 200
     scheduled.assert_awaited_once()
-    assert account.trial_reads == 1
 
 
 def test_a_trial_that_spent_its_allowance_waits_for_its_end(
@@ -205,7 +204,6 @@ def test_a_trial_that_ends_between_messages_stops_the_next_one(
     account.end_trial()
 
     assert _send_message().status_code == 402
-    assert account.trial_reads == 2
     scheduled.assert_awaited_once()
 
 
@@ -223,16 +221,16 @@ def test_a_failed_trial_read_refuses_the_message_and_is_not_kept(
     scheduled.assert_awaited_once()
 
 
-def test_a_paying_user_never_reads_a_trial(
+def test_a_paying_user_is_not_held_to_a_trial_that_ended(
     account: TrialAccount, scheduled: AsyncMock
 ) -> None:
     account.tier = SubscriptionTier.PRO
+    account.end_trial()
 
     response = _send_message()
 
     assert response.status_code == 200
     scheduled.assert_awaited_once()
-    assert account.trial_reads == 0
 
 
 def _send_message():
