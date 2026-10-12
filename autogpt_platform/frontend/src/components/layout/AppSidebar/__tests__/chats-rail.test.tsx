@@ -153,7 +153,7 @@ beforeEach(() => {
   auth.isLoggedIn = true;
   motionPreference.reduced = false;
   viewport.isMobile = false;
-  useGetFlagMock.mockReturnValue(true);
+  useGetFlagMock.mockImplementation((flag) => flag !== Flag.TASK_BOARD);
   scrollTo.mockReset();
   getAnimations.mockReset();
   getAnimations.mockReturnValue([]);

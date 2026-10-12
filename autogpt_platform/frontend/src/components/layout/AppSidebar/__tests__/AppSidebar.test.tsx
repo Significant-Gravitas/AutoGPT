@@ -150,7 +150,7 @@ describe("AppSidebar", () => {
   });
 
   it("renders the workspace and recent chats group headers", () => {
-    useGetFlagMock.mockReturnValue(true);
+    useGetFlagMock.mockImplementation((flag) => flag !== Flag.TASK_BOARD);
     renderSidebar();
     expect(screen.getByText("Workspace")).toBeDefined();
     expect(screen.getByText("Recent chats")).toBeDefined();
@@ -177,6 +177,15 @@ describe("AppSidebar", () => {
       expect(screen.getByText("Recent chats")).toBeDefined();
     },
   );
+
+  it("hides recent chats when the task board flag is on", async () => {
+    useGetFlagMock.mockImplementation((flag) => flag === Flag.TASK_BOARD);
+    renderSidebar();
+    expect(screen.getByRole("link", { name: /^home/i })).toBeDefined();
+    expect(screen.getByText("Marketplace")).toBeDefined();
+    await waitFor(() => expect(screen.queryByText("Recent chats")).toBeNull());
+    expect(screen.queryByText(/no conversations yet/i)).toBeNull();
+  });
 
   it("marks the active link based on the current pathname", () => {
     // global next/navigation mock resolves usePathname() to "/marketplace"

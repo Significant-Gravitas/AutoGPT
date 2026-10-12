@@ -67,6 +67,8 @@ export enum Flag {
   // The chat's own stream runtime in place of the AI SDK's: resume at a
   // cursor, render from the persisted rows. Frontend only; fail-closed.
   COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
+  // Home becomes a board of chat sessions; full-page chat moves to /chat.
+  TASK_BOARD = "task-board",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -102,6 +104,7 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
+  [Flag.TASK_BOARD]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -169,6 +172,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_STREAM_RUNTIME:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
+    case Flag.TASK_BOARD:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_TASK_BOARD;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
       return undefined;

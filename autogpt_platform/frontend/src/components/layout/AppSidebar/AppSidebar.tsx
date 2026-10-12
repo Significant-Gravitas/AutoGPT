@@ -177,6 +177,7 @@ export function AppSidebar(props: Props) {
       ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
       : WORKSPACE_LINKS
   ).filter((link) => link.href !== "/artifacts" || filesEnabled);
+  const isTaskBoardEnabled = useGetFlag(Flag.TASK_BOARD);
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -220,7 +221,9 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
+          {isLoggedIn && !isTaskBoardEnabled ? (
+            <ChatsNavSection itemVariants={itemVariants} />
+          ) : null}
         </motion.div>
 
         <SidebarUserActions />

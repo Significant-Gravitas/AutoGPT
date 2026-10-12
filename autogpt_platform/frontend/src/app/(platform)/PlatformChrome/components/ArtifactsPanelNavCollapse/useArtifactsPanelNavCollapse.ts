@@ -8,7 +8,9 @@ export function useArtifactsPanelNavCollapse() {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
   const isCopilotRoute =
-    matchesRoute(pathname, "/home") || matchesRoute(pathname, "/copilot");
+    matchesRoute(pathname, "/home") ||
+    matchesRoute(pathname, "/chat") ||
+    matchesRoute(pathname, "/copilot");
   // The docked right panel: an open artifact preview or the artifacts tab.
   // The floating files card doesn't count — it overlays the chat column
   // without narrowing it. Leaving /copilot counts as closing, so the nav
