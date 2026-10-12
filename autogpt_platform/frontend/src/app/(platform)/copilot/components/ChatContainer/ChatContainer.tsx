@@ -1,5 +1,6 @@
 "use client";
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
+import { ChatComposerFrame } from "./components/ChatComposerFrame";
 import {
   Tooltip,
   TooltipContent,
@@ -8,7 +9,7 @@ import {
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
-import { LayoutGroup, motion } from "framer-motion";
+import { LayoutGroup } from "framer-motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
@@ -401,27 +402,20 @@ export const ChatContainer = ({
                     reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
                   />
                 ) : (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+                  <ChatComposerFrame
+                    paused={isLimitReached}
+                    noticeRef={usageCardRef}
+                    notice={
+                      isLimitReached ? (
+                        <UsageLimitReachedCard
+                          sessionID={sessionId}
+                          failure={usageFailure}
+                          onDismiss={onDismissUsage}
+                          refresh={usageRefresh}
+                        />
+                      ) : null
+                    }
                   >
-                    {isLimitReached && (
-                      <div
-                        ref={usageCardRef}
-                        className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
-                      >
-                        <div className="pointer-events-auto relative px-3">
-                          <UsageLimitReachedCard
-                            sessionID={sessionId}
-                            failure={usageFailure}
-                            onDismiss={onDismissUsage}
-                            refresh={usageRefresh}
-                          />
-                        </div>
-                      </div>
-                    )}
                     <SharedChatNotice sessionId={sessionId} />
                     {isTaskBarEnabled && (
                       <div className="relative z-10">
@@ -494,7 +488,7 @@ export const ChatContainer = ({
                         editing it.
                       </TooltipContent>
                     </Tooltip>
-                  </motion.div>
+                  </ChatComposerFrame>
                 )}
               </div>
             ) : (

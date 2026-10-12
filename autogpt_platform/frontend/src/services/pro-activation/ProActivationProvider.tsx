@@ -65,8 +65,14 @@ function ActivationSession({ userID, controller, onStatus }: SessionProps) {
     onStatus({
       userID,
       isBusy: activation.isBusy,
-      isReady: activation.isReady,
+      isReady: activation.isReady && activation.hasFreshUsage,
     });
-  }, [userID, activation.isBusy, activation.isReady, onStatus]);
+  }, [
+    userID,
+    activation.isBusy,
+    activation.isReady,
+    activation.hasFreshUsage,
+    onStatus,
+  ]);
   return <ProActivationDialog activation={activation} />;
 }

@@ -52,6 +52,7 @@ async def test_default_quote_retains_original_max_offer(
                 "customer": "cus_1",
                 "currency": "usd",
                 "amount_due": 4800,
+                "lines": fixtures.preview_lines("price_retired_max"),
             }
         ),
     )
@@ -93,6 +94,7 @@ async def test_alternate_plan_quote_matches_exact_owned_item_mutation(
                 "customer": "cus_1",
                 "currency": "usd",
                 "amount_due": 8700,
+                "lines": fixtures.preview_lines("price_target", interval),
             },
         ]
     )

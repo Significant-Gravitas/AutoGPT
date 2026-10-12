@@ -1,8 +1,10 @@
-Production-to-design comparison audit
+Production-to-implementation comparison audit
 =====================================
 
-Production source: f8b0e0a87c38b67f6e6cb21f3ee03ff5584c3588.
-All source paths below are relative to work/autogpt-production-backend/autogpt_platform/frontend/src.
+Production verified October 12, 2026 from public application release metadata.
+Deployment: dpl_Box4zhbjg32Lqfw3w6MRb75Y3mzQ.
+Production source: 4473fbbcb1951471df0a05374d47c93c4e39bea6.
+All source paths below are relative to the production release tree at autogpt_platform/frontend/src.
 This is a source-backed state audit, not an authenticated production-account recording.
 Use untouched production components with deterministic data fixtures. Label all panels as
 production components rendered from the verified release, with sample account data.
@@ -23,7 +25,7 @@ PM: app/(platform)/settings/billing/components/SubscriptionTab/PaymentMethodCard
 W: app/(platform)/PaywallGate/PaywallModal.tsx and PaywallGate.tsx
 S: app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog.tsx
 
-Mapping for all 31 compact design files
+Mapping for all 31 compact comparison files
 --------------------------------------
 01 trial-popup: D, tier TRIAL, daily cap fixture. Current popup only says Daily usage
    limit reached / Wait for reset / Upgrade plan. New total-trial semantics depend
@@ -48,11 +50,12 @@ Mapping for all 31 compact design files
 13 team-billing: B/P/U, BUSINESS. P correctly labels Team, offers downgrade Max,
    manage subscription; no next-tier upgrade.
 14 enterprise-popup: D, tier ENTERPRISE; generic Contact us, no account-team wording.
-15 enterprise-billing: B/P/U, ENTERPRISE. PH leaves raw ENTERPRISE label and getNextTier
-   falls back to PRO, so current canUpgrade=true when no scheduled change. Cycle toggle
-   hidden. Portal availability remains conditional. Do not quietly improve prod fixture.
+15 enterprise-billing: B/P/U, ENTERPRISE. Current production already labels Enterprise
+   correctly and uses organization-managed billing with an account-team contact. It no
+   longer offers a Pro upgrade. The new comparison shows usage/support layout changes,
+   not an Enterprise entitlement fix that has already shipped.
 16 basic-chat: I, BASIC; Basic plan badge, two meters/storage/Go to billing.
-17 basic-billing: B/P/U, BASIC. Raw BASIC label, cycle toggle hidden; next tier PRO.
+17 basic-billing: B/P/U, BASIC. Basic label, cycle toggle hidden; next tier PRO.
 18 choose-plan: W for payment-enabled NO_TIER without eligible trial. Non-dismissable
    paywall with SubscriptionPlans, Log out, plan header/demo link. Do not use D.
 19 no-plan-billing: W is normally visible over the billing route. Underlying B/P says
@@ -93,14 +96,15 @@ Mapping for all 31 compact design files
 28 max-review: S with target Max and production PH body. Exact monthly body:
    You'll be charged the prorated difference immediately for the rest of your monthly
    period. After this period, your plan renews at $320.00 per month.
-   Current confirm modifies existing subscription and may immediately charge; new design
-   routes to secure review. This is a proposed behavior change, not merely visual polish.
+   Current confirm modifies the subscription and may immediately charge. The new review
+   first obtains an authenticated, expiring Stripe quote and reuses its proration date.
+   It stays inside the app; it does not invent a hosted checkout handoff.
 29 payment-pending: No current dedicated early-Pro activation/usage-reset processing
    screen. TrialCheckoutConfirmation says Confirming your trial and card setup… but
    that is initial trial setup, NOT equivalent; do not use it as paid activation before.
-30 activation-success: No current early-conversion/fresh-reset success notice. Current
-   conversion retains same user/day/week consumption, so cannot show fresh allowance
-   on production side. Evidence panel is more honest than staged zero meters.
+30 activation-success: Before is the ordinary paid composer with no early-conversion
+   confirmation. After is the actual successful-activation dialog, which only promises
+   fresh usage after authoritative readiness and successful data refreshes.
 31 fresh-billing: B/P/U on PRO after current scheduled conversion; U retains trial
    consumption (percentages may change because tier caps differ). New B zeroes daily/
    weekly only after reset completion. Use retained-consumption illustrative production
@@ -113,11 +117,13 @@ Cross-cutting cautions
   New later blocking reset is a correctness improvement, not just copy.
 - Comparison dates and account/payment details are fixtures. Do not represent them as
   real user or real payment data. Same dates/currency/plan pricing should align across panels.
-- Payment-method last4 and invoice quote in new design need actual billing data; current
-  PM does not show these. New exact charge is a sample, not guaranteed $50 tax-free charge.
+- Payment reviews use actual billing quotes. The renderer invents no card last4 or brand.
+  The payment-management control opens the existing customer portal. Sample charges are
+  illustrative, not a guarantee of a $50 tax-free invoice.
 - Current paid plans support annual billing and scheduled changes. A monthly sample
   redesign must retain those supported controls in implementation.
 - No new trials should mention Max. Existing prod paywall can show multiple plans;
   distinguish active trial upgrade offer from ineligible NO_TIER plan selection.
 - Global shell and unchanged automation-credit components are context, not claimed redesign.
-- No browser resources were created by this read-only audit.
+- Captures used isolated headless Chromium. Browser contexts, browser processes and
+  local servers were closed in finally blocks and cleanup was verified.

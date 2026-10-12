@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.data import subscription_activation_stripe as billing
+from backend.data.subscription_activation_checkout_fixtures import preview_lines
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
@@ -67,6 +68,16 @@ async def test_discount_duration_and_tax_changes_require_new_consent(
         "customer": "cus_1",
         "currency": "usd",
         "amount_due": 2500,
+        "lines": {
+            "data": [
+                {
+                    "type": "subscription",
+                    "subscription": "sub_1",
+                    "price": {"id": "price_pro"},
+                    "period": {"start": 1791374400, "end": 1794052800},
+                }
+            ]
+        },
         "discounts": [{"coupon": {"percent_off": 50, "duration": "forever"}}],
     }
     monkeypatch.setattr(billing, "stripe_call", AsyncMock(return_value=invoice))
@@ -110,6 +121,7 @@ async def test_alternate_quote_only_discloses_applicable_discounts(
         "customer": "cus_1",
         "currency": "usd",
         "amount_due": 9000,
+        "lines": preview_lines("price_max"),
         "discounts": [
             {
                 "coupon": {
@@ -141,6 +153,7 @@ async def test_restricted_discount_requires_known_selected_product(
         "customer": "cus_1",
         "currency": "usd",
         "amount_due": 2500,
+        "lines": preview_lines("price_pro"),
         "discounts": [
             {
                 "coupon": {

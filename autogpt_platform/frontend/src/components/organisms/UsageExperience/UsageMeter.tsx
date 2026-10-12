@@ -1,5 +1,6 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { formatUsagePercent } from "@/services/usageExperience/helpers";
+import { cn } from "@/lib/utils";
 
 interface Props {
   label: string;
@@ -28,7 +29,10 @@ export function UsageMeter({ label, percent, detail }: Props) {
         className="h-1.5 overflow-hidden rounded-full bg-zinc-100"
       >
         <div
-          className="h-full rounded-full bg-purple-500 transition-[width]"
+          className={cn(
+            "h-full rounded-full transition-[width]",
+            value >= 100 ? "bg-orange-500" : "bg-purple-500",
+          )}
           style={{ width: `${value}%` }}
         />
       </div>

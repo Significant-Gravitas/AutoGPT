@@ -6,6 +6,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 
 export function SupportOffer({
+  eyebrow,
+  footer,
   title,
   description,
   label,
@@ -14,6 +16,8 @@ export function SupportOffer({
   disabled = false,
   ready = false,
 }: {
+  eyebrow: string;
+  footer?: string;
   title: string;
   description: string;
   label: string;
@@ -32,7 +36,7 @@ export function SupportOffer({
           <Icon icon={ready ? SparklesIcon : Message01Icon} size={17} />
         </span>
         <Text variant="small-medium" className="text-zinc-600">
-          {ready ? "AutoGPT Pro" : "Built for what’s next"}
+          {eyebrow}
         </Text>
       </div>
       <Text
@@ -66,13 +70,15 @@ export function SupportOffer({
           {label}
         </Button>
       )}
-      <Text
-        variant="small"
-        tone="secondary"
-        className="mt-2.5 text-center text-xs leading-5"
-      >
-        Your conversations and agents stay saved.
-      </Text>
+      {footer && (
+        <Text
+          variant="small"
+          tone="secondary"
+          className="mt-2.5 text-center text-xs leading-5"
+        >
+          {footer}
+        </Text>
+      )}
     </section>
   );
 }

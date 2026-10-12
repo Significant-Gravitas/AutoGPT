@@ -22,7 +22,7 @@ export function useAutopilotUsageCard() {
     : null;
   const week: UsageWindowView | null = usage?.weekly
     ? {
-        label: "This Week",
+        label: "This week",
         percent: usage.weekly.percent_used,
         ...formatRelativeReset(usage.weekly.resets_at),
       }
@@ -45,7 +45,15 @@ export function useAutopilotUsageCard() {
       ? week
       : today;
   const secondary = showTrialWindow ? null : featured === week ? today : week;
+  const percent = featured?.percent ?? 0;
+  const status =
+    percent >= 100
+      ? { label: "Allowance reached", className: "text-orange-700" }
+      : percent >= 80
+        ? { label: "Running low", className: "text-amber-700" }
+        : { label: "Plenty left", className: "text-zinc-500" };
   return {
+    status,
     featured,
     secondary,
     today,

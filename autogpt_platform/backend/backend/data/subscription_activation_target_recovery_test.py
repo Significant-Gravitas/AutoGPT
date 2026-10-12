@@ -127,7 +127,14 @@ async def test_saved_max_price_survives_catalog_change(
                 "recurring": {"interval": "month", "interval_count": 1},
             }
         assert fn == stripe.Invoice.create_preview_async
-        return {"customer": "cus_1", "currency": "usd", "amount_due": 8700}
+        return {
+            "customer": "cus_1",
+            "currency": "usd",
+            "amount_due": 8700,
+            "lines": fixtures.preview_lines(
+                kwargs["subscription_details"]["items"][0]["price"]
+            ),
+        }
 
     prices = AsyncMock(return_value="price_max")
     reads = AsyncMock(side_effect=read_stripe)

@@ -80,13 +80,11 @@ describe("RateLimitGate", () => {
       />,
     );
     expect(screen.getByText("Refreshing your plan and usage…")).toBeDefined();
-    expect(
-      screen.queryByRole("button", { name: "Review Max upgrade" }),
-    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Upgrade to Max" })).toBeNull();
     expect(onRefreshingChange).toHaveBeenCalledWith(true);
     await act(async () => resolve?.());
     expect(
-      await screen.findByRole("button", { name: "Review Max upgrade" }),
+      await screen.findByRole("button", { name: "Upgrade to Max" }),
     ).toBeDefined();
     expect(onRefreshingChange).toHaveBeenLastCalledWith(false);
   });

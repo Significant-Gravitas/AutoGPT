@@ -1,3 +1,4 @@
+import { maxUpgradePreview } from "./max-upgrade.fixture";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { server } from "@/mocks/mock-server";
@@ -51,7 +52,7 @@ it("uses the later blocking window when both paid limits are exhausted", async (
   mockUsage("PRO", { active: false, converted: true });
   render(<AutopilotUsageCard />);
   const primary = await screen.findByTestId("featured-usage");
-  expect(primary.textContent).toContain("This Week");
+  expect(primary.textContent).toContain("This week");
   expect(screen.getAllByRole("progressbar")).toHaveLength(2);
 });
 
@@ -95,7 +96,9 @@ it("keeps plan recovery visible when an inactive account has no usage permission
     http.get("*/api/chat/usage", () => HttpResponse.json({}, { status: 403 })),
   );
   render(<AutopilotUsageCard />);
-  expect(await screen.findByText("Ready for a fresh start?")).toBeDefined();
+  expect(
+    await screen.findByText("Choose a plan to keep working"),
+  ).toBeDefined();
   expect(screen.queryByRole("progressbar")).toBeNull();
   expect(screen.queryByRole("button", { name: /try again/i })).toBeNull();
 });
@@ -141,7 +144,7 @@ it("keeps both recurring meters for a legacy trial whose total allowance remains
   );
   render(<AutopilotUsageCard />);
   expect(await screen.findByText("Today")).toBeDefined();
-  expect(screen.getByText("This Week")).toBeDefined();
+  expect(screen.getByText("This week")).toBeDefined();
   expect(screen.getAllByRole("progressbar")).toHaveLength(2);
   expect(screen.queryByText("Trial usage")).toBeNull();
 });
@@ -151,6 +154,9 @@ it("refreshes the rendered usage after a Max upgrade without resetting consumpti
   let upgraded = false;
   let usageRequests = 0;
   server.use(
+    http.post("*/api/credits/subscription/preview", () =>
+      HttpResponse.json(maxUpgradePreview()),
+    ),
     http.get("*/api/credits/subscription", () =>
       HttpResponse.json({
         tier: upgraded ? "MAX" : "PRO",
@@ -192,8 +198,8 @@ it("refreshes the rendered usage after a Max upgrade without resetting consumpti
   );
   fireEvent.click(screen.getByRole("button", { name: "Upgrade to Max" }));
   fireEvent.click(
-    within(await screen.findByRole("dialog")).getByRole("button", {
-      name: "Upgrade to Max",
+    await within(await screen.findByRole("dialog")).findByRole("button", {
+      name: "Pay $272.78 and upgrade",
     }),
   );
   await waitFor(() =>

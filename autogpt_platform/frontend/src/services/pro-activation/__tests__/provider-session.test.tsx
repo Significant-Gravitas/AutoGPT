@@ -87,7 +87,12 @@ describe("Pro activation account lifecycle", () => {
     );
     server.use(
       http.get("*/api/proxy/api/credits/pro-activation/current", () =>
-        HttpResponse.json({ ...quote, status: "ready" }),
+        HttpResponse.json({
+          ...quote,
+          status: "ready",
+          usage_reset: true,
+          activation_id: "generation-1",
+        }),
       ),
       http.get("*/api/proxy/api/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),

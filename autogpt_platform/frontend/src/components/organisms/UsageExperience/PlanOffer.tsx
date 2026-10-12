@@ -8,6 +8,7 @@ import {
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import { formatOfferPrice } from "@/services/usageExperience/helpers";
 
 interface Props {
   tier: "PRO" | "MAX";
@@ -17,6 +18,7 @@ interface Props {
   usageMultiplier?: number;
   storageMultiplier?: number;
   freshUsage?: boolean;
+  actionLabel?: string;
   onUpgrade: () => void;
   disabled?: boolean;
 }
@@ -29,25 +31,21 @@ export function PlanOffer({
   usageMultiplier,
   storageMultiplier,
   freshUsage = false,
+  actionLabel,
   onUpgrade,
   disabled = false,
 }: Props) {
   const name = tier === "PRO" ? "Pro" : "Max";
-  const amount =
-    price === undefined
-      ? null
-      : new Intl.NumberFormat(undefined, {
-          style: "currency",
-          currency,
-          maximumFractionDigits: price % 100 === 0 ? 0 : 2,
-        }).format(price / 100);
+  const amount = formatOfferPrice(price, currency);
   const features =
     tier === "PRO"
       ? [
           freshUsage
-            ? "Fresh daily and weekly usage"
-            : "Daily and weekly usage for your work",
-          "Your chats, agents, and results stay with you",
+            ? "A full daily and weekly allowance once payment goes through"
+            : "Experts for content, sales and research, with Otto coordinating",
+          freshUsage
+            ? "Your chats, agents and files stay where they are"
+            : "Agents that keep working in the background on a schedule",
         ]
       : [
           usageMultiplier
@@ -73,9 +71,7 @@ export function PlanOffer({
               {name}
             </Text>
             <Text variant="small" className="!text-zinc-500">
-              {tier === "PRO"
-                ? "Keep building what’s next."
-                : "Room for your next big idea."}
+              Billed {cycle}
             </Text>
           </div>
         </div>
@@ -85,7 +81,7 @@ export function PlanOffer({
               {amount}
             </Text>
             <Text variant="small" className="!text-zinc-500">
-              per {cycle === "yearly" ? "year" : "month"}
+              per {cycle === "yearly" ? "year" : "month"} + tax
             </Text>
           </div>
         )}
@@ -111,16 +107,21 @@ export function PlanOffer({
         disabled={disabled}
         rightIcon={<Icon icon={ArrowRight02Icon} size={16} />}
       >
-        {tier === "PRO" ? "Upgrade to Pro" : "Review Max upgrade"}
+        {actionLabel ??
+          (tier === "MAX"
+            ? "Upgrade to Max"
+            : freshUsage
+              ? `Start Pro now${amount ? ` · ${amount}` : ""}`
+              : "Start Pro")}
       </Button>
       <Text
         variant="small"
         className="mt-3 text-center !text-xs !text-zinc-500"
       >
         {freshUsage
-          ? "A fresh allowance as soon as Pro activates."
+          ? "You’ll see the full charge before you pay."
           : tier === "MAX"
-            ? "A higher allowance. Your current usage carries over."
+            ? "What you’ve used today counts toward Max’s higher limit."
             : "Review your plan and payment before confirming."}
       </Text>
     </section>

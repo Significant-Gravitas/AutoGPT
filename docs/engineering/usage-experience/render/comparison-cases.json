@@ -1,0 +1,348 @@
+[
+  {
+    "id": "01-trial-popup",
+    "title": "Trial · limit popup",
+    "experience": {
+      "tier": "trial",
+      "state": "total"
+    },
+    "screen": "dialog",
+    "improvement": "Explain the exhausted trial, automatic Pro date, price, and choice to wait.",
+    "beforeState": "daily",
+    "note": "Trial allowance policy comes from #15184; fresh paid usage comes from #15208."
+  },
+  {
+    "id": "02-trial-chat",
+    "title": "Trial · in-chat notice",
+    "experience": {
+      "tier": "trial",
+      "state": "total"
+    },
+    "screen": "chat",
+    "improvement": "One neutral notice shows the start date and price; the draft stays editable.",
+    "beforeState": "daily",
+    "note": null
+  },
+  {
+    "id": "03-trial-billing",
+    "title": "Trial · exhausted allowance",
+    "experience": {
+      "tier": "trial",
+      "state": "total"
+    },
+    "screen": "billing",
+    "improvement": "One trial meter, the agreed renewal terms, and a clear option to start Pro now.",
+    "beforeState": "daily",
+    "note": null
+  },
+  {
+    "id": "04-trial-active",
+    "title": "Trial · allowance remaining",
+    "experience": {
+      "tier": "trial",
+      "state": "active"
+    },
+    "screen": "billing",
+    "improvement": "One percentage for the whole trial, with an end date instead of a reset timer."
+  },
+  {
+    "id": "05-pro-popup",
+    "title": "Pro · daily limit",
+    "experience": {
+      "tier": "pro",
+      "state": "daily"
+    },
+    "screen": "dialog",
+    "improvement": "Show the actual next plan, benefits, price, and the option to wait."
+  },
+  {
+    "id": "06-pro-chat",
+    "title": "Pro · in-chat notice",
+    "experience": {
+      "tier": "pro",
+      "state": "daily"
+    },
+    "screen": "chat",
+    "improvement": "Replace the generic billing detour with a contextual Max offer."
+  },
+  {
+    "id": "07-pro-billing",
+    "title": "Pro · both limits reached",
+    "experience": {
+      "tier": "pro",
+      "state": "both"
+    },
+    "screen": "billing",
+    "improvement": "The later weekly reset takes priority; both usage windows remain visible."
+  },
+  {
+    "id": "08-pro-weekly",
+    "title": "Pro · weekly limit",
+    "experience": {
+      "tier": "pro",
+      "state": "weekly"
+    },
+    "screen": "dialog",
+    "improvement": "Correct the daily-limit wording and identify the weekly reset."
+  },
+  {
+    "id": "09-max-popup",
+    "title": "Max · daily limit",
+    "experience": {
+      "tier": "max",
+      "state": "daily"
+    },
+    "screen": "dialog",
+    "improvement": "Put the next usable time first, with a restrained capacity contact."
+  },
+  {
+    "id": "10-max-chat",
+    "title": "Max · in-chat notice",
+    "experience": {
+      "tier": "max",
+      "state": "daily"
+    },
+    "screen": "chat",
+    "improvement": "A calm reset notice and direct contact replace the generic billing button."
+  },
+  {
+    "id": "11-max-billing",
+    "title": "Max · billing and capacity",
+    "experience": {
+      "tier": "max",
+      "state": "daily"
+    },
+    "screen": "billing",
+    "improvement": "Group plan, usage, and capacity help; keep payment details compact."
+  },
+  {
+    "id": "12-team-popup",
+    "title": "Team · weekly limit",
+    "experience": {
+      "tier": "team",
+      "state": "weekly"
+    },
+    "screen": "dialog",
+    "improvement": "Identify the plan and blocking week; offer the appropriate support action."
+  },
+  {
+    "id": "13-team-billing",
+    "title": "Team · billing and usage",
+    "experience": {
+      "tier": "team",
+      "state": "weekly"
+    },
+    "screen": "billing",
+    "improvement": "Usage and organization billing become a coherent page with capacity help."
+  },
+  {
+    "id": "14-enterprise-popup",
+    "title": "Enterprise · weekly limit",
+    "experience": {
+      "tier": "enterprise",
+      "state": "both"
+    },
+    "screen": "dialog",
+    "improvement": "Clear weekly timing and a direct route to the account team."
+  },
+  {
+    "id": "15-enterprise-billing",
+    "title": "Enterprise · billing and usage",
+    "experience": {
+      "tier": "enterprise",
+      "state": "both"
+    },
+    "screen": "billing",
+    "improvement": "Bring usage timing and account-team support together with organization billing.",
+    "note": "Current production already uses organization-managed Enterprise billing. This comparison does not claim to introduce that fix."
+  },
+  {
+    "id": "16-basic-chat",
+    "title": "Basic · legacy-plan notice",
+    "experience": {
+      "tier": "basic",
+      "state": "daily"
+    },
+    "screen": "notice",
+    "improvement": "A contextual Pro action replaces a generic billing destination."
+  },
+  {
+    "id": "17-basic-billing",
+    "title": "Basic · legacy-plan settings",
+    "experience": {
+      "tier": "basic",
+      "state": "daily"
+    },
+    "screen": "billing",
+    "improvement": "Keep the existing entitlement visible alongside usage and upgrade options."
+  },
+  {
+    "id": "18-choose-plan",
+    "title": "No active plan · plan selection",
+    "experience": {
+      "tier": "none",
+      "state": "expired"
+    },
+    "screen": "dialog",
+    "improvement": "Explain product benefits, prices, and billing choices before choosing a plan.",
+    "beforeScreen": "paywall",
+    "note": "Monthly example for a trial-ineligible account. Annual billing retains its derived savings label."
+  },
+  {
+    "id": "19-no-plan-billing",
+    "title": "No active plan · settings",
+    "experience": {
+      "tier": "none",
+      "state": "expired"
+    },
+    "screen": "billing",
+    "improvement": "Show account context and the path back to a subscription.",
+    "beforeScreen": "paywall",
+    "note": "Production currently covers billing with its plan paywall; the proposal makes these settings accessible."
+  },
+  {
+    "id": "20-trial-ended",
+    "title": "Trial ended · recovery",
+    "experience": {
+      "tier": "trial",
+      "state": "expired"
+    },
+    "screen": "notice",
+    "improvement": "Explain ended access and offer a fresh start in the conversation.",
+    "beforeScreen": "trial-status",
+    "note": "Before: existing billing trial status. Production has no dedicated in-chat equivalent."
+  },
+  {
+    "id": "21-trial-canceled",
+    "title": "Trial canceled · recovery",
+    "experience": {
+      "tier": "trial",
+      "state": "canceled"
+    },
+    "screen": "notice",
+    "improvement": "Respect the cancellation and offer a low-pressure way to return.",
+    "beforeScreen": "trial-status",
+    "note": "Before: existing billing trial status. The sample cancellation has already ended access."
+  },
+  {
+    "id": "22-payment-failed",
+    "title": "Payment failure · recovery",
+    "experience": {
+      "tier": "pro",
+      "state": "payment_failed"
+    },
+    "screen": "dialog",
+    "improvement": "A dedicated action to recover the existing subscription.",
+    "beforeScreen": "payment-method",
+    "note": "Before: existing payment-method management card; production has no equivalent recovery popup."
+  },
+  {
+    "id": "23-payment-billing",
+    "title": "Payment failure · settings",
+    "experience": {
+      "tier": "pro",
+      "state": "payment_failed"
+    },
+    "screen": "billing",
+    "improvement": "Bring payment recovery into the plan and usage summary.",
+    "note": "Before: generic Pro billing; no dedicated payment-failure state. After: recovery only when billing confirms suspended access."
+  },
+  {
+    "id": "24-usage-unavailable",
+    "title": "Usage unavailable · in-chat feedback",
+    "experience": {
+      "tier": "pro",
+      "state": "unavailable"
+    },
+    "screen": "notice",
+    "improvement": "Explain the missing usage data and offer retry without displaying a false zero.",
+    "absence": "Production has no dedicated in-chat usage-unavailable component.",
+    "absenceDetail": "The existing usage-limit card renders nothing when its usage request is unsuccessful. The proposed notice adds an explicit retry state."
+  },
+  {
+    "id": "25-unavailable-billing",
+    "title": "Usage unavailable · settings",
+    "experience": {
+      "tier": "pro",
+      "state": "unavailable"
+    },
+    "screen": "billing",
+    "improvement": "Keep a visible usage error and retry action instead of silently removing the section."
+  },
+  {
+    "id": "26-linked-provider",
+    "title": "Connected provider · continuation",
+    "experience": {
+      "tier": "trial",
+      "state": "total",
+      "linkedProvider": true
+    },
+    "screen": "notice",
+    "improvement": "Keep a connected-provider continuation option next to the upgrade.",
+    "beforeState": "daily",
+    "beforeScreen": "dialog",
+    "note": "Before: provider continuation exists in the popup, but not in the in-chat limit card."
+  },
+  {
+    "id": "27-pro-review",
+    "title": "Start Pro · payment review",
+    "experience": {
+      "tier": "trial",
+      "state": "total"
+    },
+    "screen": "review",
+    "improvement": "Review the trial ending early, exact charge, and next payment before paying.",
+    "absence": "There is no early trial-to-Pro payment review in this production release.",
+    "absenceDetail": "An active trial cannot use the existing tier-change operation. This proposed review depends on the new authenticated activation flow.",
+    "note": "Sample billing quote. Actual charge, tax, period, and renewal terms come from Stripe. No invented card details."
+  },
+  {
+    "id": "28-max-review",
+    "title": "Pro to Max · upgrade review",
+    "experience": {
+      "tier": "pro",
+      "state": "daily"
+    },
+    "screen": "review",
+    "improvement": "See the prorated charge, credit, tax, and renewal before upgrading to Max.",
+    "beforeScreen": "review",
+    "note": "The quoted proration date is reused on confirmation. A failed preview offers retry and Keep Pro, never an unquoted UI charge."
+  },
+  {
+    "id": "29-payment-pending",
+    "title": "Start Pro · payment processing",
+    "experience": {
+      "tier": "trial",
+      "state": "total"
+    },
+    "screen": "pending",
+    "improvement": "Wait for confirmed payment, entitlement, and usage reset before continuing.",
+    "absence": "There is no early trial-to-Pro processing screen in this production release.",
+    "absenceDetail": "The proposed flow stays pending until payment, entitlement, and usage reset are confirmed. It must not grant access from a redirect alone.",
+    "note": null
+  },
+  {
+    "id": "30-activation-success",
+    "title": "Pro activated · return to work",
+    "experience": {
+      "tier": "pro",
+      "state": "fresh"
+    },
+    "screen": "chat",
+    "improvement": "Confirm successful paid activation and fresh allowances before returning to work.",
+    "beforeState": "active",
+    "note": "Before: ordinary paid composer. After: the actual activation-success dialog; no equivalent exists in production."
+  },
+  {
+    "id": "31-fresh-billing",
+    "title": "Pro activated · fresh allowance",
+    "experience": {
+      "tier": "pro",
+      "state": "fresh"
+    },
+    "screen": "billing",
+    "improvement": "Show fresh allowances after confirmed trial-to-paid activation.",
+    "beforeState": "active",
+    "note": "Illustrative before usage is carried over. After zero usage depends on the reset receipt and successful data refresh."
+  }
+]

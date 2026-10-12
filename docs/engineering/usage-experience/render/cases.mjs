@@ -1,0 +1,42 @@
+// Each scenario mounts the current PR component with illustrative service data.
+// IDs match the production comparison archive; presentation is never reproduced here.
+const item = (id, tier, state, screen, options = {}) => ({
+  id,
+  experience: { tier, state, ...options },
+  screen,
+});
+export default [
+  item("01-trial-popup", "trial", "total", "dialog"),
+  item("02-trial-chat", "trial", "total", "chat"),
+  item("03-trial-billing", "trial", "total", "billing"),
+  item("04-trial-active", "trial", "active", "billing"),
+  item("05-pro-popup", "pro", "daily", "dialog"),
+  item("06-pro-chat", "pro", "daily", "chat"),
+  item("07-pro-billing", "pro", "both", "billing"),
+  item("08-pro-weekly", "pro", "weekly", "dialog"),
+  item("09-max-popup", "max", "daily", "dialog"),
+  item("10-max-chat", "max", "daily", "chat"),
+  item("11-max-billing", "max", "daily", "billing"),
+  item("12-team-popup", "team", "weekly", "dialog"),
+  item("13-team-billing", "team", "weekly", "billing"),
+  item("14-enterprise-popup", "enterprise", "both", "dialog"),
+  item("15-enterprise-billing", "enterprise", "both", "billing"),
+  item("16-basic-chat", "basic", "daily", "notice"),
+  item("17-basic-billing", "basic", "daily", "billing"),
+  item("18-choose-plan", "none", "expired", "paywall"),
+  item("19-no-plan-billing", "none", "expired", "billing"),
+  item("20-trial-ended", "trial", "expired", "notice"),
+  item("21-trial-canceled", "trial", "canceled", "notice"),
+  item("22-payment-failed", "pro", "payment_failed", "dialog"),
+  item("23-payment-billing", "pro", "payment_failed", "billing"),
+  item("24-usage-unavailable", "pro", "unavailable", "notice"),
+  item("25-unavailable-billing", "pro", "unavailable", "billing"),
+  item("26-linked-provider", "trial", "total", "notice", {
+    linkedProvider: true,
+  }),
+  item("27-pro-review", "trial", "total", "activation"),
+  item("28-max-review", "pro", "daily", "review"),
+  item("29-payment-pending", "trial", "total", "pending"),
+  item("30-activation-success", "pro", "fresh", "ready"),
+  item("31-fresh-billing", "pro", "fresh", "billing"),
+];

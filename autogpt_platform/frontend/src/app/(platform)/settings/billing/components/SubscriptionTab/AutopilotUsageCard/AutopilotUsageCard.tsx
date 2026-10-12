@@ -44,11 +44,8 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           Usage
         </Text>
         {!state.inactive && (
-          <Text
-            variant="small"
-            className={state.blocked ? "text-orange-700" : "text-zinc-500"}
-          >
-            {state.blocked ? "Allowance reached" : "On track"}
+          <Text variant="small" className={state.status.className}>
+            {state.status.label}
           </Text>
         )}
       </div>
@@ -58,8 +55,8 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
             {state.paymentFailed
               ? "Your payment needs attention."
               : state.unlimited
-                ? "Room to keep going."
-                : "Ready for a fresh start?"}
+                ? "No usage limit"
+                : "Choose a plan to keep working"}
           </Text>
           <Text variant="small" tone="secondary" className="leading-6">
             {state.paymentFailed
@@ -97,7 +94,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
       >
         {state.inactive
           ? "Your work stays saved."
-          : "Usage reflects the work your requests need. No surprise overages."}
+          : "Bigger requests use more of your allowance. Hitting the limit never adds a charge."}
       </Text>
     </motion.section>
   );

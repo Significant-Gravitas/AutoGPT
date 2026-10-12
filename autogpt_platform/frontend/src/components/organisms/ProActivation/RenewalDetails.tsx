@@ -26,41 +26,30 @@ interface Props {
 }
 
 export function RenewalDetails({ terms }: Props) {
-  const tax = terms.renewal_tax;
   return (
     <div className="space-y-2">
-      <Text variant="small" className="font-medium text-zinc-800">
-        Renewal details
-      </Text>
-      <Text variant="small" className="text-zinc-600">
-        {terms.renewal_terms}
-      </Text>
       {terms.renewal_discounts?.map((discount, index) => (
         <Text key={index} variant="small" className="text-zinc-600">
           {discountText(discount, terms.currency)}
         </Text>
       ))}
-      {tax?.automatic && (
-        <Text variant="small" className="text-zinc-600">
-          Tax is calculated automatically for each invoice.
+      <details className="group text-sm text-zinc-500">
+        <summary className="w-fit cursor-pointer rounded-small underline decoration-zinc-300 underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500">
+          Full renewal terms
+        </summary>
+        <Text variant="small" className="mt-3 leading-relaxed text-zinc-600">
+          {terms.renewal_terms}
         </Text>
-      )}
-      <Text variant="small" className="text-zinc-600">
-        {tax?.price_tax_behavior === "inclusive"
-          ? "The plan price includes tax."
-          : tax?.price_tax_behavior === "exclusive"
-            ? "Applicable tax is added to the plan price."
-            : "The final renewal total depends on applicable tax and offer terms."}
-      </Text>
-      {tax?.rates?.map((rate, index) => (
-        <Text key={index} variant="small" className="text-zinc-600">
-          {rate.display_name}: {rate.percentage}%{" "}
-          {rate.inclusive ? "included" : "additional"}
-          {[rate.country, rate.state].filter(Boolean).length
-            ? ` · ${[rate.country, rate.state].filter(Boolean).join(", ")}`
-            : ""}
-        </Text>
-      ))}
+        {terms.renewal_tax?.rates?.map((rate, index) => (
+          <Text key={index} variant="small" className="mt-2 text-zinc-600">
+            {rate.display_name}: {rate.percentage}%{" "}
+            {rate.inclusive ? "included" : "additional"}
+            {[rate.country, rate.state].filter(Boolean).length
+              ? ` · ${[rate.country, rate.state].filter(Boolean).join(", ")}`
+              : ""}
+          </Text>
+        ))}
+      </details>
     </div>
   );
 }

@@ -9,6 +9,11 @@ import {
   waitFor,
 } from "@/tests/integrations/test-utils";
 import { UsageLimitReachedCard } from "../UsageLimitReachedCard";
+import {
+  setTrialUser,
+  trialOffer,
+  trialResponse,
+} from "@/tests/integrations/trial-fixtures";
 const provider = vi.hoisted(() => ({ use: vi.fn(), continueHere: vi.fn() }));
 vi.mock("../../../ProviderLimitDialog/useProviderLimitDialog", () => ({
   useProviderLimitDialog: provider.use,
@@ -29,7 +34,10 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => ({
   >()),
   useGetFlag: () => true,
 }));
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  setTrialUser(null);
+});
 function setup(tier = "PRO", daily = 100, weekly = 40) {
   server.use(
     http.get("*/api/chat/usage", () =>
@@ -50,6 +58,33 @@ function setup(tier = "PRO", daily = 100, weekly = 40) {
   );
 }
 describe("Usage notice", () => {
+  it("shows the accepted trial price and its automatic Pro start date", async () => {
+    setTrialUser();
+    setup("TRIAL");
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        HttpResponse.json(
+          trialResponse({
+            allowance_used_percent: 100,
+            usage_policy: "lifetime",
+            ends_at: new Date(2026, 9, 12, 12),
+            offer: { ...trialOffer, unit_amount: 5013 },
+          }),
+        ),
+      ),
+    );
+    render(<UsageLimitReachedCard />);
+    expect(
+      await screen.findByRole("button", { name: "Start Pro now · $50.13" }),
+    ).toBeDefined();
+    expect(screen.getByText("You’ve used your trial allowance")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Pro starts on its own on Oct 12. Start it now to keep working today.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "View usage" })).toBeDefined();
+  });
   it("continues on a linked provider only after an explicit click", async () => {
     setup();
     provider.use.mockReturnValue({
@@ -68,11 +103,13 @@ describe("Usage notice", () => {
   it("prioritizes the blocking window and preserves draft editing", async () => {
     setup("PRO", 100, 100);
     render(<UsageLimitReachedCard />);
-    expect(await screen.findByText("Weekly usage reached")).toBeDefined();
+    expect(
+      await screen.findByText("You’ve hit this week’s limit"),
+    ).toBeDefined();
     expect(screen.getByText(/Oct 12/)).toBeDefined();
     expect(screen.getByText("You can keep editing your draft.")).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Review Max upgrade" }),
+      screen.getByRole("button", { name: "Upgrade to Max" }),
     ).toBeDefined();
   });
   it("does not promote an unavailable self-service tier to Enterprise", async () => {
@@ -137,6 +174,6 @@ describe("Usage notice", () => {
     ).toBeDefined();
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Daily usage reached")).toBeDefined();
+    expect(await screen.findByText("You’ve hit today’s limit")).toBeDefined();
   });
 });
