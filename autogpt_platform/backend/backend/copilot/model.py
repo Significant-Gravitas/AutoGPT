@@ -1580,10 +1580,21 @@ def _client_session_in_scope(
 ) -> bool:
     """Whether a create with these arguments could have made *session*.
 
-    An expert session's tenancy comes from the expert (``create_chat_session``
-    pins it to the owner's private tenancy), so the expert match covers it.
+    This endpoint only makes interactive sessions with no builder binding,
+    external platform, delegation or handoff, so a session that has any of
+    those came from another path and is never adopted. An expert session's
+    tenancy comes from the expert (``create_chat_session`` pins it to the
+    owner's private tenancy), so the expert match covers it.
     """
-    if session.expert_id != expert_id or session.metadata.builder_graph_id:
+    metadata = session.metadata
+    if (
+        session.expert_id != expert_id
+        or metadata.origin != "interactive"
+        or metadata.builder_graph_id
+        or metadata.source_platform
+        or metadata.delegated_by_session_id
+        or metadata.handed_off_from_expert_id
+    ):
         return False
     if expert_id is not None:
         return True
