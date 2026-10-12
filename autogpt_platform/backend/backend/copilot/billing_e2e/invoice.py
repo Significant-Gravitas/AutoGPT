@@ -51,6 +51,16 @@ ANTHROPIC_PRICES: dict[str, Price] = {
     ),
 }
 
+# The bundled CLI's own copy, which the platform charges where no provider
+# reports a cost. It prices Sonnet 5.5 cache reads at $0.20 per million,
+# twice Anthropic's rate; a row charged from it fails once the platform
+# stops charging the CLI's estimate.
+CLI_ESTIMATE_PRICES: dict[str, Price] = {
+    SONNET: Price(
+        input=2.0, output=10.0, cache_read=0.2, cache_write_5m=2.5, cache_write_1h=4.0
+    ),
+}
+
 # OpenRouter's prices, a tenth above Anthropic's list on purpose: a turn charged
 # an estimate where it should have been charged this invoice shows up as a
 # mismatch instead of matching by coincidence.
