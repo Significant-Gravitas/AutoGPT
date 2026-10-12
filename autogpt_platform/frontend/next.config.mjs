@@ -200,11 +200,7 @@ export default skipSentryPlugin
         enabled: true,
       },
 
-      // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-      // This can increase your server load as well as your hosting bill.
-      // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-      // side errors will fail.
-      tunnelRoute: "/store",
+      // Browser Sentry envelopes use the tunnel in src/lib/sentry-tunnel.ts, relayed by src/middleware.ts.
 
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)

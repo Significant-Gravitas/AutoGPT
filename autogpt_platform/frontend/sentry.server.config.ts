@@ -2,6 +2,8 @@
 // The config you add here will be used whenever the server handles a request.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { stripRequestCredentials } from "@/lib/sentry-filters";
+import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 // import { NodeProfilingIntegration } from "@sentry/profiling-node";
@@ -24,11 +26,19 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
+  beforeSend: stripRequestCredentials,
+  beforeSendTransaction(event) {
+    return isSentryTunnelTransaction(event)
+      ? null
+      : stripRequestCredentials(event);
+  },
+
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
   // Integrations
   integrations: [
+    Sentry.requestDataIntegration({ include: { cookies: false, data: false } }),
     Sentry.anrIntegration(),
     // NodeProfilingIntegration,
     Sentry.extraErrorDataIntegration(),

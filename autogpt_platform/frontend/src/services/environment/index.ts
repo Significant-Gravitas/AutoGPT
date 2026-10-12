@@ -152,6 +152,14 @@ function isSentryEnabled() {
   return process.env.DISABLE_SENTRY !== "true" && (isProd() || isDev());
 }
 
+// AutoGPT's own Sentry project, which only our hosted deployments report to.
+const HOSTED_SENTRY_DSN =
+  "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288";
+
+function getSentryDSN() {
+  return isSentryEnabled() ? HOSTED_SENTRY_DSN : undefined;
+}
+
 function areFeatureFlagsEnabled() {
   return (
     process.env.NEXT_PUBLIC_LAUNCHDARKLY_ENABLED === "true" &&
@@ -193,6 +201,7 @@ export const environment = {
   isLocal,
   isVercelPreview,
   isSentryEnabled,
+  getSentryDSN,
   isPostHogEnabled,
   areFeatureFlagsEnabled,
 };

@@ -41,6 +41,35 @@ describe("Sentry client instrumentation", () => {
     expect(types).toEqual(expect.arrayContaining(["crash", "intervention"]));
   });
 
+  it("sends envelopes to the same-origin tunnel without cookies", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "CLOUD");
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "dev");
+    await import("../../instrumentation-client");
+    vi.unstubAllEnvs();
+
+    const { tunnel, transportOptions } = initMock.mock.calls[0][0];
+
+    expect(tunnel).toBe(
+      "/relay/snentry?o=4505260022104064&p=4507946746380288&r=us",
+    );
+    expect(transportOptions?.fetchOptions?.credentials).toBe("omit");
+  });
+
+  it("starts with no tunnel while Sentry is disabled", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    await import("../../instrumentation-client");
+    vi.unstubAllEnvs();
+
+    const { enabled, tunnel } = initMock.mock.calls[0][0];
+
+    expect(enabled).toBe(false);
+    expect(tunnel).toBeUndefined();
+  });
+
   it("drops Next's handled RSC fetch fallback but keeps other fetch errors", async () => {
     await import("../../instrumentation-client");
 
