@@ -181,9 +181,9 @@ describe("AppSidebar", () => {
   it("hides recent chats when the task board flag is on", async () => {
     useGetFlagMock.mockImplementation((flag) => flag === Flag.TASK_BOARD);
     renderSidebar();
-    expect(screen.getByRole("link", { name: /^home/i })).toBeDefined();
+    expect(await screen.findByRole("link", { name: /^home/i })).toBeDefined();
     expect(screen.getByText("Marketplace")).toBeDefined();
-    await waitFor(() => expect(screen.queryByText("Recent chats")).toBeNull());
+    expect(screen.queryByText("Recent chats")).toBeNull();
     expect(screen.queryByText(/no conversations yet/i)).toBeNull();
   });
 

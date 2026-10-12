@@ -6,6 +6,5 @@ import { TaskBoardPage } from "./TaskBoardPage";
 
 export default function HomePage() {
   const { enabled, ready } = useFlagStatus(Flag.TASK_BOARD);
-  if (!ready) return null;
-  return enabled ? <TaskBoardPage /> : <CopilotPage />;
+  return ready && enabled ? <TaskBoardPage /> : <CopilotPage />;
 }

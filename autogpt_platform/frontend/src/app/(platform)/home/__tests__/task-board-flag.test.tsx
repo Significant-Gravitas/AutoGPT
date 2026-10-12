@@ -4,13 +4,14 @@ import { Flag } from "@/services/feature-flags/use-get-flag";
 import ChatPage from "../../chat/page";
 import HomePage from "../page";
 
-const { flagStatusMock, routerReplace } = vi.hoisted(() => ({
+const { flagStatusMock, routerReplace, navigation } = vi.hoisted(() => ({
   flagStatusMock: vi.fn(() => ({
     enabled: false,
     ready: true,
     answered: true,
   })),
   routerReplace: vi.fn(),
+  navigation: { pathname: "/home" },
 }));
 
 vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
@@ -40,7 +41,7 @@ vi.mock("next/navigation", async (importOriginal) => {
       replace: routerReplace,
       prefetch: vi.fn(),
     }),
-    usePathname: () => "/chat",
+    usePathname: () => navigation.pathname,
     useSearchParams: () => new URLSearchParams(),
   };
 });
@@ -59,6 +60,10 @@ afterEach(() => {
 });
 
 describe("/home with the task board flag", () => {
+  beforeEach(() => {
+    navigation.pathname = "/home";
+  });
+
   test("renders the board when the flag is on", () => {
     setFlag(true);
     render(<HomePage />);
@@ -75,15 +80,20 @@ describe("/home with the task board flag", () => {
     expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
   });
 
-  test("renders nothing until the flag resolves", () => {
-    setFlag(false, false);
-    const { container } = render(<HomePage />);
+  test("renders the chat page until the flag resolves", () => {
+    setFlag(true, false);
+    render(<HomePage />);
 
-    expect(container.textContent).toBe("");
+    expect(screen.getByText("chat page")).toBeDefined();
+    expect(screen.queryByRole("heading", { name: /board/i })).toBeNull();
   });
 });
 
 describe("/chat with the task board flag", () => {
+  beforeEach(() => {
+    navigation.pathname = "/chat";
+  });
+
   test("renders the full-page chat when the flag is on", () => {
     setFlag(true);
     render(<ChatPage />);
