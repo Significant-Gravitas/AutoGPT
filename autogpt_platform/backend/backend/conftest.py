@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
 from threading import Thread
 from uuid import uuid4
@@ -55,6 +56,42 @@ async def server():
     async with SpinTestServer() as server:
         async with _track_test_graphs(server):
             yield server
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def no_leaked_db_transaction(request: pytest.FixtureRequest):
+    """Fail a test that leaves a database transaction open.
+
+    A connection back in the pool inside an open transaction runs every later
+    test's statements inside it: their writes are never committed, and the
+    first one that fails aborts the rest. Checked while the session's client
+    is connected, i.e. once a test has started the server.
+    """
+    started = datetime.now(timezone.utc)
+    yield
+    # Deferred like the server fixture's: unit-only runs never load Prisma.
+    from backend.data import db
+    from backend.util.db_transaction_guard import (
+        find_leaked_transactions,
+        release_leaked_transactions,
+    )
+
+    if not db.is_connected():
+        return
+    leaks = await find_leaked_transactions()
+    if not leaks:
+        return
+    await release_leaked_transactions(leaks)
+    pytest.fail(
+        f"{request.node.nodeid} left a database transaction open (test began "
+        f"{started.isoformat()}); every later test would have run inside it:\n"
+        + "\n".join(
+            f"  pid {leak.pid}, {leak.state}, opened {leak.xact_start.isoformat()},"
+            f" last statement: {leak.last_query}"
+            for leak in leaks
+        ),
+        pytrace=False,
+    )
 
 
 @pytest.fixture(autouse=True)
