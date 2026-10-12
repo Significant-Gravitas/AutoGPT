@@ -112,13 +112,15 @@ test("session resilience journey: network trouble never signs the user out", asy
       dropped += 1;
       return route.abort("failed");
     });
+    await page.reload();
+    await expect.poll(() => dropped, { timeout: 15_000 }).toBe(1);
+
+    // Registered only now, so the first page load's answer can't satisfy it.
     const retried = page.waitForResponse(
       (response) =>
         response.url().includes("/api/onboarding/completed") && response.ok(),
       { timeout: 15_000 },
     );
-    await page.reload();
-
     // Soft, so a regression here still lets the session steps report too.
     expect
       .soft(
@@ -126,7 +128,6 @@ test("session resilience journey: network trouble never signs the user out", asy
         "the dropped onboarding request should be retried",
       )
       .not.toBeNull();
-    expect(dropped).toBe(1);
     await expect.soft(page.getByText(ONBOARDING_ERROR)).toHaveCount(0);
     expect.soft(onboardingErrors).toEqual([]);
     await page.unrouteAll({ behavior: "ignoreErrors" });
