@@ -32,9 +32,9 @@ from backend.util.settings import AppEnvironment, FeatureFlagBackend
 
 
 @pytest.fixture
-def ld_client(mocker):
+def ld_client(mocker, serve_launchdarkly):
     client = mocker.Mock(spec=LDClient)
-    serve_launchdarkly(mocker, client)
+    serve_launchdarkly(client)
     client.is_initialized.return_value = True
     return client
 
@@ -1050,7 +1050,7 @@ class TestRequestAttributes:
         "country,offered", [("US", True), ("BR", True), ("IN", False), (None, False)]
     )
     async def test_a_real_country_rule_decides_the_offer(
-        self, mocker, country, offered
+        self, mocker, serve_launchdarkly, country, offered
     ):
         """End to end through the real SDK evaluator, not a mocked variation.
 
@@ -1069,7 +1069,7 @@ class TestRequestAttributes:
         client = LDClient(
             Config("sdk-test", update_processor_class=td, send_events=False)
         )
-        serve_launchdarkly(mocker, client)
+        serve_launchdarkly(client)
         mocker.patch(
             "backend.util.feature_flag._fetch_user_context_status",
             return_value=(Context.builder("user-1").kind("user").build(), True),
@@ -1089,15 +1089,3 @@ class TestRequestAttributes:
 def served(value):
     """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
     return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})
-
-
-def serve_launchdarkly(mocker, client) -> None:
-    """Answer flag reads from *client*, on a deployment with an SDK key.
-
-    Without a key a read never asks LaunchDarkly at all, so a client standing
-    in for a live one needs the key that a live one would have.
-    """
-    mocker.patch.object(
-        feature_flag_module.settings.secrets, "launch_darkly_sdk_key", "sdk-test"
-    )
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)

@@ -59,9 +59,9 @@ _FORCE_PREFIXES = (
 
 
 @pytest.fixture
-def ld_client(mocker):
+def ld_client(mocker, serve_launchdarkly):
     client = mocker.Mock(spec=LDClient)
-    serve_launchdarkly(mocker, client)
+    serve_launchdarkly(client)
     client.is_initialized.return_value = True
     return client
 
@@ -462,13 +462,13 @@ class TestDualBackend:
         "posthog_value", [None, True], ids=["posthog-lacks-it", "posthog-serves-it"]
     )
     async def test_a_flag_launchdarkly_lacks_logs_nothing_if_the_value_holds(
-        self, mocker, user_context, caplog, posthog_value
+        self, mocker, serve_launchdarkly, user_context, caplog, posthog_value
     ):
         """LaunchDarkly serves the caller's default; a PostHog read serving the
         same changes nothing at the switch, answered or not."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
         ld = _launchdarkly_with(TestData.data_source())
-        serve_launchdarkly(mocker, ld)
+        serve_launchdarkly(ld)
         stub_posthog(mocker, value=posthog_value)
 
         with caplog.at_level(
@@ -550,14 +550,14 @@ class TestLaunchDarklyAnswers:
         ids=["on", "switched-off", "absent"],
     )
     async def test_only_a_served_variation_is_authoritative(
-        self, mocker, user_context, configure, expected
+        self, mocker, serve_launchdarkly, user_context, configure, expected
     ):
         """A switched-off flag still answers with its off variation; a flag
         LaunchDarkly does not have answers nothing, whatever the default."""
         td = TestData.data_source()
         configure(td)
         ld = _launchdarkly_with(td)
-        serve_launchdarkly(mocker, ld)
+        serve_launchdarkly(ld)
         try:
             result = await evaluate_feature_flag(Flag.AUTOMOD, "u-1", True)
         finally:
@@ -821,11 +821,11 @@ class TestSentryFlagContext:
 
     @pytest.mark.asyncio
     async def test_a_fallback_is_marked_beside_its_value(
-        self, mocker, user_context, sentry_flags
+        self, mocker, serve_launchdarkly, user_context, sentry_flags
     ):
         client = mocker.Mock(spec=LDClient)
         client.is_initialized.return_value = False
-        serve_launchdarkly(mocker, client)
+        serve_launchdarkly(client)
 
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
@@ -890,11 +890,11 @@ class TestSentryFlagContext:
 
     @pytest.mark.asyncio
     async def test_a_fallback_marker_stays_off_the_span(
-        self, mocker, user_context, sentry_flags
+        self, mocker, serve_launchdarkly, user_context, sentry_flags
     ):
         client = mocker.Mock(spec=LDClient)
         client.is_initialized.return_value = False
-        serve_launchdarkly(mocker, client)
+        serve_launchdarkly(client)
         span = Span()
         scope = sentry_sdk.get_current_scope()
         previous, scope.span = scope.span, span
@@ -944,7 +944,7 @@ class TestTheCountryRuleInEveryBackend:
         "country,offered", [("US", True), ("BR", True), ("IN", False), (None, False)]
     )
     async def test_the_country_decides_the_offer(
-        self, mocker, backend, country, offered
+        self, mocker, serve_launchdarkly, backend, country, offered
     ):
         use_backend(mocker, backend)
         mocker.patch(
@@ -952,7 +952,7 @@ class TestTheCountryRuleInEveryBackend:
             return_value=(Context.builder("u-1").kind("user").build(), True),
         )
         ld = _launchdarkly_serving_all_but_india()
-        serve_launchdarkly(mocker, ld)
+        serve_launchdarkly(ld)
         posthog_client = _posthog_serving_all_but_india()
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         try:
@@ -1082,13 +1082,3 @@ def _gated_route():
 def served(value):
     """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
     return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})
-
-
-def serve_launchdarkly(mocker, client) -> None:
-    """Answer flag reads from *client*, on a deployment with an SDK key.
-
-    Without a key a read never asks LaunchDarkly at all, so a client standing
-    in for a live one needs the key that a live one would have.
-    """
-    mocker.patch.object(ff.settings.secrets, "launch_darkly_sdk_key", "sdk-test")
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
