@@ -24,18 +24,15 @@ vi.mock("../actions", () => ({
   login: mockLoginAction,
 }));
 
-const CLOSED_ACCOUNT_MESSAGE =
-  "This account is closed. If you think this is a mistake, contact contact@agpt.co.";
-
-describe("LoginPage for a closed account", () => {
+describe("LoginPage error display", () => {
   beforeEach(() => {
     mockLoginAction.mockReset();
   });
 
-  test("shows the closed-account message, not a generic login error", async () => {
+  test("shows the login action's error message in the toast instead of 'Login failed'", async () => {
     mockLoginAction.mockResolvedValue({
       success: false,
-      error: CLOSED_ACCOUNT_MESSAGE,
+      error: "Invalid credentials",
     });
     render(
       <>
@@ -45,14 +42,14 @@ describe("LoginPage for a closed account", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Email"), {
-      target: { value: "closed@example.com" },
+      target: { value: "user@example.com" },
     });
     fireEvent.change(screen.getByLabelText("Password", { selector: "input" }), {
       target: { value: "hunter2-password" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Log in" }));
 
-    expect(await screen.findByText(CLOSED_ACCOUNT_MESSAGE)).toBeDefined();
+    expect(await screen.findByText("Invalid credentials")).toBeDefined();
     expect(screen.queryByText("Login failed")).toBeNull();
     expect(screen.getByRole("button", { name: "Log in" })).toBeDefined();
   });
