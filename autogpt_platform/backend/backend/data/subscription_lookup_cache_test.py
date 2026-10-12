@@ -199,9 +199,14 @@ async def worker_b(trial: TrialState, fake_stripe: FakeStripe, save_tier: AsyncM
 
 
 @pytest_asyncio.fixture
-async def redis_up():
+async def redis_up(monkeypatch):
     """These tests prove what the cache does, so a Redis the cache can't use
-    must fail them, not let every lookup fall through to Stripe and pass."""
+    must fail them, not let every lookup fall through to Stripe and pass.
+
+    They assert what is cached, not how fast: a busy CI runner can take
+    longer than the production deadline for one Redis call, which would
+    rightly send that read to Stripe and miscount the lookups."""
+    monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", WAIT)
     redis = await asyncio.wait_for(get_redis_async(), WAIT)
     assert await asyncio.wait_for(redis.ping(), WAIT)
     return redis

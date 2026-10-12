@@ -19,6 +19,7 @@ import stripe
 from prisma.enums import SubscriptionTier
 
 from backend.data import credit as worker_a
+from backend.data import versioned_cache
 from backend.data.redis_client import get_redis_async
 from backend.data.subscription_pending_cache import PENDING_CHANGES
 
@@ -123,7 +124,10 @@ def fake_stripe() -> FakeStripe:
 
 
 @pytest_asyncio.fixture
-async def worker_b(user_id: str, fake_stripe: FakeStripe):
+async def worker_b(user_id: str, fake_stripe: FakeStripe, monkeypatch):
+    # These tests assert what is cached, not how fast: a busy CI runner can
+    # take longer than the production deadline for one Redis call.
+    monkeypatch.setattr(versioned_cache, "_REDIS_DEADLINE_SECONDS", WAIT)
     redis = await asyncio.wait_for(get_redis_async(), WAIT)
     assert await asyncio.wait_for(redis.ping(), WAIT), "these tests need Redis"
     user = MagicMock(
