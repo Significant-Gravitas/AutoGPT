@@ -16,7 +16,8 @@ export function FilePreview({ file, label }: Props) {
       </Text>
       {file.content != null ? (
         <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-md bg-zinc-900 p-3 text-xs text-zinc-100">
-          {file.content || "(empty file)"}
+          {file.content ||
+            (file.content_truncated ? "(preview unavailable)" : "(empty file)")}
         </pre>
       ) : (
         <Text variant="small" tone="muted">
