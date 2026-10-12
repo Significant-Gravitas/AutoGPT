@@ -357,6 +357,19 @@ async def set_source_approval(
     return await get_source(user_id, source_id)
 
 
+async def mark_source_attempted(user_id: str, source_id: str, revision: str) -> bool:
+    """Yield selection priority without consuming or changing the source revision."""
+    updated = await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"SkillLearningSource" '
+        'SET "updatedAt" = NOW() WHERE "id" = $1 AND "userId" = $2 '
+        'AND "revision" = $3',
+        source_id,
+        user_id,
+        canonical_revision(revision),
+    )
+    return updated > 0
+
+
 async def advance_source_cursor(user_id: str, source_id: str, revision: str) -> bool:
     """Mark ``revision`` as durably dispositioned. Never moves backwards.
 

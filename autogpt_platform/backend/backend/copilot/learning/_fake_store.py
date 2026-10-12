@@ -228,6 +228,15 @@ class FakeLearningStore:
         self.sources[source_id] = updated
         return updated
 
+    async def mark_source_attempted(
+        self, user_id: str, source_id: str, revision: str
+    ) -> bool:
+        record = await self.get_source(user_id, source_id)
+        if record is None or record.revision != canonical_revision(revision):
+            return False
+        self.sources[source_id] = record.model_copy(update={"updated_at": _now()})
+        return True
+
     async def advance_source_cursor(
         self, user_id: str, source_id: str, revision: str
     ) -> bool:

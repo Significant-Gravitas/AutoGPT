@@ -135,6 +135,9 @@ async def _run_under_lease(
             count(result, "budget_exhausted")
             continue
         try:
+            await skill_learning_db().mark_source_attempted(
+                user_id, stored.id, stored.revision
+            )
             disposition = await _process_source(user_id, stored, result, config, lock)
             budget_exhausted = disposition == "budget_exhausted"
         except Exception as exc:

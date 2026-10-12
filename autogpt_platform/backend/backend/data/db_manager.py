@@ -637,6 +637,7 @@ class DatabaseManager(AppService):
     require_owned_source = _(skill_learning_data.require_owned_source)
     set_source_eligibility = _(skill_learning_data.set_source_eligibility)
     set_source_approval = _(skill_learning_data.set_source_approval)
+    mark_source_attempted = _(skill_learning_data.mark_source_attempted)
     advance_source_cursor = _(skill_learning_data.advance_source_cursor)
     upsert_review = _(skill_reviews_data.upsert_review)
     get_review = _(skill_reviews_data.get_review)
@@ -1119,6 +1120,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     require_owned_source = d.require_owned_source
     set_source_eligibility = d.set_source_eligibility
     set_source_approval = d.set_source_approval
+    mark_source_attempted = d.mark_source_attempted
     advance_source_cursor = d.advance_source_cursor
     upsert_review = d.upsert_review
     get_review = d.get_review
