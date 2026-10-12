@@ -1532,29 +1532,83 @@ class TestDreamPassRecord:
         assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
 
     @pytest.mark.asyncio
-    async def test_a_dead_end_payload_whose_row_cannot_be_read_goes_by_the_payload(
-        self, fake_redis, fake_dream_db
+    @pytest.mark.parametrize(
+        "row_read",
+        [
+            AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+            AsyncMock(return_value=None),
+        ],
+        ids=["row_unreadable", "row_missing"],
+    )
+    async def test_a_dead_end_payload_without_its_row_ends_as_its_bundles_owner(
+        self, fake_redis, fake_dream_db, row_read
     ):
-        """As a drop does: with no row to say whose pass it is, the payload's
-        owner stands, rather than the landed phase going uncharged."""
+        """No row to say whose pass it is: the input bundle says, as it does
+        for the phase handler. The landed phase is charged to, and the lock
+        released for, the bundle's owner, never the payload's."""
         _seed_submitted_pass(fake_dream_db)
-        fake_dream_db.rows["p1"]["lease_token"] = "tok-u1"
+        now = datetime.now(timezone.utc)
+        await persist_input_bundle(
+            "p1",
+            DreamInput(
+                user_id="u1", group_id="user_u1", window_start=now, window_end=now
+            ),
+            lock_token="tok-u1",
+        )
         await write_phase_to_state(
             pass_id="p1",
             phase="consolidate",
             row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
         )
         entry = _entry(phase="recombine")
-        entry.payload.update({"phase": "daydream"})
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
+        charge = AsyncMock()
+        with patch("backend.copilot.dream.batch_deliveries.read_pass", row_read), patch(
+            "backend.copilot.dream.cleanup.release_dream_lock", release_lock
+        ), patch("backend.copilot.dream.batch_costs.record_phase_cost", charge):
+            await handle_dream_batch_result(entry, [])
+
+        assert charge.await_args.args[0].scope.user_id == "u1"
+        assert release_lock.await_args.args == (MemoryScope.for_user("u1"), "tok-u1")
+
+    @pytest.mark.asyncio
+    async def test_a_dead_end_payload_with_no_record_of_its_owner_is_left_to_the_reaper(
+        self, fake_redis, fake_dream_db
+    ):
+        """Neither the row nor the input bundle can be read: nothing is charged,
+        released or deleted on the payload's word. The row closes marked, the
+        landed phase kept in the state, for the reaper to clean up after the
+        pass as the owner the row names."""
+        _seed_submitted_pass(fake_dream_db)
+        await write_phase_to_state(
+            pass_id="p1",
+            phase="consolidate",
+            row=_row(custom_id="p1:consolidate", content=_CONSOLIDATE_CONTENT),
+        )
+        entry = _entry(phase="recombine")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        release_lock = AsyncMock(return_value=True)
         charge = AsyncMock()
         with patch(
             "backend.copilot.dream.batch_deliveries.read_pass",
             AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
-        ), patch("backend.copilot.dream.batch_costs.record_phase_cost", charge):
+        ), patch(
+            "backend.copilot.dream.batch_deliveries.read_input_bundle",
+            AsyncMock(side_effect=ConnectionError("redis down")),
+        ), patch(
+            "backend.copilot.dream.cleanup.release_dream_lock", release_lock
+        ), patch(
+            "backend.copilot.dream.batch_costs.record_phase_cost", charge
+        ):
             await handle_dream_batch_result(entry, [])
 
-        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.ERRORED
-        assert charge.await_args.args[0].scope.user_id == "u1"
+        charge.assert_not_awaited()
+        release_lock.assert_not_awaited()
+        row = fake_dream_db.rows["p1"]
+        assert row["status"] is DreamPassStatus.ERRORED
+        assert row["cleanup_pending_at"] is not None
+        assert state_key("p1") in fake_redis[1]
 
     @pytest.mark.asyncio
     async def test_an_unreadable_state_still_closes_the_row_errored(

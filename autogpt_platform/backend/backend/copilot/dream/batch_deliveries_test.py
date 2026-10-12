@@ -260,16 +260,46 @@ class TestADeadEnd:
         assert input_bundle_key("p1") not in fake_dream_redis.store
         assert _LOCK_KEY not in fake_dream_redis.store
 
-    async def test_without_an_owner_leaves_the_cleanup_to_the_reaper(
-        self, mocker, fake_dream_db, fake_dream_redis, charges
+    async def test_without_an_owner_is_ended_as_its_rows(
+        self, fake_dream_db, fake_dream_redis, charges
     ):
-        """A payload that names the pass but not its owner closes the job and
-        the row, marked, and charges nobody itself; the reaper, which reads
-        the owner and the lock's token off the row, charges that owner,
-        releases the lock and cleans up."""
+        """A payload that names the pass but not its owner is ended as the
+        owner the row names: the landed phase charged to that owner, its lock
+        released, the pass cleaned up."""
         await _in_flight(fake_dream_db, fake_dream_redis)
         entry = _entry("recombine")
         entry.payload["user_id"] = ""
+
+        await handle_dream_batch_result(entry, [])
+
+        row = fake_dream_db.rows["p1"]
+        assert row["status"] is DreamPassStatus.ERRORED
+        assert _charged(charges) == ["consolidate"]
+        assert charges.await_args.args[0].scope.user_id == "u1"
+        assert _LOCK_KEY not in fake_dream_redis.store
+        assert state_key("p1") not in fake_dream_redis.hashes
+        assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
+
+    async def test_with_no_record_of_its_owner_leaves_the_cleanup_to_the_reaper(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """Neither the row nor the input bundle can be read when the dead end
+        lands: the job and the row close, marked, and nobody is charged on the
+        payload's word; the reaper, which reads the owner and the lock's token
+        off the row, charges that owner, releases the lock and cleans up."""
+        await _in_flight(fake_dream_db, fake_dream_redis)
+        entry = _entry("recombine")
+        entry.payload.update({"phase": "daydream", "user_id": "someone-else"})
+        mocker.patch.object(
+            deliveries_mod,
+            "read_pass",
+            AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+        )
+        mocker.patch.object(
+            deliveries_mod,
+            "read_input_bundle",
+            AsyncMock(side_effect=ConnectionError("redis down")),
+        )
 
         await handle_dream_batch_result(entry, [])
 
@@ -288,6 +318,7 @@ class TestADeadEnd:
 
         assert run.outcomes == {"cleaned": 1}
         assert _charged(charges) == ["consolidate"]
+        assert charges.await_args.args[0].scope.user_id == "u1"
         assert _LOCK_KEY not in fake_dream_redis.store
         assert state_key("p1") not in fake_dream_redis.hashes
         assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
