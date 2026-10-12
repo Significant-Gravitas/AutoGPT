@@ -88,7 +88,13 @@ from e2b import (
 from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
-from backend.blocks.desktop._api import DesktopSession, resolve_volume
+from backend.blocks.desktop._api import (
+    DesktopSession,
+    is_volume_mounts_disabled,
+    mark_volume_mounts_disabled,
+    resolve_volume,
+    volume_mounts_disabled,
+)
 from backend.data.redis_client import get_redis_async
 from backend.util.e2b_network import (
     EgressOwner,
@@ -813,7 +819,11 @@ async def get_or_create_owner_sandbox(
             # killed) at end_at and persist until explicitly cleaned up.
             # At most _SANDBOX_CREATE_MAX_RETRIES − 1 = 2 sandboxes can
             # leak per incident.
-            mounts = await _resolve_volume_mounts(volume_mounts, api_key)
+            mounts = (
+                None
+                if volume_mounts_disabled(api_key)
+                else await _resolve_volume_mounts(volume_mounts, api_key)
+            )
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):
                 try:
@@ -846,6 +856,18 @@ async def get_or_create_owner_sandbox(
                         owner,
                         exc,
                     )
+                    if mounts is not None and is_volume_mounts_disabled(exc):
+                        # The team has no volume mounts, so no retry can attach
+                        # them: go volume-less now instead of after another
+                        # refusal and two backoffs, all on the turn's clock.
+                        mark_volume_mounts_disabled(api_key)
+                        logger.warning(
+                            "[E2B] Volume mounts are not enabled; creating %s "
+                            "without workspace volumes",
+                            owner,
+                        )
+                        mounts = None
+                        continue
                     if (
                         mounts is not None
                         and attempt == _SANDBOX_CREATE_MAX_RETRIES - 1
