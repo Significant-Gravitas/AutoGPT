@@ -8,7 +8,7 @@ import { environment } from "@/services/environment";
 import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import z from "zod";
 import { signup as signupAction } from "./actions";
@@ -36,6 +36,10 @@ export function useSignupPage() {
   // Same-origin redirect target; off-site values are dropped so a crafted
   // `/signup?next=https://phishing.site` cannot redirect users elsewhere.
   const nextUrl = sanitizeAuthNext(searchParams.get("next"));
+
+  // Cleared on unmount: the page usually navigates away before it fires.
+  const loadingResetTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(loadingResetTimer.current), []);
 
   useEffect(() => {
     if (!isUserLoading) {
@@ -195,7 +199,7 @@ export function useSignupPage() {
         variant: "destructive",
       });
     } finally {
-      setTimeout(() => {
+      loadingResetTimer.current = setTimeout(() => {
         setIsLoading(false);
       }, 3000);
     }
