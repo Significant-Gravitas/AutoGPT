@@ -152,13 +152,16 @@ SCENARIOS = [
         calls_per_turn=(1, 1, 2),
         relaunches=False,
     ),
-    # A resumed turn whose first request drops is relaunched before anything
-    # streamed, and charged its one successful call.
+    # A chat's first request drops before anything streamed. The relaunch
+    # starts the CLI session over, which the CLI refuses while the failed
+    # launch's session file is still there, and is charged its one call.
     _sdk_anthropic_failing(
-        "sdk-anthropic-dropped-on-resume",
-        PlannedFault(kind="dropped", turn=2, request=1),
+        "sdk-anthropic-dropped-first-turn",
+        PlannedFault(kind="dropped", turn=0, request=1),
         calls_per_turn=(1, 2, 1),
     ),
+    # A resumed turn whose first request is refused is relaunched on the
+    # session before anything streamed, and charged its one successful call.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-on-resume",
         PlannedFault(kind="overloaded", turn=2, request=1),

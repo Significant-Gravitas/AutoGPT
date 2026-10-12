@@ -2,9 +2,10 @@
 
 The relaunch hides a 5xx or an overload the user never saw, so it must leave
 no trace of the failed launch: no charge for what it ran, on the live stream
-or in a subagent's file. A launch that already streamed a tool call cannot be
-hidden: the call ran and the user watched it, and a relaunch would resend the
-query that made it. That turn ends in the error instead, with the call kept.
+or in a subagent's file, and no session id the CLI would refuse to start
+again. A launch that already streamed a tool call cannot be hidden: the call
+ran and the user watched it, and a relaunch would resend the query that made
+it. That turn ends in the error instead, with the call kept.
 
 Each turn below runs ``stream_chat_completion_sdk`` for real against a
 scripted CLI. On an OpenRouter turn the cost reconcile runs for real too,
@@ -121,6 +122,24 @@ async def test_a_failure_before_any_output_is_retried_and_billed_once(
 
 
 @pytest.mark.asyncio
+async def test_a_first_turn_failure_before_any_output_is_retried(
+    tmp_path, monkeypatch
+):
+    """A chat's first turn starts a fresh CLI session, and the CLI writes its
+    file before the first call. Relaunched under the same session id the CLI
+    refuses to start ("Session ID ... is already in use"), so the retry must
+    start the session over instead of failing the turn."""
+    turn = _Turn(tmp_path, monkeypatch, first_turn=True)
+
+    await turn.run([[_overloaded()], _reply("gen-ok")])
+
+    assert [options.resume for options in turn.launched] == [None, None]
+    assert not turn.errors()
+    assert [m.content for m in turn.persisted_messages()[1:]] == ["ok"]
+    assert turn.reconciled_cost() == pytest.approx(_COSTS["gen-ok"])
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("failure", "code"),
     [
@@ -174,9 +193,16 @@ _Step = AssistantMessage | UserMessage | ResultMessage | Callable[[], None]
 
 
 class _Turn:
-    """The user's second turn of a chat, so the CLI resumes its session."""
+    """A user turn of a chat: its second by default, so the CLI resumes its
+    session; on ``first_turn`` the CLI starts one."""
 
-    def __init__(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def __init__(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        first_turn: bool = False,
+    ) -> None:
         # The CLI keeps its sessions, and its subagents their transcripts,
         # under the home dir; the reconcile reads them back from there.
         monkeypatch.setenv("HOME", str(tmp_path))
@@ -186,6 +212,10 @@ class _Turn:
         self._subagents.mkdir(parents=True)
         self.launched: list[Any] = []
         self.events: list[StreamBaseResponse] = []
+        prior = [
+            ChatMessage(role="user", content="prior question"),
+            ChatMessage(role="assistant", content="prior answer"),
+        ]
         self.session = ChatSession(
             session_id=_SESSION_ID,
             user_id="test-user",
@@ -193,10 +223,11 @@ class _Turn:
             started_at=datetime.now(UTC),
             updated_at=datetime.now(UTC),
             messages=[
-                ChatMessage(role="user", content="prior question"),
-                ChatMessage(role="assistant", content="prior answer"),
+                *([] if first_turn else prior),
                 ChatMessage(role="user", content="hello"),
             ],
+            # A titled chat skips title generation, a model call of its own.
+            title="Retries",
         )
         self._launches: list[list[_Step]] = []
         self._mocks: dict[str, MagicMock] = {}
@@ -236,13 +267,16 @@ class _Turn:
         with contextlib.ExitStack() as stack:
             for target, kwargs in patches:
                 self._mocks[target] = stack.enter_context(patch(target, **kwargs))
-            stack.enter_context(
-                patch(
-                    f"{_SVC}.build_skills_update_notice",
-                    new_callable=AsyncMock,
-                    return_value=None,
+            # A resumed turn diffs the user's skills, and a first turn loads
+            # the user's context, both over DB and scheduler RPCs.
+            for name, value in (
+                ("build_skills_update_notice", None),
+                ("build_session_context", ""),
+                ("inject_user_context", None),
+            ):
+                stack.enter_context(
+                    patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
                 )
-            )
             stack.enter_context(
                 patch(f"{_SVC}._compute_transient_backoff", return_value=0)
             )
@@ -282,10 +316,14 @@ class _Turn:
         return list(upsert.await_args.args[0].messages)
 
     def _launch(self, *args: Any, **kwargs: Any) -> AsyncMock:
+        options = kwargs["options"]
         script = self._launches[len(self.launched)]
-        self.launched.append(kwargs["options"])
+        self.launched.append(options)
+        refusal = _start_session(options)
 
         async def receive():
+            if refusal is not None:
+                raise refusal
             for step in script:
                 if callable(step):
                     step()
@@ -299,6 +337,21 @@ class _Turn:
         context.__aenter__.return_value = client
         context.__aexit__.return_value = None
         return context
+
+
+def _start_session(options: Any) -> Exception | None:
+    """What the CLI does with ``--session-id``: write the session's file before
+    its first call, and refuse an id whose file is already there."""
+    if options.resume is not None or not options.session_id:
+        return None
+    path = Path(cli_session_path(_SDK_CWD, options.session_id))
+    if path.exists():
+        return RuntimeError(
+            "Command failed with exit code 1: "
+            f"Error: Session ID {options.session_id} is already in use."
+        )
+    path.write_text("")
+    return None
 
 
 def _overloaded() -> AssistantMessage:

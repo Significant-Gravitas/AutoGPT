@@ -2460,8 +2460,7 @@ def _next_transient_backoff(
 async def _do_transient_backoff(
     backoff: int,
     state: "_RetryState",
-    message_id: str,
-    session_id: str,
+    ctx: _StreamContext,
 ) -> AsyncIterator[StreamStatus]:
     """Emit a retry notification, sleep, and reset the SDK adapter.
 
@@ -2474,17 +2473,27 @@ async def _do_transient_backoff(
     for the same reason. The user pays for the attempt that succeeds, not for
     our failure.
 
+    A launch that started a fresh CLI session (``--session-id``, no
+    ``--resume``: a chat's first turn, or a turn whose session could not be
+    restored) wrote that session's file before its call failed, and the CLI
+    refuses the id again ("Session ID ... is already in use"). The file goes,
+    so the relaunch can start the session again; the failed launch streamed
+    nothing, so it holds nothing worth resuming.
+
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
     """
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
     state.adapter = SDKResponseAdapter(
-        message_id=message_id,
-        session_id=session_id,
+        message_id=ctx.message_id,
+        session_id=ctx.session_id,
     )
     state.usage.cli_session_total_usd = None
     await state.generations.absorb_launch()
+    fresh_session = state.options.session_id
+    if ctx.sdk_cwd and fresh_session and state.options.resume is None:
+        delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
 
 
 def _is_fallback_stderr(line: str) -> bool:
@@ -5992,7 +6001,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             max_transient_retries,
                         )
                         async for evt in _do_transient_backoff(
-                            backoff, state, message_id, session_id
+                            backoff, state, stream_ctx
                         ):
                             yield evt
                         continue  # retry the same context-level attempt
@@ -6066,7 +6075,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             max_transient_retries,
                         )
                         async for evt in _do_transient_backoff(
-                            backoff, state, message_id, session_id
+                            backoff, state, stream_ctx
                         ):
                             yield evt
                         continue  # retry same context-level attempt
