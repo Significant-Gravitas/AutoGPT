@@ -785,12 +785,17 @@ async def cleanup_orphaned_schedules_bulk(
             logger.error(f"Failed to delete schedule {schedule_id}: {e}")
             return False
 
+    # Let every delete finish before answering, so one uncertain outcome
+    # doesn't leave the rest running unobserved.
     results = await asyncio.gather(
         *[delete_schedule(schedule_id) for schedule_id in schedule_ids],
-        return_exceptions=False,
+        return_exceptions=True,
     )
+    uncertain = [r for r in results if isinstance(r, HTTPException)]
+    if uncertain:
+        raise uncertain[0]
 
-    deleted_count = sum(1 for success in results if success)
+    deleted_count = sum(1 for success in results if success is True)
 
     logger.info(
         f"Admin {admin_user_id} deleted {deleted_count}/{len(schedule_ids)} orphaned schedules"
