@@ -4430,7 +4430,7 @@
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update session board",
-        "description": "Move a card, within its board or onto ``board_id``. A card moved to\nanother board keeps its column if that board has it, else goes to\nBacklog, and goes on top. A card that has not started yet starts with\nits title as the first message when it moves to any column but Backlog\nor Done.",
+        "description": "Move a card, within its board or onto ``board_id``. A card moved to\nanother board keeps its column if that board has it, else goes to\nBacklog, and goes on top; a Home card with no column takes the one Home\nshows it in and does not start. A card that has not started yet starts\nwith its title as the first message when it moves to any column but\nBacklog or Done.",
         "operationId": "patchV2Update session board",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
