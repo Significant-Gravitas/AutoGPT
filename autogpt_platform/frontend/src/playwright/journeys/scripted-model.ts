@@ -101,16 +101,25 @@ export function expectEachTurnOnce(
  * Checks the copilot's cost ledger charged the user exactly what the model
  * billed the runs (`nonces`) for their turns and side calls (the chat's
  * title): every request once, none missed, none twice. Each ledger row may be
- * off by rounding, as the backend's billing audit allows. The journal is
- * re-read until both agree, since the title is requested in the background.
+ * off by rounding, as the backend's billing audit allows. The journal and the
+ * ledger are re-read until they agree, and only once every run has asked for
+ * its title, which happens in the background.
  */
 export async function expectChargedWhatWasBilled(
   userID: string,
   nonces: string[],
 ) {
   await expect(async () => {
-    const journal = (await Promise.all(nonces.map(readJournal))).flat();
-    const billed = journal
+    const journals = await Promise.all(nonces.map(readJournal));
+    // Compared before a title went out, the totals would agree without it.
+    expect(
+      nonces.filter(
+        (_, run) => !journals[run].some((entry) => entry.kind === "side_call"),
+      ),
+      "every chat should have asked for its title",
+    ).toEqual([]);
+    const billed = journals
+      .flat()
       .filter((entry) => entry.kind === "turn" || entry.kind === "side_call")
       .reduce(
         (sum, entry) => sum + Math.round((entry.cost_usd ?? 0) * 1_000_000),
