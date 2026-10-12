@@ -184,26 +184,15 @@ def test_read_no_cwd_denies_absolute():
 # -- Tool-results directory --------------------------------------------------
 
 
-def test_read_tool_results_allowed():
+def test_read_of_the_sessions_own_tool_results_is_blocked_too():
+    """``Read`` is a disallowed built-in: even the session's own artifact
+    paths are refused, as for every other disallowed tool."""
     home = os.path.expanduser("~")
     path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-results/12345.txt"
-    # is_allowed_local_path requires the session's encoded cwd to be set
     token = _current_project_dir.set("-tmp-copilot-abc123")
     try:
         result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert result == {}
-    finally:
-        _current_project_dir.reset(token)
-
-
-def test_read_tool_outputs_allowed():
-    """tool-outputs/ paths should be allowed, same as tool-results/."""
-    home = os.path.expanduser("~")
-    path = f"{home}/.claude/projects/-tmp-copilot-abc123/a1b2c3d4-e5f6-7890-abcd-ef1234567890/tool-outputs/12345.txt"
-    token = _current_project_dir.set("-tmp-copilot-abc123")
-    try:
-        result = _validate_tool_access("Read", {"file_path": path}, sdk_cwd=SDK_CWD)
-        assert result == {}
+        assert _is_denied(result)
     finally:
         _current_project_dir.reset(token)
 

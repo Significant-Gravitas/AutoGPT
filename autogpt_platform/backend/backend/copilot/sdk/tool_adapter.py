@@ -1182,15 +1182,9 @@ BLOCKED_TOOLS = {
 }
 
 # Tools allowed only when their path argument stays within the SDK workspace.
-# The SDK uses these to handle oversized tool results (writes to tool-results/
-# files, then reads them back) and for workspace file operations.
-# Read is included because the SDK reads back oversized tool results from
-# tool-results/ and tool-outputs/ directories.  It is also in
-# SDK_DISALLOWED_TOOLS (which controls the SDK's disallowed_tools config),
-# but the security hooks check workspace scope BEFORE the blocked list
-# so that these internal reads are permitted.
-# Write and Edit are NOT included: they are fully replaced by MCP equivalents.
-WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
+# Read, Write and Edit are NOT included: they are disallowed built-ins, and
+# the MCP equivalents replace them.
+WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep"}
 
 # Dangerous patterns in tool inputs
 DANGEROUS_PATTERNS = [
