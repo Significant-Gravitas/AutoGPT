@@ -7,6 +7,12 @@ export const trialPlanLabels: Record<TrialOfferResponse["tier"], string> = {
   BUSINESS: "Team",
 };
 
+// "Subscribe now" lands on billing with this marker, which opens the trial
+// plan's own confirmation there instead of leaving the person to find it.
+export const SUBSCRIBE_NOW_PARAM = "subscribe";
+export const SUBSCRIBE_NOW_VALUE = "trial-plan";
+export const BILLING_PATH = "/settings/billing";
+
 export function formatTrialPrice(offer: TrialOfferResponse) {
   const amount = currencyFormatter(offer.currency).format(
     getTrialChargeAmount(offer),
