@@ -22,6 +22,12 @@ test.describe("realtime updates journey", () => {
     await library.openSavedAgent(agentName);
     await clickRunButton(page);
     const pageInstance = await markPageInstance(page);
+    await expect
+      .poll(() => liveConnection.opened(), {
+        message: "the page never opened its live connection",
+        timeout: 30_000,
+      })
+      .toBeGreaterThan(0);
     // In flight (queued or running) right before the drop, so the completion
     // has to cross it.
     await expect(
@@ -50,6 +56,13 @@ test.describe("realtime updates journey", () => {
 async function proxyLiveConnection(page: Page) {
   const open: { client: WebSocketRoute; server: WebSocketRoute }[] = [];
   let opened = 0;
+
+  // The client's own account of its connection, in the test output.
+  page.on("console", (message) => {
+    if (/BackendAPI|WebSocket|Heartbeat/.test(message.text())) {
+      console.log(`[browser] ${message.text()}`);
+    }
+  });
 
   await page.routeWebSocket(/\/ws(\?|$)/, (client) => {
     const server = client.connectToServer();

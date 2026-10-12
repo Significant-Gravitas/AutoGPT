@@ -1110,6 +1110,9 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     // Do not attempt to connect if a disconnect intent is present (e.g., during logout)
     if (this._hasDisconnectIntent()) {
+      console.info(
+        "[BackendAPI] Skipping WebSocket connect: a logout is in progress",
+      );
       return;
     }
 

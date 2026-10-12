@@ -29,7 +29,9 @@ export function useAgentActivityDropdown() {
     dataUpdatedAt: executionsUpdatedAt,
     refetch: refetchExecutions,
   } = useGetV1ListAllExecutions({
-    query: { select: okData },
+    // In the new layout this list only mounts when the account menu opens;
+    // the cached page-load copy would miss every run started since.
+    query: { select: okData, refetchOnMount: "always" },
   });
 
   // Get all graph IDs from agentInfoMap
