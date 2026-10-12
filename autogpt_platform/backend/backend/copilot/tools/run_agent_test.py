@@ -6,7 +6,11 @@ import orjson
 import pytest
 
 from backend.copilot.context import set_turn_unattended
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionMeta,
+    GraphExecutionWithNodes,
+)
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.executor.scheduler import GraphExecutionJobInfo
 from backend.executor.utils import is_credential_validation_error_message
@@ -1667,10 +1671,6 @@ def _completed_run_mocks(
 ):
     """Wire the waited-COMPLETED path: library agent, execution, waiter,
     outputs, and the detailed per-node trace fetch."""
-    from unittest.mock import MagicMock
-
-    from backend.data.execution import GraphExecutionMeta, GraphExecutionWithNodes
-
     lib = MagicMock()
     lib.graph_id = "graph-1"
     lib.graph_version = 1
