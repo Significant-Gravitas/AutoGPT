@@ -3,7 +3,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
-from autogpt_libs.auth import closed_accounts, remember_account_closed
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
@@ -451,7 +451,7 @@ async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None
     try:
         user_id = await authenticate_websocket(ws)
     finally:
-        closed_accounts._CLOSED_ACCOUNT_CACHE.pop("user-closed", None)
+        forget_account_state("user-closed")
 
     ws.close.assert_awaited_once_with(code=4003, reason="This account is closed.")
     assert user_id == ""

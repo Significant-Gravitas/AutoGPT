@@ -6,6 +6,7 @@ sessions does not stop a token already minted. ``get_user_id`` and
 account, and nothing may self-heal its User row back into existence.
 """
 
+import asyncio
 import sys
 import types
 from unittest.mock import AsyncMock, Mock
@@ -15,13 +16,16 @@ from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
-from autogpt_libs import auth
-from autogpt_libs.auth import closed_accounts, dependencies
+from autogpt_libs.auth import (
+    closed_accounts,
+    dependencies,
+    forget_account_state,
+    remember_account_closed,
+)
 from autogpt_libs.auth.dependencies import (
     get_request_context,
     get_user_id,
     get_user_id_allowing_closed,
-    remember_account_closed,
     requires_admin_user,
     requires_user,
 )
@@ -47,6 +51,7 @@ def _payload(user_id: str, role: str = "user") -> dict:
 def _fresh_caches():
     def clear():
         closed_accounts._CLOSED_ACCOUNT_CACHE.clear()
+        closed_accounts._LOOKUPS_IN_FLIGHT.clear()
         dependencies._PROVISIONED_USER_IDS.clear()
         dependencies._HEALS_IN_FLIGHT.clear()
 
@@ -301,11 +306,79 @@ class TestClosedAccountCache:
             with pytest.raises(HTTPException):
                 await get_user_id(_request(), _payload(OPEN))
 
-    def test_remember_account_closed_is_one_function_wherever_imported(self):
-        """Callers import it from the package or from ``dependencies``; each
-        must reach the cache ``get_user_id`` reads."""
-        assert auth.remember_account_closed is closed_accounts.remember_account_closed
-        assert remember_account_closed is closed_accounts.remember_account_closed
+    @pytest.mark.asyncio
+    async def test_forget_account_state_drops_a_remembered_close(self, backend):
+        remember_account_closed(OPEN)
+
+        forget_account_state(OPEN)
+
+        assert await get_user_id(_request(), _payload(OPEN)) == OPEN
+        assert backend.is_closed.await_count == 1
+
+
+class TestConcurrentLookups:
+    """A first page load fans out ~20 requests at once; they must share one
+    query instead of each paying for its own."""
+
+    @pytest.fixture
+    def blocked_query(self, mocker: MockerFixture):
+        release = asyncio.Event()
+        calls: list[str] = []
+
+        async def query(user_id: str) -> bool:
+            calls.append(user_id)
+            await release.wait()
+            return False
+
+        mocker.patch.object(
+            closed_accounts, "_closed_account_query", return_value=query
+        )
+        return types.SimpleNamespace(release=release, calls=calls)
+
+    @pytest.mark.asyncio
+    async def test_a_burst_runs_one_query(self, blocked_query):
+        lookups = [
+            asyncio.ensure_future(closed_accounts.get_account_state(OPEN))
+            for _ in range(20)
+        ]
+        await asyncio.sleep(0)
+        blocked_query.release.set()
+
+        states = await asyncio.gather(*lookups)
+
+        assert blocked_query.calls == [OPEN]
+        assert states == [closed_accounts.AccountState.OPEN] * 20
+        assert closed_accounts._LOOKUPS_IN_FLIGHT == {}
+
+    @pytest.mark.asyncio
+    async def test_a_close_remembered_while_waiting_wins_for_every_waiter(
+        self, blocked_query
+    ):
+        lookups = [
+            asyncio.ensure_future(closed_accounts.get_account_state(OPEN))
+            for _ in range(5)
+        ]
+        await asyncio.sleep(0)
+        remember_account_closed(OPEN)
+        blocked_query.release.set()
+
+        states = await asyncio.gather(*lookups)
+
+        assert blocked_query.calls == [OPEN]
+        assert states == [closed_accounts.AccountState.CLOSED] * 5
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_request_does_not_cancel_the_shared_lookup(
+        self, blocked_query
+    ):
+        first = asyncio.ensure_future(closed_accounts.get_account_state(OPEN))
+        second = asyncio.ensure_future(closed_accounts.get_account_state(OPEN))
+        await asyncio.sleep(0)
+        first.cancel()
+        blocked_query.release.set()
+
+        assert await second is closed_accounts.AccountState.OPEN
+        assert blocked_query.calls == [OPEN]
 
 
 class TestGetUserIdAllowingClosed:

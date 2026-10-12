@@ -5,11 +5,14 @@ auth dependencies ask on every request and reject a closed account
 themselves. The answers are cached briefly in this process.
 """
 
+import asyncio
 import logging
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from enum import Enum
+
+from fastapi import HTTPException
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,9 @@ _CLOSED_ACCOUNT_CACHE: "OrderedDict[str, tuple[AccountState, float]]" = OrderedD
 _CLOSED_ACCOUNT_CACHE_MAX = 10_000
 _CLOSED_ACCOUNT_TTL_SECS = 15 * 60
 _OPEN_ACCOUNT_TTL_SECS = 30
+# Lookups still running, id -> task: a page load's burst of requests for one
+# user waits on the same query instead of each running its own.
+_LOOKUPS_IN_FLIGHT: "dict[str, asyncio.Task[AccountState]]" = {}
 
 
 def remember_account_closed(user_id: str) -> None:
@@ -42,6 +48,19 @@ def remember_account_closed(user_id: str) -> None:
     accepting the user until its cached "open" answer expired.
     """
     _cache_account_state(user_id, AccountState.CLOSED)
+
+
+def forget_account_state(user_id: str) -> None:
+    """Drop this process's cached answer for *user_id* (test teardown)."""
+    _CLOSED_ACCOUNT_CACHE.pop(user_id, None)
+
+
+async def reject_closed_account(user_id: str) -> AccountState:
+    """*user_id*'s account state; HTTP 401 when the account is closed."""
+    state = await get_account_state(user_id)
+    if state is AccountState.CLOSED:
+        raise HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+    return state
 
 
 async def get_account_state(user_id: str) -> AccountState:
@@ -55,9 +74,28 @@ async def get_account_state(user_id: str) -> AccountState:
     if cached is not None:
         return cached
 
-    query = _closed_account_query()
-    if query is None:
-        return AccountState.OPEN
+    lookup = _LOOKUPS_IN_FLIGHT.get(user_id)
+    # A lookup left behind by another event loop can't be awaited from this one.
+    if lookup is None or lookup.get_loop() is not asyncio.get_running_loop():
+        query = _closed_account_query()
+        if query is None:
+            return AccountState.OPEN
+        lookup = asyncio.ensure_future(_settle_account_state(user_id, query))
+        _LOOKUPS_IN_FLIGHT[user_id] = lookup
+        lookup.add_done_callback(lambda done: _forget_lookup(user_id, done))
+    # Shielded: a request that is cancelled must not cancel the lookup that
+    # the other requests for this user are waiting on.
+    return await asyncio.shield(lookup)
+
+
+def _forget_lookup(user_id: str, lookup: "asyncio.Future[AccountState]") -> None:
+    if _LOOKUPS_IN_FLIGHT.get(user_id) is lookup:
+        del _LOOKUPS_IN_FLIGHT[user_id]
+
+
+async def _settle_account_state(
+    user_id: str, query: Callable[[str], Awaitable[bool]]
+) -> AccountState:
     try:
         closed = await query(user_id)
         state = AccountState.CLOSED if closed else AccountState.OPEN

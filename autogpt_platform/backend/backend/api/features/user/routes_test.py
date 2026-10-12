@@ -11,7 +11,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
-from autogpt_libs.auth import closed_accounts, remember_account_closed
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.routing import APIRoute
 from prisma.actions import UserActions
@@ -148,7 +148,7 @@ def closed_account() -> Iterator[str]:
     }
     remember_account_closed(user_id)
     yield user_id
-    closed_accounts._CLOSED_ACCOUNT_CACHE.pop(user_id, None)
+    forget_account_state(user_id)
 
 
 @pytest.mark.parametrize(

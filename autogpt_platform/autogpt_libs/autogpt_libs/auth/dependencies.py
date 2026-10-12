@@ -12,9 +12,7 @@ from collections import OrderedDict
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-# The "as" form re-exports remember_account_closed, still imported from here.
-from .closed_accounts import ACCOUNT_CLOSED_DETAIL, AccountState, get_account_state
-from .closed_accounts import remember_account_closed as remember_account_closed
+from .closed_accounts import AccountState, get_account_state, reject_closed_account
 from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
@@ -148,7 +146,9 @@ async def requires_user(jwt_payload: dict = fastapi.Security(get_jwt_payload)) -
             closed their account
     """
     user = verify_user(jwt_payload, admin_only=False)
-    await _reject_closed_account(user.user_id)
+    # No heal here: routes guarded only by requires_user (POST /auth/user)
+    # provision the row themselves.
+    await reject_closed_account(user.user_id)
     return user
 
 
@@ -163,15 +163,8 @@ async def requires_admin_user(
             closed their account; 403 for insufficient permissions
     """
     user = verify_user(jwt_payload, admin_only=True)
-    await _reject_closed_account(user.user_id)
+    await reject_closed_account(user.user_id)
     return user
-
-
-async def _reject_closed_account(user_id: str) -> None:
-    """401 when *user_id* closed their account. Never heals: routes guarded
-    only by ``requires_user`` (POST /auth/user) provision the row themselves."""
-    if await get_account_state(user_id) is AccountState.CLOSED:
-        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
 
 
 async def get_user_id(
@@ -209,9 +202,8 @@ async def _resolve_user_id(
     request: fastapi.Request, jwt_payload: dict, *, allow_closed: bool
 ) -> str:
     subject = _token_subject(jwt_payload)
-    state = await get_account_state(subject)
-    if state is AccountState.CLOSED and not allow_closed:
-        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+    check = get_account_state if allow_closed else reject_closed_account
+    state = await check(subject)
 
     if state is AccountState.OPEN:
         # Self-heal a missing platform User row for the token's own subject.
@@ -400,9 +392,7 @@ async def get_request_context(
     # --- 1. user_id (reuse existing impersonation logic) ----------------------
     subject = _token_subject(jwt_payload)
     # Before anything below can self-heal the account's User row.
-    account_state = await get_account_state(subject)
-    if account_state is AccountState.CLOSED:
-        raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
+    account_state = await reject_closed_account(subject)
     user_id = _impersonated_user_id(request, jwt_payload) or subject
 
     # --- 2. org_id ------------------------------------------------------------

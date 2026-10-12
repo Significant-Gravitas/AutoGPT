@@ -1,8 +1,4 @@
-from autogpt_libs.auth.closed_accounts import (
-    ACCOUNT_CLOSED_DETAIL,
-    AccountState,
-    get_account_state,
-)
+from autogpt_libs.auth import reject_closed_account
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
@@ -19,6 +15,10 @@ from backend.data.auth.oauth import (
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
+# Every path rejects a closed account's key or token with a 401: deletion
+# revokes every key and grant, but one issued while the account was closing
+# would otherwise keep working until the account's data is erased.
+
 
 async def require_api_key(api_key: str | None = Security(api_key_header)) -> APIKeyInfo:
     """Middleware for API key authentication only"""
@@ -34,7 +34,7 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> API
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
-    await _reject_closed_account(api_key_obj)
+    await reject_closed_account(api_key_obj.user_id)
     return api_key_obj
 
 
@@ -53,7 +53,7 @@ async def require_access_token(
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
-    await _reject_closed_account(token_info)
+    await reject_closed_account(token_info.user_id)
     return token_info
 
 
@@ -75,7 +75,7 @@ async def require_auth(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
-            await _reject_closed_account(api_key_info)
+            await reject_closed_account(api_key_info.user_id)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -87,7 +87,7 @@ async def require_auth(
             token_info, _ = await validate_access_token(bearer.credentials)
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
-        await _reject_closed_account(token_info)
+        await reject_closed_account(token_info.user_id)
         return token_info
 
     # No credentials provided
@@ -117,15 +117,3 @@ def require_permission(*permissions: APIKeyPermission):
         return auth
 
     return check_permissions
-
-
-async def _reject_closed_account(auth: APIAuthorizationInfo) -> None:
-    """401 when the key's or token's user closed their account.
-
-    Deletion revokes every key and grant, but one issued while the account was
-    closing would otherwise keep working until the account's data is erased.
-    """
-    if await get_account_state(auth.user_id) is AccountState.CLOSED:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail=ACCOUNT_CLOSED_DETAIL
-        )

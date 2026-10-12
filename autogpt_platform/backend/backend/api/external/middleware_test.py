@@ -10,7 +10,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from autogpt_libs.auth import closed_accounts, remember_account_closed
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
 from prisma.enums import APIKeyPermission, APIKeyStatus
@@ -36,7 +36,7 @@ def closed_account() -> Iterator[None]:
     remember_account_closed(CLOSED_USER)
     yield
     for user_id in (OPEN_USER, CLOSED_USER):
-        closed_accounts._CLOSED_ACCOUNT_CACHE.pop(user_id, None)
+        forget_account_state(user_id)
 
 
 def _key(user_id: str) -> APIKeyInfo:

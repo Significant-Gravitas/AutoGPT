@@ -64,7 +64,6 @@ from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_cre
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
-from backend.data.account_deletion import is_account_closed
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -552,9 +551,6 @@ class DatabaseManager(AppService):
 
     find_server_link_owner = _(platform_linking_db.find_server_link_owner)
     find_user_link_owner = _(platform_linking_db.find_user_link_owner)
-    # Read by the Prisma-less bot path: a closed account's links count as
-    # unlinked, so nobody runs turns as it.
-    is_account_closed = _(is_account_closed)
     resolve_server_link = _(platform_linking_db.resolve_server_link)
     resolve_user_link = _(platform_linking_db.resolve_user_link)
     create_server_link_token = _(platform_linking_db.create_server_link_token)
@@ -1006,7 +1002,6 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_default_team = d.get_user_default_team
     resolve_default_tenancy = d.resolve_default_tenancy
     find_user_link_owner = d.find_user_link_owner
-    is_account_closed = d.is_account_closed
     resolve_server_link = d.resolve_server_link
     resolve_user_link = d.resolve_user_link
     create_server_link_token = d.create_server_link_token

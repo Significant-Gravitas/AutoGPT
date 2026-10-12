@@ -1,4 +1,8 @@
-from .closed_accounts import remember_account_closed
+from .closed_accounts import (
+    forget_account_state,
+    reject_closed_account,
+    remember_account_closed,
+)
 from .config import verify_settings
 from .dependencies import (
     get_optional_user_id,
@@ -25,6 +29,8 @@ __all__ = [
     "get_user_id",
     "get_user_id_allowing_closed",
     "remember_account_closed",
+    "forget_account_state",
+    "reject_closed_account",
     "requires_admin_user",
     "requires_user",
     "get_optional_user_id",

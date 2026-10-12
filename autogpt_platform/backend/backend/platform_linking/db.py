@@ -14,6 +14,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import PlatformLink, PlatformLinkToken, PlatformUserLink
 
 from backend.copilot.db import get_chat_session_metadata
+from backend.data.account_deletion import is_account_closed
 from backend.data.db import transaction
 from backend.data.workspace import get_workspace, get_workspace_file
 from backend.data.workspace_scope import (
@@ -62,14 +63,21 @@ def _link_base_url() -> str:
 # by AppService's result validator.
 
 
-async def find_server_link_owner(platform: str, platform_server_id: str) -> str | None:
+async def find_server_link_owner(
+    platform: str, platform_server_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the server; with *open_only*, None for a closed
+    account, checked in the same call so the bot pays no extra round trip."""
     link = await PlatformLink.prisma().find_first(
         where={"platform": platform, "platformServerId": platform_server_id}
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
 
 
-async def find_user_link_owner(platform: str, platform_user_id: str) -> str | None:
+async def find_user_link_owner(
+    platform: str, platform_user_id: str, *, open_only: bool = False
+) -> str | None:
+    """The user who linked the DMs; *open_only* as in find_server_link_owner."""
     link = await PlatformUserLink.prisma().find_unique(
         where={
             "platform_platformUserId": {
@@ -78,7 +86,13 @@ async def find_user_link_owner(platform: str, platform_user_id: str) -> str | No
             }
         }
     )
-    return link.userId if link else None
+    return await _owner(link.userId if link else None, open_only)
+
+
+async def _owner(user_id: str | None, open_only: bool) -> str | None:
+    if user_id is None or not open_only:
+        return user_id
+    return None if await is_account_closed(user_id) else user_id
 
 
 async def resolve_server_link(
