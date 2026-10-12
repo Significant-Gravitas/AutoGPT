@@ -127,6 +127,14 @@ class TestCredentialsSurfacingGuardrails:
         assert "own integration is listed first" in result
         assert "only for an action it does not offer" in result
 
+    def test_prompt_routes_full_inventory_to_list_user_credentials(self):
+        """``find_capability`` answers one service; the inventory tool is for
+        "what have I connected", not a check before every sign-in."""
+        result = " ".join(prompting.get_sdk_supplement(use_e2b=False).split())
+        assert 'run_capability(id="tool:list_user_credentials"' in result
+        assert "what they have connected overall" in result
+        assert result.count("list_user_credentials") == 1
+
 
 class TestToolDiscoveryPriorityAntiPattern:
     """The Discovery section must forbid claiming a capability gap without
