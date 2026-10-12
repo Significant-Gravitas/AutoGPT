@@ -30,7 +30,8 @@ cancels manually.
 
 import logging
 import uuid
-from typing import Any, Literal, Mapping
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, Iterable, Literal, Mapping
 
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError
@@ -65,9 +66,20 @@ from backend.copilot.rate_limit import (
 )
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tracking import track_user_message
-from backend.copilot.tree import TreeRefusal, TurnEnvelope, release_turn
+from backend.copilot.tree import (
+    DESCENT_DENIED_TOOLS,
+    MAX_DEPTH,
+    SPAWN_TOOLS,
+    TreeRefusal,
+    TurnEnvelope,
+    get_tree_ledger,
+    release_turn,
+)
 from backend.data.db_accessors import chat_db
 from backend.integrations.codex.access import has_codex_access
+
+if TYPE_CHECKING:
+    from backend.copilot.gate.held import HeldCall
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +97,10 @@ UNREADABLE_SPAWN = (
     "This task's limits could not be read back, so it was not started. "
     "Start it again."
 )
-UNRECORDED_WAKE = (
-    "The approved action could not be resumed: what it was allowed to do was "
-    f"not recorded. {WAKE_LATER}"
-)
+# A wake whose envelope was lost outside the user's own chat gets a fresh tree
+# this small and this short-lived: enough to run the approved calls and report.
+MINIMAL_WAKE_CEILING_MICRODOLLARS = 500_000
+MINIMAL_WAKE_SECONDS = 15 * 60
 
 
 async def count_queued_turns(user_id: str) -> int:
@@ -394,7 +406,7 @@ async def _promote_head(user_id: str) -> bool | None:
     from backend.copilot.executor.utils import dispatch_turn
 
     # Local for the same reason: the gate imports this module back.
-    from backend.copilot.gate.held import is_answer_row
+    from backend.copilot.gate.held import answered, is_answer_row
 
     # The user's own turns go before sub-work, oldest first in each, so sub-work
     # that does not fit means nothing behind it does; one that may not start yet
@@ -479,10 +491,9 @@ async def _promote_head(user_id: str) -> bool | None:
             and queued_envelope is None
             and not is_users_own_chat(head)
         ):
-            # Deriving one from the turn that just ended would run the approved
-            # action under that turn's limits; the answer reaches the next turn.
-            await _refuse_queued_turn(head, UNRECORDED_WAKE)
-            return None
+            queued_envelope = await minimal_wake_envelope(
+                head, await answered(user_id, head.session_id)
+            )
 
         turn_id = str(uuid.uuid4())
         # The user's message is already persisted AND the session is
@@ -654,11 +665,51 @@ class _QueueOnHold(Exception):
 def is_users_own_chat(session: ChatSessionInfo) -> bool:
     """A chat the user opened themselves, not one another session or a graph
     started. Its turns are roots, so a wake there whose envelope was lost can
-    start as one; elsewhere nothing on the row bounds what the call held."""
+    start as one; elsewhere it gets :func:`minimal_wake_envelope`."""
     return (
         session.metadata.origin == "interactive"
         and session.metadata.delegated_by_session_id is None
     )
+
+
+async def minimal_wake_envelope(
+    session: ChatSessionInfo, calls: "Iterable[HeldCall]"
+) -> TurnEnvelope:
+    """The envelope for a wake whose own was lost where the session row does not
+    bound it: only the answered calls' tools, which the turn that held them was
+    allowed, on a fresh, tainted, short-lived tree with a small ceiling."""
+    envelope = TurnEnvelope(
+        tree_id=str(uuid.uuid4()),
+        depth=max(1, await _delegation_depth(session)),
+        tainted=True,
+        # A call the card could not rebuild never runs, so it needs no tool.
+        tools=minimal_wake_tools(c.tool_name for c in calls if not c.lost),
+        deadline_at=datetime.now(UTC) + timedelta(seconds=MINIMAL_WAKE_SECONDS),
+        spend_session_id=session.session_id,
+    )
+    await (await get_tree_ledger()).open(
+        envelope.tree_id,
+        ceiling_microdollars=MINIMAL_WAKE_CEILING_MICRODOLLARS,
+        max_nodes=1,
+        initial_nodes=1,
+    )
+    return envelope
+
+
+def minimal_wake_tools(tools: Iterable[str]) -> frozenset[str]:
+    """Never a tool a child is denied or one that spawns, whatever was held."""
+    return frozenset(tools) - DESCENT_DENIED_TOOLS - SPAWN_TOOLS
+
+
+async def _delegation_depth(session: ChatSessionInfo) -> int:
+    """Hops from the user's own chat, read off the delegation provenance."""
+    parent_id = session.metadata.delegated_by_session_id
+    depth = 0
+    while parent_id and depth < MAX_DEPTH:
+        depth += 1
+        parent = await chat_db().get_chat_session_metadata(parent_id)
+        parent_id = parent.metadata.delegated_by_session_id if parent else None
+    return depth
 
 
 def wakes_sub_work(session: ChatSessionInfo) -> bool:

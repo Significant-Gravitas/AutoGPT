@@ -20,7 +20,7 @@ from backend.copilot.gate import held
 from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.tree import MAX_DEPTH, TreeRefusal, TurnEnvelope
 
 
 class _NoopAsyncCM:
@@ -541,11 +541,18 @@ async def test_a_long_run_of_wakes_that_may_not_start_drains_without_recursing()
     for row in queue:
         row.metadata.llm_auth_provider = "codex"
     db = MagicMock()
+    # Each wake's tree has closed since its call was held.
+    held_under = TurnEnvelope(tree_id="closed", depth=1, tools=frozenset())
     db.get_latest_user_message_in_session = AsyncMock(
-        return_value=_pyd_message(metadata={held._WAKE_KEY: True})
+        return_value=_pyd_message(
+            metadata={
+                held._WAKE_KEY: True,
+                "envelope": held_under.model_dump(mode="json"),
+            }
+        )
     )
 
-    async def closed(head, reason):
+    async def closed(head, reason, *, release=None):
         queue.remove(head)
 
     with (
@@ -560,10 +567,60 @@ async def test_a_long_run_of_wakes_that_may_not_start_drains_without_recursing()
             turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
         ),
         patch.object(turn_queue, "_refuse_queued_turn", new=closed),
+        patch(
+            "backend.copilot.executor.utils.dispatch_turn",
+            new=AsyncMock(side_effect=TreeRefusal("This task's tree has closed.")),
+        ),
     ):
         assert await turn_queue.dispatch_next_for_user("u1") is False
 
     assert queue == []
+
+
+@pytest.mark.parametrize(
+    "held_tools, kept",
+    [
+        ({"post_to_chat_platform"}, {"post_to_chat_platform"}),
+        ({"bash_exec", "run_sub_session"}, {"bash_exec"}),
+        ({"connect_integration", "web_fetch"}, {"web_fetch"}),
+    ],
+)
+def test_a_minimal_wake_drops_tools_a_child_is_denied_and_those_that_spawn(
+    held_tools: set[str], kept: set[str]
+) -> None:
+    assert turn_queue.minimal_wake_tools(held_tools) == kept
+
+
+@pytest.mark.parametrize(
+    "chain, depth",
+    [
+        # A top-level session automation started is still never a root.
+        ([], 1),
+        (["p1"], 1),
+        (["p1", "p2"], 2),
+        (["p1", "p2", "p3", "p4"], MAX_DEPTH),
+    ],
+)
+@pytest.mark.asyncio
+async def test_a_minimal_wake_is_as_deep_as_its_delegation_chain(
+    chain: list[str], depth: int
+) -> None:
+    session = _queued_row("s0")
+    session.metadata.delegated_by_session_id = chain[0] if chain else None
+    parents = {}
+    for parent_id, grandparent_id in zip(chain, [*chain[1:], None]):
+        parents[parent_id] = _queued_row(parent_id)
+        parents[parent_id].metadata.delegated_by_session_id = grandparent_id
+    db = MagicMock()
+    db.get_chat_session_metadata = AsyncMock(side_effect=parents.get)
+
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "get_tree_ledger", new=AsyncMock()),
+    ):
+        envelope = await turn_queue.minimal_wake_envelope(session, [])
+
+    assert envelope.depth == depth
 
 
 @pytest.mark.asyncio
@@ -607,13 +664,11 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
         _queued_row("refused"),
         _queued_row("admissible"),
     )
-    # An automation's session: not the user's own chat, and not sub-work.
-    closed.metadata.origin = "automation"
     for row in (closed, admissible):
         row.metadata.llm_auth_provider = "microsoft_365_copilot"
     refused.metadata.llm_auth_provider = "codex"
     waiting = {
-        "closed": _pyd_message(metadata={held._WAKE_KEY: True}),
+        "closed": _pyd_message(metadata={held._WAKE_KEY: True, "envelope": _CHILD}),
         "refused": _pyd_message(),
         "admissible": _pyd_message(),
     }
@@ -621,7 +676,12 @@ async def test_a_turn_the_access_gate_refuses_does_not_hold_up_the_next() -> Non
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(side_effect=waiting.get)
     claim = AsyncMock(return_value="admitted")
-    dispatched = AsyncMock()
+
+    async def dispatch(*_args, session_id: str, **_kwargs) -> None:
+        if session_id == "closed":
+            raise TreeRefusal("This task's tree has closed.")
+
+    dispatched = AsyncMock(side_effect=dispatch)
 
     with (
         patch.object(
@@ -861,25 +921,17 @@ async def test_a_typed_message_behind_sub_work_that_does_not_fit_still_starts() 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "stored_envelope",
-    [None, {"tree_id": "t1", "depth": 1}],
-    ids=["unrecorded-wake", "tree-refusal"],
-)
-async def test_a_refusal_that_cannot_be_posted_still_frees_the_slot(
-    stored_envelope: dict | None,
-) -> None:
+async def test_a_refusal_that_cannot_be_posted_still_frees_the_slot() -> None:
     """The session leaves ``running`` and the next queued one is tried."""
     head = _queued_row()
     head.metadata.delegated_by_session_id = "parent"
     head.metadata.llm_auth_provider = "codex"
-    metadata: dict = {held._WAKE_KEY: True}
-    if stored_envelope:
-        metadata["envelope"] = stored_envelope
     db = MagicMock()
     db.update_chat_session_status = AsyncMock(return_value=True)
     db.get_latest_user_message_in_session = AsyncMock(
-        return_value=_pyd_message(metadata=metadata)
+        return_value=_pyd_message(
+            metadata={held._WAKE_KEY: True, "envelope": {"tree_id": "t1", "depth": 1}}
+        )
     )
 
     with (

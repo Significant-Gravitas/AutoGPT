@@ -39,7 +39,7 @@ from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
-from backend.copilot.turn_queue import UNRECORDED_WAKE, WAKE_LATER
+from backend.copilot.turn_queue import WAKE_LATER
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 
@@ -315,14 +315,23 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     assert woken["permissions"] == today
 
 
+@pytest.mark.parametrize(
+    "text, tools",
+    [
+        ("lost in Redis", frozenset({_TOOL})),
+        # The card's clipped copy cannot run, so its tool is not needed.
+        ("clipped " + "x" * 30_000, frozenset()),
+    ],
+    ids=["intact", "clipped"],
+)
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
-    setup_test_user, test_user_id, gate_on, post_tool
+async def test_a_call_rebuilt_from_its_card_in_a_sub_session_wakes_minimal(
+    setup_test_user, test_user_id, gate_on, post_tool, text, tools
 ):
-    """Nothing on the row bounds what the call was held under there; the next
-    turn carries the answer."""
+    """Nothing on the row bounds what the call was held under there, so the
+    wake gets only the approved call's tool, on a small fresh tree."""
     session = await _new_session(test_user_id, delegated_by="parent-session")
-    review_id = await _hold(session, test_user_id, "lost in Redis")
+    review_id = await _hold(session, test_user_id, text)
     assert await held._claim(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
@@ -330,14 +339,13 @@ async def test_a_call_rebuilt_from_its_card_in_a_sub_session_is_not_woken(
 
     with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
         await held.wake(test_user_id, session.session_id, rows.values())
-        await held.wake(test_user_id, session.session_id, rows.values())
 
-    dispatch.assert_not_awaited()
-    reloaded = await get_chat_session(session.session_id, test_user_id)
-    assert reloaded is not None
-    refusals = [m for m in reloaded.messages if m.content == UNRECORDED_WAKE]
-    assert len(refusals) == 1
-    assert len(await held.resolve_answered(test_user_id, reloaded)) == 1
+    woken = dispatch.await_args.kwargs["envelope"]
+    assert woken.tools == tools
+    assert (woken.depth, woken.tainted) == (1, True)
+    assert woken.deadline_at <= datetime.now(UTC) + timedelta(minutes=15)
+    tree = await (await get_tree_ledger()).snapshot(woken.tree_id)
+    assert (tree["ceiling"], tree["max_nodes"]) == (500_000, 1)
 
 
 @pytest.mark.asyncio(loop_scope="session")

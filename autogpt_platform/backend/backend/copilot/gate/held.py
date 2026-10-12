@@ -85,7 +85,7 @@ class HeldCall(BaseModel):
     # Rebuilt from a card whose stored copy of the arguments no longer binds.
     lost: bool = False
     # The turn that held it. Its wake starts under this, re-checked against the
-    # tree; a call rebuilt from its card has none and is not woken.
+    # tree; a call rebuilt from its card has none.
     envelope: TurnEnvelope | None = None
 
 
@@ -215,10 +215,10 @@ async def wake(
     from backend.copilot.model import ChatMessage, append_and_save_message
     from backend.copilot.session_permissions import resolve_session_permissions
     from backend.copilot.turn_queue import (
-        UNRECORDED_WAKE,
         WAKE_LATER,
         InflightCapExceeded,
         is_users_own_chat,
+        minimal_wake_envelope,
         post_refusal,
         try_enqueue_turn,
         wakes_sub_work,
@@ -243,10 +243,9 @@ async def wake(
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
         envelope = max(calls, key=lambda c: c.held_at).envelope
         if envelope is None and not is_users_own_chat(info):
-            # Deriving one from the turn that just ended would run the approved
-            # action under that turn's limits, not the ones it was held under.
-            await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
-            return
+            # Lost where nothing on the row bounds it: no more than the approved
+            # calls need, rather than whatever the turn that just ended held.
+            envelope = await minimal_wake_envelope(info, calls)
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
         capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
