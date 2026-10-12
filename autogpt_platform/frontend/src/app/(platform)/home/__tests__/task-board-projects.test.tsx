@@ -60,6 +60,7 @@ const B1 = "b1a2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d";
 const S_HOME = "3f2b8c1e-9a4d-4e6f-8b7a-1c2d3e4f5a6b";
 const S_B1 = "8d7c6b5a-4f3e-4d2c-9b1a-0f9e8d7c6b5a";
 const S9 = "9e9e9e9e-1a2b-4c3d-8e4f-5a6b7c8d9e0f";
+const HOME_UUID = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
 
 const COLUMNS: BoardResponse["columns"] = [
   { key: "backlog", name: "Backlog", builtin: true },
@@ -350,6 +351,35 @@ describe("task board projects", () => {
         true,
       ),
     );
+  });
+
+  test("an empty new project keeps its name in edit mode", async () => {
+    serveBoards({
+      [B1]: {
+        board: { ...PROJECT.board, name: "Untitled project" },
+        columns: COLUMNS,
+        sessions: [],
+      },
+    });
+    renderBoard(B1, "?rename=1");
+
+    const input = await screen.findByRole("textbox", { name: "Project name" });
+    await screen.findByRole("region", { name: "Backlog" });
+    expect((input as HTMLInputElement).value).toBe("Untitled project");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    expect(screen.queryByRole("textbox", { name: "New task" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Project name" })).toBe(input);
+  });
+
+  test("Home opened by its id ignores ?rename=1", async () => {
+    serveBoards({
+      [HOME_UUID]: { ...HOME, board: { ...HOME.board, id: HOME_UUID } },
+    });
+    renderBoard(HOME_UUID, "?rename=1");
+
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    await screen.findByRole("article", { name: "Plan offsite" });
+    expect(screen.queryByRole("textbox", { name: "Project name" })).toBeNull();
   });
 
   test("Home ignores ?rename=1", async () => {

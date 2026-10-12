@@ -30,7 +30,7 @@ export function TaskBoardPage({ boardRef }: Props) {
     name,
     redirectHref,
     columns,
-    isEmpty,
+    autoExpandBacklog,
     isLoading,
     isNotFound,
     isError,
@@ -108,7 +108,9 @@ export function TaskBoardPage({ boardRef }: Props) {
                     column={column}
                     cards={cards}
                     onOpenCard={openCard}
-                    autoExpandAdd={isEmpty && column.key === "backlog"}
+                    autoExpandAdd={
+                      autoExpandBacklog && column.key === "backlog"
+                    }
                     isRenaming={editor.renamingKey === column.key}
                     onRename={(name) => editor.rename(column.key, name)}
                     onCancelRename={() => editor.cancelRename(column.key)}

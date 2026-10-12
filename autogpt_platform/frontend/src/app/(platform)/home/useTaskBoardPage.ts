@@ -31,6 +31,7 @@ export function useTaskBoardPage(boardRef: string) {
   );
   // The id ends up in API paths; anything but a UUID opens nothing.
   const sessionId = isSessionId(sessionParam) ? sessionParam : null;
+  const [renameParam] = useQueryState("rename", parseAsString);
   const isValidRef = isBoardRef(boardRef);
   // A poll landing mid-drag or mid-change would snap the card back.
   const changesInFlight = useIsMutating({ mutationKey: BOARD_MUTATION_KEY });
@@ -90,7 +91,10 @@ export function useTaskBoardPage(boardRef: string) {
         ? boardHref(sessionBoardId, sessionId)
         : null,
     columns,
-    isEmpty: !!board && board.sessions.length === 0,
+    autoExpandBacklog:
+      !!board &&
+      board.sessions.length === 0 &&
+      !(renameParam === "1" && !isDefault),
     isLoading: boardQuery.isLoading,
     isNotFound,
     isError: boardQuery.isError && !board && !isNotFound,

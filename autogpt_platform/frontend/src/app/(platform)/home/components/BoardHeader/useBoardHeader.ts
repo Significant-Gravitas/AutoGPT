@@ -26,9 +26,7 @@ export function useBoardHeader(name: string) {
   const { boardRef, isDefault } = useBoardRef();
   const { applyOptimistic, rollback, settleBoard } = useBoardCache(boardRef);
   const [renameParam, setRenameParam] = useQueryState("rename", parseAsString);
-  const [isRenaming, setIsRenaming] = useState(
-    () => renameParam === "1" && !isDefault,
-  );
+  const [isRenaming, setIsRenaming] = useState(renameParam === "1");
   const [editedDraft, setDraft] = useState<string | null>(null);
   const draft = editedDraft ?? name;
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +141,7 @@ export function useBoardHeader(name: string) {
   }
 
   return {
-    isRenaming,
+    isRenaming: isRenaming && !isDefault,
     draft,
     error,
     isDeleteOpen,

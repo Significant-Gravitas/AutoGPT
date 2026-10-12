@@ -78,7 +78,9 @@ test.describe("task board journey", () => {
     if (!journeyUser.id) throw new Error("the journey user should have an id");
     await expectChargedWhatWasBilled(journeyUser.id, journal);
 
-    await page.getByRole("button", { name: "New project" }).click();
+    await page
+      .getByRole("button", { name: "New project", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/boards\//);
     const projectName = page.getByRole("textbox", { name: "Project name" });
     await expect(
@@ -120,7 +122,8 @@ test.describe("task board journey", () => {
   });
 });
 
-// An empty board opens Backlog's input on its own.
+// An empty board opens Backlog's input on its own, except while a new
+// project's name is in edit mode.
 async function addTask(page: Page, title: string) {
   const backlog = column(page, "Backlog");
   const newTask = backlog.getByRole("textbox", { name: "New task" });
