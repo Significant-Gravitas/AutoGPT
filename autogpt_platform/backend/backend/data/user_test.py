@@ -1007,6 +1007,19 @@ class TestGetBillingEmailRecipient:
         )
 
 
+def _credentials_tx(mocker) -> MagicMock:
+    """Stand in for the transaction ``set_user_credentials`` writes through."""
+    tx = MagicMock()
+    tx.execute_raw = AsyncMock()
+
+    @asynccontextmanager
+    async def fake_transaction():
+        yield tx
+
+    mocker.patch("backend.data.user.transaction", fake_transaction)
+    return tx
+
+
 class TestTableBackedCredentials:
     """get/set_user_credentials — the IntegrationCredential-backed seam the
     credential store runs on after the blob→table migration."""
@@ -1063,26 +1076,25 @@ class TestTableBackedCredentials:
         row_gone.id = "cred-gone"
         row_gone.status = "active"
 
-        mock_prisma = MagicMock()
-        mock_prisma.integrationcredential.find_many = AsyncMock(
+        mock_tx = _credentials_tx(mocker)
+        mock_tx.integrationcredential.find_many = AsyncMock(
             return_value=[row_kept, row_gone]
         )
-        mock_prisma.integrationcredential.update = AsyncMock()
-        mock_prisma.integrationcredential.create = AsyncMock()
-        mock_prisma.organization.find_first = AsyncMock(
+        mock_tx.integrationcredential.update = AsyncMock()
+        mock_tx.integrationcredential.create = AsyncMock()
+        mock_tx.organization.find_first = AsyncMock(
             return_value=MagicMock(id="org-personal")
         )
-        mocker.patch("backend.data.user.prisma", mock_prisma)
 
         await set_user_credentials("u1", [kept, new])
 
-        create_data = mock_prisma.integrationcredential.create.call_args.kwargs["data"]
+        create_data = mock_tx.integrationcredential.create.call_args.kwargs["data"]
         assert create_data["id"] == "cred-new"
         assert create_data["organizationId"] == "org-personal"
 
         update_calls = {
             c.kwargs["where"]["id"]: c.kwargs["data"]
-            for c in mock_prisma.integrationcredential.update.call_args_list
+            for c in mock_tx.integrationcredential.update.call_args_list
         }
         # kept: payload refresh; gone: revoked
         assert "encryptedPayload" in update_calls["cred-kept"]
@@ -1090,7 +1102,7 @@ class TestTableBackedCredentials:
 
     @pytest.mark.asyncio
     async def test_set_raises_without_personal_org_for_new_cred(self, mocker):
-        from unittest.mock import AsyncMock, MagicMock
+        from unittest.mock import AsyncMock
 
         from pydantic import SecretStr
 
@@ -1101,10 +1113,9 @@ class TestTableBackedCredentials:
         new = APIKeyCredentials(
             id="cred-new", provider="notion", api_key=SecretStr("sk-3"), title="N"
         )
-        mock_prisma = MagicMock()
-        mock_prisma.integrationcredential.find_many = AsyncMock(return_value=[])
-        mock_prisma.organization.find_first = AsyncMock(return_value=None)
-        mocker.patch("backend.data.user.prisma", mock_prisma)
+        mock_tx = _credentials_tx(mocker)
+        mock_tx.integrationcredential.find_many = AsyncMock(return_value=[])
+        mock_tx.organization.find_first = AsyncMock(return_value=None)
 
         with pytest.raises(DatabaseError):
             await set_user_credentials("u1", [new])
