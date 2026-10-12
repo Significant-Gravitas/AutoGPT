@@ -22,6 +22,7 @@ from backend.copilot.sdk.turn_summary_model import (
     TurnSummary,
     TurnUsage,
     short_hash,
+    upload_gate_reason,
 )
 
 _MOD = "backend.copilot.sdk.turn_summary"
@@ -473,3 +474,23 @@ class TestEmit:
             c.emit(None)
         get_client.assert_not_called()
         assert len(_lines(caplog)) == 1
+
+
+@pytest.mark.parametrize(
+    "kwargs,expected",
+    [
+        (dict(user_id="u", started=True, ended_with_stream_error=False), None),
+        (dict(user_id=None, started=True, ended_with_stream_error=False), "anonymous"),
+        # ``started`` is False whenever the cwd, the session or the retry state
+        # was never set up: the upload needs all three.
+        (
+            dict(user_id="u", started=False, ended_with_stream_error=False),
+            "not_started",
+        ),
+        (dict(user_id="u", started=True, ended_with_stream_error=True), "stream_error"),
+    ],
+)
+def test_upload_gate_reason_names_why_the_upload_is_skipped(kwargs, expected):
+    """The turn evaluates this once and both the CLI session upload and the
+    summary's ``transcript_upload_skipped`` read the answer."""
+    assert upload_gate_reason(resume_enabled=True, **kwargs) == expected

@@ -6583,6 +6583,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # before any cleanup step can raise.
         langfuse_trace_id: str | None = None
         _use_openrouter_reconcile = False
+        # Why the CLI session upload below is skipped, or ``None``: the
+        # upload and the summary read this one answer.
+        upload_skip = upload_gate_reason(
+            resume_enabled=config.claude_agent_use_resume,
+            user_id=user_id,
+            started=bool(sdk_cwd) and session is not None and state is not None,
+            ended_with_stream_error=ended_with_stream_error,
+        )
         try:
             tool_display_bridge.reset()
             # Pending messages are drained atomically at the start of each
@@ -6896,14 +6904,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # T1 prompt-too-long retries from uploading their valid session file,
             # breaking --resume on the next pod.  The ended_with_stream_error gate
             # above already covers actual turn failures.
-            if (
-                config.claude_agent_use_resume
-                and user_id
-                and sdk_cwd
-                and session is not None
-                and state is not None
-                and not ended_with_stream_error
-            ):
+            # ``upload_skip is None`` implies both; spelled out for the type
+            # checker.
+            if upload_skip is None and session is not None and state is not None:
                 logger.info(
                     "%s Attempting CLI session upload"
                     " (use_resume=%s, has_history=%s, skip_transcript=%s)",
@@ -6994,12 +6997,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 ),
                 codex=is_codex_transport,
                 cost_reconcile=_use_openrouter_reconcile,
-                upload_gate=upload_gate_reason(
-                    resume_enabled=config.claude_agent_use_resume,
-                    user_id=user_id,
-                    started=bool(sdk_cwd) and state is not None,
-                    ended_with_stream_error=ended_with_stream_error,
-                ),
+                upload_gate=upload_skip,
                 ended_with_stream_error=ended_with_stream_error,
             )
             turn_summary.emit(langfuse_trace_id)

@@ -147,7 +147,8 @@ def upload_gate_reason(
 ) -> str | None:
     """Why the end of the turn skips the CLI session upload, or ``None``.
 
-    Mirrors the gate in front of the upload in ``stream_chat_completion_sdk``.
+    ``stream_chat_completion_sdk`` evaluates it once: the upload runs only
+    when it is ``None``, and the turn summary reports what it returned.
     """
     if not resume_enabled:
         return "resume_disabled"
