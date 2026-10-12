@@ -1,12 +1,6 @@
-import {
-  expect,
-  test,
-  type BrowserContext,
-  type Page,
-  type Request,
-} from "@playwright/test";
+import type { BrowserContext, Page, Request } from "@playwright/test";
 import { CopilotPage } from "../pages/copilot.page";
-import { signupTestUser } from "../utils/signup";
+import { expect, test } from "./fixtures";
 
 // A copilot turn keeps exactly one stream while everything that can resume it
 // fires: a network blip, a tab wake, and the stall watchdog over a quiet
@@ -19,10 +13,10 @@ import { signupTestUser } from "../utils/signup";
 // go quiet for 9 s, long enough for one heartbeat and short of the 10 s
 // silence status.
 
-// PostHog answers a HeadlessChrome user agent with every flag off.
 test.use({
-  userAgent:
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
+  // Going offline leaves an unrelated effect's fetch rejection unhandled; the
+  // AI SDK's BUILDER-777 TypeError is still caught by the guard.
+  expectedErrors: [/^Failed to fetch$/],
 });
 
 const ANSWER = "I counted: 1... 2... 3. All done!";
@@ -34,6 +28,7 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   page,
   context,
   browserName,
+  journeyUser: _user,
 }) => {
   test.skip(browserName !== "chromium", "reads stream bytes through CDP");
   test.skip(
@@ -46,10 +41,8 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
 
   await watchConnectionLostToasts(page);
   const streams = watchStreams(page);
-  const crashes = watchCrashes(page);
   const bytes = await watchStreamBytes(context, page);
 
-  await signupTestUser(page, journeyEmail(), undefined, true);
   const copilot = new CopilotPage(page);
   const answers = page.getByText(ANSWER, { exact: true });
 
@@ -59,12 +52,10 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   // A network blip mid-turn. The turn still completes, on one stream.
   await openNewChat(copilot);
   await send(page, copilot, BLIP_PROMPT);
-  crashes.duringBlip = true;
   await context.setOffline(true);
   await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
   await context.setOffline(false);
   await expect(answers).toHaveCount(1, { timeout: 30_000 });
-  crashes.duringBlip = false;
 
   // A tab wake and the stall watchdog while the turn is quiet, on a fake
   // clock from here on.
@@ -99,7 +90,6 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   await expect(copilot.getChatInput()).toBeEnabled({ timeout: 15_000 });
 
   expect(streams.maxOpen, "streams open at once on one chat").toBe(1);
-  expect(crashes.errors).toEqual([]);
 });
 
 async function openNewChat(copilot: CopilotPage) {
@@ -139,25 +129,6 @@ function watchStreams(page: Page) {
   page.on("requestfinished", close);
   page.on("requestfailed", close);
   return state;
-}
-
-/**
- * Page errors, and the AI SDK's own report of BUILDER-777. While offline, an
- * unrelated effect leaves a rejected fetch unhandled; that one is not ours.
- */
-function watchCrashes(page: Page) {
-  const crashes = { errors: [] as string[], duringBlip: false };
-  page.on("pageerror", (error) => {
-    if (crashes.duringBlip && error.message === "Failed to fetch") return;
-    crashes.errors.push(error.message);
-  });
-  page.on("console", (message) => {
-    if (message.type() !== "error") return;
-    if (message.text().includes("reading 'state'")) {
-      crashes.errors.push(message.text());
-    }
-  });
-  return crashes;
 }
 
 /**
@@ -234,9 +205,4 @@ async function setTabVisibility(page: Page, state: "hidden" | "visible") {
     });
     document.dispatchEvent(new Event("visibilitychange"));
   }, state);
-}
-
-function journeyEmail() {
-  const domain = process.env.PLAYWRIGHT_JOURNEY_EMAIL_DOMAIN;
-  return domain ? `journey-resume-${Date.now()}@${domain}` : undefined;
 }

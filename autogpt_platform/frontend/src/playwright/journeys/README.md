@@ -21,6 +21,8 @@ product does what the user expects.
       expectedResponses: [{ status: 401, url: "/api/proxy/api/auth/user" }],
     });
     ```
+    Page or console errors it provokes on purpose (going offline, say) go in
+    `expectedErrors`, as narrow patterns with a comment saying why.
     App-wide noise that is reviewed and harmless goes in `KNOWN_BENIGN` in
     `guard.ts`, with its reason. A real bug never goes there: if the guard
     catches one, that's a finding. Report it, or mark the journey

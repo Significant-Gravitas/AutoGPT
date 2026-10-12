@@ -45,7 +45,10 @@ const BODY_SNIPPET_LENGTH = 300;
 export function watchForUnexpectedErrors(
   context: BrowserContext,
   expected: ExpectedResponse[],
+  expectedErrors: RegExp[] = [],
 ) {
+  const isExpectedError = (text: string) =>
+    expectedErrors.some((pattern) => pattern.test(text));
   const pending: Promise<string>[] = [];
 
   context.on("response", (response) => {
@@ -57,12 +60,14 @@ export function watchForUnexpectedErrors(
 
   context.on("console", (message) => {
     if (message.type() !== "error") return;
+    if (isExpectedError(message.text())) return;
     if (isKnownNoise({ kind: "console", text: message.text() })) return;
     pending.push(Promise.resolve(describeConsole(message)));
   });
 
   context.on("weberror", (webError) => {
     const error = webError.error();
+    if (isExpectedError(error.message)) return;
     if (isKnownNoise({ kind: "pageerror", text: error.message })) return;
     pending.push(
       Promise.resolve(
