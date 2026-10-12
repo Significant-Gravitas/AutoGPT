@@ -224,7 +224,7 @@ def test_posthog_keeps_the_first_ip_country_where_mailerlite_moves_on():
 
 
 def test_an_update_is_one_set_event(capture: Mock):
-    posthog_audience.send(
+    assert posthog_audience.send(
         "user-1",
         PersonUpdate(
             to_set={"email_type": "business"}, to_set_once={"exclude_de_at": "no"}
@@ -243,11 +243,28 @@ def test_only_the_parts_with_values_are_sent(capture: Mock):
     assert "$set_once" not in capture.call_args.kwargs["properties"]
 
 
-def test_an_empty_update_sends_nothing(capture: Mock):
-    posthog_audience.send("user-1", PersonUpdate())
+def test_an_empty_update_sends_nothing_and_counts_as_done(capture: Mock):
+    assert posthog_audience.send("user-1", PersonUpdate())
     capture.assert_not_called()
 
 
-def test_a_failed_send_never_raises(capture: Mock):
-    capture.side_effect = RuntimeError("posthog down")
-    posthog_audience.send("user-1", PersonUpdate(to_set={"email_type": "business"}))
+@pytest.mark.parametrize(
+    "returned, side_effect",
+    [(None, None), (None, RuntimeError("posthog down"))],
+    ids=["dropped", "raised"],
+)
+def test_an_update_the_client_did_not_queue_is_reported_not_raised(
+    capture: Mock, returned, side_effect
+):
+    capture.return_value = returned
+    capture.side_effect = side_effect
+    update = PersonUpdate(to_set={"email_type": "business"})
+    assert posthog_audience.send("user-1", update) is False
+
+
+def test_an_update_goes_to_the_client_it_is_given(capture: Mock):
+    own = Mock()
+    update = PersonUpdate(to_set={"email_type": "business"})
+    assert posthog_audience.send("user-1", update, client=own)
+    own.capture.assert_called_once()
+    capture.assert_not_called()

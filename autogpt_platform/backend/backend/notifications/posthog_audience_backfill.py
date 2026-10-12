@@ -28,7 +28,7 @@ from backend.data.notifications import SubscriberField
 from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import YES, checkout_fields
 from backend.notifications.posthog_audience import CHECKOUT_OPENED_AT, PersonUpdate
-from backend.util.posthog_client import get_posthog_client
+from backend.util.posthog_client import new_posthog_client
 
 # The PostHog client drops events once its in-memory queue is full.
 POSTHOG_FLUSH_EVERY = 500
@@ -52,7 +52,8 @@ class AudiencePlan(BaseModel):
     updates: list[AccountUpdate]
     # Accounts whose Stripe customer has a Checkout Session.
     openers: int
-    # What the accounts end up with, for the report.
+    # What the run sends, for the report. A `$set_once` value only lands where
+    # the person holds none yet, so these aren't what PostHog will hold.
     email_types: dict[str, int]
     signin_methods: dict[str, int]
     # Openers only.
@@ -127,13 +128,27 @@ def _tally(updates: list[AccountUpdate]) -> AudiencePlan:
     )
 
 
-async def send(updates: list[AccountUpdate]) -> None:
-    """One `$set` event per account, flushed as it goes."""
-    client = get_posthog_client()
+async def send(updates: list[AccountUpdate]) -> int:
+    """One `$set` event per account, on a client of the run's own, flushed as
+    it goes. Returns how many accounts PostHog didn't take: refused when
+    queued, or in a batch whose upload still failed after the client's
+    retries. The run sends the same values every time, so retrying is
+    harmless."""
+    failed: set[str] = set()
+
+    def upload_failed(_error: Exception, batch: list[dict]) -> None:
+        failed.update(str(event.get("distinct_id")) for event in batch)
+
+    client = new_posthog_client(on_error=upload_failed)
     if client is None:
         raise RuntimeError("PostHog is not configured")
-    for index, change in enumerate(updates, start=1):
-        posthog_audience.send(change.user_id, change.update)
-        if index % POSTHOG_FLUSH_EVERY == 0:
-            await asyncio.to_thread(client.flush)
-    await asyncio.to_thread(client.flush)
+    try:
+        for index, change in enumerate(updates, start=1):
+            if not posthog_audience.send(change.user_id, change.update, client=client):
+                failed.add(change.user_id)
+            if index % POSTHOG_FLUSH_EVERY == 0:
+                await asyncio.to_thread(client.flush)
+    finally:
+        # Flushes what is left; failed uploads reach `upload_failed` first.
+        await asyncio.to_thread(client.shutdown)
+    return len(failed)

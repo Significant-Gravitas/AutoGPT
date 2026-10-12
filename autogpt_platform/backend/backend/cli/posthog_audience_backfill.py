@@ -32,8 +32,9 @@ def posthog_audience_backfill_command(apply: bool, yes: bool):
     country and an exclude_de_at "no" are $set_once, so what a live checkout
     recorded (its IP country, a German or Austrian signal) stays.
 
-    Dry run by default, with counts only. A repeated --apply sends the same
-    values, so it is harmless.
+    Dry run by default, with counts only. A run that PostHog didn't take in
+    full, at queueing or upload, fails after reporting; a repeated --apply
+    sends the same values, so running it again is harmless.
     """
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
@@ -51,12 +52,13 @@ async def _run(*, apply: bool, yes: bool) -> None:
     )
     from backend.data.db import connect, disconnect
     from backend.notifications import posthog_audience_backfill as backfill
-    from backend.util.posthog_client import get_posthog_client
     from backend.util.settings import Settings
 
     settings = Settings()
     if not settings.secrets.stripe_api_key:
         raise click.ClickException("STRIPE_API_KEY is not set.")
+    if apply and not settings.secrets.posthog_api_key:
+        raise click.ClickException("POSTHOG_API_KEY is not set.")
     stripe.api_key = settings.secrets.stripe_api_key
     # Listed once, for the first opens and the billing countries alike.
     sessions = await checkout_sessions()
@@ -77,15 +79,12 @@ async def _run(*, apply: bool, yes: bool) -> None:
     if not plan.updates:
         click.echo("\nNothing to send.")
         return
-    if get_posthog_client() is None:
-        raise click.ClickException("POSTHOG_API_KEY is not set.")
     if not yes:
         click.confirm(
             f"\nSend the properties of {len(plan.updates)} accounts to PostHog?",
             abort=True,
         )
-    await backfill.send(plan.updates)
-    click.echo(f"PostHog: {len(plan.updates)} sent")
+    _finish(len(plan.updates), await backfill.send(plan.updates))
 
 
 async def _accounts() -> "list[Account]":
@@ -102,7 +101,23 @@ def _report(plan: "AudiencePlan") -> None:
     click.echo(f"Checkout openers (a Stripe Checkout Session): {plan.openers}")
     click.echo(f"  country_source: {_counts(plan.country_sources)}")
     click.echo(f"  exclude_de_at yes: {plan.exclude_de_at}")
+    click.echo(
+        "These are the values the run sends. A timezone country and an "
+        'exclude_de_at "no" are $set_once: they land only where the person '
+        "holds none yet."
+    )
     click.echo(f"\nPostHog: {len(plan.updates)} persons")
+
+
+def _finish(total: int, failed: int) -> None:
+    """Report the run, and fail it when PostHog didn't take everyone, so a Job
+    or script never reads a partial run as done."""
+    click.echo(f"PostHog: {total - failed} sent, {failed} failed")
+    if failed:
+        raise click.ClickException(
+            f"{failed} accounts were not sent (the log says why); run again to "
+            "retry them, since a run sends the same values every time"
+        )
 
 
 def _counts(counts: dict[str, int]) -> str:

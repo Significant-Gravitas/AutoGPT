@@ -32,6 +32,7 @@ fills in what the person doesn't hold yet, keeps the same rules:
 from collections.abc import Iterable
 from datetime import datetime
 
+from posthog import Posthog
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
@@ -103,8 +104,13 @@ def checkout_update(
     return update
 
 
-def send(user_id: str, update: PersonUpdate) -> None:
-    """Queue `update` as one `$set` event. Never raises, and sends nothing
-    when analytics is off or there is nothing to set."""
-    if properties := update.properties():
-        posthog_client.capture(user_id, PostHogEvent.SET_PERSON_PROPERTIES, properties)
+def send(user_id: str, update: PersonUpdate, *, client: Posthog | None = None) -> bool:
+    """Queue `update` as one `$set` event, on `client` or else the shared
+    client. Never raises. False when the client didn't queue it, analytics
+    being off included; an update with nothing to set is not sent and counts
+    as done."""
+    if not (properties := update.properties()):
+        return True
+    return posthog_client.capture(
+        user_id, PostHogEvent.SET_PERSON_PROPERTIES, properties, client=client
+    )

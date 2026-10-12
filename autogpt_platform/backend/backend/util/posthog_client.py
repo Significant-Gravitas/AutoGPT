@@ -37,19 +37,26 @@ def get_posthog_client() -> Posthog | None:
             return _client
 
         try:
-            settings = Settings()
-            if settings.secrets.posthog_api_key:
-                _client = Posthog(
-                    settings.secrets.posthog_api_key,
-                    host=settings.secrets.posthog_host,
-                )
-            else:
+            _client = new_posthog_client()
+            if _client is None:
                 logger.debug("PostHog API key not configured, analytics disabled")
         except Exception:
             logger.warning("Failed to initialize PostHog analytics", exc_info=True)
             return None
         _initialized = True
         return _client
+
+
+def new_posthog_client(**options: Any) -> Posthog | None:
+    """A client of the caller's own, for a one-off run that needs `options`
+    the shared one doesn't have, such as ``on_error`` to learn which uploads
+    failed. None when analytics is off. The caller shuts it down."""
+    settings = Settings()
+    if not settings.secrets.posthog_api_key:
+        return None
+    return Posthog(
+        settings.secrets.posthog_api_key, host=settings.secrets.posthog_host, **options
+    )
 
 
 @cache
@@ -64,8 +71,11 @@ def capture(
     *,
     source: str = "platform",
     dedup_key: str | None = None,
-) -> None:
-    """Send one event for *distinct_id* with the base properties.
+    client: Posthog | None = None,
+) -> bool:
+    """Send one event for *distinct_id* with the base properties, on
+    ``client`` (from `new_posthog_client`) or else the shared client. True
+    when the client queued it, which is not yet delivery.
 
     No user means no event: a synthetic distinct id would create a person
     nobody can merge. The base properties are applied last, so a caller can
@@ -77,13 +87,14 @@ def capture(
     which the client otherwise randomises per call.
     """
     if not distinct_id:
-        return
+        return False
     event_name = "<unknown>"
     try:
         event_name = event.value
-        client = get_posthog_client()
         if client is None:
-            return
+            client = get_posthog_client()
+        if client is None:
+            return False
         payload: dict[str, Any] = {
             **(properties or {}),
             "environment": _environment(),
@@ -95,12 +106,15 @@ def capture(
             event_uuid = str(
                 uuid5(NAMESPACE_URL, f"{distinct_id}:{event_name}:{dedup_key}")
             )
-        client.capture(
+        # The client returns None for an event it dropped, such as on a full
+        # queue.
+        queued = client.capture(
             distinct_id=distinct_id,
             event=event_name,
             properties=payload,
             uuid=event_uuid,
         )
+        return queued is not None
     except Exception:
         logger.warning(
             "Failed to send PostHog event %s for %s",
@@ -108,6 +122,7 @@ def capture(
             distinct_id,
             exc_info=True,
         )
+        return False
 
 
 def _shutdown() -> None:
