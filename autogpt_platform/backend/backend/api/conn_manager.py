@@ -238,18 +238,24 @@ class ConnectionManager:
 
     async def disconnect_socket(self, websocket: WebSocket, *, user_id: str):
         self.active_connections.discard(websocket)
-        self._closing.discard(websocket)
-        # Stop SSUBSCRIBE pumps before dropping bookkeeping to avoid leaks.
-        subs = self._ws_subs.pop(websocket, {})
-        for sub in subs.values():
-            await sub.stop()
-        notif_sub = self._ws_notifications.pop(websocket, None)
-        if notif_sub is not None:
-            await notif_sub.stop()
-        for channel_key, subscribers in list(self.subscriptions.items()):
-            subscribers.discard(websocket)
-            if not subscribers:
-                self.subscriptions.pop(channel_key, None)
+        # Closing for the whole teardown: a pump that loses its stream while
+        # its siblings are being stopped must not report it (or re-add the
+        # socket to _closing after we've cleared it).
+        self._closing.add(websocket)
+        try:
+            # Stop SSUBSCRIBE pumps before dropping bookkeeping to avoid leaks.
+            subs = self._ws_subs.pop(websocket, {})
+            for sub in subs.values():
+                await sub.stop()
+            notif_sub = self._ws_notifications.pop(websocket, None)
+            if notif_sub is not None:
+                await notif_sub.stop()
+            for channel_key, subscribers in list(self.subscriptions.items()):
+                subscribers.discard(websocket)
+                if not subscribers:
+                    self.subscriptions.pop(channel_key, None)
+        finally:
+            self._closing.discard(websocket)
 
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
