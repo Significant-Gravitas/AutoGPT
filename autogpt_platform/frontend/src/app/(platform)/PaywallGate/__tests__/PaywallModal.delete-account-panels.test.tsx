@@ -110,6 +110,7 @@ describe("PaywallModal delete account flow for a user without a plan", () => {
     expect(mocks.replace).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(feedback).toEqual([
+        { kind: "opened", surface: "paywall" },
         {
           kind: "alternative_clicked",
           reason: "cost",

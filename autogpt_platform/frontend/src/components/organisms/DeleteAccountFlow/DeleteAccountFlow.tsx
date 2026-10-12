@@ -28,6 +28,9 @@ export function DeleteAccountFlow({ source, open, onOpenChange }: Props) {
     <Dialog
       title={title}
       styling={{ maxWidth: "28rem", minWidth: "auto" }}
+      // Autocapture would tie the anonymous exit answer to the person.
+      className="ph-no-capture"
+      autoFocus
       forceOpen={isDeleting}
       controlled={{ isOpen: open, set: handleOpenChange }}
     >

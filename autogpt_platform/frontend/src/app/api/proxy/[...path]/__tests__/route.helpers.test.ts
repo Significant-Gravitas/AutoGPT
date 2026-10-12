@@ -11,6 +11,7 @@ import {
   watchResponseStart,
   RESPONSE_START_TIMEOUT_MS,
   CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS,
+  ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS,
   getResponseStartTimeoutMs,
   getSafePrivateMediaRange,
   isPrivateStoreMediaRequest,
@@ -1138,6 +1139,36 @@ describe("watchResponseStart", () => {
       ).toBe(CODEX_LOGIN_RESPONSE_START_TIMEOUT_MS);
     }
   });
+
+  it("waits longer for an account deletion, which outlasts the standard budget", () => {
+    const timeout = getResponseStartTimeoutMs(
+      ["api", "account", "deletion"],
+      "POST",
+    );
+    expect(timeout).toBe(ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS);
+    const watch = watchResponseStart(null, timeout);
+
+    vi.advanceTimersByTime(RESPONSE_START_TIMEOUT_MS + 1);
+    expect(watch.signal.aborted).toBe(false);
+
+    vi.advanceTimersByTime(
+      ACCOUNT_DELETION_RESPONSE_START_TIMEOUT_MS - RESPONSE_START_TIMEOUT_MS,
+    );
+    expect(watch.signal.aborted).toBe(true);
+  });
+
+  it("keeps the standard budget for the exit feedback and other methods", () => {
+    expect(
+      getResponseStartTimeoutMs(
+        ["api", "account", "deletion", "feedback"],
+        "POST",
+      ),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+    expect(
+      getResponseStartTimeoutMs(["api", "account", "deletion"], "GET"),
+    ).toBe(RESPONSE_START_TIMEOUT_MS);
+  });
+
   it("does not abort once cleared (backend started responding)", () => {
     const watch = watchResponseStart(null);
 

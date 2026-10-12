@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { isConsentManagerConfigured } from "@/services/consent/consent";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 
@@ -40,7 +41,7 @@ export default function SettingsPreferencesPage() {
   } = usePreferencesPage();
 
   const showNotifications = useGetFlag(Flag.SETTINGS_NOTIFICATIONS);
-  const showAccountDeletion = useGetFlag(Flag.SELF_SERVE_ACCOUNT_DELETION);
+  const showAccountDeletion = useCanDeleteAccount();
   const showCookieSettings = isConsentManagerConfigured();
   const browserCardIndex = showNotifications ? 3 : 2;
   const deleteCardIndex = browserCardIndex + (showCookieSettings ? 2 : 1);

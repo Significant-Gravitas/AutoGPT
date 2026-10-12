@@ -14,7 +14,9 @@ export function StepFooter({ children }: Props) {
     <>
       <Dialog.Footer
         className={cn(
-          "sticky bottom-0 z-10 mt-2 flex-wrap gap-3 border-t bg-white pt-4",
+          // Static on very short viewports (400% zoom), where a sticky
+          // footer would cover everything above it.
+          "sticky bottom-0 z-10 mt-2 flex-wrap gap-3 border-t bg-white pt-4 [@media(max-height:300px)]:static",
           hasContentBelow ? "border-zinc-100" : "border-transparent",
         )}
       >

@@ -6,6 +6,7 @@ import {
   getGetV1GetUserTimezoneMockHandler,
 } from "@/app/api/__generated__/endpoints/auth/auth.msw";
 import { Toaster } from "@/components/molecules/Toast/toaster";
+import { ImpersonationState } from "@/lib/impersonation";
 import { server } from "@/mocks/mock-server";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -85,6 +86,8 @@ function setAccountDeletionFlag(enabled: boolean) {
 
 type User = ReturnType<typeof userEvent.setup>;
 
+const OPENED = { kind: "opened", surface: "settings" };
+
 async function openFlow(user: User) {
   await user.click(
     await screen.findByRole("button", { name: "Delete account" }),
@@ -135,11 +138,21 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  ImpersonationState.clear();
 });
 
 describe("Settings > Account delete card", () => {
   test("is not shown while the account deletion flag is off", async () => {
     setAccountDeletionFlag(false);
+
+    render(<SettingsPreferencesPage />);
+
+    expect(await screen.findByText("Time zone")).toBeDefined();
+    expect(screen.queryByText("Delete account")).toBeNull();
+  });
+
+  test("is not shown while an admin is impersonating the user", async () => {
+    ImpersonationState.set("user-1");
 
     render(<SettingsPreferencesPage />);
 
@@ -274,7 +287,27 @@ describe("Settings > Account delete card", () => {
     expect(getConfirmDeleteButton().disabled).toBe(true);
   });
 
-  test("the close X keeps the account and sends nothing on either step", async () => {
+  test("every open counts one start, even one closed with the X", async () => {
+    const feedback = recordFeedback();
+    const user = userEvent.setup();
+    render(<SettingsPreferencesPage />);
+
+    await openFlow(user);
+    await waitFor(() =>
+      expect(feedback).toEqual([{ kind: "opened", surface: "settings" }]),
+    );
+    await closeFlow(user);
+    await openFlow(user);
+    await closeFlow(user);
+    await flushRequests();
+
+    expect(feedback).toEqual([
+      { kind: "opened", surface: "settings" },
+      { kind: "opened", surface: "settings" },
+    ]);
+  });
+
+  test("the close X keeps the account and sends no answer on either step", async () => {
     const feedback = recordFeedback();
     const requests = recordDeletion();
     const user = userEvent.setup();
@@ -286,17 +319,21 @@ describe("Settings > Account delete card", () => {
     );
     await closeFlow(user);
     await flushRequests();
-    expect(feedback).toEqual([]);
+    expect(feedback).toEqual([OPENED]);
 
     await openFlow(user);
     await user.click(screen.getByRole("button", { name: "Skip" }));
-    await waitFor(() => expect(feedback).toHaveLength(1));
+    await waitFor(() => expect(feedback).toHaveLength(3));
     await user.type(getEmailInput(), "user@example.com");
     await closeFlow(user);
     await flushRequests();
 
     expect(requests).toEqual([]);
-    expect(feedback).toEqual([{ kind: "answer", reason: "skipped" }]);
+    expect(feedback).toEqual([
+      OPENED,
+      OPENED,
+      { kind: "answer", reason: "skipped" },
+    ]);
     expect(mocks.logOut).not.toHaveBeenCalled();
     expect(mocks.replace).not.toHaveBeenCalled();
   });
@@ -317,7 +354,9 @@ describe("Settings > Account delete card", () => {
     await flushRequests();
 
     expect(feedback).toEqual([
+      OPENED,
       { kind: "answer", reason: "skipped" },
+      OPENED,
       { kind: "answer", reason: "other" },
     ]);
   });

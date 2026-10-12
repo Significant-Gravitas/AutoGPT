@@ -1,7 +1,9 @@
+import { ImpersonationState } from "@/lib/impersonation";
 import { Flag } from "@/services/feature-flags/use-get-flag";
 import {
   mockAccountDeletionAPI,
   recordDeletion,
+  recordFeedback,
 } from "@/tests/integrations/account-deletion-fixtures";
 import {
   fireEvent,
@@ -11,7 +13,7 @@ import {
   within,
 } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { PaywallModal } from "../PaywallModal";
 
@@ -38,6 +40,13 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
     validateSession: vi.fn().mockResolvedValue(true),
     logOut: mocks.logOut,
   }),
+}));
+
+const viewport = vi.hoisted(() => ({ isLarge: true }));
+
+vi.mock("@/lib/hooks/useBreakpoint", () => ({
+  useBreakpoint: () => (viewport.isLarge ? "lg" : "sm"),
+  isLargeScreen: (breakpoint: string) => breakpoint === "lg",
 }));
 
 vi.mock("@/providers/onboarding/onboarding-provider", () => ({
@@ -87,10 +96,15 @@ async function openDeleteFlow() {
 }
 
 beforeEach(() => {
+  viewport.isLarge = true;
   mocks.logOut.mockReset().mockResolvedValue(undefined);
   mocks.replace.mockReset();
   setAccountDeletionFlag(true);
   mockAccountDeletionAPI();
+});
+
+afterEach(() => {
+  ImpersonationState.clear();
 });
 
 describe("PaywallModal — delete account", () => {
@@ -101,6 +115,25 @@ describe("PaywallModal — delete account", () => {
 
     expect(screen.getByRole("button", { name: "Log out" })).toBeDefined();
     expect(screen.queryByRole("button", { name: "Delete account" })).toBeNull();
+  });
+
+  test("shows no Delete account button while an admin is impersonating the user", () => {
+    ImpersonationState.set("user-1");
+
+    render(<PaywallModal />);
+
+    expect(screen.getByRole("button", { name: "Log out" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Delete account" })).toBeNull();
+  });
+
+  test("opening the flow counts one start from the paywall", async () => {
+    const feedback = recordFeedback();
+
+    await openDeleteFlow();
+
+    await waitFor(() =>
+      expect(feedback).toEqual([{ kind: "opened", surface: "paywall" }]),
+    );
   });
 
   test("sits next to Log out in the same row and looks the same", () => {
@@ -140,6 +173,23 @@ describe("PaywallModal — delete account", () => {
     ).toBeTruthy();
     expect(screen.getAllByRole("dialog")).toEqual([flow]);
     await waitFor(() => expect(paywall.style.pointerEvents).toBe("none"));
+    await waitFor(() =>
+      expect(flow.contains(document.activeElement)).toBe(true),
+    );
+  });
+
+  test("below 1024px the flow opens as a drawer and still takes focus", async () => {
+    viewport.isLarge = false;
+    const user = userEvent.setup();
+    render(<PaywallModal />);
+    // happy-dom can't run a pointer click inside a vaul drawer, so open it
+    // from the keyboard.
+    screen.getByRole("button", { name: "Delete account" }).focus();
+    await user.keyboard("{Enter}");
+
+    const flow = await screen.findByRole("dialog", {
+      name: "Why are you leaving?",
+    });
     await waitFor(() =>
       expect(flow.contains(document.activeElement)).toBe(true),
     );

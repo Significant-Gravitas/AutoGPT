@@ -89,9 +89,8 @@ describe("DeleteAccountFlow exit feedback", () => {
     const classes = screen
       .getByRole("textbox", { name: "Tell us more" })
       .className.split(/\s+/);
-    expect(classes).toContain("text-base");
-    expect(classes).toContain("lg:text-sm");
-    expect(classes).not.toContain("text-sm");
+    expect(classes).toContain("!text-base");
+    expect(classes).toContain("lg:!text-sm");
   });
 
   test("Skip sends one skipped answer, ignoring any reason or text, and opens the confirmation", async () => {

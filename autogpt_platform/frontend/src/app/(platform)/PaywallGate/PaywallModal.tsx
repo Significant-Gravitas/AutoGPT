@@ -4,10 +4,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
 import { DeleteAccountButton } from "./components/DeleteAccountButton/DeleteAccountButton";
@@ -37,7 +37,7 @@ export function PaywallModal() {
     trial,
     trialOffer,
   } = usePaywallModal();
-  const canDeleteAccount = useGetFlag(Flag.SELF_SERVE_ACCOUNT_DELETION);
+  const canDeleteAccount = useCanDeleteAccount();
 
   return (
     <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
