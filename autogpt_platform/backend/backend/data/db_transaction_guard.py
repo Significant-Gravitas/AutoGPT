@@ -85,7 +85,7 @@ async def release_leaked_transactions(
 
 async def _open_transactions(client: Prisma) -> list[LeakedTransaction]:
     try:
-        rows = await client.query_raw(_OPEN_TRANSACTIONS_SQL)
+        rows = await _query_open_transactions(client)
     except PrismaError as error:
         # Only a connection already inside an aborted transaction refuses a
         # plain SELECT like this one.
@@ -113,6 +113,19 @@ async def _open_transactions(client: Prisma) -> list[LeakedTransaction]:
         for row in rows
         if _is_left_open(row)
     ]
+
+
+async def _query_open_transactions(client: Prisma) -> list[dict]:
+    try:
+        return await client.query_raw(_OPEN_TRANSACTIONS_SQL)
+    except RuntimeError as error:
+        # A test that queried through this client from another event loop
+        # (TestClient runs requests on its own) leaves pooled HTTP connections
+        # bound to that loop once it closes. The first call after fails and the
+        # pool replaces them, as conftest's user setup also relies on.
+        if "Event loop is closed" not in str(error):
+            raise
+        return await client.query_raw(_OPEN_TRANSACTIONS_SQL)
 
 
 def _is_aborted_transaction(error: PrismaError) -> bool:
