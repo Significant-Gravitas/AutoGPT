@@ -104,11 +104,19 @@ export function expectEachTurnOnce(
  * off by rounding, as the backend's billing audit allows. The journal and the
  * ledger are re-read until they agree, and only once every run has asked for
  * its title, which happens in the background.
+ *
+ * The ledger is the user's whole copilot ledger, so it needs a brand-new user;
+ * an existing account (PLAYWRIGHT_JOURNEY_EMAIL) carries earlier chats'
+ * charges, and the check is skipped there.
  */
 export async function expectChargedWhatWasBilled(
   userID: string,
   nonces: string[],
 ) {
+  test.skip(
+    Boolean(process.env.PLAYWRIGHT_JOURNEY_EMAIL),
+    "the charge check reads the user's whole cost ledger, so it needs a brand-new user",
+  );
   await expect(async () => {
     const journals = await Promise.all(nonces.map(readJournal));
     // Compared before a title went out, the totals would agree without it.
