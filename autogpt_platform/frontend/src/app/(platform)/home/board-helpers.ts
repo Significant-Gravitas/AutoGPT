@@ -2,12 +2,14 @@ import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
 import type { BoardResponse } from "@/app/api/__generated__/models/boardResponse";
 import type { GetV2GetBoardParams } from "@/app/api/__generated__/models/getV2GetBoardParams";
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 
 export const BOARD_QUERY_KEY = ["copilot", "board"] as const;
 export const BOARD_REFETCH_INTERVAL_MS = 10_000;
 export const BOARD_MUTATION_KEY = ["copilot", "board", "mutation"];
 export const BOARD_MOVE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "move"];
 export const BOARD_COLUMNS_MUTATION_KEY = [...BOARD_MUTATION_KEY, "columns"];
+export const BOARD_CREATE_MUTATION_KEY = [...BOARD_MUTATION_KEY, "create"];
 export const MAX_COLUMNS = 6;
 export const MAX_COLUMN_NAME = 40;
 export const BUILTIN_KEYS = ["backlog", "in_progress", "done"] as const;
@@ -16,6 +18,9 @@ const SESSION_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RECENT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const POSITION_GAP = 1024;
+// Parameters only the chat page acts on: a link carrying one must not land
+// on the board.
+const CHAT_ONLY_PARAMS = ["expertId", "kickoff", "new", "autosubmit", "source"];
 
 export type Card = SessionSummaryResponse;
 
@@ -243,6 +248,7 @@ export function applyReassign(
 
 export type CardState =
   | { kind: "running" }
+  | { kind: "queued" }
   | { kind: "needs_you" }
   | { kind: "not_started" }
   | { kind: "line"; text: string }
@@ -250,6 +256,7 @@ export type CardState =
 
 export function cardState(card: Card): CardState {
   if (card.is_processing) return { kind: "running" };
+  if (card.chat_status === "queued") return { kind: "queued" };
   if (card.needs_you) return { kind: "needs_you" };
   if (!card.started) return { kind: "not_started" };
   if (card.last_line) return { kind: "line", text: card.last_line };
@@ -260,6 +267,8 @@ export function stateLineText(state: CardState): string | null {
   switch (state.kind) {
     case "running":
       return "Working…";
+    case "queued":
+      return "Queued";
     case "needs_you":
       return "Waiting for your answer";
     case "not_started":
@@ -277,4 +286,18 @@ export function parseMention(text: string): {
 } {
   if (!/(^|\s)@$/.test(text)) return { text, mentionOpen: false };
   return { text: text.slice(0, -1), mentionOpen: true };
+}
+
+// A paywall (402) or a usage limit (429) says what to do next, so show it.
+export function refusalReason(error: unknown): string | undefined {
+  if (!(error instanceof ApiError)) return undefined;
+  if (error.status !== 402 && error.status !== 429) return undefined;
+  return error.message || undefined;
+}
+
+export function chatLinkTarget(search: string, hash: string): string | null {
+  const params = new URLSearchParams(search);
+  const hasChatParam = CHAT_ONLY_PARAMS.some((name) => params.has(name));
+  const hasPrompt = new URLSearchParams(hash.replace(/^#/, "")).has("prompt");
+  return hasChatParam || hasPrompt ? `/chat${search}${hash}` : null;
 }

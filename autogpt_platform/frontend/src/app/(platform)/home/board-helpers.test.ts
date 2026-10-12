@@ -1,10 +1,12 @@
 import type { BoardColumn } from "@/app/api/__generated__/models/boardColumn";
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { describe, expect, it } from "vitest";
 import {
   applyReassign,
   type Card,
   cardColumnKey,
   cardState,
+  chatLinkTarget,
   dragLabel,
   dropPosition,
   groupCards,
@@ -17,6 +19,7 @@ import {
   patchCard,
   planDrop,
   positionBetween,
+  refusalReason,
   resolveDrop,
   stateLineText,
 } from "./board-helpers";
@@ -203,6 +206,14 @@ describe("cardState", () => {
     );
     expect(state).toEqual({ kind: "running" });
     expect(stateLineText(state)).toBe("Working…");
+  });
+
+  it("then queued", () => {
+    const state = cardState(
+      card("x", { chat_status: "queued", needs_you: true, started: true }),
+    );
+    expect(state).toEqual({ kind: "queued" });
+    expect(stateLineText(state)).toBe("Queued");
   });
 
   it("then needs you", () => {
@@ -569,5 +580,43 @@ describe("newColumnKey", () => {
       /^col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
     expect(newColumnKey()).not.toBe(key);
+  });
+});
+
+describe("refusalReason", () => {
+  it("gives the server's reason for a paywall or a limit", () => {
+    expect(refusalReason(new ApiError("Upgrade to continue.", 402, {}))).toBe(
+      "Upgrade to continue.",
+    );
+    expect(
+      refusalReason(new ApiError("You've reached your daily limit", 429, {})),
+    ).toBe("You've reached your daily limit");
+  });
+
+  it("gives nothing for other failures", () => {
+    expect(refusalReason(new ApiError("boom", 500, {}))).toBeUndefined();
+    expect(refusalReason(new Error("offline"))).toBeUndefined();
+  });
+});
+
+describe("chatLinkTarget", () => {
+  it("sends chat-only links to /chat with the same query and hash", () => {
+    expect(chatLinkTarget("?expertId=e1&kickoff=1", "")).toBe(
+      "/chat?expertId=e1&kickoff=1",
+    );
+    expect(chatLinkTarget("?source=import&autosubmit=true", "")).toBe(
+      "/chat?source=import&autosubmit=true",
+    );
+    expect(chatLinkTarget("?new=1", "")).toBe("/chat?new=1");
+    expect(chatLinkTarget("", "#prompt=Hello")).toBe("/chat#prompt=Hello");
+    expect(chatLinkTarget("?autosubmit=true", "#prompt=Hi")).toBe(
+      "/chat?autosubmit=true#prompt=Hi",
+    );
+  });
+
+  it("keeps the board for a session link or no parameters", () => {
+    expect(chatLinkTarget("?sessionId=abc", "")).toBeNull();
+    expect(chatLinkTarget("", "")).toBeNull();
+    expect(chatLinkTarget("", "#section")).toBeNull();
   });
 });
