@@ -1,6 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { Flag } from "@/services/feature-flags/use-get-flag";
+
 import { usePlatformChrome } from "../usePlatformChrome";
 
 const pathnameMock = vi.fn<() => string>(() => "/marketplace");
@@ -148,7 +150,16 @@ describe("usePlatformChrome", () => {
 
 it("gives home the chat controls and floating header", () => {
   pathnameMock.mockReturnValue("/home");
+  flagMock.mockImplementation((flag) => flag !== Flag.TASK_BOARD);
   const { result } = renderHook(() => usePlatformChrome());
   expect(result.current.isCopilotRoute).toBe(true);
+  expect(result.current.overlayInsetHeader).toBe(true);
+});
+
+it("keeps the floating header on the home board but drops the chat controls", () => {
+  pathnameMock.mockReturnValue("/home");
+  flagMock.mockReturnValue(true);
+  const { result } = renderHook(() => usePlatformChrome());
+  expect(result.current.isCopilotRoute).toBe(false);
   expect(result.current.overlayInsetHeader).toBe(true);
 });

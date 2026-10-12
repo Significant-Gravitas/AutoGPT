@@ -42,8 +42,14 @@ export function usePlatformChrome() {
 
   const isMarketplaceRoute = matchesRoute(pathname, "/marketplace");
 
+  // With the task board on, /home shows the board instead of the chat, so it
+  // keeps the floating header but loses the chat-only header controls.
+  const isTaskBoardEnabled = useGetFlag(Flag.TASK_BOARD);
+  const isTaskBoardRoute =
+    Boolean(isTaskBoardEnabled) && matchesRoute(pathname, "/home");
+
   const isCopilotRoute =
-    matchesRoute(pathname, "/home") ||
+    (matchesRoute(pathname, "/home") && !isTaskBoardRoute) ||
     matchesRoute(pathname, "/chat") ||
     matchesRoute(pathname, "/copilot");
 
@@ -74,7 +80,7 @@ export function usePlatformChrome() {
     // above it, so messages scroll to the viewport top. Kept separate from
     // `isCopilotRoute` so a future overlay-header route doesn't inherit
     // copilot's header controls.
-    overlayInsetHeader: isCopilotRoute,
+    overlayInsetHeader: isCopilotRoute || isTaskBoardRoute,
     isCopilotRoute,
     // Titleless pages collapse the header on desktop so content doesn't sit
     // below an empty strip; on mobile it stays for the sidebar trigger.
