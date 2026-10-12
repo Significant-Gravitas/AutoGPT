@@ -352,6 +352,62 @@ def _mock_stream_internals(
     )
 
 
+def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
+    mocker: pytest_mock.MockerFixture, sentry_transactions
+) -> None:
+    """The relay's latency lands on the request's own transaction, which the
+    ASGI middleware starts for it in production."""
+    import asyncio
+
+    from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
+
+    from backend.copilot.response_model import (
+        StreamFinish,
+        StreamStatus,
+        StreamTextDelta,
+    )
+
+    _mock_stream_internals(mocker)
+    relayed: asyncio.Queue = asyncio.Queue()
+    for chunk in (
+        StreamStatus(message="Message received…"),
+        StreamTextDelta(id="t", delta="hi"),
+        StreamFinish(),
+    ):
+        relayed.put_nowait((None, chunk))
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "subscribe_to_session",
+        new_callable=AsyncMock,
+        return_value=relayed,
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry, "unsubscribe_from_session", new_callable=AsyncMock
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry, "publish_chunk", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit", new_callable=AsyncMock
+    )
+
+    response = fastapi.testclient.TestClient(SentryAsgiMiddleware(app)).post(
+        "/sessions/sess-1/stream", json={"message": "hello"}
+    )
+
+    assert response.status_code == 200
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert request["contexts"]["trace"]["op"] == "http.server"
+    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
+    assert data["copilot.stream.chunk_count"] == 3
+
+
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     """Exactly 20 file_ids should be accepted (not rejected by validation)."""
     _mock_stream_internals(mocker)

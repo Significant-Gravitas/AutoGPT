@@ -31,6 +31,7 @@ from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
+from backend.copilot.turn_tracing import TurnTrace, turn_transaction
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
@@ -219,6 +220,19 @@ async def _normalize_private_expert_session_tenancy(
     session.team_id = team_id
     session.credentials = {}
     return await upsert_chat_session(session, persist_tenancy=True)
+
+
+def _engine_label(stream_fn: Callable) -> str:
+    """The ``copilot.engine`` tag for the engine a turn streams from."""
+    if stream_fn is sdk_service.stream_chat_completion_sdk:
+        return "sdk"
+    if stream_fn is stream_chat_completion_baseline:
+        return "baseline"
+    if stream_fn is stream_chat_completion_microsoft_365:
+        return "microsoft_365_copilot"
+    if stream_fn is stream_chat_completion_dummy:
+        return "dummy"
+    return "unknown"
 
 
 async def _wait_for_expert_setup(session: "ChatSession") -> None:
@@ -540,7 +554,8 @@ class CoPilotProcessor:
         cluster_lock: ClusterLock,
         log: CoPilotLogMetadata,
     ):
-        """Async execution logic for a CoPilot turn.
+        """Async execution logic for a CoPilot turn, run as one Sentry
+        ``copilot.turn`` transaction.
 
         Calls the chat completion service (SDK or baseline) and publishes
         results to the stream registry.
@@ -551,6 +566,17 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
+        with turn_transaction(entry) as turn:
+            await self._run_turn(entry, cancel, cluster_lock, log, turn)
+
+    async def _run_turn(
+        self,
+        entry: CoPilotExecutionEntry,
+        cancel: threading.Event,
+        cluster_lock: ClusterLock,
+        log: CoPilotLogMetadata,
+        turn: TurnTrace,
+    ):
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
@@ -726,6 +752,7 @@ class CoPilotProcessor:
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_credential_pins(entry.credential_pins)
+            turn.engine_started(_engine_label(stream_fn))
             raw_stream = stream_fn(
                 session_id=entry.session_id,
                 message=entry.message or None,
@@ -765,6 +792,7 @@ class CoPilotProcessor:
             # until GC eventually runs.
             try:
                 async for chunk in published_stream:
+                    turn.observe(chunk)
                     if cancel.is_set():
                         log.info("Cancel requested, breaking stream")
                         break
@@ -815,6 +843,7 @@ class CoPilotProcessor:
                         log.error(f"Failed to release chat credential: {release_err}")
             finally:
                 # After the release, which can still fail the turn.
+                turn.set_outcome(error_msg, stream_registry.CANCELLED_MESSAGE)
                 if scheduled_watch is not None:
                     scheduled_watch.report(error_msg)
                 try:
