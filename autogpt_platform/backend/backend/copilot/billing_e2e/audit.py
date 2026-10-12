@@ -99,6 +99,8 @@ def _audit_turn(
             )
         ]
     owed = scenario.owed_calls(turn, calls)
+    if not owed:
+        return _audit_unbilled(turn, ledger, session_usage)
     findings = _audit_spend(scenario, turn, owed, ledger)
     rows = ledger.rows_in(turn)
     if len(rows) != 1:
@@ -108,6 +110,23 @@ def _audit_turn(
     if scenario.reports_usage:
         findings += _audit_tokens(turn, owed, rows[0], session_usage)
     return findings
+
+
+def _audit_unbilled(
+    turn: int, ledger: PlatformLedger, session_usage: list[Usage]
+) -> list[Finding]:
+    """A turn that owes nothing leaves no charge, cost-log row or usage."""
+    spend = [charge.microdollars for charge in ledger.spend_in(turn)]
+    tree = [charge.microdollars for charge in ledger.tree_in(turn)]
+    rows = ledger.rows_in(turn)
+    if not (spend or tree or rows or session_usage):
+        return []
+    message = (
+        f"turn {turn} owes nothing, yet charged {spend} to spend and {tree} to "
+        f"the tree, logged {len(rows)} cost-log row(s) and recorded "
+        f"{len(session_usage)} session usage entries"
+    )
+    return [Finding(check="charge", message=message)]
 
 
 def _audit_spend(
