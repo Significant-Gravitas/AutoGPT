@@ -375,7 +375,7 @@ class BaseGraph(GraphBaseMeta):
         for type_class, input_default in props:
             # An input or output without a name isn't part of the graph's
             # interface yet; validate_graph reports the missing name.
-            if input_default.get("name") is None:
+            if not str(input_default.get("name") or "").strip():
                 continue
             try:
                 schema_fields.append(type_class.model_construct(**input_default))
@@ -992,7 +992,11 @@ class GraphModel(Graph, GraphMeta):
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize_pin_name(name) for name in node.input_default]
+                [
+                    sanitize_pin_name(name)
+                    for name, value in node.input_default.items()
+                    if not _is_blank_io_name(block, name, value)
+                ]
                 + [
                     sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
@@ -1328,6 +1332,16 @@ def _describe_node_errors(
     if len(problems) > 1:
         return f"{problems[0]} (and {len(problems) - 1} more)"
     return problems[0]
+
+
+def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
+    """An input or output named "" has no name, and the graph's interface needs
+    one; one wired in from a link still counts."""
+    return (
+        field == "name"
+        and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+        and not str(value or "").strip()
+    )
 
 
 def _node_title(node: Node) -> str:

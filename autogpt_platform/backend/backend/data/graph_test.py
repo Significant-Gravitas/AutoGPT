@@ -2516,6 +2516,15 @@ async def test_get_graph_settings_resolves_against_the_running_version(
 # ============================================================================
 
 
+def test_a_blank_output_name_wired_from_a_link_still_counts():
+    """Only the node's own blank value is discounted; a name a link brings in
+    is still provided."""
+    graph = make_graph_model(_value_to_output_graph({"name": ""}), user_id="user-1")
+    graph.links[0].sink_name = "name"
+
+    assert graph.validate_graph_get_errors() == {}
+
+
 def test_generate_schema_leaves_out_an_input_without_a_name():
     """An unnamed input isn't part of the graph's interface yet, so it isn't in
     the schema. The schema is computed whenever the graph is dumped, before

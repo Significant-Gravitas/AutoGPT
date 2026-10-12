@@ -16,7 +16,7 @@ from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
-from backend.blocks.io import AgentOutputBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
@@ -738,6 +738,40 @@ def test_create_new_graph_names_the_missing_field_on_the_submitted_node(
         "type": "validation_error",
         "message": "Agent Output › Name: This field is required",
         "node_errors": {"output": {"name": "This field is required"}},
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "block,title",
+    [(AgentInputBlock, "Agent Input"), (AgentOutputBlock, "Agent Output")],
+    ids=["input", "output"],
+)
+@pytest.mark.parametrize("name", [None, "", "   "], ids=["null", "empty", "whitespace"])
+def test_create_new_graph_refuses_a_blank_input_or_output_name(
+    mocker: pytest_mock.MockFixture, block: type, title: str, name: str | None
+) -> None:
+    """A name that is there but blank names nothing either; it would add a
+    nameless field to the graph's inputs or outputs."""
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    graph = {
+        "name": "Blank name",
+        "description": "",
+        "nodes": [
+            {"id": "io", "block_id": block().id, "input_default": {"name": name}}
+        ],
+        "links": [],
+    }
+
+    response = client.post("/graphs", json={"graph": graph})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "type": "validation_error",
+        "message": f"{title} › Name: This field is required",
+        "node_errors": {"io": {"name": "This field is required"}},
     }
     create_graph_mock.assert_not_awaited()
 
