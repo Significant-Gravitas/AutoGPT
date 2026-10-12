@@ -518,7 +518,7 @@ class BaseTool:
             )
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
-            return StreamToolOutputAvailable(
+            failed = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=ErrorResponse(
@@ -527,6 +527,11 @@ class BaseTool:
                     session_id=session.session_id,
                 ).model_dump_json(),
                 success=False,
+            )
+            # The error text can quote what the tool read, so it is screened
+            # like a result, whole.
+            return await self._screen_read(
+                user_id, session, tool_call_id, kwargs, failed, None, ""
             )
         return await self._screen_read(
             user_id, session, tool_call_id, kwargs, output, result.outside, full

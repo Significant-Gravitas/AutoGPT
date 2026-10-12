@@ -1710,6 +1710,8 @@ def _completed_run_mocks(
     )
     detailed = MagicMock(spec=GraphExecutionWithNodes)
     detailed.node_executions = node_executions or []
+    detailed.graph_version = 1
+    detailed.nodes_input_masks = None
     db = MagicMock()
     if detailed_fetch_error is not None:
         db.get_graph_execution = AsyncMock(side_effect=detailed_fetch_error)
