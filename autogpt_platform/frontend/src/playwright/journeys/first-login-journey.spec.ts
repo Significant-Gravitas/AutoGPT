@@ -14,22 +14,27 @@ test.describe("first login journey", () => {
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/home/);
+    await expect(
+      page.getByRole("textbox", { name: "Chat message input" }),
+    ).toBeVisible();
     await expectAccountMenuToName(page, user);
 
-    await page.getByRole("link", { name: "Agents" }).click();
-    await expect(page).toHaveURL(/\/library/);
-    await expect(page.getByTestId("library-textbox")).toBeVisible();
+    await page.getByRole("link", { name: "Marketplace" }).click();
+    await expect(page).toHaveURL(/\/marketplace/);
+    await expect(page.getByTestId("store-search-input")).toBeVisible();
     await expectAccountMenuToName(page, user);
   });
 });
 
 // Until the profile loads, the menu shows placeholders instead of who you are.
 async function expectAccountMenuToName(page: Page, user: JourneyUser) {
-  await page.getByTestId("profile-popout-menu-trigger").click();
+  const trigger = page.getByTestId("profile-popout-menu-trigger");
   const menu = page.getByTestId("account-menu-popover");
+  await trigger.click();
   const profileName = user.email.split("@")[0];
   await expect(menu.getByText(profileName, { exact: true })).toBeVisible();
   await expect(menu.getByText(user.email, { exact: true })).toBeVisible();
-  await page.keyboard.press("Escape");
+  // The trigger, not Escape: in CI, Escape sometimes left the menu open.
+  await trigger.click();
   await expect(menu).toBeHidden();
 }
