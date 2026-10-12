@@ -1,6 +1,7 @@
 """Unit tests for helpers in backend.data.user."""
 
 import asyncio
+import base64
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, call, patch
 import prisma.errors
 import pytest
 
+from backend.data import profile as profile_module
 from backend.data import user as user_module
 from backend.data.notifications import AudienceAction, NotificationResult
 from backend.data.user import (
@@ -1125,7 +1127,7 @@ class TestGetOrCreateUserStatus:
     @pytest.fixture(autouse=True)
     def stub_user_provisioning(self):
         with (
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1392,6 +1394,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1421,6 +1424,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1447,6 +1451,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(user_module.User, "from_db", return_value=sentinel_user),
             patch.object(user_module.logger, "warning") as warn_mock,
         ):
@@ -1472,6 +1477,7 @@ class TestGetOrCreateUserProfile:
 
         with (
             patch.object(user_module, "prisma") as mock_prisma,
+            patch.object(profile_module, "prisma", mock_prisma),
             patch.object(
                 user_module.User,
                 "from_db",
@@ -1514,7 +1520,7 @@ class TestGetOrCreateUserPersonalOrg:
                 "from_db",
                 return_value=_application_user("user-org", "erin@example.com"),
             ),
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1540,7 +1546,7 @@ class TestGetOrCreateUserPersonalOrg:
         with (
             patch.object(user_module, "prisma") as mock_prisma,
             patch.object(user_module.User, "from_db", return_value=MagicMock()),
-            patch.object(user_module, "_ensure_user_profile", new_callable=AsyncMock),
+            patch.object(user_module, "ensure_profile", new_callable=AsyncMock),
             patch.object(
                 user_module,
                 "ensure_personal_org",
@@ -1854,3 +1860,15 @@ class TestFindOrphanedAuthIdentities:
 
         assert found[0].email_owner_id == "user-old"
         assert found[0].has_email_collision is True
+
+
+@pytest.mark.asyncio
+async def test_unsubscribe_error_does_not_repeat_the_token():
+    """The one-click route logs this error on any failure, and the token in it
+    never expires."""
+    token = base64.urlsafe_b64encode(b"user-1:not-its-signature").decode()
+
+    with pytest.raises(DatabaseError) as exc:
+        await user_module.unsubscribe_user_by_token(token)
+
+    assert token not in str(exc.value)

@@ -65,7 +65,7 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         usage_by_turn.append(session.usage[usage_before:])
 
     cli_resumed = (
-        [launch == session.session_id for launch in run_turn.resumed]
+        [(turn, launch == session.session_id) for turn, launch in run_turn.resumed]
         if isinstance(run_turn, SdkTurns)
         else None
     )
