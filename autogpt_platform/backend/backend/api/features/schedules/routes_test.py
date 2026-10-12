@@ -270,10 +270,11 @@ def test_deleting_a_schedule_forgets_its_failure_streak(
     forget.assert_awaited_once_with(test_user_id, "sched-1")
 
 
-def test_a_schedule_that_is_not_there_keeps_its_streak(
-    mocker: pytest_mock.MockFixture,
+def test_a_retried_delete_still_forgets_the_streak(
+    mocker: pytest_mock.MockFixture, test_user_id: str
 ) -> None:
-    """Nothing was deleted: a routine's id, say, is not a schedule's."""
+    """The job went, then the streak cleanup failed: the retry finds no job,
+    and must still clear the streak, or the chat stays listed as paused."""
     _patch_scheduler(
         mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
     )
@@ -282,8 +283,8 @@ def test_a_schedule_that_is_not_there_keeps_its_streak(
         AsyncMock(),
     )
 
-    assert client.delete("/schedules/routine-1").status_code == 404
-    forget.assert_not_awaited()
+    assert client.delete("/schedules/sched-1").status_code == 404
+    forget.assert_awaited_once_with(test_user_id, "sched-1")
 
 
 def test_paused_scheduled_chats_are_listed_for_the_caller(
@@ -430,6 +431,10 @@ def test_delete_schedule_maps_not_found_to_404(
 ) -> None:
     _patch_scheduler(
         mocker, delete_schedule=AsyncMock(side_effect=NotFoundError("gone"))
+    )
+    mocker.patch(
+        "backend.api.features.schedules.routes.scheduled_chats.forget_scheduled_chat",
+        AsyncMock(),
     )
 
     response = client.delete("/schedules/missing")

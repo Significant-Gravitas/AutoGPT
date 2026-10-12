@@ -169,9 +169,15 @@ async def resume_scheduled_chat(user_id: str, schedule_key: str) -> bool:
 
 
 async def forget_scheduled_chat(user_id: str, schedule_key: str) -> None:
-    """Drop the streak of a chat its owner deleted. Kept, a paused one would
-    stay listed as paused and under Needs you, with a Resume that says it
-    runs again, and its alert could still email about it."""
+    """Drop the streak of a follow-up its owner deleted. Kept, a paused one
+    would stay listed as paused and under Needs you, with a Resume that says
+    it runs again, and its alert could still email about it.
+
+    A routine's streak is left alone: its paused jobs outlive any one
+    schedule id, and a streak dropped from under them would stop the routine
+    without a word."""
+    if await ExpertRoutine.prisma().find_unique(where={"id": schedule_key}):
+        return
     await ScheduledChatStreak.prisma().delete_many(
         where={"userId": user_id, "scheduleKey": schedule_key}
     )
