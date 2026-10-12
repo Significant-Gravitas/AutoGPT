@@ -10,7 +10,9 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from . import registry
+from backend.util.feature_flag import Flag
+
+from . import registry, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -161,6 +163,87 @@ async def test_wipe_removes_the_jobs_and_resume_does_not_undo_it(env):
     assert {r["reason"] for r in resumed.values()} == {"scope_wiped"}
     assert env.db.rows[USER].state == WIPED
     assert env.scheduler.jobs == {}
+
+
+@pytest.mark.asyncio
+async def test_a_resume_landing_inside_a_pause_keeps_its_crons(env, monkeypatch):
+    """The pause writes PAUSED; before its removal lands, a resume writes
+    ACTIVE and registers the crons, whose job ids are the scope's own. The
+    removal takes them, and the pause, finding the row ACTIVE again,
+    registers them once more: the scope does not sit ACTIVE without
+    crons."""
+    await registry.ensure_scope_scheduled(EXPERT)
+    remove = registry.remove_scope_jobs
+
+    async def resumed_first(scope):
+        monkeypatch.setattr(registry, "remove_scope_jobs", remove)
+        await registry.resume_scope(scope)
+        assert set(env.scheduler.jobs) == job_ids(EXPERT)
+        return await remove(scope)
+
+    monkeypatch.setattr(registry, "remove_scope_jobs", resumed_first)
+
+    assert await registry.pause_scope(EXPERT)
+
+    assert env.db.rows[EXPERT.scope_key].state == ACTIVE
+    assert set(env.scheduler.jobs) == job_ids(EXPERT)
+
+
+@pytest.mark.asyncio
+async def test_a_registration_taken_down_then_resumed_registers_again(env, monkeypatch):
+    """A registration whose row left ACTIVE while it ran takes its crons down
+    (``scope_changed``); a resume that lands before that takedown loses its
+    crons with them. The registration, finding the row ACTIVE again,
+    registers them once more."""
+    record = env.db.record_scope_jobs
+    remove = scope_jobs.remove_scope_jobs
+    calls = 0
+
+    async def paused_meanwhile(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            env.db.update(EXPERT.scope_key, state=PAUSED)
+            return False
+        return await record(*args, **kwargs)
+
+    async def resumed_before_the_takedown(scope):
+        monkeypatch.setattr(scope_jobs, "remove_scope_jobs", remove)
+        await registry.resume_scope(scope)
+        return await remove(scope)
+
+    monkeypatch.setattr(env.db, "record_scope_jobs", paused_meanwhile)
+    monkeypatch.setattr(scope_jobs, "remove_scope_jobs", resumed_before_the_takedown)
+
+    await registry.ensure_scope_scheduled(EXPERT)
+
+    row = env.db.rows[EXPERT.scope_key]
+    assert row.state == ACTIVE
+    assert set(env.scheduler.jobs) == job_ids(EXPERT)
+    assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+
+
+@pytest.mark.asyncio
+async def test_a_resume_that_cannot_write_the_row_reports_only_enabled_crons_failed(
+    env, monkeypatch
+):
+    """The backfill lists every cron a resume reports unavailable as a
+    failure: a cron the owner's flags turn off is reported as its flag says,
+    as an ensure would, not as a failure."""
+    env.flags[Flag.GRAPHITI_COMMUNITIES_ENABLED] = False
+    monkeypatch.setattr(
+        env.db, "set_scope_state", AsyncMock(side_effect=ConnectionError("db down"))
+    )
+
+    resumed = await registry.resume_scope(EXPERT)
+
+    assert resumed == {
+        "community_rebuild": {
+            "skipped": True,
+            "reason": "graphiti_communities_disabled",
+        },
+        "dream_nightly_batch": {"skipped": True, "reason": "registry_unavailable"},
+    }
 
 
 @pytest.mark.asyncio

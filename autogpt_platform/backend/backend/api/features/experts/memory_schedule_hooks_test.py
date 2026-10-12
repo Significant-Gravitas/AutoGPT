@@ -88,6 +88,7 @@ def _hire(mocker, state: str) -> None:
     mocker.patch.object(experts_db, "_claim_setup", new=AsyncMock(return_value=False))
     mocker.patch.object(experts_db, "_run_hire_setup", new=MagicMock())
     mocker.patch.object(experts_db, "emit_funnel_event")
+    mocker.patch.object(experts_db, "_emit_expert_hired")
     mocker.patch.object(experts_db, "_to_model")
     mocker.patch.object(experts_db, "HireResult")
 
@@ -98,7 +99,7 @@ async def test_a_new_hire_registers_its_memory_scope_in_the_background(
 ):
     _hire(mocker, "created")
 
-    await experts_db._hire_expert_impl("owner-1", "template-1", None)
+    await experts_db._hire_expert_impl("owner-1", "template-1", None, None)
 
     register.assert_not_awaited()  # the hire did not wait on it
     await spawned["expert-memory-schedule-expert-1"]
@@ -115,7 +116,7 @@ async def test_revive_and_idempotent_rehire_leave_it_to_their_own_paths(
     re-hiring an active expert changes nothing."""
     _hire(mocker, state)
 
-    await experts_db._hire_expert_impl("owner-1", "template-1", None)
+    await experts_db._hire_expert_impl("owner-1", "template-1", None, None)
 
     sync.assert_not_awaited()
     register.assert_not_awaited()

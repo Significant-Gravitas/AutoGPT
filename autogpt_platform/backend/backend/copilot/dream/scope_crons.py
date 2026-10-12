@@ -20,6 +20,7 @@ from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import ScopeRunKind
 
 from .deadline import within_deadline
+from .registry import restore_if_resumed
 from .scheduling import DreamSystemJob, clear_registration_marker
 from .scope_jobs import remove_scope_jobs, scope_label
 
@@ -39,11 +40,13 @@ async def memory_scope_may_fire(
     """Whether a dream-system cron of ``scope`` may run now.
 
     The registry must let it: an ACTIVE row, or an account with no row
-    (crons from before the registry). An expert with no row was deleted, so
-    its orphaned crons are removed. An expert scope's expert must also be
-    active; archived, paused or unavailable only skips the run, since its
-    crons are the lifecycle hooks' to manage. The whole check runs under the
-    registry deadline, and a slow or failed answer skips the run.
+    (crons from before the registry). Any other row's crons are stragglers
+    (a pause or archive whose removal failed), and an expert with no row was
+    deleted: either way the scope's crons are removed (and given back if a
+    resume landed meanwhile). An expert scope's expert must also be active;
+    archived, paused or unavailable only skips the run, since its crons are
+    the lifecycle hooks' to manage. The whole check runs under the registry
+    deadline, and a slow or failed answer skips the run.
     """
     try:
         return await within_deadline(_may_fire(scope, expert_status))
@@ -194,13 +197,19 @@ async def _may_fire(scope: MemoryScope, expert_status: ExpertStatusLookup) -> bo
 
 
 async def _schedule_active(scope: MemoryScope) -> bool:
+    """Whether the scope's row lets its crons run. A cron that fires under a
+    row that says otherwise is a straggler (a pause or archive whose removal
+    failed): the scope's crons are removed, and given back only if a resume
+    landed meanwhile."""
     row = await memory_schedule_db().get_scope_schedule(
         scope.owner_user_id, scope.scope_key
     )
-    if row is not None:
-        return row.state == MemoryScopeScheduleState.ACTIVE
-    if not scope.is_expert:
+    if row is not None and row.state == MemoryScopeScheduleState.ACTIVE:
         return True
-    logger.warning(f"No registry row for {scope_label(scope)}; removing its crons")
-    await remove_scope_jobs(scope)
+    if row is None and not scope.is_expert:
+        return True
+    state = row.state.value.lower() if row is not None else "without a registry row"
+    logger.warning(f"Memory cron of {scope_label(scope)} fired {state}; removing")
+    if await remove_scope_jobs(scope):
+        await restore_if_resumed(scope)
     return False
