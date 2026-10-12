@@ -1593,6 +1593,7 @@ def _client_session_in_scope(
         or metadata.builder_graph_id
         or metadata.source_platform
         or metadata.delegated_by_session_id
+        or metadata.delegated_by_expert_id
         or metadata.handed_off_from_expert_id
     ):
         return False

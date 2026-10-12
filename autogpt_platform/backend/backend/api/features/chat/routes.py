@@ -778,7 +778,7 @@ async def create_session(
 ) -> CreateSessionResponse:
     """Create (or get-or-create) a chat session.
 
-    Two modes, selected by the request body:
+    Four modes, selected by the request body:
 
     - Default: create a fresh session for the user. ``dry_run=True`` forces
       run_capability and run_agent calls to use dry-run simulation.
@@ -799,7 +799,8 @@ async def create_session(
     Args:
         user_id: The authenticated user ID parsed from the JWT (required).
         request: Optional request body with ``dry_run``,
-            ``builder_graph_id`` and/or ``expert_id``.
+            ``builder_graph_id``, ``expert_id``, ``expert_kickoff`` and/or
+            ``session_id``.
 
     Returns:
         CreateSessionResponse: Details of the resulting session.
