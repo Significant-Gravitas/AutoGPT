@@ -184,6 +184,13 @@ def test_read_copilot_skill_returns_user_body(
             )
         ),
     )
+    # Unstubbed, listing the files upserts the user's workspace through the
+    # session's database client from TestClient's own event loop, and that
+    # write left its connection inside an open transaction for later tests.
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skill_files",
+        AsyncMock(return_value=[]),
+    )
 
     response = client.get("/skills/oauth_flow")
     assert response.status_code == 200

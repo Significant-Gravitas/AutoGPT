@@ -50,6 +50,9 @@ export const mockNextjsModules = () => {
     usePathname: () => "/marketplace",
     useSearchParams: () => new URLSearchParams(),
     useParams: () => ({}),
+    notFound: () => {
+      throw new Error("NEXT_HTTP_ERROR_FALLBACK;404");
+    },
   }));
 
   vi.mock("next/link", () => ({
