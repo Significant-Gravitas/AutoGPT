@@ -590,4 +590,67 @@ describe("FollowupsPage", () => {
     );
     invalidate.mockRestore();
   });
+
+  test("a paused follow-up can be deleted from its row", async () => {
+    let deletedID: string | null = null;
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "sched-1",
+          title: "Discord monitor",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: false,
+        },
+      ]),
+      getDeleteV1DeleteExecutionScheduleMockHandler(({ params }) => {
+        deletedID = String(params.scheduleId);
+        return { id: deletedID };
+      }),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    fireEvent.click(
+      within(row).getByRole("button", { name: "Delete Discord monitor" }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(deletedID).toBe("sched-1"));
+  });
+
+  test("a paused routine offers no Delete: it goes with its expert", async () => {
+    server.use(
+      getListCopilotFollowupSchedulesMockHandler([]),
+      defaultGraphSchedulesHandler(),
+      getListPausedScheduledChatsMockHandler([
+        {
+          schedule_key: "routine-1",
+          title: "Morning sweep",
+          session_id: "session-1",
+          reason: "connection",
+          provider: "discord",
+          summary: "Paused: can't use Discord",
+          paused_at: new Date("2026-10-11T12:00:00Z"),
+          routine: true,
+        },
+      ]),
+    );
+
+    render(<FollowupsPage />);
+
+    const row = await screen.findByTestId("paused-chat-row");
+    expect(
+      within(row).getByRole("button", { name: "Resume Morning sweep" }),
+    ).toBeDefined();
+    expect(
+      within(row).queryByRole("button", { name: "Delete Morning sweep" }),
+    ).toBeNull();
+  });
 });

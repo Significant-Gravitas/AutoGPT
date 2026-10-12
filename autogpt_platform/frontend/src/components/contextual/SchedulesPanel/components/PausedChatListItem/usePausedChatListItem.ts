@@ -1,6 +1,7 @@
 import { getGetHomeDashboardQueryKey } from "@/app/api/__generated__/endpoints/home/home";
 import {
   getListPausedScheduledChatsQueryKey,
+  useDeleteV1DeleteExecutionSchedule,
   useResumeScheduledChat,
 } from "@/app/api/__generated__/endpoints/schedules/schedules";
 import type { PausedScheduledChat } from "@/app/api/__generated__/models/pausedScheduledChat";
@@ -9,6 +10,7 @@ import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { invalidateAllScheduleQueries } from "@/services/schedules/invalidate-schedules";
 import * as Sentry from "@sentry/nextjs";
 import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 
 interface Args {
   paused: PausedScheduledChat;
@@ -16,6 +18,7 @@ interface Args {
 
 export function usePausedChatListItem({ paused }: Args) {
   const queryClient = useQueryClient();
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   function refresh() {
     queryClient.invalidateQueries({
@@ -49,6 +52,26 @@ export function usePausedChatListItem({ paused }: Args) {
     },
   });
 
+  const { mutate: deleteSchedule, isPending: isDeleting } =
+    useDeleteV1DeleteExecutionSchedule({
+      mutation: {
+        onSuccess: () => {
+          setIsDeleteOpen(false);
+          void refresh();
+          toast({ title: "Scheduled chat deleted" });
+        },
+        onError: (error) => {
+          void refresh();
+          Sentry.captureException(error);
+          toast({
+            variant: "destructive",
+            title: "Couldn't delete this scheduled chat",
+            description: "Please try again.",
+          });
+        },
+      },
+    });
+
   const sessionHref = paused.session_id
     ? `/copilot?sessionId=${encodeURIComponent(paused.session_id)}`
     : null;
@@ -58,5 +81,19 @@ export function usePausedChatListItem({ paused }: Args) {
     mutate({ scheduleKey: paused.schedule_key });
   }
 
-  return { sessionHref, handleResume, isResuming: isPending };
+  function handleDelete() {
+    if (isDeleting) return;
+    deleteSchedule({ scheduleId: paused.schedule_key });
+  }
+
+  return {
+    sessionHref,
+    handleResume,
+    isResuming: isPending,
+    canDelete: !paused.routine,
+    isDeleteOpen,
+    setIsDeleteOpen,
+    handleDelete,
+    isDeleting,
+  };
 }
