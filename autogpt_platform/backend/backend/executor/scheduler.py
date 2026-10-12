@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
+import sentry_sdk
 from apscheduler.events import (
     EVENT_JOB_ERROR,
     EVENT_JOB_EXECUTED,
@@ -46,7 +47,7 @@ from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
-from backend.data.db_accessors import experts_db
+from backend.data.db_accessors import chat_db, experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.schedule import normalize_schedule_name
@@ -62,7 +63,7 @@ from backend.monitoring import (
     report_orphaned_auth_identities,
     send_due_briefings,
 )
-from backend.monitoring.instrumentation import SCHEDULER_JOBS
+from backend.monitoring.instrumentation import COPILOT_FOLLOWUP_OUTCOMES, SCHEDULER_JOBS
 from backend.util import product_analytics
 from backend.util.clients import (
     get_database_manager_async_client,
@@ -351,8 +352,31 @@ async def _skip_inactive_expert_scope(
     )
     if status == "missing":
         await _self_delete_copilot_turn_schedule(args)
+        await _record_copilot_turn_outcome(
+            args,
+            status="skipped",
+            reason="the expert no longer exists; schedule removed",
+        )
     elif status == "unavailable" and args.run_at is not None:
-        await _reschedule_one_shot_after_expert_unavailable(args)
+        retry = await _reschedule_one_shot_after_expert_unavailable(args)
+        if retry is not None:
+            await _record_copilot_turn_outcome(
+                args,
+                status="skipped",
+                reason=_deferred_reason(
+                    "the expert workspace was temporarily unavailable", retry
+                ),
+                retry=retry,
+            )
+    else:
+        # Archive and pause are the owner's own doing. A lost one-shot earns
+        # one notice; a cron would post the same one every tick until undone.
+        await _record_copilot_turn_outcome(
+            args,
+            status="skipped",
+            reason=f"the expert is {status}",
+            notify=status == "unavailable" or args.run_at is not None,
+        )
 
 
 async def _routine_for_turn(args: "CopilotTurnJobArgs") -> ExpertRoutine | None:
@@ -412,6 +436,14 @@ async def _execute_copilot_turn(**kwargs):
             routine.id[:12],
         )
         await _self_delete_copilot_turn_schedule(args)
+        # The owner switched it off; a notice in their chat would only echo
+        # their own action back at them.
+        await _record_copilot_turn_outcome(
+            args,
+            status="skipped",
+            reason="the routine is switched off; schedule removed",
+            notify=False,
+        )
         return
     # A THREAD routine keeps one durable conversation: null until its first
     # fire mints it, reused by every fire after. Resolving it here means the
@@ -420,6 +452,10 @@ async def _execute_copilot_turn(**kwargs):
     if routine is not None and routine.session_id is not None:
         args = args.model_copy(update={"session_id": routine.session_id})
     start_time = asyncio.get_event_loop().time()
+    # Resolved below; a fresh chat minted before a late failure is still the
+    # right place for the outcome notice, so the handlers read this rather
+    # than ``args.session_id``.
+    target_session_id: str | None = None
     try:
         # Resolve the target session.  ``session_id=None`` means "fire into
         # a fresh chat" — create one now so the user has somewhere visible
@@ -476,6 +512,12 @@ async def _execute_copilot_turn(**kwargs):
                     f"{args.expert_id[:12]} stopped being active/owned while the "
                     f"session was being created"
                 )
+                await _record_copilot_turn_outcome(
+                    args,
+                    status="skipped",
+                    reason="the expert stopped being active while the chat "
+                    "was being created",
+                )
                 return
             target_session_id = new_session.session_id
             target_session = new_session
@@ -513,6 +555,12 @@ async def _execute_copilot_turn(**kwargs):
                     f"{args.session_id[:12]} no longer exists; removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
+                await _record_copilot_turn_outcome(
+                    args,
+                    status="skipped",
+                    reason="the target chat no longer exists; schedule removed",
+                    notify=False,
+                )
                 return
             if expert_scope_was_persisted and session.expert_id != args.expert_id:
                 logger.warning(
@@ -521,6 +569,16 @@ async def _execute_copilot_turn(**kwargs):
                     "persisted schedule scope; removing schedule"
                 )
                 await _self_delete_copilot_turn_schedule(args)
+                # The chat now belongs to another persona's memory scope, the
+                # very thing the scope check keeps this turn out of — so no
+                # notice lands there either.
+                await _record_copilot_turn_outcome(
+                    args,
+                    status="skipped",
+                    reason="the target chat is no longer in this schedule's "
+                    "expert scope; schedule removed",
+                    notify=False,
+                )
                 return
             if not expert_scope_was_persisted:
                 # Legacy explicit-session jobs predate the scope field. The
@@ -609,6 +667,12 @@ async def _execute_copilot_turn(**kwargs):
             expert_id=args.expert_id,
             session_id=target_session_id,
         )
+        await _record_copilot_turn_outcome(
+            args,
+            status="dispatched",
+            reason="queued on the executor",
+            session_id=target_session_id,
+        )
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.info(
             f"Dispatched scheduled copilot turn for session "
@@ -623,8 +687,28 @@ async def _execute_copilot_turn(**kwargs):
             f"Scheduled copilot turn for session {_session_id_label(args)} "
             "skipped because the expert workspace is unavailable"
         )
-        if args.run_at is not None:
-            await _reschedule_one_shot_after_expert_unavailable(args)
+        unavailable = "the expert workspace was unavailable"
+        if args.run_at is None:
+            # Just the cause: the notice text adds "the next scheduled run
+            # will try again" for every cron skip itself.
+            await _record_copilot_turn_outcome(
+                args,
+                status="skipped",
+                reason=unavailable,
+                session_id=target_session_id,
+            )
+        else:
+            retry = await _reschedule_one_shot_after_expert_unavailable(
+                args, session_id=target_session_id
+            )
+            if retry is not None:
+                await _record_copilot_turn_outcome(
+                    args,
+                    status="skipped",
+                    reason=_deferred_reason(unavailable, retry),
+                    session_id=target_session_id,
+                    retry=retry,
+                )
     except ConcurrentTurnLimitError as e:
         # User is at their per-user concurrency cap. For cron schedules the
         # next tick retries automatically; for one-shot (run_at) schedules
@@ -634,14 +718,39 @@ async def _execute_copilot_turn(**kwargs):
             f"Scheduled copilot turn for session {_session_id_label(args)} "
             f"hit concurrency cap; cron={args.cron is not None}: {e}"
         )
-        if args.run_at is not None:
-            await _reschedule_one_shot_after_cap(args)
+        capped = "the account was at its concurrent-turn limit"
+        if args.run_at is None:
+            await _record_copilot_turn_outcome(
+                args,
+                status="skipped",
+                reason=capped,
+                session_id=target_session_id,
+            )
+        else:
+            retry = await _reschedule_one_shot_after_cap(
+                args, session_id=target_session_id
+            )
+            if retry is not None:
+                await _record_copilot_turn_outcome(
+                    args,
+                    status="skipped",
+                    reason=_deferred_reason(capped, retry),
+                    session_id=target_session_id,
+                    retry=retry,
+                )
     except Exception as e:
         elapsed = asyncio.get_event_loop().time() - start_time
         logger.error(
             f"Error dispatching copilot turn for session "
             f"{_session_id_label(args)} after {elapsed:.2f}s: "
             f"{type(e).__name__}: {e}"
+        )
+        await _record_copilot_turn_outcome(
+            args,
+            status="failed",
+            reason=f"an internal error occurred ({type(e).__name__})",
+            session_id=target_session_id,
+            error=e,
         )
 
 
@@ -672,14 +781,30 @@ async def _refuse_if_turn_may_not_start(
         retry = _reschedule_one_shot_after_plan_unreadable
     if refusal is None:
         return False
+    cause = _refusal_cause(refusal)
     if job_args.run_at is None:
         outcome = "the schedule stays registered"
+        # A cron refused for the owner's own plan or usage would post the
+        # same notice every tick until that changes, so it records quietly.
+        await _record_copilot_turn_outcome(
+            job_args, status="skipped", reason=cause, notify=False
+        )
     elif retry is None:
         await _drop_job_from_routine(job_args)
         outcome = "the one-shot is dropped"
-    elif await retry(job_args):
+        # Skipped, not dropped: the owner's plan or usage refused it, which
+        # is their state to change, not an incident to page on.
+        await _record_copilot_turn_outcome(job_args, status="skipped", reason=cause)
+    elif (retry_job := await retry(job_args)) is not None:
         outcome = "the one-shot is retried"
+        await _record_copilot_turn_outcome(
+            job_args,
+            status="skipped",
+            reason=_deferred_reason(cause, retry_job),
+            retry=retry_job,
+        )
     else:
+        # ``_reschedule_one_shot`` already recorded the drop.
         outcome = "the one-shot is dropped"
     logger.log(
         logging.WARNING if refusal.transient else logging.INFO,
@@ -687,6 +812,14 @@ async def _refuse_if_turn_may_not_start(
         f"{refusal.reason}; {outcome}",
     )
     return True
+
+
+def _refusal_cause(refusal: TurnRefusal) -> str:
+    """The refusal as a chat notice can say it: a transient refusal's reason
+    can carry exception text, which has no place in the user's chat."""
+    if refusal.transient:
+        return "the account's plan or usage limits could not be read"
+    return f"the account may not start a turn right now ({refusal.reason})"
 
 
 def _credential_pins_for_turn(
@@ -714,6 +847,191 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
     return args.session_id[:12] if args.session_id else "<new>"
 
 
+_NOTICE_NAMESPACE = uuid.UUID("5d0c2a7e-9f31-4b8a-a6d2-3c1e8b7f4a90")
+# Rides on the notice row's metadata so the chat UI and any later reader can
+# tell it apart from an ordinary reply.
+FOLLOWUP_NOTICE_KIND = "scheduled_followup_outcome"
+
+
+def _format_fire_time(when: datetime, user_timezone: str | None) -> str:
+    """``2026-09-30 06:12 UTC`` in the user's own zone when one was recorded."""
+    try:
+        if user_timezone:
+            when = when.astimezone(ZoneInfo(user_timezone))
+    except Exception:
+        pass
+    return f"{when:%Y-%m-%d %H:%M} {when.tzname() or 'UTC'}"
+
+
+def _deferred_reason(cause: str, retry: "CopilotTurnJobInfo") -> str:
+    return f"{cause}; retrying at {retry.next_run_time}"
+
+
+def _followup_notice_text(
+    args: "CopilotTurnJobArgs",
+    *,
+    status: schedule_events.FollowupOutcomeStatus,
+    reason: str,
+    fired_at: datetime,
+    retry: "CopilotTurnJobInfo | None",
+) -> str:
+    when = _format_fire_time(args.run_at or fired_at, args.user_timezone)
+    preview = schedule_events.message_preview(args.message)
+    head = f'The follow-up scheduled for {when} ("{preview}") did not run: {reason}.'
+    if retry is not None:
+        return head
+    if args.cron is not None:
+        return f"{head} The next scheduled run will try again."
+    return f"{head} Ask me to schedule it again if you still want it."
+
+
+async def _post_followup_notice(
+    args: "CopilotTurnJobArgs", *, session_id: str, content: str, metadata: dict
+) -> None:
+    """Best-effort: land the notice in the pinned chat so the user, and the
+    next turn's transcript, can see the follow-up did not run.
+
+    The id is keyed on the occurrence, not the attempt: a one-shot processed
+    twice has one ``scheduled_for`` and two ``fired_at`` values, and only the
+    former dedupes the second notice. Cron fires have no fixed due time, so
+    they fall back to ``fired_at`` and each tick stays distinct."""
+    occurrence = metadata.get("scheduled_for") or metadata["fired_at"]
+    message_id = str(
+        uuid.uuid5(
+            _NOTICE_NAMESPACE,
+            f"{args.schedule_id or 'copilot'}:{occurrence}:{metadata['status']}",
+        )
+    )
+    try:
+        await chat_db().append_session_notice(
+            session_id=session_id,
+            user_id=args.user_id,
+            content=content,
+            message_id=message_id,
+            metadata=metadata,
+        )
+    except Exception:
+        logger.warning(
+            "Could not post follow-up outcome notice to session %s",
+            session_id[:12],
+            exc_info=True,
+        )
+
+
+async def _record_copilot_turn_outcome(
+    args: "CopilotTurnJobArgs",
+    *,
+    status: schedule_events.FollowupOutcomeStatus,
+    reason: str,
+    session_id: str | None = None,
+    retry: "CopilotTurnJobInfo | None" = None,
+    notify: bool = True,
+    error: BaseException | None = None,
+) -> None:
+    """Leave a trace of how this fire ended, from every exit of the dispatch
+    path. Never raises: it runs inside the handlers that keep the scheduler
+    alive, and a lost record is better than a crashed job.
+
+    Three surfaces, all best-effort: a ``schedule.<status>`` activity event
+    (what ``list_schedules`` and ``<session_context>`` read back), a notice in
+    the pinned chat when the turn did not go out, and a metric plus a Sentry
+    event for the two outcomes where the user got nothing (dropped, failed).
+    """
+    try:
+        fired_at = datetime.now(tz=timezone.utc)
+        target_session_id = session_id or args.session_id
+        schedule_events.record_schedule_fired(
+            schedule_events.ScheduleFiredRecord(
+                user_id=args.user_id,
+                schedule_id=args.schedule_id,
+                status=status,
+                reason=reason,
+                fired_at=fired_at,
+                message=args.message,
+                session_id=target_session_id,
+                expert_id=args.expert_id,
+                organization_id=args.organization_id,
+                cron=args.cron,
+                scheduled_for=args.run_at,
+                retry_schedule_id=retry.id if retry is not None else None,
+            )
+        )
+        COPILOT_FOLLOWUP_OUTCOMES.labels(status=status).inc()
+        if status in ("dropped", "failed"):
+            _alert_undelivered_followup(args, status=status, reason=reason, error=error)
+        if status == "dispatched" or not notify or target_session_id is None:
+            return
+        await _post_followup_notice(
+            args,
+            session_id=target_session_id,
+            content=_followup_notice_text(
+                args, status=status, reason=reason, fired_at=fired_at, retry=retry
+            ),
+            metadata=_notice_metadata(
+                args, status=status, reason=reason, fired_at=fired_at, retry=retry
+            ),
+        )
+    except Exception:
+        logger.warning(
+            "Could not record %s outcome for copilot turn schedule %s",
+            status,
+            args.schedule_id,
+            exc_info=True,
+        )
+
+
+def _notice_metadata(
+    args: "CopilotTurnJobArgs",
+    *,
+    status: str,
+    reason: str,
+    fired_at: datetime,
+    retry: "CopilotTurnJobInfo | None",
+) -> dict:
+    return {
+        "kind": FOLLOWUP_NOTICE_KIND,
+        "schedule_id": args.schedule_id,
+        "status": status,
+        "reason": reason,
+        "fired_at": fired_at.isoformat(),
+        "scheduled_for": args.run_at.isoformat() if args.run_at else None,
+        "retry_schedule_id": retry.id if retry is not None else None,
+    }
+
+
+def _alert_undelivered_followup(
+    args: "CopilotTurnJobArgs",
+    *,
+    status: str,
+    reason: str,
+    error: BaseException | None,
+) -> None:
+    """Page on the paths where a promised turn never went out: a dropped or
+    failed follow-up must reach Sentry, not only the log."""
+    try:
+        with sentry_sdk.new_scope() as scope:
+            scope.set_tag("copilot_followup_status", status)
+            scope.set_context(
+                "copilot_followup",
+                {
+                    "schedule_id": args.schedule_id,
+                    "session_id": args.session_id,
+                    "expert_id": args.expert_id,
+                    "reason": reason,
+                    "cron": args.cron,
+                    "run_at": args.run_at.isoformat() if args.run_at else None,
+                },
+            )
+            if error is not None:
+                sentry_sdk.capture_exception(error)
+            else:
+                sentry_sdk.capture_message(
+                    f"Scheduled copilot follow-up {status}: {reason}", level="error"
+                )
+    except Exception:
+        logger.debug("Sentry alert for undelivered follow-up failed", exc_info=True)
+
+
 # One-shot schedules that hit the per-user concurrency cap are pushed out
 # this many seconds and retried at most _MAX_CAP_RETRIES times. We don't
 # loop indefinitely because the original use case ("check CI in 20 min")
@@ -732,18 +1050,23 @@ _MAX_RETRIES: dict[_RetryKind, int] = {
 }
 
 
-async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
-    await _reschedule_one_shot(
+async def _reschedule_one_shot_after_cap(
+    args: "CopilotTurnJobArgs",
+    *,
+    session_id: str | None = None,
+) -> "CopilotTurnJobInfo | None":
+    return await _reschedule_one_shot(
         args,
         reason="concurrency cap",
         name_suffix="cap-retry",
         retry_kind="cap",
+        session_id=session_id,
     )
 
 
 async def _reschedule_one_shot_after_plan_unreadable(
     args: "CopilotTurnJobArgs",
-) -> bool:
+) -> "CopilotTurnJobInfo | None":
     return await _reschedule_one_shot(
         args,
         reason="unreadable owner plan",
@@ -754,7 +1077,7 @@ async def _reschedule_one_shot_after_plan_unreadable(
 
 async def _reschedule_one_shot_after_limits_unreadable(
     args: "CopilotTurnJobArgs",
-) -> bool:
+) -> "CopilotTurnJobInfo | None":
     return await _reschedule_one_shot(
         args,
         reason="unreadable usage limits",
@@ -765,12 +1088,15 @@ async def _reschedule_one_shot_after_limits_unreadable(
 
 async def _reschedule_one_shot_after_expert_unavailable(
     args: "CopilotTurnJobArgs",
-) -> None:
-    await _reschedule_one_shot(
+    *,
+    session_id: str | None = None,
+) -> "CopilotTurnJobInfo | None":
+    return await _reschedule_one_shot(
         args,
         reason="transient expert lookup failure",
         name_suffix="expert-lookup-retry",
         retry_kind="expert_lookup",
+        session_id=session_id,
     )
 
 
@@ -780,14 +1106,20 @@ async def _reschedule_one_shot(
     reason: str,
     name_suffix: str,
     retry_kind: _RetryKind,
-) -> bool:
-    """Re-create a one-shot copilot-turn schedule after a transient failure,
-    and say whether it did.
+    session_id: str | None = None,
+) -> "CopilotTurnJobInfo | None":
+    """Re-create a one-shot copilot-turn schedule after a transient failure.
 
-    Best-effort: failures are logged. Schedules that have already been
-    retried the limit for this failure kind are dropped to avoid loops. Retry
-    depths round-trip independently through APScheduler's persisted kwargs so
-    a transient expert lookup does not consume the concurrency-cap budget.
+    Returns the retry job, or ``None`` when the turn is now gone for good:
+    the retry budget for this failure kind is spent (no loops), or the
+    scheduler refused the new job. Either way the drop is recorded — this
+    is the one exit where a one-shot silently stops existing, so it is the
+    one the user most needs to hear about. Retry depths round-trip
+    independently through APScheduler's persisted kwargs so a transient
+    expert lookup does not consume the concurrency-cap budget.
+
+    ``session_id`` is the chat the turn targeted, so a fresh-chat job's drop
+    is recorded (and noticed) against the session it minted this fire.
     """
     counts: dict[_RetryKind, int] = {
         "cap": args.cap_retry_count,
@@ -806,12 +1138,21 @@ async def _reschedule_one_shot(
             f"retry/retries after {reason}"
         )
         await _drop_job_from_routine(args)
-        return False
+        await _record_copilot_turn_outcome(
+            args,
+            status="dropped",
+            reason=(
+                f"still blocked by the {reason} after "
+                f"{max_retries} {'retry' if max_retries == 1 else 'retries'}"
+            ),
+            session_id=session_id,
+        )
+        return None
     try:
         new_run_at = datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
-        await get_scheduler_client().add_copilot_turn_schedule(
+        retry = await get_scheduler_client().add_copilot_turn_schedule(
             user_id=args.user_id,
             session_id=args.session_id,
             message=args.message,
@@ -850,15 +1191,22 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
             f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
-        return True
-    except Exception:
+        return retry
+    except Exception as e:
         logger.warning(
             f"Failed to reschedule one-shot copilot turn for session "
             f"{_session_id_label(args)} after {reason}",
             exc_info=True,
         )
         await _drop_job_from_routine(args)
-        return False
+        await _record_copilot_turn_outcome(
+            args,
+            status="dropped",
+            reason=f"{reason}, and the retry could not be scheduled",
+            error=e,
+            session_id=session_id,
+        )
+        return None
 
 
 async def _best_effort_unschedule(

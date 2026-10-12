@@ -33,6 +33,39 @@ describe("convertChatSessionMessagesToUiMessages", () => {
     expect(result.messages[1].metadata).toMatchObject({ kind: "expert_run" });
   });
 
+  it("keeps a scheduled follow-up outcome notice as its own bubble", () => {
+    const result = convertChatSessionMessagesToUiMessages(
+      SESSION_ID,
+      [
+        {
+          role: "assistant",
+          content: "I'll check back at 06:12.",
+          sequence: 0,
+        },
+        {
+          role: "assistant",
+          content: "The follow-up scheduled for 06:12 UTC did not run.",
+          sequence: 1,
+          metadata: {
+            kind: "scheduled_followup_outcome",
+            status: "dropped",
+            schedule_id: "sched-1",
+          },
+        },
+        { role: "assistant", content: "Later reply.", sequence: 2 },
+      ],
+      { isComplete: true },
+    );
+
+    // Posted hours after the reply above it; folding it in would make the
+    // earlier answer look like it already knew the check never ran.
+    expect(result.messages).toHaveLength(3);
+    expect(result.messages[1].metadata).toMatchObject({
+      kind: "scheduled_followup_outcome",
+    });
+    expect(result.messages[2].metadata).toBeUndefined();
+  });
+
   it("does not attach metadata to legacy assistant messages", () => {
     const result = convertChatSessionMessagesToUiMessages(
       SESSION_ID,

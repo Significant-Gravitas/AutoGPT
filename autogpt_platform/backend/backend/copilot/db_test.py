@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.enums import ResourceVisibility
+from prisma.errors import UniqueViolationError
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 
 from backend.copilot.db import (
     PaginatedMessages,
+    append_session_notice,
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_user_chat_sessions,
@@ -1315,3 +1318,71 @@ async def test_append_expert_run_message_creates_session_when_none_exists() -> N
     assert result == "sess-new"
     assert created.call_args.kwargs["expert_id"] == "e1"
     assert add_message.call_args.kwargs["session_id"] == "sess-new"
+
+
+# ---------- append_session_notice ----------
+
+
+def _unique_violation(fields: str) -> UniqueViolationError:
+    return UniqueViolationError(
+        {"user_facing_error": {"message": f"Unique constraint failed on {fields}"}}
+    )
+
+
+@asynccontextmanager
+async def _lock_not_acquired(_session_id: str):
+    # Redis down: the lock yields without being held, which is the only way
+    # two writers can pick the same sequence.
+    yield False
+
+
+async def _post_notice_with_first_write_raising(
+    error: UniqueViolationError,
+) -> tuple[bool, AsyncMock, AsyncMock, AsyncMock]:
+    add_message = AsyncMock(side_effect=[error, None])
+    next_sequence = AsyncMock(side_effect=[7, 8])
+    invalidate = AsyncMock()
+    with (
+        patch.object(PrismaChatMessage, "prisma") as msg_prisma,
+        patch.object(PrismaChatSession, "prisma") as session_prisma,
+        patch("backend.copilot.db._get_session_lock", _lock_not_acquired),
+        patch("backend.copilot.db.add_chat_message", add_message),
+        patch("backend.copilot.db.get_next_sequence", next_sequence),
+        patch("backend.copilot.db.invalidate_session_cache", invalidate),
+    ):
+        msg_prisma.return_value.find_unique = AsyncMock(return_value=None)
+        session_prisma.return_value.find_first = AsyncMock(return_value=MagicMock())
+        posted = await append_session_notice(
+            session_id="sess-1",
+            user_id="user-1",
+            content="The follow-up did not run.",
+            message_id="notice-1",
+        )
+    return posted, add_message, next_sequence, invalidate
+
+
+@pytest.mark.asyncio
+async def test_append_session_notice_retries_a_sequence_collision_once():
+    """Lock-degraded mode: a (sessionId, sequence) collision is another
+    writer's row, not this notice, so it retries once with a fresh sequence."""
+    posted, add_message, next_sequence, invalidate = (
+        await _post_notice_with_first_write_raising(
+            _unique_violation("the fields: (`sessionId`,`sequence`)")
+        )
+    )
+
+    assert posted is True
+    assert [c.kwargs["sequence"] for c in add_message.await_args_list] == [7, 8]
+    assert next_sequence.await_count == 2
+    invalidate.assert_awaited_once_with("sess-1")
+
+
+@pytest.mark.asyncio
+async def test_append_session_notice_treats_a_duplicate_id_as_already_posted():
+    posted, add_message, _, invalidate = await _post_notice_with_first_write_raising(
+        _unique_violation("constraint `ChatMessage_pkey`")
+    )
+
+    assert posted is False
+    assert add_message.await_count == 1
+    invalidate.assert_not_awaited()

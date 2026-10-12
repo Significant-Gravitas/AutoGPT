@@ -73,6 +73,15 @@ COPILOT_SCHEDULED_TURN_FAILURES = Counter(
     labelnames=["reason", "tool"],
 )
 
+# Every scheduled copilot follow-up fire, by how it ended. ``dropped`` and
+# ``failed`` mean the user never got the turn they were promised, so those two
+# are the ones worth alerting on.
+COPILOT_FOLLOWUP_OUTCOMES = Counter(
+    "autogpt_copilot_followup_outcomes_total",
+    "Scheduled copilot follow-up fires by outcome",
+    labelnames=["status"],
+)
+
 # Every Stripe SDK call, by resource/method and how it ended. Stripe applies
 # its rate limit per account rather than per endpoint, so the rate_limited
 # outcome is worth alerting on regardless of which call path produced it.

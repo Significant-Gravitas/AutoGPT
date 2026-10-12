@@ -12,10 +12,15 @@ It carries:
 * ``pending_followups`` — count and a compact list (max 5; older ones
   collapsed into ``... +K more``) of the follow-ups currently queued
   against this session.
+* ``undelivered_followups`` — count and list (max 5) of follow-ups pinned
+  to this session that fired in the last 24h but did NOT run (skipped,
+  dropped, failed), read from the scheduler's outcome records. A one-shot
+  leaves the pending list the moment it fires, so without this line a
+  dropped check and a check that ran are indistinguishable.
 
-When there are zero pending follow-ups the block is rendered as a
-single-line summary to save tokens — the model only needs the count
-to know there is nothing to act on.
+When there are zero pending and zero undelivered follow-ups the block is
+rendered as a single-line summary to save tokens — the model only needs
+the counts to know there is nothing to act on.
 
 Like ``<env_context>``, ``<user_context>`` and ``<available_skills>``,
 this block lands inside the **per-turn user message** (after the last
@@ -23,8 +28,16 @@ cache_control breakpoint) so injecting it does not bust the prefix
 cache.  The system prompt itself is unchanged across sessions.
 """
 
+import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 
+from backend.data.db_accessors import activity_event_db
+from backend.executor.schedule_events import (
+    UNDELIVERED_OUTCOME_STATUSES,
+    ScheduleFireOutcome,
+    fire_outcome_from_event,
+)
 from backend.executor.scheduler import CopilotTurnJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -35,6 +48,8 @@ logger = logging.getLogger(__name__)
 # full enumeration.  Anything beyond this is replaced with ``... +K more``
 # to keep the prefix bounded for prompt-cache friendliness.
 _MAX_LISTED_FOLLOWUPS = 5
+# Undelivered outcomes older than this are stale news: the user has moved on.
+_UNDELIVERED_WINDOW = timedelta(hours=24)
 
 
 def _format_one_followup(job: CopilotTurnJobInfo) -> str:
@@ -71,6 +86,40 @@ def _format_followup_list(jobs: list[CopilotTurnJobInfo]) -> list[str]:
     return lines
 
 
+def _format_one_outcome(outcome: ScheduleFireOutcome) -> str:
+    """``- "check CI" due 2026-05-22T13:50:00+00:00: dropped (reason)``"""
+    safe_preview = outcome.message_preview.replace('"', '\\"')
+    when = outcome.scheduled_for or outcome.fired_at.isoformat()
+    line = f'- "{safe_preview}" due {when}: {outcome.status} ({outcome.reason})'
+    if outcome.retry_schedule_id:
+        line += f" — retry schedule_id {outcome.retry_schedule_id}"
+    return line
+
+
+async def _undelivered_followups(
+    session_id: str, user_id: str
+) -> list[ScheduleFireOutcome]:
+    """Follow-ups pinned to this session that fired recently and did not
+    run. Best-effort: a failed read degrades to "none", never a failed turn."""
+    try:
+        events = await activity_event_db().list_activity_events_by_type(
+            user_id=user_id,
+            since=datetime.now(tz=timezone.utc) - _UNDELIVERED_WINDOW,
+            event_types=[f"schedule.{s}" for s in UNDELIVERED_OUTCOME_STATUSES],
+            session_id=session_id,
+            limit=_MAX_LISTED_FOLLOWUPS,
+        )
+    except Exception as e:
+        logger.warning(
+            "build_session_context: outcome lookup failed for session %s (%s)",
+            session_id,
+            e,
+        )
+        return []
+    outcomes = [fire_outcome_from_event(event) for event in events]
+    return [outcome for outcome in outcomes if outcome is not None]
+
+
 async def is_followups_feature_enabled(user_id: str | None) -> bool:
     """Per-user kill-switch for the scheduled-followups feature
     (``COPILOT_SCHEDULED_FOLLOWUPS`` LD flag).  Default-on.  Anonymous
@@ -93,10 +142,10 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     same user are intentionally excluded — the model would have no
     handle to act on them mid-turn anyway).
 
-    On any scheduler error the block degrades to the bare
-    ``session_id`` line — the model still benefits from knowing the
-    session it is in, and the turn never fails because of a transient
-    scheduler RPC issue.
+    On any scheduler error the block lists no pending follow-ups (still
+    with any undelivered ones, and at least the bare ``session_id`` line)
+    — the model still benefits from knowing the session it is in, and the
+    turn never fails because of a transient scheduler RPC issue.
 
     The return value is the **body** of the block (no surrounding
     ``<session_context>`` tags); the caller wraps it.
@@ -108,30 +157,42 @@ async def build_session_context(session_id: str, user_id: str) -> str:
     """
     if not await is_followups_feature_enabled(user_id):
         return f"session_id: {session_id}; pending_followups: 0"
-    try:
-        raw_jobs = await get_scheduler_client().get_execution_schedules(
+    # Independent reads on every turn, so neither waits on the other. The
+    # outcome read degrades to "none" by itself; the scheduler RPC is caught
+    # here.
+    raw_jobs, undelivered = await asyncio.gather(
+        get_scheduler_client().get_execution_schedules(
             user_id=user_id,
             session_id=session_id,
             kind="copilot_turn",
-        )
-    except Exception as e:
+        ),
+        _undelivered_followups(session_id, user_id),
+        return_exceptions=True,
+    )
+    # Cancellation is not a failed read: it propagates rather than degrading.
+    if isinstance(raw_jobs, BaseException):
+        if not isinstance(raw_jobs, Exception):
+            raise raw_jobs
         # Graceful degradation: scheduler RPC issues must never fail the
-        # turn — we still emit the session_id so the model knows which
-        # session it is in.
+        # turn, nor hide the undelivered follow-ups that were read fine.
         logger.warning(
             "build_session_context: scheduler RPC failed for session %s (%s); "
-            "falling back to session_id-only block",
+            "listing no pending follow-ups",
             session_id,
-            e,
+            raw_jobs,
         )
-        return f"session_id: {session_id}; pending_followups: 0"
+        raw_jobs = []
+    if isinstance(undelivered, BaseException):
+        if not isinstance(undelivered, Exception):
+            raise undelivered
+        undelivered = []
 
     # The endpoint already narrows by ``kind`` server-side; the isinstance
     # filter is a belt-and-braces guard against a legacy untyped row that
     # might slip through (matches ``schedules.routes.list_copilot_turn_schedules``).
     jobs = [j for j in raw_jobs if isinstance(j, CopilotTurnJobInfo)]
 
-    if not jobs:
+    if not jobs and not undelivered:
         # Zero-follow-up sessions are the common case — collapse to one
         # line to keep the per-turn prefix small.
         return f"session_id: {session_id}; pending_followups: 0"
@@ -141,4 +202,7 @@ async def build_session_context(session_id: str, user_id: str) -> str:
         f"pending_followups: {len(jobs)}",
     ]
     lines.extend(_format_followup_list(jobs))
+    if undelivered:
+        lines.append(f"undelivered_followups: {len(undelivered)}")
+        lines.extend(_format_one_outcome(outcome) for outcome in undelivered)
     return "\n".join(lines)
