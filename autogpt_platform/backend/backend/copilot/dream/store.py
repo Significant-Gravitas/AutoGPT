@@ -294,4 +294,5 @@ async def _write(
 async def _bounded(call: Awaitable[_T], timeout: float | None = None) -> _T:
     """*call*, or ``TimeoutError`` once it has taken *timeout* (the write
     deadline by default); the abandoned call is cancelled, not left running."""
-    return await asyncio.wait_for(call, timeout=timeout or RECORD_WRITE_TIMEOUT_SECONDS)
+    async with asyncio.timeout(timeout or RECORD_WRITE_TIMEOUT_SECONDS):
+        return await call

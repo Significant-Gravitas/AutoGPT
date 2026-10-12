@@ -795,10 +795,8 @@ async def _renewed_for_the_tail(lock_handle: DreamLockHandle, pass_id: str) -> b
     the lease renewals that admit apply do: ownership unknown is not
     ownership."""
     try:
-        return await asyncio.wait_for(
-            lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS),
-            timeout=LOCK_CHECK_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            return await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS)
     except TimeoutError:
         logger.warning(
             "Dream pass %s: the lock renewal before the drain did not answer "

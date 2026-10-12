@@ -149,9 +149,8 @@ class DreamLockHandle:
     async def held(self) -> bool:
         """Whether the key still holds this handle's token: one GET, raising
         when Redis does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``."""
-        current = await asyncio.wait_for(
-            self._redis.get(self._key), timeout=LOCK_CHECK_TIMEOUT_SECONDS
-        )
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            current = await self._redis.get(self._key)
         return _as_text(current) == self.token
 
 

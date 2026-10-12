@@ -51,14 +51,12 @@ async def provider_batch_stopped(provider_batch_id: str) -> bool:
     if api_key is None:
         return False
     try:
-        status = await asyncio.wait_for(
-            poll_batch(
+        async with asyncio.timeout(PROVIDER_CANCEL_TIMEOUT_SECONDS):
+            status = await poll_batch(
                 provider="anthropic",
                 provider_batch_id=provider_batch_id,
                 api_key=api_key,
-            ),
-            timeout=PROVIDER_CANCEL_TIMEOUT_SECONDS,
-        )
+            )
     except Exception:
         logger.warning(
             f"Could not read the status of dream batch {provider_batch_id}",
@@ -83,14 +81,12 @@ async def cancel_provider_batch(provider_batch_id: str) -> bool:
         logger.warning(f"No Anthropic key to cancel dream batch {provider_batch_id}")
         return False
     try:
-        acknowledged = await asyncio.wait_for(
-            cancel_batch(
+        async with asyncio.timeout(PROVIDER_CANCEL_TIMEOUT_SECONDS):
+            acknowledged = await cancel_batch(
                 provider="anthropic",
                 provider_batch_id=provider_batch_id,
                 api_key=api_key,
-            ),
-            timeout=PROVIDER_CANCEL_TIMEOUT_SECONDS,
-        )
+            )
     except Exception:
         logger.warning(
             f"Cancelling dream batch {provider_batch_id} failed", exc_info=True

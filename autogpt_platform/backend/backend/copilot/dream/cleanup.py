@@ -259,9 +259,8 @@ async def _lock_is_not_the_passes(pass_id: str, scope: MemoryScope) -> bool:
     own, so it is left to lapse on its TTL (24 h 10 min at most for a batch
     lock, 30 min for a sync one), and the step stays unfinished until then."""
     try:
-        holder = await asyncio.wait_for(
-            read_dream_lock_token(scope), timeout=LOCK_CHECK_TIMEOUT_SECONDS
-        )
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            holder = await read_dream_lock_token(scope)
         if holder is None:
             return True
         others = await read_open_passes(scope)

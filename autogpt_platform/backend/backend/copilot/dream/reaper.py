@@ -58,9 +58,12 @@ listing to the release of its hold on a scope. Rows are worked until
 ``ROW_RESERVE_SECONDS`` left in its kind's share and cut off after
 ``ROW_ATTEMPT_SECONDS`` or at the end of that share, whichever comes first;
 the release that may follow a cut has its own last seconds, and finishes
-even if the cut lands during it. A row the budget does not reach, or cuts
-short, is listed again next run; a phase charge it cuts into finishes on
-its own (``batch_costs.py``).
+even if the cut lands during it. Every call a row makes is bounded by a
+timeout around a direct await, never ``asyncio.wait_for``, which on Python
+3.11 returns the result of a call that completes as a cut lands and so
+loses the cut. A row the budget does not reach, or cuts short, is listed
+again next run; a phase charge it cuts into finishes on its own
+(``batch_costs.py``).
 
 Not bounded here: the scheduler's ``run_async`` stops waiting on a timeout
 but does not cancel the run, so the run's own budget is what stops it; rows
@@ -397,13 +400,11 @@ async def _take_scope(scope: MemoryScope) -> str | None:
     another holds the lock. Raises when Redis does not answer within
     ``LOCK_CHECK_TIMEOUT_SECONDS``."""
     token = f"reaper:{uuid.uuid4()}"
-    redis = await redis_client.get_redis_async()
-    taken = await asyncio.wait_for(
-        redis.set(
+    async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+        redis = await redis_client.get_redis_async()
+        taken = await redis.set(
             scope.redis_key("dream_lock"), token, nx=True, ex=REAPER_LOCK_TTL_SECONDS
-        ),
-        timeout=LOCK_CHECK_TIMEOUT_SECONDS,
-    )
+        )
     return token if taken else None
 
 

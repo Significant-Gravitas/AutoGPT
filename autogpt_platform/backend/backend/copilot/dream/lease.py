@@ -218,7 +218,8 @@ async def _renewed(extend: Awaitable[bool], pass_id: str) -> bool | None:
     ``None`` when Redis did not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``
     (the caller decides whether the pass goes on)."""
     try:
-        return await asyncio.wait_for(extend, timeout=LOCK_CHECK_TIMEOUT_SECONDS)
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            return await extend
     except Exception:
         logger.warning(
             f"Dream pass {pass_id}: could not renew its lease in time",
