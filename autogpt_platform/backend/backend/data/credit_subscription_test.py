@@ -1894,9 +1894,15 @@ async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_ra
             "backend.data.credit.stripe.Invoice.pay_async",
             side_effect=stripe_mod.StripeError("network error"),
         ),
+        patch(
+            "backend.data.credit.invalidate_billing_lookups", new_callable=AsyncMock
+        ) as invalidate,
     ):
         # Must not raise — the pay failure is only logged as a warning
         await handle_subscription_payment_failure(invoice)
+    # A timed-out call may still have been applied in Stripe, so the cached
+    # billing lookups are dropped either way.
+    invalidate.assert_awaited_once_with("cus_123")
 
 
 @pytest.mark.asyncio

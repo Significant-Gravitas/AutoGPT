@@ -3324,8 +3324,6 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                 await stripe_call(
                     stripe.Invoice.pay_async, invoice_id, paid_out_of_band=True
                 )
-                # A past-due subscription is active again.
-                await invalidate_billing_lookups(customer_id)
             except stripe.StripeError:
                 logger.warning(
                     "handle_subscription_payment_failure: balance deducted for user"
@@ -3333,6 +3331,10 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
                     user.id,
                     invoice_id,
                 )
+            finally:
+                # A past-due subscription is active again, also when the call
+                # timed out after Stripe applied it.
+                await invalidate_billing_lookups(customer_id)
         logger.info(
             "handle_subscription_payment_failure: deducted %d cents from balance"
             " for user %s; Stripe invoice %s paid, sub %s intact, tier preserved",
