@@ -273,6 +273,7 @@ async def _fail_an_uncovered_renewal() -> None:
             "customer": CUSTOMER,
             "subscription": "sub_active",
             "amount_due": 2000,
+            "billing_reason": "subscription_cycle",
         }
     )
 
@@ -302,7 +303,7 @@ async def test_other_cancels_still_reach_only_active_and_trialing_plans(caller):
         ),
         patch("backend.data.credit.set_subscription_tier", new_callable=AsyncMock),
         patch("backend.data.credit._track_billing_event"),
-        patch.object(credit.get_pending_subscription_change, "cache_delete"),
+        patch("backend.data.credit.invalidate_billing_lookups", new_callable=AsyncMock),
     ):
         await caller()
 
