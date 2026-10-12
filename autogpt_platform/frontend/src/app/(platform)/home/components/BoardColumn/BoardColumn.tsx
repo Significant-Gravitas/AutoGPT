@@ -19,7 +19,9 @@ interface Props {
   isRenaming?: boolean;
   onRename?: (name: string) => void;
   onCancelRename?: () => void;
+  onDismissRename?: () => void;
   menu?: ReactNode;
+  menuRef?: (element: HTMLElement | null) => void;
   footer?: ReactNode;
 }
 
@@ -31,7 +33,9 @@ export function BoardColumn({
   isRenaming = false,
   onRename = () => {},
   onCancelRename = () => {},
+  onDismissRename = () => {},
   menu,
+  menuRef,
   footer,
 }: Props) {
   const { setNodeRef } = useDroppable({ id: column.key });
@@ -49,6 +53,7 @@ export function BoardColumn({
             name={column.name}
             onSave={onRename}
             onCancel={onCancelRename}
+            onDismiss={onDismissRename}
           />
         ) : (
           <>
@@ -67,7 +72,11 @@ export function BoardColumn({
             >
               {cards.length}
             </Text>
-            {menu && <div className="ml-auto">{menu}</div>}
+            {menu && (
+              <div ref={menuRef} className="ml-auto">
+                {menu}
+              </div>
+            )}
           </>
         )}
       </header>

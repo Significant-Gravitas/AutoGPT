@@ -67,7 +67,10 @@ export function useBoardDrag({ columns, onDraggingChange }: Args) {
   function handleDragEnd({ active, over }: DragEndEvent) {
     onDraggingChange(null);
     if (!over) return;
-    const drop = planDrop(columns, String(active.id), String(over.id));
+    const dragged = active.rect.current.translated;
+    const below =
+      !!dragged && dragged.top > over.rect.top + over.rect.height / 2;
+    const drop = planDrop(columns, String(active.id), String(over.id), below);
     if (drop) move(String(active.id), drop.column, drop.position);
   }
 

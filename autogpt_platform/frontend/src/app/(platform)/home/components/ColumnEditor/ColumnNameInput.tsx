@@ -7,9 +7,16 @@ interface Props {
   name: string;
   onSave: (name: string) => void;
   onCancel: () => void;
+  onDismiss: () => void;
 }
 
-export function ColumnNameInput({ columnKey, name, onSave, onCancel }: Props) {
+export function ColumnNameInput({
+  columnKey,
+  name,
+  onSave,
+  onCancel,
+  onDismiss,
+}: Props) {
   const { draft, error, handleChange, handleKeyDown } = useColumnNameInput({
     name,
     onSave,
@@ -29,7 +36,7 @@ export function ColumnNameInput({ columnKey, name, onSave, onCancel }: Props) {
       error={error ?? undefined}
       onChange={handleChange}
       onKeyDown={handleKeyDown}
-      onBlur={onCancel}
+      onBlur={onDismiss}
       wrapperClassName="mb-0 min-w-0 flex-1"
     />
   );

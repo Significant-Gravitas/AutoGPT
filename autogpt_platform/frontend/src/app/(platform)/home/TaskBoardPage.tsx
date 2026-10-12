@@ -77,7 +77,9 @@ export function TaskBoardPage() {
                   autoExpandAdd={isEmpty && column.key === "backlog"}
                   isRenaming={editor.renamingKey === column.key}
                   onRename={(name) => editor.rename(column.key, name)}
-                  onCancelRename={editor.cancelRename}
+                  onCancelRename={() => editor.cancelRename(column.key)}
+                  onDismissRename={editor.dismissRename}
+                  menuRef={editor.menuRef(column.key)}
                   menu={
                     <ColumnMenu
                       column={column}

@@ -152,7 +152,33 @@ describe("board columns", () => {
       builtin: true,
     });
     expect(putBodies[0].columns).toHaveLength(4);
-    expect(await screen.findByRole("region", { name: "Ideas" })).toBeDefined();
+    const ideas = await screen.findByRole("region", { name: "Ideas" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(ideas).getByRole("button", { name: "Ideas column actions" }),
+      ),
+    );
+  });
+
+  test("Escape in the name field gives focus back to the column's actions", async () => {
+    serveBoard(BUILTINS);
+    renderBoard();
+
+    const menu = await openMenu("Done");
+    await userEvent.click(
+      within(menu).getByRole("menuitem", { name: "Rename" }),
+    );
+    const input = await screen.findByRole("textbox", { name: "Column name" });
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    await userEvent.type(input, "{Escape}");
+
+    const done = screen.getByRole("region", { name: "Done" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(done).getByRole("button", { name: "Done column actions" }),
+      ),
+    );
+    expect(putBodies).toHaveLength(0);
   });
 
   test("does not save a blank name", async () => {
@@ -261,7 +287,12 @@ describe("board columns", () => {
     );
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(screen.getByRole("region", { name: "Review" })).toBeDefined();
+    const review = screen.getByRole("region", { name: "Review" });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(review).getByRole("button", { name: "Review column actions" }),
+      ),
+    );
     expect(putBodies).toHaveLength(0);
   });
 

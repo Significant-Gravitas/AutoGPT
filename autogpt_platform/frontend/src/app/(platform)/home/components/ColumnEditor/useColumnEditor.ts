@@ -14,6 +14,8 @@ export function useColumnEditor(columns: BoardColumn[]) {
   const { applyOptimistic, rollback, settleBoard } = useBoardCache();
   const [renamingKey, setRenamingKey] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<BoardColumn | null>(null);
+  // The column whose actions button takes focus once it is on screen again.
+  const [focusKey, setFocusKey] = useState<string | null>(null);
 
   const { mutate: saveColumns } = usePutV2UpdateBoardColumns({
     mutation: {
@@ -32,8 +34,13 @@ export function useColumnEditor(columns: BoardColumn[]) {
     saveColumns({ data: { columns: next } });
   }
 
-  function rename(key: string, name: string) {
+  function finishRename(key: string) {
     setRenamingKey(null);
+    setFocusKey(key);
+  }
+
+  function rename(key: string, name: string) {
+    finishRename(key);
     const current = columns.find((column) => column.key === key);
     if (!current || current.name === name) return;
     save(
@@ -59,19 +66,35 @@ export function useColumnEditor(columns: BoardColumn[]) {
     if (!pendingDelete) return;
     save(columns.filter((column) => column.key !== pendingDelete.key));
     setPendingDelete(null);
+    setFocusKey("backlog");
+  }
+
+  function cancelDelete() {
+    if (pendingDelete) setFocusKey(pendingDelete.key);
+    setPendingDelete(null);
+  }
+
+  function menuRef(key: string) {
+    return (element: HTMLElement | null) => {
+      if (!element || focusKey !== key) return;
+      element.querySelector("button")?.focus();
+      setFocusKey(null);
+    };
   }
 
   return {
     renamingKey,
     canAddColumn: columns.length < MAX_COLUMNS,
     startRename: setRenamingKey,
-    cancelRename: () => setRenamingKey(null),
+    cancelRename: finishRename,
+    dismissRename: () => setRenamingKey(null),
     rename,
     addColumnAfter,
     addColumn: () => addColumnAfter(columns[columns.length - 1]?.key ?? ""),
     pendingDelete,
     askDelete: setPendingDelete,
-    cancelDelete: () => setPendingDelete(null),
+    cancelDelete,
     confirmDelete,
+    menuRef,
   };
 }

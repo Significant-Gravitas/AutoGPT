@@ -425,6 +425,39 @@ describe("resolveDrop / planDrop", () => {
     expect(resolveDrop(grouped, "a", "nowhere")).toBeNull();
   });
 
+  it("goes after a card in another column when dropped on its lower half", () => {
+    expect(resolveDrop(grouped, "a", "d", true)).toEqual({
+      column: "in_progress",
+      index: 2,
+    });
+    expect(resolveDrop(grouped, "a", "d", false)).toEqual({
+      column: "in_progress",
+      index: 1,
+    });
+  });
+
+  it("reaches the end of another column below its last card", () => {
+    expect(resolveDrop(grouped, "a", "e", true)).toEqual({
+      column: "in_progress",
+      index: 3,
+    });
+    expect(planDrop(grouped, "a", "e", true)).toEqual({
+      column: "in_progress",
+      position: 2048 + 1024,
+    });
+  });
+
+  it("keeps the over card's index within the same column", () => {
+    expect(resolveDrop(grouped, "c", "d", true)).toEqual({
+      column: "in_progress",
+      index: 1,
+    });
+    expect(resolveDrop(grouped, "e", "d", true)).toEqual({
+      column: "in_progress",
+      index: 1,
+    });
+  });
+
   it("plans a move between the cards around the drop", () => {
     expect(planDrop(grouped, "a", "d")).toEqual({
       column: "in_progress",

@@ -39,14 +39,18 @@ export function ColumnMenu({
   const isCustom = !column.builtin;
 
   // Runs once the menu has closed and let go of focus, so the rename input
-  // or the confirm dialog that the action opens keeps it.
+  // that the action opens keeps it. Delete lets focus return to this button
+  // first, so the confirm dialog hands it back here when it closes.
   function handleCloseAutoFocus(event: Event) {
     if (!chosen) return;
-    event.preventDefault();
     setChosen(null);
+    if (chosen === "delete") {
+      onDelete();
+      return;
+    }
+    event.preventDefault();
     if (chosen === "rename") onRename();
     if (chosen === "add") onAddAfter();
-    if (chosen === "delete") onDelete();
   }
 
   return (

@@ -111,10 +111,14 @@ export interface DropTarget {
   index: number;
 }
 
+// `below`: the dragged card's top is past the middle of the card it is over.
+// Within its own column a card takes the index of the card it is over, as
+// arrayMove does; from another column it goes after that card when below.
 export function resolveDrop(
   grouped: ColumnWithCards[],
   activeId: string,
   overId: string,
+  below = false,
 ): DropTarget | null {
   for (const { column, cards } of grouped) {
     if (column.key === overId) {
@@ -124,7 +128,12 @@ export function resolveDrop(
       };
     }
     const index = cards.findIndex((card) => card.id === overId);
-    if (index !== -1) return { column: column.key, index };
+    if (index === -1) continue;
+    const isSameColumn = cards.some((card) => card.id === activeId);
+    return {
+      column: column.key,
+      index: !isSameColumn && below ? index + 1 : index,
+    };
   }
   return null;
 }
@@ -133,8 +142,9 @@ export function planDrop(
   grouped: ColumnWithCards[],
   activeId: string,
   overId: string,
+  below = false,
 ): { column: string; position: number } | null {
-  const target = resolveDrop(grouped, activeId, overId);
+  const target = resolveDrop(grouped, activeId, overId, below);
   const source = grouped.find(({ cards }) =>
     cards.some((card) => card.id === activeId),
   );
