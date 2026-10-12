@@ -12,6 +12,7 @@ from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import Expert, PendingHumanReview, User, UserWorkspaceFile
 
+from backend.copilot import board_db
 from backend.copilot.board import (
     BACKLOG,
     DEFAULT_COLUMNS,
@@ -88,6 +89,21 @@ async def test_a_placed_session_is_listed_however_old(user_id: str):
     listed = {r.session.session_id: r for r in rows}
     assert listed[placed].board_column == BACKLOG
     assert listed[placed].board_position == 0.0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_row_cap_drops_done_cards_before_active_ones(
+    user_id: str, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(board_db, "BOARD_SESSION_LIMIT", 2)
+    await _session(user_id, board_column=DONE, board_position=0.0)
+    await _session(user_id, board_column=DONE, board_position=1.0)
+    active = await _session(user_id, board_column=IN_PROGRESS, board_position=0.0)
+
+    rows = await list_board_sessions(user_id, organization_id=None)
+
+    assert len(rows) == 2
+    assert active in [r.session.session_id for r in rows]
 
 
 @pytest.mark.asyncio(loop_scope="session")

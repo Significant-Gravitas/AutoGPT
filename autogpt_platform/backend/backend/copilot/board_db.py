@@ -5,6 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from prisma import Prisma
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import UserBoard
 from pydantic import BaseModel
@@ -69,7 +70,9 @@ _EXTRAS_SQL = (
     'WHERE cs."userId" = $1 AND cs."id" = ANY($2::text[])'
 )
 
+# Done sorts last so the row cap drops finished cards before active ones.
 _BOARD_ORDER = (
+    f"CASE WHEN \"boardColumn\" = '{DONE}' THEN 1 ELSE 0 END, "
     '"boardColumn" ASC NULLS LAST, "boardPosition" ASC NULLS LAST, '
     '"updatedAt" DESC, "id" DESC'
 )
@@ -227,6 +230,7 @@ async def set_session_board(
 
 
 async def session_is_started(session_id: str) -> bool:
+    """Not scoped to a user: callers must check ownership first."""
     rows = await db.query_raw_with_schema(
         f'SELECT {_STARTED_SQL} AS "started" '
         'FROM {schema_prefix}"ChatSession" cs WHERE cs."id" = $1',
@@ -255,19 +259,9 @@ async def set_session_expert_if_unstarted(
             )
             if resolved is None:
                 return "expert_not_found"
-        rows = await db.query_raw_with_schema(
-            'SELECT cs."chatStatus"::text AS "chat_status", '
-            f'{_STARTED_SQL} AS "started" '
-            'FROM {schema_prefix}"ChatSession" cs '
-            'WHERE cs."id" = $1 AND cs."userId" = $2 FOR UPDATE',
-            session_id,
-            user_id,
-            client=tx,
-        )
-        if not rows:
-            return "not_found"
-        if rows[0]["started"] or rows[0]["chat_status"] != "idle":
-            return "started"
+        state = await _lock_unstarted_session(tx, session_id, user_id)
+        if state != "ok":
+            return state
         await db.execute_raw_with_schema(
             'UPDATE {schema_prefix}"ChatSession" SET "expertId" = $3::text, '
             '"organizationId" = $4::text, "teamId" = $5::text '
@@ -309,6 +303,35 @@ async def mark_session_reassigned(
         to_expert_id,
         DONE,
     )
+
+
+async def _lock_unstarted_session(
+    tx: Prisma, session_id: str, user_id: str
+) -> Literal["ok", "not_found", "started"]:
+    """Lock the session, then check it is unstarted.
+
+    Two statements on purpose: under READ COMMITTED a check inside the
+    locking statement reads that statement's snapshot, so a first message
+    committed while it waited for the lock would go unseen. ``FOR UPDATE``
+    also blocks the key-share lock a new ``ChatMessage`` row takes on its
+    session, so no message can land after the check.
+    """
+    locked = await db.query_raw_with_schema(
+        'SELECT 1 FROM {schema_prefix}"ChatSession" '
+        'WHERE "id" = $1 AND "userId" = $2 FOR UPDATE',
+        session_id,
+        user_id,
+        client=tx,
+    )
+    if not locked:
+        return "not_found"
+    rows = await db.query_raw_with_schema(
+        f'SELECT ({_STARTED_SQL} OR cs."chatStatus" <> \'idle\') AS "started" '
+        'FROM {schema_prefix}"ChatSession" cs WHERE cs."id" = $1',
+        session_id,
+        client=tx,
+    )
+    return "started" if rows[0]["started"] else "ok"
 
 
 def _default_columns() -> list[BoardColumn]:
