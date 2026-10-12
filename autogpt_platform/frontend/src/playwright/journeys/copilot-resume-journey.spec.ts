@@ -79,7 +79,10 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   ).toBe(0);
   expect(await connectionLostToasts(page)).toBe(0);
 
-  // The chat still takes a follow-up, whose turn streams and ends.
+  // The chat still takes a follow-up, whose turn streams and ends. Sent once
+  // the turn is over on both sides: one sent while it still runs is queued
+  // on the server, and the test-mode dummy never drains that queue.
+  await waitForTurnOver(page, copilot);
   const followUpEnded = page.waitForEvent(
     "requestfinished",
     (request) => isStreamRequest(request) && request.method() === "POST",
@@ -91,6 +94,25 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
 
   expect(streams.maxOpen, "streams open at once on one chat").toBe(1);
 });
+
+async function waitForTurnOver(page: Page, copilot: CopilotPage) {
+  await expect(page.getByRole("button", { name: /stop/i })).toHaveCount(0, {
+    timeout: 15_000,
+  });
+  const sessionId = new URL(page.url()).searchParams.get("sessionId");
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get(
+          `/api/proxy/api/chat/sessions/${sessionId}`,
+        );
+        return (await response.json()).active_stream ?? null;
+      },
+      { timeout: 15_000 },
+    )
+    .toBeNull();
+  await expect(copilot.getChatInput()).toBeEnabled();
+}
 
 async function openNewChat(copilot: CopilotPage) {
   const sessionId = await copilot.createSessionViaApi();
