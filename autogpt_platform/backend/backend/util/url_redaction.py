@@ -10,6 +10,7 @@ event, so anything that records a request URL masks it here first.
 
 import logging
 import re
+from collections.abc import Mapping
 
 REDACTED = "[REDACTED]"
 
@@ -26,6 +27,7 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
 # value, and uvicorn's WebSocket scope keeps even a raw # in the query.
 _QUERY_IN_TEXT = re.compile(r"\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
+_MENTIONS_URL = re.compile(r"\?|/api/")
 
 
 def redact_url(url: str) -> str:
@@ -67,16 +69,32 @@ def _redact_query(query: str) -> str:
 class RequestURLRedactionFilter(logging.Filter):
     """Masks request URLs in a log record before any handler sees it.
 
-    uvicorn passes the request target as a format argument, which is masked
-    as a whole URL. A message that arrives already formatted is scanned for
-    URLs instead.
+    Each argument is masked as a whole URL, which is how uvicorn passes the
+    request target. A format string that mentions a URL itself, or a message
+    that arrives already formatted, is rendered and scanned instead.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
-        if isinstance(record.args, tuple) and record.args:
-            record.args = tuple(
-                redact_url(arg) if isinstance(arg, str) else arg for arg in record.args
-            )
-        elif not record.args and isinstance(record.msg, str):
-            record.msg = redact_urls_in_text(record.msg)
+        if isinstance(record.args, Mapping):
+            record.args = {
+                key: _redact_argument(value) for key, value in record.args.items()
+            }
+        elif isinstance(record.args, tuple):
+            record.args = tuple(_redact_argument(arg) for arg in record.args)
+        if isinstance(record.msg, str) and _MENTIONS_URL.search(record.msg):
+            try:
+                message = record.getMessage()
+            except Exception:
+                # A malformed record fails again, and is reported, in the
+                # handler; raising here would fail the request that logged it.
+                return True
+            masked = redact_urls_in_text(message)
+            if masked != message:
+                record.msg, record.args = masked, ()
         return True
+
+
+def _redact_argument(argument: object) -> object:
+    text = argument if isinstance(argument, str) else str(argument)
+    masked = redact_url(text)
+    return argument if masked == text else masked

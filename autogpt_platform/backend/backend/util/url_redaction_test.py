@@ -25,6 +25,7 @@ from autogpt_libs.auth import dependencies as auth_dependencies
 from sentry_sdk.envelope import Envelope
 from sentry_sdk.integrations.asyncio import AsyncioIntegration
 from sentry_sdk.transport import Transport
+from starlette.datastructures import URL
 from starlette.requests import Request
 from starlette.routing import BaseRoute, Mount, Route, WebSocketRoute
 from websockets.asyncio.client import connect
@@ -104,7 +105,8 @@ async def test_websocket_server_logs_no_session_token(
         assert credential not in logs
     assert logs.count(f"WebSocket /ws?token={REDACTED}") == 2
     assert logs.count(f"WebSocket /ws?q={REDACTED}&token={REDACTED}") == 1
-    assert logs.count("[accepted]") == 2
+    # The line keeps its shape, closing quote included (escaped in JSON).
+    assert len(re.findall(r'\[REDACTED\]\\?" \[accepted\]', logs)) == 2
 
 
 async def test_rest_server_logs_no_credentials_from_request_urls(
@@ -163,6 +165,26 @@ async def test_admin_impersonation_audit_logs_no_credentials_from_the_url(
         assert credential not in logs
     url = f"https://backend/api/invitations/{REDACTED}/accept?token={REDACTED}"
     assert f"acting as user user-1 for requesting POST {url}" in logs
+
+
+@pytest.mark.parametrize(
+    "msg, args",
+    [
+        ('%s - "WebSocket %s" [accepted]', ("1.2.3.4:5", f"/ws?token={SESSION_TOKEN}")),
+        ("GET /ws?token=%s", (SESSION_TOKEN,)),
+        ("GET %(target)s", ({"target": f"/ws?token={SESSION_TOKEN}"},)),
+        ("for requesting %s", (URL(f"https://backend/ws?token={SESSION_TOKEN}"),)),
+    ],
+    ids=["uvicorn", "split-across-format", "mapping", "url-object"],
+)
+def test_every_record_shape_on_a_filtered_logger_is_masked(
+    service_output: io.StringIO, msg: str, args: tuple
+) -> None:
+    logging.getLogger("uvicorn.error").info(msg, *args)
+
+    logs = service_output.getvalue()
+    assert SESSION_TOKEN not in logs
+    assert f"token={REDACTED}" in logs
 
 
 async def test_sentry_gets_no_credentials_from_request_urls(
