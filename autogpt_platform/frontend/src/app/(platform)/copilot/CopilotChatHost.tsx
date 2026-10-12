@@ -10,8 +10,8 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
+  /** The chrome floats its sidebar/files controls over the chat's top-left
+   *  corner on small viewports. */
   hasFloatingControls?: boolean;
 }
 

@@ -8,10 +8,9 @@ import { ReactNode } from "react";
 import { AdminMobileNav } from "./AdminMobileNav/AdminMobileNav";
 import { AdminSidebar } from "./AdminSidebar/AdminSidebar";
 
-// Mirrors the new /settings shell: own sidebar with a Back link, no top
-// Navbar (PlatformChrome renders the bare shell for /admin under the new
-// layout).
-export function AdminNewShell({ children }: { children: ReactNode }) {
+// Mirrors the /settings shell: own sidebar with a Back link, no app sidebar
+// (PlatformChrome renders the bare frame for /admin).
+export function AdminShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const reduceMotion = useReducedMotion();
 

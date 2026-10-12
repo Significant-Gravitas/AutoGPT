@@ -24,8 +24,8 @@ function makeExecution(
 }
 
 describe("ActivityItem", () => {
-  it("renders a linked item with a nav indicator in the new layout", () => {
-    render(<ActivityItem execution={makeExecution()} newLayout />);
+  it("renders a linked item with a nav indicator", () => {
+    render(<ActivityItem execution={makeExecution()} />);
 
     const link = screen.getByRole("button");
     expect(link.getAttribute("href")).toContain("/library/agents/lib-agent-1");
@@ -37,7 +37,6 @@ describe("ActivityItem", () => {
     render(
       <ActivityItem
         execution={makeExecution({ status: AgentExecutionStatus.REVIEW })}
-        newLayout
       />,
     );
 

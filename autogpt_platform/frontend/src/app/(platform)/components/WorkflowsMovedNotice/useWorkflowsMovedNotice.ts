@@ -28,15 +28,12 @@ export function useWorkflowsMovedNotice(canShow = true) {
   const userID = user?.id ?? null;
   const isSafeLanding = useNoticeLandingRoute();
   const experts = useFlagStatus(Flag.HIRE_EXPERTS);
-  const layout = useFlagStatus(Flag.AUTOGPT_NEW_LAYOUT);
   const [dismissedUsers, setDismissedUsers] = useState<string[]>([]);
   const isEligible = Boolean(
     canShow &&
       userID &&
       experts.ready &&
       experts.enabled &&
-      layout.ready &&
-      layout.enabled &&
       isPreExpertsUser(user?.created_at) &&
       isSafeLanding &&
       !dismissedUsers.includes(userID) &&

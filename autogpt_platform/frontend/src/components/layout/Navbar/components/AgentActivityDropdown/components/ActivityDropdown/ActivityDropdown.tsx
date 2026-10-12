@@ -3,7 +3,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Text } from "@/components/atoms/Text/Text";
-import { cn } from "@/lib/utils";
 import { List, type RowComponentProps } from "react-window";
 import { AgentExecutionWithInfo } from "../../helpers";
 import { ActivityItem } from "../ActivityItem";
@@ -23,25 +22,21 @@ interface Props {
   activeExecutions: AgentExecutionWithInfo[];
   recentCompletions: AgentExecutionWithInfo[];
   recentFailures: AgentExecutionWithInfo[];
-  // New sidebar layout variant — gated behind the AUTOGPT_NEW_LAYOUT flag.
-  newLayout?: boolean;
 }
 
 interface ActivityRowProps {
   executions: AgentExecutionWithInfo[];
-  newLayout: boolean;
 }
 
 function VirtualizedActivityItem({
   index,
   style,
   executions,
-  newLayout,
 }: RowComponentProps<ActivityRowProps>) {
   const execution = executions[index];
   return (
     <div style={style}>
-      <ActivityItem execution={execution} newLayout={newLayout} />
+      <ActivityItem execution={execution} />
     </div>
   );
 }
@@ -50,7 +45,6 @@ export function ActivityDropdown({
   activeExecutions,
   recentCompletions,
   recentFailures,
-  newLayout = false,
 }: Props) {
   const {
     isSearchVisible,
@@ -68,7 +62,7 @@ export function ActivityDropdown({
 
   // Static height for the virtualised list (react-window)
   const itemHeight = 72; // Height of each ActivityItem in pixels
-  const maxHeight = newLayout ? 320 : 400; // Maximum height of the dropdown
+  const maxHeight = 320; // Maximum height of the dropdown
 
   const listHeight = Math.min(
     maxHeight,
@@ -80,13 +74,8 @@ export function ActivityDropdown({
   return (
     <div className="overflow-hidden">
       {/* Header */}
-      <div className={cn("sticky top-0 z-10 px-4", !newLayout && "pb-1 pt-0")}>
-        <div
-          className={cn(
-            "flex items-center justify-between",
-            newLayout ? "pb-1 pt-3" : "h-[60px]",
-          )}
-        >
+      <div className="sticky top-0 z-10 px-4">
+        <div className="flex items-center justify-between pb-1 pt-3">
           {isSearchVisible && withSearch ? (
             <div
               className={`${styles.searchContainer} ${
@@ -121,28 +110,17 @@ export function ActivityDropdown({
               </div>
             </div>
           ) : (
-            <div className={cn(styles.headerContainer, newLayout && "py-0.5")}>
-              {newLayout ? (
-                <span className="text-xs font-medium uppercase text-neutral-500">
-                  Agent Activity
-                </span>
-              ) : (
-                <Text variant="large-semibold" className="!text-black">
-                  Agent Activity
-                </Text>
-              )}
+            <div className={`${styles.headerContainer} py-0.5`}>
+              <span className="text-xs font-medium uppercase text-neutral-500">
+                Agent Activity
+              </span>
               {withSearch ? (
                 <Button
                   variant="ghost"
                   size="small"
                   onClick={toggleSearch}
                   aria-label="Search agents"
-                  className={cn(
-                    "hover:border-transparent hover:bg-transparent",
-                    newLayout
-                      ? "!h-auto !w-fit !min-w-0 !p-0"
-                      : "relative left-3",
-                  )}
+                  className="!h-auto !w-fit !min-w-0 !p-0 hover:border-transparent hover:bg-transparent"
                 >
                   <Icon
                     icon={Search01Icon}
@@ -166,9 +144,9 @@ export function ActivityDropdown({
             defaultHeight={listHeight}
             rowCount={filteredExecutions.length}
             rowHeight={itemHeight}
-            rowProps={{ executions: filteredExecutions, newLayout }}
+            rowProps={{ executions: filteredExecutions }}
             rowComponent={VirtualizedActivityItem}
-            style={{ width: newLayout ? "100%" : 320, height: listHeight }}
+            style={{ width: "100%", height: listHeight }}
           />
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">

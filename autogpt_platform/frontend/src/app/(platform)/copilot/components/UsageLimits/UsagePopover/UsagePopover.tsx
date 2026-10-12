@@ -39,9 +39,8 @@ export function UsagePopover({ trigger, align = "start" }: Props) {
           </Button>
         )}
       </PopoverTrigger>
-      {/* z-[80]: must layer above the Otto mobile drawer
-          (overlay z-[60], content z-[70] in MobileDrawer.tsx) so the
-          popover doesn't render under the drawer's blur. */}
+      {/* z-[80]: must layer above the mobile sidebar sheet so the popover
+          doesn't render under its overlay. */}
       <PopoverContent align={align} className="z-[80] w-72 p-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-2">

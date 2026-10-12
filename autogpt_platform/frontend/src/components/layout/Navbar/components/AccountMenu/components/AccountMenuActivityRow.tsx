@@ -72,7 +72,6 @@ export function AccountMenuActivityRow() {
           activeExecutions={activeExecutions}
           recentCompletions={recentCompletions}
           recentFailures={recentFailures}
-          newLayout
         />
       </PopoverContent>
     </Popover>
