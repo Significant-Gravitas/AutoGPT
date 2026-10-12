@@ -1,0 +1,26 @@
+import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { cn } from "@/lib/utils";
+import type { ReactNode } from "react";
+import { useStepFooter } from "./useStepFooter";
+
+interface Props {
+  children: ReactNode;
+}
+
+export function StepFooter({ children }: Props) {
+  const { sentinelRef, hasContentBelow } = useStepFooter();
+
+  return (
+    <>
+      <Dialog.Footer
+        className={cn(
+          "sticky bottom-0 z-10 mt-2 flex-wrap gap-3 border-t bg-white pt-4",
+          hasContentBelow ? "border-zinc-100" : "border-transparent",
+        )}
+      >
+        {children}
+      </Dialog.Footer>
+      <div ref={sentinelRef} aria-hidden className="h-px shrink-0" />
+    </>
+  );
+}

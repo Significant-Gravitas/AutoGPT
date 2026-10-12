@@ -9,8 +9,10 @@ import {
 } from "../components/ExitReasonStep/helpers";
 import {
   formatAppNames,
-  getPlanState,
   getReasonPanel,
+} from "../components/ExitReasonStep/panel-helpers";
+import {
+  getPlanState,
   type AppsState,
   type DeletionSource,
   type DisconnectState,
