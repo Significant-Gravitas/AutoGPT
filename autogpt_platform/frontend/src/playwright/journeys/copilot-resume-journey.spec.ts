@@ -56,11 +56,14 @@ test("copilot resume journey: one stream per turn through a network blip, a tab 
   await openNewChat(copilot);
   await send(page, copilot, BLIP_PROMPT);
   blip.offline = true;
-  await context.setOffline(true);
-  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
-  await context.setOffline(false);
+  try {
+    await context.setOffline(true);
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+  } finally {
+    await context.setOffline(false);
+    blip.offline = false;
+  }
   await expect(answers).toHaveCount(1, { timeout: 30_000 });
-  blip.offline = false;
 
   // A tab wake and the stall watchdog while the turn is quiet, on a fake
   // clock from here on.
