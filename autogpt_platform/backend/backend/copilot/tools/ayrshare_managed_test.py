@@ -16,7 +16,10 @@ from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.copilot.context import _current_permissions, set_turn_unattended
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.tools.ayrshare_managed import CONNECT_BUTTON, GRANT_TO_EXPERT
+from backend.copilot.tools.ayrshare_managed import (
+    BUILDER_CONNECT_BUTTON,
+    GRANT_TO_EXPERT,
+)
 from backend.copilot.tools.connect_integration import ConnectIntegrationTool
 from backend.copilot.tools.helpers import execute_block, prepare_block_for_execution
 from backend.copilot.tools.models import (
@@ -146,7 +149,10 @@ class TestBlockWithoutCredential:
 
         assert isinstance(result, SetupRequirementsResponse)
         assert "not configured" not in result.message
-        assert CONNECT_BUTTON in result.message
+        # The chat card's Ayrshare row reads "Connect"; the builder's longer
+        # label is not on the card, so the model must not point at it.
+        assert "with the Connect button in the card" in result.message
+        assert BUILDER_CONNECT_BUTTON not in result.message
         assert "Each post costs $0.02 ($0.05 for video)." in result.message
         provision.assert_awaited_once()
         (entry,) = result.setup_info.user_readiness.missing_credentials.values()
@@ -196,8 +202,8 @@ class TestBlockWithoutCredential:
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
-        assert "opening this chat" in result.message
-        assert CONNECT_BUTTON in result.message
+        assert "choosing Connect on the Ayrshare card" in result.message
+        assert f"or {BUILDER_CONNECT_BUTTON} in the agent builder" in result.message
 
     async def test_a_block_the_session_may_not_run_provisions_nothing(self):
         block_id = PostToLinkedInBlock().id
@@ -230,7 +236,7 @@ class TestConnectIntegration:
             )
 
         assert isinstance(result, SetupRequirementsResponse)
-        assert CONNECT_BUTTON in result.message
+        assert "with the Connect button in the card" in result.message
         provision.assert_awaited_once()
         entry = result.setup_info.user_readiness.missing_credentials[
             "ayrshare_credentials"
@@ -363,7 +369,7 @@ class TestPostToUnlinkedNetwork:
             result = await _run(PostToXBlock(), post, spend)
 
         assert isinstance(result, SetupRequirementsResponse)
-        assert CONNECT_BUTTON in result.message
+        assert "with the Connect button in the card" in result.message
         assert "Twitter is not linked" in result.message
         spend.assert_not_awaited()
 

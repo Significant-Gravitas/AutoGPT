@@ -4,6 +4,7 @@ import { useGrantExpertCredentials } from "@/app/api/__generated__/endpoints/exp
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { useAyrshareConnect } from "@/components/contextual/CredentialsInput/components/AyrshareConnectButton/useAyrshareConnect";
 import { ConnectCredentialDialog } from "@/components/contextual/CredentialsInput/components/ConnectCredentialDialog/ConnectCredentialDialog";
 import { findSavedUserCredentialByProviderAndType } from "@/components/contextual/CredentialsInput/components/CredentialsGroupedView/helpers";
 import { filterSystemCredentials } from "@/components/contextual/CredentialsInput/helpers";
@@ -28,6 +29,7 @@ interface Props {
 type Grantable = ExpertGrant["credentials"][number];
 type SavedCredential = CredentialsProviderData["savedCredentials"][number];
 
+const AYRSHARE = "ayrshare";
 const UNUSABLE_ACCOUNT_ERROR =
   "That account is missing the access this needs. Try connecting again.";
 const GRANT_FAILED_ERROR = "Couldn't grant access. Try again.";
@@ -56,6 +58,7 @@ export function ConnectorRow({ row }: Props) {
     useGrantExpertCredentials();
   const expertGrant = row.expertGrant;
   const grantedCredentials = useExpertCredentialSelection(row, allProviders);
+  const ayrshare = useAyrshareConnect();
 
   const rejectedIds = row.rejectedCredentialIds.filter(
     (id) => !renewedIds.includes(id),
@@ -252,6 +255,15 @@ export function ConnectorRow({ row }: Props) {
       ? grantedCredentials.isSelectionGranted
       : !!row.selected && !rejectedIds.includes(row.selected.id));
 
+  // AutoGPT holds the Ayrshare account, so there is no key to ask for: the
+  // user links their networks on Ayrshare's own page. Having the managed
+  // profile says nothing about which networks are linked, so the row keeps
+  // offering that page once it is satisfied. Only an expert still waiting for
+  // its grant goes through the dialog.
+  const linksOnAyrshare =
+    row.provider === AYRSHARE &&
+    !(expertGrant && !isSatisfied && grantableOptions.length > 0);
+
   function openDialog() {
     knownIds.current = allProviders
       ? new Set(
@@ -290,7 +302,7 @@ export function ConnectorRow({ row }: Props) {
         )}
       </div>
 
-      {isSatisfied ? (
+      {isSatisfied && !linksOnAyrshare ? (
         <span className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-zinc-500">
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           {expertGrant ? "Granted" : "Connected"}
@@ -302,17 +314,20 @@ export function ConnectorRow({ row }: Props) {
           className="shrink-0"
           disabled={
             isGranting ||
+            ayrshare.isLoading ||
             Boolean(
               expertGrant && (grantedCredentials.isPending || !allProviders),
             )
           }
-          onClick={openDialog}
+          onClick={linksOnAyrshare ? ayrshare.connect : openDialog}
         >
-          {buttonLabel({
-            canGrant: grantableOptions.length > 0,
-            awaitingReconnect,
-            hasChoice,
-          })}
+          {linksOnAyrshare
+            ? "Connect"
+            : buttonLabel({
+                canGrant: grantableOptions.length > 0,
+                awaitingReconnect,
+                hasChoice,
+              })}
         </Button>
       )}
 

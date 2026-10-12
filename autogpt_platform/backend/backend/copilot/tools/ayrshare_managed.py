@@ -46,7 +46,10 @@ NO_API_KEY = (
     "API key or subscription."
 )
 
-CONNECT_BUTTON = "Connect Social Media Accounts"
+# The labels the user sees: the chat card's Ayrshare row (ConnectorRow) and the
+# agent builder's button (AyrshareConnectButton).
+CONNECT_BUTTON = "Connect"
+BUILDER_CONNECT_BUTTON = "Connect Social Media Accounts"
 
 
 def _post_cost(*, is_video: bool) -> str:
@@ -305,8 +308,8 @@ def _unattended_link_error(
             f"{subject} did not post: {reason}. Nobody is watching this turn "
             "(it was scheduled), so say plainly in your reply that the post "
             "was skipped and that the user can link their social accounts by "
-            "opening this chat (or the agent builder) and choosing "
-            f"{CONNECT_BUTTON}"
+            f"opening this chat and choosing {CONNECT_BUTTON} on the Ayrshare "
+            f"card (or {BUILDER_CONNECT_BUTTON} in the agent builder)"
             + (
                 ", then grant this expert access to it on the expert's "
                 "Integrations page"
