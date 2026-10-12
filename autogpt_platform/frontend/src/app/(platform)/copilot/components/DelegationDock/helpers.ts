@@ -3,6 +3,7 @@ import {
   type ChatDelegation,
   type LiveDelegationStatus,
   countDelegations,
+  currentDelegations,
   getDelegationSummary,
 } from "../../delegations";
 import { delegationName } from "../../delegationViews";
@@ -47,8 +48,9 @@ export function getDockLine(
   live: Record<string, LiveDelegationStatus>,
   names: NameOf = (delegation) => delegationName(delegation),
 ): DockLine | null {
-  if (delegations.length === 0) return null;
-  const corrected = delegations.map((delegation) => {
+  const current = currentDelegations(delegations);
+  if (current.length === 0) return null;
+  const corrected = current.map((delegation) => {
     const status = live[delegation.toolCallId] ?? delegation.status;
     if (status === "unknown")
       return { ...delegation, status: "running" as const };

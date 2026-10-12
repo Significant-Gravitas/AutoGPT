@@ -170,6 +170,12 @@ export function getSupersededCallIds(delegations: ChatDelegation[]) {
   );
 }
 
+/** The hand-offs still current: a re-delegation to the same thread
+ *  replaces its earlier entry, which totals must not count again. */
+export function currentDelegations(delegations: ChatDelegation[]) {
+  return delegations.filter((delegation) => !delegation.superseded);
+}
+
 /** Marks the entries the whole chat knows were superseded. */
 export function withSuperseded(
   delegations: ChatDelegation[],

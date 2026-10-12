@@ -1,5 +1,6 @@
 import {
   type ChatDelegation,
+  currentDelegations,
   type LiveDelegationStatus,
   formatElapsed,
 } from "../../../../delegations";
@@ -61,11 +62,10 @@ export function workTotals(
   delegations: ChatDelegation[],
   statusOf: (delegation: ChatDelegation) => LiveDelegationStatus,
 ) {
+  const current = currentDelegations(delegations);
   const count = (statuses: LiveDelegationStatus[]) =>
-    delegations.filter((d) => statuses.includes(statusOf(d))).length;
-  const costs = delegations.flatMap((d) =>
-    d.costUsd === null ? [] : [d.costUsd],
-  );
+    current.filter((d) => statuses.includes(statusOf(d))).length;
+  const costs = current.flatMap((d) => (d.costUsd === null ? [] : [d.costUsd]));
   return [
     { label: "Working", value: String(count(["running", "queued"])) },
     { label: "Waiting", value: String(count(["proposed", "needs-input"])) },

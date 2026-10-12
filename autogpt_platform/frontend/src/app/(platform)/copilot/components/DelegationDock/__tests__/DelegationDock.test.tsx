@@ -152,6 +152,17 @@ describe("getDockLine", () => {
     );
   });
 
+  it("counts a re-delegated thread once, by its latest hand-off", () => {
+    const line = getDockLine(
+      [
+        { ...base, toolCallId: "c1", status: "running", superseded: true },
+        { ...base, toolCallId: "c2", status: "running" },
+      ],
+      {},
+    );
+    expect(line).toEqual({ text: "1 expert working", tone: "working" });
+  });
+
   it("trusts the live status over the frozen one", () => {
     expect(
       getDockLine([{ ...base, status: "running" }], { c1: "completed" }),
