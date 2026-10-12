@@ -19,9 +19,12 @@ failing (a provider that hangs on every cancel) do not keep a dead pass from
 being closed and charged before its batch state lapses, and a stream of
 lapsing passes does not keep the pending cleanups waiting. Within its kind,
 each row is tried for ``ROW_ATTEMPT_SECONDS`` at most, so one that hangs
-leaves the rows behind it their turn; and a pending cleanup is written once
-more (``_to_the_back``) before it is tried, so one that does not finish,
-however its attempt ends, is not the first tried next run either.
+leaves the rows behind it their turn; and each is put behind the others
+before it is tried, so one that does not finish, however its attempt ends,
+is not the first tried next run either: a pending cleanup is written once
+more (``_to_the_back``), and an open row, whose lease only its pass writes,
+goes into a Redis set of rows tried lately (``_try_later``) for
+``TRY_LATER_SECONDS``.
 A cleanup is due once its lease lapsed a grace ago, or it was marked a grace
 ago: time for a pass stopped while it ran to reach its next check, and for
 the executor's drop to clean up after it. The grace is a bound, not a fence:
@@ -74,6 +77,7 @@ per outcome.
 
 import asyncio
 import logging
+import time
 import uuid
 from collections import Counter
 from datetime import datetime, timedelta, timezone
@@ -120,6 +124,12 @@ REAPER_LOCK_TTL_SECONDS = 120
 # the budget a row needs left in its kind's share for the reaper to start it.
 ROW_ATTEMPT_SECONDS = 12.0
 ROW_RESERVE_SECONDS = ROW_ATTEMPT_SECONDS
+# The open rows the reaper tried and could not close (their write stalls,
+# their scope cannot be taken), and when each may head the list again: a
+# Redis sorted set, one key, so a row that keeps failing goes behind the
+# others without its lease, which only its pass writes, moving.
+TRY_LATER_KEY = "dream:reaper:try_later"
+TRY_LATER_SECONDS = REAPER_INTERVAL_MINUTES * 60
 # Giving back the reaper's hold on a scope, carved out of the budget.
 RELEASE_TIMEOUT_SECONDS = 2.0
 
@@ -152,13 +162,53 @@ async def reap_expired_passes(*, now: datetime | None = None) -> ReaperRun:
 async def _list(now: datetime) -> tuple[list[DreamPassRecord], list[DreamPassRecord]]:
     """The rows to work, ``REAPER_ROW_LIMIT`` in all, each kind kept to half
     of it when the other has rows: the open rows whose lease lapsed a grace
-    ago (the oldest lapse first), and the cleanups pending and due (the
-    least recently written first)."""
+    ago (the oldest lapse first, those a recent run tried last), and the
+    cleanups pending and due (the least recently written first)."""
     due_before = now - timedelta(seconds=REAP_GRACE_SECONDS)
     lapsed = await read_expired_passes(due_before, limit=REAPER_ROW_LIMIT)
     pending = await read_pending_cleanups(due_before=due_before, limit=REAPER_ROW_LIMIT)
+    tried = await _tried_lately()
+    lapsed = sorted(lapsed, key=lambda row: row.id in tried)
     kept = min(len(lapsed), max(REAPER_ROW_LIMIT - len(pending), REAPER_ROW_LIMIT // 2))
     return lapsed[:kept], pending[: REAPER_ROW_LIMIT - kept]
+
+
+async def _tried_lately() -> set[str]:
+    """The open rows a run tried within ``TRY_LATER_SECONDS``, which go last;
+    none when Redis cannot say."""
+    now = time.time()
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            redis = await redis_client.get_redis_async()
+            await redis.zremrangebyscore(TRY_LATER_KEY, "-inf", now)
+            tried = await redis.zrangebyscore(TRY_LATER_KEY, now, "+inf")
+    except Exception:
+        logger.warning(
+            "Dream pass reaper: could not read the passes it tried lately",
+            exc_info=True,
+        )
+        return set()
+    return {_text(pass_id) for pass_id in tried}
+
+
+async def _try_later(pass_id: str) -> None:
+    """Put an open row behind the others for ``TRY_LATER_SECONDS`` before the
+    reaper tries to close it, so a row that fails to close, however its
+    attempt ends, does not head the next runs' lists. Best-effort."""
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            redis = await redis_client.get_redis_async()
+            await redis.zadd(TRY_LATER_KEY, {pass_id: time.time() + TRY_LATER_SECONDS})
+            await redis.expire(TRY_LATER_KEY, 2 * TRY_LATER_SECONDS)
+    except Exception:
+        logger.warning(
+            f"Dream pass reaper: could not put pass {pass_id} behind the others",
+            exc_info=True,
+        )
+
+
+def _text(value: object) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 async def _reap_both(
@@ -186,7 +236,8 @@ async def _reap_rows(
     """Work the *rows* not yet done, in turn, each started only with
     ``ROW_RESERVE_SECONDS`` left before *until*, and cut off after
     ``ROW_ATTEMPT_SECONDS`` or at *until*, whichever comes first; a row cut
-    off is done for this run, and the next one gets its turn."""
+    off is done for this run, and the next one gets its turn. An open row is
+    put behind the others first (``_try_later``)."""
     loop = asyncio.get_running_loop()
     for row in rows:
         if row.id in done:
@@ -196,6 +247,8 @@ async def _reap_rows(
         cutoff = min(until, loop.time() + ROW_ATTEMPT_SECONDS)
         try:
             async with asyncio.timeout_at(cutoff):
+                if row.status in OPEN_STATUSES:
+                    await _try_later(row.id)
                 await _reap(row, done)
         except TimeoutError:
             logger.warning(

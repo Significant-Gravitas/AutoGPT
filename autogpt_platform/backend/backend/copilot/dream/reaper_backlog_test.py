@@ -1,12 +1,16 @@
 """The reaper behind rows it cannot finish, over the in-memory store and
 Redis: a row whose attempt hangs is cut after its own ``ROW_ATTEMPT_SECONDS``,
 so the rows behind it get their turn in the same run, and a healthy cleanup
-behind five hanging ones is charged in the first run; and a pass whose batch
-state lapsed before its landed phases were charged is reported as lost
-usage, an error, rather than taken for one with nothing to charge."""
+behind five hanging ones is charged in the first run; an open row the reaper
+cannot close goes behind the others for ``TRY_LATER_SECONDS``, in Redis, its
+row and lease untouched, so a healthy one behind more stuck rows than a run
+can try is closed the next run; and a pass whose batch state lapsed before
+its landed phases were charged is reported as lost usage, an error, rather
+than taken for one with nothing to charge."""
 
 import asyncio
 import logging
+import time
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -18,7 +22,7 @@ from backend.util.llm.providers import BatchResultRow
 from . import cleanup as cleanup_mod
 from . import reaper as reaper_mod
 from .batch_state import state_key, write_phase_to_state
-from .reaper import reap_expired_passes
+from .reaper import TRY_LATER_KEY, TRY_LATER_SECONDS, reap_expired_passes
 from .reaper_cleanup_test import _scale_the_budget
 from .reaper_test import _charged, _seed
 from .schemas import ConsolidationOutput, RecombinationOutput
@@ -72,6 +76,115 @@ class TestARowWhoseAttemptHangs:
         assert state_key("healthy") not in fake_dream_redis.hashes
         assert fake_dream_db.rows["healthy"]["cleanup_pending_at"] is None
         assert all(fake_dream_db.rows[p]["cleanup_pending_at"] for p in stuck)
+
+
+class TestAnOpenRowItCannotClose:
+    async def test_goes_behind_the_others_its_row_untouched(
+        self, mocker, fake_dream_db, fake_dream_redis
+    ):
+        """Seven open rows whose stop write never answers, the oldest lapses,
+        ahead of a healthy one: more than one run can try. Each is put behind
+        the others in Redis before it is tried, so the next run starts with
+        those not tried yet and closes the healthy row. Every other write to
+        the stuck rows lands, and none is made: their lease and their last
+        write are their pass's alone."""
+        _scale_the_budget(mocker, budget=0.6, release=0.02, reserve=0.1)
+        mocker.patch.object(reaper_mod, "ROW_ATTEMPT_SECONDS", 0.1)
+        stuck = [f"stuck{index}" for index in range(7)]
+        for index, pass_id in enumerate([*stuck, "healthy"]):
+            _seed(
+                fake_dream_db, pass_id, route=DreamPassRoute.SYNC, lapsed=4000 - index
+            )
+        before = {pass_id: dict(fake_dream_db.rows[pass_id]) for pass_id in stuck}
+        write = fake_dream_db.update_dream_pass
+
+        async def stop_never_answers_for_the_stuck(pass_id, update) -> bool:
+            if pass_id in stuck and update.status is DreamPassStatus.EXPIRED:
+                await asyncio.Event().wait()
+            return await write(pass_id, update)
+
+        mocker.patch.object(
+            fake_dream_db, "update_dream_pass", stop_never_answers_for_the_stuck
+        )
+
+        first = await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert first.outcomes == {"out_of_budget": 8}
+        assert fake_dream_db.rows["healthy"]["status"] is DreamPassStatus.RUNNING
+
+        second = await asyncio.wait_for(reap_expired_passes(), 5)
+
+        assert second.outcomes == {"expired": 1, "out_of_budget": 7}
+        assert fake_dream_db.rows["healthy"]["status"] is DreamPassStatus.EXPIRED
+        assert {pass_id: fake_dream_db.rows[pass_id] for pass_id in stuck} == before
+        assert not [pid for pid, _ in fake_dream_db.writes if pid in stuck]
+
+    async def test_is_put_behind_the_others_for_an_interval(
+        self, fake_dream_db, fake_dream_redis
+    ):
+        """Every open row a run tries is noted with when it may head the list
+        again; a closed row whose cleanup is pending is not (it is written
+        behind the others instead)."""
+        _seed(fake_dream_db, "open", route=DreamPassRoute.SYNC)
+        _seed(
+            fake_dream_db,
+            "closed",
+            route=DreamPassRoute.SYNC,
+            status=DreamPassStatus.EXPIRED,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        started = time.time()
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"expired": 1, "cleaned": 1}
+        noted = fake_dream_redis.zsets[TRY_LATER_KEY]
+        assert list(noted) == ["open"]
+        assert (
+            started + TRY_LATER_SECONDS
+            <= noted["open"]
+            <= time.time() + (TRY_LATER_SECONDS)
+        )
+        assert fake_dream_redis.ttls[TRY_LATER_KEY] == 2 * TRY_LATER_SECONDS
+
+    async def test_heads_the_list_again_once_its_interval_is_over(
+        self, fake_dream_db, fake_dream_redis
+    ):
+        for index, pass_id in enumerate(("tried", "other")):
+            _seed(
+                fake_dream_db, pass_id, route=DreamPassRoute.SYNC, lapsed=4000 - index
+            )
+        now = datetime.now(timezone.utc)
+
+        await fake_dream_redis.zadd(TRY_LATER_KEY, {"tried": time.time() + 60})
+        lapsed, _ = await reaper_mod._list(now)
+        assert [row.id for row in lapsed] == ["other", "tried"]
+
+        await fake_dream_redis.zadd(TRY_LATER_KEY, {"tried": time.time() - 1})
+        lapsed, _ = await reaper_mod._list(now)
+        assert [row.id for row in lapsed] == ["tried", "other"]
+        assert await fake_dream_redis.exists(TRY_LATER_KEY) == 0
+
+    async def test_without_redis_to_say_the_lapse_order_holds_and_the_run_goes_on(
+        self, monkeypatch, fake_dream_db, fake_dream_redis, caplog
+    ):
+        for index, pass_id in enumerate(("s1", "s2")):
+            _seed(
+                fake_dream_db, pass_id, route=DreamPassRoute.SYNC, lapsed=4000 - index
+            )
+
+        async def down(*_args, **_kwargs):
+            raise ConnectionError("redis down")
+
+        monkeypatch.setattr(fake_dream_redis, "zrangebyscore", down)
+        monkeypatch.setattr(fake_dream_redis, "zadd", down)
+
+        with caplog.at_level(logging.WARNING):
+            run = await reap_expired_passes()
+
+        assert run.outcomes == {"expired": 2}
+        assert "could not read the passes it tried lately" in caplog.text
+        assert "could not put pass s1 behind the others" in caplog.text
 
 
 class TestABatchStateThatLapsed:
