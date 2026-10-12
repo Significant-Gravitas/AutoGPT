@@ -265,7 +265,7 @@ class CopyWorkspaceFileTool(_WorkspaceTransferTool):
             if msg.startswith("Storage limit exceeded"):
                 msg += (
                     " Use tool:list_workspace_files to find candidates, then "
-                    "delete_workspace_file to free space and retry — or ask "
+                    "tool:delete_workspace_file to free space and retry — or ask "
                     "the user to upgrade their plan."
                 )
             return ErrorResponse(message=msg, session_id=session_id)
