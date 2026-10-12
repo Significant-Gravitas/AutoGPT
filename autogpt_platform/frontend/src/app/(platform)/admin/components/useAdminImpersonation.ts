@@ -45,6 +45,19 @@ export function useAdminImpersonation(): AdminImpersonationHook {
         return;
       }
 
+      // Impersonation is recorded against the admin who starts it. Check
+      // before the audit alert, so no "impersonation started" is logged for
+      // a swap that can't happen.
+      const adminId = useAuthStore.getState().user?.id;
+      if (!adminId) {
+        toast({
+          title: "Couldn't start impersonation",
+          description: "Sign in again to impersonate a user.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       startingRef.current = true;
       try {
         // The audit alert GATES impersonation. Await it BEFORE setting state so
@@ -63,8 +76,6 @@ export function useAdminImpersonation(): AdminImpersonationHook {
           return;
         }
 
-        const adminId = useAuthStore.getState().user?.id;
-        if (!adminId) throw new Error("Sign in again to impersonate a user.");
         ImpersonationState.set(userId, adminId);
         setImpersonatedUserId(userId);
         window.location.reload();

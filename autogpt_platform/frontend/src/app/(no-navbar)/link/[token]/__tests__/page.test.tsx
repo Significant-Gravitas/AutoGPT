@@ -22,6 +22,14 @@ const mockUseSearchParams = vi.hoisted(() => vi.fn());
 const mockUseAuth = vi.hoisted(() => vi.fn());
 const mockLogOut = vi.hoisted(() => vi.fn());
 
+const mockToast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  useToast: () => ({ toast: mockToast, dismiss: vi.fn() }),
+}));
+
 vi.mock("next/navigation", () => ({
   useParams: mockUseParams,
   usePathname: () => "/link/token-123",
@@ -422,5 +430,29 @@ describe("PlatformLinkPage", () => {
       expect(mockLogOut).toHaveBeenCalledTimes(1);
       expect(window.location.href).toBe("/login?next=%2Flink%2Ftoken-123");
     });
+  });
+
+  test("stays put and says so when the sign-out can't reach the server", async () => {
+    mockLogOut.mockRejectedValue(new TypeError("Failed to fetch"));
+    const before = window.location.href;
+    server.use(
+      getGetPlatformLinkingGetDisplayInfoForALinkTokenMockHandler200({
+        platform: "DISCORD",
+        link_type: LinkType.SERVER,
+        server_name: "Builders Guild",
+      }),
+    );
+
+    render(<PlatformLinkPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /not you/i }));
+
+    await waitFor(() =>
+      expect(mockToast).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Couldn't sign you out" }),
+      ),
+    );
+    expect(mockLogOut).toHaveBeenCalledTimes(1);
+    expect(window.location.href).toBe(before);
   });
 });
