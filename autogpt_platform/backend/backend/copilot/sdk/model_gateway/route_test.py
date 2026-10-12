@@ -7,8 +7,8 @@ from backend.copilot.sdk.model_gateway.route import (
     GatewayRoute,
 )
 from backend.copilot.sdk.model_gateway.testing.codex_lease import (
-    FAKE_ACCESS_TOKEN,
     codex_route,
+    fake_access_token,
     fake_codex_lease,
 )
 
@@ -84,7 +84,7 @@ def test_the_route_exposes_its_secrets_for_redaction_but_never_prints_them():
 
 def test_a_codex_route_redacts_the_access_token_it_sends():
     route = codex_route("gpt-test")
-    assert route.secret_values() == (FAKE_ACCESS_TOKEN,)
+    assert route.secret_values() == (fake_access_token(),)
     assert route.api_key() is None
 
 

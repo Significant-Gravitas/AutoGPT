@@ -1,4 +1,7 @@
-"""A Codex credential lease for tests, and an adapter pointed at a fake backend."""
+"""A Codex credential lease for tests, and a client for a fake Responses backend."""
+
+import base64
+import json
 
 from openai import AsyncOpenAI
 from pydantic import SecretStr
@@ -9,18 +12,28 @@ from backend.integrations.codex.credential_codec import credentials_from_bundle
 from backend.integrations.codex.http_session import CodexHttpSession
 from backend.integrations.codex.transport import CodexAgentSession, CodexCredentialLease
 
-# An unsigned JWT: the platform reads its claims, never its signature.
-FAKE_ACCESS_TOKEN = (
-    "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ.sig"
-)
+
+def fake_access_token(account_id: str = "acct-test") -> str:
+    """An unsigned JWT: the platform reads its claims, never its signature."""
+    claims = {
+        "exp": 9_999_999_999,
+        "email": "a@b.c",
+        "https://api.openai.com/auth": {"chatgpt_account_id": account_id},
+    }
+    header, payload = (
+        base64.urlsafe_b64encode(json.dumps(part).encode()).decode().rstrip("=")
+        for part in ({"alg": "none"}, claims)
+    )
+    return f"{header}.{payload}.unsigned"
 
 
-def fake_codex_lease(credential_id: str = "codex-credential") -> CodexCredentialLease:
+def fake_codex_lease(
+    credential_id: str = "codex-credential", account_id: str = "acct-test"
+) -> CodexCredentialLease:
+    token = SecretStr(fake_access_token(account_id))
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
-            id_token=SecretStr(FAKE_ACCESS_TOKEN),
-            access_token=SecretStr(FAKE_ACCESS_TOKEN),
-            refresh_token=SecretStr("refresh"),
+            id_token=token, access_token=token, refresh_token=SecretStr("refresh")
         ),
         codex_runtime_version="http",
     )
@@ -28,7 +41,10 @@ def fake_codex_lease(credential_id: str = "codex-credential") -> CodexCredential
         update={"id": credential_id}
     )
     session = CodexHttpSession(
-        credentials, turn_timeout_seconds=60, tool_timeout_seconds=60
+        credentials,
+        turn_timeout_seconds=60,
+        tool_timeout_seconds=60,
+        client=AsyncOpenAI(api_key="unused", base_url="http://127.0.0.1:9/unused"),
     )
     return CodexCredentialLease(credentials, CodexAgentSession(session, credentials))
 
