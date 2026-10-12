@@ -5,6 +5,7 @@ import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { runAfterResponse } from "./background-tasks";
+import { CLOSED_ACCOUNT_MESSAGE } from "./closed-account";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
@@ -335,12 +336,8 @@ export const auth = betterAuth({
   },
   socialProviders: getSocialProviders(),
   plugins: [
-    // Deleting an account bans it (backend data/account_deletion.py), so this
-    // is what a closed account sees when it tries to sign in again.
-    admin({
-      bannedUserMessage:
-        "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
-    }),
+    // What a closed (deleted, so banned) account sees when it signs in again.
+    admin({ bannedUserMessage: CLOSED_ACCOUNT_MESSAGE }),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },
