@@ -4617,6 +4617,8 @@ def _in_memory_session_store(mocker: pytest_mock.MockerFixture):
             user_id,
             dry_run=dry_run,
             session_id=session_id,
+            organization_id=kwargs.get("organization_id"),
+            team_id=kwargs.get("team_id"),
             expert_id=kwargs.get("expert_id"),
         )
         store[session.session_id] = session

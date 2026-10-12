@@ -136,9 +136,7 @@ export function useChatSession({
   const sendStartedRef = useRef(false);
   // The id the last create named, kept while every attempt lost its response
   // so a resend of the same request adopts what that attempt may have saved.
-  const pendingCreateRef = useRef<{ id: string; request: string } | null>(
-    null,
-  );
+  const pendingCreateRef = useRef<{ id: string; request: string } | null>(null);
   const canAdoptExpertSession =
     adoptLatestExpertThread &&
     !!expertId &&
