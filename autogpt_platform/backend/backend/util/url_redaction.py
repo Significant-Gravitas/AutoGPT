@@ -32,7 +32,9 @@ _CREDENTIAL_PATH_SEGMENT = re.compile(
 _QUERY_IN_TEXT = re.compile(r"\?(\S+)")
 _QUERY_VALUE = re.compile(r"=[^&]*")
 _TOKEN_IN_QUERY = re.compile(r"[?&]token=([^&\s]*)")
-_MENTIONS_URL = re.compile(r"\?|/api/")
+# Every URL redact_urls_in_text masks holds one of these, so a string without
+# any is left as it is: Sentry runs it on every string of every event.
+_MENTIONS_URL = re.compile(r"\?|/api/|api\.telegram\.org/")
 # A shorter value can't be a credential the platform issued, and masking it
 # everywhere it appears would mangle the rest of the event.
 _MIN_CREDENTIAL_LENGTH = 16
@@ -57,6 +59,8 @@ def redact_url(url: str) -> str:
 
 def redact_urls_in_text(text: str) -> str:
     """Mask the credentials in every request URL inside a longer message."""
+    if not _MENTIONS_URL.search(text):
+        return text
     return _redact_path(
         _QUERY_IN_TEXT.sub(lambda match: "?" + redact_query_string(match[1]), text)
     )

@@ -1272,9 +1272,9 @@ async def webhook_ingress_generic(
     payload, event_type = await webhook_manager.validate_payload(
         webhook, request, credentials
     )
+    # Not the payload, which is the provider's event data.
     logger.debug(
-        f"Validated {provider.value} {webhook.webhook_type} {event_type} event "
-        f"with payload {payload}"
+        "Validated %s %s %s event", provider.value, webhook.webhook_type, event_type
     )
 
     webhook_event = WebhookEvent(

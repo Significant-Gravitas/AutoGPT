@@ -138,6 +138,11 @@ def test_redact_url(url: str, expected: str) -> None:
             '"GET /ws?a=1#&token=t HTTP/1.1"',
             f'"GET /ws?a={REDACTED}&token={REDACTED} HTTP/1.1"',
         ),
+        # Telegram's bot token is in the path, with no query and no /api/.
+        (
+            "POST https://api.telegram.org/bot123:AA-b_c/getMe",
+            f"POST https://api.telegram.org/bot{REDACTED}/getMe",
+        ),
         ("Did it work? Yes.", "Did it work? Yes."),
     ],
 )
