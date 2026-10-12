@@ -4,16 +4,21 @@ The new session opens with one hidden user row carrying the old
 conversation, so the new assignee can say where the task stands.
 """
 
+import re
 from typing import Any
 
+from .board import REASSIGN_BRIEF_KIND
 from .expert_kickoff import is_hidden_chat_message
 from .model import ChatMessage
 from .service import strip_injected_context_for_display
 
-REASSIGN_BRIEF_KIND = "reassign_brief"
 TRANSCRIPT_CHAR_BUDGET = 24_000
+MAX_BRIEF_FILES = 50
 
 _OMITTED = "[earlier messages omitted]"
+# The brief's own wrapper tags: text inside must not open or close them.
+_WRAPPER_TAG = re.compile(r"<(/?)(previous_conversation|files)", re.IGNORECASE)
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f-\x9f]+")
 
 _BRIEF = """\
 The user reassigned this task from {from_name} to you. Below is the conversation so far, for context only.
@@ -40,13 +45,14 @@ def build_reassign_brief(
 ) -> str:
     """The new assignee's first message. *files* are ``(name, file_id)``."""
     return _BRIEF.format(
-        from_name=from_name,
+        from_name=_neutralise(from_name),
         transcript=_transcript(_turns(messages, from_name)),
         files_block=_files_block(files),
     )
 
 
-def _turns(messages: list[ChatMessage], from_name: str) -> list[str]:
+def _turns(messages: list[ChatMessage], from_name: str) -> list[tuple[str, str]]:
+    """``(speaker, text)`` pairs, oldest first."""
     turns = []
     for message in messages:
         if message.role not in ("user", "assistant") or not message.content:
@@ -60,34 +66,51 @@ def _turns(messages: list[ChatMessage], from_name: str) -> list[str]:
             content = message.content
             speaker = from_name
         if content.strip():
-            turns.append(f"{speaker}: {content}")
+            turns.append((_neutralise(speaker), _neutralise(content)))
     return turns
 
 
-def _transcript(turns: list[str]) -> str:
+def _transcript(turns: list[tuple[str, str]]) -> str:
     """Newest last; the oldest whole turns go first when it runs long."""
-    joined = "\n".join(turns)
+    lines = [f"{speaker}: {text}" for speaker, text in turns]
+    joined = "\n".join(lines)
     if len(joined) <= TRANSCRIPT_CHAR_BUDGET:
         return joined
     budget = TRANSCRIPT_CHAR_BUDGET - len(_OMITTED) - 1
     kept: list[str] = []
     size = 0
-    for turn in reversed(turns):
-        cost = len(turn) + (1 if kept else 0)
+    for line in reversed(lines):
+        cost = len(line) + (1 if kept else 0)
         if size + cost > budget:
             break
-        kept.append(turn)
+        kept.append(line)
         size += cost
     if not kept:
-        kept = [turns[-1][-budget:]]
+        speaker, text = turns[-1]
+        label = f"{speaker}: "
+        room = max(budget - len(label), 0)
+        kept = [label + text[len(text) - room :]]
     return "\n".join([_OMITTED, *reversed(kept)])
 
 
 def _files_block(files: list[tuple[str, str]]) -> str:
     if not files:
         return ""
-    lines = "".join(f"- {name} (file_id: {file_id})\n" for name, file_id in files)
+    lines = "".join(
+        f"- {_file_name(name)} (file_id: {file_id})\n"
+        for name, file_id in files[:MAX_BRIEF_FILES]
+    )
+    if len(files) > MAX_BRIEF_FILES:
+        lines += f"- … and {len(files) - MAX_BRIEF_FILES} more\n"
     return (
         f"\n<files>\n{lines}</files>\n"
         "These files are readable from this conversation."
     )
+
+
+def _file_name(name: str) -> str:
+    return _neutralise(_CONTROL_CHARS.sub(" ", name).strip())
+
+
+def _neutralise(text: str) -> str:
+    return _WRAPPER_TAG.sub(r"&lt;\1\2", text)

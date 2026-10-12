@@ -14,6 +14,8 @@ MAX_COLUMNS = 6
 MAX_COLUMN_NAME = 40
 UNPLACED_WINDOW = timedelta(days=7)
 LAST_LINE_MAX = 140
+# A reassigned session's first, hidden row: the old chat, briefed.
+REASSIGN_BRIEF_KIND = "reassign_brief"
 
 _CUSTOM_KEY = re.compile(
     r"^col_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"

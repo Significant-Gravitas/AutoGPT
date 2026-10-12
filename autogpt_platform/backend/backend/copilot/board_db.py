@@ -18,12 +18,12 @@ from .board import (
     BACKLOG,
     DEFAULT_COLUMNS,
     DONE,
+    REASSIGN_BRIEF_KIND,
     UNPLACED_WINDOW,
     BoardColumn,
     first_sentence,
     validate_columns,
 )
-from .board_reassign import REASSIGN_BRIEF_KIND
 from .db import exclude_dream_sessions_sql
 from .model import ChatSessionInfo
 

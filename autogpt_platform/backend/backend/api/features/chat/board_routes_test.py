@@ -13,9 +13,8 @@ import pytest_mock
 from backend.api.features.chat import board_routes
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat import server_turn
-from backend.copilot.board import DEFAULT_COLUMNS, validate_columns
+from backend.copilot.board import DEFAULT_COLUMNS, REASSIGN_BRIEF_KIND, validate_columns
 from backend.copilot.board_db import BoardExtras, BoardSessionRow
-from backend.copilot.board_reassign import REASSIGN_BRIEF_KIND
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import (
     ChatMessage,
@@ -883,6 +882,23 @@ def test_reassign_refused_turn_deletes_the_new_session(
     mocks.delete.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID)
     mocks.mark.assert_not_awaited()
     mocks.invalidate.assert_not_awaited()
+
+
+def test_reassign_failed_cleanup_keeps_the_original_error(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_reassign(mocker)
+    mocks.dispatch.side_effect = fastapi.HTTPException(status_code=429, detail="limit")
+    mocks.delete.side_effect = RuntimeError("db down")
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "limit"
+    mocks.delete.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID)
+    mocks.mark.assert_not_awaited()
 
 
 # ─── POST /sessions with a board column ───────────────────────────────

@@ -1,6 +1,7 @@
 """Task board routes: the board, its columns, and placing, assigning and
 starting cards. Served under ``/api/chat`` next to the session routes."""
 
+import logging
 from typing import Annotated
 
 from autogpt_libs import auth
@@ -46,6 +47,8 @@ from backend.copilot.pending_message_helpers import (
     StreamRegistryUnavailable,
     is_turn_in_flight,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["chat"])
 
@@ -405,7 +408,10 @@ async def reassign_session(
         )
     except Exception:
         # A refused turn (paywall, limits) must not leave a half-made card.
-        await delete_chat_session(new_id, user_id)
+        try:
+            await delete_chat_session(new_id, user_id)
+        except Exception:
+            logger.exception(f"Failed to delete half-made reassign session {new_id}")
         raise
 
     await mark_session_reassigned(
