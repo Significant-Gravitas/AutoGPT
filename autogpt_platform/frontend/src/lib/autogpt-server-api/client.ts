@@ -1124,16 +1124,14 @@ export default class BackendAPI {
         let token = "";
         let tokenFetchFailed = false;
         try {
-          const { token: serverToken, error } = await getWebSocketToken();
-          if (serverToken && !error) {
-            token = serverToken;
-          } else if (error) {
-            tokenFetchFailed = true;
-            console.warn("Failed to get WebSocket token from server:", error);
+          const result = await fetchWebSocketToken();
+          token = result.token ?? "";
+          tokenFetchFailed = result.transient;
+          if (result.transient) {
+            console.warn("Failed to get WebSocket token:", result.status);
           }
         } catch (error) {
-          // Typically the network is still down (e.g. just after waking up)
-          // or a deploy invalidated the server action; both are transient.
+          // Typically the network is still down (e.g. just after waking up).
           tokenFetchFailed = true;
           console.warn("Failed to get token for WebSocket connection:", error);
         }
@@ -1384,6 +1382,34 @@ export default class BackendAPI {
 }
 
 const WS_RECONNECT_BASE_DELAY_MS = 1_000;
+const WS_TOKEN_TIMEOUT_MS = 10_000;
+
+/**
+ * The backend JWT for the socket, from Better Auth's token route. A plain
+ * fetch rather than the getWebSocketToken server action: Next runs a page's
+ * server actions one at a time and holds them through navigations, which
+ * could leave a (re)connect waiting on its token indefinitely.
+ */
+async function fetchWebSocketToken(): Promise<{
+  token: string | null;
+  transient: boolean;
+  status: number;
+}> {
+  const response = await fetch("/api/auth/token", {
+    cache: "no-store",
+    credentials: "same-origin",
+    signal: AbortSignal.timeout(WS_TOKEN_TIMEOUT_MS),
+  });
+  // No session: nothing to retry until the user signs in again.
+  if (response.status === 401 || response.status === 403) {
+    return { token: null, transient: false, status: response.status };
+  }
+  if (!response.ok) {
+    return { token: null, transient: true, status: response.status };
+  }
+  const { token } = (await response.json()) as { token?: string };
+  return { token: token ?? null, transient: !token, status: response.status };
+}
 const WS_HEALTHY_AFTER_MS = 10_000;
 // Above the server's own bound on opening a stream (15 s) plus the lookup.
 const WS_SUBSCRIBE_ACK_TIMEOUT_MS = 25_000;

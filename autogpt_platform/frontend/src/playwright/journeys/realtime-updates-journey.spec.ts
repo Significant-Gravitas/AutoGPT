@@ -1,4 +1,10 @@
-import type { Locator, Page, Route, WebSocketRoute } from "@playwright/test";
+import type {
+  Locator,
+  Page,
+  Request,
+  Route,
+  WebSocketRoute,
+} from "@playwright/test";
 import { createUniqueAgentName } from "../pages/build.page";
 import { clickRunButton, LibraryPage } from "../pages/library.page";
 import { expect, test } from "./fixtures";
@@ -74,14 +80,8 @@ async function proxyLiveConnection(page: Page) {
     opened: () => opened,
     async dropWithFailingTokenFetches(failures: number) {
       let remaining = failures;
-      // getWebSocketToken is a server action: a POST with a Next-Action header.
       await page.route("**/*", (route: Route) => {
-        const request = route.request();
-        if (
-          remaining > 0 &&
-          request.method() === "POST" &&
-          request.headers()["next-action"]
-        ) {
+        if (remaining > 0 && isTokenFetch(route.request())) {
           remaining -= 1;
           return route.abort("internetdisconnected");
         }
@@ -93,6 +93,13 @@ async function proxyLiveConnection(page: Page) {
       }
     },
   };
+}
+
+/** The client's token fetch: the token route, or (on older builds) the
+ * getWebSocketToken server action, a POST with a Next-Action header. */
+function isTokenFetch(request: Request): boolean {
+  if (new URL(request.url()).pathname === "/api/auth/token") return true;
+  return request.method() === "POST" && !!request.headers()["next-action"];
 }
 
 /** Opens the Activity menu and checks the agent's latest run there. */

@@ -4,7 +4,6 @@ vi.mock("@/lib/auth/actions", () => ({
   getWebSocketToken: vi.fn(async () => ({ token: "test-token" })),
 }));
 
-import { getWebSocketToken } from "@/lib/auth/actions";
 import BackendAPI, {
   buildOAuthLoginQuery,
   getWSReconnectDelay,
@@ -168,9 +167,15 @@ describe("BackendAPI WebSocket failure logging", () => {
     vi.restoreAllMocks();
   });
 
+  const tokenFetch = vi.fn(
+    async () => new Response(JSON.stringify({ token: "test-token" })),
+  );
+
   async function connect() {
     vi.useFakeTimers();
     vi.stubGlobal("WebSocket", FakeWebSocket);
+    tokenFetch.mockClear();
+    vi.stubGlobal("fetch", tokenFetch);
     const api = new BackendAPI("http://test", "ws://test/ws");
     apis.push(api);
     void api.connectWebSocket();
@@ -236,14 +241,14 @@ describe("BackendAPI WebSocket failure logging", () => {
     socket.state = "connected";
     socket.onopen!();
 
-    vi.mocked(getWebSocketToken)
+    tokenFetch
       .mockClear()
       .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"));
+      .mockResolvedValueOnce(new Response("", { status: 502 }));
     socket.onclose!({ code: 1006, reason: "", wasClean: false });
 
-    // Two failed token fetches, each followed by a backed-off retry, then a
-    // fresh socket — never a dead client waiting for a page reload.
+    // A network failure and a 5xx, each followed by a backed-off retry,
+    // then a fresh socket — never a dead client waiting for a page reload.
     await vi.waitFor(
       async () => {
         await vi.advanceTimersByTimeAsync(30_000);
@@ -251,7 +256,32 @@ describe("BackendAPI WebSocket failure logging", () => {
       },
       { interval: 1 },
     );
-    expect(getWebSocketToken).toHaveBeenCalledTimes(3);
+    expect(tokenFetch).toHaveBeenCalledTimes(3);
+    expect(tokenFetch).toHaveBeenCalledWith(
+      "/api/auth/token",
+      expect.anything(),
+    );
+  });
+
+  it("does not retry when there is no session", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.useFakeTimers();
+    vi.stubGlobal("WebSocket", FakeWebSocket);
+    tokenFetch.mockClear();
+    tokenFetch.mockResolvedValue(new Response("", { status: 401 }));
+    vi.stubGlobal("fetch", tokenFetch);
+    const api = new BackendAPI("http://test", "ws://test/ws");
+    apis.push(api);
+
+    await api.connectWebSocket();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(sockets).toHaveLength(0);
+    expect(tokenFetch).toHaveBeenCalledTimes(1);
+    tokenFetch.mockReset();
+    tokenFetch.mockImplementation(
+      async () => new Response(JSON.stringify({ token: "test-token" })),
+    );
   });
 
   it("reconnects at once when the browser comes back online", async () => {
