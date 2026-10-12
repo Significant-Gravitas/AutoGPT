@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -9,7 +10,10 @@ import httpx
 import pytest
 
 from backend.copilot.model import ChatSession
-from backend.copilot.sdk.openrouter_cost import record_turn_cost_from_openrouter
+from backend.copilot.sdk.openrouter_cost import (
+    _fetch_generation_cost,
+    record_turn_cost_from_openrouter,
+)
 
 
 def _session() -> ChatSession:
@@ -713,3 +717,25 @@ class TestLangfuseTraceBackfill:
             )
 
         mock_persist.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_logs_where_openrouter_routed_the_generation(caplog):
+    payload = _mock_generation_response(0.02)
+    payload["data"].update(
+        provider_name="Anthropic",
+        latency=812,
+        generation_time=2400,
+        native_tokens_cached=900,
+    )
+    client = MagicMock()
+    client.get = AsyncMock(return_value=httpx.Response(200, json=payload))
+
+    with caplog.at_level(logging.INFO, logger="backend.copilot.sdk.openrouter_cost"):
+        cost = await _fetch_generation_cost(client, "gen-1", "sk-or-test", "[test]")
+
+    assert cost == 0.02
+    assert (
+        "[test] OpenRouter generation gen-1: provider=Anthropic latency_ms=812 "
+        "generation_ms=2400 prompt_tokens=1000 cached_tokens=900"
+    ) in caplog.text

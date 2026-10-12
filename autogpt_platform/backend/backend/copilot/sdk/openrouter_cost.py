@@ -142,6 +142,19 @@ async def _fetch_generation_cost(
                     sorted(payload.keys())[:10],
                 )
                 return None
+            # Which provider OpenRouter routed the call to and how long it
+            # took there, to compare model latency between deployments.
+            logger.info(
+                "%s OpenRouter generation %s: provider=%s latency_ms=%s "
+                "generation_ms=%s prompt_tokens=%s cached_tokens=%s",
+                log_prefix,
+                gen_id,
+                payload.get("provider_name"),
+                payload.get("latency"),
+                payload.get("generation_time"),
+                payload.get("native_tokens_prompt"),
+                payload.get("native_tokens_cached"),
+            )
             return float(cost)
         except Exception as exc:  # noqa: BLE001
             # Network / transport errors are retryable.
