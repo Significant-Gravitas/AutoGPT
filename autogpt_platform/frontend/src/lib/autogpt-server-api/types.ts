@@ -1066,10 +1066,11 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
 }
 
 /**
- * The data type a value's schema calls for, and the schema it was judged by:
- * the non-null member of an optional field's `anyOf`, or the schema an `allOf`
- * wraps. A select's options and a multi-select's keys live on that schema, not
- * on the wrapper, so read them from here (BUILDER-93V).
+ * The data type a value's schema calls for, and the schema that holds what its
+ * control needs: the non-null member of an optional field's `anyOf`, or the
+ * schema an `allOf` wraps. A select's options and a multi-select's keys live
+ * there, not on the wrapper, so read them from here (BUILDER-93V). A table is
+ * the exception: its columns are on the field itself.
  */
 export function resolveDataType(schema: BlockIOSubSchema): {
   type: DataType;
@@ -1129,9 +1130,10 @@ export function resolveDataType(schema: BlockIOSubSchema): {
     // (array | null)
     const arrSchema = schema.anyOf.find((s) => s.type === "array");
     if (arrSchema && types.includes("null")) {
-      // Check for table format on the parent schema (where anyOf is)
+      // AgentTableInputBlock writes the table format and its columns (`items`)
+      // on the field itself, beside an anyOf member that has neither.
       if ("format" in schema && schema.format === "table") {
-        return { type: DataType.TABLE, schema: arrSchema };
+        return { type: DataType.TABLE, schema };
       }
       return { type: _handleSingleTypeSchema(arrSchema), schema: arrSchema };
     }

@@ -51,29 +51,29 @@ const EMPTY_PAGE = {
   page_size: 20,
 };
 
-// Pydantic writes an Optional[...] input as anyOf [the type, null]; the options,
-// columns and item type live on that anyOf member, not on the input itself.
+// Pydantic writes an Optional[...] input as anyOf [the type, null], and the
+// options and item type live on that anyOf member, not on the input itself.
 const OPTIONAL_INPUTS = {
   topic: {
     title: "Topic",
     anyOf: [{ type: "string", enum: ["news", "sports"] }, { type: "null" }],
   },
+  // AgentTableInputBlock.Input.generate_schema() for column_headers
+  // ["player", "points"]: the columns are on the field, beside an anyOf member
+  // that has none.
   scores: {
     title: "Scores",
-    format: "table",
     anyOf: [
-      {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            player: { type: "string" },
-            points: { type: "string" },
-          },
-        },
-      },
+      { type: "array", items: { type: "object", additionalProperties: true } },
       { type: "null" },
     ],
+    default: null,
+    type: "array",
+    format: "table",
+    items: {
+      type: "object",
+      properties: { player: { type: "string" }, points: { type: "string" } },
+    },
   },
   tags: {
     title: "Tags",
@@ -126,9 +126,14 @@ test("the run form offers each optional input and sends what the user picked", a
 
   fireEvent.click(await screen.findByRole("combobox", { name: "Topic" }));
   fireEvent.click(await screen.findByRole("option", { name: "sports" }));
-  // The table takes its columns from the row schema, not placeholders.
+  // The table offers the agent's own columns, not the "Column 1" placeholders,
+  // so the rows reach the agent keyed the way it reads them.
   expect(screen.getByRole("columnheader", { name: "player" })).toBeDefined();
   expect(screen.getByRole("columnheader", { name: "points" })).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Add Row" }));
+  fireEvent.change(screen.getByPlaceholderText("Enter player"), {
+    target: { value: "Ada" },
+  });
   expect(screen.getByText("Tags")).toBeDefined();
   expect(screen.getByText("Limit")).toBeDefined();
 
@@ -136,7 +141,10 @@ test("the run form offers each optional input and sends what the user picked", a
 
   await waitFor(() =>
     expect(runInputs).toHaveBeenCalledWith(
-      expect.objectContaining({ topic: "sports" }),
+      expect.objectContaining({
+        topic: "sports",
+        scores: [{ player: "Ada", points: "" }],
+      }),
     ),
   );
 });
