@@ -62,16 +62,6 @@ export interface SessionGroup {
   sessions: SessionSummaryResponse[];
 }
 
-export interface SidebarSessions {
-  /** Rendered flat above the groups so the backend's pinned-first ordering
-   *  survives grouping. Empty unless headers are shown. */
-  pinned: SessionSummaryResponse[];
-  groups: SessionGroup[];
-  /** Headers only earn their space once there is an expert group to
-   *  distinguish from Otto. */
-  showHeaders: boolean;
-}
-
 export function groupSessionsByExpert(
   sessions: SessionSummaryResponse[],
 ): SessionGroup[] {
@@ -93,32 +83,6 @@ export function groupSessionsByExpert(
       if (b.expertId === null) return 1;
       return 0;
     });
-}
-
-export function groupSessionsForSidebar({
-  sessions,
-  floatPinned,
-}: {
-  sessions: SessionSummaryResponse[];
-  floatPinned: boolean;
-}): SidebarSessions {
-  const groups = groupSessionsByExpert(sessions);
-  // With a single group the list reads exactly as the API returned it, so
-  // adding headers (and lifting pinned chats out) would only be noise.
-  if (groups.length <= 1) return { pinned: [], groups, showHeaders: false };
-
-  const pinned = floatPinned
-    ? sessions.filter((session) => !!session.is_pinned)
-    : [];
-  if (pinned.length === 0) return { pinned, groups, showHeaders: true };
-
-  return {
-    pinned,
-    groups: groupSessionsByExpert(
-      sessions.filter((session) => !session.is_pinned),
-    ),
-    showHeaders: true,
-  };
 }
 
 function countLoadedSessions(pages: SessionListPage[]) {
