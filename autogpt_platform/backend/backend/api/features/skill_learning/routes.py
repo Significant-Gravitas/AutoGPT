@@ -290,10 +290,9 @@ async def update_policy(
     """Pause learning, stop using, or toggle automatic improvements — separately."""
     scope = await _require_scope(user_id, expert_id)
     slug = name.strip().lower()
-    head = await versions_data.ensure_head(user_id, scope, slug)
     updated = await versions_data.update_head_policy(
         user_id,
-        head.owner_key,
+        owner_key_for(scope),
         slug,
         auto_improve=body.auto_improve,
         learning_paused=body.learning_paused,
