@@ -52,11 +52,7 @@ from backend.copilot.config import ChatConfig
 from backend.copilot.model import RoutingSource
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
-from backend.integrations.codex.transport import (
-    CodexCredentialLease,
-    get_codex_transport,
-)
-from backend.integrations.credential_lease import CredentialLease
+from backend.integrations.codex.transport import CodexCredentialLease
 from backend.util.feature_flag import Flag, get_feature_flag_value
 from backend.util.settings import BehaveAs, Settings
 
@@ -92,19 +88,11 @@ class ResolvedCodexModel(NamedTuple):
 
 
 _CODEX_PREFERRED_MODELS: dict[tuple[ModelMode, ModelTier], str] = {
-    # gpt-6-luna supersedes gpt-5.6-luna as the fast/standard bootstrap
-    # default (2026-09); gpt-5.6-luna remains a selectable catalog model,
-    # it's just no longer the default fallback here or in catalog.py's
-    # routing cell.
-    ("fast", "standard"): LLMModel.GPT6_LUNA.value,
-    ("fast", "advanced"): LLMModel.GPT6_ASTRA.value,
     ("thinking", "standard"): LLMModel.GPT5_6_TERRA.value,
     ("thinking", "advanced"): LLMModel.GPT6_ASTRA.value,
 }
 
 _CODEX_PREFERRED_EFFORTS: dict[tuple[ModelMode, ModelTier], CodexReasoningEffort] = {
-    ("fast", "standard"): "low",
-    ("fast", "advanced"): "medium",
     ("thinking", "standard"): "high",
     ("thinking", "advanced"): "xhigh",
 }
@@ -336,12 +324,15 @@ async def resolve_model_route(
 
 
 async def resolve_codex_model_route(
-    mode: ModelMode,
+    mode: Literal["thinking"],
     tier: ModelTier,
-    credential_lease: CredentialLease | CodexCredentialLease,
+    credential_lease: CodexCredentialLease,
 ) -> ResolvedCodexModel:
-    """Resolve a Codex model against both the catalog and the account."""
-    advertised = await _advertised_codex_models(credential_lease)
+    """Resolve a Codex model against both the catalog and the account.
+
+    Codex runs on the SDK engine only, so *mode* is always ``"thinking"``.
+    """
+    advertised = await credential_lease.models()
 
     if catalog_route := _codex_catalog_route(advertised, mode, tier):
         return catalog_route
@@ -353,14 +344,6 @@ async def resolve_codex_model_route(
         return account_route
 
     raise RuntimeError("codex_model_unavailable")
-
-
-async def _advertised_codex_models(
-    credential_lease: CredentialLease | CodexCredentialLease,
-) -> list[CodexModelInfo]:
-    if isinstance(credential_lease, CodexCredentialLease):
-        return await credential_lease.models()
-    return await get_codex_transport().models(credential_lease)
 
 
 def _codex_catalog_route(

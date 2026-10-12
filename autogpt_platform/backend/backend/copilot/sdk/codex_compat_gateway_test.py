@@ -1,8 +1,6 @@
 import asyncio
 import json
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
 from typing import cast
 
 import pytest
@@ -29,7 +27,6 @@ from backend.integrations.codex.models import (
     CodexStreamEvent,
     CodexTokenUsage,
 )
-from backend.integrations.credential_lease import CredentialLease
 
 
 class _FakeAgentSession:
@@ -140,24 +137,6 @@ class _CollidingCallSession:
         return _result(f"completed:{result.content}")
 
 
-class _FakeTransport:
-    def __init__(self, session: _FakeAgentSession) -> None:
-        self.session = session
-        self.entered = False
-        self.exited = False
-
-    @asynccontextmanager
-    async def agent_session(
-        self,
-        _lease: CredentialLease,
-    ) -> AsyncIterator[_FakeAgentSession]:
-        self.entered = True
-        try:
-            yield self.session
-        finally:
-            self.exited = True
-
-
 def _result(text: str) -> CodexInvocationResult:
     return CodexInvocationResult(
         response_id="response-1",
@@ -171,10 +150,6 @@ def _result(text: str) -> CodexInvocationResult:
             total_tokens=13,
         ),
     )
-
-
-def _lease() -> CredentialLease:
-    return cast(CredentialLease, object())
 
 
 def _headers(gateway: CodexAnthropicGateway) -> dict[str, str]:
@@ -316,12 +291,10 @@ def test_non_reserved_tool_name_collision_preserves_digest() -> None:
 @pytest.mark.asyncio
 async def test_streams_codex_text_as_anthropic_events() -> None:
     session = _FakeAgentSession()
-    transport = _FakeTransport(session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=session,
         model="gpt-5.6-terra",
         effort="high",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             response = await client.post(
@@ -355,9 +328,6 @@ async def test_streams_codex_text_as_anthropic_events() -> None:
         assert gateway.result.usage is not None
         assert gateway.result.usage.input_tokens == 10
 
-    assert transport.entered
-    assert transport.exited
-
 
 @pytest.mark.asyncio
 async def test_transport_failure_logs_useful_bounded_context(
@@ -366,15 +336,13 @@ async def test_transport_failure_logs_useful_bounded_context(
     session = _FailingAgentSession(
         RuntimeError("app-server overloaded while starting turn " + "x" * 500)
     )
-    transport = _FakeTransport(session)
     with caplog.at_level(
         logging.ERROR,
         logger="backend.copilot.sdk.codex_compat_gateway",
     ):
         async with CodexAnthropicGateway(
-            credential_lease=_lease(),
+            agent_session=session,
             model="gpt-5.6-terra",
-            transport=transport,
         ) as gateway:
             status = await _post_simple_message(gateway)
 
@@ -402,15 +370,13 @@ async def test_transport_failure_logs_redact_all_auth_shapes(
     provider_secret = "provider-top-secret-012"
     device_code = "ABCD-EFGH"
     session = _FailingAgentSession(RuntimeError("not configured"))
-    transport = _FakeTransport(session)
     with caplog.at_level(
         logging.ERROR,
         logger="backend.copilot.sdk.codex_compat_gateway",
     ):
         async with CodexAnthropicGateway(
-            credential_lease=_lease(),
+            agent_session=session,
             model="gpt-5.6-terra",
-            transport=transport,
         ) as gateway:
             capability = gateway.auth_token
             session.error = RuntimeError(
@@ -447,11 +413,9 @@ async def test_transport_failure_logs_redact_all_auth_shapes(
 async def test_round_trips_tool_use_through_claude_harness() -> None:
     original_tool_name = "mcp__copilot__add_understanding"
     session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=session,
         model="gpt-5.6-sol",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -542,11 +506,9 @@ async def test_round_trips_tool_use_through_claude_harness() -> None:
 
 @pytest.mark.asyncio
 async def test_messages_default_to_nonstreaming_and_report_estimated_input() -> None:
-    transport = _FakeTransport(_FakeAgentSession())
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=_FakeAgentSession(),
         model="gpt-5.6-luna",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             response = await client.post(
@@ -571,11 +533,9 @@ async def test_messages_default_to_nonstreaming_and_report_estimated_input() -> 
 
 @pytest.mark.asyncio
 async def test_final_response_fallback_is_scoped_to_each_tool_boundary() -> None:
-    transport = _FakeTransport(_FinalWithoutDeltaSession())
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=_FinalWithoutDeltaSession(),
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -617,11 +577,9 @@ async def test_final_response_fallback_is_scoped_to_each_tool_boundary() -> None
 @pytest.mark.asyncio
 async def test_raw_codex_call_id_collisions_are_isolated_by_gateway_ids() -> None:
     agent_session = _CollidingCallSession()
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-sol",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first_response, second_response = await asyncio.gather(
@@ -714,11 +672,9 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
     is unchanged.
     """
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -755,11 +711,9 @@ async def test_duplicate_tool_result_request_is_claimed_once_without_new_turn() 
 @pytest.mark.asyncio
 async def test_completed_tool_result_cannot_start_a_new_conversation() -> None:
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -806,11 +760,9 @@ async def test_closing_while_a_tool_call_is_unanswered_cancels_the_codex_turn() 
     calls and the service closes the gateway; the Codex loop must stop too.
     """
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             response = await client.post(
@@ -826,11 +778,9 @@ async def test_closing_while_a_tool_call_is_unanswered_cancels_the_codex_turn() 
 
 @pytest.mark.asyncio
 async def test_rejects_missing_gateway_capability() -> None:
-    transport = _FakeTransport(_FakeAgentSession())
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=_FakeAgentSession(),
         model="gpt-5.6-luna",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             response = await client.post(
@@ -872,9 +822,8 @@ def _unstarted_gateway() -> CodexAnthropicGateway:
     # No `async with`: construction alone never binds a socket, so this
     # runs anywhere (unlike the request-level tests elsewhere in this file).
     return CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=_FakeAgentSession(),
         model="gpt-6-astra",
-        transport=_FakeTransport(_FakeAgentSession()),
     )
 
 
@@ -899,11 +848,9 @@ class TestBoundaryPeakEstimate:
 @pytest.mark.asyncio
 async def test_identical_tool_result_retry_replays_the_streamed_response() -> None:
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -940,11 +887,9 @@ async def test_identical_tool_result_retry_replays_the_streamed_response() -> No
 @pytest.mark.asyncio
 async def test_identical_tool_result_retry_replays_the_json_response() -> None:
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -980,11 +925,9 @@ async def test_evicted_replay_falls_back_to_the_duplicate_error(
 ) -> None:
     monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_ENTRIES", 0)
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -1051,11 +994,9 @@ async def test_retry_with_a_changed_system_prompt_still_replays() -> None:
     # The continuation applies neither `system` nor `tools`, so a recomposed
     # system prompt is the same tool-result submission and must still replay.
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(
@@ -1113,11 +1054,9 @@ async def test_a_stream_past_the_replay_cap_is_forwarded_whole_and_not_cached(
 ) -> None:
     monkeypatch.setattr(codex_compat_gateway, "_MAX_REPLAY_BYTES", 8)
     agent_session = _FakeAgentSession(use_tool=True)
-    transport = _FakeTransport(agent_session)
     async with CodexAnthropicGateway(
-        credential_lease=_lease(),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
-        transport=transport,
     ) as gateway:
         async with ClientSession() as client:
             first = await client.post(

@@ -7,7 +7,7 @@ import logging
 import re
 import secrets
 from collections.abc import Awaitable, Callable, Iterable
-from contextlib import AbstractAsyncContextManager, suppress
+from contextlib import suppress
 from typing import Protocol, cast
 from uuid import uuid4
 
@@ -27,12 +27,6 @@ from backend.integrations.codex.models import (
     CodexStreamEvent,
     CodexTokenUsage,
 )
-from backend.integrations.codex.transport import (
-    CodexAgentSession,
-    CodexTransport,
-    get_codex_transport,
-)
-from backend.integrations.credential_lease import CredentialLease
 
 _MAX_REQUEST_BYTES = 16 * 1024 * 1024
 # Bounds on the per-conversation replay cache. A retry arrives seconds to
@@ -64,13 +58,6 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _AgentTransport(Protocol):
-    def agent_session(
-        self,
-        lease: CredentialLease,
-    ) -> AbstractAsyncContextManager[CodexAgentSession]: ...
 
 
 class _AgentSession(Protocol):
@@ -168,17 +155,14 @@ class CodexAnthropicGateway:
     def __init__(
         self,
         *,
-        credential_lease: CredentialLease | None = None,
-        agent_session: _AgentSession | None = None,
+        agent_session: _AgentSession,
         model: str,
         effort: CodexReasoningEffort | None = None,
-        transport: CodexTransport | _AgentTransport | None = None,
+        credential_id: str | None = None,
     ) -> None:
-        if credential_lease is None and agent_session is None:
-            raise ValueError(
-                "Codex gateway requires a credential lease or agent session"
-            )
-        self._credential_lease = credential_lease
+        # The connection a failure is reported against, so the client can
+        # tell which ChatGPT account failed.
+        self._credential_id = credential_id
         # The last failure this gateway named, kept so the service layer can
         # report *what* went wrong. By the time a failure reaches the CLI it
         # is an HTTP status and a sentence; the typed exception only exists
@@ -186,13 +170,6 @@ class CodexAnthropicGateway:
         self.last_failure: ProviderFailure | None = None
         self.model = model
         self.effort: CodexReasoningEffort | None = effort
-        self._transport = cast(
-            _AgentTransport,
-            transport if transport is not None else get_codex_transport(),
-        )
-        self._agent_context: AbstractAsyncContextManager[CodexAgentSession] | None = (
-            None
-        )
         self._agent_session: _AgentSession | None = agent_session
         self._runner: web.AppRunner | None = None
         self._site: web.TCPSite | None = None
@@ -264,12 +241,6 @@ class CodexAnthropicGateway:
     async def __aenter__(self) -> "CodexAnthropicGateway":
         if self._runner is not None:
             return self
-        if self._agent_session is None:
-            credential_lease = self._credential_lease
-            if credential_lease is None:
-                raise RuntimeError("Codex gateway credential lease is unavailable")
-            self._agent_context = self._transport.agent_session(credential_lease)
-            self._agent_session = await self._agent_context.__aenter__()
         try:
             application = web.Application(client_max_size=_MAX_REQUEST_BYTES)
             application.router.add_post("/v1/messages", self._handle_messages)
@@ -338,13 +309,7 @@ class CodexAnthropicGateway:
                 except BaseException as exc:
                     cleanup_error = exc
 
-            agent_context, self._agent_context = self._agent_context, None
             self._agent_session = None
-            if agent_context is not None:
-                try:
-                    await agent_context.__aexit__(None, None, None)
-                except BaseException as exc:
-                    cleanup_error = exc
             if cleanup_error is not None:
                 raise cleanup_error
 
@@ -647,11 +612,7 @@ class CodexAnthropicGateway:
         failure = classify_provider_failure(
             failed.error,
             auth_provider="codex",
-            credential_id=(
-                self._credential_lease.credentials.id
-                if self._credential_lease is not None
-                else None
-            ),
+            credential_id=self._credential_id,
         )
         self.last_failure = failure
         if failure is None:

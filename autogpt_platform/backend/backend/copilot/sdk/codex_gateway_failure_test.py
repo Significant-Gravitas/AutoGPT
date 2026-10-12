@@ -20,7 +20,7 @@ def _gateway() -> CodexAnthropicGateway:
     return CodexAnthropicGateway(
         agent_session=object(),  # type: ignore[arg-type]
         model="gpt-5.6-luna",
-        transport=object(),  # type: ignore[arg-type]
+        credential_id="cred-1",
     )
 
 
@@ -62,6 +62,14 @@ class TestTheGatewayNamesItsFailures:
         gw._failure_response(_Failed(error=CodexCredentialIntegrityError("bad")))
         assert gw.last_failure is not None
         assert gw.last_failure.auth_provider == "codex"
+
+    def test_the_failure_names_the_connection_that_failed(self) -> None:
+        # The client offers the user's other ChatGPT accounts when this one
+        # fails, which it can only do knowing which one it was.
+        gw = _gateway()
+        gw._failure_response(_Failed(error=CodexCredentialIntegrityError("bad")))
+        assert gw.last_failure is not None
+        assert gw.last_failure.credential_id == "cred-1"
 
     @pytest.mark.asyncio
     async def test_a_midstream_failure_is_classified_for_the_service(self) -> None:

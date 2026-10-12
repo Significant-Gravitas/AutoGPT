@@ -1,7 +1,4 @@
 import asyncio
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from typing import cast
 
 import pytest
 from claude_agent_sdk import (
@@ -21,7 +18,6 @@ from backend.integrations.codex.models import (
     CodexStreamEvent,
     CodexTokenUsage,
 )
-from backend.integrations.credential_lease import CredentialLease
 
 
 class _ClaudeHarnessAgentSession:
@@ -68,18 +64,6 @@ class _ClaudeHarnessAgentSession:
         )
 
 
-class _ClaudeHarnessTransport:
-    def __init__(self, session: _ClaudeHarnessAgentSession) -> None:
-        self.session = session
-
-    @asynccontextmanager
-    async def agent_session(
-        self,
-        _lease: CredentialLease,
-    ) -> AsyncIterator[_ClaudeHarnessAgentSession]:
-        yield self.session
-
-
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
@@ -101,10 +85,9 @@ async def test_bundled_claude_cli_executes_mcp_tool_through_codex_gateway(
     )
     agent_session = _ClaudeHarnessAgentSession()
     gateway = CodexAnthropicGateway(
-        credential_lease=cast(CredentialLease, object()),
+        agent_session=agent_session,
         model="gpt-5.6-terra",
         effort="medium",
-        transport=_ClaudeHarnessTransport(agent_session),
     )
 
     async with gateway:

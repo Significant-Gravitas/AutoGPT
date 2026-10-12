@@ -5365,6 +5365,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
         # Moonshot autocompact gate) can branch on the resolved slug.
         if credential_lease is not None:
+            # The executor hands this engine a Codex lease only.
+            if not isinstance(credential_lease, CodexCredentialLease):
+                raise TypeError("The SDK engine takes only a Codex credential lease")
             tier_name: "CopilotLLMModel" = (
                 "advanced" if model == "advanced" else "standard"
             )
@@ -5390,18 +5393,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if resolved_codex.context_window is not None
                 else None
             )
-            if isinstance(credential_lease, CodexCredentialLease):
-                codex_gateway = CodexAnthropicGateway(
-                    agent_session=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
-            else:
-                codex_gateway = CodexAnthropicGateway(
-                    credential_lease=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
+            codex_gateway = CodexAnthropicGateway(
+                agent_session=credential_lease,
+                model=sdk_model,
+                effort=codex_effort,
+                credential_id=credential_lease.credentials.id,
+            )
             await codex_gateway.start()
             fallback_model = None
         else:
