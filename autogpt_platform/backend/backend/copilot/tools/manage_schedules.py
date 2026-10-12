@@ -245,14 +245,10 @@ class ListSchedulesTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List the user's scheduled jobs (agent runs and copilot "
-            "follow-ups), plus recent_outcomes: how each copilot follow-up "
-            "that fired in the last 24h ended (dispatched, skipped, dropped, "
-            "failed). A one-shot leaves the pending list once it fires, so "
-            "check recent_outcomes before concluding a follow-up was never "
-            "scheduled. Use before tool:delete_schedule. Pending and "
-            "undelivered follow-ups for this session are already summarised "
-            "in <session_context>."
+            "List the user's scheduled jobs (agent runs, copilot follow-ups) "
+            "and recent_outcomes: how follow-ups that fired in the last 24h "
+            "ended. A fired one-shot leaves the list. Use before "
+            "tool:delete_schedule."
         )
 
     @property
