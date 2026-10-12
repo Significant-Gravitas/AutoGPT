@@ -196,10 +196,12 @@ jobs:
       - name: Build migrate Docker image with cache
         working-directory: autogpt_platform
         run: |
-          # Build the migrate image with buildx for GHA caching
+          # Build the migrate image with buildx for GHA caching. The UTC date
+          # re-runs its package installs once a day (APT_REFRESH).
           docker buildx build \
             --cache-from type=gha \
             --cache-to type=gha,mode=max \
+            --build-arg APT_REFRESH="$(date -u +%F)" \
             --target migrate \
             --tag autogpt_platform-migrate:latest \
             --load \

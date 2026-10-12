@@ -83,6 +83,12 @@ RUN install -d -m 0755 /opt/prisma-python \
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package install below and security fixes reach the image instead
+# of staying behind a cached layer. CI passes the UTC date, which refreshes it
+# once a day.
+ARG APT_REFRESH
+
 # Block service auto-start during package installation; Supervisor owns every
 # daemon at runtime. PostgreSQL comes from PGDG to retain PG15 parity on Debian
 # 13, while Valkey comes from Debian's security-maintained BSD build.
@@ -256,8 +262,8 @@ ENV PATH="/opt/rabbitmq/sbin:/opt/erlang/bin:/opt/openssl/bin:/usr/lib/postgresq
     FORCE_FLAG_GRAPHITI_MEMORY=true \
     AUTOGPT_PUBLIC_URL=http://localhost:3000
 
-# Build arguments change on every build, so they are declared only after the
-# last layer-producing step to keep them out of the layer cache keys.
+# These build arguments change on every build, so they are declared only after
+# the last layer-producing step to keep them out of the layer cache keys.
 ARG IMAGE_VERSION=dev
 ARG VCS_REF=unknown
 
