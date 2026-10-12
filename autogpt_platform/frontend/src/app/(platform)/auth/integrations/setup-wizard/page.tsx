@@ -7,6 +7,12 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { CredentialsInput } from "@/components/contextual/CredentialsInput/CredentialsInput";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import {
+  buildSetupWizardRedirect,
+  isHttpRedirectUrl,
+  isRegisteredRedirectUri,
+  registeredRedirectUrisOf,
+} from "./redirect-safety";
 import { CREDENTIALS_TYPES } from "@/lib/autogpt-server-api";
 import type {
   BlockIOCredentialsSubSchema,
@@ -99,9 +105,19 @@ export default function IntegrationSetupWizardPage() {
   const redirectURI = searchParams.get("redirect_uri");
   const state = searchParams.get("state");
 
-  const { data: appInfo } = useGetOauthGetOauthAppInfo(clientID || "", {
-    query: { enabled: !!clientID, select: okData },
-  });
+  const { data: appInfo, isLoading: isLoadingAppInfo } =
+    useGetOauthGetOauthAppInfo(clientID || "", {
+      query: { enabled: !!clientID, select: okData },
+    });
+
+  // Registered callbacks from the authenticated app-info response. The query
+  // string names the redirect target, so it is only ever compared against this
+  // list, never trusted on its own. Empty until the backend exposes the field
+  // (#15057), which is what the scheme check covers in the meantime.
+  const registeredRedirectUris = useMemo<readonly string[]>(
+    () => registeredRedirectUrisOf(appInfo),
+    [appInfo],
+  );
 
   // Parse providers from base64-encoded JSON
   const providerConfigs = useMemo<ProviderConfig[]>(() => {
@@ -113,6 +129,9 @@ export default function IntegrationSetupWizardPage() {
   const [selectedCredentials, setSelectedCredentials] = useState<
     Record<string, CredentialsMetaInput | undefined>
   >({});
+
+  // Set when the requested redirect_uri is not one we may navigate to.
+  const [redirectError, setRedirectError] = useState<string | null>(null);
 
   // Track if we've already redirected
   const hasRedirectedRef = useRef(false);
@@ -136,35 +155,69 @@ export default function IntegrationSetupWizardPage() {
     }));
   };
 
+  // Navigate back to the client, refusing a redirect_uri we may not send a
+  // signed-in user to. Returns the destination, or null when it was refused.
+  const resolveRedirect = (params: Record<string, string>): string | null => {
+    // While the app's registered callbacks are still in flight the registry is
+    // empty, and an empty registry means "unknown app", which the registration
+    // check cannot clear. Wait for it rather than treating the gap as allowed.
+    if (clientID && isLoadingAppInfo) {
+      setRedirectError(
+        "Still loading this app's details. Try again in a moment.",
+      );
+      return null;
+    }
+    if (!isHttpRedirectUrl(redirectURI)) {
+      setRedirectError(
+        "Invalid redirect_uri. Only http and https URLs can be used.",
+      );
+      return null;
+    }
+    if (!isRegisteredRedirectUri(redirectURI, registeredRedirectUris)) {
+      setRedirectError(
+        "Invalid redirect_uri. This app's redirect target is not registered, " +
+          "so the setup cannot be completed safely.",
+      );
+      return null;
+    }
+    return buildSetupWizardRedirect(redirectURI as string, params);
+  };
+
   // Handle completion - redirect back to client
   const handleComplete = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
-    hasRedirectedRef.current = true;
+    if (hasRedirectedRef.current) return;
+    setRedirectError(null);
 
-    const params = new URLSearchParams({
-      success: "true",
-    });
+    const params: Record<string, string> = { success: "true" };
     if (state) {
-      params.set("state", state);
+      params.state = state;
     }
 
-    window.location.href = `${redirectURI}?${params.toString()}`;
+    const destination = resolveRedirect(params);
+    if (!destination) return;
+    hasRedirectedRef.current = true;
+
+    window.location.href = destination;
   };
 
   // Handle cancel - redirect back to client with error
   const handleCancel = () => {
-    if (!redirectURI || hasRedirectedRef.current) return;
-    hasRedirectedRef.current = true;
+    if (hasRedirectedRef.current) return;
+    setRedirectError(null);
 
-    const params = new URLSearchParams({
+    const params: Record<string, string> = {
       error: "user_cancelled",
       error_description: "User cancelled the integration setup",
-    });
+    };
     if (state) {
-      params.set("state", state);
+      params.state = state;
     }
 
-    window.location.href = `${redirectURI}?${params.toString()}`;
+    const destination = resolveRedirect(params);
+    if (!destination) return;
+    hasRedirectedRef.current = true;
+
+    window.location.href = destination;
   };
 
   // Validate required parameters
@@ -283,6 +336,16 @@ export default function IntegrationSetupWizardPage() {
               );
             })}
           </div>
+
+          {/* Refused redirect target */}
+          {redirectError && (
+            <ErrorCard
+              context="redirect_uri"
+              responseError={{ message: redirectError }}
+              hint="Please contact the administrator of the app that sent you here."
+              isOurProblem={false}
+            />
+          )}
 
           {/* Action buttons */}
           <div className="flex flex-col gap-3">
