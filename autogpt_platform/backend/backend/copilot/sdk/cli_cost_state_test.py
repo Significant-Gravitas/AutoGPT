@@ -1,6 +1,6 @@
 """The bundled CLI counts a resumed session's cost on from what our reader finds.
 
-A turn is charged ``total_cost_usd`` minus ``cli_session_cost_usd`` of the file
+A turn is charged ``total_cost_usd`` minus the cost-state total of the file
 the CLI resumed, so a CLI bump that changes where the resumed total comes from
 must fail here rather than mis-bill. Runs against a localhost fake provider.
 """
@@ -14,7 +14,7 @@ import pytest
 from aiohttp import web
 
 from backend.copilot.sdk.cost_tracking import read_cli_session_usage
-from backend.copilot.transcript import cli_session_cost_usd, cli_session_path
+from backend.copilot.transcript import cli_session_cost_state, cli_session_path
 
 from .cli_openrouter_compat_test import _resolve_cli_path
 
@@ -47,7 +47,8 @@ async def test_resumed_cli_total_is_restored_cost_plus_this_call(tmp_path, monke
                 with session_file.open("a") as f:
                     row = {"type": "cost-state", "sessionId": "x", "totalCostUSD": 5}
                     f.write(json.dumps(row) + "\n")
-            restored = cli_session_cost_usd(session_file.read_text(), session_id)
+            entry = cli_session_cost_state(session_file.read_text(), session_id)
+            restored = float(entry["totalCostUSD"]) if entry else 0.0
             result = await _run_cli(cli, cwd, port, "--resume", session_id)
             resumed.append((restored, result["total_cost_usd"]))
             for key, value in _CALL_USAGE.items():

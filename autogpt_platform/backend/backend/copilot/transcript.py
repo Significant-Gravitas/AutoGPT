@@ -83,162 +83,6 @@ _CLI_SESSION_STORAGE_PREFIX = "cli-sessions"
 # ---------------------------------------------------------------------------
 
 
-def strip_progress_entries(content: str) -> str:
-    """Remove progress/metadata entries from a JSONL transcript.
-
-    Removes entries whose ``type`` is in ``STRIPPABLE_TYPES`` and reparents
-    any remaining child entries so the ``parentUuid`` chain stays intact.
-    Typically reduces transcript size by ~30%.
-
-    Entries that are not stripped or reparented are kept as their original
-    raw JSON line to avoid unnecessary re-serialization that changes
-    whitespace or key ordering.
-    """
-    lines = content.strip().split("\n")
-
-    # Parse entries, keeping the original line alongside the parsed dict.
-    parsed: list[tuple[str, dict | None]] = []
-    for line in lines:
-        parsed.append((line, json.loads(line, fallback=None)))
-
-    # First pass: identify stripped UUIDs and build parent map.
-    stripped_uuids: set[str] = set()
-    uuid_to_parent: dict[str, str] = {}
-
-    for _line, entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        uid = entry.get("uuid", "")
-        parent = entry.get("parentUuid", "")
-        if uid:
-            uuid_to_parent[uid] = parent
-        if (
-            entry.get("type", "") in STRIPPABLE_TYPES
-            and uid
-            and not entry.get("isCompactSummary")
-        ):
-            stripped_uuids.add(uid)
-
-    # Second pass: keep non-stripped entries, reparenting where needed.
-    # Preserve original line when no reparenting is required.
-    reparented: set[str] = set()
-    for _line, entry in parsed:
-        if not isinstance(entry, dict):
-            continue
-        parent = entry.get("parentUuid", "")
-        original_parent = parent
-        # seen_parents is local per-entry (not shared across iterations) so
-        # it can only detect cycles within a single ancestry walk, not across
-        # entries.  This is intentional: each entry's parent chain is
-        # independent, and reusing a global set would incorrectly short-circuit
-        # valid re-use of the same UUID as a parent in different subtrees.
-        seen_parents: set[str] = set()
-        while parent in stripped_uuids and parent not in seen_parents:
-            seen_parents.add(parent)
-            parent = uuid_to_parent.get(parent, "")
-        if parent != original_parent:
-            entry["parentUuid"] = parent
-            uid = entry.get("uuid", "")
-            if uid:
-                reparented.add(uid)
-
-    result_lines: list[str] = []
-    for line, entry in parsed:
-        if not isinstance(entry, dict):
-            result_lines.append(line)
-            continue
-        if entry.get("type", "") in STRIPPABLE_TYPES and not entry.get(
-            "isCompactSummary"
-        ):
-            continue
-        uid = entry.get("uuid", "")
-        if uid in reparented:
-            # Re-serialize only entries whose parentUuid was changed.
-            result_lines.append(json.dumps(entry, separators=(",", ":")))
-        else:
-            result_lines.append(line)
-
-    return "\n".join(result_lines) + "\n"
-
-
-def strip_stale_thinking_blocks(content: str) -> str:
-    """Remove thinking/redacted_thinking blocks from non-last assistant entries.
-
-    The Anthropic API only requires thinking blocks in the **last** assistant
-    message to be value-identical to the original response.  Older assistant
-    entries carry stale thinking blocks that consume significant tokens
-    (often 10-50K each) without providing useful context for ``--resume``.
-
-    Stripping them before upload prevents the CLI from triggering compaction
-    every turn just to compress away the stale thinking bloat.
-    """
-    lines = content.strip().split("\n")
-    if not lines:
-        return content
-
-    parsed: list[tuple[str, dict | None]] = []
-    for line in lines:
-        parsed.append((line, json.loads(line, fallback=None)))
-
-    # Reverse scan to find the last assistant message ID and index.
-    last_asst_msg_id: str | None = None
-    last_asst_idx: int | None = None
-    for i in range(len(parsed) - 1, -1, -1):
-        _line, entry = parsed[i]
-        if not isinstance(entry, dict):
-            continue
-        msg = entry.get("message", {})
-        if msg.get("role") == "assistant":
-            last_asst_msg_id = msg.get("id")
-            last_asst_idx = i
-            break
-
-    if last_asst_idx is None:
-        return content
-
-    result_lines: list[str] = []
-    stripped_count = 0
-    for i, (line, entry) in enumerate(parsed):
-        if not isinstance(entry, dict):
-            result_lines.append(line)
-            continue
-
-        msg = entry.get("message", {})
-        # Only strip from assistant entries that are NOT the last turn.
-        # Use msg_id matching when available; fall back to index for entries
-        # without an id field.
-        is_last_turn = (
-            last_asst_msg_id is not None and msg.get("id") == last_asst_msg_id
-        ) or (last_asst_msg_id is None and i == last_asst_idx)
-        if msg.get("role") == "assistant" and isinstance(msg.get("content"), list):
-            content_blocks = msg["content"]
-            producing_model = msg.get("model") if isinstance(msg, dict) else None
-            filtered = [
-                b
-                for b in content_blocks
-                if not _should_strip_thinking_block(
-                    b,
-                    is_last_turn=is_last_turn,
-                    producing_model=producing_model,
-                )
-            ]
-            if len(filtered) < len(content_blocks):
-                stripped_count += len(content_blocks) - len(filtered)
-                entry = {**entry, "message": {**msg, "content": filtered}}
-                result_lines.append(json.dumps(entry, separators=(",", ":")))
-                continue
-
-        result_lines.append(line)
-
-    if stripped_count:
-        logger.info(
-            "[Transcript] Stripped %d stale thinking block(s) from non-last entries",
-            stripped_count,
-        )
-
-    return "\n".join(result_lines) + "\n"
-
-
 def _strippable_attachment_types() -> frozenset[str]:
     """Attachment types to drop from a stored transcript.
 
@@ -255,10 +99,9 @@ def _strippable_attachment_types() -> frozenset[str]:
 
 
 def strip_for_upload(content: str) -> str:
-    """Combined single-parse strip of progress entries and stale thinking blocks.
+    """Strip progress entries and stale thinking blocks in a single parse.
 
-    Equivalent to ``strip_stale_thinking_blocks(strip_progress_entries(content))``
-    but parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
+    Parses the JSONL only once, avoiding redundant ``split`` + ``json.loads``
     passes on every upload.  Also drops the attachment entries listed in
     ``STRIPPABLE_ATTACHMENT_TYPES`` when prompt snapshots are being stripped
     (see :func:`_strippable_attachment_types`).
@@ -410,9 +253,6 @@ def _sanitize_id(raw_id: str, max_len: int = 36) -> str:
     return cleaned or "unknown"
 
 
-_SAFE_CWD_PREFIX = os.path.realpath("/tmp/copilot-")
-
-
 def projects_base() -> str:
     """Return the resolved path to the CLI's projects directory."""
     config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
@@ -420,10 +260,9 @@ def projects_base() -> str:
 
 
 _STALE_PROJECT_DIR_SECONDS = 12 * 3600  # 12 hours — matches max session lifetime
-_MAX_PROJECT_DIRS_TO_SWEEP = 50  # limit per sweep to avoid long pauses
 
 
-def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
+def cleanup_stale_project_dirs(encoded_cwd: str) -> int:
     """Remove CLI project directories older than ``_STALE_PROJECT_DIR_SECONDS``.
 
     Each CoPilot SDK turn creates a unique ``~/.claude/projects/<encoded-cwd>/``
@@ -432,11 +271,8 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     become stale.  This function sweeps old ones to prevent unbounded disk
     growth.
 
-    When *encoded_cwd* is provided the sweep is scoped to that single
-    directory, making the operation safe in multi-tenant environments where
-    multiple copilot sessions share the same host.  Without it the function
-    falls back to sweeping all directories matching the copilot naming pattern
-    (``-tmp-copilot-``), which is only safe for single-tenant deployments.
+    The sweep is scoped to the one directory *encoded_cwd* names, which keeps
+    it safe where several copilot sessions share a host.
 
     Returns the number of directories removed.
     """
@@ -447,79 +283,36 @@ def cleanup_stale_project_dirs(encoded_cwd: str | None = None) -> int:
     now = time.time()
     removed = 0
 
-    # Scoped mode: only clean up the one directory for the current session.
-    if encoded_cwd:
-        target = Path(_pbase) / encoded_cwd
-        if not target.is_dir():
-            return 0
-        # Guard: only sweep copilot-generated dirs.
-        if "-tmp-copilot-" not in target.name:
-            logger.warning(
-                "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
-            )
-            return 0
-        try:
-            # st_mtime is used as a proxy for session activity. Claude CLI writes
-            # its JSONL transcript into this directory during each turn, so mtime
-            # advances on every turn. A directory whose mtime is older than
-            # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
-            # and is safe to remove (the session cannot --resume after cleanup).
-            age = now - target.stat().st_mtime
-        except OSError:
-            return 0
-        if age < _STALE_PROJECT_DIR_SECONDS:
-            return 0
-        try:
-            shutil.rmtree(target, ignore_errors=True)
-            removed = 1
-        except OSError:
-            pass
-        if removed:
-            logger.info(
-                "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
-                target.name,
-                int(age),
-                _STALE_PROJECT_DIR_SECONDS,
-            )
-        return removed
-
-    # Unscoped fallback: sweep all copilot dirs across the projects base.
-    # Only safe for single-tenant deployments; callers should prefer the
-    # scoped variant by passing encoded_cwd.
-    try:
-        entries = Path(_pbase).iterdir()
-    except OSError as e:
-        logger.warning("[Transcript] Failed to list projects dir: %s", e)
+    target = Path(_pbase) / encoded_cwd
+    if not target.is_dir():
         return 0
-
-    for entry in entries:
-        if removed >= _MAX_PROJECT_DIRS_TO_SWEEP:
-            break
-        # Only sweep copilot-generated dirs (pattern: -tmp-copilot- or
-        # -private-tmp-copilot-).
-        if "-tmp-copilot-" not in entry.name:
-            continue
-        if not entry.is_dir():
-            continue
-        try:
-            # See the scoped-mode comment above: st_mtime advances on every turn,
-            # so a stale mtime reliably indicates an inactive session.
-            age = now - entry.stat().st_mtime
-        except OSError:
-            continue
-        if age < _STALE_PROJECT_DIR_SECONDS:
-            continue
-
-        try:
-            shutil.rmtree(entry, ignore_errors=True)
-            removed += 1
-        except OSError:
-            pass
-
+    # Guard: only sweep copilot-generated dirs.
+    if "-tmp-copilot-" not in target.name:
+        logger.warning(
+            "[Transcript] Refusing to sweep non-copilot dir: %s", target.name
+        )
+        return 0
+    try:
+        # st_mtime is used as a proxy for session activity. Claude CLI writes
+        # its JSONL transcript into this directory during each turn, so mtime
+        # advances on every turn. A directory whose mtime is older than
+        # _STALE_PROJECT_DIR_SECONDS has not had an active turn in that window
+        # and is safe to remove (the session cannot --resume after cleanup).
+        age = now - target.stat().st_mtime
+    except OSError:
+        return 0
+    if age < _STALE_PROJECT_DIR_SECONDS:
+        return 0
+    try:
+        shutil.rmtree(target, ignore_errors=True)
+        removed = 1
+    except OSError:
+        pass
     if removed:
         logger.info(
-            "[Transcript] Swept %d stale CLI project dirs (older than %ds)",
-            removed,
+            "[Transcript] Swept stale CLI project dir %s (age %ds > %ds)",
+            target.name,
+            int(age),
             _STALE_PROJECT_DIR_SECONDS,
         )
     return removed
@@ -615,45 +408,6 @@ def read_compacted_entries(transcript_path: str) -> list[dict] | None:
     return entries
 
 
-def write_transcript_to_tempfile(
-    transcript_content: str,
-    session_id: str,
-    cwd: str,
-) -> str | None:
-    """Write JSONL transcript to a temp file inside *cwd* for ``--resume``.
-
-    The file lives in the session working directory so it is cleaned up
-    automatically when the session ends.
-
-    Returns the absolute path to the file, or ``None`` on failure.
-    """
-    # Validate cwd is under the expected sandbox prefix (CodeQL sanitizer).
-    real_cwd = os.path.realpath(cwd)
-    if not real_cwd.startswith(_SAFE_CWD_PREFIX):
-        logger.warning("[Transcript] cwd outside sandbox: %s", cwd)
-        return None
-
-    try:
-        os.makedirs(real_cwd, exist_ok=True)
-        safe_id = _sanitize_id(session_id, max_len=8)
-        jsonl_path = os.path.realpath(
-            os.path.join(real_cwd, f"transcript-{safe_id}.jsonl")
-        )
-        if not jsonl_path.startswith(real_cwd):
-            logger.warning("[Transcript] Path escaped cwd: %s", jsonl_path)
-            return None
-
-        with open(jsonl_path, "w") as f:
-            f.write(transcript_content)
-
-        logger.info("[Transcript] Wrote resume file: %s", jsonl_path)
-        return jsonl_path
-
-    except OSError as e:
-        logger.warning("[Transcript] Failed to write resume file: %s", e)
-        return None
-
-
 def validate_transcript(content: str | None) -> bool:
     """Check that a transcript has actual conversation messages.
 
@@ -718,16 +472,6 @@ def cli_session_path(sdk_cwd: str, session_id: str) -> str:
     encoded_cwd = re.sub(r"[^a-zA-Z0-9]", "-", os.path.realpath(sdk_cwd))
     safe_id = _sanitize_id(session_id)
     return os.path.join(projects_base(), encoded_cwd, f"{safe_id}.jsonl")
-
-
-def cli_session_cost_usd(content: str, session_id: str) -> float:
-    """The running cost the CLI restores on ``--resume`` from this session file.
-
-    The CLI resumes from the last ``cost-state`` row whose ``sessionId`` matches,
-    so its ``total_cost_usd`` counts on from this figure (0 with no such row).
-    """
-    entry = cli_session_cost_state(content, session_id)
-    return float(entry["totalCostUSD"]) if entry else 0.0
 
 
 def cli_session_cost_state(content: str, session_id: str) -> dict[str, Any] | None:
@@ -795,7 +539,8 @@ async def upload_transcript(
     # leaves an orphaned JSONL (no meta) rather than an orphaned meta (wrong
     # watermark / mode paired with stale or absent content).
     # On any failure we roll back the other file so the pair is always absent
-    # together; download_transcript returns None when either file is missing.
+    # together: download_transcript returns None without the JSONL, and a
+    # JSONL without its meta would download with watermark 0 and mode "sdk".
     try:
         await storage.store(
             workspace_id=wid, file_id=fid, filename=fname, content=content
@@ -821,7 +566,8 @@ async def upload_transcript(
             await storage.delete(session_path)
         except Exception as rollback_err:
             logger.debug(
-                "%s Session rollback failed (harmless — download will return None): %s",
+                "%s Session rollback failed (the JSONL stays; it will download"
+                " with watermark 0): %s",
                 log_prefix,
                 rollback_err,
             )

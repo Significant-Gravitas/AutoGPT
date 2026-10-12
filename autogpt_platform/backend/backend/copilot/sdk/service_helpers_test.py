@@ -2721,9 +2721,10 @@ class TestSeedTranscript:
         next turn's ``--resume`` context shows the live message twice and the
         watermark is two rows ahead of reality.
         """
+        from backend.copilot.transcript_builder import TranscriptBuilder
+
         from .compaction import _persist
         from .service import _seed_transcript
-        from .transcript_builder import TranscriptBuilder
 
         session = _make_session(
             [

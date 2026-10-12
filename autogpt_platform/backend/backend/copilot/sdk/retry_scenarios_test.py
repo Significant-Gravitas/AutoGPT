@@ -52,14 +52,15 @@ from backend.copilot.transcript import (
     _flatten_tool_result_content,
     _messages_to_transcript,
     _transcript_to_messages,
+    compact_transcript,
+    validate_transcript,
 )
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util import json
 from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import _MAX_STREAM_ATTEMPTS, _reduce_context
-from .transcript import compact_transcript, validate_transcript
-from .transcript_builder import TranscriptBuilder
 
 # ---------------------------------------------------------------------------
 # Helpers

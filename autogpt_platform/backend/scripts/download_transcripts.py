@@ -31,7 +31,6 @@ import json
 import os
 import re
 import sys
-import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -59,7 +58,7 @@ def _meta_path(session_id: str) -> str:
 
 async def cmd_download(session_ids: list[str]) -> None:
     """Download transcripts from prod GCS to transcripts/ directory."""
-    from backend.copilot.sdk.transcript import download_transcript
+    from backend.copilot.transcript import download_transcript
 
     user_id = os.environ.get("USER_ID", "")
     if not user_id:
@@ -162,7 +161,7 @@ def _parse_messages_from_transcript(content: str) -> list[dict]:
 
 async def cmd_load(session_ids: list[str]) -> None:
     """Load downloaded transcripts into local workspace storage + DB."""
-    from backend.copilot.sdk.transcript import upload_transcript
+    from backend.copilot.transcript import upload_transcript
 
     # Use the user_id from meta file or env var
     default_user_id = os.environ.get("USER_ID", "")
@@ -243,33 +242,6 @@ async def cmd_load(session_ids: list[str]) -> None:
             print(f"[{sid[:12]}] Stored transcript in local workspace storage")
         except Exception as e:
             print(f"[{sid[:12]}] Transcript storage failed: {e}")
-
-        # Also store directly to filesystem as fallback
-        try:
-            from backend.util.settings import Settings
-
-            settings = Settings()
-            storage_dir = settings.config.workspace_storage_dir or os.path.join(
-                os.path.expanduser("~"), ".autogpt", "workspaces"
-            )
-            ts_dir = os.path.join(storage_dir, "chat-transcripts", _sanitize(user_id))
-            os.makedirs(ts_dir, exist_ok=True)
-
-            ts_path = os.path.join(ts_dir, f"{_sanitize(sid)}.jsonl")
-            with open(ts_path, "w") as f:
-                f.write(content)
-
-            meta_storage = {
-                "message_count": msg_count,
-                "uploaded_at": time.time(),
-            }
-            meta_storage_path = os.path.join(ts_dir, f"{_sanitize(sid)}.meta.json")
-            with open(meta_storage_path, "w") as f:
-                json.dump(meta_storage, f)
-
-            print(f"[{sid[:12]}] Also wrote to: {ts_path}")
-        except Exception as e:
-            print(f"[{sid[:12]}] Direct file write failed: {e}")
 
         print(f"[{sid[:12]}] Ready — send a message to this session to test")
         print()

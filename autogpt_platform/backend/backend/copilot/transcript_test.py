@@ -23,7 +23,7 @@ from .transcript import (
     _rechain_tail,
     _sanitize_id,
     _transcript_to_messages,
-    cli_session_cost_usd,
+    cli_session_cost_state,
     extract_context_messages,
     read_compacted_entries,
     read_compacted_entries_detailed,
@@ -1786,7 +1786,7 @@ class TestExtractContextMessages:
 
 
 # ---------------------------------------------------------------------------
-# cli_session_cost_usd
+# cli_session_cost_state
 # ---------------------------------------------------------------------------
 
 _SID = "5f0c2a4e-1b7d-4c9a-9e3f-2d8b6a1c4e70"
@@ -1813,11 +1813,12 @@ _SID = "5f0c2a4e-1b7d-4c9a-9e3f-2d8b6a1c4e70"
         ),
     ],
 )
-def test_cli_session_cost_usd_reads_what_the_cli_resumes_from(lines, expected):
+def test_cli_session_cost_state_reads_what_the_cli_resumes_from(lines, expected):
     content = "\n".join(
         line if isinstance(line, str) else json.dumps(line) for line in lines
     )
-    assert cli_session_cost_usd(content, _SID) == expected
+    entry = cli_session_cost_state(content, _SID)
+    assert (entry["totalCostUSD"] if entry else 0.0) == expected
 
 
 # ---------------------------------------------------------------------------

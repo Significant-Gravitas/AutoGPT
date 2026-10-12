@@ -14,13 +14,14 @@ from backend.copilot.transcript import (
     _messages_to_transcript,
     _run_compression,
     _transcript_to_messages,
+    compact_transcript,
+    validate_transcript,
 )
 from backend.util import json
 from backend.util.prompt import CompressResult
 
 from .conftest import build_test_transcript as _build_transcript
 from .service import _friendly_error_text, _is_prompt_too_long
-from .transcript import compact_transcript, validate_transcript
 
 # ---------------------------------------------------------------------------
 # _flatten_assistant_content
