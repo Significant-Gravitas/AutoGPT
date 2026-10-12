@@ -88,6 +88,7 @@ class AnthropicPassthrough:
     async def _read_stream(
         self, response: httpx.Response, payload: Event, meter: UsageMeter
     ) -> AsyncGenerator[StreamItem, None]:
+        pending: list[StreamItem] = []
         async for frame in read_frames(response_lines(response)):
             event = frame.payload()
             if not isinstance(event, dict):
@@ -95,8 +96,19 @@ class AnthropicPassthrough:
             if event.get("type") == "error":
                 raise self._stream_failure(event, payload)
             meter.observe(event)
-            yield StreamItem(event=event, raw=frame.encoded())
+            item = StreamItem(event=event, raw=frame.encoded())
+            delta = event.get("delta")
+            if pending or (
+                event.get("type") == "message_delta"
+                and isinstance(delta, dict)
+                and delta.get("stop_reason") is not None
+            ):
+                pending.append(item)
+            else:
+                yield item
             if event.get("type") == "message_stop":
+                for buffered in pending:
+                    yield buffered
                 return
         raise GatewayError(
             502, "api_error", "The model server ended the stream before message_stop"

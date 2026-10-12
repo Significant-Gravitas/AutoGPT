@@ -61,8 +61,8 @@ def native_events(text: str = "answer") -> list[Event]:
 
 
 class NativeRetryUpstream(CannedUpstream):
-    def __init__(self) -> None:
-        super().__init__(CannedReply.of_sse(native_events()[:2]))
+    def __init__(self, partial: CannedReply | None = None) -> None:
+        super().__init__(partial or CannedReply.of_sse(native_events()[:2]))
 
     async def _answer(self, request: web.Request) -> web.StreamResponse:
         if self.calls:

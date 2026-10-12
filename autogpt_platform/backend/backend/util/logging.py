@@ -13,8 +13,9 @@ def configure_logging():
     else:
         autogpt_libs.logging.config.configure_logging(force_cloud_logging=True)
 
-    # Silence httpx logger
+    # Keep HTTP request details and raw response headers out of debug logs.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 def is_structured_logging_enabled() -> bool:
