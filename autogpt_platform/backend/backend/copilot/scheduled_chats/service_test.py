@@ -595,3 +595,23 @@ async def test_a_deleted_chat_leaves_no_paused_ghost(
     finally:
         await _cleanup(user_id)
         await _cleanup(other_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_forgetting_a_routines_id_leaves_its_pause_alone(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """A delete names a schedule id; a routine's streak outlives any one of
+    its jobs, so its paused row stays listed with Resume."""
+    user_id, session_id = await _owner()
+    try:
+        routine = await _routine(user_id)
+        for job in ("job-a", "job-b", "job-a"):
+            await record_scheduled_run(_routine_run(user_id, session_id, routine, job))
+
+        await service.forget_scheduled_chat(user_id, routine.id)
+
+        paused = await list_paused_scheduled_chats(user_id)
+        assert [p.schedule_key for p in paused] == [routine.id]
+    finally:
+        await _cleanup(user_id)

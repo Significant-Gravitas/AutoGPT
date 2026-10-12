@@ -225,6 +225,9 @@ async def delete_graph_execution_schedule(
     try:
         await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
+        # Gone already, perhaps by a delete whose streak cleanup failed: a
+        # retry still clears the streak, or the chat stays listed as paused.
+        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
