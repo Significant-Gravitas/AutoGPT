@@ -22,6 +22,7 @@ from .contract import EligibilityState, SourceRevision
 from .fingerprint import behavior_fingerprint
 from .memory_link import link_version_to_memory
 from .publish import PublishOutcome, PublishRequest
+from .review_preconditions import review_target_is_paused
 from .reviewer import DreamLLMError, record_review_cost, reviewer_model
 
 logger = logging.getLogger(__name__)
@@ -63,7 +64,11 @@ class SkillLearningResult(BaseModel):
 
 
 async def already_settled(
-    user_id: str, source: SourceRevision, result: SkillLearningResult
+    user_id: str,
+    source: SourceRevision,
+    result: SkillLearningResult,
+    *,
+    before_review: bool = False,
 ) -> str | None:
     """Consult the ledger before paying for a review.
 
@@ -77,9 +82,11 @@ async def already_settled(
     )
     if review is None:
         return None
-    if review.disposition == APPLIED_PENDING_DISPOSITION:
+    if review.disposition == APPLIED_PENDING_DISPOSITION or (
+        before_review and await review_target_is_paused(review, source.scope)
+    ):
         result.reviewed += 1
-        return APPLIED_PENDING_DISPOSITION
+        return review.disposition
     if review.disposition not in _TERMINAL_DISPOSITIONS:
         return None
     await skill_learning_db().advance_source_cursor(

@@ -189,7 +189,7 @@ async def _process_source(
     lock: AsyncClusterLock,
 ) -> str:
     source = source_revision_from_record(stored)
-    settled = await already_settled(user_id, source, result)
+    settled = await already_settled(user_id, source, result, before_review=True)
     if settled is not None:
         return settled
     adapter = get_source_adapter(source.source_kind)
