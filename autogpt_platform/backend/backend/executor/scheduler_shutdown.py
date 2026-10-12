@@ -21,6 +21,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.schedulers.base import STATE_STOPPED
@@ -45,10 +46,19 @@ class DrainingBackgroundScheduler(BackgroundScheduler):
 
     _draining = False
 
-    def drain(self) -> None:
-        """Stop job passes. Returns once no pass is in progress."""
-        with self._jobstores_lock:
-            self._draining = True
+    def drain(self, timeout: float) -> bool:
+        """Stop job passes; returns whether no pass was left in progress.
+
+        Waits up to ``timeout`` for a pass in progress to finish. A pass stuck
+        on a slow jobstore must not hold shutdown past its grace period, so
+        the flag is set either way; a pass that outlives the wait is the one
+        case that can still race the stop.
+        """
+        finished = self._jobstores_lock.acquire(timeout=timeout)
+        self._draining = True
+        if finished:
+            self._jobstores_lock.release()
+        return finished
 
     def _process_jobs(self) -> float | None:
         with self._jobstores_lock:
@@ -69,7 +79,9 @@ def stop_scheduler(
     worker finished; if not, the caller must not wait for the process to exit
     on its own (see :func:`exit_if_jobs_hung`).
     """
-    scheduler.drain()
+    deadline = time.monotonic() + grace_seconds
+    if not scheduler.drain(timeout=grace_seconds):
+        logger.warning("A job pass was still running when the grace period ended")
     finished = threading.Event()
 
     def _shutdown() -> None:
@@ -81,7 +93,7 @@ def stop_scheduler(
             finished.set()
 
     threading.Thread(target=_shutdown, name="SchedulerShutdown", daemon=True).start()
-    if finished.wait(grace_seconds):
+    if finished.wait(max(0.0, deadline - time.monotonic())):
         logger.info("Scheduler stopped; running jobs finished")
         return True
 

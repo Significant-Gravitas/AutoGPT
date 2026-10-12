@@ -183,6 +183,35 @@ def test_a_pass_queued_behind_shutdown_submits_nothing_and_loses_nothing(
     assert stored.next_run_time <= due_at + timedelta(seconds=1)
 
 
+def test_a_pass_stuck_on_the_jobstore_cannot_hold_shutdown(tmp_path: Path):
+    scheduler = _start(tmp_path, ThreadPoolExecutor(max_workers=2))
+    stuck = threading.Event()
+    release = threading.Event()
+
+    def stuck_pass() -> None:
+        # A pass blocked on a slow database, holding the jobstore lock.
+        with scheduler._jobstores_lock:
+            stuck.set()
+            release.wait(timeout=30)
+
+    threading.Thread(target=stuck_pass, daemon=True).start()
+    assert stuck.wait(timeout=5)
+    result: list[bool] = []
+    stopping = threading.Thread(
+        target=lambda: result.append(stop_scheduler(scheduler, None, 0.5)),
+        daemon=True,
+    )
+    started = time.monotonic()
+    stopping.start()
+    stopping.join(timeout=0.5 + scheduler_shutdown._CANCEL_GRACE_S + 5)
+    release.set()
+
+    # It gives up on the pass and reports the stop incomplete, so the caller
+    # exits instead of waiting until Kubernetes kills the pod.
+    assert result == [False]
+    assert time.monotonic() - started < 0.5 + scheduler_shutdown._CANCEL_GRACE_S + 3
+
+
 def _try_lock(lock) -> bool:
     if lock.acquire(blocking=False):
         lock.release()
