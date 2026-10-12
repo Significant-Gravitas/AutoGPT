@@ -304,7 +304,7 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     with (
         patch("backend.copilot.executor.utils.dispatch_turn", dispatch),
         patch(
-            "backend.copilot.session_permissions.resolve_session_permissions",
+            "backend.copilot.gate.held.resolve_session_permissions",
             return_value=today,
         ),
     ):
@@ -380,7 +380,7 @@ async def test_a_tool_revoked_while_a_call_was_held_stays_revoked(
 
     with (
         patch(
-            "backend.copilot.session_permissions.resolve_session_permissions",
+            "backend.copilot.gate.held.resolve_session_permissions",
             return_value=revoked,
         ),
         patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueued),
