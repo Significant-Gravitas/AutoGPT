@@ -565,3 +565,29 @@ async def test_a_job_deleted_since_the_pause_does_not_block_the_resume(
         assert await list_paused_scheduled_chats(user_id) == []
     finally:
         await _cleanup(user_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_deleted_chat_leaves_no_paused_ghost(
+    server: SpinTestServer, scheduler: MagicMock
+):
+    """Deleting a paused chat used to leave its streak: still listed as
+    paused, and a Resume that said it would run again."""
+    user_id, session_id = await _owner()
+    other_id, other_session = await _owner()
+    try:
+        failed = RunOutcome(failure=_DISCORD, whole_run=True)
+        for _ in range(3):
+            await record_scheduled_run(_run(user_id, session_id, failed))
+            await record_scheduled_run(_run(other_id, other_session, failed))
+
+        await service.forget_scheduled_chat(user_id, "sched-1")
+
+        assert await ScheduledChatStreak.prisma().count(where={"userId": user_id}) == 0
+        assert await list_paused_scheduled_chats(user_id) == []
+        assert await resume_scheduled_chat(user_id, "sched-1") is False
+        # Only the owner's own chat goes.
+        assert len(await list_paused_scheduled_chats(other_id)) == 1
+    finally:
+        await _cleanup(user_id)
+        await _cleanup(other_id)
