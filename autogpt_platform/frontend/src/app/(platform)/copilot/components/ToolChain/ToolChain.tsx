@@ -23,8 +23,7 @@ import {
 } from "react";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { toast } from "@/components/molecules/Toast/use-toast";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { useCopilotChatActions } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { ChainActionCard } from "../ChainActionCard/ChainActionCard";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
@@ -225,13 +224,12 @@ export function ToolChain({ parts, isStreaming, readOnly = false }: Props) {
   // points at the thread rather than the composer.
   function sendReply(message: string) {
     void Promise.resolve(onSend(message)).catch((error: unknown) =>
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "it is still in the thread, use Retry to send it again",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
   }

@@ -276,57 +276,29 @@ export function useCopilotStream({
           clearKickoffPending(userId, kickoffExpertId, kickoffAttemptToken);
         }).catch(() => undefined);
       }
+      // Backend raises 429 and 402 BEFORE persisting the user message, so the
+      // optimistic user bubble added by useChat is a lie. Restore the text
+      // into the composer (via the same store slot URL pre-fills use) and
+      // drop the unsent bubble so the user can edit/resend.
+      const restoreUnsentSend = () => {
+        if (restoreUnsentText(sessionId, setInitialPrompt)) {
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            const next = last?.role === "user" ? prev.slice(0, -1) : prev;
+            useCopilotStreamStore
+              .getState()
+              .setMessageSnapshot(sessionId, next);
+            return next;
+          });
+        }
+      };
       const failureForThisTurn = providerFailureRef.current;
       providerFailureRef.current = null;
       handleStreamError({
         error,
         providerFailure: failureForThisTurn,
         onRateLimit: (message, limitFailure, origin) => {
-          // Backend raises 429 BEFORE persisting the user message, so the
-          // optimistic user bubble added by useChat is a lie. Restore the text
-          // into the composer (via the same store slot URL pre-fills use) and
-          // drop the unsent bubble so the user can edit/resend after reset.
-          const coord = useCopilotStreamStore.getState().getCoord(sessionId);
-          const unsentText = coord.lastSubmittedMessageText;
-          if (unsentText) {
-            // The expert-kickoff control prompt must never surface in the
-            // user's composer — drop the recovery slot instead of restoring
-            // it. Its bubble below is dropped too; the once-per-expert
-            // pending latch expires so a later visit can retry the kickoff.
-            if (kickoffExpertId) {
-              useCopilotStreamStore.getState().updateCoord(sessionId, {
-                lastSubmittedMessageText: null,
-                lastSubmittedKickoffExpertId: null,
-                lastSubmittedKickoffAttemptToken: null,
-              });
-            } else {
-              // The 429 callback fires async — by the time it lands, the user
-              // may have started typing a new draft. Only restore + clear the
-              // recovery slot when the composer is empty; otherwise leave the
-              // unsent text in the per-session store so a reload / resume can
-              // surface it later instead of silently dropping it.
-              const composer = document.getElementById(
-                "chat-input",
-              ) as HTMLTextAreaElement | null;
-              const composerEmpty = !composer || composer.value.length === 0;
-              if (composerEmpty) {
-                setInitialPrompt(unsentText);
-                useCopilotStreamStore.getState().updateCoord(sessionId, {
-                  lastSubmittedMessageText: null,
-                  lastSubmittedKickoffExpertId: null,
-                  lastSubmittedKickoffAttemptToken: null,
-                });
-              }
-            }
-            setMessages((prev) => {
-              const last = prev[prev.length - 1];
-              const next = last?.role === "user" ? prev.slice(0, -1) : prev;
-              useCopilotStreamStore
-                .getState()
-                .setMessageSnapshot(sessionId, next);
-              return next;
-            });
-          }
+          restoreUnsentSend();
           // A provider's own limit is not answered by upgrading with us, so
           // it opens the continue path instead of the plan dialog.
           //
@@ -355,6 +327,7 @@ export function useCopilotStream({
           }
         },
         onReconnect: () => handleReconnectRef.current(),
+        onPaywall: restoreUnsentSend,
         isUserStoppingRef,
       });
       if (kickoffExpertId) {
@@ -622,7 +595,7 @@ export function useCopilotStream({
       },
       retract: () =>
         setMessages((prev) => prev.filter((m) => before.has(m.id))),
-      restoreDraft: () => restoreUnsentDraft(text, kickoffExpertId),
+      restoreDraft: () => restoreUnsentText(sessionId, setInitialPrompt),
       notifyNotSent: () =>
         toast({
           title: "Message not sent",
@@ -631,29 +604,6 @@ export function useCopilotStream({
           variant: "destructive",
         }),
       isMounted: () => isMountedRef.current,
-    });
-  }
-
-  // The draft goes back in the composer only when the user has not started
-  // typing another; otherwise it stays in the session's recovery slot. An
-  // expert's kickoff prompt is a control message and never surfaces.
-  function restoreUnsentDraft(text: string, kickoffExpertId: string | null) {
-    if (!sessionId || !text) return;
-    if (kickoffExpertId) {
-      useCopilotStreamStore.getState().updateCoord(sessionId, {
-        lastSubmittedMessageText: null,
-        lastSubmittedKickoffExpertId: null,
-        lastSubmittedKickoffAttemptToken: null,
-      });
-      return;
-    }
-    const composer = document.getElementById(
-      "chat-input",
-    ) as HTMLTextAreaElement | null;
-    if (composer && composer.value.length > 0) return;
-    setInitialPrompt(text);
-    useCopilotStreamStore.getState().updateCoord(sessionId, {
-      lastSubmittedMessageText: null,
     });
   }
 
@@ -1003,4 +953,45 @@ export function useCopilotStream({
     },
     dismissRateLimit,
   };
+}
+
+/**
+ * Give an unsent message's text back, from the session's recovery slot that
+ * `sendMessage` fills. Both a refused send (429, 402) and a send lost before
+ * the network restore through here, and the slot is cleared once used, so the
+ * same text never comes back twice. Returns whether the slot held one.
+ */
+function restoreUnsentText(
+  sessionId: string | null,
+  setInitialPrompt: (prompt: string) => void,
+) {
+  if (!sessionId) return false;
+  const store = useCopilotStreamStore.getState();
+  const coord = store.getCoord(sessionId);
+  const unsentText = coord.lastSubmittedMessageText;
+  if (!unsentText) return false;
+  const clearSlot = () =>
+    store.updateCoord(sessionId, {
+      lastSubmittedMessageText: null,
+      lastSubmittedKickoffExpertId: null,
+      lastSubmittedKickoffAttemptToken: null,
+    });
+  // The expert-kickoff control prompt must never surface in the user's
+  // composer — drop the recovery slot instead of restoring it. The
+  // once-per-expert pending latch expires so a later visit can retry it.
+  if (coord.lastSubmittedKickoffExpertId) {
+    clearSlot();
+    return true;
+  }
+  // The text comes back async — by then the user may have started a new
+  // draft. Only restore + clear the slot when the composer is empty;
+  // otherwise leave the text in the per-session store so a reload / resume
+  // can surface it later instead of silently dropping it.
+  const composer = document.getElementById(
+    "chat-input",
+  ) as HTMLTextAreaElement | null;
+  if (composer && composer.value.length > 0) return true;
+  setInitialPrompt(unsentText);
+  clearSlot();
+  return true;
 }

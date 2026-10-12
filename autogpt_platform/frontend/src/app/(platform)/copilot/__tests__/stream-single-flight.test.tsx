@@ -406,6 +406,70 @@ describe("copilot stream — one live stream per chat", () => {
   );
 
   it(
+    "a retried send the server refuses with 402 gives its text back once",
+    { timeout: 20000 },
+    async () => {
+      // The lost-send retry and the paywall refusal both give text back. The
+      // retry reached the network, so only the refusal may; the composer
+      // must hold the text once and the user is not told it went unsent.
+      vi.useFakeTimers({
+        toFake: [
+          "setTimeout",
+          "clearTimeout",
+          "setInterval",
+          "clearInterval",
+          "Date",
+        ],
+        shouldAdvanceTime: true,
+      });
+      let posts = 0;
+      let resumes = 0;
+      server.use(
+        http.post(STREAM_URL, () => {
+          posts += 1;
+          return HttpResponse.json(
+            { detail: "A plan is required to send" },
+            { status: 402 },
+          );
+        }),
+        http.get(STREAM_URL, () => {
+          resumes += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => null) });
+      await waitForInputReady();
+      const auth = hold();
+      authGate.held = auth.released;
+
+      await typeAndSend("count to three");
+      await act(() => vi.advanceTimersByTimeAsync(61_000));
+      await act(() => vi.advanceTimersByTimeAsync(1_500));
+
+      const input = screen.getByLabelText(
+        /chat message input/i,
+      ) as HTMLTextAreaElement;
+      await waitFor(() => expect(input.value).toBe("count to three"));
+      auth.release();
+      await act(() => vi.advanceTimersByTimeAsync(2_000));
+
+      expect(posts).toBe(1);
+      expect(resumes).toBe(1);
+      expect(input.value).toBe("count to three");
+      // The refused bubble is gone; only the composer holds the text.
+      expect(
+        screen.queryAllByText("count to three", { ignore: "textarea" }),
+      ).toHaveLength(0);
+      expect(
+        toastMock.mock.calls.filter(
+          ([options]) => options?.title === "Message not sent",
+        ),
+      ).toHaveLength(0);
+      expect(sdkCleanupCrashes()).toEqual([]);
+    },
+  );
+
+  it(
     "heartbeats keep a quiet stream alive past the stall watchdog",
     { timeout: 20000 },
     async () => {
