@@ -15,7 +15,8 @@ from fastapi import FastAPI, HTTPException, Request, Security
 from fastapi.testclient import TestClient
 from pytest_mock import MockerFixture
 
-from autogpt_libs.auth import dependencies
+from autogpt_libs import auth
+from autogpt_libs.auth import closed_accounts, dependencies
 from autogpt_libs.auth.dependencies import (
     get_request_context,
     get_user_id,
@@ -43,7 +44,7 @@ def _payload(user_id: str, role: str = "user") -> dict:
 @pytest.fixture(autouse=True)
 def _fresh_caches():
     def clear():
-        dependencies._CLOSED_ACCOUNT_CACHE.clear()
+        closed_accounts._CLOSED_ACCOUNT_CACHE.clear()
         dependencies._PROVISIONED_USER_IDS.clear()
         dependencies._HEALS_IN_FLIGHT.clear()
 
@@ -186,44 +187,44 @@ class TestClosedAccountCache:
         self, backend, mocker: MockerFixture
     ):
         """Another worker may close the account at any moment."""
-        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        clock = mocker.patch("autogpt_libs.auth.closed_accounts.time.monotonic")
         clock.return_value = 1_000.0
         await get_user_id(_request(), _payload(OPEN))
-        clock.return_value = 1_000.0 + dependencies._OPEN_ACCOUNT_TTL_SECS - 1
+        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS - 1
         await get_user_id(_request(), _payload(OPEN))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + dependencies._OPEN_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS
         await get_user_id(_request(), _payload(OPEN))
         assert backend.is_closed.await_count == 2
-        assert dependencies._OPEN_ACCOUNT_TTL_SECS == 30
+        assert closed_accounts._OPEN_ACCOUNT_TTL_SECS == 30
 
     @pytest.mark.asyncio
     async def test_a_closed_answer_is_kept_for_fifteen_minutes(
         self, backend, mocker: MockerFixture
     ):
-        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        clock = mocker.patch("autogpt_libs.auth.closed_accounts.time.monotonic")
         clock.return_value = 1_000.0
-        for offset in (0, dependencies._CLOSED_ACCOUNT_TTL_SECS - 1):
+        for offset in (0, closed_accounts._CLOSED_ACCOUNT_TTL_SECS - 1):
             clock.return_value = 1_000.0 + offset
             with pytest.raises(HTTPException):
                 await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + dependencies._CLOSED_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._CLOSED_ACCOUNT_TTL_SECS
         with pytest.raises(HTTPException):
             await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 2
-        assert dependencies._CLOSED_ACCOUNT_TTL_SECS == 15 * 60
+        assert closed_accounts._CLOSED_ACCOUNT_TTL_SECS == 15 * 60
 
     @pytest.mark.asyncio
     async def test_the_cache_is_bounded(self, backend, mocker: MockerFixture):
-        mocker.patch.object(dependencies, "_CLOSED_ACCOUNT_CACHE_MAX", 2)
+        mocker.patch.object(closed_accounts, "_CLOSED_ACCOUNT_CACHE_MAX", 2)
 
         for user_id in ("user-1", "user-2", "user-3"):
             await get_user_id(_request(), _payload(user_id))
 
-        assert list(dependencies._CLOSED_ACCOUNT_CACHE) == ["user-2", "user-3"]
+        assert list(closed_accounts._CLOSED_ACCOUNT_CACHE) == ["user-2", "user-3"]
 
     @pytest.mark.asyncio
     async def test_remember_account_closed_rejects_without_a_query(self, backend):
@@ -249,6 +250,12 @@ class TestClosedAccountCache:
         for _ in range(2):
             with pytest.raises(HTTPException):
                 await get_user_id(_request(), _payload(OPEN))
+
+    def test_remember_account_closed_is_one_function_wherever_imported(self):
+        """Callers import it from the package or from ``dependencies``; each
+        must reach the cache ``get_user_id`` reads."""
+        assert auth.remember_account_closed is closed_accounts.remember_account_closed
+        assert remember_account_closed is closed_accounts.remember_account_closed
 
 
 class TestGetUserIdAllowingClosed:
@@ -317,7 +324,7 @@ class TestFailsOpen:
     async def test_on_a_database_error_with_a_warning(
         self, backend, mocker: MockerFixture
     ):
-        logger = mocker.patch("autogpt_libs.auth.dependencies.logger")
+        logger = mocker.patch("autogpt_libs.auth.closed_accounts.logger")
         backend.is_closed.side_effect = RuntimeError("db down")
 
         assert await get_user_id(_request(), _payload(CLOSED)) == CLOSED
@@ -332,17 +339,17 @@ class TestFailsOpen:
         self, backend, mocker: MockerFixture
     ):
         """A DB outage costs one query per user per TTL, not one per request."""
-        mocker.patch("autogpt_libs.auth.dependencies.logger")
-        clock = mocker.patch("autogpt_libs.auth.dependencies.time.monotonic")
+        mocker.patch("autogpt_libs.auth.closed_accounts.logger")
+        clock = mocker.patch("autogpt_libs.auth.closed_accounts.time.monotonic")
         backend.is_closed.side_effect = RuntimeError("db down")
 
         clock.return_value = 1_000.0
         await get_user_id(_request(), _payload(CLOSED))
-        clock.return_value = 1_000.0 + dependencies._OPEN_ACCOUNT_TTL_SECS - 1
+        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS - 1
         await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 1
 
-        clock.return_value = 1_000.0 + dependencies._OPEN_ACCOUNT_TTL_SECS
+        clock.return_value = 1_000.0 + closed_accounts._OPEN_ACCOUNT_TTL_SECS
         await get_user_id(_request(), _payload(CLOSED))
         assert backend.is_closed.await_count == 2
 
@@ -353,7 +360,7 @@ class TestNoHealWhenTheCheckFailed:
 
     @pytest.fixture
     def failing_check(self, backend, mocker: MockerFixture):
-        mocker.patch("autogpt_libs.auth.dependencies.logger")
+        mocker.patch("autogpt_libs.auth.closed_accounts.logger")
         backend.is_closed.side_effect = RuntimeError("db down")
         return backend
 

@@ -8,12 +8,13 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
-from collections.abc import Awaitable, Callable
-from enum import Enum
 
 import fastapi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+# The "as" form re-exports remember_account_closed, still imported from here.
+from .closed_accounts import ACCOUNT_CLOSED_DETAIL, AccountState, get_account_state
+from .closed_accounts import remember_account_closed as remember_account_closed
 from .jwt_utils import get_jwt_payload, verify_user
 from .models import RequestContext, User
 from .permissions import (
@@ -40,27 +41,6 @@ _FAILED_HEAL_BACKOFF_SECS = 60
 # Heals still running, id -> task: concurrent first requests for one user wait
 # on the same probe instead of each running their own.
 _HEALS_IN_FLIGHT: "dict[str, asyncio.Task[None]]" = {}
-
-ACCOUNT_CLOSED_DETAIL = "This account is closed."
-
-
-class _AccountState(Enum):
-    OPEN = "open"
-    CLOSED = "closed"
-    # The check failed: the account is not rejected, but never healed either,
-    # since it may be closed.
-    UNKNOWN = "unknown"
-
-
-# Recent answers to "did this user delete their account?", id -> (state,
-# monotonic expiry). Tokens outlive the sessions a close ends, so every request
-# asks; a closed answer is kept long, an open one only briefly, since another
-# worker can close the account at any moment. A failed check is kept as long
-# as an open answer, so a DB outage costs one query per user per TTL.
-_CLOSED_ACCOUNT_CACHE: "OrderedDict[str, tuple[_AccountState, float]]" = OrderedDict()
-_CLOSED_ACCOUNT_CACHE_MAX = 10_000
-_CLOSED_ACCOUNT_TTL_SECS = 15 * 60
-_OPEN_ACCOUNT_TTL_SECS = 30
 
 
 def _is_heal_settled(user_id: str) -> bool:
@@ -125,85 +105,6 @@ async def _settle_heal(user_id: str, jwt_payload: dict) -> None:
         user_id,
         _PROVISIONED_USER_TTL_SECS if provisioned else _FAILED_HEAL_BACKOFF_SECS,
     )
-
-
-def remember_account_closed(user_id: str) -> None:
-    """Reject *user_id* in this process at once.
-
-    For the worker that just closed the account: without this it would keep
-    accepting the user until its cached "open" answer expired.
-    """
-    _cache_account_state(user_id, _AccountState.CLOSED)
-
-
-async def _account_state(user_id: str) -> _AccountState:
-    """Whether *user_id* asked to delete their account, cached briefly.
-
-    Open without the backend package or a connected DB. On a DB error the
-    account is not rejected (the request's own next query would fail anyway),
-    but it is reported UNKNOWN so nothing heals an account that may be closed.
-    """
-    cached = _cached_account_state(user_id)
-    if cached is not None:
-        return cached
-
-    query = _closed_account_query()
-    if query is None:
-        return _AccountState.OPEN
-    try:
-        closed = await query(user_id)
-        state = _AccountState.CLOSED if closed else _AccountState.OPEN
-    except Exception:
-        logger.warning(
-            f"Closed-account check failed for {user_id}; treating it as open",
-            exc_info=True,
-        )
-        state = _AccountState.UNKNOWN
-
-    # A close remembered while the query ran wins over the query's answer.
-    if _cached_account_state(user_id) is _AccountState.CLOSED:
-        return _AccountState.CLOSED
-    _cache_account_state(user_id, state)
-    return state
-
-
-def _closed_account_query() -> Callable[[str], Awaitable[bool]] | None:
-    """The backend's closed-account query, or None without the backend
-    package or a connected DB (route unit tests, tooling)."""
-    try:
-        from backend.data.db import prisma  # deferred -- only needed at runtime
-    except ImportError:
-        return None
-    if not prisma.is_connected():
-        return None
-    try:
-        from backend.data.account_deletion import is_account_closed  # deferred
-    except ImportError:
-        return None
-    return is_account_closed
-
-
-def _cached_account_state(user_id: str) -> _AccountState | None:
-    entry = _CLOSED_ACCOUNT_CACHE.get(user_id)
-    if entry is None:
-        return None
-    state, expires_at = entry
-    if expires_at <= time.monotonic():
-        del _CLOSED_ACCOUNT_CACHE[user_id]
-        return None
-    return state
-
-
-def _cache_account_state(user_id: str, state: _AccountState) -> None:
-    ttl = (
-        _CLOSED_ACCOUNT_TTL_SECS
-        if state is _AccountState.CLOSED
-        else _OPEN_ACCOUNT_TTL_SECS
-    )
-    _CLOSED_ACCOUNT_CACHE[user_id] = (state, time.monotonic() + ttl)
-    _CLOSED_ACCOUNT_CACHE.move_to_end(user_id)
-    while len(_CLOSED_ACCOUNT_CACHE) > _CLOSED_ACCOUNT_CACHE_MAX:
-        _CLOSED_ACCOUNT_CACHE.popitem(last=False)
 
 
 def get_optional_user_id(
@@ -295,11 +196,11 @@ async def _resolve_user_id(
     request: fastapi.Request, jwt_payload: dict, *, allow_closed: bool
 ) -> str:
     subject = _token_subject(jwt_payload)
-    state = await _account_state(subject)
-    if state is _AccountState.CLOSED and not allow_closed:
+    state = await get_account_state(subject)
+    if state is AccountState.CLOSED and not allow_closed:
         raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
 
-    if state is _AccountState.OPEN:
+    if state is AccountState.OPEN:
         # Self-heal a missing platform User row for the token's own subject.
         # Under impersonation that is the admin, never the target: the claims
         # describe the admin, and provisioning the target from them would be
@@ -486,8 +387,8 @@ async def get_request_context(
     # --- 1. user_id (reuse existing impersonation logic) ----------------------
     subject = _token_subject(jwt_payload)
     # Before anything below can self-heal the account's User row.
-    account_state = await _account_state(subject)
-    if account_state is _AccountState.CLOSED:
+    account_state = await get_account_state(subject)
+    if account_state is AccountState.CLOSED:
         raise fastapi.HTTPException(status_code=401, detail=ACCOUNT_CLOSED_DETAIL)
     user_id = _impersonated_user_id(request, jwt_payload) or subject
 
@@ -518,7 +419,7 @@ async def get_request_context(
             # recoverable: the personal org, or the platform User row the org
             # would hang off. Provision the user first so the bootstrap below
             # has something to work with.
-            if account_state is _AccountState.OPEN and await _ensure_platform_user(
+            if account_state is AccountState.OPEN and await _ensure_platform_user(
                 user_id, jwt_payload
             ):
                 await _finish_account_bootstrap(jwt_payload)

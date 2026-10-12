@@ -1,10 +1,10 @@
+from .closed_accounts import remember_account_closed
 from .config import verify_settings
 from .dependencies import (
     get_optional_user_id,
     get_request_context,
     get_user_id,
     get_user_id_allowing_closed,
-    remember_account_closed,
     requires_admin_user,
     requires_org_permission,
     requires_team_permission,
