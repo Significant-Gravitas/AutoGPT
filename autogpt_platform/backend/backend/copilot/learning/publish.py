@@ -50,7 +50,12 @@ from backend.data.skill_versions import (
 )
 
 from .content_checks import check_metadata, check_skill_bundle, safe_diagnostic
-from .contract import LearningScope, check_approval_precondition, get_source_adapter
+from .contract import (
+    EligibilityState,
+    LearningScope,
+    check_approval_precondition,
+    get_source_adapter,
+)
 from .fingerprint import (
     UNCERTAIN_EQUIVALENCE_THRESHOLD,
     behavior_fingerprint,
@@ -310,7 +315,15 @@ async def require_fresh_eligibility(request: PublishRequest) -> PublishOutcome |
             adapter, eligibility, _as_source_revision(pinned, scope)
         )
         if problem is not None:
-            return PublishOutcome(status="stale_eligibility", reason=problem)
+            return PublishOutcome(
+                status=(
+                    "paused"
+                    if eligibility.state
+                    in (EligibilityState.PAUSED, EligibilityState.WAITING_APPROVAL)
+                    else "stale_eligibility"
+                ),
+                reason=problem,
+            )
     return None
 
 

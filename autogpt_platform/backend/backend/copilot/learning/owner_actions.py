@@ -249,7 +249,10 @@ async def decide_proposal(
         )
     )
     if stale is not None:
-        await versions.set_version_state(user_id, proposal.id, "stale", stale.reason)
+        if stale.status != "paused":
+            await versions.set_version_state(
+                user_id, proposal.id, "stale", stale.reason
+            )
         return stale
     body = (
         edited_body if action == "apply_edited" and edited_body else _body_of(proposal)
