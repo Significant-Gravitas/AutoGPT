@@ -201,7 +201,7 @@ jobs:
             # selfhost-journey asserts nothing hosted-only exists; it needs a
             # self-hosted stack (TODO in src/playwright/journeys/README.md).
             playwright_args: --project hosted
-            min_tests: 5
+            min_tests: 6
             embeddings: false
             # Journeys sign up their own users and need no seeded data.
             seed: false
