@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Literal
 
 import sentry_sdk
 from prisma.errors import UniqueViolationError
@@ -27,6 +27,7 @@ from backend.util.exceptions import ExpertNotFoundError
 from backend.util.json import SafeJson, dumps, sanitize_string
 
 from .model import (
+    CHAT_STATUS_RUNNING,
     ChatMessage,
     ChatSessionInfo,
     ChatSessionMetadata,
@@ -1446,6 +1447,44 @@ async def get_chat_session_status(session_id: str) -> str | None:
     tell them apart on its own)."""
     row = await PrismaChatSession.prisma().find_unique(where={"id": session_id})
     return row.chatStatus if row else None
+
+
+async def admit_chat_session_turn(
+    *, session_id: str, user_id: str, expect_status: str, capacity: int
+) -> Literal["admitted", "full", "busy"]:
+    """Flip the session ``expect_status`` → running while the user has fewer
+    than ``capacity`` running: ``"full"`` at the cap, ``"busy"`` when the
+    session is not in ``expect_status``.
+
+    The count precedes the flip inside one per-user lock, and relies on READ
+    COMMITTED (Postgres's default) to see every flip committed before the lock.
+    """
+    async with db.transaction() as tx:
+        # execute_raw, not query_raw: pg_advisory_xact_lock returns void.
+        await tx.execute_raw(
+            "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+            f"copilot-turns:{user_id}",
+        )
+        sessions = PrismaChatSession.prisma(tx)
+        current = await sessions.find_unique(where={"id": session_id})
+        if (
+            current is None
+            or current.userId != user_id
+            or current.chatStatus != expect_status
+        ):
+            return "busy"
+        running = await sessions.count(
+            where={"userId": user_id, "chatStatus": CHAT_STATUS_RUNNING}
+        )
+        if running >= capacity:
+            return "full"
+        # Conditional: a transition outside this lock (a cancel) may have
+        # moved the row since it was read.
+        updated = await sessions.update_many(
+            where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
+            data={"chatStatus": CHAT_STATUS_RUNNING},
+        )
+    return "admitted" if updated else "busy"
 
 
 async def update_chat_session_status(

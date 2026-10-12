@@ -338,7 +338,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
             "are queued in ``CopilotTaskQueue`` (FIFO) up to "
             "``max_inflight_copilot_turns_per_user`` total in-flight. "
             "Must be <= the in-flight cap; default 5 keeps shared-infra "
-            "concurrency predictable while letting users batch-submit."
+            "concurrency predictable while letting users batch-submit. "
+            "Turns another session started (sub-sessions, delegations, "
+            "handoffs) are admitted only below this cap minus one, so one "
+            "slot is always left for the user's own message."
         ),
     )
 
@@ -599,6 +602,16 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    schedule_read_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description=(
+            "How long a page read (library agents, Home) waits for the scheduler "
+            "before rendering without schedule badges. Healthy reads take well "
+            "under a second; the Vercel proxy gives up at 30s."
+        ),
     )
 
     # Prefer the cluster env var so the new image can co-exist with old-image
