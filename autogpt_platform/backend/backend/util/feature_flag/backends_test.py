@@ -61,7 +61,7 @@ _FORCE_PREFIXES = (
 @pytest.fixture
 def ld_client(mocker):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    serve_launchdarkly(mocker, client)
     client.is_initialized.return_value = True
     return client
 
@@ -468,7 +468,7 @@ class TestDualBackend:
         same changes nothing at the switch, answered or not."""
         use_backend(mocker, FeatureFlagBackend.DUAL)
         ld = _launchdarkly_with(TestData.data_source())
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        serve_launchdarkly(mocker, ld)
         stub_posthog(mocker, value=posthog_value)
 
         with caplog.at_level(
@@ -557,7 +557,7 @@ class TestLaunchDarklyAnswers:
         td = TestData.data_source()
         configure(td)
         ld = _launchdarkly_with(td)
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        serve_launchdarkly(mocker, ld)
         try:
             result = await evaluate_feature_flag(Flag.AUTOMOD, "u-1", True)
         finally:
@@ -825,7 +825,7 @@ class TestSentryFlagContext:
     ):
         client = mocker.Mock(spec=LDClient)
         client.is_initialized.return_value = False
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        serve_launchdarkly(mocker, client)
 
         await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1")
 
@@ -894,7 +894,7 @@ class TestSentryFlagContext:
     ):
         client = mocker.Mock(spec=LDClient)
         client.is_initialized.return_value = False
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        serve_launchdarkly(mocker, client)
         span = Span()
         scope = sentry_sdk.get_current_scope()
         previous, scope.span = scope.span, span
@@ -952,7 +952,7 @@ class TestTheCountryRuleInEveryBackend:
             return_value=(Context.builder("u-1").kind("user").build(), True),
         )
         ld = _launchdarkly_serving_all_but_india()
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=ld)
+        serve_launchdarkly(mocker, ld)
         posthog_client = _posthog_serving_all_but_india()
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         try:
@@ -1082,3 +1082,13 @@ def _gated_route():
 def served(value):
     """LaunchDarkly's answer for a flag it has, as its fallthrough serves it."""
     return EvaluationDetail(value, 0, {"kind": "FALLTHROUGH"})
+
+
+def serve_launchdarkly(mocker, client) -> None:
+    """Answer flag reads from *client*, on a deployment with an SDK key.
+
+    Without a key a read never asks LaunchDarkly at all, so a client standing
+    in for a live one needs the key that a live one would have.
+    """
+    mocker.patch.object(ff.settings.secrets, "launch_darkly_sdk_key", "sdk-test")
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
