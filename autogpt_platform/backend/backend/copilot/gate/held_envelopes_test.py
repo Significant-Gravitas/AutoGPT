@@ -3,9 +3,10 @@
 The fold runs every answered card at the start of whichever turn comes next,
 so one chat's cards can belong to different turns: a delegated turn of one
 tree, a later root, a turn whose tree has since closed. This drives the real
-fold through seeded interleavings of folding turns, answers landing, trees
-expiring or spending out, and Redis and Postgres failing, over in-memory
-stand-ins for both, and checks every run against the call's own envelope.
+fold through seeded interleavings of folding turns, answers landing, records
+rebuilt from their cards, trees expiring or spending out, and Redis and
+Postgres failing, over in-memory stand-ins for both, and checks every run
+against the call's own records.
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from backend.copilot.gate import review as review_store
 from backend.copilot.model import ChatSession
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.tree import MAX_DEPTH, TurnEnvelope, narrowed_by, root_envelope
+from backend.util.encryption import JSONCryptor
 
 _SEEDS = 300
 _USER = "user-1"
@@ -33,8 +35,11 @@ _PARENT = "parent-session"
 _TOOLS = ("post_to_chat_platform", "create_agent", "run_agent", "message_session")
 _TREES = ("tree-a", "tree-b", "tree-c")
 _LEDGER = "copilot:tree:"
-# The folding turn an operation runs in, so a ledger read is credited to it.
+_REFUSED = "Propose it again if it is still needed."
+# The folding turn an operation runs in, so a read or a claim is credited to it.
 _fold: ContextVar[int | None] = ContextVar("_fold", default=None)
+
+Run = tuple[int, int | None, str, TurnEnvelope | None]
 
 
 class _World:
@@ -49,8 +54,11 @@ class _World:
         self.rows: dict[str, SimpleNamespace] = {}
         # (step, fold, tree, admitted): every read of a tree's ledger.
         self.checks: list[tuple[int, int | None, str, bool]] = []
+        # Every record of a held call written once play began: rebuilt from its
+        # card, or put back after a failure.
+        self.written: dict[str, list[held.HeldCall]] = {}
         # (step, fold, review id, envelope in effect): every run.
-        self.runs: list[tuple[int, int | None, str, TurnEnvelope | None]] = []
+        self.runs: list[Run] = []
 
     async def tick(self, may_fail: bool = True) -> None:
         self.step += 1
@@ -125,6 +133,9 @@ class _Pipeline:
         await self.w.tick()
         for key, field, value in self.writes:
             self.w.hashes.setdefault(key, {})[field] = value
+            if not self.w.calm and key.startswith(held._KEY):
+                record = held.HeldCall.model_validate(JSONCryptor().decrypt(value))
+                self.w.written.setdefault(field, []).append(record)
         return [1] * len(self.writes)
 
 
@@ -171,8 +182,9 @@ async def test_a_held_call_runs_only_under_its_own_unexpired_envelope(
     caplog: pytest.LogCaptureFixture,
 ):
     """Each seed is one chat: calls held under roots, children of open, spent
-    and closed trees, malformed envelopes and none, answered in any order and
-    folded by concurrent turns of any envelope. A failing seed is named."""
+    and closed trees, malformed envelopes and none, some of their records gone
+    or unreadable, answered in any order and folded by concurrent turns of any
+    envelope. A failing seed is named."""
     # Every injected failure logs a traceback; formatting them is most of the run.
     for name in ("backend.copilot.gate", "backend.copilot.tree"):
         caplog.set_level(logging.CRITICAL, logger=name)
@@ -214,7 +226,7 @@ async def _play(seed: int, rng: random.Random, world: _World) -> tuple[int, int]
         builder_graph_id="graph-1" if rng.random() < 0.3 else None,
         delegated_by_session_id=None if own_chat else _PARENT,
     )
-    calls, never = await _hold_calls(seed, rng, world, session)
+    calls, records, never = await _hold_calls(seed, rng, world, session)
     turns: dict[int, TurnEnvelope | None] = {}
     delivered: list[str] = []
 
@@ -231,9 +243,19 @@ async def _play(seed: int, rng: random.Random, world: _World) -> tuple[int, int]
         rows = await held.resolve_answered(_USER, session)
         delivered.extend(row.content for row in rows)
 
+    async def answer() -> None:
+        # The answers' route hands the wake the cards it answered, and the wake
+        # rebuilds from them every call whose record is gone or unreadable.
+        rows = [
+            SimpleNamespace(**vars(r))
+            for r in world.rows.values()
+            if r.status != ReviewStatus.WAITING
+        ]
+        await held._restore(_USER, session.session_id, rows)
+
     world.calm = False
     first = rng.randint(1, 3)
-    await asyncio.gather(*(fold(i) for i in range(first)))
+    await asyncio.gather(answer(), *(fold(i) for i in range(first)))
     # A later turn picks up what landed or came back meanwhile.
     await fold(first)
     world.calm = True
@@ -241,16 +263,17 @@ async def _play(seed: int, rng: random.Random, world: _World) -> tuple[int, int]
     ran = [run[2] for run in world.runs]
     assert len(ran) == len(set(ran)), f"seed {seed}: a call ran twice"
     for run in world.runs:
-        _check(seed, run, calls, never, turns, world, session)
-    refused = [text for text in delivered if "can no longer carry it out" in text]
+        _check(seed, run, calls, records, never, turns, world, session)
+    refused = [text for text in delivered if _REFUSED in text]
     return len(world.runs), len(refused)
 
 
 async def _hold_calls(
     seed: int, rng: random.Random, world: _World, session: ChatSession
-) -> tuple[dict[str, held.HeldCall], set[str]]:
+) -> tuple[dict[str, held.HeldCall], dict[str, str], set[str]]:
     """Calls held in one chat by turns of different envelopes, the trees they
-    belong to, and their cards; and the cards that must never run."""
+    belong to, their cards, and their records: kept, gone, or unreadable. Also
+    the cards that must never run."""
     now = datetime.now(UTC)
     for tree in _TREES:
         state = rng.choice(["open", "open", "spent", "closed"])
@@ -262,6 +285,7 @@ async def _hold_calls(
                 "nodes": "1",
             }
     calls: dict[str, held.HeldCall] = {}
+    records: dict[str, str] = {}
     never: set[str] = set()
     for index in range(rng.randint(2, 6)):
         tool, args = rng.choice(_TOOLS), {"text": f"{seed}-{index}"}
@@ -274,8 +298,8 @@ async def _hold_calls(
             held_at=now + timedelta(seconds=index),
             envelope=_envelope(rng, index, session.session_id),
         )
-        assert await held.remember(session.session_id, call)
         calls[review_id] = call
+        records[review_id] = await _record(rng, session.session_id, call, world)
         status, age = rng.choice(
             [
                 (ReviewStatus.APPROVED, timedelta(minutes=5)),
@@ -291,12 +315,28 @@ async def _hold_calls(
             node_exec_id=review_id,
             session_id=session.session_id,
             status=status,
-            payload={},
+            # The card's copy of the call, which a lost record is rebuilt from.
+            payload={"arguments": args, "tool_call_id": call.tool_call_id},
             reviewed_at=None if status == ReviewStatus.WAITING else now - age,
             updated_at=None,
             created_at=now - timedelta(hours=3),
         )
-    return calls, never
+    return calls, records, never
+
+
+async def _record(
+    rng: random.Random, session_id: str, call: held.HeldCall, world: _World
+) -> str:
+    """Keep the call's record, lose it, or leave one that no longer reads back."""
+    kind = rng.choice(["kept"] * 6 + ["gone", "unreadable"])
+    if kind == "kept":
+        assert await held.remember(session_id, call)
+    elif kind == "unreadable":
+        garbled = {**call.model_dump(mode="json"), "envelope": {"depth": "deep"}}
+        world.hashes.setdefault(held._key(session_id), {})[call.review_id] = rng.choice(
+            ["not a token", JSONCryptor().encrypt(garbled)]
+        )
+    return kind
 
 
 def _envelope(rng: random.Random, index: int, session_id: str) -> TurnEnvelope | None:
@@ -337,35 +377,49 @@ def _envelope(rng: random.Random, index: int, session_id: str) -> TurnEnvelope |
 
 def _check(
     seed: int,
-    run: tuple[int, int | None, str, TurnEnvelope | None],
+    run: Run,
     calls: dict[str, held.HeldCall],
+    records: dict[str, str],
     never: set[str],
     turns: dict[int, TurnEnvelope | None],
     world: _World,
     session: ChatSession,
 ) -> None:
-    """The run was the call's own: under its envelope as the session allows it
-    now, unexpired, its tree read live by the same fold; or, with nothing
-    recorded, under a root of the user's own chat."""
+    """The run was under one of the call's own records: the one it was held
+    with or one written for it since, never another call's or turn's. Under a
+    recorded envelope, as the session allows it now, unexpired, its tree read
+    live by the same fold; under a record rebuilt from its card with nothing
+    recorded, as a root of the user's own chat. A record that no longer read
+    back never runs, nor does one whose details were lost."""
     step, fold_index, review_id, in_effect = run
     call = calls[review_id]
     where = f"seed {seed}: {call.tool_name} held under {call.envelope}"
     assert review_id not in never, f"{where} ran on a stale or declined card"
-    envelope = call.envelope
-    if envelope is None:
+    assert records[review_id] != "unreadable", f"{where} ran, its record unreadable"
+    kept = [call] if records[review_id] == "kept" else []
+    runnable = [r for r in kept + world.written.get(review_id, []) if not r.lost]
+    permissions = resolve_session_permissions(session)
+    matches = [
+        r.envelope
+        for r in runnable
+        if r.envelope is not None and in_effect == narrowed_by(r.envelope, permissions)
+    ]
+    if not matches:
         turn = turns[fold_index] if fold_index is not None else None
+        assert any(r.envelope is None for r in runnable), f"{where} ran as {in_effect}"
         assert session.metadata.delegated_by_session_id is None, f"{where} ran"
         assert turn is None or turn.depth == 0, f"{where} ran under {turn}"
         assert in_effect == turn, f"{where} ran under {in_effect}"
         return
+    envelope = matches[0]
     assert envelope.tree_id and 0 <= envelope.depth <= MAX_DEPTH, f"{where} ran"
     assert envelope.depth == 0 or envelope.tools is not None, f"{where} ran"
     deadline = envelope.deadline_at
     assert deadline is None or deadline.tzinfo is not None, f"{where} ran"
     assert deadline is None or deadline > datetime.now(UTC), f"{where} ran late"
-    own = narrowed_by(envelope, resolve_session_permissions(session))
-    assert in_effect == own, f"{where} ran under {in_effect}"
-    assert own.permits(call.tool_name), f"{where} ran a tool it may not"
+    assert in_effect is not None and in_effect.permits(
+        call.tool_name
+    ), f"{where} ran a tool it may not"
     if envelope.depth:
         reads = [
             admitted

@@ -339,7 +339,7 @@ async def test_an_expired_or_malformed_envelope_fails_closed(
     broken: dict[str, tuple[dict, str]] = {
         "deadline passed": (
             {"deadline_at": datetime.now(UTC) - timedelta(minutes=1)},
-            "deadline has passed",
+            "past its deadline",
         ),
         "child with every tool": ({"tools": None}, "could not be read back"),
         "above the root": ({"depth": -1}, "could not be read back"),
@@ -401,13 +401,17 @@ async def test_a_call_with_nothing_recorded_runs_only_under_a_root_of_the_users_
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_held_call_whose_envelope_no_longer_reads_back_does_not_run(
-    setup_test_user, test_user_id, gate_on, post_tool
+@pytest.mark.parametrize(
+    "delegated", [True, False], ids=["a delegated thread", "the user's own chat"]
+)
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_held_call_whose_record_no_longer_reads_back_does_not_run(
+    setup_test_user, test_user_id, gate_on, post_tool, delegated: bool
 ):
-    """Unreadable is gone: the answer rebuilds the call from its card, with
-    nothing recorded, so in a delegated thread neither the wake nor the next
-    turn runs it."""
-    thread = await _thread(test_user_id)
+    """The answer rebuilds the call from its card, which cannot say what the
+    record bounded it to, so it does not run, even in the user's own chat,
+    where a call whose record is simply gone runs under a root."""
+    thread = await _thread(test_user_id, delegated=delegated)
     review_id = await _hold(thread, test_user_id, "garbled", await _delegated_turn())
     redis = await get_redis_async()
     key = held._key(thread.session_id)
@@ -422,8 +426,13 @@ async def test_a_held_call_whose_envelope_no_longer_reads_back_does_not_run(
         await held.wake(test_user_id, thread.session_id, rows.values())
     [delivered] = await _fold(thread, test_user_id, _root(thread))
 
-    dispatch.assert_not_awaited()
     reloaded = await get_chat_session(thread.session_id, test_user_id)
-    assert reloaded is not None and reloaded.messages[-1].content == UNRECORDED_WAKE
+    assert reloaded is not None
+    if delegated:
+        dispatch.assert_not_awaited()
+        assert reloaded.messages[-1].content == UNRECORDED_WAKE
+    else:
+        # A root carries the answer, and still does not run the call.
+        dispatch.assert_awaited_once()
     assert post_tool.runs == []
-    _refused_for(delivered, "was not recorded")
+    _refused_for(delivered, "details were lost")

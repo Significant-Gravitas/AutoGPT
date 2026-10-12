@@ -67,8 +67,10 @@ _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
-_UNRECORDED = "What this action was allowed to do was not recorded."
-_UNREADABLE = "What this action was allowed to do could not be read back."
+# Why an approved call may not run under the envelope it was held under, each
+# read after "Nothing ran: ".
+_UNRECORDED = "what this action was allowed to do was not recorded."
+_UNREADABLE = "what this action was allowed to do could not be read back."
 
 
 def is_answer_row(message: "ChatMessage") -> bool:
@@ -224,7 +226,6 @@ async def wake(
     )
     from backend.copilot.executor.utils import dispatch_turn
     from backend.copilot.model import ChatMessage, append_and_save_message
-    from backend.copilot.session_permissions import resolve_session_permissions
     from backend.copilot.turn_queue import (
         UNRECORDED_WAKE,
         WAKE_LATER,
@@ -451,9 +452,7 @@ async def _outcome(
         # riding an approval given to a task that may no longer act on it.
         await review_store.consume(call.review_id, user_id)
         return "closed", (
-            "Nothing ran: the task this action was proposed in can no longer "
-            f'carry it out ("{refused.message}"). Propose it again if it is '
-            "still needed."
+            f"Nothing ran: {refused.message} Propose it again if it is still needed."
         )
     with envelope_scope(envelope):
         # The gate finds the approval for exactly these arguments and spends it.
@@ -485,11 +484,18 @@ async def _own_envelope(
         raise TreeRefusal(_UNREADABLE)
     # A root's re-check below never reads its deadline.
     if envelope.deadline_at is not None and envelope.deadline_at <= datetime.now(UTC):
-        raise TreeRefusal("This task's deadline has passed.")
-    await readmit_turn(envelope, user_id=user_id)
+        raise TreeRefusal("the task that proposed it is past its deadline.")
+    try:
+        await readmit_turn(envelope, user_id=user_id)
+    except TreeRefusal as refused:
+        raise TreeRefusal(
+            f"the task that proposed it may no longer act. Its limits: {refused.message}"
+        ) from refused
     envelope = narrowed_by(envelope, resolve_session_permissions(session))
     if not envelope.permits(call.tool_name):
-        raise TreeRefusal(f"{call.tool_name} is no longer allowed here.")
+        raise TreeRefusal(
+            f"{call.tool_name} is no longer allowed where it was proposed."
+        )
     return envelope
 
 
@@ -512,11 +518,23 @@ async def _restore(
     rows = [r for r in rows if r.node_exec_id.startswith(gate_prefix)]
     if not rows:
         return
-    held = await _held(session_id)
+    try:
+        held, unreadable = await _read_held(session_id)
+    except Exception:
+        # Unread, a record that is there looks gone, and one that no longer
+        # reads back would be rebuilt as runnable: rebuild nothing.
+        logger.warning(
+            f"Gate could not list held calls for session {session_id}", exc_info=True
+        )
+        return
     for row in rows:
         if row.node_exec_id not in held:
             logger.warning(f"Held call {row.node_exec_id} restored from its card")
-            await remember(session_id, _from_row(user_id, session_id, row))
+            call = _from_row(user_id, session_id, row)
+            # A record that no longer reads back may have bounded the call more
+            # than its card can say, so what is rebuilt from it never runs.
+            call.lost = call.lost or row.node_exec_id in unreadable
+            await remember(session_id, call)
 
 
 def _from_row(
@@ -548,23 +566,32 @@ def _from_row(
 
 async def _held(session_id: str) -> dict[str, HeldCall]:
     try:
-        redis = await get_redis_async()
-        raw = await redis.hgetall(_key(session_id))
+        held, _ = await _read_held(session_id)
     except Exception:
         logger.warning(
             f"Gate could not list held calls for session {session_id}", exc_info=True
         )
         return {}
+    return held
+
+
+async def _read_held(session_id: str) -> tuple[dict[str, HeldCall], set[str]]:
+    """The held calls that read back, and the ids of those that do not. Raises
+    when Redis cannot be read."""
+    redis = await get_redis_async()
+    raw = await redis.hgetall(_key(session_id))
     held: dict[str, HeldCall] = {}
+    unreadable: set[str] = set()
     for key, value in raw.items():
         review_id = key.decode() if isinstance(key, bytes) else key
         stored = value.decode() if isinstance(value, bytes) else value
         try:
             held[review_id] = HeldCall.model_validate(JSONCryptor().decrypt(stored))
         except ValidationError:
-            # Unreadable is the same as gone: the answer restores it from its card.
+            # The answer rebuilds it from its card, and it does not run.
             logger.warning(f"Gate could not read held call {review_id}")
-    return held
+            unreadable.add(review_id)
+    return held, unreadable
 
 
 async def _claim(session_id: str, review_id: str) -> bool:
