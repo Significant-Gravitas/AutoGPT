@@ -21,9 +21,6 @@ async def revoke_issued_access(user_id: str) -> None:
 
     Errors propagate: the account must not close while a key still works.
     """
-    keys = await revoke_user_api_keys(user_id)
-    oauth = await revoke_user_oauth_tokens(user_id)
-    logger.info(
-        f"Account deletion revoked {keys} API key(s) and OAuth grants {oauth} "
-        f"for user #{user_id}"
-    )
+    await revoke_user_api_keys(user_id)
+    await revoke_user_oauth_tokens(user_id)
+    logger.info(f"Account deletion revoked the API keys and OAuth grants of #{user_id}")
