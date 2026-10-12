@@ -30,12 +30,14 @@ from backend.copilot.board import (
     BoardColumnsError,
 )
 from backend.copilot.board_db import (
+    DEFAULT_BOARD_REF,
     BoardExtras,
-    get_board_columns,
     get_board_session_extras,
+    get_or_create_default_board,
     list_board_sessions,
     list_session_files,
     mark_session_reassigned,
+    resolve_board,
     save_board_columns,
     set_session_board,
     set_session_expert_if_unstarted,
@@ -116,16 +118,16 @@ async def get_board(
 ) -> BoardResponse:
     """The user's columns and cards: every placed session, plus unplaced ones
     touched in the last week."""
-    columns = await get_board_columns(user_id)
+    board = await get_or_create_default_board(user_id)
     rows = await list_board_sessions(
-        user_id, organization_id=ctx.org_id, include_older=include_older
+        user_id, board, organization_id=ctx.org_id, include_older=include_older
     )
     extras = {
         row.session.session_id: BoardExtras(**row.model_dump(exclude={"session"}))
         for row in rows
     }
     return BoardResponse(
-        columns=columns,
+        columns=board.columns,
         sessions=await session_summaries(
             user_id, [row.session for row in rows], extras
         ),
@@ -144,7 +146,8 @@ async def update_board_columns(
 ) -> BoardColumnsResponse:
     """Replace the user's columns. Cards in a removed column go to Backlog."""
     try:
-        columns = await save_board_columns(user_id, request.columns)
+        board = await get_or_create_default_board(user_id)
+        columns = await save_board_columns(user_id, board, request.columns)
     except BoardColumnsError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
     return BoardColumnsResponse(columns=columns)
@@ -171,10 +174,12 @@ async def update_session_board(
     column = request.column
     position = request.position
     if column is not None:
-        if column not in {c.key for c in await get_board_columns(user_id)}:
+        board_id = (await _session_extras(user_id, session_id)).board_id
+        board = await resolve_board(user_id, board_id or DEFAULT_BOARD_REF)
+        if column not in {c.key for c in board.columns}:
             raise HTTPException(status_code=422, detail="Unknown board column")
         if position is None:
-            position = await top_position(user_id, column)
+            position = await top_position(user_id, board_id, column)
 
     starts = (
         column is not None
@@ -272,10 +277,8 @@ async def start_session(
     """Start a card: send *message* (or the title) and move it to the top of
     In progress. The title stays as it is."""
     session = await _validate_and_get_writable_session(session_id, user_id)
-    if (
-        session.chat_status != CHAT_STATUS_IDLE
-        or (await _session_extras(user_id, session_id)).started
-    ):
+    extras = await _session_extras(user_id, session_id)
+    if session.chat_status != CHAT_STATUS_IDLE or extras.started:
         raise HTTPException(status_code=409, detail="The task has already started")
     # Start first: a refused turn leaves the card where it was.
     await start_board_card(
@@ -289,7 +292,7 @@ async def start_session(
         session_id,
         user_id,
         column=IN_PROGRESS,
-        position=await top_position(user_id, IN_PROGRESS),
+        position=await top_position(user_id, extras.board_id, IN_PROGRESS),
     )
     return await _fresh_summary(session_id, user_id)
 
@@ -367,7 +370,7 @@ async def reassign_session(
             new_id,
             user_id,
             column=IN_PROGRESS,
-            position=await top_position(user_id, IN_PROGRESS),
+            position=await top_position(user_id, None, IN_PROGRESS),
         )
         history = await get_chat_session(session_id, user_id)
         brief = build_reassign_brief(

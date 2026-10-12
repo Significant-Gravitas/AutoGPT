@@ -5,10 +5,13 @@ import pytest
 from backend.copilot.board import (
     DEFAULT_COLUMNS,
     LAST_LINE_MAX,
+    MAX_BOARD_NAME,
     BoardColumn,
     BoardColumnsError,
+    BoardNameError,
     first_sentence,
     new_column_key,
+    validate_board_name,
     validate_columns,
 )
 
@@ -112,3 +115,17 @@ def test_first_sentence_reads_only_the_start_of_a_long_reply():
     line = first_sentence("- " + "a" * 500_000)
     assert time.perf_counter() - started < 0.5
     assert line is not None and len(line) <= LAST_LINE_MAX
+
+
+def test_board_names_are_trimmed():
+    assert validate_board_name("  Launch  ") == "Launch"
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * (MAX_BOARD_NAME + 1)])
+def test_blank_or_long_board_names_are_refused(name):
+    with pytest.raises(BoardNameError):
+        validate_board_name(name)
+
+
+def test_a_board_name_at_the_limit_is_kept():
+    assert validate_board_name("x" * MAX_BOARD_NAME) == "x" * MAX_BOARD_NAME

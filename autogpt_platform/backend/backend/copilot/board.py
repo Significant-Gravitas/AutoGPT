@@ -1,4 +1,4 @@
-"""Task board: per-user columns and the pure rules behind them."""
+"""Task board: per-board columns and the pure rules behind them."""
 
 import re
 import uuid
@@ -12,6 +12,9 @@ DONE = "done"
 BUILTIN_COLUMN_KEYS = (BACKLOG, IN_PROGRESS, DONE)
 MAX_COLUMNS = 6
 MAX_COLUMN_NAME = 40
+DEFAULT_BOARD_NAME = "Home"
+MAX_BOARDS = 20
+MAX_BOARD_NAME = 40
 UNPLACED_WINDOW = timedelta(days=7)
 LAST_LINE_MAX = 140
 # A reassigned session's first, hidden row: the old chat, briefed.
@@ -43,6 +46,17 @@ DEFAULT_COLUMNS = [
 
 class BoardColumnsError(ValueError):
     """A column list the board cannot store."""
+
+
+class BoardNameError(ValueError):
+    """A board name the board cannot store."""
+
+
+def validate_board_name(name: str) -> str:
+    stripped = name.strip()
+    if not stripped or len(stripped) > MAX_BOARD_NAME:
+        raise BoardNameError(f"Board names must be 1 to {MAX_BOARD_NAME} characters")
+    return stripped
 
 
 def new_column_key() -> str:

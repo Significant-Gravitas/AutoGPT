@@ -29,8 +29,8 @@ from backend.copilot.active_turns import (
 from backend.copilot.board import BACKLOG, DONE
 from backend.copilot.board_db import (
     BoardExtras,
-    get_board_columns,
     get_board_session_extras,
+    get_or_create_default_board,
     set_session_board,
     top_position,
 )
@@ -926,7 +926,7 @@ async def create_session(
         )
 
     if board_column is not None and board_column not in {
-        column.key for column in await get_board_columns(user_id)
+        column.key for column in (await get_or_create_default_board(user_id)).columns
     }:
         raise HTTPException(status_code=422, detail="Unknown board column")
 
@@ -1013,7 +1013,7 @@ async def create_session(
                 session.session_id,
                 user_id,
                 column=board_column,
-                position=await top_position(user_id, board_column),
+                position=await top_position(user_id, None, board_column),
             )
             if starts:
                 await start_board_card(

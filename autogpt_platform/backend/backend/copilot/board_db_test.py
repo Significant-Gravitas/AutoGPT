@@ -1,6 +1,8 @@
-"""Task board queries against the database: columns, which sessions are on
-the board, the card facts, and the writes that must not bump ``updatedAt``."""
+"""Task board queries against the database: boards and their columns, which
+sessions are on a board, the card facts, and the writes that must not bump
+``updatedAt``."""
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, AsyncIterator
@@ -8,6 +10,7 @@ from typing import Any, AsyncIterator
 import pytest
 import pytest_asyncio
 from prisma.enums import ReviewStatus
+from prisma.models import Board
 from prisma.models import ChatMessage as PrismaChatMessage
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.models import Expert, PendingHumanReview, User, UserWorkspaceFile
@@ -18,18 +21,29 @@ from backend.copilot.board import (
     DEFAULT_COLUMNS,
     DONE,
     IN_PROGRESS,
+    MAX_BOARDS,
     BoardColumn,
     new_column_key,
 )
 from backend.copilot.board_db import (
-    get_board_columns,
+    UNSET,
+    BoardLimitError,
+    BoardNotFoundError,
+    DefaultBoardError,
+    create_board,
+    delete_board,
     get_board_session_extras,
+    get_or_create_default_board,
     list_board_sessions,
+    list_boards,
     list_session_files,
     mark_session_reassigned,
+    resolve_board,
     save_board_columns,
     set_session_board,
     set_session_expert_if_unstarted,
+    top_position,
+    update_board,
 )
 from backend.copilot.board_reassign import reassign_brief_metadata
 from backend.data import db
@@ -50,10 +64,112 @@ async def user_id(server: SpinTestServer) -> AsyncIterator[str]:
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_a_user_without_a_board_gets_the_default_columns(user_id: str):
-    columns = await get_board_columns(user_id)
+    columns = (await get_or_create_default_board(user_id)).columns
 
     assert columns == DEFAULT_COLUMNS
     assert all(a is not b for a, b in zip(columns, DEFAULT_COLUMNS))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_default_board_is_made_once(user_id: str):
+    first, second = await asyncio.gather(
+        get_or_create_default_board(user_id), get_or_create_default_board(user_id)
+    )
+    again = await get_or_create_default_board(user_id)
+
+    assert first.id == second.id == again.id
+    assert again.is_default and again.name == "Home"
+    assert again.columns == DEFAULT_COLUMNS
+    assert await Board.prisma().count(where={"userId": user_id}) == 1
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_boards_list_home_first_then_by_position(user_id: str):
+    second = await create_board(user_id, "Second")
+    third = await create_board(user_id, "Third")
+
+    boards = await list_boards(user_id)
+
+    assert [b.name for b in boards] == ["Home", "Second", "Third"]
+    assert [b.is_default for b in boards] == [True, False, False]
+    assert second.position < third.position
+    assert third.columns == DEFAULT_COLUMNS
+
+    await update_board(user_id, third.id, position=second.position - 1)
+
+    assert [b.name for b in await list_boards(user_id)] == ["Home", "Third", "Second"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_user_has_at_most_twenty_boards(user_id: str):
+    for i in range(MAX_BOARDS - 1):
+        await create_board(user_id, f"Project {i}")
+
+    with pytest.raises(BoardLimitError):
+        await create_board(user_id, "One too many")
+    assert await Board.prisma().count(where={"userId": user_id}) == MAX_BOARDS
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_project_can_be_renamed_but_home_cannot(user_id: str):
+    project = await create_board(user_id, "Launch")
+
+    renamed = await update_board(user_id, project.id, name="  Relaunch  ")
+
+    assert renamed.name == "Relaunch"
+    assert (await resolve_board(user_id, project.id)).name == "Relaunch"
+    home = await get_or_create_default_board(user_id)
+    with pytest.raises(DefaultBoardError):
+        await update_board(user_id, home.id, name="Away")
+    with pytest.raises(DefaultBoardError):
+        await update_board(user_id, "default", name="Away")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deleting_a_project_moves_its_cards_on_top_of_home_backlog(
+    user_id: str,
+):
+    home_card = await _session(user_id, board_column=BACKLOG, board_position=0.0)
+    project = await create_board(user_id, "Launch")
+    first = await _session(
+        user_id, board_id=project.id, board_column=IN_PROGRESS, board_position=1.0
+    )
+    second = await _session(
+        user_id, board_id=project.id, board_column=IN_PROGRESS, board_position=5.0
+    )
+
+    await delete_board(user_id, project.id)
+
+    moved = [await _row(first), await _row(second)]
+    assert all(r.boardId is None and r.boardColumn == BACKLOG for r in moved)
+    home_position = (await _row(home_card)).boardPosition
+    assert home_position is not None
+    assert moved[0].boardPosition is not None and moved[1].boardPosition is not None
+    assert moved[0].boardPosition < moved[1].boardPosition < home_position
+    assert await Board.prisma().find_unique(where={"id": project.id}) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_home_cannot_be_deleted(user_id: str):
+    home = await get_or_create_default_board(user_id)
+
+    with pytest.raises(DefaultBoardError):
+        await delete_board(user_id, home.id)
+    assert await Board.prisma().find_unique(where={"id": home.id}) is not None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_another_users_board_is_not_found(user_id: str):
+    stranger = await _stranger()
+    try:
+        theirs = await create_board(stranger, "Theirs")
+
+        with pytest.raises(BoardNotFoundError):
+            await resolve_board(user_id, theirs.id)
+        with pytest.raises(BoardNotFoundError):
+            await delete_board(user_id, theirs.id)
+    finally:
+        await User.prisma().delete(where={"id": stranger})
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -61,9 +177,11 @@ async def test_saved_columns_round_trip(user_id: str):
     custom = BoardColumn(key=new_column_key(), name="Waiting on Bob")
     columns = [*DEFAULT_COLUMNS[:2], custom, DEFAULT_COLUMNS[2]]
 
-    saved = await save_board_columns(user_id, columns)
+    home = await get_or_create_default_board(user_id)
 
-    assert await get_board_columns(user_id) == saved
+    saved = await save_board_columns(user_id, home, columns)
+
+    assert (await resolve_board(user_id, "default")).columns == saved
     assert [c.key for c in saved] == [BACKLOG, IN_PROGRESS, custom.key, DONE]
     assert saved[2].name == "Waiting on Bob" and not saved[2].builtin
 
@@ -71,14 +189,33 @@ async def test_saved_columns_round_trip(user_id: str):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_removing_a_column_moves_its_cards_to_backlog(user_id: str):
     custom = BoardColumn(key=new_column_key(), name="Review")
-    await save_board_columns(user_id, [*DEFAULT_COLUMNS, custom])
+    home = await get_or_create_default_board(user_id)
+    await save_board_columns(user_id, home, [*DEFAULT_COLUMNS, custom])
     in_custom = await _session(user_id, board_column=custom.key)
     in_done = await _session(user_id, board_column=DONE)
 
-    await save_board_columns(user_id, list(DEFAULT_COLUMNS))
+    await save_board_columns(user_id, home, list(DEFAULT_COLUMNS))
 
     assert (await _row(in_custom)).boardColumn == BACKLOG
     assert (await _row(in_done)).boardColumn == DONE
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_removing_a_column_on_a_project_leaves_home_alone(user_id: str):
+    custom = BoardColumn(key=new_column_key(), name="Review")
+    home = await get_or_create_default_board(user_id)
+    project = await create_board(user_id, "Launch")
+    await save_board_columns(user_id, home, [*DEFAULT_COLUMNS, custom])
+    await save_board_columns(user_id, project, [*DEFAULT_COLUMNS, custom])
+    on_home = await _session(user_id, board_column=custom.key)
+    on_project = await _session(user_id, board_id=project.id, board_column=custom.key)
+
+    await save_board_columns(user_id, project, list(DEFAULT_COLUMNS))
+
+    assert (await _row(on_project)).boardColumn == BACKLOG
+    assert (await _row(on_home)).boardColumn == custom.key
+    assert custom in (await resolve_board(user_id, "default")).columns
+    assert custom not in (await resolve_board(user_id, project.id)).columns
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -86,7 +223,9 @@ async def test_a_placed_session_is_listed_however_old(user_id: str):
     placed = await _session(user_id, board_column=BACKLOG, board_position=0.0)
     await _age(placed, days=30)
 
-    rows = await list_board_sessions(user_id, organization_id=None)
+    home = await get_or_create_default_board(user_id)
+
+    rows = await list_board_sessions(user_id, home, organization_id=None)
 
     listed = {r.session.session_id: r for r in rows}
     assert listed[placed].board_column == BACKLOG
@@ -101,8 +240,9 @@ async def test_the_row_cap_drops_done_cards_before_active_ones(
     await _session(user_id, board_column=DONE, board_position=0.0)
     await _session(user_id, board_column=DONE, board_position=1.0)
     active = await _session(user_id, board_column=IN_PROGRESS, board_position=0.0)
+    home = await get_or_create_default_board(user_id)
 
-    rows = await list_board_sessions(user_id, organization_id=None)
+    rows = await list_board_sessions(user_id, home, organization_id=None)
 
     assert len(rows) == 2
     assert active in [r.session.session_id for r in rows]
@@ -113,10 +253,11 @@ async def test_an_unplaced_session_is_listed_only_while_recent(user_id: str):
     recent = await _session(user_id)
     stale = await _session(user_id)
     await _age(stale, days=8)
+    home = await get_or_create_default_board(user_id)
 
-    default = await list_board_sessions(user_id, organization_id=None)
+    default = await list_board_sessions(user_id, home, organization_id=None)
     with_older = await list_board_sessions(
-        user_id, organization_id=None, include_older=True
+        user_id, home, organization_id=None, include_older=True
     )
 
     default_ids = [r.session.session_id for r in default]
@@ -131,15 +272,68 @@ async def test_an_unplaced_session_is_listed_only_while_recent(user_id: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_each_board_lists_only_its_own_cards(user_id: str):
+    project = await create_board(user_id, "Launch")
+    on_project = await _session(
+        user_id, board_id=project.id, board_column=BACKLOG, board_position=0.0
+    )
+    on_home = await _session(user_id, board_column=BACKLOG, board_position=0.0)
+    recent = await _session(user_id)
+    stale = await _session(user_id)
+    await _age(stale, days=8)
+    home = await get_or_create_default_board(user_id)
+
+    project_rows = await list_board_sessions(
+        user_id, project, organization_id=None, include_older=True
+    )
+    home_rows = await list_board_sessions(user_id, home, organization_id=None)
+
+    assert [r.session.session_id for r in project_rows] == [on_project]
+    assert project_rows[0].board_id == project.id
+    home_ids = [r.session.session_id for r in home_rows]
+    assert on_home in home_ids and recent in home_ids
+    assert on_project not in home_ids and stale not in home_ids
+    assert all(r.board_id is None for r in home_rows)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_dream_and_builder_sessions_are_not_on_the_board(user_id: str):
     dream = await _session(user_id, metadata={"kind": "dream"})
     builder = await _session(user_id, metadata={"builder_graph_id": "graph-1"})
+    home = await get_or_create_default_board(user_id)
 
-    rows = await list_board_sessions(user_id, organization_id=None, include_older=True)
+    rows = await list_board_sessions(
+        user_id, home, organization_id=None, include_older=True
+    )
 
     listed = [r.session.session_id for r in rows]
     assert dream not in listed
     assert builder not in listed
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_top_of_a_column_is_per_board(user_id: str):
+    project = await create_board(user_id, "Launch")
+    await _session(user_id, board_column=BACKLOG, board_position=0.0)
+    await _session(
+        user_id, board_id=project.id, board_column=BACKLOG, board_position=100.0
+    )
+
+    assert await top_position(user_id, None, BACKLOG) == -1024.0
+    assert await top_position(user_id, project.id, BACKLOG) == 100.0 - 1024
+    assert await top_position(user_id, project.id, DONE) == 0.0
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_extras_carry_the_board(user_id: str):
+    project = await create_board(user_id, "Launch")
+    on_project = await _session(user_id, board_id=project.id, board_column=BACKLOG)
+    on_home = await _session(user_id, board_column=BACKLOG)
+
+    extras = await get_board_session_extras(user_id, [on_project, on_home])
+
+    assert extras[on_project].board_id == project.id
+    assert extras[on_home].board_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -361,6 +555,67 @@ async def test_moving_a_card_does_not_touch_updated_at(user_id: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_card_moves_between_boards(user_id: str):
+    project = await create_board(user_id, "Launch")
+    session = await _session(user_id, board_id=project.id, board_column=BACKLOG)
+
+    to_home = await set_session_board(
+        session, user_id, column=None, position=None, board_id=None
+    )
+    assert to_home is True
+    assert (await _row(session)).boardId is None
+
+    await set_session_board(
+        session, user_id, column=DONE, position=1.0, board_id=project.id
+    )
+    await set_session_board(
+        session, user_id, column=IN_PROGRESS, position=2.0, board_id=UNSET
+    )
+
+    row = await _row(session)
+    assert row.boardId == project.id
+    assert row.boardColumn == IN_PROGRESS
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_card_cannot_move_onto_another_users_board(user_id: str):
+    stranger = await _stranger()
+    try:
+        theirs = await create_board(stranger, "Theirs")
+        session = await _session(user_id, board_column=BACKLOG)
+
+        moved = await set_session_board(
+            session, user_id, column=None, position=None, board_id=theirs.id
+        )
+
+        assert moved is False
+        assert (await _row(session)).boardId is None
+    finally:
+        await User.prisma().delete(where={"id": stranger})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_reassigned_card_goes_to_done_on_its_own_board(user_id: str):
+    project = await create_board(user_id, "Launch")
+    await _session(user_id, board_column=DONE, board_position=-5000.0)
+    await _session(
+        user_id, board_id=project.id, board_column=DONE, board_position=100.0
+    )
+    old = await _session(
+        user_id, board_id=project.id, board_column=IN_PROGRESS, board_position=0.0
+    )
+
+    await mark_session_reassigned(
+        old, user_id, to_session_id="new-session", to_expert_id=None
+    )
+
+    row = await _row(old)
+    assert row.boardId == project.id
+    assert row.boardColumn == DONE
+    assert row.boardPosition == 100.0 - 1024
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_reassigned_card_moves_to_the_top_of_done_and_keeps_its_question(
     user_id: str,
 ):
@@ -392,6 +647,7 @@ async def _session(
     metadata: dict[str, Any] | None = None,
     board_column: str | None = None,
     board_position: float | None = None,
+    board_id: str | None = None,
 ) -> str:
     row = await PrismaChatSession.prisma().create(
         data={
@@ -403,6 +659,7 @@ async def _session(
             "metadata": SafeJson(metadata or {}),
             "boardColumn": board_column,
             "boardPosition": board_position,
+            "boardId": board_id,
         }
     )
     return row.id
