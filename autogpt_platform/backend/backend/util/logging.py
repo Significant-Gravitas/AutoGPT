@@ -1,11 +1,14 @@
 import logging
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from backend.util.settings import AppEnvironment, BehaveAs, Settings
-from backend.util.url_redaction import RequestURLRedactionFilter
+from backend.util.url_redaction import CredentialHeaderFilter, RequestURLRedactionFilter
 
 settings = Settings()
 
 _request_url_redaction = RequestURLRedactionFilter()
+_credential_header_redaction = CredentialHeaderFilter()
 
 
 def configure_logging():
@@ -20,12 +23,40 @@ def configure_logging():
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     # These log request URLs we don't format: uvicorn the path and query of
-    # every request (the access log, and a line per WebSocket handshake), and
-    # autogpt_libs the URL of every request an admin makes as another user. A
-    # parent logger's filters never see records propagated from its children,
-    # so the filter goes on each logger directly.
-    for name in ("uvicorn.access", "uvicorn.error", "autogpt_libs.auth.dependencies"):
+    # every request (the access log, and a line per WebSocket handshake),
+    # autogpt_libs the URL of every request an admin makes as another user, and
+    # websockets, at DEBUG, the target of each handshake: a server's on
+    # uvicorn's error log, and a client's, or a server's outside uvicorn, on its
+    # own. A parent logger's filters never see records propagated from its
+    # children, so the filter goes on each logger directly.
+    for name in (
+        "uvicorn.access",
+        "uvicorn.error",
+        "autogpt_libs.auth.dependencies",
+        "websockets.client",
+        "websockets.server",
+    ):
         logging.getLogger(name).addFilter(_request_url_redaction)
+    # websockets logs each handshake's headers there too, the session cookie
+    # and Authorization included.
+    for name in ("uvicorn.error", "websockets.client", "websockets.server"):
+        logging.getLogger(name).addFilter(_credential_header_redaction)
+
+
+def describe_validation_errors(errors: Sequence[Mapping[str, Any]]) -> str:
+    """Where and why validation failed, for the logs, without what failed it.
+
+    Each pydantic error carries the ``input`` that failed, which for a missing
+    field is the whole object around it, such as a request body holding an API
+    key; its message can quote the input too.
+    """
+    locations = "; ".join(
+        f"{'.'.join(str(part) for part in error.get('loc') or ())} "
+        f"({error.get('type')})"
+        for error in errors
+    )
+    count = len(errors)
+    return f"{count} validation error{'' if count == 1 else 's'}: {locations}"
 
 
 def is_structured_logging_enabled() -> bool:

@@ -30,6 +30,7 @@ import pytest
 from backend.api.features.integrations.router import router
 from backend.data.integrations import WebhookWithRelations
 from backend.integrations.providers import ProviderName
+from backend.util.url_redaction import mask_credential
 
 app = fastapi.FastAPI()
 app.include_router(router)
@@ -519,14 +520,18 @@ class TestProviderPathConfusion:
         )
         assert resp.status_code == 404, resp.text
         # Response is indistinguishable from a genuinely nonexistent webhook.
-        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
+        assert (
+            resp.json()["detail"] == f"Webhook #{mask_credential(WEBHOOK_ID)} not found"
+        )
 
     def test_generic_secret_not_bypassable_via_slant3d_path(self):
         resp = self._run_cross_provider(
             self._secret_protected_generic(), "slant3d", ProviderName.SLANT3D
         )
         assert resp.status_code == 404, resp.text
-        assert resp.json()["detail"] == f"Webhook #{WEBHOOK_ID} not found"
+        assert (
+            resp.json()["detail"] == f"Webhook #{mask_credential(WEBHOOK_ID)} not found"
+        )
 
     def test_matching_provider_path_still_processes(self):
         # Control: the same webhook on its own path with the correct secret is

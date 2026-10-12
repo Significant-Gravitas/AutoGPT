@@ -92,6 +92,7 @@ from backend.util.exceptions import (
     NotFoundError,
 )
 from backend.util.settings import Settings
+from backend.util.url_redaction import mask_credential
 
 from .codex import (
     CODEX_LOGIN_STATE_KEY,
@@ -122,6 +123,19 @@ _INITIATE_COOLDOWN_SECONDS = 3
 # The throttle protects an upstream client id; it must never be the reason a
 # request hangs.
 _THROTTLE_TIMEOUT_SECONDS = 1.0
+# A webhook's other fields hold secrets: `id` and `url` are its ingress
+# credential, `secret` and `config` hold signing secrets, and the triggers
+# repeat them.
+_LOGGED_WEBHOOK_FIELDS = {
+    "user_id",
+    "provider",
+    "credentials_id",
+    "webhook_type",
+    "resource",
+    "events",
+    "organization_id",
+    "team_id",
+}
 settings = Settings()
 router = APIRouter()
 router.include_router(codex_router, prefix="/codex")
@@ -1198,7 +1212,9 @@ async def webhook_ingress_generic(
     ],
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
-    logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
+    logger.debug(
+        f"Received {provider.value} webhook ingress for ID {mask_credential(webhook_id)}"
+    )
     webhook_manager = get_webhook_manager(provider)
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
@@ -1207,20 +1223,21 @@ async def webhook_ingress_generic(
         # own (a no-op for unsigned providers like Compass), bypassing it.
         if webhook.provider.value.lower() != provider.value.lower():
             logger.warning(
-                f"Webhook #{webhook_id} provider mismatch: "
+                f"Webhook #{mask_credential(webhook_id)} provider mismatch: "
                 f"registered as {webhook.provider.value}, ingress via {provider.value}"
             )
             # Same as the actual "webhook not found" response to conceal existence
-            raise NotFoundError(f"Webhook #{webhook_id} not found")
+            raise NotFoundError(f"Webhook #{mask_credential(webhook_id)} not found")
     except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        logger.warning(
+            f"Webhook payload received for unknown webhook #{mask_credential(webhook_id)}"
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-    # `secret` and `config` are excluded: both can hold platform- or
-    # provider-issued signing secrets, which must not reach the logs.
     # Guarded so the dump doesn't run on every delivery when DEBUG is off.
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
-            f"Webhook #{webhook_id}: {webhook.model_dump(exclude={'secret', 'config'})}"
+            f"Webhook #{mask_credential(webhook_id)}: "
+            f"{webhook.model_dump(include=_LOGGED_WEBHOOK_FIELDS)}"
         )
 
     user_id = webhook.user_id
@@ -1231,7 +1248,9 @@ async def webhook_ingress_generic(
             else None
         )
     except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        logger.warning(
+            f"Webhook payload received for unknown webhook #{mask_credential(webhook_id)}"
+        )
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
 
     # Run provider signature verification (no-op for providers whose protocol
@@ -1243,7 +1262,7 @@ async def webhook_ingress_generic(
         raise
     except Exception:
         logger.exception(
-            f"Signature verification failed for webhook #{webhook_id} ({provider.value})"
+            f"Signature verification failed for webhook #{mask_credential(webhook_id)} ({provider.value})"
         )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1265,7 +1284,9 @@ async def webhook_ingress_generic(
         payload=payload,
     )
     await publish_webhook_event(webhook_event)
-    logger.debug(f"Webhook event published: {webhook_event}")
+    logger.debug(
+        f"Published {event_type} event for webhook #{mask_credential(webhook_id)}"
+    )
 
     if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
@@ -1329,7 +1350,7 @@ async def _execute_webhook_node_trigger(
     payload: dict,
 ) -> None:
     """Execute a webhook-triggered node."""
-    logger.debug(f"Webhook-attached node: {node}")
+    logger.debug(f"Webhook-attached node: #{node.id}")
     if not node.is_triggered_by_event_type(event_type):
         logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
         return
@@ -1364,7 +1385,7 @@ async def _execute_webhook_node_trigger(
         )
     except GraphNotInLibraryError as e:
         logger.warning(
-            f"Webhook #{webhook_id} execution blocked for "
+            f"Webhook #{mask_credential(webhook_id)} execution blocked for "
             f"deleted/archived graph #{node.graph_id} (node #{node.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
@@ -1373,7 +1394,7 @@ async def _execute_webhook_node_trigger(
         )
     except Exception:
         logger.exception(
-            f"Failed to execute graph #{node.graph_id} via webhook #{webhook_id}"
+            f"Failed to execute graph #{node.graph_id} via webhook #{mask_credential(webhook_id)}"
         )
         # Continue processing - webhook should be resilient to individual failures
 
@@ -1386,7 +1407,7 @@ async def _execute_webhook_preset_trigger(
     payload: dict,
 ) -> None:
     """Execute a webhook-triggered preset."""
-    logger.debug(f"Webhook-attached preset: {preset}")
+    logger.debug(f"Webhook-attached preset: #{preset.id}")
     if not preset.is_active:
         logger.debug(f"Preset #{preset.id} is inactive")
         return
@@ -1395,7 +1416,7 @@ async def _execute_webhook_preset_trigger(
     if preset.user_id != webhook.user_id:
         logger.warning(
             f"Refusing to trigger preset #{preset.id} (owner #{preset.user_id}) "
-            f"from webhook #{webhook.id} owned by user #{webhook.user_id}"
+            f"from webhook #{mask_credential(webhook.id)} owned by user #{webhook.user_id}"
         )
         return
 
@@ -1434,7 +1455,7 @@ async def _execute_webhook_preset_trigger(
     if not (trigger_node := graph.webhook_input_node):
         # NOTE: this should NEVER happen, but we log and handle it gracefully
         logger.error(
-            f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
+            f"Preset #{preset.id} is triggered by webhook #{mask_credential(webhook.id)}, but graph "
             f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
         )
         await set_preset_webhook(preset.user_id, preset.id, None)
@@ -1442,7 +1463,9 @@ async def _execute_webhook_preset_trigger(
     if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
         logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
         return
-    logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+    logger.debug(
+        f"Executing preset #{preset.id} for webhook #{mask_credential(webhook.id)}"
+    )
 
     try:
         # Expert resources survive personal-org conversion: active ownership
@@ -1487,7 +1510,7 @@ async def _execute_webhook_preset_trigger(
         logger.info(f"Skipping triggered run for preset #{preset.id}: {e}")
     except GraphNotInLibraryError as e:
         logger.warning(
-            f"Webhook #{webhook_id} execution blocked for "
+            f"Webhook #{mask_credential(webhook_id)} execution blocked for "
             f"deleted graph #{preset.graph_id} (preset #{preset.id}): {e}"
         )
         # Clean up orphaned webhook trigger for this graph
@@ -1498,13 +1521,13 @@ async def _execute_webhook_preset_trigger(
         # Permanent, unlike the transient failures below: every future
         # delivery fails the same way while the preset still reads as Active.
         logger.error(
-            f"Webhook #{webhook_id} preset #{preset.id} is permanently blocked: "
+            f"Webhook #{mask_credential(webhook_id)} preset #{preset.id} is permanently blocked: "
             f"user #{webhook.user_id} may not execute graph "
             f"#{preset.graph_id} v{preset.graph_version}: {e}"
         )
     except Exception:
         logger.exception(
-            f"Failed to execute preset #{preset.id} via webhook #{webhook_id}"
+            f"Failed to execute preset #{preset.id} via webhook #{mask_credential(webhook_id)}"
         )
         # Continue processing - webhook should be resilient to individual failures
 
@@ -1757,7 +1780,7 @@ async def remove_all_webhooks_for_credentials(
             user_id, webhook.id, credentials
         )
         if not success:
-            logger.warning(f"Webhook #{webhook.id} failed to prune")
+            logger.warning(f"Webhook #{mask_credential(webhook.id)} failed to prune")
 
 
 async def _cleanup_orphaned_webhook_for_graph(
@@ -1772,7 +1795,7 @@ async def _cleanup_orphaned_webhook_for_graph(
         webhook = await get_webhook(webhook_id, include_relations=True)
         if not webhook or webhook.user_id != user_id:
             logger.warning(
-                f"Webhook {webhook_id} not found or doesn't belong to user {user_id}"
+                f"Webhook {mask_credential(webhook_id)} not found or doesn't belong to user {user_id}"
             )
             return
 
@@ -1811,7 +1834,7 @@ async def _cleanup_orphaned_webhook_for_graph(
 
         if nodes_removed > 0 or presets_removed > 0:
             logger.info(
-                f"Cleaned up orphaned webhook #{webhook_id}: "
+                f"Cleaned up orphaned webhook #{mask_credential(webhook_id)}: "
                 f"removed {nodes_removed} nodes and {presets_removed} presets "
                 f"for deleted/archived graph #{graph_id}"
             )
@@ -1836,19 +1859,21 @@ async def _cleanup_orphaned_webhook_for_graph(
                     )
                     if success:
                         logger.info(
-                            f"Pruned orphaned webhook #{webhook_id} "
+                            f"Pruned orphaned webhook #{mask_credential(webhook_id)} "
                             f"with no remaining triggers"
                         )
                     else:
                         logger.warning(
-                            f"Failed to prune orphaned webhook #{webhook_id}"
+                            f"Failed to prune orphaned webhook #{mask_credential(webhook_id)}"
                         )
                 except Exception:
-                    logger.exception(f"Failed to prune orphaned webhook #{webhook_id}")
+                    logger.exception(
+                        f"Failed to prune orphaned webhook #{mask_credential(webhook_id)}"
+                    )
 
     except Exception:
         logger.exception(
-            f"Failed to cleanup orphaned webhook #{webhook_id} for graph #{graph_id}"
+            f"Failed to cleanup orphaned webhook #{mask_credential(webhook_id)} for graph #{graph_id}"
         )
 
 
