@@ -109,6 +109,13 @@ function planEnds(date: Date | number): Panel {
   };
 }
 
+function trialCancel(date: Date): Panel {
+  return {
+    copy: `You can cancel your trial instead. You won't be charged and you keep access until ${formatShortDate(date)}.`,
+    action: BILLING,
+  };
+}
+
 function trialEnds(date: Date): Panel {
   return {
     copy: `Your trial already ends on ${formatShortDate(date)} and you won't be charged.`,
@@ -201,7 +208,18 @@ const SCENARIOS: Scenario[] = [
   {
     name: "Trial",
     subscription: subscriptionStatus({ tier: "TRIAL" }),
-    trial: trialResponse({ cancel_at_period_end: false }),
+    trial: trialResponse({
+      cancel_at_period_end: false,
+      ends_at: TRIAL_ENDS_AT,
+    }),
+    cost: trialCancel(TRIAL_ENDS_AT),
+    not_using: trialCancel(TRIAL_ENDS_AT),
+    limits: null,
+  },
+  {
+    name: "Trial whose status has no end date",
+    subscription: subscriptionStatus({ tier: "TRIAL" }),
+    trial: trialResponse({ cancel_at_period_end: false, ends_at: null }),
     cost: TRIAL_CANCEL,
     not_using: TRIAL_CANCEL,
     limits: null,
@@ -563,7 +581,10 @@ describe("DeleteAccountFlow trial panels while the trial status loads", () => {
       http.get("/api/proxy/api/credits/trial", async () => {
         await trialStatus.promise;
         return HttpResponse.json(
-          trialResponse({ cancel_at_period_end: false }),
+          trialResponse({
+            cancel_at_period_end: false,
+            ends_at: TRIAL_ENDS_AT,
+          }),
         );
       }),
     );
@@ -580,6 +601,6 @@ describe("DeleteAccountFlow trial panels while the trial status loads", () => {
 
     trialStatus.resolve();
 
-    await waitFor(() => expectPanel(TRIAL_CANCEL));
+    await waitFor(() => expectPanel(trialCancel(TRIAL_ENDS_AT)));
   });
 });

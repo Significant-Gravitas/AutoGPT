@@ -20,6 +20,7 @@ interface ReasonPanelArgs {
   pending: PendingChange | null;
   apps: AppsState;
   proMonthlyCents: number | null;
+  trialEndsAt: PendingChange["effectiveAt"] | null;
   origin: DeletionSource;
   disconnect: DisconnectState;
 }
@@ -110,7 +111,7 @@ function getCostPanel(args: ReasonPanelArgs): ReasonPanel | null {
     case "trial":
       return pending?.kind === "cancel"
         ? getTrialEndsPanel(pending)
-        : { copy: TRIAL_CANCEL_COPY, action: ACTIONS.billing };
+        : getTrialCancelPanel(args);
     case "none":
       return { copy: NO_PLAN_COPY, action: ACTIONS.keep_account };
     case "managed":
@@ -158,6 +159,15 @@ function getPlanEndsPanel(pending: PendingChange): ReasonPanel {
   return {
     copy: `Your plan already ends on ${formatShortDate(pending.effectiveAt)}, and you won't be charged again. Your account stays after that.`,
     action: ACTIONS.keep_account,
+  };
+}
+
+function getTrialCancelPanel({ trialEndsAt }: ReasonPanelArgs): ReasonPanel {
+  return {
+    copy: trialEndsAt
+      ? `You can cancel your trial instead. You won't be charged and you keep access until ${formatShortDate(trialEndsAt)}.`
+      : TRIAL_CANCEL_COPY,
+    action: ACTIONS.billing,
   };
 }
 

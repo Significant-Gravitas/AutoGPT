@@ -100,6 +100,7 @@ function panel(overrides: Partial<PanelArgs>) {
     pending: null,
     apps: APPS.unavailable,
     proMonthlyCents: PRO_CENTS,
+    trialEndsAt: null,
     origin: "settings",
     disconnect: DISCONNECTS.idle,
     ...overrides,
@@ -559,6 +560,51 @@ describe("getReasonPanel", () => {
         "Your plan already ends on Jan 5, 2027, and you won't be charged again. Your account stays after that.",
       );
     });
+  });
+
+  describe("the trial end date", () => {
+    const TRIAL_ENDS_ON = new Date(2026, 9, 20);
+
+    it.each(["cost", "not_using"] as const)(
+      "%s: a canceled trial keeps access until it ends",
+      (reason) => {
+        expect(
+          panel({ reason, planState: "trial", trialEndsAt: TRIAL_ENDS_ON }),
+        ).toEqual({
+          copy: "You can cancel your trial instead. You won't be charged and you keep access until Oct 20, 2026.",
+          action: BILLING,
+        });
+      },
+    );
+
+    it.each(["cost", "not_using"] as const)(
+      "%s: without an end date the clause is left out",
+      (reason) => {
+        expect(panel({ reason, planState: "trial" })).toEqual(TRIAL_CANCEL);
+      },
+    );
+
+    it("a trial that already ends keeps its own panel", () => {
+      expect(
+        panel({
+          reason: "cost",
+          planState: "trial",
+          pending: PENDING.cancel,
+          trialEndsAt: TRIAL_ENDS_ON,
+        }),
+      ).toEqual(TRIAL_ENDS);
+    });
+
+    it.each(["max", "pro", "none", "managed"] as const)(
+      "changes nothing for %s",
+      (planState) => {
+        for (const reason of ["cost", "not_using", "limits"] as const) {
+          expect(
+            panel({ reason, planState, trialEndsAt: TRIAL_ENDS_ON }),
+          ).toEqual(panel({ reason, planState }));
+        }
+      },
+    );
   });
 });
 

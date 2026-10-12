@@ -20,7 +20,7 @@ interface Args {
 export function useReasonPanel({ reason, origin, onClose }: Args) {
   const router = useRouter();
   const { apps, targets } = useConnectedApps();
-  const { planState, pending, proMonthlyCents } = usePlanContext();
+  const { planState, pending, proMonthlyCents, trialEndsAt } = usePlanContext();
   const disconnect = useDisconnectApps();
   const { sendAlternative } = useExitFeedback();
 
@@ -30,6 +30,7 @@ export function useReasonPanel({ reason, origin, onClose }: Args) {
     pending,
     apps,
     proMonthlyCents,
+    trialEndsAt,
     origin,
     disconnect: disconnect.state,
   });

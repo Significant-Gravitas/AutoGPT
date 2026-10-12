@@ -50,6 +50,7 @@ export function getPlanContext({ subscription, trial }: PlanContextArgs) {
     planState,
     pending: getPendingChange({ planState, plan, subscription, trial }),
     proMonthlyCents: getProMonthlyCents(subscription),
+    trialEndsAt: planState === "trial" ? (trial?.ends_at ?? null) : null,
   };
 }
 
