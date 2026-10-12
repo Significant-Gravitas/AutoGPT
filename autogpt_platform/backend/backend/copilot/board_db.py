@@ -45,11 +45,23 @@ _STARTED_SQL = (
     ")"
 )
 
+# Something the chat would show: an expert's greeting after a hidden kickoff
+# counts, the kickoff itself does not.
+_HAS_MESSAGES_SQL = (
+    "EXISTS ("
+    'SELECT 1 FROM {schema_prefix}"ChatMessage" m '
+    'WHERE m."sessionId" = cs."id" AND (m."role" = \'assistant\' '
+    "OR (m.\"role\" = 'user' "
+    "AND COALESCE(m.\"metadata\"->>'hidden', 'false') <> 'true'))"
+    ")"
+)
+
 _EXTRAS_SQL = (
     'SELECT cs."id", '
     'cs."boardColumn" AS "board_column", '
     'cs."boardPosition" AS "board_position", '
     f'{_STARTED_SQL} AS "started", '
+    f'{_HAS_MESSAGES_SQL} AS "has_messages", '
     "("
     "jsonb_typeof(cs.\"metadata\"->'pending_question') = 'object' "
     "OR EXISTS ("
@@ -89,6 +101,7 @@ class BoardExtras(BaseModel):
     board_column: str | None = None
     board_position: float | None = None
     started: bool = False
+    has_messages: bool = False
     needs_you: bool = False
     last_line: str | None = None
     file_count: int = 0
@@ -99,6 +112,7 @@ class BoardSessionRow(BaseModel):
     board_column: str | None
     board_position: float | None
     started: bool
+    has_messages: bool
     needs_you: bool
     last_line: str | None
     file_count: int
@@ -185,6 +199,7 @@ async def get_board_session_extras(
             board_column=row["board_column"],
             board_position=row["board_position"],
             started=row["started"],
+            has_messages=row["has_messages"],
             needs_you=row["needs_you"],
             last_line=first_sentence(row["last_assistant"]),
             file_count=row["file_count"],
@@ -375,6 +390,7 @@ def _board_session_row(row: PrismaChatSession, extra: BoardExtras) -> BoardSessi
         board_column=row.boardColumn,
         board_position=row.boardPosition,
         started=extra.started,
+        has_messages=extra.has_messages,
         needs_you=extra.needs_you,
         last_line=extra.last_line,
         file_count=extra.file_count,

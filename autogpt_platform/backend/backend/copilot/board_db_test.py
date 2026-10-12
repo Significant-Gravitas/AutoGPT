@@ -168,6 +168,32 @@ async def test_a_reassign_brief_starts_a_session(user_id: str):
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_an_expert_greeting_after_a_hidden_kickoff_has_messages(user_id: str):
+    empty = await _session(user_id)
+    kickoff_only = await _session(user_id)
+    await _message(
+        kickoff_only, "user", 0, metadata={"hidden": True, "kind": "expert_kickoff"}
+    )
+    greeted = await _session(user_id)
+    await _message(
+        greeted, "user", 0, metadata={"hidden": True, "kind": "expert_kickoff"}
+    )
+    await _message(greeted, "assistant", 1, content="Hi, I'm Nova.")
+    written_in = await _session(user_id)
+    await _message(written_in, "user", 0)
+
+    extras = await get_board_session_extras(
+        user_id, [empty, kickoff_only, greeted, written_in]
+    )
+
+    assert extras[empty].has_messages is False
+    assert extras[kickoff_only].has_messages is False
+    assert extras[greeted].has_messages is True
+    assert extras[greeted].started is False
+    assert extras[written_in].has_messages is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_a_pending_question_needs_you(user_id: str):
     asking = await _session(
         user_id,
