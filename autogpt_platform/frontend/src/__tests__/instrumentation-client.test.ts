@@ -96,4 +96,43 @@ describe("Sentry client instrumentation", () => {
     expect(beforeSend(rscFallback, {})).toBeNull();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
   });
+
+  it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const blocked = {
+      exception: {
+        values: [
+          {
+            type: "SecurityError",
+            value:
+              'Blocked a frame with origin "https://platform.agpt.co" from accessing a cross-origin frame.',
+          },
+        ],
+      },
+    };
+    // As HeyTap Browser's injected script logs it on /onboarding (BUILDER-943).
+    const injectedProbe = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: ["无法访问 iframe 的内容:", { name: "SecurityError" }],
+      },
+    };
+    const ourWarning = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: [
+          "Could not read the checkout frame",
+          { name: "SecurityError" },
+        ],
+      },
+    };
+
+    expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(beforeSend(blocked, {})).toBe(blocked);
+    expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+  });
 });

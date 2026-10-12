@@ -13,9 +13,10 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { cn } from "@/lib/utils";
 import { cjk } from "@streamdown/cjk";
 import { code } from "@/lib/streamdown-code-plugin";
-import { createMathPlugin } from "@streamdown/math";
+import { createMathPlugin, type MathPlugin } from "@streamdown/math";
 import { escapeCurrencyAmounts } from "@/lib/markdown-math";
 import { mermaid } from "@streamdown/mermaid";
+import rehypeKatex from "rehype-katex";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
@@ -354,7 +355,17 @@ function ExternalLinkModal({
 
 // Single-dollar math is off by default in @streamdown/math, so "$x^2$" reached the
 // reader raw; escapeCurrencyAmounts keeps prices out of the formulas it enables.
-const math = createMathPlugin({ singleDollarTextMath: true });
+// KaTeX renders text real LaTeX would reject, such as Bengali in a formula, but
+// its default strict mode console.warns each time, and console capture filed
+// every warning as a Sentry issue (BUILDER-94S). The plugin has no option for
+// strict mode, so its rehype step is rebuilt with it off.
+const math: MathPlugin = {
+  ...createMathPlugin({ singleDollarTextMath: true }),
+  rehypePlugin: [
+    rehypeKatex,
+    { errorColor: "var(--color-muted-foreground)", strict: "ignore" },
+  ],
+};
 
 export const MessageResponse = memo(
   ({ className, children, components, ...props }: MessageResponseProps) => (

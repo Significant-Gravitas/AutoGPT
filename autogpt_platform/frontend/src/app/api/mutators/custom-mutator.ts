@@ -9,7 +9,11 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
-import { logClientRequestFailure } from "./request-failure-log";
+import {
+  fetchWithFailureLog,
+  logClientRequestFailure,
+  logServerRequestFailure,
+} from "./request-failure-log";
 
 function getBaseURL(): string {
   if (!environment.isServerSide()) {
@@ -109,7 +113,7 @@ export const customMutator = async <
     }
   }
 
-  const response = await fetch(fullUrl, {
+  const response = await fetchWithFailureLog(fullUrl, {
     ...requestOptions,
     method,
     headers,
@@ -170,12 +174,7 @@ export const customMutator = async <
     };
 
     if (environment.isServerSide()) {
-      // Server-side module state is shared across every user's request, so
-      // collapsing there would hide one user's failure behind another's.
-      console.error("Request failed on server", {
-        ...failure,
-        responseData: responseData || "No response data",
-      });
+      logServerRequestFailure(failure);
     } else {
       logClientRequestFailure(failure);
     }
