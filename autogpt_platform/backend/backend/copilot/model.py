@@ -149,6 +149,13 @@ class ChatSessionMetadata(BaseModel):
     # expert can tell "this is now mine" from "report back to whoever asked".
     handed_off_from_expert_id: str | None = None
 
+    # Set by the board's reassign: the new session names where the task came
+    # from (its files stay readable), the old one names where it went.
+    reassigned_from_session_id: str | None = None
+    reassigned_from_expert_id: str | None = None
+    reassigned_to_session_id: str | None = None
+    reassigned_to_expert_id: str | None = None
+
     # What this session is for, set by the session itself so a teammate can
     # find it with ``find_session``. Free text: the task spine (#14240) can
     # narrow it to its own ids later without a migration.
