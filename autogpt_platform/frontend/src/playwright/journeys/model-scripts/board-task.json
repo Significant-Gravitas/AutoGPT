@@ -1,0 +1,14 @@
+{
+  "description": "One short answer to a task started from the board. task-board-journey.spec.ts follows it.",
+  "title": "Board haiku",
+  "turns": [
+    {
+      "text": "Cards drift left to right, each one finds its column home, the board rests at Done.",
+      "usage": {
+        "input_tokens": 2600,
+        "output_tokens": 22,
+        "cache_read_input_tokens": 24000
+      }
+    }
+  ]
+}
