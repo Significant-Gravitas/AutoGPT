@@ -131,6 +131,10 @@ export async function startRequest<T>(
       }
       await endLiveRequest(flight);
       flight.abortController = new AbortController();
+      // A request is alive from its start: until its fetch runs (after the
+      // auth headers) no byte can arrive, and an attach must not mistake the
+      // previous request's last byte for this one going quiet.
+      flight.lastActivityAt = Date.now();
       const request = start(++flight.generation);
       if (request) trackRequest(flight, request);
       return { request };
@@ -152,6 +156,25 @@ function trackRequest<T>(flight: StreamFlight, request: Promise<T>) {
       if (flight.request === request) flight.request = null;
     });
   return request;
+}
+
+/**
+ * Settle `work` with the request's own abort: a request replaced while it
+ * prepares (waiting on auth headers) then ends at once, so its replacement
+ * starts after it instead of beside it in the SDK.
+ */
+export function untilAborted<T>(flight: StreamFlight, work: Promise<T>) {
+  const signal = flight.abortController?.signal;
+  if (!signal) return work;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () =>
+      reject(new DOMException("Replaced before it started", "AbortError"));
+    if (signal.aborted) return abort();
+    signal.addEventListener("abort", abort, { once: true });
+    work.then(resolve, reject).finally(() => {
+      signal.removeEventListener("abort", abort);
+    });
+  });
 }
 
 /**

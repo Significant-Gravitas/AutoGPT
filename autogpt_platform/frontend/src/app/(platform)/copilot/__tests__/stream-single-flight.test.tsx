@@ -14,6 +14,7 @@ import {
   TEST_BACKEND_BASE_URL,
   TEST_SESSION_ID,
   typeAndSend,
+  waitForInputReady,
 } from "./sse-helpers";
 
 // One live stream per chat. A second resume started beside a live request
@@ -298,13 +299,56 @@ describe("copilot stream — one live stream per chat", () => {
       );
       renderHost({ sessionResponse: liveSession(() => "turn-1") });
 
-      // Restore watchdog (6 s), reconnect delay (1 s), then the bounded wait
-      // for the replaced request, which is still stuck in its headers.
-      await screen.findByText(/Working on it/, undefined, { timeout: 20000 });
+      // Restore watchdog (6 s) and reconnect delay (1 s); the replaced
+      // request ends at once, though its headers never came.
+      await screen.findByText(/Working on it/, undefined, { timeout: 12000 });
       auth.release();
       await act(() => new Promise((resolve) => setTimeout(resolve, 1000)));
 
       expect(resumes).toBe(1);
+      expect(maxOpenStreams).toBe(1);
+      expect(sdkCleanupCrashes()).toEqual([]);
+    },
+  );
+
+  it(
+    "a tab wake while a send is still preparing leaves the send alone",
+    { timeout: 15000 },
+    async () => {
+      // The send waits on its auth headers, so its fetch has not run and no
+      // byte has arrived; the wake must still see a live request, not a
+      // quiet one to replace.
+      let activeTurn: string | null = null;
+      let resumes = 0;
+      server.use(
+        http.post(STREAM_URL, ({ request }) =>
+          liveTurn({
+            text: "Sent once.",
+            signal: request.signal,
+            onEnd: () => {
+              activeTurn = null;
+            },
+          }),
+        ),
+        http.get(STREAM_URL, ({ request }) => {
+          resumes += 1;
+          return liveTurn({ text: "replayed", signal: request.signal });
+        }),
+      );
+      renderHost({ sessionResponse: liveSession(() => activeTurn) });
+      await waitForInputReady();
+      const auth = hold();
+      authGate.held = auth.released;
+
+      await typeAndSend("count");
+      activeTurn = "turn-1";
+      await wakeAfter(31_000);
+      auth.release();
+
+      await screen.findByText(/Sent once\./, undefined, { timeout: 5000 });
+      await waitForProbeToSettle();
+
+      expect(resumes).toBe(0);
       expect(maxOpenStreams).toBe(1);
       expect(sdkCleanupCrashes()).toEqual([]);
     },

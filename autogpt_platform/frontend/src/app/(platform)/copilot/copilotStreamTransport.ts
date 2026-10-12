@@ -8,6 +8,7 @@ import { getAutopilotModeChoice } from "./autopilotModeStore";
 import {
   assertStillCurrent,
   trackStreamFetch,
+  untilAborted,
   type StreamFlight,
 } from "./copilotStreamFlight";
 import { createSmoothingTransform } from "./copilotStreamSmoothing";
@@ -84,7 +85,7 @@ export function createCopilotTransport({
       flight,
     ),
     prepareSendMessagesRequest: async ({ messages, requestMetadata }) => {
-      const headers = await getCopilotAuthHeaders();
+      const headers = await untilAborted(flight, getCopilotAuthHeaders());
       assertStillCurrent(flight, requestMetadata);
       return {
         body: streamRequestBody(
@@ -105,7 +106,7 @@ export function createCopilotTransport({
       // cursor) crashes on the first orphan delta. Replay overlap with the
       // in-memory `messages` is handled by `deduplicateMessages` on the
       // consumer side.
-      const headers = await getCopilotAuthHeaders();
+      const headers = await untilAborted(flight, getCopilotAuthHeaders());
       assertStillCurrent(flight, requestMetadata);
       return { api: baseUrl, headers };
     },
