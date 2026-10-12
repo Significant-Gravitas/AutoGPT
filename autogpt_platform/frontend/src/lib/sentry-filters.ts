@@ -42,3 +42,21 @@ export function isFromBot(userAgent: string | undefined) {
   if (!userAgent?.trim()) return true;
   return BOT_USER_AGENT.test(userAgent);
 }
+
+const CREDENTIAL_HEADERS = new Set(["cookie", "authorization"]);
+
+// Keeps the request's body, cookies and credential headers out of server and
+// edge events.
+export function stripRequestCredentials<T extends Event>(event: T): T {
+  const { request } = event;
+  if (!request) return event;
+  delete request.data;
+  delete request.cookies;
+  if (!request.headers) return event;
+  request.headers = Object.fromEntries(
+    Object.entries(request.headers).filter(
+      ([name]) => !CREDENTIAL_HEADERS.has(name.toLowerCase()),
+    ),
+  );
+  return event;
+}
