@@ -411,6 +411,8 @@ class ChatSessionInfo(BaseModel):
     is_pinned: bool = False
     # Hired expert this session is scoped to; None = plain Otto session.
     expert_id: str | None = None
+    # Task board the card is on; None = the user's default board.
+    board_id: str | None = None
 
     @property
     def dry_run(self) -> bool:
@@ -464,6 +466,7 @@ class ChatSessionInfo(BaseModel):
             team_id=prisma_session.teamId,
             is_pinned=prisma_session.isPinned,
             expert_id=prisma_session.expertId,
+            board_id=prisma_session.boardId,
         )
 
 

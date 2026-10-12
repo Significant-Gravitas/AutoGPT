@@ -1,11 +1,14 @@
-"""Task board routes: the board, its columns, and placing, assigning and
-starting cards. Served under ``/api/chat`` next to the session routes."""
+"""Task board routes: the user's boards, their columns, and placing,
+moving, assigning and starting cards. Served under ``/api/chat`` next to
+the session routes."""
 
 import logging
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Annotated
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Security
+from fastapi import APIRouter, HTTPException, Query, Response, Security
 from pydantic import BaseModel, Field
 
 from backend.api.features.chat.routes import (
@@ -28,13 +31,21 @@ from backend.copilot.board import (
     IN_PROGRESS,
     BoardColumn,
     BoardColumnsError,
+    BoardNameError,
 )
 from backend.copilot.board_db import (
     DEFAULT_BOARD_REF,
+    UNSET,
     BoardExtras,
+    BoardInfo,
+    BoardLimitError,
+    BoardNotFoundError,
+    DefaultBoardError,
+    create_board,
+    delete_board,
     get_board_session_extras,
-    get_or_create_default_board,
     list_board_sessions,
+    list_boards,
     list_session_files,
     mark_session_reassigned,
     resolve_board,
@@ -42,6 +53,7 @@ from backend.copilot.board_db import (
     set_session_board,
     set_session_expert_if_unstarted,
     top_position,
+    update_board,
 )
 from backend.copilot.board_reassign import build_reassign_brief, reassign_brief_metadata
 from backend.copilot.constants import AUTOPILOT_NAME
@@ -60,7 +72,30 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["chat"])
 
 
+class BoardSummary(BaseModel):
+    id: str
+    name: str
+    is_default: bool
+    position: float
+
+
+class BoardListResponse(BaseModel):
+    boards: list[BoardSummary]
+
+
+class CreateBoardRequest(BaseModel):
+    name: str
+
+
+class UpdateBoardRequest(BaseModel):
+    """A new name or place; ``None`` leaves that field as it is."""
+
+    name: str | None = None
+    position: float | None = Field(default=None, allow_inf_nan=False)
+
+
 class BoardResponse(BaseModel):
+    board: BoardSummary
     columns: list[BoardColumn]
     sessions: list[SessionSummaryResponse]
 
@@ -74,10 +109,12 @@ class BoardColumnsResponse(BaseModel):
 
 
 class UpdateSessionBoardRequest(BaseModel):
-    """Where a card goes. ``None`` leaves that field as it is."""
+    """Where a card goes. ``None`` leaves that field as it is; ``board_id``
+    is ``"default"`` or a board id."""
 
     column: str | None = Field(default=None, max_length=64)
     position: float | None = Field(default=None, allow_inf_nan=False)
+    board_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class UpdateSessionExpertRequest(BaseModel):
@@ -104,21 +141,96 @@ class ReassignSessionResponse(BaseModel):
 
 
 @router.get(
-    "/board",
-    summary="Get board",
+    "/boards",
+    summary="List boards",
     dependencies=[Security(auth.requires_user)],
 )
+async def get_boards(
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> BoardListResponse:
+    """The user's boards: the default board first, then the rest in order."""
+    return BoardListResponse(
+        boards=[_board_summary(board) for board in await list_boards(user_id)]
+    )
+
+
+@router.post(
+    "/boards",
+    summary="Create board",
+    dependencies=[Security(auth.requires_user)],
+    responses={422: {"description": "Bad name, or too many projects"}},
+)
+async def post_board(
+    request: CreateBoardRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> BoardSummary:
+    """A new board with the built-in columns, last in the user's order."""
+    with _board_errors():
+        return _board_summary(await create_board(user_id, request.name))
+
+
+@router.patch(
+    "/boards/{board_id}",
+    summary="Update board",
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Project not found"},
+        409: {"description": "The default board cannot be renamed"},
+        422: {"description": "Bad name"},
+    },
+)
+async def patch_board(
+    board_id: str,
+    request: UpdateBoardRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> BoardSummary:
+    """Rename or reorder a board."""
+    with _board_errors():
+        board = await update_board(
+            user_id, board_id, name=request.name, position=request.position
+        )
+    return _board_summary(board)
+
+
+@router.delete(
+    "/boards/{board_id}",
+    summary="Delete board",
+    status_code=204,
+    dependencies=[Security(auth.requires_user)],
+    responses={
+        404: {"description": "Project not found"},
+        409: {"description": "The default board cannot be deleted"},
+    },
+)
+async def remove_board(
+    board_id: str,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> Response:
+    """Delete a board. Its cards go on top of the default board's Backlog."""
+    with _board_errors():
+        await delete_board(user_id, board_id)
+    return Response(status_code=204)
+
+
+@router.get(
+    "/boards/{board_id}",
+    summary="Get board",
+    dependencies=[Security(auth.requires_user)],
+    responses={404: {"description": "Project not found"}},
+)
 async def get_board(
+    board_id: str,
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
     include_older: bool = Query(
         default=False,
-        description="Also return unplaced sessions older than a week.",
+        description="On the default board, also return unplaced sessions "
+        "older than a week.",
     ),
 ) -> BoardResponse:
-    """The user's columns and cards: every placed session, plus unplaced ones
-    touched in the last week."""
-    board = await get_or_create_default_board(user_id)
+    """A board's columns and cards. The default board (``default``) also
+    shows unplaced sessions touched in the last week."""
+    board = await _resolve_board(user_id, board_id)
     rows = await list_board_sessions(
         user_id, board, organization_id=ctx.org_id, include_older=include_older
     )
@@ -127,6 +239,7 @@ async def get_board(
         for row in rows
     }
     return BoardResponse(
+        board=_board_summary(board),
         columns=board.columns,
         sessions=await session_summaries(
             user_id, [row.session for row in rows], extras
@@ -135,21 +248,24 @@ async def get_board(
 
 
 @router.put(
-    "/board/columns",
+    "/boards/{board_id}/columns",
     summary="Update board columns",
     dependencies=[Security(auth.requires_user)],
-    responses={422: {"description": "The columns cannot be stored"}},
+    responses={
+        404: {"description": "Project not found"},
+        422: {"description": "The columns cannot be stored"},
+    },
 )
 async def update_board_columns(
+    board_id: str,
     request: UpdateBoardColumnsRequest,
     user_id: Annotated[str, Security(auth.get_user_id)],
 ) -> BoardColumnsResponse:
-    """Replace the user's columns. Cards in a removed column go to Backlog."""
-    try:
-        board = await get_or_create_default_board(user_id)
+    """Replace a board's columns. Its cards in a removed column go to
+    Backlog."""
+    with _board_errors():
+        board = await resolve_board(user_id, board_id)
         columns = await save_board_columns(user_id, board, request.columns)
-    except BoardColumnsError as e:
-        raise HTTPException(status_code=422, detail=str(e)) from e
     return BoardColumnsResponse(columns=columns)
 
 
@@ -158,7 +274,7 @@ async def update_board_columns(
     summary="Update session board",
     dependencies=[Security(auth.requires_user)],
     responses={
-        404: {"description": "Session not found or access denied"},
+        404: {"description": "Session or project not found"},
         422: {"description": "Unknown board column"},
     },
 )
@@ -168,16 +284,29 @@ async def update_session_board(
     user_id: Annotated[str, Security(auth.get_user_id)],
     ctx: Annotated[auth.RequestContext, Security(auth.get_request_context)],
 ) -> SessionSummaryResponse:
-    """Move a card. A card that has not started yet starts with its title as
-    the first message when it moves to any column but Backlog or Done."""
+    """Move a card, within its board or onto ``board_id``. A card moved to
+    another board keeps its column if that board has it, else goes to
+    Backlog, and goes on top. A card that has not started yet starts with
+    its title as the first message when it moves to any column but Backlog
+    or Done."""
     session = await _validate_and_get_session(session_id, user_id)
+    extras = await _session_extras(user_id, session_id)
     column = request.column
     position = request.position
-    if column is not None:
-        board_id = (await _session_extras(user_id, session_id)).board_id
-        board = await resolve_board(user_id, board_id or DEFAULT_BOARD_REF)
-        if column not in {c.key for c in board.columns}:
+    moving = request.board_id is not None
+    target = UNSET
+    if moving or column is not None:
+        board = await _resolve_board(
+            user_id, request.board_id or extras.board_id or DEFAULT_BOARD_REF
+        )
+        keys = {c.key for c in board.columns}
+        if column is None:
+            column = extras.board_column if extras.board_column in keys else BACKLOG
+        elif column not in keys:
             raise HTTPException(status_code=422, detail="Unknown board column")
+        board_id = None if board.is_default else board.id
+        if moving:
+            target = board_id
         if position is None:
             position = await top_position(user_id, board_id, column)
 
@@ -186,16 +315,21 @@ async def update_session_board(
         and column not in (BACKLOG, DONE)
         and bool((session.title or "").strip())
         and session.chat_status == CHAT_STATUS_IDLE
-        and not (await _session_extras(user_id, session_id)).started
+        and not extras.started
     )
     if starts:
         await _validate_session_expert_writable_by_user(session, user_id)
         # Start first: a refused turn leaves the card where it was.
         await start_board_card(session, user_id, org_id=ctx.org_id, team_id=ctx.team_id)
 
-    if not await set_session_board(
-        session_id, user_id, column=column, position=position
-    ):
+    with _board_errors():
+        placed = await set_session_board(
+            session_id, user_id, column=column, position=position, board_id=target
+        )
+    if not placed:
+        if moving:
+            # The session was checked above: its new board is gone.
+            raise _board_not_found()
         raise HTTPException(
             status_code=404,
             detail=f"Session {session_id} not found or access denied",
@@ -328,7 +462,8 @@ async def reassign_session(
         raise HTTPException(
             status_code=409, detail="Reassign the task once it stops working"
         )
-    if not (await _session_extras(user_id, session_id)).started:
+    old_extras = await _session_extras(user_id, session_id)
+    if not old_extras.started:
         raise HTTPException(
             status_code=409,
             detail="The task has not started; change its assignee instead",
@@ -366,12 +501,17 @@ async def reassign_session(
     try:
         if old.title:
             await update_session_title(new_id, user_id, old.title)
-        await set_session_board(
-            new_id,
-            user_id,
-            column=IN_PROGRESS,
-            position=await top_position(user_id, None, IN_PROGRESS),
-        )
+        # The new card goes on the old card's board.
+        with _board_errors():
+            placed = await set_session_board(
+                new_id,
+                user_id,
+                column=IN_PROGRESS,
+                position=await top_position(user_id, old_extras.board_id, IN_PROGRESS),
+                board_id=old_extras.board_id,
+            )
+        if not placed:
+            raise _board_not_found()
         history = await get_chat_session(session_id, user_id)
         brief = build_reassign_brief(
             from_name=from_name,
@@ -403,6 +543,37 @@ async def reassign_session(
     return ReassignSessionResponse(
         old_session=await _fresh_summary(session_id, user_id),
         new_session=await _fresh_summary(new_id, user_id),
+    )
+
+
+def _board_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Project not found")
+
+
+@contextmanager
+def _board_errors() -> Iterator[None]:
+    """The board layer's refusals as HTTP errors."""
+    try:
+        yield
+    except BoardNotFoundError as e:
+        raise _board_not_found() from e
+    except DefaultBoardError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except (BoardNameError, BoardLimitError, BoardColumnsError) as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+
+async def _resolve_board(user_id: str, board_ref: str) -> BoardInfo:
+    with _board_errors():
+        return await resolve_board(user_id, board_ref)
+
+
+def _board_summary(board: BoardInfo) -> BoardSummary:
+    return BoardSummary(
+        id=board.id,
+        name=board.name,
+        is_default=board.is_default,
+        position=board.position,
     )
 
 

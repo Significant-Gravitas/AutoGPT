@@ -28,9 +28,11 @@ from backend.copilot.active_turns import (
 )
 from backend.copilot.board import BACKLOG, DONE
 from backend.copilot.board_db import (
+    DEFAULT_BOARD_REF,
     BoardExtras,
+    BoardNotFoundError,
     get_board_session_extras,
-    get_or_create_default_board,
+    resolve_board,
     set_session_board,
     top_position,
 )
@@ -403,10 +405,12 @@ class CreateSessionRequest(BaseModel):
     mode keyed by the authenticated user and expert. It is invalid without
     ``expert_id``.
 
-    ``title`` and ``board_column`` create a task board card in one call. A
-    card outside Backlog and Done starts at once with its title as the first
-    message; if that start is refused the card is not kept. Neither combines
-    with ``builder_graph_id`` or ``expert_kickoff`` (422).
+    ``title`` and ``board_column`` create a task board card in one call, on
+    ``board_id`` (``"default"`` or a board id; omitted = the default board,
+    unknown = 404). ``board_id`` needs ``board_column`` (422). A card outside
+    Backlog and Done starts at once with its title as the first message; if
+    that start is refused the card is not kept. None of these combines with
+    ``builder_graph_id`` or ``expert_kickoff`` (422).
 
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
@@ -421,6 +425,7 @@ class CreateSessionRequest(BaseModel):
     expert_kickoff: bool = False
     title: str | None = Field(default=None, max_length=500)
     board_column: str | None = Field(default=None, max_length=64)
+    board_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -464,6 +469,8 @@ class SessionDetailResponse(BaseModel):
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
+    # None = the default board.
+    board_id: str | None = None
 
 
 class SessionSummaryResponse(BaseModel):
@@ -478,6 +485,8 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    # None = the default board.
+    board_id: str | None = None
     board_column: str | None = None
     board_position: float | None = None
     started: bool = False
@@ -556,6 +565,10 @@ async def _reassigned_expert_names(
     return {expert.id: expert.name for expert in experts}
 
 
+def _board_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Project not found")
+
+
 def _session_summary(
     session: ChatSessionInfo,
     *,
@@ -580,6 +593,7 @@ def _session_summary(
         source_platform=session.metadata.source_platform,
         is_pinned=session.is_pinned,
         expert_id=session.expert_id,
+        board_id=extras.board_id,
         board_column=extras.board_column,
         board_position=extras.board_position,
         started=extras.started,
@@ -909,6 +923,10 @@ async def create_session(
 
     title = (request.title or "").strip() if request else ""
     board_column = request.board_column if request else None
+    board_ref = request.board_id if request else None
+
+    if board_ref is not None and board_column is None:
+        raise HTTPException(status_code=422, detail="board_id requires board_column")
 
     if expert_kickoff and expert_id is None:
         raise HTTPException(
@@ -925,10 +943,15 @@ async def create_session(
             "builder_graph_id or expert_kickoff",
         )
 
-    if board_column is not None and board_column not in {
-        column.key for column in (await get_or_create_default_board(user_id)).columns
-    }:
-        raise HTTPException(status_code=422, detail="Unknown board column")
+    board_id: str | None = None
+    if board_column is not None:
+        try:
+            board = await resolve_board(user_id, board_ref or DEFAULT_BOARD_REF)
+        except BoardNotFoundError as e:
+            raise _board_not_found() from e
+        if board_column not in {column.key for column in board.columns}:
+            raise HTTPException(status_code=422, detail="Unknown board column")
+        board_id = None if board.is_default else board.id
 
     # The builder branch below ignores expert_id, so accepting both would
     # validate the expert and then silently drop the scoping. Reject upfront.
@@ -1009,12 +1032,19 @@ async def create_session(
         try:
             if title:
                 await update_session_title(session.session_id, user_id, title)
-            await set_session_board(
-                session.session_id,
-                user_id,
-                column=board_column,
-                position=await top_position(user_id, None, board_column),
-            )
+            try:
+                placed = await set_session_board(
+                    session.session_id,
+                    user_id,
+                    column=board_column,
+                    position=await top_position(user_id, board_id, board_column),
+                    board_id=board_id,
+                )
+            except BoardNotFoundError:
+                placed = False
+            if not placed:
+                # The board was deleted after the check above.
+                raise _board_not_found()
             if starts:
                 await start_board_card(
                     session,
@@ -1476,6 +1506,7 @@ async def get_session(
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
+        board_id=page.session.board_id,
     )
 
 

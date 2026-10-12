@@ -123,7 +123,9 @@ def test_board_names_are_trimmed():
 
 @pytest.mark.parametrize("name", ["", "   ", "x" * (MAX_BOARD_NAME + 1)])
 def test_blank_or_long_board_names_are_refused(name):
-    with pytest.raises(BoardNameError):
+    with pytest.raises(
+        BoardNameError, match="Project names must be 1 to 40 characters"
+    ):
         validate_board_name(name)
 
 

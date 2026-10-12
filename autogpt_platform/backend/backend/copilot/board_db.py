@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from prisma import Prisma
+from prisma.errors import RawQueryError
 from prisma.models import Board
 from prisma.models import ChatSession as PrismaChatSession
 from prisma.types import BoardUpdateInput
@@ -39,6 +40,7 @@ BOARD_SESSION_LIMIT = 500
 OLDER_SESSION_LIMIT = 50
 POSITION_GAP = 1024
 DEFAULT_BOARD_REF = "default"
+_FOREIGN_KEY_VIOLATION = "23503"
 
 # Started = the user has written in it. A hidden row (an expert kickoff) is
 # the system talking, not the user; a reassign brief carries a task the user
@@ -211,9 +213,7 @@ async def create_board(user_id: str, name: str) -> BoardInfo:
             client=tx,
         )
         if stats["count"] >= MAX_BOARDS:
-            raise BoardLimitError(
-                f"You can have at most {MAX_BOARDS - 1} projects besides Home"
-            )
+            raise BoardLimitError(f"You can have up to {MAX_BOARDS} projects")
         row = await Board.prisma(tx).create(
             data={
                 "userId": user_id,
@@ -237,7 +237,7 @@ async def update_board(
     data: BoardUpdateInput = {}
     if name is not None:
         if board.is_default:
-            raise DefaultBoardError(f"{DEFAULT_BOARD_NAME} cannot be renamed")
+            raise DefaultBoardError(f"{DEFAULT_BOARD_NAME} can't be renamed")
         data["name"] = validate_board_name(name)
     if position is not None:
         data["position"] = position
@@ -254,7 +254,7 @@ async def delete_board(user_id: str, board_id: str) -> None:
     they had on the board."""
     board = await resolve_board(user_id, board_id)
     if board.is_default:
-        raise DefaultBoardError(f"{DEFAULT_BOARD_NAME} cannot be deleted")
+        raise DefaultBoardError(f"{DEFAULT_BOARD_NAME} can't be deleted")
     async with db.transaction() as tx:
         # The lock holds off a card moving onto the board until it is gone.
         locked = await db.query_raw_with_schema(
@@ -421,7 +421,8 @@ async def set_session_board(
     moves the card to that board (``None`` = Home); ``UNSET`` keeps it.
 
     Raw SQL so ``updatedAt`` stays put: moving a card is not activity in the
-    chat. False when the session, or the board, is not the user's.
+    chat. False when the session, or the board, is not the user's;
+    ``BoardNotFoundError`` when the board is deleted while the card moves.
     """
     params: list[Any] = [session_id, user_id]
     assignments = []
@@ -441,13 +442,18 @@ async def set_session_board(
             'EXISTS (SELECT 1 FROM {schema_prefix}"Board" bd '
             f'WHERE bd."id" = ${len(params)}::text AND bd."userId" = $2)'
         )
-    result = await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatSession" SET '
-        + ", ".join(assignments or ['"boardColumn" = "boardColumn"'])
-        + " WHERE "
-        + " AND ".join(conditions),
-        *params,
-    )
+    try:
+        result = await db.execute_raw_with_schema(
+            'UPDATE {schema_prefix}"ChatSession" SET '
+            + ", ".join(assignments or ['"boardColumn" = "boardColumn"'])
+            + " WHERE "
+            + " AND ".join(conditions),
+            *params,
+        )
+    except RawQueryError as e:
+        if (e.meta or {}).get("code") != _FOREIGN_KEY_VIOLATION:
+            raise
+        raise BoardNotFoundError(f"Board {board_id} not found") from e
     return result > 0
 
 

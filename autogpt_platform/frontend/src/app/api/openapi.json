@@ -3771,25 +3771,113 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/chat/board": {
+    "/api/chat/boards": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List boards",
+        "description": "The user's boards: the default board first, then the rest in order.",
+        "operationId": "getV2List boards",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BoardListResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Create board",
+        "description": "A new board with the built-in columns, last in the user's order.",
+        "operationId": "postV2Create board",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CreateBoardRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BoardSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": { "description": "Bad name, or too many projects" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/chat/boards/{board_id}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Delete board",
+        "description": "Delete a board. Its cards go on top of the default board's Backlog.",
+        "operationId": "deleteV2Delete board",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Board Id" }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Project not found" },
+          "409": { "description": "The default board cannot be deleted" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Get board",
-        "description": "The user's columns and cards: every placed session, plus unplaced ones\ntouched in the last week.",
+        "description": "A board's columns and cards. The default board (``default``) also\nshows unplaced sessions touched in the last week.",
         "operationId": "getV2Get board",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Board Id" }
+          },
           {
             "name": "include_older",
             "in": "query",
             "required": false,
             "schema": {
               "type": "boolean",
-              "description": "Also return unplaced sessions older than a week.",
+              "description": "On the default board, also return unplaced sessions older than a week.",
               "default": false,
               "title": "Include Older"
             },
-            "description": "Also return unplaced sessions older than a week."
+            "description": "On the default board, also return unplaced sessions older than a week."
           }
         ],
         "responses": {
@@ -3804,6 +3892,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Project not found" },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3813,23 +3902,71 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Update board",
+        "description": "Rename or reorder a board.",
+        "operationId": "patchV2Update board",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Board Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UpdateBoardRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/BoardSummary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Project not found" },
+          "409": { "description": "The default board cannot be renamed" },
+          "422": { "description": "Bad name" }
+        }
       }
     },
-    "/api/chat/board/columns": {
+    "/api/chat/boards/{board_id}/columns": {
       "put": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update board columns",
-        "description": "Replace the user's columns. Cards in a removed column go to Backlog.",
+        "description": "Replace a board's columns. Its cards in a removed column go to\nBacklog.",
         "operationId": "putV2Update board columns",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "board_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Board Id" }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateBoardColumnsRequest"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3845,9 +3982,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "404": { "description": "Project not found" },
           "422": { "description": "The columns cannot be stored" }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
       }
     },
     "/api/chat/config/ttl": {
@@ -4293,7 +4430,7 @@
       "patch": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Update session board",
-        "description": "Move a card. A card that has not started yet starts with its title as\nthe first message when it moves to any column but Backlog or Done.",
+        "description": "Move a card, within its board or onto ``board_id``. A card moved to\nanother board keeps its column if that board has it, else goes to\nBacklog, and goes on top. A card that has not started yet starts with\nits title as the first message when it moves to any column but Backlog\nor Done.",
         "operationId": "patchV2Update session board",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4328,7 +4465,7 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
-          "404": { "description": "Session not found or access denied" },
+          "404": { "description": "Session or project not found" },
           "422": { "description": "Unknown board column" }
         }
       }
@@ -18953,8 +19090,21 @@
         "required": ["columns"],
         "title": "BoardColumnsResponse"
       },
+      "BoardListResponse": {
+        "properties": {
+          "boards": {
+            "items": { "$ref": "#/components/schemas/BoardSummary" },
+            "type": "array",
+            "title": "Boards"
+          }
+        },
+        "type": "object",
+        "required": ["boards"],
+        "title": "BoardListResponse"
+      },
       "BoardResponse": {
         "properties": {
+          "board": { "$ref": "#/components/schemas/BoardSummary" },
           "columns": {
             "items": { "$ref": "#/components/schemas/BoardColumn" },
             "type": "array",
@@ -18967,8 +19117,19 @@
           }
         },
         "type": "object",
-        "required": ["columns", "sessions"],
+        "required": ["board", "columns", "sessions"],
         "title": "BoardResponse"
+      },
+      "BoardSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "name": { "type": "string", "title": "Name" },
+          "is_default": { "type": "boolean", "title": "Is Default" },
+          "position": { "type": "number", "title": "Position" }
+        },
+        "type": "object",
+        "required": ["id", "name", "is_default", "position"],
+        "title": "BoardSummary"
       },
       "Body_patchOauthUpdateAppStatus": {
         "properties": {
@@ -20647,6 +20808,12 @@
         "required": ["alias_slug"],
         "title": "CreateAliasRequest"
       },
+      "CreateBoardRequest": {
+        "properties": { "name": { "type": "string", "title": "Name" } },
+        "type": "object",
+        "required": ["name"],
+        "title": "CreateBoardRequest"
+      },
       "CreateGraph": {
         "properties": {
           "graph": { "$ref": "#/components/schemas/Graph" },
@@ -20842,12 +21009,19 @@
               { "type": "null" }
             ],
             "title": "Board Column"
+          },
+          "board_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Board Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "title": "CreateSessionRequest",
-        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\n``title`` and ``board_column`` create a task board card in one call. A\ncard outside Backlog and Done starts at once with its title as the first\nmessage; if that start is refused the card is not kept. Neither combines\nwith ``builder_graph_id`` or ``expert_kickoff`` (422).\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
+        "description": "Request model for creating (or get-or-creating) a chat session.\n\nTwo modes, selected by the body:\n\n- Default: create a fresh session. ``dry_run`` is a **top-level**\n  field — do not nest it inside ``metadata``.\n- Builder-bound: when ``builder_graph_id`` is set, the endpoint\n  switches to **get-or-create** keyed on\n  ``(user_id, builder_graph_id)``.  The builder panel calls this on\n  mount so the chat persists across refreshes.  Graph ownership is\n  validated inside :func:`get_or_create_builder_session`. Write-side\n  scope is enforced per-tool (``edit_agent`` / ``run_agent`` reject\n  any ``agent_id`` other than the bound graph) and a small blacklist\n  hides tools that conflict with the panel's scope\n  (``create_agent`` / ``customize_agent`` / ``get_agent_building_guide``\n  — see :data:`BUILDER_BLOCKED_TOOLS`). Read-side lookups\n  (``find_capability``, ``find_agent``, ``search_docs``, …) stay open.\n\n``expert_id`` scopes the session to a hired expert. It must reference\nan expert owned by the caller that is neither a template nor archived,\notherwise the request is rejected with 404. It is mutually exclusive\nwith ``builder_graph_id`` (422) — builder-bound sessions are never\nexpert-scoped.\n\n``expert_kickoff`` switches expert creation to an atomic create-or-adopt\nmode keyed by the authenticated user and expert. It is invalid without\n``expert_id``.\n\n``title`` and ``board_column`` create a task board card in one call, on\n``board_id`` (``\"default\"`` or a board id; omitted = the default board,\nunknown = 404). ``board_id`` needs ``board_column`` (422). A card outside\nBacklog and Done starts at once with its title as the first message; if\nthat start is refused the card is not kept. None of these combines with\n``builder_graph_id`` or ``expert_kickoff`` (422).\n\nExtra/unknown fields are rejected (422) to prevent silent mis-use."
       },
       "CreateSessionResponse": {
         "properties": {
@@ -30167,6 +30341,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "board_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Board Id"
           }
         },
         "type": "object",
@@ -30201,6 +30379,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "board_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Board Id"
           },
           "board_column": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -33062,6 +33244,21 @@
         "required": ["columns"],
         "title": "UpdateBoardColumnsRequest"
       },
+      "UpdateBoardRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "position": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Position"
+          }
+        },
+        "type": "object",
+        "title": "UpdateBoardRequest",
+        "description": "A new name or place; ``None`` leaves that field as it is."
+      },
       "UpdateGraphResponse": {
         "properties": {
           "graph": { "$ref": "#/components/schemas/GraphModel" },
@@ -33139,11 +33336,18 @@
           "position": {
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Position"
+          },
+          "board_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Board Id"
           }
         },
         "type": "object",
         "title": "UpdateSessionBoardRequest",
-        "description": "Where a card goes. ``None`` leaves that field as it is."
+        "description": "Where a card goes. ``None`` leaves that field as it is; ``board_id``\nis ``\"default\"`` or a board id."
       },
       "UpdateSessionExpertRequest": {
         "properties": {

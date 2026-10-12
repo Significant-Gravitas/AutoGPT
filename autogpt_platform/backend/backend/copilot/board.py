@@ -55,7 +55,7 @@ class BoardNameError(ValueError):
 def validate_board_name(name: str) -> str:
     stripped = name.strip()
     if not stripped or len(stripped) > MAX_BOARD_NAME:
-        raise BoardNameError(f"Board names must be 1 to {MAX_BOARD_NAME} characters")
+        raise BoardNameError(f"Project names must be 1 to {MAX_BOARD_NAME} characters")
     return stripped
 
 

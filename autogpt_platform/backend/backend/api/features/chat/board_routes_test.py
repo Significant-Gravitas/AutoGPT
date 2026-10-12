@@ -1,5 +1,6 @@
 """Tests for the task board routes and board fields on POST /sessions."""
 
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -13,8 +14,21 @@ import pytest_mock
 from backend.api.features.chat import board_routes
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat import server_turn
-from backend.copilot.board import DEFAULT_COLUMNS, REASSIGN_BRIEF_KIND, validate_columns
-from backend.copilot.board_db import BoardExtras, BoardSessionRow
+from backend.copilot import board_db
+from backend.copilot.board import (
+    DEFAULT_COLUMNS,
+    REASSIGN_BRIEF_KIND,
+    BoardColumn,
+    validate_columns,
+)
+from backend.copilot.board_db import (
+    UNSET,
+    BoardExtras,
+    BoardInfo,
+    BoardNotFoundError,
+    BoardSessionRow,
+)
+from backend.copilot.db import PaginatedMessages
 from backend.copilot.expert_kickoff import scoped_client_message_id
 from backend.copilot.model import (
     ChatMessage,
@@ -42,6 +56,9 @@ client = fastapi.testclient.TestClient(app)
 
 TEST_USER_ID = "3e53486c-cf57-477e-ba2a-cb02dc828e1a"
 SESSION_ID = "sess-1"
+HOME_ID = "board-home"
+PROJECT_ID = "board-launch"
+CUSTOM_KEY = "col_6f1c2a4e-1b2c-4d3e-8f90-123456789abc"
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +82,7 @@ def _session(
     expert_id: str | None = None,
     metadata: ChatSessionMetadata | None = None,
     chat_status: str = "idle",
+    board_id: str | None = None,
 ) -> ChatSessionInfo:
     return ChatSessionInfo(
         session_id=session_id,
@@ -76,11 +94,13 @@ def _session(
         metadata=metadata or ChatSessionMetadata(),
         expert_id=expert_id,
         chat_status=chat_status,
+        board_id=board_id,
     )
 
 
 def _row(session: ChatSessionInfo, **overrides) -> BoardSessionRow:
     fields = {
+        "board_id": None,
         "board_column": "in_progress",
         "board_position": 0.0,
         "started": True,
@@ -94,6 +114,52 @@ def _row(session: ChatSessionInfo, **overrides) -> BoardSessionRow:
 
 def _default_columns():
     return [c.model_copy() for c in DEFAULT_COLUMNS]
+
+
+def _custom_column() -> BoardColumn:
+    return BoardColumn(key=CUSTOM_KEY, name="Review")
+
+
+def _home(*extra: BoardColumn) -> BoardInfo:
+    return BoardInfo(
+        id=HOME_ID,
+        name="Home",
+        is_default=True,
+        position=0.0,
+        columns=[*_default_columns(), *extra],
+    )
+
+
+def _project(*extra: BoardColumn) -> BoardInfo:
+    return BoardInfo(
+        id=PROJECT_ID,
+        name="Launch",
+        is_default=False,
+        position=1024.0,
+        columns=[*_default_columns(), *extra],
+    )
+
+
+def _mock_resolve(
+    mocker: pytest_mock.MockerFixture,
+    module: object,
+    *,
+    home: BoardInfo | None = None,
+    project: BoardInfo | None = None,
+) -> AsyncMock:
+    """``resolve_board`` over Home and one project; any other id is not
+    the user's."""
+    home = home or _home()
+    boards = {"default": home, HOME_ID: home, PROJECT_ID: project or _project()}
+
+    async def _resolve(_user_id: str, board_ref: str) -> BoardInfo:
+        if board_ref not in boards:
+            raise BoardNotFoundError(f"Board {board_ref} not found")
+        return boards[board_ref]
+
+    return mocker.patch.object(
+        module, "resolve_board", new=AsyncMock(side_effect=_resolve)
+    )
 
 
 def _mock_card(
@@ -120,11 +186,7 @@ def _mock_card(
             "_validate_session_expert_writable_by_user",
             new=AsyncMock(),
         ),
-        columns=mocker.patch.object(
-            board_routes,
-            "get_board_columns",
-            new=AsyncMock(return_value=_default_columns()),
-        ),
+        resolve=_mock_resolve(mocker, board_routes),
         extras=mocker.patch.object(
             board_routes,
             "get_board_session_extras",
@@ -142,17 +204,13 @@ def _mock_card(
     )
 
 
-# ─── GET /board ───────────────────────────────────────────────────────
+# ─── GET /boards/{id} ─────────────────────────────────────────────────
 
 
 def test_get_board_returns_columns_and_sessions(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    mocker.patch.object(
-        board_routes,
-        "get_board_columns",
-        new=AsyncMock(return_value=_default_columns()),
-    )
+    resolve = _mock_resolve(mocker, board_routes)
     mock_list = mocker.patch.object(
         board_routes,
         "list_board_sessions",
@@ -162,10 +220,17 @@ def test_get_board_returns_columns_and_sessions(
         board_routes.experts_db, "list_experts", new=AsyncMock()
     )
 
-    response = client.get("/board")
+    response = client.get("/boards/default")
 
     assert response.status_code == 200
     data = response.json()
+    resolve.assert_awaited_once_with(TEST_USER_ID, "default")
+    assert data["board"] == {
+        "id": HOME_ID,
+        "name": "Home",
+        "is_default": True,
+        "position": 0.0,
+    }
     assert [c["key"] for c in data["columns"]] == ["backlog", "in_progress", "done"]
     card = data["sessions"][0]
     assert card["id"] == SESSION_ID
@@ -174,11 +239,46 @@ def test_get_board_returns_columns_and_sessions(
     assert card["has_messages"] is True
     assert card["last_line"] == "Drafted the outline."
     assert card["file_count"] == 2
+    assert card["board_id"] is None
+    assert mock_list.await_args.args == (TEST_USER_ID, _home())
     assert mock_list.await_args.kwargs == {
         "organization_id": "test-org",
         "include_older": False,
     }
     mock_experts.assert_not_awaited()
+
+
+def test_get_board_of_a_project_lists_its_cards(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_resolve(mocker, board_routes)
+    mock_list = mocker.patch.object(
+        board_routes,
+        "list_board_sessions",
+        new=AsyncMock(return_value=[_row(_session(), board_id=PROJECT_ID)]),
+    )
+
+    response = client.get(f"/boards/{PROJECT_ID}")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["board"]["id"] == PROJECT_ID
+    assert data["board"]["is_default"] is False
+    assert data["sessions"][0]["board_id"] == PROJECT_ID
+    assert mock_list.await_args.args == (TEST_USER_ID, _project())
+
+
+def test_get_board_of_another_users_board_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_resolve(mocker, board_routes)
+    mock_list = mocker.patch.object(board_routes, "list_board_sessions")
+
+    response = client.get("/boards/board-of-someone-else")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+    mock_list.assert_not_called()
 
 
 def test_get_board_overrides_last_line_for_reassigned_cards(
@@ -194,11 +294,7 @@ def test_get_board_overrides_last_line_for_reassigned_cards(
         "sess-otto",
         metadata=ChatSessionMetadata(reassigned_to_session_id="sess-new-2"),
     )
-    mocker.patch.object(
-        board_routes,
-        "get_board_columns",
-        new=AsyncMock(return_value=_default_columns()),
-    )
+    _mock_resolve(mocker, board_routes)
     mock_list = mocker.patch.object(
         board_routes,
         "list_board_sessions",
@@ -215,7 +311,7 @@ def test_get_board_overrides_last_line_for_reassigned_cards(
         new=AsyncMock(return_value=[SimpleNamespace(id="e1", name="Priya")]),
     )
 
-    response = client.get("/board?include_older=true")
+    response = client.get("/boards/default?include_older=true")
 
     assert response.status_code == 200
     lines = {s["id"]: s["last_line"] for s in response.json()["sessions"]}
@@ -230,14 +326,17 @@ def test_get_board_overrides_last_line_for_reassigned_cards(
     assert mock_list.await_args.kwargs["include_older"] is True
 
 
-# ─── PUT /board/columns ───────────────────────────────────────────────
+# ─── PUT /boards/{id}/columns ─────────────────────────────────────────
 
 
 def _mock_save_columns(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+    _mock_resolve(mocker, board_routes)
     return mocker.patch.object(
         board_routes,
         "save_board_columns",
-        new=AsyncMock(side_effect=lambda _user_id, columns: validate_columns(columns)),
+        new=AsyncMock(
+            side_effect=lambda _user_id, _board, columns: validate_columns(columns)
+        ),
     )
 
 
@@ -247,7 +346,7 @@ def test_put_columns_rejects_removed_builtin(
     _mock_save_columns(mocker)
 
     response = client.put(
-        "/board/columns",
+        "/boards/default/columns",
         json={
             "columns": [
                 {"key": "backlog", "name": "Backlog"},
@@ -263,11 +362,11 @@ def test_put_columns_rejects_removed_builtin(
 def test_put_columns_returns_saved_columns(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    _mock_save_columns(mocker)
-    custom_key = "col_6f1c2a4e-1b2c-4d3e-8f90-123456789abc"
+    save = _mock_save_columns(mocker)
+    custom_key = CUSTOM_KEY
 
     response = client.put(
-        "/board/columns",
+        f"/boards/{PROJECT_ID}/columns",
         json={
             "columns": [
                 {"key": "backlog", "name": "Ideas"},
@@ -282,6 +381,22 @@ def test_put_columns_returns_saved_columns(
     columns = response.json()["columns"]
     assert [c["key"] for c in columns] == ["backlog", custom_key, "in_progress", "done"]
     assert columns[1] == {"key": custom_key, "name": "Review", "builtin": False}
+    assert save.await_args.args[:2] == (TEST_USER_ID, _project())
+
+
+def test_put_columns_of_an_unknown_board_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    save = _mock_save_columns(mocker)
+
+    response = client.put(
+        "/boards/board-gone/columns",
+        json={"columns": [c.model_dump() for c in DEFAULT_COLUMNS]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+    save.assert_not_awaited()
 
 
 # ─── PATCH /sessions/{id}/board ───────────────────────────────────────
@@ -328,9 +443,13 @@ def test_patch_board_to_in_progress_starts_unstarted_card(
 
     assert response.status_code == 200
     assert response.json()["id"] == SESSION_ID
-    mocks.top.assert_awaited_once_with(TEST_USER_ID, "in_progress")
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, None, "in_progress")
     mocks.set_board.assert_awaited_once_with(
-        SESSION_ID, TEST_USER_ID, column="in_progress", position=-1024.0
+        SESSION_ID,
+        TEST_USER_ID,
+        column="in_progress",
+        position=-1024.0,
+        board_id=UNSET,
     )
     mocks.start.assert_awaited_once_with(
         mocks.session, TEST_USER_ID, org_id="test-org", team_id="test-team"
@@ -388,7 +507,7 @@ def test_patch_board_keeps_given_position(mocker: pytest_mock.MockerFixture) -> 
     assert response.status_code == 200
     mocks.top.assert_not_awaited()
     mocks.set_board.assert_awaited_once_with(
-        SESSION_ID, TEST_USER_ID, column="done", position=3.5
+        SESSION_ID, TEST_USER_ID, column="done", position=3.5, board_id=UNSET
     )
 
 
@@ -699,6 +818,7 @@ def _mock_reassign(
     started: bool = True,
     in_flight: bool = False,
     target: SimpleNamespace | None = None,
+    board_id: str | None = None,
 ) -> SimpleNamespace:
     old = old or _session(
         expert_id="e-old",
@@ -751,7 +871,7 @@ def _mock_reassign(
             "get_board_session_extras",
             new=AsyncMock(
                 side_effect=lambda _user_id, ids: {
-                    sid: BoardExtras(started=started) for sid in ids
+                    sid: BoardExtras(started=started, board_id=board_id) for sid in ids
                 }
             ),
         ),
@@ -830,8 +950,13 @@ def test_reassign_opens_a_new_session_briefed_by_the_old_one(
         reassigned_from_expert_id="e-old",
     )
     mocks.title.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID, "Write the PRD")
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, None, "in_progress")
     mocks.set_board.assert_awaited_once_with(
-        NEW_SESSION_ID, TEST_USER_ID, column="in_progress", position=-1024.0
+        NEW_SESSION_ID,
+        TEST_USER_ID,
+        column="in_progress",
+        position=-1024.0,
+        board_id=None,
     )
     mocks.history.assert_awaited_once_with(SESSION_ID, TEST_USER_ID)
     mocks.files.assert_awaited_once_with(TEST_USER_ID, SESSION_ID)
@@ -1005,11 +1130,7 @@ def _mock_create_card(mocker: pytest_mock.MockerFixture) -> SimpleNamespace:
         create=mocker.patch.object(
             chat_routes, "create_chat_session", new=AsyncMock(side_effect=_fake_create)
         ),
-        columns=mocker.patch.object(
-            chat_routes,
-            "get_board_columns",
-            new=AsyncMock(return_value=_default_columns()),
-        ),
+        resolve=_mock_resolve(mocker, chat_routes, home=_home(_custom_column())),
         title=mocker.patch.object(
             chat_routes, "update_session_title", new=AsyncMock(return_value=True)
         ),
@@ -1035,8 +1156,10 @@ def test_create_session_with_title_and_backlog_is_silent(
     assert response.status_code == 200
     session_id = response.json()["id"]
     mocks.title.assert_awaited_once_with(session_id, TEST_USER_ID, "Write the PRD")
+    mocks.resolve.assert_awaited_once_with(TEST_USER_ID, "default")
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, None, "backlog")
     mocks.set_board.assert_awaited_once_with(
-        session_id, TEST_USER_ID, column="backlog", position=-1024.0
+        session_id, TEST_USER_ID, column="backlog", position=-1024.0, board_id=None
     )
     mocks.start.assert_not_awaited()
     mocks.rate_limit.assert_not_awaited()
@@ -1165,7 +1288,7 @@ def test_create_session_without_board_fields_skips_board(
     response = client.post("/sessions", json={})
 
     assert response.status_code == 200
-    mocks.columns.assert_not_awaited()
+    mocks.resolve.assert_not_awaited()
     mocks.title.assert_not_awaited()
     mocks.set_board.assert_not_awaited()
     mocks.start.assert_not_awaited()
@@ -1186,7 +1309,10 @@ def _mock_session_list(mocker: pytest_mock.MockerFixture) -> AsyncMock:
         new=AsyncMock(
             return_value={
                 SESSION_ID: BoardExtras(
-                    board_column="backlog", started=False, has_messages=True
+                    board_id=PROJECT_ID,
+                    board_column="backlog",
+                    started=False,
+                    has_messages=True,
                 )
             }
         ),
@@ -1214,6 +1340,7 @@ def test_list_sessions_adds_board_facts_on_request(
 
     assert response.status_code == 200
     card = response.json()["sessions"][0]
+    assert card["board_id"] == PROJECT_ID
     assert card["board_column"] == "backlog"
     assert card["has_messages"] is True
     extras.assert_awaited_once_with(TEST_USER_ID, [SESSION_ID])
@@ -1232,3 +1359,503 @@ def test_list_sessions_falls_back_when_board_facts_fail(
     assert card["id"] == SESSION_ID
     assert card["board_column"] is None
     assert card["started"] is False
+
+
+def test_list_sessions_without_board_facts_has_no_board(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    _mock_session_list(mocker)
+
+    response = client.get("/sessions")
+
+    assert response.json()["sessions"][0]["board_id"] is None
+
+
+# ─── GET /sessions/{id} board ─────────────────────────────────────────
+
+
+def test_session_detail_carries_its_board(mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(
+        chat_routes,
+        "get_chat_messages_paginated",
+        new=AsyncMock(
+            return_value=PaginatedMessages(
+                messages=[],
+                has_more=False,
+                oldest_sequence=None,
+                session=_session(board_id=PROJECT_ID),
+            )
+        ),
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "get_active_session",
+        new=AsyncMock(return_value=(None, None)),
+    )
+
+    response = client.get(f"/sessions/{SESSION_ID}")
+
+    assert response.status_code == 200
+    assert response.json()["board_id"] == PROJECT_ID
+
+
+# ─── Boards ───────────────────────────────────────────────────────────
+
+
+def test_list_boards_puts_home_first(mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(
+        board_routes,
+        "list_boards",
+        new=AsyncMock(return_value=[_home(), _project()]),
+    )
+
+    response = client.get("/boards")
+
+    assert response.status_code == 200
+    assert response.json()["boards"] == [
+        {"id": HOME_ID, "name": "Home", "is_default": True, "position": 0.0},
+        {"id": PROJECT_ID, "name": "Launch", "is_default": False, "position": 1024.0},
+    ]
+
+
+def test_create_board_returns_it(mocker: pytest_mock.MockerFixture) -> None:
+    create = mocker.patch.object(
+        board_routes, "create_board", new=AsyncMock(return_value=_project())
+    )
+
+    response = client.post("/boards", json={"name": "Launch"})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Launch"
+    assert response.json()["id"] == PROJECT_ID
+    create.assert_awaited_once_with(TEST_USER_ID, "Launch")
+
+
+@pytest.mark.parametrize("name", ["", "   ", "x" * 41])
+def test_create_board_with_a_bad_name_422(
+    mocker: pytest_mock.MockerFixture, name: str
+) -> None:
+    # The real create_board: the name is checked before the database.
+    home = mocker.patch.object(board_db, "get_or_create_default_board")
+
+    response = client.post("/boards", json={"name": name})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Project names must be 1 to 40 characters"
+    home.assert_not_called()
+
+
+def test_create_the_21st_board_422(mocker: pytest_mock.MockerFixture) -> None:
+    # The real create_board over a user who already has 20 boards.
+    @asynccontextmanager
+    async def _transaction():
+        yield object()
+
+    mocker.patch.object(
+        board_db, "get_or_create_default_board", new=AsyncMock(return_value=_home())
+    )
+    mocker.patch.object(board_db.db, "transaction", new=_transaction)
+    mocker.patch.object(
+        board_db.db,
+        "query_raw_with_schema",
+        new=AsyncMock(side_effect=[[], [{"count": 20, "last": 19 * 1024.0}]]),
+    )
+    insert = mocker.patch.object(board_db.Board, "prisma")
+
+    response = client.post("/boards", json={"name": "Launch"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "You can have up to 20 projects"
+    insert.assert_not_called()
+
+
+def test_rename_board(mocker: pytest_mock.MockerFixture) -> None:
+    update = mocker.patch.object(
+        board_routes,
+        "update_board",
+        new=AsyncMock(return_value=_project().model_copy(update={"name": "Ship"})),
+    )
+
+    response = client.patch(f"/boards/{PROJECT_ID}", json={"name": "Ship"})
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Ship"
+    update.assert_awaited_once_with(
+        TEST_USER_ID, PROJECT_ID, name="Ship", position=None
+    )
+
+
+def test_rename_home_409(mocker: pytest_mock.MockerFixture) -> None:
+    # The real update_board over Home.
+    _mock_resolve(mocker, board_db)
+
+    response = client.patch("/boards/default", json={"name": "Not home"})
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Home can't be renamed"
+
+
+def test_update_an_unknown_board_404(mocker: pytest_mock.MockerFixture) -> None:
+    _mock_resolve(mocker, board_db)
+
+    response = client.patch("/boards/board-gone", json={"position": 5.0})
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
+def test_delete_home_409(mocker: pytest_mock.MockerFixture) -> None:
+    # The real delete_board over Home.
+    _mock_resolve(mocker, board_db)
+    transaction = mocker.patch.object(board_db.db, "transaction")
+
+    response = client.delete(f"/boards/{HOME_ID}")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Home can't be deleted"
+    transaction.assert_not_called()
+
+
+def test_delete_a_project_204(mocker: pytest_mock.MockerFixture) -> None:
+    delete = mocker.patch.object(board_routes, "delete_board", new=AsyncMock())
+
+    response = client.delete(f"/boards/{PROJECT_ID}")
+
+    assert response.status_code == 204
+    delete.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID)
+
+
+def test_delete_an_unknown_board_404(mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(
+        board_routes,
+        "delete_board",
+        new=AsyncMock(side_effect=BoardNotFoundError("Board board-gone not found")),
+    )
+
+    response = client.delete("/boards/board-gone")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
+# ─── PATCH /sessions/{id}/board onto another board ────────────────────
+
+
+def test_move_to_a_project_keeps_a_column_it_has(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(started=True, board_column="done")
+    }
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 200
+    mocks.resolve.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID)
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, "done")
+    mocks.set_board.assert_awaited_once_with(
+        SESSION_ID,
+        TEST_USER_ID,
+        column="done",
+        position=-1024.0,
+        board_id=PROJECT_ID,
+    )
+    mocks.start.assert_not_awaited()
+
+
+def test_move_to_a_project_without_the_column_lands_in_backlog(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.resolve.side_effect = None
+    mocks.resolve.return_value = _project()
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(started=True, board_column=CUSTOM_KEY)
+    }
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 200
+    mocks.set_board.assert_awaited_once_with(
+        SESSION_ID,
+        TEST_USER_ID,
+        column="backlog",
+        position=-1024.0,
+        board_id=PROJECT_ID,
+    )
+
+
+def test_move_an_unplaced_card_to_a_project_lands_in_backlog(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker)
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 200
+    assert mocks.set_board.await_args.kwargs["column"] == "backlog"
+    mocks.start.assert_not_awaited()
+
+
+def test_move_back_home_clears_the_board(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(
+            started=True, board_id=PROJECT_ID, board_column="in_progress"
+        )
+    }
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": "default"}
+    )
+
+    assert response.status_code == 200
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, None, "in_progress")
+    assert mocks.set_board.await_args.kwargs["board_id"] is None
+
+
+def test_move_to_an_unknown_board_404(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_card(mocker)
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": "board-of-someone-else"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+    mocks.set_board.assert_not_awaited()
+    mocks.start.assert_not_awaited()
+
+
+def test_move_checks_the_column_against_the_target_board(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker)
+    mocks.resolve.side_effect = None
+    mocks.resolve.return_value = _project()
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board",
+        json={"board_id": PROJECT_ID, "column": CUSTOM_KEY},
+    )
+
+    assert response.status_code == 422
+    mocks.set_board.assert_not_awaited()
+
+
+def test_move_onto_a_project_starts_an_unstarted_card_in_progress(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker)
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(started=False, board_column="in_progress")
+    }
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 200
+    mocks.start.assert_awaited_once_with(
+        mocks.session, TEST_USER_ID, org_id="test-org", team_id="test-team"
+    )
+    mocks.set_board.assert_awaited_once_with(
+        SESSION_ID,
+        TEST_USER_ID,
+        column="in_progress",
+        position=-1024.0,
+        board_id=PROJECT_ID,
+    )
+
+
+def test_move_within_a_project_uses_its_columns(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.resolve.side_effect = None
+    mocks.resolve.return_value = _project(_custom_column())
+    mocks.extras.return_value = {
+        SESSION_ID: BoardExtras(
+            started=True, board_id=PROJECT_ID, board_column="backlog"
+        )
+    }
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"column": CUSTOM_KEY}
+    )
+
+    assert response.status_code == 200
+    mocks.resolve.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID)
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, CUSTOM_KEY)
+    assert mocks.set_board.await_args.kwargs["board_id"] is UNSET
+
+
+def test_move_onto_a_board_deleted_meanwhile_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.set_board.side_effect = BoardNotFoundError("Board board-launch not found")
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
+def test_move_refused_by_a_vanished_board_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_card(mocker, started=True)
+    mocks.set_board.return_value = False
+
+    response = client.patch(
+        f"/sessions/{SESSION_ID}/board", json={"board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+
+
+# ─── Boards on create and reassign ────────────────────────────────────
+
+
+def test_create_session_on_a_project(mocker: pytest_mock.MockerFixture) -> None:
+    mocks = _mock_create_card(mocker)
+
+    response = client.post(
+        "/sessions",
+        json={
+            "title": "Write the PRD",
+            "board_column": "backlog",
+            "board_id": PROJECT_ID,
+        },
+    )
+
+    assert response.status_code == 200
+    session_id = response.json()["id"]
+    mocks.resolve.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID)
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, "backlog")
+    mocks.set_board.assert_awaited_once_with(
+        session_id,
+        TEST_USER_ID,
+        column="backlog",
+        position=-1024.0,
+        board_id=PROJECT_ID,
+    )
+
+
+def test_create_session_checks_the_column_against_the_project(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    # Home has the custom column; the project does not.
+    mocks = _mock_create_card(mocker)
+
+    on_home = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_column": CUSTOM_KEY}
+    )
+    on_project = client.post(
+        "/sessions",
+        json={
+            "title": "Write the PRD",
+            "board_column": CUSTOM_KEY,
+            "board_id": PROJECT_ID,
+        },
+    )
+
+    assert on_home.status_code == 200
+    assert on_project.status_code == 422
+    mocks.create.assert_awaited_once()
+
+
+def test_create_session_on_an_unknown_board_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+
+    response = client.post(
+        "/sessions",
+        json={"title": "Write the PRD", "board_column": "backlog", "board_id": "nope"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+    mocks.create.assert_not_awaited()
+
+
+def test_create_session_board_id_needs_a_column(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+
+    response = client.post(
+        "/sessions", json={"title": "Write the PRD", "board_id": PROJECT_ID}
+    )
+
+    assert response.status_code == 422
+    mocks.create.assert_not_awaited()
+
+
+def test_create_session_on_a_board_deleted_meanwhile_deletes_the_card(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_create_card(mocker)
+    mocks.set_board.side_effect = BoardNotFoundError("Board board-launch not found")
+
+    response = client.post(
+        "/sessions",
+        json={
+            "title": "Write the PRD",
+            "board_column": "in_progress",
+            "board_id": PROJECT_ID,
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found"
+    mocks.delete.assert_awaited_once()
+    mocks.start.assert_not_awaited()
+
+
+def test_reassign_puts_the_new_card_on_the_old_cards_board(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_reassign(mocker, board_id=PROJECT_ID)
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 200
+    mocks.top.assert_awaited_once_with(TEST_USER_ID, PROJECT_ID, "in_progress")
+    mocks.set_board.assert_awaited_once_with(
+        NEW_SESSION_ID,
+        TEST_USER_ID,
+        column="in_progress",
+        position=-1024.0,
+        board_id=PROJECT_ID,
+    )
+    assert response.json()["new_session"]["board_id"] == PROJECT_ID
+
+
+def test_reassign_onto_a_board_deleted_meanwhile_404(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_reassign(mocker, board_id=PROJECT_ID)
+    mocks.set_board.side_effect = BoardNotFoundError("Board board-launch not found")
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/reassign", json={"expert_id": "e-new"}
+    )
+
+    assert response.status_code == 404
+    mocks.delete.assert_awaited_once_with(NEW_SESSION_ID, TEST_USER_ID)
+    mocks.mark.assert_not_awaited()
