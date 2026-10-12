@@ -19,6 +19,8 @@ import {
 import { BlockListCard, BlockOutputCard } from "./BlockCards";
 import { capabilityTargetRow } from "./capabilityRow";
 import { ConsultVerdictCard } from "./ConsultCard";
+import { CredentialList } from "./CredentialCards";
+import { parseCredentialInventory } from "./credentialHelpers";
 import { ExecutionCard } from "./ExecutionCard";
 import { FileDiff } from "./FileDiff";
 import { isDiffText } from "./fileDiffHelpers";
@@ -372,6 +374,10 @@ function toolCard(
     }
     case "connect_integration":
       return null;
+    case "list_user_credentials": {
+      const inventory = output && parseCredentialInventory(output);
+      return inventory ? <CredentialList inventory={inventory} /> : null;
+    }
     case "decompose_goal": {
       const steps = output && asItems(output.steps);
       return steps ? <PlanSteps steps={steps} /> : null;
