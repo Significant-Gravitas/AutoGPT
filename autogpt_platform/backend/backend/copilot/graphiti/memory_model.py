@@ -42,6 +42,19 @@ class MemoryStatus(str, Enum):
     retracted fact is never recalled; the edge is kept for audit."""
 
 
+# Every ``MemoryStatus`` but the one only a forget writes. The docstring is
+# part of the schema graphiti's extraction model is shown, so the omitted
+# value is named only here.
+class ExtractedStatus(str, Enum):
+    """The lifecycle states graphiti's attribute extraction may give a fact
+    (``types.MemoryFact.status``)."""
+
+    active = "active"
+    tentative = "tentative"
+    superseded = "superseded"
+    contradicted = "contradicted"
+
+
 class MemoryForgetFailureCode(str, Enum):
     """Stable, machine-switchable reason a forget delete failed.
 

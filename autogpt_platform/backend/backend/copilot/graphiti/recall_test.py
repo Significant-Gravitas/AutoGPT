@@ -99,8 +99,6 @@ class TestForgottenFactPredicate:
     def test_cypher(self) -> None:
         assert recall.forgotten_fact_predicate("f") == (
             "(f.forgotten_at IS NOT NULL"
-            " OR f.status = 'retracted'"
-            " OR f.expiration_reason = 'user_signal'"
             " OR (f.expired_at IS NOT NULL AND f.invalid_at IS NULL"
             " AND f.expiration_reason IS NULL))"
         )
@@ -110,9 +108,12 @@ class TestForgottenFactPredicate:
         [
             ("active", None, None, None, False),
             (None, None, None, None, False),
-            ("retracted", "user_signal", _NOW, None, True),
-            ("retracted", "settings_page", _NOW, None, True),
-            ("superseded", "user_signal", _NOW, None, True),  # dream, user's word
+            # A status or reason alone is no forget: graphiti's extraction
+            # fills both from an episode's text, and a dream picks its reason.
+            ("retracted", None, None, None, False),  # "I retracted my offer"
+            ("retracted", "user_signal", _NOW, None, False),
+            ("retracted", "settings_page", _NOW, None, False),
+            ("superseded", "user_signal", _NOW, None, False),  # a dream demotion
             ("superseded", "stale_fact", _NOW, None, False),  # dream's own call
             ("active", None, _NOW, _NOW, False),  # graphiti's contradiction
             ("active", None, _NOW, None, True),  # the pre-policy forget

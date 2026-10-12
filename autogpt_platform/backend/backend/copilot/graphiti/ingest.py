@@ -376,6 +376,7 @@ async def _write_locked(
         # before the **payload spread. Present only for dream writes.
         edge_metadata = payload.pop("_edge_metadata", None)
         result = await _add_episode(client, group_id, payload)
+        await _undo_extracted_retractions(client, result)
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
         # stamp it onto the edges THIS episode newly created (see
@@ -383,6 +384,39 @@ async def _write_locked(
         if edge_metadata:
             await _stamp_edge_metadata(client, group_id, result, edge_metadata, user_id)
     return True
+
+
+async def _undo_extracted_retractions(
+    client: Graphiti, result: AddEpisodeResults
+) -> None:
+    """Put back to ``active`` an edge this episode wrote whose status
+    graphiti's attribute extraction set to ``retracted``. Its schema
+    (``types.MemoryFact``) leaves the value out, but graphiti does not hold
+    the model to it, and only a forget retracts: it also stamps
+    ``forgotten_at``, and an edge carrying that is never touched. Run under
+    the graph's write lock, like the write itself. Best-effort: the episode
+    is written either way."""
+    try:
+        uuids = [edge.uuid for edge in result.edges]
+        if uuids:
+            await client.driver.execute_query(
+                _UNDO_EXTRACTED_RETRACTIONS_QUERY,
+                uuids=uuids,
+                retracted=MemoryStatus.retracted.value,
+                active=MemoryStatus.active.value,
+            )
+    except Exception:
+        logger.warning(
+            "Could not check the statuses an episode's edges were given",
+            exc_info=True,
+        )
+
+
+_UNDO_EXTRACTED_RETRACTIONS_QUERY = """
+MATCH ()-[e:RELATES_TO]->()
+WHERE e.uuid IN $uuids AND e.forgotten_at IS NULL AND e.status = $retracted
+SET e.status = $active
+"""
 
 
 async def _dropped_as_forgotten(

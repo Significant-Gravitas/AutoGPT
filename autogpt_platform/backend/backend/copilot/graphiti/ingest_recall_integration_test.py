@@ -11,7 +11,9 @@ duplicate or contradiction candidate. A forget therefore leaves a placeholder
 where the sentence was and blanks those summaries (``recall_hide.py``).
 
 These drive the production worker (``ingest.enqueue_episode``) with only the
-LLM boundary scripted and read every message the model was sent.
+LLM boundary scripted and read every message the model was sent. A status of
+``retracted`` the extraction model gives a fact is no forget: the worker puts
+it back to ``active``.
 ``recall_ingest_integration_test.py`` covers a forgotten fact stated again.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
@@ -34,6 +36,8 @@ from .recall_integration_fixtures import (
     ALICE,
     BOB,
     CAROL,
+    edge_row,
+    episode_row,
     ingest_facts,
     ingest_through_the_worker,
     live_facts,
@@ -139,3 +143,31 @@ async def test_no_later_prompt_carries_a_forgotten_sentence(
     assert any(FORGOTTEN_FACT in prompt for prompt in prompts), "edge offered"
     assert [prompt for prompt in prompts if ALICE[2] in prompt] == []
     assert list((await live_facts(driver)).values()) == [BOB[2]]
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_retraction_the_extraction_gives_is_no_forget(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup
+) -> None:
+    """ "I retracted my application at Acme": graphiti does not hold its
+    extraction model to ``MemoryFact``'s statuses, and this one answers
+    ``retracted``. Only a forget retracts, so the worker puts the fact back
+    to active: it stays live, and its episode is not redacted."""
+    driver, scope = scope_graph
+    client = stub_graphiti_client(
+        driver, scripted_responses([ALICE], status="retracted")
+    )
+
+    episode = await ingest_through_the_worker(
+        driver, scope, client, [ALICE], session_id="s-alice"
+    )
+
+    [alice] = await live_facts(driver)
+    row = await edge_row(driver, alice)
+    assert (row["status"], row["forgotten_at"], row["fact"]) == (
+        "active",
+        None,
+        ALICE[2],
+    )
+    assert (await episode_row(driver, episode))["redacted_at"] is None
