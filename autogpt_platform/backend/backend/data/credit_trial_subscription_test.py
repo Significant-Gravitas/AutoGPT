@@ -14,7 +14,7 @@ from backend.data.credit import (
     invalidate_active_subscription_cache,
     sync_subscription_from_stripe,
 )
-from backend.data.credit_subscription_test import _clear_cache, _make_user
+from backend.data.credit_subscription_test import _make_user
 
 
 @pytest.mark.asyncio
