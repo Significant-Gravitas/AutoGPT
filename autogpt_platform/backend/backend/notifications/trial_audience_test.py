@@ -99,6 +99,19 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
     return trial, raw
 
 
+def _stripe(raw: dict, others: tuple[str, ...] = ()) -> AsyncMock:
+    """The live subscription, on a customer whose only other live
+    subscriptions are `others` (none by default)."""
+
+    async def call(fn, *args, **kwargs):
+        if fn == notices.stripe.Subscription.list_async:
+            data = [SimpleNamespace(id=sub_id) for sub_id in others]
+            return SimpleNamespace(data=data, has_more=False)
+        return raw
+
+    return AsyncMock(side_effect=call)
+
+
 async def _notify(
     trial,
     raw,
@@ -112,18 +125,25 @@ async def _notify(
     claim_welcome=None,
     opted_out_at=None,
     user=None,
+    timezone="America/Chicago",
+    claim_once=None,
+    others: tuple[str, ...] = (),
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
     user = user or SimpleNamespace(
-        id="user-1", name="Sam", email=email, marketing_opt_out_at=opted_out_at
+        id="user-1",
+        name="Sam",
+        email=email,
+        marketing_opt_out_at=opted_out_at,
+        timezone=timezone,
     )
     users = MagicMock(
         get_user_by_id=AsyncMock(return_value=user),
         claim_welcome_email=claim_welcome or AsyncMock(return_value=not welcomed),
     )
     with (
-        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
+        patch.object(notices, "stripe_call", _stripe(raw, others)),
         patch.object(
             notices,
             "credit_db",
@@ -133,7 +153,9 @@ async def _notify(
         ),
         patch.object(notices, "user_db", return_value=users),
         patch.object(trial_audience, "user_db", return_value=users),
-        patch.object(notices, "claim_once", AsyncMock(return_value=claimed)),
+        patch.object(
+            notices, "claim_once", claim_once or AsyncMock(return_value=claimed)
+        ),
         patch.object(notices, "release_claim", AsyncMock()) as release,
         patch.object(notices, "queue_notification_async", notice),
         patch.object(trial_audience, "queue_audience_change", audience),
@@ -253,6 +275,16 @@ async def test_an_opted_out_trialist_gets_the_notice_but_no_group_change(trial, 
     got, notice, release = await _notify(
         trial, raw, kind, opted_out_at=datetime.now(UTC)
     )
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "converted"])
+async def test_a_trialist_in_tehran_gets_the_notice_but_no_group_change(trial, kind):
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(trial, raw, kind, timezone="Asia/Tehran")
     assert got == []
     notice.assert_awaited_once()
     release.assert_not_awaited()

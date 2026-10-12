@@ -146,6 +146,7 @@ async def test_notice_uses_shared_notification_queue(trial, outcome):
                         name="Sam",
                         email="sam@example.com",
                         marketing_opt_out_at=None,
+                        timezone="America/Chicago",
                     )
                 )
             ),

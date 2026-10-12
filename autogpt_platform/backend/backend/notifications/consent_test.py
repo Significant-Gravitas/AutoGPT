@@ -1,5 +1,6 @@
-"""Someone who refused marketing never enters MailerLite, and the skip is
-logged at debug level by pseudonym, never by address."""
+"""Someone who refused marketing never enters MailerLite, nor does anyone a
+signal places in Iran or Russia, and the skip is logged at debug level by
+pseudonym, never by address."""
 
 import logging
 import pickle
@@ -17,9 +18,14 @@ EMAIL = "sam@example.com"
 OPTED_OUT = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
 
 
-def _user(opted_out_at: datetime | None) -> BillingEmailRecipient:
+def _user(
+    opted_out_at: datetime | None, email: str = EMAIL, timezone: str | None = None
+) -> BillingEmailRecipient:
     return BillingEmailRecipient(
-        id="user-1", email=EMAIL, marketing_opt_out_at=opted_out_at
+        id="user-1",
+        email=email,
+        marketing_opt_out_at=opted_out_at,
+        timezone=timezone,
     )
 
 
@@ -77,4 +83,33 @@ def test_a_refused_change_is_logged_by_pseudonym_at_debug(caplog, action):
 def test_the_skip_never_reaches_an_info_log(caplog):
     with caplog.at_level(logging.INFO, logger=consent.__name__):
         consent.log_opted_out_skip(EMAIL, "checkout_opened")
+        consent.log_excluded_skip(EMAIL, "checkout_opened")
     assert caplog.records == []
+
+
+@pytest.mark.parametrize(
+    "user, countries",
+    [
+        (_user(None, timezone="Europe/Moscow"), ()),
+        (_user(None, email="sam@firma.ru"), ()),
+        # Only the caller saw it: the visitor's IP, or a billing address.
+        (_user(None, timezone="America/Chicago"), (None, "IR")),
+    ],
+    ids=["timezone", "email", "seen-by-the-caller"],
+)
+@pytest.mark.parametrize("action", list(AudienceAction))
+def test_iran_or_russia_is_refused_and_logged_by_pseudonym(
+    caplog, user, countries, action
+):
+    with caplog.at_level(logging.DEBUG, logger=consent.__name__):
+        assert not consent.audience_change_allowed(user, action, countries)
+    (record,) = caplog.records
+    assert record.levelno == logging.DEBUG
+    assert pseudonym(user.email) in record.getMessage()
+    assert action.value in record.getMessage()
+    assert user.email not in caplog.text
+
+
+def test_a_country_elsewhere_is_allowed():
+    user = _user(None, timezone="Europe/Kiev")
+    assert consent.audience_change_allowed(user, AudienceAction.ADD_TRIAL, ("UA",))

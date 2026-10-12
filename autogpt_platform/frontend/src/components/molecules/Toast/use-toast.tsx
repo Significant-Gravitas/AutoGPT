@@ -10,6 +10,8 @@ export interface ToastProps {
   duration?: number;
   action?: React.ReactNode;
   dismissable?: boolean;
+  /** Reusing a key replaces the toast already showing under it. */
+  replaceKey?: string;
 }
 
 type ToasterToast = ToastProps & {
@@ -31,12 +33,14 @@ function toast({
   duration = 5000,
   action,
   dismissable = true,
+  replaceKey,
   ..._props
 }: Toast) {
   const message = title || description || "";
   const descriptionText = title && description ? description : undefined;
 
   const toastOptions = {
+    id: replaceKey,
     duration: dismissable ? duration : Infinity,
     action,
     description: descriptionText,

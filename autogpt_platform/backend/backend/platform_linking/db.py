@@ -88,9 +88,35 @@ async def resolve_server_link(
     return ResolveResponse(linked=owner is not None)
 
 
-async def resolve_user_link(platform: str, platform_user_id: str) -> ResolveResponse:
-    owner = await find_user_link_owner(platform, platform_user_id)
-    return ResolveResponse(linked=owner is not None)
+async def resolve_user_link(
+    platform: str, platform_user_id: str, include_account: bool = False
+) -> ResolveResponse:
+    if not include_account:
+        owner = await find_user_link_owner(platform, platform_user_id)
+        return ResolveResponse(linked=owner is not None)
+    link = await PlatformUserLink.prisma().find_unique(
+        where={
+            "platform_platformUserId": {
+                "platform": platform,
+                "platformUserId": platform_user_id,
+            }
+        },
+        include={"User": True},
+    )
+    if not link:
+        return ResolveResponse(linked=False)
+    email = link.User.email if link.User else None
+    return ResolveResponse(linked=True, account_hint=mask_email(email))
+
+
+def mask_email(email: str | None) -> str | None:
+    """Mask an email for showing to its owner: 'bently@agpt.co' -> 'b***@agpt.co'."""
+    if not email or "@" not in email:
+        return None
+    local, domain = email.rsplit("@", 1)
+    if not local or not domain:
+        return None
+    return f"{local[0]}***@{domain}"
 
 
 # ── Token creation ────────────────────────────────────────────────────

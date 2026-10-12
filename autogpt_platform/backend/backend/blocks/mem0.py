@@ -1,6 +1,5 @@
-from typing import Any, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
-from mem0 import MemoryClient
 from pydantic import BaseModel, SecretStr
 
 from backend.blocks._base import (
@@ -17,6 +16,9 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+
+if TYPE_CHECKING:
+    from mem0 import MemoryClient
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="8cc8b2c5-d3e4-4b1c-84ad-e1e9fe2a0122",
@@ -38,8 +40,10 @@ class Mem0Base:
     """Base class with shared utilities for Mem0 blocks"""
 
     @staticmethod
-    def _get_client(credentials: APIKeyCredentials) -> MemoryClient:
+    def _get_client(credentials: APIKeyCredentials) -> "MemoryClient":
         """Get initialized Mem0 client"""
+        from mem0 import MemoryClient
+
         return MemoryClient(api_key=credentials.api_key.get_secret_value())
 
 

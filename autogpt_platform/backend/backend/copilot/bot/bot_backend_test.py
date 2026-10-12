@@ -68,6 +68,17 @@ class TestResolve:
         )
         result = await api.resolve_user("discord", "u1")
         assert result.linked is False
+        assert result.account_hint is None
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_forwards_include_account(self, api: BotBackend):
+        api._client.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        result = await api.resolve_user("telegram", "u1", include_account=True)
+        assert result.linked is True
+        assert result.account_hint == "b***@agpt.co"
+        assert api._client.resolve_user_link.await_args.kwargs["include_account"]
 
 
 class TestListLinkedServerIds:
