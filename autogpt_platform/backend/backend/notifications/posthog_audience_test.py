@@ -268,3 +268,41 @@ def test_an_update_goes_to_the_client_it_is_given(capture: Mock):
     assert posthog_audience.send("user-1", update, client=own)
     own.capture.assert_called_once()
     capture.assert_not_called()
+
+
+def test_a_checkout_opener_is_sent_their_checkout_update(capture: Mock):
+    fields = _fields(ip_country="AT")
+    posthog_audience.set_checkout_properties("user-1", fields, OPENED)
+    properties = capture.call_args.kwargs["properties"]
+    expected = posthog_audience.checkout_update(fields, OPENED)
+    assert properties["$set"] == expected.to_set
+    assert properties["$set_once"] == expected.to_set_once
+
+
+@pytest.mark.parametrize(
+    "broken, call",
+    [
+        (
+            "account_update",
+            lambda: posthog_audience.set_account_properties(
+                "user-1", "sam@acme.io", "email"
+            ),
+        ),
+        (
+            "checkout_update",
+            lambda: posthog_audience.set_checkout_properties(
+                "user-1", _fields(), OPENED
+            ),
+        ),
+    ],
+    ids=["signup", "checkout"],
+)
+def test_a_failure_is_logged_and_never_reaches_the_caller(
+    capture: Mock, monkeypatch, caplog, broken, call
+):
+    """Analytics must not fail a signup or cost an opener their MailerLite
+    change."""
+    monkeypatch.setattr(posthog_audience, broken, Mock(side_effect=RuntimeError()))
+    call()
+    capture.assert_not_called()
+    assert "user-1" in caplog.text

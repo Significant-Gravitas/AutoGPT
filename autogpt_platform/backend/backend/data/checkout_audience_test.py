@@ -138,6 +138,15 @@ async def test_opening_checkout_sets_the_same_values_on_the_posthog_person(
 
 
 @pytest.mark.asyncio
+async def test_a_posthog_failure_never_costs_the_mailerlite_change(queued, monkeypatch):
+    monkeypatch.setattr(
+        posthog_audience, "checkout_update", MagicMock(side_effect=RuntimeError("bug"))
+    )
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    assert queued.await_args.args[0].action is AudienceAction.CHECKOUT_OPENED
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "role",
     [
@@ -168,15 +177,19 @@ async def test_an_opener_without_a_readable_role_is_still_queued(
     ],
 )
 async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
-    queued, recorded, posthog, caplog, countries, code
+    queued, recorded, posthog, monkeypatch, caplog, countries, code
 ):
     """Recorded on the account, since the trial and billing events that
     follow carry no IP or billing country. PostHog is analytics, not
-    marketing, so it still gets the opener."""
+    marketing, so it still gets the opener; the role, which only MailerLite
+    gets from here, is not read."""
+    role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", **countries)
     recorded.assert_awaited_once_with("user-1", code)
     queued.assert_not_awaited()
+    role.assert_not_awaited()
     assert _person(posthog)["country_code"] == code
     assert pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text
@@ -243,9 +256,12 @@ async def test_an_opted_out_opener_is_never_queued(
 ):
     """Only for MailerLite: PostHog is analytics, not marketing."""
     _opt_out(monkeypatch)
+    role = AsyncMock(return_value=OnboardingRole(choice="Marketing"))
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
     with caplog.at_level(logging.DEBUG, logger=consent.__name__):
         await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
     queued.assert_not_awaited()
+    role.assert_not_awaited()
     assert _person(posthog)["country_code"] == "US"
     assert pseudonym(EMAIL) in caplog.text
     assert EMAIL not in caplog.text

@@ -29,6 +29,7 @@ fills in what the person doesn't hold yet, keeps the same rules:
   moves on to a later IP country.
 """
 
+import logging
 from collections.abc import Iterable
 from datetime import datetime
 
@@ -36,20 +37,22 @@ from posthog import Posthog
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
-from backend.notifications.audience_enrichment import YES, email_type, signin_method
+from backend.notifications.audience_enrichment import (
+    COUNTRY_FIELDS,
+    YES,
+    email_type,
+    signin_method,
+)
 from backend.notifications.subscriber_fields import Fields, utc_moment
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
+logger = logging.getLogger(__name__)
+
 CHECKOUT_OPENED_AT = "checkout_opened_at"
 
-# Sent as they are now, under MailerLite's own keys.
+# Always `$set`: the account's current values, under MailerLite's own keys.
 _ALWAYS_SET = (SubscriberField.EMAIL_TYPE, SubscriberField.SIGNIN_METHOD)
-_COUNTRY_FIELDS = (
-    SubscriberField.COUNTRY,
-    SubscriberField.COUNTRY_CODE,
-    SubscriberField.COUNTRY_SOURCE,
-)
 
 
 class PersonUpdate(BaseModel):
@@ -68,8 +71,24 @@ class PersonUpdate(BaseModel):
 
 
 def set_account_properties(user_id: str, email: str, signup_method: str | None) -> None:
-    """A new account's email type and sign-in method. Never raises."""
-    send(user_id, account_update(email, [signup_method] if signup_method else []))
+    """A new account's email type and sign-in method. Never raises: analytics
+    must not fail a signup."""
+    try:
+        providers = [signup_method] if signup_method else []
+        send(user_id, account_update(email, providers))
+    except Exception:
+        logger.warning(f"Could not set the PostHog account properties of {user_id}")
+
+
+def set_checkout_properties(
+    user_id: str, fields: Fields, opened_at: datetime | int | float | None
+) -> None:
+    """A checkout opener's properties (`checkout_update`). Never raises:
+    analytics must not cost the opener their MailerLite change."""
+    try:
+        send(user_id, checkout_update(fields, opened_at))
+    except Exception:
+        logger.warning(f"Could not set the PostHog checkout properties of {user_id}")
 
 
 def account_update(email: str, signin_providers: Iterable[str]) -> PersonUpdate:
@@ -96,7 +115,7 @@ def checkout_update(
     if exclude := fields.get(SubscriberField.EXCLUDE_DE_AT):
         target = update.to_set if exclude == YES else update.to_set_once
         target[SubscriberField.EXCLUDE_DE_AT.value] = exclude
-    country = {f.value: value for f in _COUNTRY_FIELDS if (value := fields.get(f))}
+    country = {f.value: value for f in COUNTRY_FIELDS if (value := fields.get(f))}
     billed = fields.get(SubscriberField.COUNTRY_SOURCE) == "stripe"
     (update.to_set if billed else update.to_set_once).update(country)
     opened = utc_moment(opened_at).isoformat(timespec="seconds")

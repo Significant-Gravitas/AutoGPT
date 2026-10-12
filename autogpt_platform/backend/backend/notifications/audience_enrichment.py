@@ -294,7 +294,7 @@ def checkout_fields(
     return fields
 
 
-_COUNTRY_FIELDS = (
+COUNTRY_FIELDS = (
     SubscriberField.COUNTRY,
     SubscriberField.COUNTRY_CODE,
     SubscriberField.COUNTRY_SOURCE,
@@ -341,6 +341,6 @@ def merge_with_held(
     held_rank = _SOURCE_RANK.get(str(held.get(SubscriberField.COUNTRY_SOURCE.value)), 0)
     ours_rank = _SOURCE_RANK.get(str(merged.get(SubscriberField.COUNTRY_SOURCE)), 0)
     if held_rank > ours_rank:
-        for field in _COUNTRY_FIELDS:
+        for field in COUNTRY_FIELDS:
             merged.pop(field, None)
     return merged

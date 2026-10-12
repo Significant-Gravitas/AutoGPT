@@ -35,6 +35,7 @@ from backend.notifications.audience_enrichment import (
     billing_country,
     checkout_fields,
     excluded_country,
+    role_fields,
 )
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.subscriber_fields import queue_fields
@@ -88,15 +89,16 @@ async def queue_checkout_opened(
             timezone=user.timezone,
             stripe_country=stripe_country,
             ip_country=ip_country,
-            role=await _role(user_id),
         )
-        posthog_audience.send(
-            user_id, posthog_audience.checkout_update(fields, opened_at)
-        )
+        posthog_audience.set_checkout_properties(user_id, fields, opened_at)
         if not audience_change_allowed(
             user, AudienceAction.CHECKOUT_OPENED, (ip_country, stripe_country)
         ):
             return
+        # The profile step sends the role to PostHog itself; only MailerLite
+        # gets it here.
+        if role := await _role(user_id):
+            fields.update(role_fields(role))
         await queue_fields(user_id, user.email, fields, AudienceAction.CHECKOUT_OPENED)
     except Exception:
         logger.exception(f"Could not queue the MailerLite checkout for {user_id}")
