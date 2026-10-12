@@ -60,6 +60,7 @@ _READ = frozenset(
         "list_schedules",
         "list_skills",
         "list_team",
+        "list_user_credentials",
         "list_workspace_files",
         "memory_forget_search",
         "memory_search",
