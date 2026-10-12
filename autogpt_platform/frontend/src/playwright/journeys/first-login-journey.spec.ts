@@ -11,6 +11,7 @@ test.describe("first login journey", () => {
     page,
   }) => {
     const user = await signUpBeforeAccountSetup(page);
+    await answerTheProfileReadFirst(page);
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/home/);
@@ -25,6 +26,30 @@ test.describe("first login journey", () => {
     await expectAccountMenuToName(page, user);
   });
 });
+
+// The page's other API calls can run account setup on the way in (an
+// org-scoped route sets up an account that has no org yet), so holding them
+// until the profile read is answered makes that read land before setup every
+// time, not only when it happens to win the race.
+async function answerTheProfileReadFirst(page: Page) {
+  const profileAnswered = page
+    .waitForResponse((response) => isProfileRead(new URL(response.url())))
+    .catch(() => undefined);
+  await page.route(
+    (url) =>
+      url.pathname.startsWith("/api/") &&
+      !url.pathname.startsWith("/api/auth/") &&
+      !isProfileRead(url),
+    async (route) => {
+      await profileAnswered;
+      await route.continue();
+    },
+  );
+}
+
+function isProfileRead(url: URL) {
+  return url.pathname === "/api/proxy/api/store/profile";
+}
 
 // Until the profile loads, the menu shows placeholders instead of who you are.
 async function expectAccountMenuToName(page: Page, user: JourneyUser) {
