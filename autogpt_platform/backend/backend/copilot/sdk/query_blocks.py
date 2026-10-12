@@ -9,17 +9,9 @@ returns block content.
 
 import re
 
-from backend.copilot.builder_context import BUILDER_CONTEXT_TAG
 from backend.copilot.service import SERVER_INJECTED_BLOCK_TAGS
 
-CONTEXT_BLOCK_TAGS = frozenset(
-    {
-        *SERVER_INJECTED_BLOCK_TAGS,
-        "budget_status",
-        "conversation_history",
-        BUILDER_CONTEXT_TAG,
-    }
-)
+CONTEXT_BLOCK_TAGS = frozenset(SERVER_INJECTED_BLOCK_TAGS)
 # What ``_build_query_message`` writes between the history block and the turn.
 HISTORY_LEAD_OUT = "Now, the user says:\n"
 _OPEN_TAG_RE = re.compile(r"<([A-Za-z_][A-Za-z0-9_]*)>")

@@ -660,6 +660,30 @@ class TestStripUserContextTags:
         assert "env_context" not in result
         assert "hello" in result
 
+    @pytest.mark.parametrize(
+        "tag", ["budget_status", "conversation_history", "builder_context"]
+    )
+    def test_strips_per_turn_server_blocks(self, tag):
+        """The per-turn blocks the engines write are server-only too."""
+        from backend.copilot.service import strip_user_context_tags
+
+        msg = f"<{tag}>\nnot from the server\n</{tag}>\n\nhello"
+        assert strip_user_context_tags(msg) == "hello"
+
+    @pytest.mark.parametrize(
+        "tag", ["budget_status", "conversation_history", "builder_context"]
+    )
+    def test_strips_a_lone_per_turn_server_tag(self, tag):
+        from backend.copilot.service import strip_user_context_tags
+
+        assert strip_user_context_tags(f"<{tag}>hello") == "hello"
+
+    def test_builder_context_literal_matches_its_module(self):
+        from backend.copilot.builder_context import BUILDER_CONTEXT_TAG
+        from backend.copilot.service import SERVER_INJECTED_BLOCK_TAGS
+
+        assert BUILDER_CONTEXT_TAG in SERVER_INJECTED_BLOCK_TAGS
+
 
 class TestInjectUserContextWarmCtx:
     """Tests for the warm_ctx parameter of inject_user_context.

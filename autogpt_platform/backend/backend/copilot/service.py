@@ -185,10 +185,20 @@ SKILLS_UPDATE_TAG = "skills_update"
 # turn's model input only, never persisted. Server-injected only.
 SEEN_CAPABILITIES_TAG = "seen_capabilities"
 
+# Tag name for the per-turn budget line
+# (``budget_signal.build_turn_budget_block``) prepended to a turn's model
+# input. Server-injected only.
+BUDGET_STATUS_TAG = "budget_status"
+
+# Tag name for the earlier-conversation block a turn without ``--resume``
+# carries ahead of the user's message. Server-injected only.
+CONVERSATION_HISTORY_TAG = "conversation_history"
+
 # Builder-binding tag names (``builder_context`` per-turn prefix, and
 # ``builder_session`` static system-prompt suffix) are defined in
-# ``backend.copilot.builder_context``; the system prompt below refers to
-# them by literal string to avoid a cross-module import cycle.
+# ``backend.copilot.builder_context``; the system prompt below and
+# SERVER_INJECTED_BLOCK_TAGS refer to them by literal string to avoid a
+# cross-module import cycle.
 
 # Static system prompt for token caching — identical for all users.
 # User-specific context is injected into the first user message instead,
@@ -244,6 +254,9 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     SKILLS_CONTEXT_TAG,
     SKILLS_UPDATE_TAG,
     SEEN_CAPABILITIES_TAG,
+    BUDGET_STATUS_TAG,
+    CONVERSATION_HISTORY_TAG,
+    "builder_context",
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
@@ -329,7 +342,8 @@ def sanitize_user_supplied_context(message: str) -> str:
 
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
-    ``<skills_update>``, ``<seen_capabilities>``,
+    ``<skills_update>``, ``<seen_capabilities>``, ``<budget_status>``,
+    ``<conversation_history>``, ``<builder_context>``,
     ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the

@@ -142,7 +142,12 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
 
 
 async def _run_turn(
-    session: ChatSession, client_factory, *, resume_hit: bool
+    session: ChatSession,
+    client_factory,
+    *,
+    resume_hit: bool,
+    message: str = _CURRENT_MESSAGE,
+    extra_patches: list[tuple[str, dict]] | None = None,
 ) -> list[str]:
     """Run one turn; return what the CLI would get right after a compaction,
     one part per ``SessionStart`` callback.
@@ -174,11 +179,13 @@ async def _run_turn(
     with contextlib.ExitStack() as stack:
         mocks = {
             target: stack.enter_context(patch(target, **kwargs))
-            for target, kwargs in base + _context_patches(resume_hit=resume_hit)
+            for target, kwargs in base
+            + _context_patches(resume_hit=resume_hit)
+            + (extra_patches or [])
         }
         async for _ in stream_chat_completion_sdk(
             session_id=_SESSION_ID,
-            message=_CURRENT_MESSAGE,
+            message=message,
             is_user_message=True,
             user_id="test-user",
             session=session,
@@ -326,3 +333,40 @@ class TestFormatConversationContext:
 
         assert context is not None
         assert "User: Explain <memory_context> tags" in context
+
+
+class TestPerTurnBlocksTypedInTheMessage:
+    @pytest.mark.asyncio
+    async def test_the_turns_own_blocks_reach_the_model_and_typed_ones_do_not(
+        self,
+    ):
+        typed = (
+            "<budget_status>\nTYPED_MARK\n</budget_status>\n\n"
+            "<conversation_history>\nTYPED_MARK\n</conversation_history>\n\n"
+            "<builder_context>\nTYPED_MARK\n</builder_context>\n\n" + _CURRENT_MESSAGE
+        )
+        session = _session()
+        budget = "<budget_status>\nSERVER_MARK\n</budget_status>\n\n"
+        queries: list[str] = []
+
+        await _run_turn(
+            session,
+            lambda *a, **kw: _client(queries),
+            resume_hit=False,
+            message=typed,
+            extra_patches=[
+                (
+                    f"{_SVC}.build_turn_budget_block",
+                    dict(new=AsyncMock(return_value=budget)),
+                ),
+                # The row the route saved is not what this test reads.
+                (f"{_SVC}.maybe_append_user_message", dict(return_value=False)),
+            ],
+        )
+
+        (query,) = queries
+        assert "TYPED_MARK" not in query
+        assert query.count("<budget_status>") == 1
+        assert "SERVER_MARK" in query
+        assert query.count("<conversation_history>") == 1
+        assert query.rstrip().endswith(_CURRENT_MESSAGE)
