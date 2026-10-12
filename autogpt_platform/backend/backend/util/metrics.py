@@ -20,7 +20,7 @@ except ImportError:
 from backend.util.exceptions import get_execution_failure_reason
 from backend.util.security import SENSITIVE_FIELD_NAMES
 from backend.util.settings import BehaveAs, Settings
-from backend.util.url_redaction import redact_query_string, redact_url
+from backend.util.url_redaction import REDACTED, redact_url
 
 settings = Settings()
 
@@ -146,14 +146,16 @@ def _redact_request_urls(event: dict) -> None:
     """Mask credentials in the request URL the ASGI integration attaches.
 
     EventScrubber only scrubs a request's headers, cookies and body, so the
-    query string, which for the WebSocket is the user's session JWT, and the
-    path secrets in ``url`` would otherwise be sent with every event.
+    query string, which for the WebSocket holds the user's session JWT, and
+    the path secrets in ``url`` would otherwise be sent with every event.
     """
     request = event.get("request") or {}
     if isinstance(request.get("url"), str):
         request["url"] = redact_url(request["url"])
-    if isinstance(request.get("query_string"), str):
-        request["query_string"] = redact_query_string(request["query_string"])
+    # The SDK has already decoded the query, so a %26 inside a value reads as a
+    # separator and the rest of the value as a key. None of it can be kept.
+    if request.get("query_string"):
+        request["query_string"] = REDACTED
     # A request no route matched is named after its raw URL.
     transaction = event.get("transaction")
     source = (event.get("transaction_info") or {}).get("source")
