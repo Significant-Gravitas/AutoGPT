@@ -1,7 +1,15 @@
 import { authMiddleware } from "@/lib/auth/middleware";
+import { SENTRY_TUNNEL_PATH } from "@/lib/sentry-tunnel";
+import { relaySentryEnvelope } from "@/lib/sentry-tunnel-middleware";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function middleware(request: NextRequest) {
+  // First, ahead of the redirects, auth checks and any broader /relay handler:
+  // each of those would drop or misroute the browser's envelopes.
+  if (request.nextUrl.pathname === SENTRY_TUNNEL_PATH) {
+    return relaySentryEnvelope(request);
+  }
+
   // Redirect www to non-www so auth cookies are issued against a single,
   // canonical host and avoid the auth/cookie domain mismatch (#9188).
   // Use url.hostname (already lowercase-normalized by the URL parser) instead

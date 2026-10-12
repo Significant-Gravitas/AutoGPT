@@ -3,6 +3,8 @@
 // Note that this config is unrelated to the Vercel Edge Runtime and is also required when running locally.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { stripRequestCredentials } from "@/lib/sentry-filters";
+import { isSentryTunnelTransaction } from "@/lib/sentry-tunnel";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
 
@@ -24,11 +26,19 @@ Sentry.init({
     /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
+  beforeSend: stripRequestCredentials,
+  beforeSendTransaction(event) {
+    return isSentryTunnelTransaction(event)
+      ? null
+      : stripRequestCredentials(event);
+  },
+
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 
   enableLogs: true,
   integrations: [
+    Sentry.requestDataIntegration({ include: { cookies: false, data: false } }),
     Sentry.captureConsoleIntegration({ levels: ["fatal", "error", "warn"] }),
     Sentry.extraErrorDataIntegration(),
   ],

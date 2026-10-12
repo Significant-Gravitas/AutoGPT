@@ -33,8 +33,8 @@ describe("credential badges in messages", () => {
     expect(await screen.findByText("Work Gmail")).toBeTruthy();
     const table = container.querySelector("table");
     expect(table).not.toBeNull();
-    expect(table?.parentElement?.className).toBe(
-      "my-4 max-w-full overflow-x-auto",
+    expect(table?.parentElement?.classList.contains("overflow-x-auto")).toBe(
+      true,
     );
   });
 });

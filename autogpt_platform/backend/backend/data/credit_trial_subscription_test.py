@@ -14,7 +14,7 @@ from backend.data.credit import (
     invalidate_active_subscription_cache,
     sync_subscription_from_stripe,
 )
-from backend.data.credit_subscription_test import _clear_cache, _make_user
+from backend.data.credit_subscription_test import _make_user
 
 
 @pytest.mark.asyncio
@@ -96,7 +96,6 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
 
 
 async def _pending_change_for(subscription: dict):
-    _clear_cache(get_pending_subscription_change)
     mock_list = MagicMock()
     mock_list.data = [stripe.Subscription.construct_from(subscription, "k")]
     with (

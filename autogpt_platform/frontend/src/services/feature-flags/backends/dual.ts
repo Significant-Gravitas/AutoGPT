@@ -8,6 +8,7 @@ import isEqual from "lodash/isEqual";
 import { useEffect } from "react";
 import { isPostHogFlagsEnabled } from "../flag-backend";
 import type { FlagSourceResult } from "../flag-source";
+import { type Flag, resolveFlagValue } from "../use-get-flag";
 import { useLaunchDarklyFlag } from "./launchdarkly";
 import { usePostHogFlag } from "./posthog";
 
@@ -48,9 +49,14 @@ function useReportMismatch(
     isPostHogFlagsEnabled() &&
     launchDarkly.resolved &&
     postHog.resolved;
-  // Key-order-insensitive, like the backend's dict comparison: the vendors
-  // need not serialise a JSON flag's keys in the same order.
-  const agree = isEqual(launchDarkly.value, postHog.value);
+  // What each vendor would serve, not its raw answer: LaunchDarkly's `false`
+  // and PostHog's empty answer for a flag it has switched off both serve the
+  // default (BUILDER-94P). Key-order-insensitive, like the backend's dict
+  // comparison: the vendors need not serialise a JSON flag's keys in one order.
+  const agree = isEqual(
+    resolveFlagValue(key as Flag, launchDarkly.value),
+    resolveFlagValue(key as Flag, postHog.value),
+  );
 
   useEffect(() => {
     if (!comparable || agree) return;
