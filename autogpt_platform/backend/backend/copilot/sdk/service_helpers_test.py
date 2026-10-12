@@ -2292,6 +2292,25 @@ class TestExpectPreQueryCompaction:
             )
         ).expected is False
 
+    def test_resume_forecast_measures_the_gap_against_the_turn_budget(self):
+        # The same uncovered rows predict a compaction under a tight budget and
+        # none under a generous one: the resume branch reads the target the
+        # turn hands it, the pinned window's, not a constant of its own.
+        messages = _big_history()
+
+        def forecast(target_tokens: int) -> bool:
+            return _expect_pre_query_compaction(
+                messages,
+                "gpt-4o",
+                use_resume=True,
+                transcript_msg_count=1,
+                session_msg_ceiling=len(messages),
+                target_tokens=target_tokens,
+            ).expected
+
+        assert forecast(_TARGET) is True
+        assert forecast(10_000_000) is False
+
     def test_cap_engaged_window_predicts_from_post_watermark_rows(self):
         # The windowed view starts above absolute sequence 0, so the
         # sequence-based gap path runs; rows at/after the watermark form
