@@ -324,7 +324,13 @@ def _envelope(rng: random.Random, index: int, session_id: str) -> TurnEnvelope |
     if kind == "child":
         return child
     broken = rng.choice(
-        [{"depth": -1}, {"depth": MAX_DEPTH + 1}, {"tree_id": ""}, {"tools": None}]
+        [
+            {"depth": -1},
+            {"depth": MAX_DEPTH + 1},
+            {"tree_id": ""},
+            {"tools": None},
+            {"deadline_at": (now + timedelta(hours=1)).replace(tzinfo=None)},
+        ]
     )
     return child.model_copy(update=broken)
 
@@ -354,11 +360,12 @@ def _check(
         return
     assert envelope.tree_id and 0 <= envelope.depth <= MAX_DEPTH, f"{where} ran"
     assert envelope.depth == 0 or envelope.tools is not None, f"{where} ran"
+    deadline = envelope.deadline_at
+    assert deadline is None or deadline.tzinfo is not None, f"{where} ran"
+    assert deadline is None or deadline > datetime.now(UTC), f"{where} ran late"
     own = narrowed_by(envelope, resolve_session_permissions(session))
     assert in_effect == own, f"{where} ran under {in_effect}"
     assert own.permits(call.tool_name), f"{where} ran a tool it may not"
-    deadline = envelope.deadline_at
-    assert deadline is None or deadline > datetime.now(UTC), f"{where} ran late"
     if envelope.depth:
         reads = [
             admitted

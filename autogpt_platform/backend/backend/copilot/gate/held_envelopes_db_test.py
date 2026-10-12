@@ -345,6 +345,10 @@ async def test_an_expired_or_malformed_envelope_fails_closed(
         "above the root": ({"depth": -1}, "could not be read back"),
         "past the bound": ({"depth": MAX_DEPTH + 1}, "could not be read back"),
         "root of no tree": ({"depth": 0, "tree_id": ""}, "could not be read back"),
+        "deadline with no time zone": (
+            {"deadline_at": datetime.now() + timedelta(hours=1)},
+            "could not be read back",
+        ),
     }
     reasons: dict[str, str] = {}
     for text, (fields, reason) in broken.items():

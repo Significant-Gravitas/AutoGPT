@@ -20,9 +20,18 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.context import envelope_scope, get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.session_permissions import resolve_session_permissions
+from backend.copilot.tree import (
+    MAX_DEPTH,
+    TreeRefusal,
+    TurnEnvelope,
+    narrowed_by,
+    readmit_turn,
+)
+from backend.copilot.turn_queue import is_users_own_chat
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 from backend.util.encryption import JSONCryptor
@@ -58,6 +67,8 @@ _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+_UNRECORDED = "What this action was allowed to do was not recorded."
+_UNREADABLE = "What this action was allowed to do could not be read back."
 
 
 def is_answer_row(message: "ChatMessage") -> bool:
@@ -218,7 +229,6 @@ async def wake(
         UNRECORDED_WAKE,
         WAKE_LATER,
         InflightCapExceeded,
-        is_users_own_chat,
         post_refusal,
         try_enqueue_turn,
         wakes_sub_work,
@@ -241,7 +251,10 @@ async def wake(
         if info is None or info.user_id != user_id:
             return
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
-        envelope = max(calls, key=lambda c: c.held_at).envelope
+        # Bounds only the turn that reads the results: each call runs under
+        # the envelope it was held under (``_own_envelope``), not this one.
+        newest = max(calls, key=lambda c: c.held_at).envelope
+        envelope = newest if newest is not None and _well_formed(newest) else None
         if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
@@ -431,14 +444,65 @@ async def _outcome(
     if tool is None:
         await review_store.consume(call.review_id, user_id)
         return "closed", "Nothing ran: this tool no longer exists."
-    # The gate finds the approval for exactly these arguments and spends it.
-    result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    try:
+        envelope = await _own_envelope(user_id, session, call)
+    except TreeRefusal as refused:
+        # Spent, so the same call proposed again is decided afresh instead of
+        # riding an approval given to a task that may no longer act on it.
+        await review_store.consume(call.review_id, user_id)
+        return "closed", (
+            "Nothing ran: the task this action was proposed in can no longer "
+            f'carry it out ("{refused.message}"). Propose it again if it is '
+            "still needed."
+        )
+    with envelope_scope(envelope):
+        # The gate finds the approval for exactly these arguments and spends it.
+        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)
+
+
+async def _own_envelope(
+    user_id: str, session: ChatSession, call: HeldCall
+) -> TurnEnvelope | None:
+    """The envelope an approved call runs under: the one it was held under,
+    re-checked now and narrowed by the session's permissions now, never the
+    one of whichever turn folds it. Raises :class:`TreeRefusal`."""
+    envelope = call.envelope
+    if envelope is None:
+        # Held before envelopes were kept, or rebuilt from its card. Every turn
+        # in the user's own chat is a root, so a root runs it there as one held
+        # it; anywhere else nothing says what it was allowed to do.
+        running = get_current_envelope()
+        if is_users_own_chat(session) and (running is None or running.depth == 0):
+            return running
+        raise TreeRefusal(_UNRECORDED)
+    if not _well_formed(envelope):
+        raise TreeRefusal(_UNREADABLE)
+    # A root's re-check below never reads its deadline.
+    if envelope.deadline_at is not None and envelope.deadline_at <= datetime.now(UTC):
+        raise TreeRefusal("This task's deadline has passed.")
+    await readmit_turn(envelope, user_id=user_id)
+    envelope = narrowed_by(envelope, resolve_session_permissions(session))
+    if not envelope.permits(call.tool_name):
+        raise TreeRefusal(f"{call.tool_name} is no longer allowed here.")
+    return envelope
+
+
+def _well_formed(envelope: TurnEnvelope) -> bool:
+    """Only what a root or a derived child can be: a tree, a depth within the
+    bound, a concrete tool set below the root, and a deadline, if any, that
+    can be compared with now."""
+    return (
+        bool(envelope.tree_id)
+        and 0 <= envelope.depth <= MAX_DEPTH
+        and (envelope.depth == 0 or envelope.tools is not None)
+        and (envelope.deadline_at is None or envelope.deadline_at.tzinfo is not None)
+    )
 
 
 async def _restore(
