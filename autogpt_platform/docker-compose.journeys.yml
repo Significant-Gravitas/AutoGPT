@@ -26,6 +26,9 @@ x-scripted-model-env: &scripted-model-env
   GRAPHITI_LLM_BASE_URL: http://scripted_model:4010/api/v1
   GRAPHITI_EMBEDDER_BASE_URL: http://scripted_model:4010/api/v1
   GRAPHITI_EMBEDDER_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  # Journeys provoke failures on purpose; keep them out of Sentry even when a
+  # local .env carries a real DSN.
+  SENTRY_DSN: ""
 
 services:
   scripted_model:
@@ -70,3 +73,10 @@ services:
 
   notification_server:
     environment: *scripted-model-env
+
+  websocket_server:
+    environment: *scripted-model-env
+
+  frontend:
+    environment:
+      DISABLE_SENTRY: "true"
