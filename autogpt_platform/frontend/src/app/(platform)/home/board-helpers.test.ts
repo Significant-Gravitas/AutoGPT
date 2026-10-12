@@ -386,9 +386,10 @@ describe("applyReassign", () => {
       in_progress: ["n"],
       done: ["a", "b"],
     });
-    expect(next.sessions.find((c) => c.id === "a")?.last_line).toBe(
-      "Reassigned to Priya",
-    );
+    expect(next.sessions.find((c) => c.id === "a")).toMatchObject({
+      last_line: "Reassigned to Priya",
+      reassigned_to_session_id: "n",
+    });
     expect(board.sessions).toHaveLength(2);
   });
 

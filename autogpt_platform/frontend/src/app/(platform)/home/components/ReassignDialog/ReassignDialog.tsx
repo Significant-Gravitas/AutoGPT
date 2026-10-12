@@ -67,7 +67,7 @@ export function ReassignDialog({ card, onClose, onReassigned }: Props) {
             </Text>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <Button variant="secondary" onClick={onClose}>
+            <Button variant="secondary" disabled={isPending} onClick={onClose}>
               Cancel
             </Button>
             <Button

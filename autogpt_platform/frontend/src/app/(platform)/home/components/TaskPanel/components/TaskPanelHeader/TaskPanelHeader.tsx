@@ -51,7 +51,7 @@ export function TaskPanelHeader({
     stopEditing,
     handleChange,
     handleKeyDown,
-  } = useTaskPanelHeader({ title, isStarted: !!card?.started, onRename });
+  } = useTaskPanelHeader({ title, card, onRename });
 
   function handleMarkDone() {
     onMove("done");

@@ -216,6 +216,11 @@ describe("reassign", () => {
     expect(
       within(dialog).getByRole("button", { name: "Reassign" }),
     ).toHaveProperty("disabled", true);
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toHaveProperty("disabled", true);
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "Reassign task" })).toBeDefined();
 
     releaseReassign();
 
@@ -295,6 +300,51 @@ describe("reassign", () => {
         within(dialog).getByRole("button", { name: "Reassign" }),
       ).toHaveProperty("disabled", false),
     );
+  });
+
+  test("a task already reassigned shows the server's reason", async () => {
+    serveBoard(board(OLD));
+    server.use(
+      http.post(REASSIGN_URL, () =>
+        HttpResponse.json(
+          { detail: "This task has already been reassigned" },
+          { status: 409 },
+        ),
+      ),
+    );
+    renderPanel();
+
+    const dialog = await openReassign();
+    await userEvent.click(within(dialog).getByRole("radio", { name: "Priya" }));
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Reassign" }),
+    );
+
+    await waitFor(() =>
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Couldn't reassign the task",
+          description: "This task has already been reassigned",
+        }),
+      ),
+    );
+    expect(toastSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: RUNNING_MESSAGE }),
+    );
+    expect(screen.getByRole("dialog", { name: "Reassign task" })).toBeDefined();
+  });
+
+  test("hides Reassign on a card already handed on", async () => {
+    serveBoard(board({ ...OLD_AFTER, reassigned_to_session_id: NEW_ID }));
+    renderPanel();
+
+    const panel = await screen.findByRole("dialog", {
+      name: "Research competitors",
+    });
+    expect(within(panel).getByText("chat host")).toBeDefined();
+    expect(
+      within(panel).queryByRole("button", { name: /Reassign/ }),
+    ).toBeNull();
   });
 
   test("an expert that can't take it shows the server's reason", async () => {

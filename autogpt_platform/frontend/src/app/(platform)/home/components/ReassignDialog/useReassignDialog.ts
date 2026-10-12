@@ -45,8 +45,9 @@ export function useReassignDialog({ card, onClose, onReassigned }: Args) {
     ? assigneeOptions(activeExperts).filter((option) => option.id !== currentId)
     : [];
 
+  // A close mid-request would let its success switch a later dialog's panel.
   function handleOpenChange(open: boolean) {
-    if (!open) onClose();
+    if (!open && !isPending) onClose();
   }
 
   function handleConfirm() {

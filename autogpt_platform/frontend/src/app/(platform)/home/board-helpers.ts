@@ -234,7 +234,8 @@ export function applyReassign(
       newSession,
       ...data.sessions.flatMap((card) => {
         if (card.id === newSession.id) return [];
-        return card.id === oldSession.id ? [oldSession] : [card];
+        if (card.id !== oldSession.id) return [card];
+        return [{ ...oldSession, reassigned_to_session_id: newSession.id }];
       }),
     ],
   };
