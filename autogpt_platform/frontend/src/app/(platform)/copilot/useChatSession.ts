@@ -134,6 +134,11 @@ export function useChatSession({
   // `useSendMessage` flushes its pending first message on *any* sessionId
   // change, so a late adoption would post that message into the old thread.
   const sendStartedRef = useRef(false);
+  // The id the last create named, kept while every attempt lost its response
+  // so a resend of the same request adopts what that attempt may have saved.
+  const pendingCreateRef = useRef<{ id: string; request: string } | null>(
+    null,
+  );
   const canAdoptExpertSession =
     adoptLatestExpertThread &&
     !!expertId &&
@@ -331,7 +336,13 @@ export function useChatSession({
       // Naming the session up front lets a retry after a lost response adopt
       // it. Kickoff is already get-or-create on the server.
       if (options?.expertKickoff) sessionData.expert_kickoff = true;
-      else sessionData.session_id = uuidv4({});
+      else {
+        const request = JSON.stringify(sessionData);
+        if (pendingCreateRef.current?.request !== request) {
+          pendingCreateRef.current = { id: uuidv4({}), request };
+        }
+        sessionData.session_id = pendingCreateRef.current.id;
+      }
       const response = await createSessionMutation({ data: sessionData });
       if (response.status !== 200 || !response.data?.id) {
         const error = new Error("Failed to create session");
@@ -340,6 +351,7 @@ export function useChatSession({
         });
         throw error;
       }
+      pendingCreateRef.current = null;
       useCopilotStreamStore
         .getState()
         .bindPendingFirstSendToSession(response.data.id);
@@ -353,6 +365,7 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      if (!(error instanceof TypeError)) pendingCreateRef.current = null;
       // The caller owns the one toast for this failure (see
       // toastSendFailure); toasting here as well stacked two contradictory
       // messages. A paywall is an account state, not a fault.

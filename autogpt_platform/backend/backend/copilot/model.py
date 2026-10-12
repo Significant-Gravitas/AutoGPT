@@ -1539,7 +1539,8 @@ async def get_or_create_client_chat_session(
 
     Raises:
         SessionIdConflictError: the id belongs to another user's session, or
-            to one scoped to a different expert.
+            to one this create could not have made: another expert, another
+            organization or team, or a builder-bound session.
     """
     existing = await get_chat_session(session_id, user_id)
     if existing is None:
@@ -1560,9 +1561,33 @@ async def get_or_create_client_chat_session(
                 if await get_chat_session(session_id) is not None:
                     raise SessionIdConflictError(session_id)
                 raise
-    if existing.expert_id != expert_id:
+    if not _client_session_in_scope(
+        existing,
+        organization_id=organization_id,
+        team_id=team_id,
+        expert_id=expert_id,
+    ):
         raise SessionIdConflictError(session_id)
     return existing
+
+
+def _client_session_in_scope(
+    session: ChatSession,
+    *,
+    organization_id: str | None,
+    team_id: str | None,
+    expert_id: str | None,
+) -> bool:
+    """Whether a create with these arguments could have made *session*.
+
+    An expert session's tenancy comes from the expert (``create_chat_session``
+    pins it to the owner's private tenancy), so the expert match covers it.
+    """
+    if session.expert_id != expert_id or session.metadata.builder_graph_id:
+        return False
+    if expert_id is not None:
+        return True
+    return session.organization_id == organization_id and session.team_id == team_id
 
 
 async def get_or_create_builder_session(
