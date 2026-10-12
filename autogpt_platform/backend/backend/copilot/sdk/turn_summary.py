@@ -109,6 +109,31 @@ class TurnSummaryCollector:
         self.summary.transcript_download_bytes = size
 
     @_never_raises
+    def note_window_source(self, source: str | None) -> None:
+        """Where the pinned window came from (``context_window.window_source``)."""
+        self.summary.window_source = source
+
+    @_never_raises
+    def note_codex_usage(
+        self,
+        *,
+        input_tokens: int | None,
+        cached_input_tokens: int | None,
+        boundary_peak_tokens: int | None,
+    ) -> None:
+        """The Codex gateway's own counts for the turn."""
+        s = self.summary
+        s.codex_input_tokens = input_tokens
+        s.codex_cached_input_tokens = cached_input_tokens
+        s.codex_boundary_peak_tokens = boundary_peak_tokens
+
+    @_never_raises
+    def note_after_compaction_resend(self) -> None:
+        """One round of the first-turn context re-sent after a CLI compaction."""
+        resends = (self.summary.after_compaction_resends or 0) + 1
+        self.summary.after_compaction_resends = resends
+
+    @_never_raises
     def note_history_rows(self, rows: int, *, compressed: bool) -> None:
         """Rows ``_build_query_message`` turned into a history block.
 
@@ -248,6 +273,13 @@ class TurnSummaryCollector:
             sources = compaction.attempt_sources
             s.cli_compactions = sources.count("sdk_internal")
             s.pre_query_compactions = sources.count("pre_query")
+            # Every closed CLI cycle sends one ``copilot-compaction`` event; a
+            # failed one is a cycle that left no readable summary.
+            failed = compaction.failed_cycle_count
+            closed = compaction.completed_sources.count("sdk_internal")
+            s.cli_compactions_failed = failed
+            s.cli_compactions_landed = closed - failed
+            s.cli_compaction_failures = list(compaction.failed_cycle_sources) or None
         if upload_gate is not None:
             s.transcript_upload_skipped = upload_gate
         s.outcome, s.error_class = outcome(

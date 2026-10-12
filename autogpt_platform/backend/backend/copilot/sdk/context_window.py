@@ -141,6 +141,26 @@ def pinned_context_window(
     return window
 
 
+def window_source(
+    config: ChatConfig,
+    *,
+    codex_route: bool,
+    codex_engine: CodexEngineWindow | None = None,
+) -> str | None:
+    """Where ``pinned_context_window`` took the Codex route's window from.
+
+    ``explicit`` (``claude_agent_context_window``), ``account`` (what the
+    connected account advertises) or ``engine-default``; ``None`` on every
+    other route, whose window is its transport profile's.  The turn's
+    ``SDK context`` log line and its turn summary both report this value.
+    """
+    if not codex_route:
+        return None
+    if config.claude_agent_context_window is not None:
+        return "explicit"
+    return "account" if codex_engine is not None else "engine-default"
+
+
 # Sonnet 5's tokenizer counts ~30% more tokens than 4.x for the same text,
 # so the same 50%-of-200K trigger would compact at ~77% of the *text* budget
 # 4.x sessions get.  Scaling the trigger by the inflation factor keeps the
@@ -283,4 +303,5 @@ __all__ = [
     "pinned_context_window",
     "retry_target_tokens",
     "seed_target_tokens",
+    "window_source",
 ]

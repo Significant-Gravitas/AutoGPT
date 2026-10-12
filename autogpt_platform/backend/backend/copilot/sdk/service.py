@@ -62,7 +62,6 @@ from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.env import describe_sdk_context
-from backend.copilot.sdk.langfuse_events import emit_turn_usage_event
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
@@ -99,6 +98,7 @@ from backend.copilot.sdk.context_window import (
     compaction_target_tokens,
     retry_target_tokens,
     seed_target_tokens,
+    window_source,
 )
 
 from ..config import ChatConfig, CopilotLLMModel
@@ -5446,23 +5446,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             codex_engine=codex_engine,
         )
         # What this turn's subprocess was pinned to (window/trigger/flags —
-        # never secrets). Without this the pin is unobservable anywhere:
-        # Langfuse sees tokens, never the env vars that shaped them.
+        # never secrets). The turn summary reads the pin off the launch's env
+        # and records this source; the context-limit alarm quotes the line.
+        sdk_window_source = window_source(
+            config, codex_route=codex_gateway is not None, codex_engine=codex_engine
+        )
+        turn_summary.note_window_source(sdk_window_source)
         context_summary = describe_sdk_context(
             route="codex" if codex_gateway else config.transport.name,
             model=sdk_model,
             sdk_env=sdk_env,
-            window_source=(
-                (
-                    "explicit"
-                    if config.claude_agent_context_window is not None
-                    else "account" if codex_engine else "engine-default"
-                )
-                if codex_gateway
-                else None
-            ),
+            window_source=sdk_window_source,
         )
-        logger.info(f"{log_prefix} SDK context: {context_summary}")
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
         compaction = CompactionTracker()
@@ -5488,6 +5483,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 use_e2b=use_e2b,
                 log_prefix=log_prefix,
                 hidden_tools=hidden_tools,
+                turn_summary=turn_summary,
             ),
             allowed_tools=tool_options["allowed_tools"],
         )
@@ -6647,37 +6643,20 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     extra_metadata={"billing_mode": "user_subscription"},
                     execution_path="codex_claude_sdk",
                 )
-                # The reconcile event below covers OpenRouter turns only; Codex
-                # turns would otherwise leave no usage on their Langfuse trace.
-                # Re-derived (not reused from above): on early exits the gateway
-                # was never built and that local is unbound.
-                gateway_usage = (
-                    _codex_gateway_usage(codex_gateway)
-                    if codex_gateway is not None
-                    else None
-                )
-                emit_turn_usage_event(
-                    trace_id=langfuse_trace_id,
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    cache_read_tokens=turn_cache_read_tokens,
-                    cache_creation_tokens=0,
-                    cost_usd=None,
-                    model=effective_model,
-                    provider="codex",
-                    codex_input_tokens=(
-                        gateway_usage.input_tokens if gateway_usage else None
-                    ),
-                    codex_cached_input_tokens=(
-                        gateway_usage.cached_input_tokens if gateway_usage else None
-                    ),
-                    codex_boundary_peak_estimate=(
-                        codex_gateway.peak_boundary_estimate
-                        if codex_gateway is not None
-                        else None
-                    ),
-                    log_prefix=log_prefix,
-                )
+                # The gateway's own counts ride the turn summary beside the
+                # CLI's. Re-derived (not reused from above): on early exits the
+                # gateway was never built and that local is unbound.
+                if codex_gateway is not None:
+                    gateway_usage = _codex_gateway_usage(codex_gateway)
+                    turn_summary.note_codex_usage(
+                        input_tokens=(
+                            gateway_usage.input_tokens if gateway_usage else None
+                        ),
+                        cached_input_tokens=(
+                            gateway_usage.cached_input_tokens if gateway_usage else None
+                        ),
+                        boundary_peak_tokens=codex_gateway.peak_boundary_estimate,
+                    )
             elif _use_openrouter_reconcile:
                 # Defer the single cost-and-rate-limit write to a background
                 # task that queries OpenRouter's authoritative
@@ -6751,22 +6730,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     provider=(
                         "open_router" if config.openrouter_active else "anthropic"
                     ),
-                )
-                # Sync path only — when the reconcile fires it emits the
-                # authoritative usage event itself (with the real OpenRouter
-                # bill), so emitting here too would double-report the turn.
-                emit_turn_usage_event(
-                    trace_id=langfuse_trace_id,
-                    prompt_tokens=turn_prompt_tokens,
-                    completion_tokens=turn_completion_tokens,
-                    cache_read_tokens=turn_cache_read_tokens,
-                    cache_creation_tokens=turn_cache_creation_tokens,
-                    cost_usd=turn_cost_usd,
-                    model=effective_model,
-                    provider=(
-                        "open_router" if config.openrouter_active else "anthropic"
-                    ),
-                    log_prefix=log_prefix,
                 )
 
             # --- Persist session messages ---
@@ -7177,6 +7140,7 @@ async def _context_after_compaction(
     use_e2b: bool,
     log_prefix: str,
     hidden_tools: frozenset[str] = frozenset(),
+    turn_summary: TurnSummaryCollector | None = None,
 ) -> list[str]:
     """What the ``SessionStart`` hook hands the model after the CLI compacts.
 
@@ -7186,8 +7150,11 @@ async def _context_after_compaction(
     one hook callback each delivers, every one within the CLI's hook-output
     cap (``fit_after_compaction``); ``[]`` when there is nothing to re-send.
     ``hidden_tools`` are the tools this turn does not offer: a block is not
-    shortened with a pointer to one of them.
+    shortened with a pointer to one of them.  The hook runs this once per
+    compaction the CLI completes, and each run counts on *turn_summary*.
     """
+    if turn_summary is not None:
+        turn_summary.note_after_compaction_resend()
     prefix = await _rebuild_first_turn_prefix(
         session,
         user_id,

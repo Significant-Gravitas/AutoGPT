@@ -256,7 +256,12 @@ async def test_a_turn_whose_cleanup_raises_still_logs_one_summary(tmp_path, capl
 # built-ins it declared.
 
 _GUIDE = "\n\n<building_guide>GUIDE</building_guide>"
-_ROUTE_ENV = {"ANTHROPIC_BASE_URL": "https://openrouter.test/api"}
+_ROUTE_ENV = {
+    "ANTHROPIC_BASE_URL": "https://openrouter.test/api",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "200000",
+    "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "65",
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+}
 _ALLOWED = ["mcp__copilot__find_capability", "Glob", "TodoWrite"]
 _DISALLOWED = ["Bash", "Glob"]
 _LIVE_PROMPT = {
@@ -299,6 +304,9 @@ def _assert_line_reads_the_launch(summary: dict, options: ClaudeAgentOptions) ->
         _DISALLOWED,
     )
     assert summary["builtin_tools_declared"] == ["TodoWrite"]
+    # The pin the launch's env carried, read back off it.
+    assert (summary["context_window"], summary["autocompact_pct"]) == (200_000, 65)
+    assert summary["disable_1m_context"] is True
 
 
 @pytest.mark.asyncio

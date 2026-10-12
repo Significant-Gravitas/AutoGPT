@@ -27,6 +27,7 @@ from .after_compaction import (
     utf16_len,
 )
 from .service import _AFTER_COMPACTION_LEAD, _context_after_compaction
+from .turn_summary import TurnSummaryCollector
 
 _LEAD = "The conversation was just compacted; here are the blocks again:\n\n"
 # The CLI 2.1.284 threshold: longer than this and the model gets a preview.
@@ -425,6 +426,27 @@ class TestContextAfterCompaction:
                 log_prefix="[test]",
                 hidden_tools=hidden_tools,
             )
+
+    @pytest.mark.asyncio
+    async def test_each_rebuild_counts_one_resend_on_the_turn_summary(self):
+        """The hook rebuilds once per compaction the CLI completes, so the
+        summary's count lines up with the landed compactions."""
+        collector = TurnSummaryCollector("s")
+        with patch(
+            "backend.copilot.sdk.service._rebuild_first_turn_prefix",
+            AsyncMock(return_value=_prefix(_block("user_context", 400))),
+        ):
+            for _ in range(2):
+                await _context_after_compaction(
+                    MagicMock(),
+                    "u1",
+                    sdk_cwd="/tmp/copilot-x",
+                    use_e2b=False,
+                    log_prefix="[test]",
+                    turn_summary=collector,
+                )
+
+        assert collector.summary.after_compaction_resends == 2
 
     @pytest.mark.asyncio
     async def test_fitting_context_goes_out_whole(self, caplog):

@@ -418,6 +418,11 @@ class CompactionTracker:
         return len(self._failed_cycle_sources)
 
     @property
+    def failed_cycle_sources(self) -> tuple[str, ...]:
+        """The ``after_source`` of each cycle that ended with no readable summary."""
+        return tuple(self._failed_cycle_sources)
+
+    @property
     def landed_count(self) -> int:
         """Compactions that actually reduced the context."""
         return self.completed_count - self.failed_cycle_count

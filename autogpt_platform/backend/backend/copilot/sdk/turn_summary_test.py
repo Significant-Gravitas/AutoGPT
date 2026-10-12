@@ -14,7 +14,7 @@ from claude_agent_sdk import (
 
 from backend.copilot import service as copilot_service
 from backend.copilot.model import ChatMessage, ChatSession
-from backend.copilot.sdk.compaction import CompactionTracker
+from backend.copilot.sdk.compaction import CompactionStats, CompactionTracker
 from backend.copilot.sdk.service import _build_system_prompt_value
 from backend.copilot.sdk.turn_summary import LANGFUSE_EVENT_NAME, TurnSummaryCollector
 from backend.copilot.sdk.turn_summary_model import (
@@ -247,6 +247,82 @@ class TestCollector:
         s = c.summary
         assert s.tools_builtin == 6
         assert s.builtin_tools_declared == ["Glob", "Grep", "TodoWrite"]
+
+    def test_finish_reads_the_pinned_window_off_the_launch_env(self):
+        """The window, trigger and flags are what the launch's env carried,
+        beside the source the turn noted for it."""
+        env = {
+            "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "272000",
+            "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE": "90",
+            "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "272000",
+        }
+        c = TurnSummaryCollector("s")
+        c.note_window_source("account")
+
+        _finish(c, options=ClaudeAgentOptions(env=env), transport="codex")
+
+        s = c.summary
+        assert (s.context_window, s.autocompact_pct) == (272_000, 90)
+        assert (s.max_context_tokens, s.disable_1m_context) == (272_000, False)
+        assert s.window_source == "account"
+
+    def test_finish_omits_the_window_when_the_launch_pinned_none(self):
+        c = TurnSummaryCollector("s")
+
+        _finish(c, options=ClaudeAgentOptions(env={"OTHER": "1"}))
+
+        line = c.summary.model_dump(exclude_none=True)
+        assert not {"context_window", "autocompact_pct", "disable_1m_context"} & set(
+            line
+        )
+
+    @pytest.mark.asyncio
+    async def test_compaction_counts_agree_with_the_compaction_events(self):
+        """Each closed CLI cycle and each pre-query compaction sends one
+        ``copilot-compaction`` event; the summary's counts are those events,
+        and a failed cycle is one whose event names no readable summary."""
+        session = _session()
+        tracker = CompactionTracker()
+        events: list[dict] = []
+        with patch(
+            "backend.copilot.sdk.compaction.emit_compaction_event",
+            side_effect=lambda **kwargs: events.append(kwargs),
+        ):
+            for after_source in ("read", "no_summary_line", "read"):
+                tracker.on_compact("/tmp/projects/abc/session.jsonl")
+                tracker.emit_start_if_ready()
+                await tracker.emit_end_if_ready(
+                    session, CompactionStats(), after_source=after_source
+                )
+            tracker.on_compact("/tmp/projects/abc/session.jsonl")  # never closed
+            tracker.emit_pre_query_end(session, CompactionStats())
+        c = TurnSummaryCollector("s")
+
+        _finish(c, session=session, compaction=tracker)
+
+        s = c.summary
+        cli = [e for e in events if e["path"] == "sdk_internal"]
+        failed = [e["after_source"] for e in cli if e["after_source"] != "read"]
+        assert (s.cli_compactions_landed, s.cli_compactions_failed) == (2, 1)
+        assert s.cli_compactions_landed + s.cli_compactions_failed == len(cli)
+        assert s.cli_compaction_failures == failed == ["no_summary_line"]
+        assert s.pre_query_compactions == sum(e["path"] == "pre_query" for e in events)
+        assert s.cli_compactions == 4
+
+    def test_codex_usage_and_resend_rounds_ride_the_summary(self):
+        c = TurnSummaryCollector("s")
+        c.note_codex_usage(
+            input_tokens=900, cached_input_tokens=600, boundary_peak_tokens=172_000
+        )
+        c.note_after_compaction_resend()
+        c.note_after_compaction_resend()
+
+        _finish(c, transport="codex", codex=True)
+
+        s = c.summary
+        assert (s.codex_input_tokens, s.codex_cached_input_tokens) == (900, 600)
+        assert s.codex_boundary_peak_tokens == 172_000
+        assert s.after_compaction_resends == 2
 
     def test_finish_omits_the_declared_built_ins_when_the_launch_set_none(self):
         c = TurnSummaryCollector("s")

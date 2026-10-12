@@ -17,6 +17,7 @@ from backend.copilot.sdk.context_window import (
     compaction_target_tokens,
     pinned_context_window,
     retry_target_tokens,
+    window_source,
 )
 
 
@@ -282,3 +283,22 @@ class TestCodexEngineWindow:
         assert cli_autocompact_threshold(cfg, "gpt-6-astra", **kw) == 360_000
         assert compaction_target_tokens(cfg, "gpt-6-astra", **kw) == 340_000
         assert retry_target_tokens(cfg, "gpt-6-astra", **kw) == (100_000, 5_000)
+
+
+@pytest.mark.parametrize(
+    ("codex_route", "explicit", "engine", "expected"),
+    [
+        (True, None, CodexEngineWindow(context_window=400_000), "account"),
+        (True, None, None, "engine-default"),
+        (True, 300_000, CodexEngineWindow(context_window=400_000), "explicit"),
+        (False, None, None, None),
+        (False, 300_000, None, None),
+    ],
+)
+def test_window_source_names_the_input_the_codex_pin_came_from(
+    codex_route, explicit, engine, expected
+):
+    config = _make_config(claude_agent_context_window=explicit)
+    assert (
+        window_source(config, codex_route=codex_route, codex_engine=engine) == expected
+    )

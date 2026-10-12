@@ -49,6 +49,13 @@ class TurnSummary(BaseModel):
     model_requested: str | None = None
     model_answered: str | None = None
     release: str | None = None
+    # context window the CLI was pinned to, read off the launch's env, and
+    # where the window came from (``sdk/context_window.py``)
+    context_window: int | None = None
+    autocompact_pct: int | None = None
+    window_source: str | None = None
+    max_context_tokens: int | None = None
+    disable_1m_context: bool | None = None
     # prompt
     prompt_name: str | None = None
     prompt_version: int | None = None
@@ -84,8 +91,15 @@ class TurnSummary(BaseModel):
     model_calls: int | None = None
     subagent_model_calls: int | None = None
     tool_calls: int | None = None
+    # compactions: the CLI's (started, then how the closed ones ended, as the
+    # ``copilot-compaction`` events report them), the copilot's own, and the
+    # first-turn context re-sent after a CLI compaction
     cli_compactions: int | None = None
+    cli_compactions_landed: int | None = None
+    cli_compactions_failed: int | None = None
+    cli_compaction_failures: list[str] | None = None
     pre_query_compactions: int | None = None
+    after_compaction_resends: int | None = None
     # tokens and cost
     input_tokens: int | None = None
     cache_read_tokens: int | None = None
@@ -94,6 +108,11 @@ class TurnSummary(BaseModel):
     calls_without_cache_read: int | None = None
     cost_usd: float | None = None
     cost_source: str | None = None
+    # the Codex gateway's own counts: a turn total over every invoke, and the
+    # largest request it sized
+    codex_input_tokens: int | None = None
+    codex_cached_input_tokens: int | None = None
+    codex_boundary_peak_tokens: int | None = None
     # outcome
     outcome: str | None = None
     error_class: str | None = None
@@ -203,6 +222,18 @@ def record_options(s: TurnSummary, options: ClaudeAgentOptions) -> None:
     s.tools_sha = short_hash("\n".join(tools))
     if isinstance(options.tools, list):
         s.builtin_tools_declared = sorted(options.tools)
+    env = options.env
+    s.context_window = _env_int(env, "CLAUDE_CODE_AUTO_COMPACT_WINDOW")
+    if s.context_window is not None:
+        s.autocompact_pct = _env_int(env, "CLAUDE_AUTOCOMPACT_PCT_OVERRIDE")
+        s.max_context_tokens = _env_int(env, "CLAUDE_CODE_MAX_CONTEXT_TOKENS")
+        s.disable_1m_context = env.get("CLAUDE_CODE_DISABLE_1M_CONTEXT") == "1"
+
+
+def _env_int(env: dict[str, str], name: str) -> int | None:
+    """An integer the launch's env sets, or ``None`` when it sets none."""
+    value = env.get(name, "")
+    return int(value) if value.isdigit() else None
 
 
 def _system_prompt_text(
