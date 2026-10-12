@@ -136,12 +136,11 @@ SCENARIOS = [
     # The tool round's second call is refused after the tool ran. Relaunching
     # would roll the call the user watched out of the chat and could repeat
     # it, so the turn ends in the error: the provider billed the tool round's
-    # first call, and a turn that failed owes nothing. The next turn reads
-    # the unanswered request back from the chat and does the lookup again.
+    # first call, and a turn that failed owes nothing.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-after-tool",
         PlannedFault(kind="overloaded", turn=1, request=2),
-        calls_per_turn=(1, 1, 2),
+        calls_per_turn=(1, 1, 1),
         relaunches=False,
     ),
     # The connection drops instead, which is transient too, and ends the turn
@@ -149,7 +148,7 @@ SCENARIOS = [
     _sdk_anthropic_failing(
         "sdk-anthropic-dropped-after-tool",
         PlannedFault(kind="dropped", turn=1, request=2),
-        calls_per_turn=(1, 1, 2),
+        calls_per_turn=(1, 1, 1),
         relaunches=False,
     ),
     # A chat's first request drops before anything streamed. The relaunch
