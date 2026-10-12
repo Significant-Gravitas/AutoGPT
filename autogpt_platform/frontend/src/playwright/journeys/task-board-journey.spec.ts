@@ -2,7 +2,10 @@ import type { Page } from "@playwright/test";
 import { expect, test } from "./fixtures";
 import boardTaskScript from "./model-scripts/board-task.json";
 import {
+  expectChargedWhatWasBilled,
+  expectEachTurnOnce,
   type ModelScript,
+  readJournal,
   requireScriptedModel,
   scriptedRun,
 } from "./scripted-model";
@@ -18,9 +21,10 @@ test.describe("task board journey", () => {
 
   test("a task added to Backlog starts in In progress with its chat, and Mark done moves it to Done", async ({
     page,
-    journeyUser: _user,
+    journeyUser,
   }) => {
     const run = scriptedRun("board-task");
+    const firstMessage = `${TITLE} ${run.marker}`;
     await page.goto("/home");
 
     // An empty board opens Backlog's input on its own.
@@ -43,12 +47,12 @@ test.describe("task board journey", () => {
     const panel = page.getByRole("dialog", { name: TITLE });
     await panel
       .getByRole("textbox", { name: "First message" })
-      .fill(`${TITLE} ${run.marker}`);
+      .fill(firstMessage);
     await panel.getByRole("button", { name: "Start" }).click();
 
     const chat = panel.getByRole("log");
     await expect(
-      chat.getByText(TITLE),
+      chat.getByText(firstMessage, { exact: true }),
       "the chat should show the first message",
     ).toBeVisible();
     await expect(
@@ -76,6 +80,11 @@ test.describe("task board journey", () => {
       "Mark done should move the task to Done",
     ).toBeVisible();
     await expect(inProgressCard).toHaveCount(0);
+
+    const journal = await readJournal(run.nonce);
+    expectEachTurnOnce(journal, SCRIPT);
+    if (!journeyUser.id) throw new Error("the journey user should have an id");
+    await expectChargedWhatWasBilled(journeyUser.id, journal);
   });
 });
 
