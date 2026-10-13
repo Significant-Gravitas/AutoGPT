@@ -26,6 +26,7 @@ import { RunOutputs } from "./components/RunOutputs";
 import { RunSummary } from "./components/RunSummary";
 import { SelectedRunActions } from "./components/SelectedRunActions/SelectedRunActions";
 import { WebhookTriggerSection } from "./components/WebhookTriggerSection";
+import { usesGoogleAccount } from "./helpers";
 import { useSelectedRunView } from "./useSelectedRunView";
 
 interface Props {
@@ -182,7 +183,10 @@ export function SelectedRunView({
                           <LoadingSpinner />
                         </div>
                       ) : run && "outputs" in run ? (
-                        <RunOutputs outputs={run.outputs as any} />
+                        <RunOutputs
+                          outputs={run.outputs as any}
+                          hiddenFromReplay={usesGoogleAccount(agent)}
+                        />
                       ) : (
                         <Text variant="body" className="text-neutral-600">
                           No output from this run.
