@@ -186,7 +186,8 @@ async def test_modify_passes_reviewed_date_and_idempotency_key_to_stripe(
     )
     monkeypatch.setattr(credit, "set_subscription_tier", AsyncMock())
     monkeypatch.setattr(credit, "_track_billing_event", Mock())
-    monkeypatch.setattr(credit.get_pending_subscription_change, "cache_delete", Mock())
+    invalidate = AsyncMock()
+    monkeypatch.setattr(credit, "invalidate_billing_lookups", invalidate)
     modify = AsyncMock()
     monkeypatch.setattr(stripe.Subscription, "modify_async", modify)
     await credit.modify_stripe_subscription_for_tier(
@@ -195,6 +196,7 @@ async def test_modify_passes_reviewed_date_and_idempotency_key_to_stripe(
         proration_date=preview.proration_date,
         upgrade_preview=quote,
     )
+    invalidate.assert_awaited_once_with(setup.user.stripe_customer_id)
     assert modify.await_args.kwargs["proration_date"] == NOW
     assert (
         modify.await_args.kwargs["idempotency_key"]

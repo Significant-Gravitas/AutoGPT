@@ -472,7 +472,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
 
     render(<PaywallModal />);
-    const upgrade = screen.getByRole("button", { name: /upgrade to pro/i });
+    const upgrade = screen.getByRole("button", { name: /start pro/i });
     fireEvent.click(upgrade);
     await waitFor(() =>
       expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),

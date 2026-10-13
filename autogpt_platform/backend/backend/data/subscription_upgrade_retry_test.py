@@ -44,7 +44,7 @@ def payment(setup, monkeypatch, tier_change):
         AsyncMock(return_value=stripe.Subscription.construct_from(setup.sub, "k")),
     )
     monkeypatch.setattr(credit, "_track_billing_event", Mock())
-    monkeypatch.setattr(credit.get_pending_subscription_change, "cache_delete", Mock())
+    monkeypatch.setattr(credit, "invalidate_billing_lookups", AsyncMock())
     modify = AsyncMock()
     monkeypatch.setattr(stripe.Subscription, "modify_async", modify)
     return modify

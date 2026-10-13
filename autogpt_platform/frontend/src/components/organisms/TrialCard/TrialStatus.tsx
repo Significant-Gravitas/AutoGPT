@@ -65,12 +65,17 @@ export function TrialStatus({
         </Text>
         {trial.active && (
           <Text variant="small" tone="secondary" className="text-xs">
-            Canceling stops the automatic charge. Trial access continues until {end}.
+            Canceling stops the automatic charge. Trial access continues until{" "}
+            {end}.
           </Text>
         )}
       </div>
       {trial.active && !trial.cancel_at_period_end && (
-        <CancelTrialDialog trial={trial} isCanceling={isCanceling} onCancel={onCancel} />
+        <CancelTrialDialog
+          trial={trial}
+          isCanceling={isCanceling}
+          onCancel={onCancel}
+        />
       )}
     </div>
   );

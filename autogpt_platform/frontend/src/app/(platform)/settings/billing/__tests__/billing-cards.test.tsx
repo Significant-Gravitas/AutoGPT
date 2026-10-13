@@ -1398,7 +1398,7 @@ describe("YourPlanCard begin_checkout", () => {
     const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
 
     render(<YourPlanCard />);
-    const upgrade = await screen.findByRole("button", { name: /get pro/i });
+    const upgrade = await screen.findByRole("button", { name: /start pro/i });
     fireEvent.click(upgrade);
     await waitFor(() =>
       expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),

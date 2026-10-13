@@ -16,8 +16,13 @@ interface Props {
 }
 
 export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
-  const { showPlan, showTrialCard, planChoicesOffer, isConfirmingPlan, isLoading } =
-    useSubscriptionTab(isPlanCheckoutReturn);
+  const {
+    showPlan,
+    showTrialCard,
+    planChoicesOffer,
+    isConfirmingPlan,
+    isLoading,
+  } = useSubscriptionTab(isPlanCheckoutReturn);
   return (
     <div className="flex flex-col gap-4">
       <TrialCheckoutConfirmation />

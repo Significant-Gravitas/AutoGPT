@@ -436,13 +436,17 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       // Our own cap, so our own dialog: the upgrade path survives ...
       expect(
-        await within(dialog).findByText(/You’ve hit today’s limit/i, undefined, {
-          timeout: 5000,
-        }),
+        await within(dialog).findByText(
+          /You’ve hit today’s limit/i,
+          undefined,
+          {
+            timeout: 5000,
+          },
+        ),
       ).toBeDefined();
       expect(screen.queryByText(/hit this connection's limit/i)).toBeNull();
       expect(
-        within(dialog).getByRole("button", { name: /upgrade to max/i }),
+        await within(dialog).findByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
 
       // ... and the linked subscription is offered next to it, because the cap
@@ -485,12 +489,16 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       const dialog = await screen.findByRole("dialog");
 
       expect(
-        await within(dialog).findByText(/You’ve hit today’s limit/i, undefined, {
-          timeout: 5000,
-        }),
+        await within(dialog).findByText(
+          /You’ve hit today’s limit/i,
+          undefined,
+          {
+            timeout: 5000,
+          },
+        ),
       ).toBeDefined();
       expect(
-        within(dialog).getByRole("button", { name: /upgrade to max/i }),
+        await within(dialog).findByRole("button", { name: /upgrade to max/i }),
       ).toBeDefined();
       // The connection that just refused is never offered back. Were it not
       // excluded, "Continue on AutoGPT Platform" would appear once the offers
