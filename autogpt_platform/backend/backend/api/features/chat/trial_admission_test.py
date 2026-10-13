@@ -64,7 +64,9 @@ class TrialAccount:
         return self.tier
 
     async def read_counter(self, key: str) -> int | None:
-        if key == rate_limit._daily_key(self.user_id):
+        # Any day's daily counter: the check computes its own date.
+        daily = rate_limit._daily_key(self.user_id).rsplit(":", 1)[0]
+        if key.startswith(f"{daily}:"):
             return self.spent_today
         return None
 
