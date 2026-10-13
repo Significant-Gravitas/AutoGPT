@@ -141,19 +141,34 @@ describe("Usage limit dialog", () => {
     expect(onSendAtReset).toHaveBeenCalledOnce();
     expect(screen.getByRole("link", { name: "Contact us" })).toBeDefined();
   });
-  it("keeps the upgrade as the lead for other plans and adds the exact reset", () => {
+  it("keeps the upgrade as the lead for other plans and names the reset once", () => {
+    const resetsAt = new Date(Date.now() + 6.03e6);
+    const pro = {
+      ...usage,
+      daily: { percent_used: 100, resets_at: resetsAt },
+      weekly: { ...usage.weekly, percent_used: 62 },
+      state: "exhausted",
+      limiting_window: "daily" as const,
+      resets_at: resetsAt,
+    };
     render(
       <RateLimitResetDialog
         isOpen
         onClose={vi.fn()}
-        experience={getUsageExperience({ ...usage, weekly: undefined })}
-        wait={{ window: "daily", resetsAt: new Date(Date.now() + 6.03e6) }}
-        meters={usage}
+        experience={getUsageExperience(pro)}
+        wait={{ window: "daily", resetsAt }}
+        meters={pro}
         onSendAtReset={vi.fn()}
       />,
     );
     expect(screen.getByText("You’ve hit today’s limit")).toBeDefined();
-    expect(screen.getByText(/^It resets at .+, in 1 h 40 min\./)).toBeDefined();
+    expect(
+      screen.getByText(
+        /^You can continue .+, or upgrade to Max for more usage\.$/,
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText(/It resets/)).toBeNull();
+    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
     expect(screen.getByRole("button", { name: "Send at reset" })).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Upgrade to Max" }),

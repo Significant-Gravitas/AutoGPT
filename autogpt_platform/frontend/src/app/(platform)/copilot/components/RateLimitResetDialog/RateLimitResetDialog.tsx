@@ -160,8 +160,6 @@ export function RateLimitResetDialog({
               </div>
             ) : wait ? (
               <ResetWaitBox
-                wait={wait}
-                showSentence={!waitTitle}
                 meters={meters}
                 onSendAtReset={onSendAtReset}
                 isScheduling={isSchedulingAtReset}
