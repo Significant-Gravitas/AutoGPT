@@ -2,9 +2,12 @@
 the /presets routes and the copilot preset tools."""
 
 import contextlib
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import HTTPException
+from starlette.requests import Request
 
 from backend.api.features.experts import experts_db
 from backend.api.features.library.triggers import (
@@ -12,6 +15,9 @@ from backend.api.features.library.triggers import (
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.blocks.allquiet._webhook import AllQuietWebhooksManager
+from backend.blocks.generic_webhook._webhook import GenericWebhooksManager
+from backend.data.integrations import WebhookWithRelations
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
@@ -346,6 +352,41 @@ async def test_invalid_inputs_rejected_before_webhook_setup():
             )
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "manager, secret_field",
+    [
+        (GenericWebhooksManager, "secret_token"),
+        (AllQuietWebhooksManager, "signing_secret"),
+    ],
+)
+async def test_stored_trigger_secret_still_guards_ingress(manager, secret_field):
+    """A secret set at setup is found where setup stored it, so the preset's
+    webhook refuses an unsigned delivery."""
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=_graph())
+    with p_graph, p_creds, p_webhook, p_expert, p_create as create_mock:
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id="graph-1",
+            graph_version=1,
+            name="Signed Trigger",
+            description="",
+            trigger_config={secret_field: "t0ken"},
+            agent_credentials={},
+            constant_inputs={"topic": "news"},
+        )
+    stored = create_mock.await_args.kwargs["preset"].inputs
+    webhook = WebhookWithRelations.model_construct(
+        id="wh-1",
+        triggered_nodes=[],
+        triggered_presets=[SimpleNamespace(inputs=stored)],
+    )
+    unsigned = Request({"type": "http", "method": "POST", "headers": []})
+    with pytest.raises(HTTPException) as exc:
+        await manager.verify_signature(webhook, unsigned)
+    assert exc.value.status_code == 403
 
 
 # ---- update_triggered_preset ----
