@@ -5,10 +5,16 @@ test here is checking that data which must NOT cross the public link
 genuinely does not.
 """
 
+import json
 from datetime import datetime, timezone
 
 from backend.copilot.model import ChatMessage as ChatMessageDomain
-from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
+from backend.copilot.sharing.models import (
+    _WITHHELD_TOOL_RESULT_TYPES,
+    _redact_secret_keys,
+    sanitize_chat_message,
+)
+from backend.copilot.tools.models import ResponseType
 
 
 def _msg(**overrides) -> ChatMessageDomain:
@@ -277,6 +283,33 @@ class TestSanitizeChatMessage:
         outputs = payload["execution"]["outputs"]
         assert outputs["api_key"] == "[redacted]"
         assert outputs["public"] == "ok"
+
+    def test_withheld_types_track_the_tool_response_type(self):
+        assert ResponseType.CREDENTIAL_LIST.value in _WITHHELD_TOOL_RESULT_TYPES
+
+    def test_withholds_connected_integration_inventory(self):
+        # ``providers`` / ``message`` enumerate the owner's integrations under
+        # keys no secret hint matches, so the whole result is withheld.
+        msg = _msg(
+            role="tool",
+            content=json.dumps(
+                {
+                    "type": "credential_list",
+                    "message": "The user has 2 connected credential(s): github, notion.",
+                    "credentials": [{"provider": "github", "username": "octocat"}],
+                    "providers": ["github", "notion"],
+                    "count": 2,
+                }
+            ),
+        )
+        sanitized = sanitize_chat_message(msg)
+        assert sanitized.content is not None
+        assert json.loads(sanitized.content) == {
+            "type": "credential_list",
+            "message": "Connected integrations are hidden on shared chats.",
+        }
+        for leaked in ("github", "notion", "octocat"):
+            assert leaked not in sanitized.content
 
     def test_tool_content_passes_through_when_not_json(self):
         # Non-JSON tool content (older / hand-rolled tool returns) must

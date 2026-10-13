@@ -4,7 +4,9 @@ A shared chat link is fundamentally a public URL — anyone can read it.
 Three classes of data therefore must NEVER leave the backend on this
 path:
 
-1. ``ChatSession.credentials`` — provider auth metadata.  Dropped wholesale.
+1. ``ChatSession.credentials`` — provider auth metadata.  Dropped wholesale,
+   and so is a ``list_user_credentials`` result, which enumerates the same
+   inventory under keys no secret hint matches.
 2. ``ChatMessage.metadata`` — dispatcher payload (file_ids, model,
    permissions, request_arrival_at).  Dropped wholesale.
 3. Tool-call arguments / function-call arguments shaped like secrets —
@@ -51,6 +53,14 @@ _SECRET_KEY_HINTS = (
     "token",
 )
 _REDACTED = "[redacted]"
+
+# Tool results withheld whole on the public path: the connected-integration
+# inventory names every service, account and MCP server the owner has, and
+# none of that sits under a secret-shaped key.
+# ``ResponseType.CREDENTIAL_LIST``; spelled out because the tools package
+# imports this module's importers.
+_WITHHELD_TOOL_RESULT_TYPES = frozenset({"credential_list"})
+_WITHHELD_TOOL_RESULT_MESSAGE = "Connected integrations are hidden on shared chats."
 
 # Boundary-aware matcher.  ``(?<![a-z0-9])`` and ``(?![a-z0-9])`` reject
 # matches where a letter/digit sits on either side of the hint, so:
@@ -256,5 +266,9 @@ def _redact_secret_keys_in_json_string(value: str) -> str:
         parsed = json.loads(value)
     except (json.JSONDecodeError, ValueError):
         return value
+    if isinstance(parsed, dict) and parsed.get("type") in _WITHHELD_TOOL_RESULT_TYPES:
+        return json.dumps(
+            {"type": parsed["type"], "message": _WITHHELD_TOOL_RESULT_MESSAGE}
+        )
     redacted = _redact_secret_keys(parsed)
     return json.dumps(redacted)

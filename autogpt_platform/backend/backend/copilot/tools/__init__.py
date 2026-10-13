@@ -59,6 +59,7 @@ from .graphiti_store import MemoryStoreTool
 from .handoff_to_expert import HandoffToExpertTool
 from .hire_expert import HireExpertTool
 from .list_agent_triggers import ListAgentTriggersTool
+from .list_credentials import ListUserCredentialsTool
 from .list_team import ListTeamTool
 from .manage_folders import (
     CreateFolderTool,
@@ -185,6 +186,8 @@ TOOL_REGISTRY: dict[str, BaseTool] = {
     "bash_exec": BashExecTool(),
     "start_desktop": StartDesktopTool(),
     "connect_integration": ConnectIntegrationTool(),
+    # Connected-credential discovery (metadata only, never secrets)
+    "list_user_credentials": ListUserCredentialsTool(),
     # Persistent workspace tools (cloud storage, survives across sessions)
     # Feature request tools
     "search_feature_requests": SearchFeatureRequestsTool(),

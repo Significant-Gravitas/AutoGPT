@@ -258,7 +258,14 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+#
+# Bumped 77_014 -> 77_661 for list_user_credentials (REQ-112), the one tool
+# this PR adds, +386. Measured on this branch merged with dev db0b213114:
+#     dev db0b213114                              76,975 (89 tools)
+#     + list_user_credentials          +386       77,361 (90 tools)
+#     + headroom                       +300       77,661
+# Same deliberate margin as the two lines above, for the same reason.
+_CHAR_BUDGET = 77_661
 
 
 @pytest.fixture(scope="module")
@@ -453,7 +460,13 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+#
+# Raised 69_788 -> 70_126 for list_user_credentials (REQ-112), the same tool
+# as ``_CHAR_BUDGET`` above; deferred, but the largest session declares it.
+#     dev db0b213114                              69,488
+#     + list_user_credentials          +338       69,826
+#     + headroom                       +300       70,126
+_SESSION_WIRE_BUDGET = 70_126
 
 
 def test_largest_declared_session_wire_budget() -> None:

@@ -151,6 +151,9 @@ class ResponseType(str, Enum):
     SESSION_LIST = "session_list"
     SESSION_MESSAGE = "session_message"
 
+    # Connected integration credentials (metadata only)
+    CREDENTIAL_LIST = "credential_list"
+
 
 # Base response model
 class ToolResponseBase(BaseModel):

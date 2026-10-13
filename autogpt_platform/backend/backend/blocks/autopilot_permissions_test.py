@@ -13,7 +13,13 @@ from backend.blocks.autopilot import (
     _inherited_permissions,
     _merge_inherited_permissions,
 )
-from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
+from backend.copilot.permissions import (
+    CopilotPermissions,
+    all_known_tool_names,
+    apply_tool_permissions,
+    denied_tool_names,
+)
+from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.data.execution import ExecutionContext
 
 # ---------------------------------------------------------------------------
@@ -43,17 +49,44 @@ def _make_input(**kwargs) -> AutoPilotBlock.Input:
 
 @pytest.mark.asyncio
 class TestBuildAndValidatePermissions:
-    async def test_empty_inputs_returns_empty_permissions(self):
+    async def test_default_denies_credential_inventory(self):
         inp = _make_input()
         result = await _build_and_validate_permissions(inp)
         assert isinstance(result, CopilotPermissions)
-        assert result.is_empty()
+        assert result.tools == ["list_user_credentials"]
+        assert result.tools_exclude is True
+        assert "list_user_credentials" not in result.effective_allowed_tools(
+            all_known_tool_names()
+        )
+
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    async def test_default_withholds_only_credential_inventory(self, use_e2b):
+        """The default is no longer ``is_empty()``, so the SDK allow/deny
+        split now runs the name-mapping path for every saved node. It must
+        come out the same as the unfiltered split, apart from the one tool."""
+        result = await _build_and_validate_permissions(_make_input())
+        assert isinstance(result, CopilotPermissions)
+
+        base_allowed, base_denied = apply_tool_permissions(
+            CopilotPermissions(), use_e2b=use_e2b
+        )
+        allowed, denied = apply_tool_permissions(result, use_e2b=use_e2b)
+
+        assert sorted(allowed) == sorted(base_allowed)
+        assert set(denied) - set(base_denied) <= {
+            f"{MCP_TOOL_PREFIX}list_user_credentials"
+        }
+        assert denied_tool_names(result) == {"list_user_credentials"}
 
     async def test_valid_tool_names_accepted(self):
         inp = _make_input(tools=["run_block", "web_fetch"], tools_exclude=True)
         result = await _build_and_validate_permissions(inp)
         assert isinstance(result, CopilotPermissions)
-        assert result.tools == ["run_block", "web_fetch"]
+        assert result.tools == [
+            "list_user_credentials",
+            "run_block",
+            "web_fetch",
+        ]
         assert result.tools_exclude is True
 
     async def test_invalid_tool_rejected_by_pydantic(self):
@@ -72,7 +105,18 @@ class TestBuildAndValidatePermissions:
 
         assert inp.tools == ["run_block"]
         assert isinstance(result, CopilotPermissions)
-        assert result.tools == ["run_block"]
+        assert result.tools == ["list_user_credentials", "run_block"]
+
+    async def test_credential_inventory_requires_explicit_allow_list(self):
+        inp = _make_input(tools=["list_user_credentials"], tools_exclude=False)
+        result = await _build_and_validate_permissions(inp)
+
+        assert isinstance(result, CopilotPermissions)
+        assert result.tools == ["list_user_credentials"]
+        assert result.tools_exclude is False
+        assert "list_user_credentials" in result.effective_allowed_tools(
+            all_known_tool_names()
+        )
 
     async def test_valid_block_name_accepted(self):
         mock_block_cls = MagicMock()

@@ -229,6 +229,15 @@ export const PLATFORM_TOOL_CATALOG: Record<string, ToolMeta> = {
     done: "Connected",
     subject: (input) => strField(input, "provider"),
   },
+  list_user_credentials: {
+    category: "integration",
+    running: "Checking connected integrations",
+    done: "Checked connected integrations",
+    subject: (input) => {
+      const provider = strField(input, "provider");
+      return provider ? `for ${provider}` : null;
+    },
+  },
   search_feature_requests: {
     category: "feature",
     running: "Searching feature requests for",

@@ -29059,7 +29059,8 @@
           "expert_onboarding",
           "team_consult",
           "session_list",
-          "session_message"
+          "session_message",
+          "credential_list"
         ],
         "title": "ResponseType",
         "description": "Types of tool responses."

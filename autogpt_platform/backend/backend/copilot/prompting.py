@@ -188,6 +188,10 @@ your **first action** in that turn is `find_capability(query="<service>
 4. `review_required` → tell the user; after they approve, call
    `resume_capability(review_id)`.
 
+`connected` answers "is this service connected?". When the user asks what
+they have connected overall, call `run_capability(id="tool:list_user_credentials",
+input={})` instead of searching service by service.
+
 A platform tool written `tool:<name>` — here, in a tool description or in
 a tool result — is not in your tool list and is refused if called by name:
 `tool:<name>` is its id, so call `run_capability(id="tool:<name>",
