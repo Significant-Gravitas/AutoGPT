@@ -47,7 +47,7 @@ The graphs are built from deterministic blocks that do real work without a model
 | `LOAD_PROFILE` | Rates          | Warm-up | Steady | Thresholds   | Use                                                   |
 | -------------- | -------------- | ------- | ------ | ------------ | ----------------------------------------------------- |
 | `smoke`        | 0.1 x baseline | none    | 1 min  | 3 x relaxed  | Does the target work, does the seeding work           |
-| `baseline`     | the table      | 1 min   | 10 min | as declared  | The comparison run; about 13 requests a second in all |
+| `baseline`     | the table      | 1 min   | 10 min | as declared  | The comparison run; about 16 requests a second in all |
 | `stress`       | 3 x baseline   | 1 min   | 10 min | 2 x relaxed  | What breaks first                                     |
 
 The warm-up ramps each rate up from zero. Requests made during it carry `phase:warmup`; every threshold and every number in the summary covers `phase:steady` only.
@@ -112,7 +112,7 @@ The workload sends no turn to a model unless told to.
 
 A preview restores a synthetic fixture before the pull request's migrations run: store listings and skills, creators, users. What it lacks is data under the run's own accounts, so `setup()` seeds each account, and only that account:
 
-- `SEED_GRAPHS` graphs (default 6) built from deterministic blocks, which also makes them library agents;
+- `SEED_GRAPHS` graphs (default 4) built from deterministic blocks, which also makes them library agents;
 - `SEED_RUNS` runs of each (default 2), so the library and the executions list have history;
 - one marketplace agent added to the library, when the store has one;
 - `SEED_SESSIONS` chat sessions (default 6), with a turn in each when the dummy engine is confirmed.
@@ -175,7 +175,7 @@ The tests read it only from the environment. To keep it between runs, save it as
 | `RATE_SCALE`, `WARMUP`, `DURATION`, `THRESHOLD_SCALE`        | Adjust the profile                                                                                                  |
 | `RUN_ID`                                                     | Names the run's accounts and summary (default: a timestamp from `./k6.sh`)                                          |
 | `RUN_SEED`                                                   | Fixes the sequence of choices the journeys make (default fixed)                                                     |
-| `SEED_GRAPHS`, `SEED_RUNS`, `SEED_SESSIONS`                  | How much each account is seeded with (defaults 6, 2, 6)                                                             |
+| `SEED_GRAPHS`, `SEED_RUNS`, `SEED_SESSIONS`                  | How much each account is seeded with (defaults 4, 2, 6)                                                             |
 | `LOAD_TEST_COPILOT_ENGINE`                                   | `dummy` to send copilot turns at a target with `CHAT_TEST_MODE=true`; `real` for `tests/copilot-real-model.js` only |
 | `COPILOT_TURN_TIMEOUT`                                       | The cap on one stream (default `120s` in the workload, `300s` for the real model)                                   |
 | `COPILOT_REAL_TURNS`, `COPILOT_REAL_CONCURRENCY`, `COPILOT_REAL_COST_PER_TURN_USD` | `tests/copilot-real-model.js` only                                                                  |

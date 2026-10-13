@@ -33,13 +33,13 @@ export const JOURNEYS = {
   account_reads: {
     rate: 30,
     exec: "accountReads",
-    requests: 9,
+    requests: 10,
     why: "credits, subscription, onboarding, credentials and providers: every page load makes them (about 33% of requests)",
   },
   store_browse: {
     rate: 30,
     exec: "storeBrowse",
-    requests: 6,
+    requests: 7,
     why: "skills list and detail, store agents and search (about 25% of requests)",
   },
   library_browse: {
