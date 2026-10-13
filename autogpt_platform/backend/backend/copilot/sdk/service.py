@@ -63,6 +63,7 @@ from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.tool_display import tool_calls_for_provider
+from backend.copilot.credit_billing import credit_billed_turn, wait_for_cost
 from backend.copilot.turn_budget import resolve_turn_budget
 from backend.copilot.turn_pause import TurnPause, append_pause_marker
 from backend.data.db_accessors import chat_db
@@ -5257,9 +5258,18 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # Lands the turn with a checkpoint near its budget or step check-in.
         # A ChatGPT subscription pays for its own turns, so it gets the
-        # check-in only.
+        # check-in only. A turn billed to credits gets what its balance covers.
+        credit_turn = credit_billed_turn(user_id)
         governor = TurnGovernor(
-            budget=None if is_codex_transport else await resolve_turn_budget(user_id),
+            budget=(
+                None
+                if is_codex_transport
+                else (
+                    credit_turn.budget
+                    if credit_turn is not None
+                    else await resolve_turn_budget(user_id)
+                )
+            ),
             step_checkin=config.sdk_step_checkin,
         )
 
@@ -6442,6 +6452,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(cost_reconcile_task)
             cost_reconcile_task.add_done_callback(_background_tasks.discard)
+            # A turn billed to credits is charged once this cost is in.
+            wait_for_cost(cost_reconcile_task)
         else:
             # Reconcile disabled, OpenRouter inactive, or subscription
             # path (no gen-IDs).  Record the SDK CLI's

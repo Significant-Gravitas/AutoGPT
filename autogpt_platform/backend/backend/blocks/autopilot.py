@@ -23,6 +23,11 @@ from backend.copilot.active_turns import (
     MAX_TURN_LIFETIME_SECONDS,
     running_turn_limit_message,
 )
+from backend.copilot.constants import (
+    AUTOPILOT_BLOCK_ID,
+    AUTOPILOT_BLOCK_TOOL_NAME,
+    PER_TURN_SPEND_FLOOR_USD,
+)
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
     CopilotPermissions,
@@ -33,6 +38,7 @@ from backend.copilot.permissions import (
 from backend.data.model import CredentialsField, CredentialsMetaInput, SchemaField
 from backend.integrations.providers import ProviderName
 from backend.util.exceptions import BlockExecutionError
+from backend.util.settings import Settings
 
 if TYPE_CHECKING:
     from backend.copilot.turn_pause import TurnPause
@@ -40,14 +46,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Block ID shared between autopilot.py and copilot prompting.py.
-AUTOPILOT_BLOCK_ID = "c069dc6b-c3ed-4c12-b6e5-d47361e64ce6"
-
 # Identifiers used when registering an AutoPilotBlock turn with the
 # stream registry — distinguishes block-originated turns from sub-session
-# or HTTP SSE turns in logs / observability.
+# or HTTP SSE turns in logs / observability. The tool name also rides the
+# queue entry, so the executor can bill the turn to credits once the plan's
+# AutoPilot allowance is used up.
 _AUTOPILOT_TOOL_CALL_ID = "autopilot_block"
-_AUTOPILOT_TOOL_NAME = "autopilot_block"
+_AUTOPILOT_TOOL_NAME = AUTOPILOT_BLOCK_TOOL_NAME
 
 # Ceiling on how long AutoPilotBlock.execute_copilot will wait for the
 # enqueued turn's terminal event. Sourced from the shared turn-lifetime
@@ -728,13 +733,25 @@ class AutoPilotBlock(Block):
 
 
 def _out_of_budget_message(pause: "TurnPause") -> str:
-    """What a graph run shows for a turn refused for want of budget."""
-    if pause.reason == "trial":
-        return "Out of AutoPilot budget: the trial allowance is used up."
+    """What a graph run shows for a turn refused for want of budget.
+
+    The executor runs a block turn on the credit balance once the plan's
+    allowance is used up, so a refusal means the balance can't pay for one
+    either: the message says both, how to add credits, and when the
+    allowance resets, if it does.
+    """
+    allowance = "the trial's" if pause.reason == "trial" else "your plan's"
+    credits_url = f"{Settings().config.frontend_base_url.rstrip('/')}/profile/credits"
+    message = (
+        f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up, "
+        "and your credit balance doesn't cover a run (it needs at least "
+        f"${PER_TURN_SPEND_FLOOR_USD:.2f}). Add credits at {credits_url} to "
+        "run it on credits."
+    )
     if pause.resets_at is None:
-        return "Out of AutoPilot budget."
+        return message
     resets_at = pause.resets_at.astimezone(UTC)
-    return f"Out of AutoPilot budget until {resets_at:%Y-%m-%d %H:%M} UTC."
+    return f"{message} The allowance resets {resets_at:%Y-%m-%d %H:%M} UTC."
 
 
 # Task-scoped recursion depth counter & chain-wide limit.
@@ -911,6 +928,8 @@ async def _enqueue_for_recovery(
                 # executor being a separate process.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
                 envelope=root_envelope(recovery_turn_id, session_id=session_id),
+                # Still the block's turn: it may run on credits as the first did.
+                tool_name=_AUTOPILOT_TOOL_NAME,
             ),
             timeout=10,
         )
