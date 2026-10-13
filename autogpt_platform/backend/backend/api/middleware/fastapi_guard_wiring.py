@@ -11,11 +11,10 @@ AUTOGPT_GUARD_ENABLED=1 to activate the middleware on a service.
 """
 
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    from fastapi import FastAPI
-    from guard import SecurityConfig
+from fastapi import FastAPI
+from guard import SecurityConfig, SecurityDecorator, SecurityMiddleware
 
 DEFAULT_EXCLUDED_PATHS = "/docs,/redoc,/openapi.json,/health_check"
 DEFAULT_TRUSTED_PROXIES = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
@@ -45,17 +44,13 @@ def _env_str(name: str, default: str | None = None) -> str | None:
 
 
 def _env_csv(name: str, default: str | None = None) -> tuple[str, ...]:
-    return tuple(
-        item.strip()
-        for item in (_env_str(name, default) or "").split(",")
-        if item.strip()
-    )
+    # Unset uses the default; a set-but-empty variable is taken literally.
+    raw = os.environ.get(name, default) or ""
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
-def build_guard_config() -> "SecurityConfig":
+def build_guard_config() -> SecurityConfig:
     """Build the SecurityConfig from AUTOGPT_GUARD_* environment variables."""
-    from guard import SecurityConfig
-
     kwargs: dict[str, Any] = {
         "enable_rate_limiting": True,
         "rate_limit": _env_int("AUTOGPT_GUARD_RATE_LIMIT", 100),
@@ -73,8 +68,7 @@ def build_guard_config() -> "SecurityConfig":
         "blocked_user_agents": list(_env_csv("AUTOGPT_GUARD_BLOCKED_USER_AGENTS")),
         "trusted_proxies": _env_csv(
             "AUTOGPT_GUARD_TRUSTED_PROXIES", DEFAULT_TRUSTED_PROXIES
-        )
-        or (),
+        ),
         "trusted_proxy_depth": _env_int("AUTOGPT_GUARD_TRUSTED_PROXY_DEPTH", 1),
         "exclude_paths": list(
             _env_csv("AUTOGPT_GUARD_EXCLUDED_PATHS", DEFAULT_EXCLUDED_PATHS)
@@ -125,24 +119,15 @@ def build_guard_config() -> "SecurityConfig":
     return SecurityConfig(**kwargs)
 
 
-def attach_guard(app: "FastAPI") -> None:
+def attach_guard(app: FastAPI) -> None:
     """Attach the fastapi-guard middleware when AUTOGPT_GUARD_ENABLED is set.
 
-    No-op unless the env flag is on. Fails loudly when the flag is on but
-    the package is missing: a misconfiguration must never silently disable
-    security. Also exposes the shared SecurityDecorator on app.state so
-    per-route guard decorators adopt the same config as the middleware.
+    No-op unless the env flag is on. Also exposes the shared SecurityDecorator
+    on app.state so per-route guard decorators adopt the same config as the
+    middleware.
     """
     if not _env_bool("AUTOGPT_GUARD_ENABLED"):
         return
-    try:
-        from guard import SecurityDecorator, SecurityMiddleware
-    except ImportError as exc:
-        raise RuntimeError(
-            "AUTOGPT_GUARD_ENABLED=1 requires the fastapi-guard package. "
-            "Install it with: pip install fastapi-guard"
-        ) from exc
-
     config = build_guard_config()
     app.add_middleware(SecurityMiddleware, config=config)
     app.state.guard_decorator = SecurityDecorator(config)
