@@ -27,7 +27,9 @@ const AUTH_BURST = 3;
 const AUTH_PAUSE_SECONDS = 11;
 const MAX_ATTEMPTS = 5;
 
-const DEFAULT_THROWAWAY_ACCOUNTS = 5;
+// Copilot caps running turns per user (5) and queued ones (15), so turns are
+// spread over enough accounts that the load, not the cap, sets the pace.
+const DEFAULT_THROWAWAY_ACCOUNTS = 8;
 const MAX_THROWAWAY_ACCOUNTS = 100;
 // Previews allow sign-up for this domain, and nothing is mailed to it.
 const THROWAWAY_EMAIL_DOMAIN = "previews.agpt.co";
@@ -141,12 +143,14 @@ function readAccountCount() {
   return count;
 }
 
+// Accounts are named after the run (RUN_ID from k6.sh, else a random tag),
+// so everything a run creates can be found under its own accounts.
 function throwawayAccounts(count) {
-  const runId = randomHex(4);
+  const runTag = (__ENV.RUN_ID || randomHex(4)).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   const accounts = [];
   for (let i = 1; i <= count; i++) {
     accounts.push({
-      email: `loadtest-${runId}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
+      email: `loadtest-${runTag}-${i}@${THROWAWAY_EMAIL_DOMAIN}`,
       password: randomHex(24),
     });
   }
