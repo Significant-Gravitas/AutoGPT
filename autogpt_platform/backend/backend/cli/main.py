@@ -9,6 +9,7 @@ import psutil
 from backend.util.process import AppProcess
 
 from .chat import chat
+from .delete_account import delete_account_command
 from .mailerlite_backfill import (
     mailerlite_backfill_command,
     mailerlite_checkout_backfill_command,
@@ -27,6 +28,7 @@ def main():
 
 
 main.add_command(chat)
+main.add_command(delete_account_command)
 main.add_command(mailerlite_backfill_command)
 main.add_command(mailerlite_checkout_backfill_command)
 main.add_command(mailerlite_fields_command)

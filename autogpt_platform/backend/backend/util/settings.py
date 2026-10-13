@@ -1424,6 +1424,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         "to a remote /flags call. A personal API key also works, but PostHog is "
         "deprecating that use.",
     )
+    # Account deletion removes the PostHog person through the private API,
+    # which the project key above cannot call.
+    posthog_personal_api_key: str = Field(
+        default="",
+        description="PostHog personal API key with the person:write scope, used "
+        "only to delete a deleted account's person. Blank skips that step.",
+    )
+    posthog_project_id: str = Field(
+        default="", description="PostHog project ID the persons live in"
+    )
+    posthog_app_host: str = Field(
+        default="https://eu.posthog.com",
+        description="PostHog private API host (not the i. ingestion host)",
+    )
 
     # Add more secret fields as needed
     model_config = SettingsConfigDict(
