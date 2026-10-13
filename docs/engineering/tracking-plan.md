@@ -64,7 +64,9 @@ Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies both last, so a caller cannot
 overwrite them. The browser registers them once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
-at logout; a Vercel preview reports `environment: preview`.
+at logout; a Vercel preview reports `environment: preview`, while the dev
+deployment, which is Vercel's `staging` custom environment rather than a
+preview, reports `environment: dev`.
 
 `source` is reserved for the emitter. The three events that used it for
 something else now use `hire_started.surface`,
@@ -345,6 +347,38 @@ onboarding-role-backfill` sets both for earlier accounts with `$set_once`, from
 exact picks only: any other stored value may be `Other`'s text or a rewrite,
 so it is left unset. MailerLite gets the same values as `role` and
 `role_other`.
+
+The fields GTM segments checkout openers on in MailerLite are on the person
+too (SECRT-2895, `backend/notifications/posthog_audience.py`). They are worked
+out by the same code (`audience_enrichment.checkout_fields`) and named as in
+MailerLite, except the checkout open, which is a moment here and a day there.
+Every account gets the first two at signup. Every checkout opener gets all of
+them from the checkout routes and the completed-checkout webhook. Unlike
+MailerLite, PostHog also gets accounts that opted out of marketing or that a
+signal places in Iran or Russia: it is analytics, not marketing.
+
+| Property | Value |
+| --- | --- |
+| `email_type` | `business`, `personal` (a webmail provider) or `education`. |
+| `signin_method` | `google` or `email`; `google` wins for an account that has both. |
+| `checkout_opened_at` | When the account first opened Stripe checkout. |
+| `country` | The country's English name, from the strongest source seen (see `country_source`). |
+| `country_code` | The same country as an ISO 3166-1 alpha-2 code. |
+| `country_source` | `stripe` (the billing address), `ip` (the visitor's IP country at checkout) or `timezone` (the browser's). |
+| `exclude_de_at` | `yes` when any signal points at Germany or Austria, else `no`. |
+
+MailerLite reads the subscriber before each write so it never makes a value
+worse; PostHog can't be read on the way, so `$set_once`, which only fills in
+what the person doesn't hold yet, keeps the same rules. The first open stays.
+`exclude_de_at` `yes` is set and `no` only filled in, so it never goes back to
+`no`. A billing country is set, so it always wins, and an IP or timezone
+country is only filled in, so it never replaces one. The one difference:
+PostHog keeps the first IP or timezone country it gets, where MailerLite moves
+on to a later IP country. `poetry run cli
+posthog-audience-backfill` sends them for earlier accounts, by the same rules,
+from Stripe's first Checkout Session (set outright, since Stripe holds every
+open) and its billing country or else the browser's timezone. An IP country is
+never backfilled, since it was never stored.
 
 ## Removed
 
