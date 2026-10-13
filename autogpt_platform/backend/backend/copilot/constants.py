@@ -146,3 +146,18 @@ def is_transient_api_error(error_text: str) -> bool:
     """Return True if *error_text* matches a known transient Anthropic API error."""
     lower = error_text.lower()
     return any(pat.lower() in lower for pat in _TRANSIENT_ERROR_PATTERNS)
+
+
+# ``AssistantMessage.error`` categories the CLI gives an API error worth
+# retrying: a 5xx or overload, and a 429. The category is set only on a failed
+# API call, so unlike a phrase it cannot match application text, and it does
+# not move with the CLI's wording: 2.1.284 reports a 529 as "API Error: 529
+# Overloaded. This is a server-side issue...", with no status-code phrase for
+# the patterns above to find.
+_TRANSIENT_ERROR_CATEGORIES = frozenset({"server_error", "rate_limit"})
+
+
+def is_transient_assistant_error(category: str, content: str) -> bool:
+    """Return True if an API error the CLI reported in an ``AssistantMessage``
+    is transient, by its category or by the text it carries."""
+    return category in _TRANSIENT_ERROR_CATEGORIES or is_transient_api_error(content)

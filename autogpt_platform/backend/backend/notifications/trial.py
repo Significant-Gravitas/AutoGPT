@@ -29,6 +29,7 @@ from backend.notifications.trial_audience import (
     leave_trial_group,
     queue_trial_audience_change,
 )
+from backend.notifications.trial_plan import notice_plan
 from backend.util.posthog_events import PostHogEvent
 
 logger = logging.getLogger(__name__)
@@ -86,7 +87,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if kind == "ended" and await _another_plan_is_live(trial, current):
         await leave_trial_group(user)
         return True
-    data = trial_notice_data(trial, kind, user.name or "there")
+    data = trial_notice_data(trial, kind, user.name or "there", current)
     claim = trial_notice_key(trial, kind)
     data.notice_key = claim
     if not await claim_once(claim):
@@ -105,14 +106,15 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
         raise
     if kind == "converted":
         await join_paying_audience(user)
+    plan = notice_plan(trial, kind, current)
     _track_billing_event(
         TRIAL_NOTICE_EVENTS[kind],
         user_id,
         {
             "trial_id": trial.id,
             "trial_offer_version": trial.offer.version,
-            "subscription_tier": trial.offer.tier,
-            "billing_cycle": trial.offer.billing_cycle,
+            "subscription_tier": plan.tier,
+            "billing_cycle": plan.cycle,
             "trial_duration_days": trial.offer.duration_days,
         },
     )
@@ -175,7 +177,7 @@ async def trial_notice_disposition(
         return "obsolete"
     if data.notice_key != trial_notice_key(trial, data.kind):
         return "obsolete"
-    expected = trial_notice_data(trial, data.kind, data.user_name)
+    expected = trial_notice_data(trial, data.kind, data.user_name, current)
     if data.model_copy(update={"notice_key": None}) != expected:
         return "obsolete"
     if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
@@ -234,25 +236,29 @@ def trial_notice_key(trial: TrialState, kind: TrialNoticeKind) -> str:
 
 
 def trial_notice_data(
-    trial: TrialState, kind: TrialNoticeKind, name: str
+    trial: TrialState,
+    kind: TrialNoticeKind,
+    name: str,
+    current: dict | None = None,
 ) -> TrialUpdateData:
     if trial.ends_at is None:
         raise ValueError("Cannot send a trial notice without the accepted end date")
-    offer = trial.offer
-    cycle_noun = "month" if offer.billing_cycle == "monthly" else "year"
+    plan = notice_plan(trial, kind, current)
+    title = plan.tier.title()
+    cycle_noun = "month" if plan.cycle == "monthly" else "year"
     return TrialUpdateData(
         user_name=name,
         kind=kind,
         plan=SubscriptionPlan(
-            name=offer.tier.title(),
-            cycle=offer.billing_cycle,
+            name=title,
+            cycle=plan.cycle,
             cycle_noun=cycle_noun,
-            label=f"{offer.tier.title()} — {offer.billing_cycle}",
-            price_display=f"{format_amount(offer.unit_amount, offer.currency)} {offer.currency.upper()} / {cycle_noun}",
+            label=f"{title} — {plan.cycle}",
+            price_display=f"{format_amount(plan.unit_amount, plan.currency)} {plan.currency.upper()} / {cycle_noun}",
         ),
         ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
-        onboarding_credit_amount=offer.onboarding_credit_amount,
-        offer_version=offer.version,
+        onboarding_credit_amount=trial.offer.onboarding_credit_amount,
+        offer_version=trial.offer.version,
     )
 
 

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecution,
+    GraphExecutionMeta,
     GraphExecutionWithNodes,
 )
 
@@ -24,7 +25,13 @@ def _agent() -> MagicMock:
     return agent
 
 
-def _execution(*, with_nodes: bool, outputs: dict, node_executions: list):
+def _execution(
+    *,
+    with_nodes: bool,
+    outputs: dict,
+    node_executions: list,
+    node_error_count: int = 0,
+):
     spec = GraphExecutionWithNodes if with_nodes else GraphExecution
     execution = MagicMock(spec=spec)
     execution.id = "exec-1"
@@ -33,6 +40,7 @@ def _execution(*, with_nodes: bool, outputs: dict, node_executions: list):
     execution.ended_at = None
     execution.outputs = outputs
     execution.inputs = None
+    execution.stats = GraphExecutionMeta.Stats(node_error_count=node_error_count)
     if with_nodes:
         execution.node_executions = node_executions
     return execution
@@ -76,6 +84,24 @@ def test_completed_empty_outputs_without_nodes_nudges_details():
         session_id="sess-1",
     )
     assert "produced no outputs" in response.message
+    assert "show_execution_details=true" in response.message
+
+
+def test_completed_with_output_and_failed_node_warns_without_the_trace():
+    """The default call loads no per-node trace. A run that produced output
+    while a node failed must still warn, from the run's own failure count."""
+    response = AgentOutputTool()._build_response(
+        agent=_agent(),
+        execution=_execution(
+            with_nodes=False,
+            outputs={"result": ["partial"]},
+            node_executions=[],
+            node_error_count=1,
+        ),
+        available_executions=[],
+        session_id="sess-1",
+    )
+    assert "1 node(s) FAILED despite the COMPLETED" in response.message
     assert "show_execution_details=true" in response.message
 
 

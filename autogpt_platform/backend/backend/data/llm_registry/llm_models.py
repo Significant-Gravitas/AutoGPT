@@ -242,6 +242,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
+    META_MUSE_WONDER = "meta/muse-wonder"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"

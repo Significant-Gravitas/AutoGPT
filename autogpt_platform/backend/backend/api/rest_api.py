@@ -107,6 +107,7 @@ from backend.util.exceptions import (
     PreconditionFailed,
 )
 from backend.util.service import UnhealthyServiceError
+from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -301,7 +302,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.exception(
                     "%s %s failed. Investigate and resolve the underlying issue: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     exc,
                     exc_info=exc,
                 )
@@ -309,7 +310,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.warning(
                     "%s %s failed with %d: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     status_code,
                     exc,
                 )
@@ -337,7 +338,7 @@ async def validation_error_handler(
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
-        request.url.path,
+        redact_url(request.url.path),
         exc,
     )
     errors: list | str
