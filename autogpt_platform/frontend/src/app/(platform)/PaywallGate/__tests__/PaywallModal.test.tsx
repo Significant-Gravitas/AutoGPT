@@ -275,7 +275,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
   }
 
-  it("clicking Upgrade to Pro with the default monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
+  it("clicking Start Pro with the default monthly toggle fires {tier:PRO, billing_cycle:monthly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -287,7 +287,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -297,7 +297,7 @@ describe("PaywallModal — upgrade mutation", () => {
     expect(args.data.billing_cycle).toBe("monthly");
   });
 
-  it("clicking Upgrade to Pro after switching to yearly fires {tier:PRO, billing_cycle:yearly}", async () => {
+  it("clicking Start Pro after switching to yearly fires {tier:PRO, billing_cycle:yearly}", async () => {
     stubLocation();
     const { mutateFn } = setupMocks({
       subscription: {
@@ -310,7 +310,7 @@ describe("PaywallModal — upgrade mutation", () => {
     render(<PaywallModal />);
 
     fireEvent.click(screen.getByRole("button", { name: /yearly/i }));
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -336,7 +336,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(window.location.href).toBe("https://checkout.stripe.com/c/test");
@@ -390,7 +390,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -422,7 +422,7 @@ describe("PaywallModal — upgrade mutation", () => {
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -433,7 +433,7 @@ describe("PaywallModal — upgrade mutation", () => {
       status: 200,
       data: { url: "https://checkout.stripe.com/pay/cs_test" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(gtagCalls).toContainEqual([
@@ -463,7 +463,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mockReplace).toHaveBeenCalledWith("/login");
@@ -487,7 +487,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledTimes(1);
@@ -511,7 +511,7 @@ describe("PaywallModal — upgrade mutation", () => {
 
     render(<PaywallModal />);
 
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mockToast).toHaveBeenCalledTimes(1);
@@ -539,6 +539,21 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
   }
 
+  it("routes a paid Pro user to the exact Max charge review without mutating", () => {
+    stubLocation();
+    const { mutateFn } = setupMocks({
+      subscription: {
+        tier: "PRO",
+        tier_costs: { PRO: 5000, MAX: 32000 },
+        has_active_stripe_subscription: true,
+      },
+    });
+    render(<PaywallModal />);
+    fireEvent.click(screen.getByRole("button", { name: /start max/i }));
+    expect(mockReplace).toHaveBeenCalledWith("/settings/billing?upgrade=MAX");
+    expect(mutateFn).not.toHaveBeenCalled();
+  });
+
   it("staging gate: clicking Upgrade with active Stripe sub opens confirm dialog and skips mutation", () => {
     stubLocation();
     const { mutateFn } = setupMocks({
@@ -551,7 +566,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     // Confirmation dialog text surfaces; mutation has NOT fired yet.
     expect(
@@ -573,7 +588,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
     fireEvent.click(screen.getByRole("button", { name: /switch to pro/i }));
 
     await waitFor(() => {
@@ -594,7 +609,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
 
     expect(mutateFn).not.toHaveBeenCalled();
@@ -611,7 +626,7 @@ describe("PaywallModal — admin-overridden NO_TIER with active Stripe sub", () 
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);
@@ -712,7 +727,7 @@ describe("PaywallModal — PostHog paywall funnel", () => {
     });
 
     render(<PaywallModal />);
-    fireEvent.click(screen.getByRole("button", { name: /upgrade to max/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start max/i }));
 
     await waitFor(() => {
       expect(mutateFn).toHaveBeenCalledTimes(1);

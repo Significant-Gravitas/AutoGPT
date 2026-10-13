@@ -77,6 +77,9 @@ beforeEach(() => {
   confirm.mockReset();
   preview.mockReset();
   server.use(
+    http.get("*/api/proxy/api/credits/manage", () =>
+      HttpResponse.json({ url: "https://billing.stripe.com/p/session/test" }),
+    ),
     http.get(`${base}/current`, () => new HttpResponse(null, { status: 404 })),
     http.post(`${base}/preview`, async ({ request }) => {
       preview(await request.json());
@@ -101,6 +104,164 @@ beforeEach(() => {
 });
 
 describe("Pro activation", () => {
+  it.each([
+    { usage_reset: false },
+    { usage_reset: true },
+    { usage_reset: false, activation_id: "generation-1" },
+  ])(
+    "does not promise fresh usage without a reset receipt (%j)",
+    async (receipt) => {
+      server.use(
+        http.get(`${base}/current`, () =>
+          HttpResponse.json({ ...quote, status: "ready", ...receipt }),
+        ),
+        http.get("*/api/proxy/api/credits/trial", () =>
+          HttpResponse.json({ active: false, converted: true }),
+        ),
+        http.get("*/api/proxy/api/credits/subscription", () =>
+          HttpResponse.json({ tier: "PRO" }),
+        ),
+        http.get("*/api/proxy/api/chat/usage", () =>
+          HttpResponse.json({ tier: "PRO" }),
+        ),
+      );
+      mount();
+      fireEvent.click(screen.getByText("Upgrade"));
+      await screen.findByText("Pro is active");
+      expect(screen.getByText("allowance waiting")).toBeDefined();
+      expect(screen.queryByText("allowance ready")).toBeNull();
+      expect(
+        screen.getByText(
+          "Your Pro plan is active. Your existing usage still counts toward your plan’s limits.",
+        ),
+      ).toBeDefined();
+    },
+  );
+
+  it("recovers a paid Max activation without relabeling it Pro or promising a reset", async () => {
+    server.use(
+      http.get(`${base}/current`, () =>
+        HttpResponse.json({
+          ...quote,
+          terms: { ...quote.terms, plan: "MAX" },
+          status: "ready",
+          usage_reset: false,
+        }),
+      ),
+      http.get("*/api/proxy/api/credits/trial", () =>
+        HttpResponse.json({ active: false, converted: true }),
+      ),
+      http.get("*/api/proxy/api/credits/subscription", () =>
+        HttpResponse.json({ tier: "MAX" }),
+      ),
+      http.get("*/api/proxy/api/chat/usage", () =>
+        HttpResponse.json({ tier: "MAX" }),
+      ),
+    );
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText("Max is active");
+    expect(
+      screen.getByText(
+        "Your Max plan is active. Your existing usage still counts toward your plan’s limits.",
+      ),
+    ).toBeDefined();
+    expect(screen.queryByText("allowance ready")).toBeNull();
+    expect(preview).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("clears prior readiness when the current plan no longer matches", async () => {
+    let changed = false;
+    server.use(
+      http.get(`${base}/current`, () =>
+        HttpResponse.json({
+          ...quote,
+          status: changed ? "not_applicable" : "ready",
+          usage_reset: true,
+          activation_id: "generation-1",
+        }),
+      ),
+      http.get("*/api/proxy/api/credits/trial", () =>
+        HttpResponse.json({ active: false, converted: true }),
+      ),
+      http.get("*/api/proxy/api/credits/subscription", () =>
+        HttpResponse.json({ tier: "PRO" }),
+      ),
+      http.get("*/api/proxy/api/chat/usage", () =>
+        HttpResponse.json({ tier: "PRO" }),
+      ),
+    );
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText("allowance ready");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue where you left off" }),
+    );
+    changed = true;
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText("Your plan has changed");
+    expect(screen.queryByText("Pro is active")).toBeNull();
+    expect(screen.getByText("allowance waiting")).toBeDefined();
+  });
+
+  it("handles a different current plan without polling or starting another payment", async () => {
+    server.use(
+      http.get(`${base}/current`, () =>
+        HttpResponse.json({ ...quote, status: "not_applicable" }),
+      ),
+    );
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText("Your plan has changed");
+    expect(screen.getByRole("link", { name: "View my plan" })).toBeDefined();
+    expect(
+      screen.queryByRole("button", { name: "Check activation status" }),
+    ).toBeNull();
+    expect(preview).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("requires a fresh quote when the displayed price has expired", async () => {
+    server.use(
+      http.post(`${base}/preview`, () =>
+        HttpResponse.json({
+          ...quote,
+          terms: { ...quote.terms, expires_at: new Date(Date.now() - 1000) },
+        }),
+      ),
+    );
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText(/This quote has expired/);
+    expect(
+      screen
+        .getByRole("button", { name: "Pay £61.23 and start Pro" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "Review current terms" }),
+    ).toBeDefined();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("offers payment management in another tab without discarding the current review", async () => {
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    const manage = await screen.findByRole("link", {
+      name: "Manage payment method in a new tab",
+    });
+    await waitFor(() =>
+      expect(manage.getAttribute("href")).toBe(
+        "https://billing.stripe.com/p/session/test",
+      ),
+    );
+    expect(manage.getAttribute("target")).toBe("_blank");
+    expect(manage.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(screen.getByText("Start Pro today")).toBeDefined();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it.each(["processing", "payment_required", "action_required", "failed"])(
     "ignores unsolicited recovered %s outside an activation flow",
     async (status) => {
@@ -136,7 +297,12 @@ describe("Pro activation", () => {
       http.get(`${base}/current`, async () => {
         currentStarted();
         await pending;
-        return HttpResponse.json({ ...quote, status: "ready" });
+        return HttpResponse.json({
+          ...quote,
+          status: "ready",
+          usage_reset: true,
+          activation_id: "generation-1",
+        });
       }),
       http.get("*/api/proxy/api/credits/trial", () =>
         HttpResponse.json({ active: false, converted: true }),
@@ -153,7 +319,7 @@ describe("Pro activation", () => {
     window.history.replaceState({}, "", "/settings/billing");
     releaseCurrent();
     await screen.findByText("allowance ready");
-    expect(screen.getByText("You’re ready to keep going.")).toBeDefined();
+    expect(screen.getByText("Pro is active")).toBeDefined();
     fireEvent.click(
       screen.getByRole("button", { name: "Continue where you left off" }),
     );
@@ -165,7 +331,12 @@ describe("Pro activation", () => {
   it("does not announce readiness when refreshed data still describes the trial", async () => {
     server.use(
       http.get(`${base}/current`, () =>
-        HttpResponse.json({ ...quote, status: "ready" }),
+        HttpResponse.json({
+          ...quote,
+          status: "ready",
+          usage_reset: true,
+          activation_id: "generation-1",
+        }),
       ),
       http.get("*/api/proxy/api/credits/trial", () =>
         HttpResponse.json({ active: true, converted: false }),
@@ -197,7 +368,12 @@ describe("Pro activation", () => {
       server.use(
         http.get(`${base}/current`, () => {
           current();
-          return HttpResponse.json({ ...quote, status: "ready" });
+          return HttpResponse.json({
+            ...quote,
+            status: "ready",
+            usage_reset: true,
+            activation_id: "generation-1",
+          });
         }),
         http.get("*/api/proxy/api/credits/trial", () =>
           HttpResponse.json({ active: false, converted: true }),
@@ -238,11 +414,11 @@ describe("Pro activation", () => {
     mount();
     await waitFor(() => expect(calls).toBe(1));
     fireEvent.click(screen.getByText("Upgrade"));
-    await screen.findByRole("button", { name: "Pay £61.23 & start Pro" });
+    await screen.findByRole("button", { name: "Pay £61.23 and start Pro" });
     releaseOld();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
-      screen.getByRole("button", { name: "Pay £61.23 & start Pro" }),
+      screen.getByRole("button", { name: "Pay £61.23 and start Pro" }),
     ).toBeDefined();
     expect(screen.queryByText("Your payment wasn’t completed.")).toBeNull();
   });
@@ -276,14 +452,14 @@ describe("Pro activation", () => {
     mount();
     fireEvent.click(screen.getByText("Upgrade"));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Pay £61.23 & start Pro" }),
+      await screen.findByRole("button", { name: "Pay £61.23 and start Pro" }),
     );
     const refresh = await screen.findByRole("button", {
       name: "Review current terms",
     });
     expect(
       screen
-        .getByRole("button", { name: "Pay £61.23 & start Pro" })
+        .getByRole("button", { name: "Pay £61.23 and start Pro" })
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(confirm).toHaveBeenCalledTimes(1);
@@ -296,7 +472,7 @@ describe("Pro activation", () => {
     mount();
     fireEvent.click(screen.getByText("Upgrade"));
     const pay = await screen.findByRole("button", {
-      name: "Pay £61.23 & start Pro",
+      name: "Pay £61.23 and start Pro",
     });
     expect(screen.getByText("£85.00 / year")).toBeDefined();
     expect(screen.getByText(/20% off the first invoice only/)).toBeDefined();
@@ -321,7 +497,12 @@ describe("Pro activation", () => {
     });
     server.use(
       http.get(`${base}/attempt-1`, () =>
-        HttpResponse.json({ ...quote, status: "ready" }),
+        HttpResponse.json({
+          ...quote,
+          status: "ready",
+          usage_reset: true,
+          activation_id: "generation-1",
+        }),
       ),
       http.get("*/api/proxy/api/credits/trial", () =>
         HttpResponse.json({ status: "converted" }),
@@ -337,18 +518,16 @@ describe("Pro activation", () => {
     mount();
     fireEvent.click(screen.getByText("Upgrade"));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Pay £61.23 & start Pro" }),
+      await screen.findByRole("button", { name: "Pay £61.23 and start Pro" }),
     );
     fireEvent.click(
       await screen.findByRole("button", { name: "Check activation status" }),
     );
     expect(screen.getByText("allowance waiting")).toBeDefined();
-    expect(screen.queryByText("You’re ready to keep going.")).toBeNull();
+    expect(screen.queryByText("Pro is active")).toBeNull();
     releaseUsage();
     await screen.findByText("allowance ready");
-    expect(
-      await screen.findByText("You’re ready to keep going."),
-    ).toBeDefined();
+    expect(await screen.findByText("Pro is active")).toBeDefined();
   });
 
   it("recovers existing authentication using its invoice without another charge", async () => {
@@ -413,7 +592,7 @@ describe("Pro activation", () => {
     mount();
     fireEvent.click(screen.getByText("Upgrade"));
     fireEvent.click(
-      await screen.findByRole("button", { name: "Pay £61.23 & start Pro" }),
+      await screen.findByRole("button", { name: "Pay £61.23 and start Pro" }),
     );
     await screen.findByRole("button", { name: "Check activation status" });
     expect(confirm).toHaveBeenCalledTimes(1);

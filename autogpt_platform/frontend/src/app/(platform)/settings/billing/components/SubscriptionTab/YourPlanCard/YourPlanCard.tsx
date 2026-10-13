@@ -219,7 +219,7 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
               }
             >
               {!plan.isPaidPlan
-                ? `Get ${plan.nextTierLabel}`
+                ? `Start ${plan.nextTierLabel}`
                 : plan.nextTierIsTeamLink
                   ? `Talk to sales — ${plan.nextTierLabel}`
                   : `Upgrade to ${plan.nextTierLabel}`}
@@ -262,6 +262,8 @@ export function YourPlanCard({ index = 0, showUsage = false }: Props) {
           usageCarriesOver={
             plan.tierKey === "PRO" && pendingTierUpgrade === "MAX"
           }
+          usageMultiplier={controller.upgradeUsageMultiplier}
+          upgradeReview={controller.upgradeReview}
           isSaving={isUpdatingTier}
           onConfirm={onConfirmTierUpgrade}
         />
