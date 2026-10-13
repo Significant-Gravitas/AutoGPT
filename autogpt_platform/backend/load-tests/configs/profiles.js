@@ -136,23 +136,25 @@ export function journeyRate(name, profile) {
 // The k6 scenarios for the enabled journeys. Each has a warm-up stage that
 // ramps to the rate and a steady stage that holds it; iterations tag their
 // requests with the phase, and thresholds apply to the steady phase only.
+// k6 wants whole-number rates, so they are expressed per hour.
 export function buildScenarios(profile, names) {
   const scenarios = {};
   for (const name of names) {
     const journey = JOURNEYS[name];
     const rate = journeyRate(name, profile);
+    const perHour = Math.max(1, Math.round(rate * 60));
     const inFlight = (rate / 60) * EXPECTED_ITERATION_SECONDS[name];
     const preAllocatedVUs = Math.max(2, Math.ceil(inFlight * 2));
     const stages = [];
     if (durationMs(profile.warmup) > 0) {
-      stages.push({ duration: profile.warmup, target: rate });
+      stages.push({ duration: profile.warmup, target: perHour });
     }
-    stages.push({ duration: profile.duration, target: rate });
+    stages.push({ duration: profile.duration, target: perHour });
     scenarios[name] = {
       executor: "ramping-arrival-rate",
       exec: journey.exec,
-      startRate: stages.length > 1 ? 0 : rate,
-      timeUnit: "1m",
+      startRate: stages.length > 1 ? 0 : perHour,
+      timeUnit: "1h",
       stages,
       preAllocatedVUs,
       // Ten times the expected concurrency: a slow build queues inside the

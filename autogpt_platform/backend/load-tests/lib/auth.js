@@ -76,6 +76,26 @@ export function setupAuth() {
   return { auth: sessions };
 }
 
+// How many accounts a run signs in, from LOAD_TEST_ACCOUNTS or
+// LOAD_TEST_ACCOUNT_COUNT; usable in the init context.
+export function accountCount() {
+  const listed = readAccounts();
+  return listed ? listed.length : readAccountCount();
+}
+
+// Headers for one account by index, for setup() and teardown(), which run
+// outside any VU. The tokens are fresh there, so no refresh is needed.
+export function accountHeaders(data, index) {
+  const sessions = data && data.auth;
+  if (!sessions || sessions.length === 0) {
+    throw new Error("No sessions: setupAuth() must run first");
+  }
+  return {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${sessions[index % sessions.length].token}`,
+  };
+}
+
 // Headers for the current VU's account, from setupAuth()'s data.
 export function authHeaders(data) {
   if (vuSession === null) {
@@ -85,7 +105,9 @@ export function authHeaders(data) {
         "No sessions: the test's setup() must return setupAuth()'s result",
       );
     }
-    const session = sessions[(__VU - 1) % sessions.length];
+    // VUs are numbered from 1; setup() and teardown() run as VU 0 and use
+    // the first account.
+    const session = sessions[Math.max(__VU - 1, 0) % sessions.length];
     vuSession = {
       cookies: session.cookies,
       token: session.token,

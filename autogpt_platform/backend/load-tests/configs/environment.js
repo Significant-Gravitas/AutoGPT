@@ -80,7 +80,7 @@ function getPreviewConfig(prNumber) {
     `PREVIEW pr-${prNumber}`,
     `https://pr-${prNumber}-server.agpt.co`,
     `https://autogpt-pr-${prNumber}.vercel.app`,
-    `wss://pr-${prNumber}-ws-server.agpt.co/ws`,
+    `wss://pr-${prNumber}-ws.agpt.co/ws`,
     true,
     { project: "autogpt-server-previews", environment: `pr-${prNumber}` },
   );

@@ -63,7 +63,7 @@ export function streamTurn(sessionId, message, options) {
     {
       method: "POST",
       body: JSON.stringify({ message, is_user_message: true }),
-      headers: authHeaders(opts.data),
+      headers: opts.headers || authHeaders(opts.data),
       // A hard cap on the whole stream: without it a turn that never
       // finishes (no copilot executor running) holds the VU for an hour.
       timeout: opts.timeout || "120s",
