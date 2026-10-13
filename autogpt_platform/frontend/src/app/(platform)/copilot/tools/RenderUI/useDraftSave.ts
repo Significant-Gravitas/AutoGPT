@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMountEffect } from "@/hooks/useMountEffect";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
-import { writeDraftCache } from "./draftCache";
+import { readDraftCache, writeDraftCache } from "./draftCache";
 import type { DraftTarget } from "./draftTargets";
 
 const MAX_DRAFT_BYTES = 240_000;
@@ -128,12 +128,30 @@ export function useDraftSave(args: Args) {
     latest.current = null;
   }
 
+  function syncedRevision() {
+    return savedFor(live.current.epoch).revision;
+  }
+
+  // Edits here that the server does not have yet: a pending or failed write,
+  // or a draft restored from this browser's unsynced cache.
+  function hasUnsyncedEdits() {
+    const { target, source, epoch } = live.current;
+    if (busy.current) return true;
+    if (latest.current)
+      return JSON.stringify(latest.current) !== savedFor(epoch).serialized;
+    if (written.current.epoch === epoch) return false;
+    const cached = readDraftCache(target?.cacheKey ?? null);
+    return !!cached && cached.source === source && cached.dirty !== false;
+  }
+
   const current = failure?.epoch === args.epoch ? failure : null;
   return {
     save,
     retry: flush,
     flushNow,
     reset,
+    syncedRevision,
+    hasUnsyncedEdits,
     error: current?.message ?? "",
     conflict: current?.conflict ?? false,
     saving,

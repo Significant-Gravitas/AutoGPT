@@ -8,6 +8,7 @@ import { formView } from "@/lib/openui/__tests__/capability-fixtures";
 import { OPENUI_MIME } from "@/lib/openui/file";
 import { CopilotChatActionsProvider } from "../../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { ChainMessageParts } from "../../../components/ChatMessagesContainer/components/ChainMessageParts";
+import { ArtifactPanel } from "../../../components/ArtifactPanel/ArtifactPanel";
 import { registerChatSender } from "../../../helpers/sendToChat";
 import { useCopilotUIStore } from "../../../store";
 
@@ -39,9 +40,9 @@ function viewState(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function showCard(
-  output: Record<string, unknown> = {},
-  send = vi.fn().mockResolvedValue(undefined),
+function cardElement(
+  output: Record<string, unknown>,
+  send: (message: string) => Promise<void>,
 ) {
   const part: ToolUIPart = {
     type: "tool-render_ui",
@@ -57,19 +58,72 @@ function showCard(
       ...output,
     },
   };
-  render(
+  return (
     <CopilotChatActionsProvider onSend={send} chatSurface="copilot">
       <ChainMessageParts
         parts={[part]}
         messageID="saved-message"
         isCurrentlyStreaming={false}
       />
-    </CopilotChatActionsProvider>,
+    </CopilotChatActionsProvider>
   );
+}
+
+function showCard(
+  output: Record<string, unknown> = {},
+  send = vi.fn().mockResolvedValue(undefined),
+) {
+  render(cardElement(output, send));
   return send;
 }
 
 const savedOutput = { file_id: "file-1", file_name: "Review.openui" };
+
+function serveSharedFile() {
+  const writes: Record<string, unknown>[] = [];
+  let revision = 2;
+  let state: unknown = {};
+  server.use(
+    http.get("/api/proxy/api/workspace/files/file-1/download", () =>
+      HttpResponse.text(source),
+    ),
+    http.get(viewStatePath, () =>
+      HttpResponse.json(viewState({ revision, state })),
+    ),
+    http.put(viewStatePath, async ({ request }) => {
+      const body = (await request.json()) as Record<string, unknown>;
+      writes.push(body);
+      if (body.expected_revision !== revision)
+        return HttpResponse.json({ detail: "Conflict" }, { status: 409 });
+      revision += 1;
+      state = body.state;
+      return HttpResponse.json(viewState({ revision, state }));
+    }),
+  );
+  return writes;
+}
+
+async function showCardAndPanel() {
+  render(
+    <>
+      <section aria-label="Chat">
+        {cardElement(savedOutput, vi.fn().mockResolvedValue(undefined))}
+      </section>
+      <section aria-label="Side panel">
+        <ArtifactPanel />
+      </section>
+    </>,
+  );
+  const chat = screen.getByRole("region", { name: "Chat" });
+  const panel = screen.getByRole("region", { name: "Side panel" });
+  await within(chat).findByLabelText("Notes", {}, { timeout: 10000 });
+  fireEvent.click(within(chat).getByRole("button", { name: "Open" }));
+  await within(panel).findByLabelText("Notes", {}, { timeout: 10000 });
+  return {
+    cardNotes: () => within(chat).getByLabelText("Notes") as HTMLInputElement,
+    panelNotes: () => within(panel).getByLabelText("Notes") as HTMLInputElement,
+  };
+}
 
 async function findNotes() {
   return (await screen.findByLabelText(
@@ -238,6 +292,48 @@ describe("saved interactive views in chat", () => {
     );
   });
 
+  it("keeps the chat card and the side panel in step on the same file", async () => {
+    const writes = serveSharedFile();
+    const { cardNotes, panelNotes } = await showCardAndPanel();
+
+    fireEvent.change(cardNotes(), { target: { value: "From card" } });
+    await waitFor(() => expect(panelNotes().value).toBe("From card"), {
+      timeout: 3000,
+    });
+    expect(writes[0].expected_revision).toBe(2);
+
+    fireEvent.change(panelNotes(), { target: { value: "From panel" } });
+    await waitFor(() => expect(cardNotes().value).toBe("From panel"), {
+      timeout: 3000,
+    });
+    expect(writes[1].expected_revision).toBe(3);
+
+    fireEvent.change(cardNotes(), { target: { value: "Card again" } });
+    await waitFor(() => expect(writes.length).toBe(3), { timeout: 3000 });
+    expect(writes[2].expected_revision).toBe(4);
+    expect(JSON.stringify(writes[2].state)).toContain("Card again");
+    expect(
+      screen.queryByRole("button", { name: "Reload saved draft" }),
+    ).toBeNull();
+  }, 20000);
+
+  it("keeps both edits when the card and the panel change the file at once", async () => {
+    serveSharedFile();
+    const { cardNotes, panelNotes } = await showCardAndPanel();
+
+    fireEvent.change(cardNotes(), { target: { value: "From card" } });
+    fireEvent.change(panelNotes(), { target: { value: "From panel" } });
+    await waitFor(
+      () =>
+        expect(
+          screen.getAllByRole("button", { name: "Reload saved draft" }),
+        ).toHaveLength(1),
+      { timeout: 3000 },
+    );
+    expect(cardNotes().value).toBe("From card");
+    expect(panelNotes().value).toBe("From panel");
+  }, 20000);
+
   it("submits in this chat when the view belongs to it", async () => {
     server.use(http.get(viewStatePath, () => HttpResponse.json(viewState())));
     const send = showCard(savedOutput);
@@ -261,6 +357,7 @@ describe("saved interactive views in chat", () => {
       expect(router.push).toHaveBeenCalledWith("/copilot?sessionId=home-chat"),
     );
     expect(send).not.toHaveBeenCalled();
+    expect(screen.getByText("Sending to the conversation…")).toBeDefined();
 
     const homeSend = vi.fn();
     const unregister = registerChatSender("home-chat", homeSend);
@@ -269,6 +366,28 @@ describe("saved interactive views in chat", () => {
     expect(homeSend.mock.calls[0][0]).toContain(
       "From the interactive view: Review",
     );
+    expect(await screen.findByText("Sent to the conversation")).toBeDefined();
+    unregister();
+  });
+
+  it("shows a send failure when the home chat rejects the queued submit", async () => {
+    server.use(
+      http.get(viewStatePath, () =>
+        HttpResponse.json(viewState({ origin_session_id: "home-chat" })),
+      ),
+    );
+    showCard(savedOutput);
+    await findNotes();
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(router.push).toHaveBeenCalled());
+
+    const unregister = registerChatSender("home-chat", () =>
+      Promise.reject(new Error("offline")),
+    );
+    expect(
+      await screen.findByText(/Your follow-up couldn't be sent/),
+    ).toBeDefined();
+    expect(screen.queryByText("Sent to the conversation")).toBeNull();
     unregister();
   });
 

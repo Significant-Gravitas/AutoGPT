@@ -116,6 +116,7 @@ describe("saved views in the side panel", () => {
     const homeSend = vi.fn();
     const unregister = registerChatSender("home-chat", homeSend);
     expect(homeSend.mock.calls[0][0]).toContain("Use my choices");
+    expect(await screen.findByText("Sent to the conversation")).toBeDefined();
     unregister();
   });
 

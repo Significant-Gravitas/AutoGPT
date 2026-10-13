@@ -51,8 +51,9 @@ export function useFileViewEditor(args: Args) {
       return;
     }
     if (route.kind !== "chat") return;
-    await sendToChat(route.sessionId, message);
+    const delivered = sendToChat(route.sessionId, message);
     if (route.navigate) router.push(chatHref(route.sessionId));
+    await delivered;
   }
 
   const submit = useViewSubmit({

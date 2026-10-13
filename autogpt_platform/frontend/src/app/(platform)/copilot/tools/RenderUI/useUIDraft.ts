@@ -70,6 +70,30 @@ export function useUIDraft({
     enabled: stable && ready && writable,
   });
 
+  // Another view of the same draft (e.g. the chat card and the side panel)
+  // saved a newer revision. Adopt it unless this one has edits of its own,
+  // which then meet the usual conflict flow on their next write.
+  if (
+    stable &&
+    ready &&
+    writable &&
+    remote?.settled &&
+    remote.data &&
+    remote.data.revision > writer.syncedRevision() &&
+    !writer.hasUnsyncedEdits()
+  ) {
+    writer.reset();
+    setGeneration(generation + 1);
+    setSnapshot(
+      restoreDraft({
+        saved: remote.data,
+        cached: null,
+        source,
+        key: generation + 1,
+      }),
+    );
+  }
+
   function update(state: Record<string, unknown>) {
     if (locked || !ready || !writable) return;
     if (stable) writer.save(persistedState(source, state));
