@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from prisma.enums import NotificationType
 
 from backend.data.notifications import (
     AudienceAction,
@@ -22,6 +23,7 @@ from backend.notifications import mailerlite
 from backend.notifications import notifications as delivery
 from backend.notifications import trial as notices
 from backend.notifications import trial_audience
+from backend.notifications.consent_test import _cached_before_consent
 from backend.notifications.notifications import NotificationManager
 
 EMAIL = "sam@example.com"
@@ -97,6 +99,19 @@ def _state(trial: TrialState, kind: str) -> tuple[TrialState, dict]:
     return trial, raw
 
 
+def _stripe(raw: dict, others: tuple[str, ...] = ()) -> AsyncMock:
+    """The live subscription, on a customer whose only other live
+    subscriptions are `others` (none by default)."""
+
+    async def call(fn, *args, **kwargs):
+        if fn == notices.stripe.Subscription.list_async:
+            data = [SimpleNamespace(id=sub_id) for sub_id in others]
+            return SimpleNamespace(data=data, has_more=False)
+        return raw
+
+    return AsyncMock(side_effect=call)
+
+
 async def _notify(
     trial,
     raw,
@@ -108,16 +123,27 @@ async def _notify(
     raises=False,
     email=EMAIL,
     claim_welcome=None,
+    opted_out_at=None,
+    user=None,
+    timezone="America/Chicago",
+    claim_once=None,
+    others: tuple[str, ...] = (),
 ):
     audience = audience or AsyncMock(return_value=NotificationResult(success=True))
     notice = AsyncMock(return_value=NotificationResult(success=True))
-    user = SimpleNamespace(name="Sam", email=email)
+    user = user or SimpleNamespace(
+        id="user-1",
+        name="Sam",
+        email=email,
+        marketing_opt_out_at=opted_out_at,
+        timezone=timezone,
+    )
     users = MagicMock(
         get_user_by_id=AsyncMock(return_value=user),
         claim_welcome_email=claim_welcome or AsyncMock(return_value=not welcomed),
     )
     with (
-        patch.object(notices, "stripe_call", AsyncMock(return_value=raw)),
+        patch.object(notices, "stripe_call", _stripe(raw, others)),
         patch.object(
             notices,
             "credit_db",
@@ -127,7 +153,9 @@ async def _notify(
         ),
         patch.object(notices, "user_db", return_value=users),
         patch.object(trial_audience, "user_db", return_value=users),
-        patch.object(notices, "claim_once", AsyncMock(return_value=claimed)),
+        patch.object(
+            notices, "claim_once", claim_once or AsyncMock(return_value=claimed)
+        ),
         patch.object(notices, "release_claim", AsyncMock()) as release,
         patch.object(notices, "queue_notification_async", notice),
         patch.object(trial_audience, "queue_audience_change", audience),
@@ -237,6 +265,62 @@ async def test_joining_the_paying_audience_never_fails_the_sent_conversion(trial
     got, notice, release = await _notify(trial, raw, "converted", claim_welcome=broken)
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "resumed", "ended"])
+async def test_an_opted_out_trialist_gets_the_notice_but_no_group_change(trial, kind):
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(
+        trial, raw, kind, opted_out_at=datetime.now(UTC)
+    )
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "converted"])
+async def test_a_trialist_in_tehran_gets_the_notice_but_no_group_change(trial, kind):
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(trial, raw, kind, timezone="Asia/Tehran")
+    assert got == []
+    notice.assert_awaited_once()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True])
+async def test_an_opted_out_conversion_still_takes_the_welcome_claim(trial, welcomed):
+    """The claim decides whether a later resubscription is welcomed as a first
+    subscription; that is service mail, so it is taken whatever the consent.
+    Only the tour or changelog is skipped."""
+    trial, raw = _state(trial, "converted")
+    claim = AsyncMock(return_value=not welcomed)
+    got, notice, _ = await _notify(
+        trial, raw, "converted", claim_welcome=claim, opted_out_at=datetime.now(UTC)
+    )
+    assert got == []
+    claim.assert_awaited_once_with("user-1")
+    notice.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["started", "canceled", "converted"])
+async def test_a_trialist_cached_before_the_consent_fields_still_gets_the_notice(
+    trial, kind
+):
+    """During a rolling deploy the shared cache can hand back a user pickled by
+    the previous release, with no opt-out to read. Its MailerLite changes are
+    skipped; the notice is still queued and its claim kept."""
+    trial, raw = _state(trial, kind)
+    got, notice, release = await _notify(
+        trial, raw, kind, user=_cached_before_consent()
+    )
+    assert got == []
+    notice.assert_awaited_once()
+    assert notice.await_args_list[0].args[0].type == NotificationType.TRIAL_UPDATE
     release.assert_not_awaited()
 
 

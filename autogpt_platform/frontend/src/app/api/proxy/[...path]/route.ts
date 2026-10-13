@@ -285,8 +285,8 @@ async function handler(
     if (isPrivateMedia) {
       hardenPrivateMediaResponseHeaders(responseHeaders);
       // Vercel silently drops the tail of large streamed binary bodies, so
-      // private media is buffered like workspace downloads. Larger images keep
-      // streaming: a buffered body over Vercel's 4.5 MB limit fails outright.
+      // private media is buffered like workspace downloads. The backend
+      // redirects larger full responses to a short-lived signed object URL.
       if (shouldBufferPrivateMedia(backendResponse.headers)) {
         const body = await backendResponse.arrayBuffer();
         responseHeaders.set("content-length", String(body.byteLength));

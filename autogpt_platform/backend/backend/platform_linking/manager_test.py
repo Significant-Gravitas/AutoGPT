@@ -88,8 +88,25 @@ class TestManagerWiring:
             return_value=db_mock,
         ):
             result = await manager.resolve_user_link(Platform.DISCORD, "pu1")
-        db_mock.resolve_user_link.assert_awaited_once_with("DISCORD", "pu1")
+        db_mock.resolve_user_link.assert_awaited_once_with("DISCORD", "pu1", False)
         assert result.linked is False
+
+    @pytest.mark.asyncio
+    async def test_resolve_user_link_forwards_include_account(self):
+        manager = PlatformLinkingManager()
+        db_mock = MagicMock()
+        db_mock.resolve_user_link = AsyncMock(
+            return_value=ResolveResponse(linked=True, account_hint="b***@agpt.co")
+        )
+        with patch(
+            "backend.platform_linking.manager.platform_linking_db",
+            return_value=db_mock,
+        ):
+            result = await manager.resolve_user_link(
+                Platform.TELEGRAM, "pu1", include_account=True
+            )
+        db_mock.resolve_user_link.assert_awaited_once_with("TELEGRAM", "pu1", True)
+        assert result.account_hint == "b***@agpt.co"
 
     @pytest.mark.asyncio
     async def test_get_user_dm_id_returns_matching_platform_link(self):

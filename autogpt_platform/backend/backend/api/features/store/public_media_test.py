@@ -80,12 +80,12 @@ async def test_publish_urls_copies_own_media_to_the_same_path(
         f"https://storage.cloud.google.com/test-bucket/{OWN_IMAGE}?authuser=0",
         f"https://commondatastorage.googleapis.com/test-bucket/{OWN_IMAGE}",
         "https://storage.googleapis.com/download/storage/v1/b/test-bucket/o/"
-        "users%2Fowner-1%2Fimages%2Fshot.png?alt=media",
+        + "users%2Fowner-1%2Fimages%2Fshot.png?alt=media",
         f"https://test-bucket.storage.googleapis.com/{OWN_IMAGE}",
         f"gs://test-bucket/{OWN_IMAGE}",
         "https://storage.googleapis.com/test-bucket/users/owner-1/images/shot%2Epng",
         "/_next/image?url=https%3A%2F%2Fstorage.googleapis.com%2Ftest-bucket%2F"
-        "users%2Fowner-1%2Fimages%2Fshot.png&w=640&q=75",
+        + "users%2Fowner-1%2Fimages%2Fshot.png&w=640&q=75",
         "/api/store/submissions/media/owner-1/images/shot.png",
     ],
 )

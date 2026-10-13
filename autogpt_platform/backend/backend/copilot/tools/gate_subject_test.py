@@ -219,10 +219,6 @@ async def test_an_approved_irreversible_block_asks_once(gate):
             AsyncMock(return_value=prep),
         ),
         patch(
-            "backend.copilot.tools.run_block.get_current_permissions",
-            return_value=None,
-        ),
-        patch(
             "backend.copilot.tools.run_block.check_spend_approval",
             AsyncMock(return_value=None),
         ),
@@ -822,6 +818,9 @@ class _LocalSandbox:
         cmd: str,
         envs: dict[str, str] | None = None,
         cwd: str = "/home/user",
+        background: bool = False,
+        on_stdout: Any = None,
+        on_stderr: Any = None,
         **_: Any,
     ) -> SimpleNamespace:
         user_home = (envs or {}).get("HOME", "/home/user")
@@ -833,11 +832,18 @@ class _LocalSandbox:
             text=True,
             timeout=10,
         )
-        return SimpleNamespace(
+        result = SimpleNamespace(
             exit_code=done.returncode,
             stdout=done.stdout.replace(self.home, "/home/user"),
             stderr=done.stderr,
         )
+        if not background:
+            return result
+        # bash_exec follows its command through E2B's background handle.
+        for emit, text in ((on_stdout, result.stdout), (on_stderr, result.stderr)):
+            if emit and text:
+                emit(text)
+        return SimpleNamespace(pid=1, wait=AsyncMock(return_value=result))
 
 
 @pytest.fixture
