@@ -9,7 +9,6 @@ LLM extraction step and ends up on production :RELATES_TO edges.
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -35,8 +34,6 @@ def test_memoryfact_defaults_match_envelope():
     assert fact.source_kind == SourceKind.user_asserted
     assert fact.scope == "real:global"
     assert fact.provenance is None
-    assert fact.web_verified_at is None
-    assert fact.ratified_at is None
     assert fact.expiration_reason is None
 
 
@@ -82,8 +79,6 @@ def test_memoryfact_carries_full_envelope_metadata():
         source_kind=SourceKind.assistant_derived,
         scope="project:foo",
         provenance="session:s1#msg:42",
-        web_verified_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
-        ratified_at=datetime(2026, 5, 14, tzinfo=timezone.utc),
         expiration_reason="stale_fact",
     )
     dumped = fact.model_dump(mode="json")
@@ -92,8 +87,6 @@ def test_memoryfact_carries_full_envelope_metadata():
     assert dumped["source_kind"] == "assistant_derived"
     assert dumped["scope"] == "project:foo"
     assert dumped["provenance"] == "session:s1#msg:42"
-    assert dumped["web_verified_at"] == "2026-05-12T00:00:00Z"
-    assert dumped["ratified_at"] == "2026-05-14T00:00:00Z"
     assert dumped["expiration_reason"] == "stale_fact"
 
 
@@ -149,6 +142,15 @@ def test_organization_entity_has_optional_industry():
     "model", [*EDGE_TYPES.values(), *ENTITY_TYPES.values()], ids=lambda m: m.__name__
 )
 def test_no_extraction_model_declares_a_policy_field(model) -> None:
-    """Only a forget and its redaction write these: a model declaring one
-    would let graphiti's extraction write it (``extracted_attributes``)."""
+    """Only the platform writes these: a model declaring one would let
+    graphiti's extraction write it (``extracted_attributes``)."""
     assert not model.model_fields.keys() & POLICY_EDGE_FIELDS
+    assert not any(
+        field in json.dumps(model.model_json_schema()) for field in POLICY_EDGE_FIELDS
+    )
+
+
+def test_the_attestation_stamps_are_the_platforms():
+    """The ratification loop writes ``ratified_at``, and ``web_verified_at``
+    has no writer yet: neither is offered to graphiti's extraction model."""
+    assert {"ratified_at", "web_verified_at"} <= POLICY_EDGE_FIELDS

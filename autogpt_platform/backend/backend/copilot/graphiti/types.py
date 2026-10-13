@@ -15,17 +15,27 @@ graphiti's attribute extraction writes only what these models declare:
 ``extracted_attributes`` drops every other key its model answers.
 """
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .memory_model import ExtractedStatus, SourceKind
 
-# Edge properties only the forget and its redaction write (``recall_forget.py``,
-# ``recall_hide.py``): no extraction model declares one (``types_test.py``),
-# so graphiti's attribute extraction never sets one.
-POLICY_EDGE_FIELDS = frozenset({"forgotten_at", "fact_redacted", "name_redacted"})
+# Edge properties only the platform writes, never graphiti's extraction: a
+# forget's marker and audit copies (``recall_forget.py``, ``recall_hide.py``),
+# the ratification stamp (``dream/ratification.py``), and the web-verification
+# stamp, kept for a verification path that does not exist yet. No extraction
+# model declares one (``types_test.py``), so ``extracted_attributes`` drops any
+# the model invents; a stored one still reads back from the edge.
+POLICY_EDGE_FIELDS = frozenset(
+    {
+        "forgotten_at",
+        "fact_redacted",
+        "name_redacted",
+        "ratified_at",
+        "web_verified_at",
+    }
+)
 
 
 def extracted_attributes(
@@ -73,14 +83,6 @@ class MemoryFact(BaseModel):
     provenance: str | None = Field(
         default=None,
         description="Origin reference — 'session:{id}#msg:{sequence}', tool_call_id, or URL.",
-    )
-    web_verified_at: datetime | None = Field(
-        default=None,
-        description="When (if ever) this fact was verified against external web sources.",
-    )
-    ratified_at: datetime | None = Field(
-        default=None,
-        description="When a tentative fact was promoted to active via the ratification loop.",
     )
     expiration_reason: str | None = Field(
         default=None,

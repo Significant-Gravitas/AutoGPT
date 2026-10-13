@@ -281,6 +281,7 @@ class TestForgetAwareLLMClient:
             "forgotten_at": secret,
             "fact_redacted": secret,
             "name_redacted": secret,
+            "ratified_at": "2026-01-01T00:00:00+00:00",
             "made_up": secret,
         }
         client = ForgetAwareLLMClient(_inner(dict(answer)))
