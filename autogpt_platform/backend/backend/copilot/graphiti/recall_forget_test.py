@@ -270,13 +270,30 @@ class TestHardRetract:
 
     @pytest.mark.asyncio
     async def test_a_failed_hide_stops_it_before_any_purge(self) -> None:
-        driver = scripted([{"uuid": "u1"}], [{"uuid": "u1"}], RuntimeError("down"))
+        """The cascade still runs, erasing (``recall_forget_cascade_test.py``),
+        but nothing is purged: a deleted edge could no longer hide its text."""
+        driver = scripted(
+            [{"uuid": "u1"}],
+            [{"uuid": "u1"}],
+            RuntimeError("down"),  # the hide's scrub
+            [],  # the cascade: no earlier try,
+            [{"uuid": "ep1", "via": ["u1"]}],  # the episodes citing the fact,
+            [],  # the dream's among them erased,
+            [],  # nothing derived
+            [],
+        )
 
         result = await forget(driver, ["u1"], hard=True)
 
         assert result.deleted == [], "a deleted edge could no longer hide its text"
         assert [(f.uuid, f.code) for f in result.failures] == [("u1", CLEANUP)]
-        assert len(own_queries(driver)) == 3
+        assert own_queries(driver)[3:] == [
+            recall_cascade.EARLIER_QUERY,
+            recall_hide.REDACT_EPISODES_QUERY,
+            recall_erase.ERASE_DREAM_EPISODES_QUERY,
+            recall_cascade.DERIVED_FACTS_QUERY,
+            recall_cascade.DERIVED_EPISODES_QUERY,
+        ], "the cascade, and no purge"
 
     @pytest.mark.asyncio
     async def test_unmatched_delete_is_a_no_match(self) -> None:

@@ -69,7 +69,9 @@ async def retract(
     the fact; edges and episodes stay for audit. Then, under the same lock,
     ``recall_cascade.cascade`` retracts the facts the dream derived from the
     forgotten ones, transitively, and hides the dream episodes that did
-    (``ForgetResult.derived``). Hard does all that first, stamping
+    (``ForgetResult.derived``). It runs even when hiding failed: it redacts
+    the forgotten facts' episodes itself before anything else, so the dream's
+    copies leave recall now rather than when the forget is repeated. Hard does all that first, stamping
     ``hard_forgotten_at`` on each fact it retracts (a dream write landing
     before the purge, where the lock does not hold, is then erased as one
     landing after it would be), the cascade soft too but erasing the
@@ -78,13 +80,16 @@ async def retract(
     (``recall_orphans.purge``), so forgetting again after any failure
     finishes the job, a purged fact's cascade included (below). A failed
     step after the edge write is a ``cleanup_error`` on each edge it
-    concerned; recall hides the fact and its text regardless.
+    concerned, one failure per uuid however many steps failed; recall hides
+    the fact and its text regardless.
 
     A uuid that is no longer in the graph but that a derivation record, a
     citation marker, an episode's ``redacted_for`` or an earlier cascade's
     reason still names was a fact a hard forget purged, perhaps before its
     cascade finished: the forget goes on with that cascade, erasing, and
-    lists it in ``ForgetResult.resumed`` instead of failing it as no match.
+    lists it in ``ForgetResult.resumed`` instead of failing it as no match;
+    when that cannot be read, such a uuid fails as ``query_error`` and the
+    rest of the forget goes on.
     """
     requested = list(dict.fromkeys(uuids))
     if not requested:
@@ -108,12 +113,12 @@ async def _forget(
     now = datetime.now(timezone.utc).isoformat()
     missing = await unreconciled(driver, group_id)
     found = await _existing_edges(driver, group_id, uuids, result)
-    result.resumed = await _purged_roots(driver, result)
+    result.resumed = await _purged_roots(driver, group_id, result)
     retracted = await _retract_edges(
         driver, group_id, found, reason, now, result, hard=hard
     )
     hidden = await hide(driver, group_id, retracted, now, result)
-    if hidden and retracted:
+    if retracted:
         await cascade(driver, group_id, retracted, now, result, erase=hard)
     if result.resumed:
         await cascade(driver, group_id, result.resumed, now, result, erase=True)
@@ -125,12 +130,17 @@ async def _forget(
         result.deleted = retracted
     elif hidden:
         await purge(driver, group_id, retracted, now, result)
+    result.failures = _first_per_uuid(result.failures)
     return result
 
 
-async def _purged_roots(driver: GraphDriver, result: ForgetResult) -> list[str]:
+async def _purged_roots(
+    driver: GraphDriver, group_id: str, result: ForgetResult
+) -> list[str]:
     """The uuids that matched no edge but that something still names as a
-    root: taken off ``result.failures``, to resume their cascade."""
+    root: taken off ``result.failures``, to resume their cascade. When the
+    names cannot be read, those uuids fail as ``query_error`` instead, since
+    a retry may find them."""
     missing = [
         failure.uuid
         for failure in result.failures
@@ -138,14 +148,32 @@ async def _purged_roots(driver: GraphDriver, result: ForgetResult) -> list[str]:
     ]
     if not missing:
         return []
-    rows = _rows(
-        await driver.execute_query(
-            NAMED_ROOTS_QUERY, uuids=missing, prefix=derived_reason("")
+    try:
+        rows = _rows(
+            await driver.execute_query(
+                NAMED_ROOTS_QUERY, uuids=missing, prefix=derived_reason("")
+            )
         )
-    )
+    except Exception as exc:
+        logger.warning(
+            f"Forget could not look for purged facts in graph {group_id[:20]}",
+            exc_info=True,
+        )
+        result.failures = [f for f in result.failures if f.uuid not in missing]
+        result.failures.extend(MemoryForgetFailure.query_error(u, exc) for u in missing)
+        return []
     named = {row["uuid"] for row in rows}
     result.failures = [f for f in result.failures if f.uuid not in named]
     return [uuid for uuid in missing if uuid in named]
+
+
+def _first_per_uuid(failures: list[MemoryForgetFailure]) -> list[MemoryForgetFailure]:
+    """One failure per uuid, the first: a later step's failure on a uuid
+    an earlier step already failed says nothing more to act on."""
+    first: dict[str, MemoryForgetFailure] = {}
+    for failure in failures:
+        first.setdefault(failure.uuid, failure)
+    return list(first.values())
 
 
 async def _existing_edges(
