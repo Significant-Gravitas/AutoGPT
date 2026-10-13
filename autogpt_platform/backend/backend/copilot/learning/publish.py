@@ -43,6 +43,7 @@ from backend.data.db_accessors import (
     skill_versions_db,
 )
 from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import ReviewStamp, VersionDraft
 from backend.data.skill_version_files import version_package_hash
 from backend.data.skill_versions import (
@@ -70,6 +71,7 @@ from .publication_eligibility import require_fresh_eligibility
 from .publication_models import PublishOutcome, PublishRequest
 from .publication_models import PublishStatus as PublishStatus
 from .publication_models import SourceSnapshot as SourceSnapshot
+from .publication_state import require_settled_head
 from .publication_validation import (
     _validate_request,
     _validate_skill_metadata,
@@ -110,6 +112,14 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     invalid = _validate_request(request)
     if invalid is not None:
         return invalid
+    unsettled = await require_settled_head(
+        request.user_id,
+        await skill_versions_db().get_head(
+            request.user_id, owner_key_for(request.expert_id), request.skill_name
+        ),
+    )
+    if unsettled is not None:
+        return unsettled
     try:
         current_text = await read_user_skill_markdown(
             request.user_id,
@@ -342,6 +352,9 @@ async def _record_untracked_edit(
 ) -> PublishOutcome | None:
     """A workspace SKILL.md whose bytes no longer match the head is a human
     edit that bypassed version tracking: record it and report a conflict."""
+    unsettled = await require_settled_head(request.user_id, head)
+    if unsettled is not None:
+        return unsettled
     if head.content_hash is None:
         return None
     raw = await read_user_skill_markdown(
@@ -394,6 +407,11 @@ async def _record_untracked_edit(
             version_origin="edited",
             actor_user_id=request.user_id,
             summary="Edited outside version tracking",
+            expected_head=ExpectedHead(version_id=head.current_version_id),
+        )
+    except SkillVersionConflictError:
+        return PublishOutcome(
+            status="conflict", reason="the skill changed during review"
         )
     except SkillContentBlockedError as exc:
         return PublishOutcome(

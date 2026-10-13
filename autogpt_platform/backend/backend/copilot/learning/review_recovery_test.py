@@ -191,7 +191,8 @@ async def test_create_review_preserves_existing_file_or_pending_target(
 
     boundaries["review"].side_effect = create_during_review
     result = await _run()
-    assert result.dispositions == {"conflict": 1} and result.model_calls == 1
+    expected = "write_failed" if existing is None else "conflict"
+    assert result.dispositions == {expected: 1} and result.model_calls == 1
     boundaries["write"].assert_not_awaited()
     assert (await fake_store.get_source(USER, source.id)).processed_revision is None
     if existing is None:

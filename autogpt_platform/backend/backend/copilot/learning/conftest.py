@@ -42,6 +42,7 @@ def fake_store(monkeypatch):
         "retrieval",
         "history",
         "publish",
+        "publication_state",
         "owner_actions",
         "revocation",
         "nightly",
