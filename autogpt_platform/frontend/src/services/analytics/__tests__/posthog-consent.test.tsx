@@ -277,7 +277,8 @@ describe("PostHog before analytics consent", () => {
       first.distinct_id,
     );
     expect(first.$device_id).toBe(first.distinct_id);
-    expect(first.person_properties).toEqual({});
+    // Nothing stored about the person; only the deployment, for flag targeting.
+    expect(first.person_properties).toEqual({ environment: "local" });
 
     seedEarlierVisit();
     await renderPostHog();

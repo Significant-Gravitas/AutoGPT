@@ -21,6 +21,12 @@ import {
   forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
 } from "./posthog-consent";
+import {
+  applyFlagEnvironment,
+  identifyFlagsOnlyClient,
+  initFlagsOnlyClient,
+  setFlagPersonProperties,
+} from "./posthog-flags-client";
 import { getPostHogClientHosts } from "./posthog-proxy";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
@@ -37,9 +43,10 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       // every tool lands on the same person once identify() runs. Without
       // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
+      const hosts = getPostHogClientHosts(postHogCredentials);
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
-        ...getPostHogClientHosts(postHogCredentials),
+        ...hosts,
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
@@ -47,9 +54,18 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         ...(anonymousID && {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
+        loaded: applyFlagEnvironment,
         ...getConsentGatedConfig(),
       });
       posthog.register(getPostHogBaseProperties());
+      if (usesPostHog()) {
+        initFlagsOnlyClient({
+          flagsKey: postHogCredentials.flagsKey,
+          analyticsKey: postHogCredentials.key,
+          hosts,
+          anonymousID,
+        });
+      }
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {
@@ -83,12 +99,13 @@ export function PostHogUserTracker() {
         // Flag-only properties ride on /flags and are never stored on the
         // person profile, so identify stays exactly what analytics sends.
         if (usesPostHog()) {
-          posthog.setPersonPropertiesForFlags(buildFlagPersonProperties(user));
+          setFlagPersonProperties(buildFlagPersonProperties(user));
         }
         posthog.identify(user.id, {
           email: user.email,
           ...(user.user_metadata?.name && { name: user.user_metadata.name }),
         });
+        identifyFlagsOnlyClient(user.id);
         previousUserIdRef.current = user.id;
       }
     } else if (previousUserIdRef.current !== null) {

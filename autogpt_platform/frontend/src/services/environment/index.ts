@@ -92,6 +92,8 @@ function getPostHogCredentials() {
   return {
     key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
     host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    // Blank reads flags from the analytics project above.
+    flagsKey: process.env.NEXT_PUBLIC_POSTHOG_FLAGS_KEY,
   };
 }
 

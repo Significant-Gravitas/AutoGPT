@@ -15,6 +15,8 @@ const postHog = vi.hoisted(() => ({
 }));
 const postHogClient = vi.hoisted(() => ({
   capture: (...args: unknown[]) => postHog.capture(...args),
+  isFeatureEnabled: (flag: string) => postHog.enabled(flag),
+  getFeatureFlagPayload: (flag: string) => postHog.payload(flag),
   featureFlags: {
     get hasLoadedFlags() {
       return postHog.loaded && !postHog.errorsLoading;
@@ -39,9 +41,11 @@ vi.mock("launchdarkly-react-client-sdk", () => ({
 }));
 
 vi.mock("@posthog/react", () => ({
-  useFeatureFlagEnabled: (flag: string) => postHog.enabled(flag),
-  useFeatureFlagPayload: (flag: string) => postHog.payload(flag),
   usePostHog: () => postHogClient,
+}));
+
+vi.mock("@/providers/posthog/posthog-flags-client", () => ({
+  getFlagsClient: () => postHogClient,
 }));
 
 const sentry = vi.hoisted(() => ({

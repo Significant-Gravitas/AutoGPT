@@ -1,19 +1,11 @@
 "use client";
 
-import {
-  useFeatureFlagEnabled,
-  useFeatureFlagPayload,
-  usePostHog,
-} from "@posthog/react";
+import { getFlagsClient } from "@/providers/posthog/posthog-flags-client";
 import { useEffect, useState } from "react";
 import type { FlagSourceResult } from "../flag-source";
 
 export function usePostHogFlag(key: string): FlagSourceResult {
-  const enabled = useFeatureFlagEnabled(key);
-  const payload = useFeatureFlagPayload(key);
-  // Not `enabled !== undefined`: posthog-js serves its persisted snapshot
-  // before /flags runs, and answers `undefined` for a flag it has never heard of.
-  const resolved = useFlagsLoaded();
+  const { enabled, payload, resolved } = useFlagAnswer(key);
 
   // An explicit off wins over a payload, as on the backend.
   if (enabled === false) {
@@ -29,17 +21,28 @@ export function usePostHogFlag(key: string): FlagSourceResult {
   return { value: enabled, resolved };
 }
 
-function useFlagsLoaded() {
-  const posthog = usePostHog();
-  const [loaded, setLoaded] = useState(
-    () => posthog?.featureFlags?.hasLoadedFlags ?? false,
+// Read from the flags client rather than through @posthog/react's hooks, which
+// only see the analytics instance in context: on dev the two are different
+// PostHog projects.
+function useFlagAnswer(key: string) {
+  const client = getFlagsClient();
+  const [enabled, setEnabled] = useState(() => client.isFeatureEnabled(key));
+  const [payload, setPayload] = useState(() =>
+    client.getFeatureFlagPayload(key),
+  );
+  // Not `enabled !== undefined`: posthog-js serves its persisted snapshot
+  // before /flags runs, and answers `undefined` for a flag it has never heard of.
+  const [resolved, setResolved] = useState(
+    () => client.featureFlags?.hasLoadedFlags ?? false,
   );
 
   useEffect(() => {
-    return posthog?.onFeatureFlags((_flags, _variants, context) => {
-      if (!context?.errorsLoading) setLoaded(true);
+    return client.onFeatureFlags((_flags, _variants, context) => {
+      setEnabled(client.isFeatureEnabled(key));
+      setPayload(client.getFeatureFlagPayload(key));
+      if (!context?.errorsLoading) setResolved(true);
     });
-  }, [posthog]);
+  }, [client, key]);
 
-  return loaded;
+  return { enabled, payload, resolved };
 }
