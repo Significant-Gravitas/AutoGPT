@@ -13,9 +13,10 @@ from typing import TYPE_CHECKING, Optional
 
 import pydantic
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspace, UserWorkspaceFile
+from prisma.models import ChatUIDraft, UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.db import transaction
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -542,13 +543,18 @@ async def soft_delete_workspace_file(
     if file is None:
         return None
 
-    updated = await UserWorkspaceFile.prisma().update(
-        where={"id": file_id},
-        data={
-            "isDeleted": True,
-            "deletedAt": datetime.now(timezone.utc),
-        },
-    )
+    # The file row is updated first, so an edit write that locks it waits
+    # and then finds the file gone instead of re-creating the edits row.
+    async with transaction() as tx:
+        updated = await UserWorkspaceFile.prisma(tx).update(
+            where={"id": file_id},
+            data={
+                "isDeleted": True,
+                "deletedAt": datetime.now(timezone.utc),
+            },
+        )
+        # A saved OpenUI view's edits die with the file, as on a hard delete.
+        await ChatUIDraft.prisma(tx).delete_many(where={"fileId": file_id})
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return WorkspaceFile.from_db(updated) if updated else None

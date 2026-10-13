@@ -81,7 +81,7 @@ async def get_openui_file_state(user_id: str, file_id: str) -> Optional[dict]:
         'SELECT d.state FROM {schema_prefix}"ChatUIDraft" d '
         'JOIN {schema_prefix}"UserWorkspaceFile" f ON f.id = d."fileId" '
         'JOIN {schema_prefix}"UserWorkspace" w ON w.id = f."workspaceId" '
-        'WHERE d."fileId" = $1 AND w."userId" = $2',
+        'WHERE d."fileId" = $1 AND w."userId" = $2 AND f."isDeleted" = false',
         file_id,
         user_id,
     )

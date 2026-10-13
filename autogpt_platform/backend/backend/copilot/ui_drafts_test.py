@@ -18,7 +18,7 @@ from backend.copilot.ui_view_files import (
     write_file_state,
 )
 from backend.data import db
-from backend.data.openui_files import move_chat_edits_to_file
+from backend.data.openui_files import get_openui_file_state, move_chat_edits_to_file
 from backend.data.workspace import OPENUI_MIME_TYPE, get_or_create_workspace
 from backend.util.workspace import WorkspaceManager
 
@@ -441,6 +441,76 @@ async def test_concurrent_saves_agree_on_one_file(draft_user):
             where={"fileId": results[0].file_id}
         )
         assert len(rows) == 1
+    finally:
+        await db.prisma.chatsession.delete(where={"id": session})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_concurrent_saves_under_one_name_return_the_same_file(draft_user):
+    session = await _view(draft_user)
+    try:
+        results = await asyncio.gather(
+            save_draft_as_file(draft_user, session, "trip", _save("Trip")),
+            save_draft_as_file(draft_user, session, "trip", _save("Trip")),
+        )
+        assert results[0].file_id == results[1].file_id
+        assert results[0].file_name == "Trip.openui"
+    finally:
+        await db.prisma.chatsession.delete(where={"id": session})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_name_taken_by_another_file_still_conflicts(draft_user):
+    session = await _view(draft_user)
+    try:
+        workspace = await get_or_create_workspace(draft_user)
+        await WorkspaceManager(draft_user, workspace.id, session).write_file(
+            content=b"notes", filename="Trip.openui", mime_type="text/plain"
+        )
+        with pytest.raises(HTTPException) as error:
+            await save_draft_as_file(draft_user, session, "trip", _save("Trip"))
+        assert error.value.status_code == 409
+    finally:
+        await db.prisma.chatsession.delete(where={"id": session})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_deleting_a_saved_view_deletes_its_edits(draft_user):
+    session = await _view(draft_user)
+    try:
+        saved = await save_draft_as_file(draft_user, session, "trip", _save())
+        await write_file_state(
+            draft_user, saved.file_id, _file_write(0, saved.checksum, choice="A")
+        )
+        assert await get_openui_file_state(draft_user, saved.file_id) == {"choice": "A"}
+        workspace = await get_or_create_workspace(draft_user)
+        manager = WorkspaceManager(draft_user, workspace.id, session)
+        assert await manager.delete_file(saved.file_id)
+
+        assert await get_openui_file_state(draft_user, saved.file_id) is None
+        assert (
+            await db.prisma.chatuidraft.find_many(where={"fileId": saved.file_id}) == []
+        )
+        with pytest.raises(HTTPException) as error:
+            await read_file_state(draft_user, saved.file_id)
+        assert error.value.status_code == 404
+    finally:
+        await db.prisma.chatsession.delete(where={"id": session})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_edits_on_a_deleted_view_file_are_not_read(draft_user):
+    session = await _view(draft_user)
+    try:
+        saved = await save_draft_as_file(draft_user, session, "trip", _save())
+        await write_file_state(
+            draft_user, saved.file_id, _file_write(0, saved.checksum, choice="A")
+        )
+        await db.prisma.userworkspacefile.update(
+            where={"id": saved.file_id}, data={"isDeleted": True}
+        )
+        assert await get_openui_file_state(draft_user, saved.file_id) is None
+        assert await get_openui_file_state("another-user", saved.file_id) is None
     finally:
         await db.prisma.chatsession.delete(where={"id": session})
 

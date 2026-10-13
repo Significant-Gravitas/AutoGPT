@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.api.features.store.exceptions import VirusScanError
 from backend.copilot import prompting
 from backend.copilot.baseline.service import (
     _baseline_tool_executor,
@@ -32,6 +33,7 @@ from backend.copilot.tools.openui_validator import (
     validate_openui_source,
 )
 from backend.data.workspace import OPENUI_MIME_TYPE, WorkspaceFile
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.tool_call_loop import LLMToolCall
 
 SOURCE = 'root = Workspace("Revenue", "From the uploaded report", [Metrics([Metric("Revenue", "$42,000", "Q3", "positive")])], "revenue")'
@@ -549,3 +551,45 @@ async def test_a_chat_only_view_survives_a_failed_saved_view_lookup(
     payload = json.loads(result.model_dump_json())
     assert payload["type"] == "ui_rendered"
     assert payload["file_id"] is None
+
+
+_WRITE_FAILURES = [
+    VirusScanError("Scanner unavailable"),
+    ValueError("Storage limit exceeded"),
+    WorkspaceAccessDeniedError("Outside this chat's scope"),
+    RuntimeError("db down"),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure", _WRITE_FAILURES, ids=["scan", "quota", "scope", "unexpected"]
+)
+async def test_a_chat_only_view_survives_a_failed_update_of_its_saved_copy(
+    render_ui_tool, workspace, saved_views, failure
+):
+    saved_views.find_openui_view_file.return_value = FILE_ID
+    workspace.replace_file_content.side_effect = failure
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE
+    )
+    payload = json.loads(result.model_dump_json())
+    assert payload["type"] == "ui_rendered"
+    assert payload["source"] == SOURCE
+    assert payload["file_id"] is None
+    workspace.replace_file_content.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", _WRITE_FAILURES[:3], ids=["scan", "quota", "scope"])
+async def test_a_named_file_that_cannot_be_revised_does_not_publish_the_view(
+    render_ui_tool, workspace, failure
+):
+    workspace.replace_file_content.side_effect = failure
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE, file=FILE_ID
+    )
+    assert result.type == ResponseType.ERROR
+    assert "View not published" in result.message
+    assert str(failure) in result.message
+    assert "source" not in result.model_dump()

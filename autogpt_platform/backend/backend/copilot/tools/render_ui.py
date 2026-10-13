@@ -25,6 +25,13 @@ logger = logging.getLogger(__name__)
 _MAX_RESPONSE_BYTES = 70_000
 # Room for the file fields, which are only known once the view is saved.
 _FILE_FIELDS_BYTES = 1_000
+_SAVE_ERRORS = (
+    ValueError,
+    FileNotFoundError,
+    WorkspaceAccessDeniedError,
+    VirusDetectedError,
+    VirusScanError,
+)
 
 
 class RenderUIInput(BaseModel):
@@ -164,7 +171,10 @@ async def _saved_response(
     user_id: str, response: RenderUIResponse, file: str | None
 ) -> RenderUIResponse | ErrorResponse:
     """Save the validated view when asked to, or when this chat already
-    saved it, and point the response at the file."""
+    saved it, and point the response at the file.
+
+    Only an explicit ``file`` can fail the render: revising the chat's saved
+    copy unasked is best effort, so the view still shows in chat."""
     session_id = response.session_id or ""
     assert response.view_id is not None
     try:
@@ -175,14 +185,15 @@ async def _saved_response(
             view_id=response.view_id,
             file=file,
         )
-    except (
-        ValueError,
-        FileNotFoundError,
-        WorkspaceAccessDeniedError,
-        VirusDetectedError,
-        VirusScanError,
-    ) as error:
-        return _not_saved_error(str(error), session_id)
+    except Exception as error:
+        if file is None:
+            logger.warning(
+                f"Saved copy of view {response.view_id} not updated", exc_info=True
+            )
+            return response
+        if isinstance(error, _SAVE_ERRORS):
+            return _not_saved_error(str(error), session_id)
+        raise
     if saved is not None:
         _attach_file(response, saved)
     return response

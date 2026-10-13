@@ -173,7 +173,16 @@ async def save_draft_as_file(
         return await _saved_response(user_id, saved_id)
     workspace = await get_or_create_workspace(user_id)
     manager = WorkspaceManager(user_id, workspace.id, session_id)
-    file = await _write_view_file(manager, view, view_id, request.filename)
+    try:
+        file = await _write_view_file(manager, view, view_id, request.filename)
+    except HTTPException as error:
+        # A concurrent save of this view under the same name won the path.
+        if error.status_code != 409:
+            raise
+        saved_id = await find_openui_view_file(user_id, session_id, view_id)
+        if saved_id is None:
+            raise
+        return await _saved_response(user_id, saved_id)
     # Two concurrent saves each wrote a file; both keep the oldest.
     canonical = await find_openui_view_file(user_id, session_id, view_id)
     if canonical is not None and canonical != file.id:
