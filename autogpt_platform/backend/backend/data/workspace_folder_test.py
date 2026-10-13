@@ -64,7 +64,7 @@ async def test_delete_folder_reparents_files_then_soft_deletes(mocker):
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
-    await wf.delete_folder("fld-1", "ws-001")
+    await wf.delete_workspace_folder("fld-1", "ws-001")
 
     assert calls == ["reparent_files", "soft_delete_folder"]
     # Files reparented to root (folderId=None) scoped to the workspace.
@@ -89,7 +89,7 @@ async def test_create_folder_rejects_duplicate_root_name(mocker):
     )
 
     with pytest.raises(FolderAlreadyExistsError):
-        await wf.create_folder("ws-001", "Reports")
+        await wf.create_workspace_folder("ws-001", "Reports")
 
     folder_prisma.create.assert_not_awaited()
     _, kwargs = folder_prisma.find_first.call_args
@@ -240,7 +240,7 @@ async def test_move_folder_refuses_a_move_into_its_own_subtree(mocker):
         wf.UserWorkspaceFolder, "prisma", mocker.MagicMock(return_value=folder_prisma)
     )
     mocker.patch.object(
-        wf, "get_folder", mocker.AsyncMock(return_value=mocker.sentinel.moved)
+        wf, "get_workspace_folder", mocker.AsyncMock(return_value=mocker.sentinel.moved)
     )
     records = {r.id: r for r in (parent, child, grandchild)}
     mocker.patch.object(
@@ -267,7 +267,7 @@ async def test_move_folder_to_root_clears_the_parent(mocker):
     )
     mocker.patch.object(wf, "_get_folder_record", mocker.AsyncMock(return_value=child))
     mocker.patch.object(
-        wf, "get_folder", mocker.AsyncMock(return_value=mocker.sentinel.moved)
+        wf, "get_workspace_folder", mocker.AsyncMock(return_value=mocker.sentinel.moved)
     )
 
     assert await wf.move_folder("child", "ws-001", None) is mocker.sentinel.moved
@@ -309,7 +309,7 @@ async def test_delete_folder_takes_the_whole_subtree(mocker):
 
     mocker.patch.object(wf, "transaction", _fake_tx)
 
-    await wf.delete_folder("parent", "ws-001")
+    await wf.delete_workspace_folder("parent", "ws-001")
 
     _, folder_kwargs = folder_prisma.update_many.call_args
     assert sorted(folder_kwargs["where"]["id"]["in"]) == [
@@ -342,7 +342,7 @@ async def test_create_folder_scopes_the_name_clash_to_the_parent(mocker):
         mocker.AsyncMock(return_value=_folder_record(id="parent")),
     )
 
-    created = await wf.create_folder("ws-001", "Reports", parent_id="parent")
+    created = await wf.create_workspace_folder("ws-001", "Reports", parent_id="parent")
 
     assert created.parent_id == "parent"
     _, kwargs = folder_prisma.find_first.call_args

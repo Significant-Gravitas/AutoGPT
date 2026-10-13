@@ -85,6 +85,12 @@ _WORKSPACE = frozenset(
         "start_desktop",
         "store_skill",
         "write_workspace_file",
+        # Reversible reorganisation inside the workspace; an overwrite replaces
+        # a file the way write_workspace_file's does.
+        "copy_workspace_file",
+        "create_workspace_folder",
+        "move_workspace_file",
+        "move_workspace_files_to_folder",
     }
 )
 
@@ -126,6 +132,7 @@ _PLATFORM = frozenset(
         # Deletes inside the workspace: the user may have put the thing there.
         "delete_skill",
         "delete_workspace_file",
+        "delete_workspace_folder",
         "memory_forget_confirm",
     }
 )

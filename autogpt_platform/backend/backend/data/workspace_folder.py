@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import Optional
 
 import pydantic
-from prisma import Prisma
 from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspaceFile, UserWorkspaceFolder
 
@@ -21,7 +20,11 @@ from backend.api.features.library.exceptions import (
     FolderValidationError,
 )
 from backend.data.db import transaction
-from backend.data.workspace import WorkspaceFile, get_or_create_workspace
+from backend.data.workspace import (
+    WorkspaceFile,
+    get_or_create_workspace,
+    lock_workspace_folder_hierarchy,
+)
 from backend.data.workspace_scope import resolve_expert_workspace_scope
 from backend.util.exceptions import NotFoundError
 
@@ -133,14 +136,21 @@ async def list_workspace_folders(workspace_id: str) -> list[WorkspaceFolder]:
     return [WorkspaceFolder.from_db(f, file_count=counts.get(f.id, 0)) for f in folders]
 
 
-async def get_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
-    """Get a single folder by ID, scoped to the workspace."""
+async def get_workspace_folder(folder_id: str, workspace_id: str) -> WorkspaceFolder:
+    """Get a single folder by ID, scoped to the workspace.
+
+    This, ``create_workspace_folder`` and ``delete_workspace_folder`` carry the
+    workspace prefix for the reason ``list_workspace_folders`` does: the copilot
+    tools reach them over the DatabaseManager RPC surface, whose one flat
+    namespace already holds the Library's ``get_folder`` / ``create_folder`` /
+    ``delete_folder``.
+    """
     folder = await _get_folder_record(folder_id, workspace_id)
     count = await _file_count(workspace_id, folder_id)
     return WorkspaceFolder.from_db(folder, file_count=count)
 
 
-async def create_folder(
+async def create_workspace_folder(
     workspace_id: str,
     name: str,
     icon: Optional[str] = None,
@@ -167,7 +177,7 @@ async def create_folder(
 
     async with transaction() as tx:
         if parent_id is not None:
-            await _lock_workspace_hierarchy(tx, workspace_id)
+            await lock_workspace_folder_hierarchy(tx, workspace_id)
             await _get_folder_record(parent_id, workspace_id)
         if await _name_taken(workspace_id, name, parent_id):
             raise FolderAlreadyExistsError("A folder with this name already exists")
@@ -249,7 +259,7 @@ async def apply_folder_update(
     moving = not isinstance(parent_id, _Unchanged)
     async with transaction() as tx:
         if moving or name is not None:
-            await _lock_workspace_hierarchy(tx, workspace_id)
+            await lock_workspace_folder_hierarchy(tx, workspace_id)
 
         folder = await _get_folder_record(folder_id, workspace_id)
         destination = parent_id if moving else folder.parentId
@@ -290,22 +300,7 @@ async def apply_folder_update(
 
     if data:
         logger.info(f"Updated workspace folder {folder_id}: {sorted(data)}")
-    return await get_folder(folder_id, workspace_id)
-
-
-async def _lock_workspace_hierarchy(tx: Prisma, workspace_id: str) -> None:
-    """Hold the workspace's folder-hierarchy lock until the transaction ends.
-
-    Moves, parented creates and subtree deletes all check the tree and then
-    write it, so they serialize against each other or one can act on a shape
-    another has already changed.
-
-    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
-    Prisma cannot deserialize as a result column.
-    """
-    await tx.execute_raw(
-        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", workspace_id
-    )
+    return await get_workspace_folder(folder_id, workspace_id)
 
 
 async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
@@ -329,7 +324,7 @@ async def _ancestor_ids(workspace_id: str, folder_id: str) -> list[str]:
     return chain
 
 
-async def delete_folder(folder_id: str, workspace_id: str) -> None:
+async def delete_workspace_folder(folder_id: str, workspace_id: str) -> int:
     """
     Soft-delete a folder and its subfolders, returning every file to root.
 
@@ -340,13 +335,15 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
     The subtree is resolved under the workspace's hierarchy lock, so a move or
     a create cannot add a folder to it after the snapshot and leave that folder
     live under a deleted parent, reachable from no root-anchored listing.
+
+    Returns how many files went back to the root, counted by the write itself.
     """
     async with transaction() as tx:
-        await _lock_workspace_hierarchy(tx, workspace_id)
+        await lock_workspace_folder_hierarchy(tx, workspace_id)
         await _get_folder_record(folder_id, workspace_id)
         doomed = await _subtree_ids(workspace_id, folder_id)
 
-        await UserWorkspaceFile.prisma(tx).update_many(
+        reparented = await UserWorkspaceFile.prisma(tx).update_many(
             where={"folderId": {"in": doomed}, "workspaceId": workspace_id},
             data={"folderId": None},
         )
@@ -362,6 +359,7 @@ async def delete_folder(folder_id: str, workspace_id: str) -> None:
         f"Soft-deleted workspace folder {folder_id} and {len(doomed) - 1} "
         "subfolder(s); files moved to root"
     )
+    return reparented
 
 
 async def _subtree_ids(workspace_id: str, folder_id: str) -> list[str]:

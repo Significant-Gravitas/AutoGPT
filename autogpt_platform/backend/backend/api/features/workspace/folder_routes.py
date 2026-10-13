@@ -14,14 +14,13 @@ from autogpt_libs.auth.dependencies import get_user_id, requires_user
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from backend.data import workspace_folder as workspace_folder_db
 from backend.data.workspace import WorkspaceFile, get_or_create_workspace
 from backend.data.workspace_folder import (
     UNCHANGED,
     WorkspaceFolder,
     apply_folder_update,
     bulk_move_files_to_folder,
-    create_folder,
-    delete_folder,
     list_workspace_folders,
 )
 
@@ -90,7 +89,7 @@ async def create_workspace_folder(
     payload: WorkspaceFolderCreateRequest,
 ) -> WorkspaceFolder:
     workspace = await get_or_create_workspace(user_id)
-    return await create_folder(
+    return await workspace_folder_db.create_workspace_folder(
         workspace_id=workspace.id,
         name=payload.name,
         icon=payload.icon,
@@ -145,7 +144,9 @@ async def delete_workspace_folder(
 ) -> Response:
     """Delete a folder and its subfolders; their files return to the root."""
     workspace = await get_or_create_workspace(user_id)
-    await delete_folder(folder_id=folder_id, workspace_id=workspace.id)
+    await workspace_folder_db.delete_workspace_folder(
+        folder_id=folder_id, workspace_id=workspace.id
+    )
     return Response(status_code=fastapi.status.HTTP_204_NO_CONTENT)
 
 

@@ -84,6 +84,7 @@ DESCENT_DENIED_TOOLS: frozenset[str] = frozenset(
         "delete_schedule",
         "delete_skill",
         "delete_workspace_file",
+        "delete_workspace_folder",
         "hire_expert",
         "raise_expert",
         "update_expert",

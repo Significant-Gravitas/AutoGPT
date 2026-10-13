@@ -90,6 +90,13 @@ class ResponseType(str, Enum):
     WORKSPACE_FILE_METADATA = "workspace_file_metadata"
     WORKSPACE_FILE_WRITTEN = "workspace_file_written"
     WORKSPACE_FILE_DELETED = "workspace_file_deleted"
+    WORKSPACE_FILE_MOVED = "workspace_file_moved"
+    WORKSPACE_FILE_COPIED = "workspace_file_copied"
+
+    # Workspace folders (file organisation; distinct from library folders)
+    WORKSPACE_FOLDER_CREATED = "workspace_folder_created"
+    WORKSPACE_FOLDER_DELETED = "workspace_folder_deleted"
+    WORKSPACE_FILES_MOVED_TO_FOLDER = "workspace_files_moved_to_folder"
 
     # Folder management
     FOLDER_CREATED = "folder_created"

@@ -11,16 +11,19 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 import pydantic
+from prisma import Prisma
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspace, UserWorkspaceFile
-from prisma.types import UserWorkspaceFileWhereInput
+from prisma.models import UserWorkspace, UserWorkspaceFile, UserWorkspaceFolder
+from prisma.types import UserWorkspaceFileCreateInput, UserWorkspaceFileWhereInput
 
+from backend.data.db import transaction
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
     WorkspaceAccessDeniedError,
     resolve_expert_workspace_scope,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.json import SafeJson
 
 if TYPE_CHECKING:
@@ -143,6 +146,8 @@ async def create_workspace_file(
     size_bytes: int,
     checksum: Optional[str] = None,
     metadata: Optional[dict] = None,
+    folder_id: Optional[str] = None,
+    replace_file_id: Optional[str] = None,
 ) -> WorkspaceFile:
     """
     Create a new workspace file record.
@@ -164,27 +169,41 @@ async def create_workspace_file(
         size_bytes: File size in bytes
         checksum: Optional SHA256 checksum
         metadata: Optional additional metadata
+        folder_id: Folder membership (None = root); must be a live folder of
+            this workspace
+        replace_file_id: A live file of this workspace to soft-delete in the
+            same transaction, so a replacement never leaves the path empty or
+            the old row gone without the new one
 
     Returns:
         Created WorkspaceFile instance
+
+    Raises:
+        NotFoundError: If ``folder_id`` is not a live folder of this workspace.
     """
     # Normalize path to start with /
     if not path.startswith("/"):
         path = f"/{path}"
-
-    file = await UserWorkspaceFile.prisma().create(
-        data={
-            "id": file_id,
-            "workspaceId": workspace_id,
-            "name": name,
-            "path": path,
-            "storagePath": storage_path,
-            "mimeType": mime_type,
-            "sizeBytes": size_bytes,
-            "checksum": checksum,
-            "metadata": SafeJson(metadata or {}),
-        }
-    )
+    data: UserWorkspaceFileCreateInput = {
+        "id": file_id,
+        "workspaceId": workspace_id,
+        "name": name,
+        "path": path,
+        "storagePath": storage_path,
+        "mimeType": mime_type,
+        "sizeBytes": size_bytes,
+        "checksum": checksum,
+        "metadata": SafeJson(metadata or {}),
+        "folderId": folder_id,
+    }
+    if replace_file_id is None and folder_id is None:
+        file = await UserWorkspaceFile.prisma().create(data=data)
+    else:
+        async with transaction() as tx:
+            await _require_folder_in_workspace(tx, folder_id, workspace_id)
+            if replace_file_id is not None:
+                await _retire_file(tx, replace_file_id, workspace_id)
+            file = await UserWorkspaceFile.prisma(tx).create(data=data)
 
     logger.info(
         f"Created workspace file {file.id} at path {path} "
@@ -480,6 +499,116 @@ async def rename_workspace_file(
         return None
     logger.info(f"Renamed workspace file {file_id} to {new_path}")
     return WorkspaceFile.from_db(updated)
+
+
+async def lock_workspace_folder_hierarchy(tx: Prisma, workspace_id: str) -> None:
+    """Hold the workspace's folder-hierarchy lock until the transaction ends.
+
+    Moves, parented creates and subtree deletes all check the tree and then
+    write it, so they serialize against each other or one can act on a shape
+    another has already changed; filing a file into a folder takes it too, so
+    the folder cannot be deleted between the check and the write. Lives here
+    rather than in ``workspace_folder``, which imports this module.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", workspace_id
+    )
+
+
+async def _require_folder_in_workspace(
+    tx: Prisma, folder_id: Optional[str], workspace_id: str
+) -> None:
+    """Refuse a ``folderId`` that is not a live folder of *workspace_id*.
+
+    The foreign key only checks that the row exists, so without this a file
+    could be filed under another workspace's folder, or a deleted one. Holds
+    the hierarchy lock for the rest of *tx*, so a concurrent folder delete
+    cannot land between this check and the caller's write.
+    """
+    if folder_id is None:
+        return
+    await lock_workspace_folder_hierarchy(tx, workspace_id)
+    folder = await UserWorkspaceFolder.prisma(tx).find_first(
+        where={"id": folder_id, "workspaceId": workspace_id, "isDeleted": False}
+    )
+    if folder is None:
+        raise NotFoundError(f"Folder #{folder_id} not found")
+
+
+class _NothingMoved(Exception):
+    """Rolls back a relocation whose source row did not match."""
+
+
+async def _retire_file(tx: Prisma, file_id: str, workspace_id: str) -> None:
+    """Soft-delete a live file of *workspace_id* inside *tx*."""
+    await UserWorkspaceFile.prisma(tx).update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+    )
+
+
+async def update_workspace_file_location(
+    file_id: str,
+    workspace_id: str,
+    name: str,
+    path: str,
+    folder_id: Optional[str] = None,
+    replace_file_id: Optional[str] = None,
+) -> Optional[WorkspaceFile]:
+    """
+    Relocate a workspace file by rewriting its ``name``/``path``/``folderId``.
+
+    Only the virtual location changes: ``storagePath`` is left alone so no
+    bytes move. Nothing reads the filename back out of ``storagePath`` (the
+    download URL parses out the file ID only), so the stale filename segment
+    in the blob path is harmless.
+
+    Args:
+        file_id: The file ID
+        workspace_id: Workspace ID for scoping (required)
+        name: New user-visible filename
+        path: New virtual path
+        folder_id: New folder membership (``None`` = root)
+        replace_file_id: The live file at ``path`` to soft-delete in the same
+            transaction; it survives untouched if the move does not happen
+
+    Returns:
+        Updated WorkspaceFile, or None if no live file matched in this workspace
+
+    Raises:
+        NotFoundError: If ``folder_id`` is not a live folder of this workspace.
+        UniqueViolationError: If another live file already occupies ``path``.
+    """
+    if not path.startswith("/"):
+        path = f"/{path}"
+    # update_many (not update) so the write itself is guarded by workspaceId
+    # and isDeleted: update() matches on the primary key alone, which would
+    # let a cross-workspace ID or a concurrently-deleted row through.
+    try:
+        async with transaction() as tx:
+            await _require_folder_in_workspace(tx, folder_id, workspace_id)
+            if replace_file_id is not None:
+                await _retire_file(tx, replace_file_id, workspace_id)
+            updated_count = await UserWorkspaceFile.prisma(tx).update_many(
+                where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+                data={"name": name, "path": path, "folderId": folder_id},
+            )
+            if updated_count == 0:
+                raise _NothingMoved
+    except _NothingMoved:
+        return None
+
+    file = await UserWorkspaceFile.prisma().find_first(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False}
+    )
+    if file is None:
+        return None
+
+    logger.info(f"Moved workspace file {file_id} to path {path}")
+    return WorkspaceFile.from_db(file)
 
 
 async def soft_delete_workspace_file(
