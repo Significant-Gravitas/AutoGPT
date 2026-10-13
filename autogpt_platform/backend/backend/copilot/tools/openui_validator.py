@@ -46,7 +46,7 @@ async def validate_openui_source(source: str) -> ValidationResult:
     except asyncio.CancelledError:
         await _terminate(process)
         raise
-    except TimeoutError as error:
+    except asyncio.TimeoutError as error:
         await _terminate(process)
         raise ValidatorUnavailable("Validator timed out") from error
     if process.returncode != 0 or len(output) > 65_536:

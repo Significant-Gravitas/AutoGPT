@@ -49,8 +49,10 @@ function fieldOutputs(field: ElementNode) {
   const name = String(field.props.name);
   return [
     name,
-    ...(derivedOutputs[field.typeName] ?? []).map(
-      (suffix) => `${name}_${suffix}`,
-    ),
+    ...(
+      (Object.hasOwn(derivedOutputs, field.typeName)
+        ? derivedOutputs[field.typeName]
+        : undefined) ?? []
+    ).map((suffix) => `${name}_${suffix}`),
   ];
 }

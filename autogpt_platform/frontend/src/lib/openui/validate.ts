@@ -9,7 +9,9 @@ export function validateWorkspace(value: unknown): unknown {
     typeof value.typeName === "string" &&
     "props" in value
   ) {
-    const component = catalog.components[value.typeName];
+    const component = Object.hasOwn(catalog.components, value.typeName)
+      ? catalog.components[value.typeName]
+      : undefined;
     if (!component)
       throw new Error(`Unsupported workspace component: ${value.typeName}.`);
     const props = validateWorkspace(value.props);

@@ -2,6 +2,7 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import type { ReactNode } from "react";
 import { FileViewEditor } from "./components/FileViewEditor/FileViewEditor";
 import type { FileViewHeaderProps } from "./components/FileViewHeader";
@@ -29,6 +30,7 @@ export function OpenUIFileView({
   header,
   readOnly = false,
 }: Props) {
+  const ownerId = useAuthStore((state) => state.user?.id);
   const { view, meta, remote, isLoading, isMissing, isError, retry } =
     useOpenUIFileView(fileId);
 
@@ -59,7 +61,7 @@ export function OpenUIFileView({
     return <StaleRevision source={cardSource} header={header} />;
   return (
     <FileViewEditor
-      key={view.checksum}
+      key={`${ownerId ?? "anonymous"}:${view.checksum}`}
       view={view}
       remote={remote}
       title={meta.title}
