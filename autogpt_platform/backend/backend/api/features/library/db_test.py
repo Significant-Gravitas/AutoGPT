@@ -1531,6 +1531,55 @@ async def test_create_expert_preset_rejects_shared_webhook(mocker):
     mock_preset_client.create.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "inputs, credentials",
+    [
+        ({"topic": "news"}, {}),
+        (
+            {},
+            {
+                "credentials": library_model.CredentialsMetaInput(
+                    id="cred-1", provider="github", type="api_key"
+                )
+            },
+        ),
+    ],
+    ids=["agent-without-credentials", "agent-without-inputs"],
+)
+@pytest.mark.asyncio
+async def test_update_preset_accepts_an_empty_inputs_or_credentials_map(
+    mocker, inputs, credentials
+):
+    mocker.patch.object(
+        db,
+        "get_preset",
+        new=AsyncMock(return_value=MagicMock(id="preset-1", expert_id=None)),
+    )
+
+    @asynccontextmanager
+    async def fake_tx():
+        yield None
+
+    mock_preset_client = AsyncMock()
+    mocker.patch.object(
+        prisma.models.AgentPreset, "prisma", return_value=mock_preset_client
+    )
+    mocker.patch.object(
+        prisma.models.AgentNodeExecutionInputOutput, "prisma", return_value=AsyncMock()
+    )
+    mocker.patch.object(db, "transaction", fake_tx)
+    mocker.patch.object(
+        library_model.LibraryAgentPreset, "from_db", return_value=MagicMock()
+    )
+
+    await db.update_preset(
+        user_id="owner", preset_id="preset-1", inputs=inputs, credentials=credentials
+    )
+
+    created = mock_preset_client.update.await_args.kwargs["data"]["InputPresets"]
+    assert {row["name"] for row in created["create"]} == {*inputs, *credentials}
+
+
 @pytest.mark.asyncio
 async def test_update_expert_preset_rehomes_on_metadata_only_update(mocker):
     current = MagicMock(

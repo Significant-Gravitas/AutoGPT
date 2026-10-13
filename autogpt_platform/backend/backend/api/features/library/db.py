@@ -2317,7 +2317,8 @@ async def update_preset(
         if is_active is not None:
             update_data["isActive"] = is_active
         if inputs or credentials:
-            if not (inputs and credentials):
+            # An agent without credentials (or inputs) still passes an empty map.
+            if inputs is None or credentials is None:
                 raise ValueError(
                     "Preset inputs and credentials must be provided together"
                 )

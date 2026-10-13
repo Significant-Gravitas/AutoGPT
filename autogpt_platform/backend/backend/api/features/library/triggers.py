@@ -237,9 +237,7 @@ async def update_triggered_preset(
                 ),
             }
 
-            # Validate as setup does, before the webhook is registered: a
-            # cleared required input would otherwise 200, re-register, and then
-            # fail every delivery inside the executor's catch-all.
+            # Validate as setup does, before the webhook is registered.
             try:
                 await validate_and_construct_node_execution_input(
                     graph_id=graph.id,
