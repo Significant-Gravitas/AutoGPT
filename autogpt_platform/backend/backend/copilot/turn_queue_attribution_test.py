@@ -9,7 +9,7 @@ from prisma.enums import SubscriptionTier
 
 from backend.copilot import stream_registry, turn_queue
 from backend.copilot.executor import utils
-from backend.copilot.model import ChatMessage
+from backend.copilot.model import ChatMessage, ChatSessionInfo
 from backend.copilot.tree import root_envelope
 from backend.copilot.trial_cost_context import (
     TrialCostContext,
@@ -24,15 +24,20 @@ from backend.data.pro_activation import UsageActivationState
 def fifo(monkeypatch: pytest.MonkeyPatch):
     @asynccontextmanager
     async def lock(_session_id):
-        yield
+        yield True
 
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_message = AsyncMock()
     db.update_chat_session_status = AsyncMock(return_value=True)
+    db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.get_latest_user_message_in_session = AsyncMock()
-    session = MagicMock(
-        session_id="session-1", organization_id=None, team_id=None, expert_id=None
+    session = ChatSessionInfo(
+        session_id="session-1",
+        user_id="user-1",
+        usage=[],
+        started_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
