@@ -100,10 +100,7 @@ export function buildUIFollowUp(
 ) {
   const values = Object.entries(fields)
     .slice(0, MAX_FORM_VALUES)
-    .map(([name, value]) => [
-      name.slice(0, 200),
-      typeof value === "string" ? value : value,
-    ]);
+    .map(([name, value]) => [name.slice(0, 200), value]);
   const body = message.trim().slice(0, 2000);
   const result = `${body}\n\nFrom the interactive view: ${title.slice(0, 200)}${values.length ? `\nSubmitted values:\n${JSON.stringify(Object.fromEntries(values), null, 2)}` : ""}`;
   if (result.length > 64_000)

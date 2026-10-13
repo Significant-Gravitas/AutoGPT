@@ -30,6 +30,8 @@ function mergeValue(before: unknown, after: unknown, local: unknown): unknown {
       (item) => typeof record(item)?.id === "string",
     )
   ) {
+    // Rows keyed by id: keep the user's order and local rows when the model
+    // kept its own order, otherwise take the model's new order.
     const oldByID = new Map(before.map((item) => [item.id, item]));
     const localByID = new Map(local.map((item) => [item.id, item]));
     const nextByID = new Map(after.map((item) => [item.id, item]));
