@@ -22,7 +22,7 @@ from backend.data.notifications import (
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
-from backend.notifications.lifecycle_plan import format_amount
+from backend.notifications.lifecycle_plan import currency_symbol, format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.trial_audience import (
     join_paying_audience,
@@ -178,13 +178,34 @@ async def trial_notice_disposition(
     if data.notice_key != trial_notice_key(trial, data.kind):
         return "obsolete"
     expected = trial_notice_data(trial, data.kind, data.user_name, current)
-    if data.model_copy(update={"notice_key": None}) != expected:
+    if not _notice_matches_current_terms(data, expected, trial, current):
         return "obsolete"
     if trial.status != current.get("status") or trial.cancel_at_period_end != bool(
         current.get("cancel_at_period_end")
     ):
         return "suppressed"
     return "current" if _notice_applies(trial, data.kind, current) else "suppressed"
+
+
+def _notice_matches_current_terms(
+    data: TrialUpdateData, expected: TrialUpdateData, trial: TrialState, current: dict
+) -> bool:
+    # Transitional shim: remove once old-format queued notices drain, per the
+    # rollout plan in docs/engineering/transactional-email-design.md.
+    terms = notice_plan(trial, data.kind, current)
+    plan = data.plan.model_copy()
+    legacy_label = f"{expected.plan.name} — {expected.plan.cycle}"
+    legacy_amount = format_amount(terms.unit_amount, terms.currency)
+    legacy_price = (
+        f"{legacy_amount} {terms.currency.upper()} / {expected.plan.cycle_noun}"
+    )
+    # Accept only the old presentation of these same terms, so a deploy does
+    # not discard queued notices or conceal a changed amount, plan or end date.
+    if plan.label == legacy_label:
+        plan.label = expected.plan.label
+    if plan.price_display == legacy_price:
+        plan.price_display = expected.plan.price_display
+    return data.model_copy(update={"plan": plan, "notice_key": None}) == expected
 
 
 def _owns_subscription(trial: TrialState, current: dict) -> bool:
@@ -246,6 +267,9 @@ def trial_notice_data(
     plan = notice_plan(trial, kind, current)
     title = plan.tier.title()
     cycle_noun = "month" if plan.cycle == "monthly" else "year"
+    amount = format_amount(plan.unit_amount, plan.currency)
+    if plan.unit_amount is not None and not currency_symbol(plan.currency):
+        amount = f"{amount} {plan.currency.upper()}"
     return TrialUpdateData(
         user_name=name,
         kind=kind,
@@ -253,8 +277,8 @@ def trial_notice_data(
             name=title,
             cycle=plan.cycle,
             cycle_noun=cycle_noun,
-            label=f"{title} — {plan.cycle}",
-            price_display=f"{format_amount(plan.unit_amount, plan.currency)} {plan.currency.upper()} / {cycle_noun}",
+            label=f"{title} · {plan.cycle}",
+            price_display=f"{amount} / {cycle_noun}",
         ),
         ends_label=trial.ends_at.astimezone(UTC).strftime("%d %b %Y at %H:%M UTC"),
         onboarding_credit_amount=trial.offer.onboarding_credit_amount,

@@ -67,6 +67,33 @@ def urls() -> EmailUrls:
     )
 
 
+@pytest.mark.parametrize("cycle,cycle_noun", [("monthly", "month"), ("yearly", "year")])
+@pytest.mark.parametrize(
+    "currency,formatted_amount",
+    [
+        ("usd", "$20.00"),
+        ("eur", "€20.00"),
+        ("gbp", "£20.00"),
+        ("cad", "20.00 CAD"),
+        ("jpy", "2,000 JPY"),
+    ],
+)
+def test_trial_plan_uses_design_labels_and_unambiguous_prices(
+    trial, urls, cycle, cycle_noun, currency, formatted_amount
+):
+    trial.offer = trial.offer.model_copy(
+        update={"billing_cycle": cycle, "currency": currency}
+    )
+    data = notices.trial_notice_data(trial, "ending", "Sam")
+
+    assert data.plan.label == f"Pro · {cycle}"
+    assert data.plan.price_display == f"{formatted_amount} / {cycle_noun}"
+    email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
+    for body in (email.html, email.text):
+        assert data.plan.label in body
+        assert data.plan.price_display in body
+
+
 @pytest.mark.parametrize(
     "kind",
     [
@@ -84,7 +111,7 @@ def test_all_trial_notices_render_exact_terms_and_billing_link(trial, urls, kind
     email = render(NotificationType.TRIAL_UPDATE, data, "sam@example.com", urls)
     assert email.subject and email.preheader
     for body in (email.html, email.text):
-        assert "$20.00 USD / month" in body
+        assert "$20.00 / month" in body
         assert data.ends_label in body
         assert urls.billing in body
     if kind == "payment_failed":
