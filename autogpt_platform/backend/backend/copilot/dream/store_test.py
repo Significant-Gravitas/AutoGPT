@@ -466,6 +466,19 @@ class TestTheLeaseAndTheSweeps:
             cutoff, limit=5, after_lapse=cursor[0], after_id="p0"
         )
         db.list_dream_pass_cleanups.assert_awaited_once_with(cutoff, limit=100)
+        assert (
+            await store.read_pending_cleanups(
+                due_before=cutoff, limit=5, marked_through=cutoff, after=cursor
+            )
+            == []
+        )
+        db.list_dream_pass_cleanups.assert_awaited_with(
+            cutoff,
+            limit=5,
+            marked_through=cutoff,
+            after_mark=cursor[0],
+            after_id="p0",
+        )
         db.list_dream_passes.assert_awaited_once_with("u1", limit=5, open_only=True)
         db.delete_old_dream_passes.assert_awaited_once_with(cutoff, limit=1000)
 

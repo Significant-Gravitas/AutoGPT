@@ -48,7 +48,6 @@ from .pass_record import (
     DreamTrigger,
     applying,
     cleanup_finished,
-    cleanup_unfinished,
     expired,
     failed,
     gathered,
@@ -225,13 +224,28 @@ async def read_expired_passes(
 
 
 async def read_pending_cleanups(
-    *, due_before: datetime, limit: int
+    *,
+    due_before: datetime,
+    limit: int,
+    marked_through: datetime | None = None,
+    after: tuple[datetime, str] | None = None,
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked, or their lease lapsed, before *due_before*;
-    the ones written least recently (closed, or their cleanup tried) first.
+    in mark order (the mark, then the id), only those marked by
+    *marked_through* and after *after*, a mark and an id, when given.
     Raises when the read fails or runs out of time."""
-    return await _bounded(dream_db().list_dream_pass_cleanups(due_before, limit=limit))
+    if marked_through is None and after is None:
+        listing = dream_db().list_dream_pass_cleanups(due_before, limit=limit)
+    else:
+        listing = dream_db().list_dream_pass_cleanups(
+            due_before,
+            limit=limit,
+            marked_through=marked_through,
+            after_mark=after[0] if after else None,
+            after_id=after[1] if after else None,
+        )
+    return await _bounded(listing)
 
 
 async def read_user_passes(
@@ -268,13 +282,6 @@ async def record_cleanup_finished(pass_id: str) -> bool:
     it. Raises when the write fails or runs out of time, and the cleanup,
     idempotent, is resumed by the reaper's next run."""
     return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_finished()))
-
-
-async def record_cleanup_unfinished(pass_id: str) -> bool:
-    """The reaper tried the cleanup after the closed pass and did not finish
-    it; whether the row took it. The row goes behind the cleanups tried less
-    recently. Raises when the write fails or runs out of time."""
-    return await _bounded(dream_db().update_dream_pass(pass_id, cleanup_unfinished()))
 
 
 async def _write(

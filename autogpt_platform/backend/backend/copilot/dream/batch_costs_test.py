@@ -53,7 +53,11 @@ class TestACleanupCutShortInItsCharge:
     async def test_after_the_pass_is_claimed_the_next_run_charges_every_phase(
         self, mocker, fake_dream_db, fake_dream_redis, charges
     ):
+        """The run is cut while the pass's gate, set, never answers; the
+        charge goes on until its claim window closes, and gives up there,
+        having claimed no phase."""
         _scale_the_budget(mocker, budget=0.3, release=0.05)
+        mocker.patch.object(costs_mod, "CLAIM_WINDOW_SECONDS", 0.6)
         await _two_landed(fake_dream_db)
         claim = costs_mod.claim_per_phase_charging
 
@@ -67,6 +71,8 @@ class TestACleanupCutShortInItsCharge:
         first = await asyncio.wait_for(reap_expired_passes(), 5)
 
         assert first.outcomes == {"out_of_budget": 1}
+        assert costs_mod._CHARGES_IN_FLIGHT, "the charge outlives the run"
+        await asyncio.wait_for(asyncio.gather(*costs_mod._CHARGES_IN_FLIGHT), 5)
         assert fake_dream_redis.store[_PASS_KEY] == "per_phase"
         charges.assert_not_awaited()
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is not None
@@ -81,24 +87,28 @@ class TestACleanupCutShortInItsCharge:
     async def test_after_its_first_phase_the_next_run_charges_the_second_only(
         self, mocker, fake_dream_db, fake_dream_redis, charges
     ):
+        """The claim window closes while the first phase's cost write runs:
+        that phase is charged, the second's claim is given up, and the next
+        run charges the second only."""
         _scale_the_budget(mocker, budget=0.3, release=0.05)
+        mocker.patch.object(costs_mod, "CLAIM_WINDOW_SECONDS", 0.05)
         await _two_landed(fake_dream_db)
-        charge_phase = costs_mod._charge_phase
+        log = costs_mod._log_phase_cost
 
-        async def cut_before_recombine(scope, pass_id, phase, row, models):
-            if phase == "recombine":
-                await asyncio.Event().wait()
-            return await charge_phase(scope, pass_id, phase, row, models)
+        async def slow_consolidate(scope, pass_id, phase, row, models) -> bool:
+            if phase == "consolidate":
+                await asyncio.sleep(0.1)
+            return await log(scope, pass_id, phase, row, models)
 
-        mocker.patch.object(costs_mod, "_charge_phase", cut_before_recombine)
+        mocker.patch.object(costs_mod, "_log_phase_cost", slow_consolidate)
 
         first = await asyncio.wait_for(reap_expired_passes(), 5)
 
-        assert first.outcomes == {"out_of_budget": 1}
+        assert first.outcomes == {"retry": 1}
         assert _charged(charges) == ["consolidate"]
         assert "dream:batch:charged:p1:recombine" not in fake_dream_redis.store
 
-        mocker.patch.object(costs_mod, "_charge_phase", charge_phase)
+        mocker.patch.object(costs_mod, "_log_phase_cost", log)
         second = await reap_expired_passes()
 
         assert second.outcomes == {"cleaned": 1}
@@ -176,6 +186,52 @@ class TestACleanupCutShortInItsCharge:
         run = await reap_expired_passes()
 
         assert run.outcomes == {"expired": 1}
+        assert _charged(charges) == ["consolidate"]
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+
+    async def test_a_claim_issued_in_time_is_charged_when_its_reply_comes_late(
+        self, mocker, fake_dream_db, fake_dream_redis, charges
+    ):
+        """Codex's probe: the gate answers late in the claim window, so the
+        phase's claim goes out in time; Redis takes it, and its reply comes
+        after the window has closed. The window only admits claims, so the
+        claim is waited for and the phase charged; the next run finds it
+        charged and finishes."""
+        mocker.patch.object(costs_mod, "CLAIM_WINDOW_SECONDS", 0.3)
+        mocker.patch.object(costs_mod, "CLAIM_TIMEOUT_SECONDS", 0.5)
+        mocker.patch.object(cleanup_mod, "CHARGE_STEP_TIMEOUT_SECONDS", 0.1)
+        await _dead_batch_pass(fake_dream_db)
+        gate = costs_mod.claim_per_phase_charging
+
+        async def slow_gate(pass_id: str) -> bool:
+            await asyncio.sleep(0.2)
+            return await gate(pass_id)
+
+        claim = "dream:batch:charged:p1:consolidate"
+        set_ = fake_dream_redis.set
+        late: list[str] = []
+
+        async def late_reply(key: str, *args, **kwargs):
+            taken = await set_(key, *args, **kwargs)
+            if key == claim and taken:
+                await asyncio.sleep(0.15)
+                late.append(key)
+            return taken
+
+        mocker.patch.object(costs_mod, "claim_per_phase_charging", slow_gate)
+        mocker.patch.object(fake_dream_redis, "set", late_reply)
+
+        first = await asyncio.wait_for(reap_expired_passes(), 5)
+        await asyncio.wait_for(asyncio.gather(*costs_mod._CHARGES_IN_FLIGHT), 5)
+
+        assert first.outcomes == {"retry": 1}
+        assert late == [claim]
+        assert _charged(charges) == ["consolidate"]
+
+        mocker.patch.object(costs_mod, "claim_per_phase_charging", gate)
+        second = await reap_expired_passes()
+
+        assert second.outcomes == {"cleaned": 1}
         assert _charged(charges) == ["consolidate"]
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
 

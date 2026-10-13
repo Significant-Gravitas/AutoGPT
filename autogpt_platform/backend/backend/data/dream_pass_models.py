@@ -131,9 +131,8 @@ class DreamPassUpdate(BaseModel):
     not both.
 
     ``closed_row`` is the one kind of write a closed row takes: the cleanup
-    after its pass saying it has finished, or that the reaper tried it and
-    did not finish (nothing cleared, the row's write time moved). It applies
-    to a closed row only, and may only clear columns.
+    after its pass saying it has finished. It applies to a closed row only,
+    and may only clear columns.
     """
 
     status: DreamPassStatus | None = None

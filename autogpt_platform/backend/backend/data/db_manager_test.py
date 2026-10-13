@@ -181,14 +181,18 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
     class's functions, as the service registers them."""
     cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=timezone.utc)
     manager = DatabaseManager()
-    # The open-pass scan also carries where the reaper's last scan stopped.
-    cursor = {"after_lapse": cutoff, "after_id": "p1"}
+    # Both scans also carry where the reaper's scan cycle stands.
+    open_scan = {"after_lapse": cutoff, "after_id": "p1"}
+    cleanup_scan = {"marked_through": cutoff, "after_mark": cutoff, "after_id": "p1"}
     for method, args in (
         (
             DatabaseManager.list_expired_dream_passes,
-            {"expired_before": cutoff, "limit": 7, **cursor},
+            {"expired_before": cutoff, "limit": 7, **open_scan},
         ),
-        (DatabaseManager.list_dream_pass_cleanups, {"due_before": cutoff, "limit": 7}),
+        (
+            DatabaseManager.list_dream_pass_cleanups,
+            {"due_before": cutoff, "limit": 7, **cleanup_scan},
+        ),
         (
             DatabaseManager.delete_old_dream_passes,
             {"created_before": cutoff, "limit": 7},
