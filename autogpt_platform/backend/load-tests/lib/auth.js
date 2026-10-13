@@ -214,16 +214,22 @@ function startSession(jar, label, hint) {
   return { cookies, token, expiresAt: tokenExpiry(token) };
 }
 
-// A token from another deployment's frontend fails every request with 401,
-// which would otherwise look like a very fast run.
+// If the backend rejects the token, or is down or elsewhere, every request
+// in the run fails fast, which would otherwise look like a very fast run.
 function checkBackendAcceptsToken(token) {
   const res = http.get(`${config.API_BASE_URL}/credits`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (res.status === 401) {
+  if (res.status === 401 || res.status === 403) {
     throw new Error(
       `${config.API_BASE_URL} rejected the token from ${config.FRONTEND_URL} ` +
         `(${describe(res)}): the backend must verify tokens against that frontend's /api/auth/jwks`,
+    );
+  }
+  if (res.status !== 200) {
+    throw new Error(
+      `The first authenticated request, to ${config.API_BASE_URL}/credits, failed ` +
+        `(${describe(res)}): check that the backend is up and that K6_ENVIRONMENT points at it`,
     );
   }
 }
