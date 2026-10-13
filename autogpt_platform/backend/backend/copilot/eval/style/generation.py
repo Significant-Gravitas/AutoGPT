@@ -346,7 +346,7 @@ def _capability_details(capability_id: str) -> str:
         CapabilityDetailsResponse(
             message=f"{tool.description} Run it with run_capability(id='{entry.id}').",
             capability=entry.listing(),
-            parameters=tool.parameters,
+            parameters=tool.model_parameters,
         )
     )
 

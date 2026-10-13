@@ -214,9 +214,22 @@ describe("ChatContainer", () => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
+  // Radix opens a tooltip on a timer and arms its Escape handler a render
+  // after the tooltip appears. Run the delay on a fake clock inside act() so
+  // the tooltip is fully mounted before the next interaction, however slow
+  // the machine.
+  async function hoverUsageTooltipTrigger(trigger: HTMLElement) {
+    fireEvent.pointerMove(trigger, { pointerType: "mouse" });
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+  }
+
   it("keeps usage tooltips hoverable and dismissible as the limit changes", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { rerender } = render(<ChatContainer {...baseProps} />);
     const input = screen.getByTestId("chat-input");
@@ -229,11 +242,10 @@ describe("ChatContainer", () => {
     expect((input as HTMLInputElement).value).toBe("Unsent draft");
     expect(screen.queryByRole("tooltip")).toBeNull();
 
-    fireEvent.pointerMove(input.parentElement!, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toBeDefined();
-    await act(async () => {});
+    await hoverUsageTooltipTrigger(input.parentElement!);
+    expect(screen.getByRole("tooltip")).toBeDefined();
     fireEvent.keyDown(document, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+    expect(screen.queryByRole("tooltip")).toBeNull();
 
     mockIsUsageLimitReached.mockReturnValue(false);
     rerender(<ChatContainer {...baseProps} />);
@@ -242,6 +254,29 @@ describe("ChatContainer", () => {
       /controlled|uncontrolled/,
     );
     consoleWarn.mockRestore();
+  });
+
+  it("opens the usage tooltip only for a hover made while the limit is reached", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { rerender } = render(<ChatContainer {...baseProps} />);
+    const trigger = screen.getByTestId("chat-input").parentElement!;
+
+    // Hovering the composer before the limit is reached.
+    await hoverUsageTooltipTrigger(trigger);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+
+    // The limit lifting while the tooltip shows.
+    await hoverUsageTooltipTrigger(trigger);
+    expect(screen.getByRole("tooltip")).toBeDefined();
+    mockIsUsageLimitReached.mockReturnValue(false);
+    rerender(<ChatContainer {...baseProps} />);
+    fireEvent.pointerLeave(trigger, { pointerType: "mouse" });
+    mockIsUsageLimitReached.mockReturnValue(true);
+    rerender(<ChatContainer {...baseProps} />);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("renders the blurred usage-limit backdrop only when the limit is reached", () => {

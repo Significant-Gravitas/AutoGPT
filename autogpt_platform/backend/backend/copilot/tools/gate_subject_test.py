@@ -219,10 +219,6 @@ async def test_an_approved_irreversible_block_asks_once(gate):
             AsyncMock(return_value=prep),
         ),
         patch(
-            "backend.copilot.tools.run_block.get_current_permissions",
-            return_value=None,
-        ),
-        patch(
             "backend.copilot.tools.run_block.check_spend_approval",
             AsyncMock(return_value=None),
         ),

@@ -330,6 +330,28 @@ def test_claude_fable_5_1_bills_at_authored_rates():
     assert fable_entry.context_window == 200000
 
 
+def test_gemini_4_argon_bills_at_authored_rates():
+    """Gemini 4 Argon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
+    $0.1875/1M cache write) — flat tier and per-1M projections must match
+    the authored catalog entry."""
+    argon = LLMModel("google/gemini-4-argon")
+    assert argon is LLMModel.GEMINI_4_ARGON
+    assert MODEL_COST[argon] == 5
+    assert TOKEN_COST[argon].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 28.125,
+    }
+    assert MODEL_METADATA[argon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-argon")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_gemini_3_8_flash_bills_at_authored_rates():
     """Gemini 3.8 Flash (OpenRouter, Google intro list price $0.75/$3.75
     per 1M through 2026-12-31) — flat tier and per-1M projections must
@@ -393,6 +415,28 @@ def test_muse_spark_1_3_contributor_bills_at_authored_rates():
     assert contributor_entry.supports_tools is True
     assert contributor_entry.supports_json_output is True
     assert contributor_entry.supports_reasoning is True
+
+
+def test_muse_wonder_bills_at_authored_rates():
+    """Muse Wonder (OpenRouter, Meta list price $4/$20 per 1M, $0.20/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    wonder = LLMModel("meta/muse-wonder")
+    assert wonder is LLMModel.META_MUSE_WONDER
+    assert MODEL_COST[wonder] == 11
+    assert TOKEN_COST[wonder].model_dump() == {
+        "input": 600.0,
+        "output": 3000.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[wonder].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-wonder")
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
 
 
 def test_qwen3_8_max_0902_bills_at_authored_rates():

@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { notFound, useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Text } from "@/components/atoms/Text/Text";
+import { useBillingStatus } from "@/hooks/useIsBillingEnabled";
 import {
   TabsLine,
   TabsLineContent,
@@ -16,6 +17,7 @@ import {
   getGetSubscriptionStatusQueryKey,
   usePatchV1FulfillCheckoutSession,
 } from "@/app/api/__generated__/endpoints/credits/credits";
+import { getGetTrialsGetTrialStatusQueryKey } from "@/app/api/__generated__/endpoints/trials/trials";
 
 import {
   trackCheckoutAbandoned,
@@ -41,7 +43,14 @@ function resolveInitialTab(searchParams: URLSearchParams): BillingTab {
   return "subscription";
 }
 
-export default function SettingsBillingPage() {
+export default function SettingsBillingRoute() {
+  const { isBillingEnabled, isResolved } = useBillingStatus();
+  if (!isResolved) return null;
+  if (!isBillingEnabled) notFound();
+  return <SettingsBillingPage />;
+}
+
+function SettingsBillingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -53,6 +62,10 @@ export default function SettingsBillingPage() {
   const handledSubscriptionRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<BillingTab>(() =>
     resolveInitialTab(searchParams),
+  );
+  // Read once: the redirect handler below drops the query string.
+  const [isPlanCheckoutReturn] = useState(
+    () => subscriptionStatus === "success",
   );
 
   function handleTabChange(value: string) {
@@ -110,6 +123,9 @@ export default function SettingsBillingPage() {
         queryClient.invalidateQueries({
           queryKey: getGetSubscriptionStatusQueryKey(),
         });
+        queryClient.invalidateQueries({
+          queryKey: getGetTrialsGetTrialStatusQueryKey(),
+        });
       } else if (subscriptionStatus === "cancelled") {
         trackCheckoutAbandoned({
           checkout_kind: "subscription",
@@ -149,7 +165,7 @@ export default function SettingsBillingPage() {
         </TabsLineList>
 
         <TabsLineContent value="subscription">
-          <SubscriptionTab />
+          <SubscriptionTab isPlanCheckoutReturn={isPlanCheckoutReturn} />
         </TabsLineContent>
 
         <TabsLineContent value="automation-credits">
