@@ -13,10 +13,9 @@ as omitted.
 
 from __future__ import annotations
 
-import json
 import logging
 
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionInfo
 from backend.data.db_accessors import chat_db, experts_db, skill_learning_db
 from backend.data.skill_learning import (
     LearningSourceRecord,
@@ -24,26 +23,28 @@ from backend.data.skill_learning import (
     owner_key_for,
 )
 
+from .chat_evidence import (
+    build_chat_evidence,
+    verification_context,
+    verification_sequences,
+)
 from .contract import (
-    VERIFYING_SIGNAL_KINDS,
     ApprovalCheckpoint,
     Eligibility,
     EligibilityState,
     EvidenceBundle,
     EvidenceRef,
-    EvidenceSpan,
     LearningScope,
     OutcomeSignal,
     SourceRevision,
     register_source_adapter,
 )
-from .signals import extract_turn_signals, is_learn_request, message_ref
+from .signals import extract_turn_signals, is_learn_request
 
 logger = logging.getLogger(__name__)
 
 CHAT_SOURCE_KIND = "chat_session"
 MAX_EVIDENCE_MESSAGES = 120
-MAX_CONTEXT_SPAN_CHARS = 2_000
 
 
 class CapturedTurn(EvidenceRef):
@@ -159,64 +160,54 @@ class ChatSessionSourceAdapter:
         last_sequence = revision_sequence(source.revision)
         if last_sequence is None:
             return EvidenceBundle(source=source)
-        page = await chat_db().get_chat_messages_paginated(
+        messages = await _evidence_messages(source, last_sequence)
+        return build_chat_evidence(
+            source, messages or [], last_sequence=last_sequence, max_chars=max_chars
+        )
+
+
+async def _evidence_messages(
+    source: SourceRevision, last_sequence: int
+) -> list[ChatMessage] | None:
+    page = await chat_db().get_chat_messages_paginated(
+        session_id=source.source_ref,
+        limit=MAX_EVIDENCE_MESSAGES,
+        user_id=source.scope.user_id,
+        after_sequence=0,
+        before_sequence=last_sequence + 1,
+    )
+    if page is None or not _matches_source(page.session, source):
+        return None
+    messages = {m.sequence: m for m in page.messages if m.sequence is not None}
+    missing = verification_sequences(source, last_sequence) - messages.keys()
+    wanted = sorted(verification_context(missing) - messages.keys())
+    if wanted:
+        proof = await chat_db().get_chat_messages_paginated(
             session_id=source.source_ref,
-            limit=MAX_EVIDENCE_MESSAGES,
+            limit=len(wanted),
             user_id=source.scope.user_id,
             after_sequence=0,
             before_sequence=last_sequence + 1,
+            message_sequences=wanted,
         )
-        if page is None or page.session.user_id != source.scope.user_id:
-            return EvidenceBundle(source=source)
-        outcome_by_ref = {s.ref: s.kind for s in source.outcome_signals}
-        verifying_refs = {
-            s.ref for s in source.outcome_signals if s.kind in VERIFYING_SIGNAL_KINDS
-        }
-        positions = {message_ref(m): i for i, m in enumerate(page.messages)}
-        messages = sorted(
-            reversed(page.messages),
-            key=lambda m: message_ref(m) not in verifying_refs,
+        if proof is None or not _matches_source(proof.session, source):
+            return None
+        messages.update(
+            {
+                m.sequence: m
+                for m in proof.messages
+                if m.sequence is not None and m.sequence in wanted
+            }
         )
-        spans: list[EvidenceSpan] = []
-        clipped: list[str] = []
-        used = 0
-        for message in messages:
-            if message.sequence is None or message.sequence > last_sequence:
-                continue
-            text = (message.content or "").strip()
-            if message.role == "assistant" and message.tool_calls:
-                text = "\n".join(
-                    part for part in (text, json.dumps(message.tool_calls)) if part
-                )
-            if not text or message.role not in ("user", "assistant", "tool"):
-                continue
-            ref = message_ref(message)
-            span_limit = max_chars if ref in verifying_refs else MAX_CONTEXT_SPAN_CHARS
-            body = text[:span_limit]
-            if len(body) < len(text):
-                clipped.append(ref)
-            if used + len(body) > max_chars:
-                clipped.append(ref)
-                continue
-            used += len(body)
-            spans.append(
-                EvidenceSpan(
-                    ref=ref,
-                    role=message.role,
-                    text=body,
-                    outcome=outcome_by_ref.get(ref),
-                )
-            )
-        present = {span.ref for span in spans}
-        omitted = sorted(
-            {r.ref for r in source.evidence_refs if r.ref not in present} | set(clipped)
-        )
-        return EvidenceBundle(
-            source=source,
-            spans=sorted(spans, key=lambda span: positions[span.ref]),
-            omitted_refs=omitted,
-            clipped_refs=clipped,
-        )
+    return list(messages.values())
+
+
+def _matches_source(session: ChatSessionInfo, source: SourceRevision) -> bool:
+    return (
+        session.session_id == source.source_ref
+        and session.user_id == source.scope.user_id
+        and session.expert_id == source.scope.expert_id
+    )
 
 
 def _eligibility(
