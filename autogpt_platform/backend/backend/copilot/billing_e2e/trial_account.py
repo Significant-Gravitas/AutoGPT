@@ -74,7 +74,12 @@ class TrialAccount:
         return [charge for charge in self.charges if charge.turn == turn]
 
     def remaining_usd(self) -> float:
-        """What the trial still allows today, as the budget lookups compute it."""
+        """What the trial still allows today, as the budget lookups compute it.
+
+        Worked out from this account's own numbers, not read through the
+        production lookups, so the budget assertions check against an
+        independent answer.
+        """
         spent = self.counters.values
         daily = DAILY_LIMIT - spent.get(rate_limit._daily_key(self.user_id), 0)
         weekly = WEEKLY_LIMIT - spent.get(rate_limit._weekly_key(self.user_id), 0)
