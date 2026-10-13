@@ -181,23 +181,6 @@ def test_capture_never_raises_on_a_bad_event(monkeypatch: pytest.MonkeyPatch) ->
     client.capture.assert_not_called()
 
 
-def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    client = Mock()
-    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
-
-    posthog_client.capture(
-        "user-1", PostHogEvent.BRIEFING_DELIVERED, {}, dedup_key="briefing:b-1"
-    )
-
-    kwargs = client.capture.call_args.kwargs
-    assert kwargs["properties"]["$insert_id"] == "briefing:b-1"
-    assert kwargs["uuid"] == str(
-        uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
-    )
-
-
 @pytest.mark.parametrize(
     "returned, side_effect, queued",
     [
@@ -274,9 +257,6 @@ def test_no_client_of_its_own_when_analytics_is_off(
     factory.assert_not_called()
 
 
-# ── send_each: a one-off run's own client ────────────────────────────────────
-
-
 @pytest.fixture
 def own_client(monkeypatch: pytest.MonkeyPatch) -> Mock:
     """The run's own client. `own_client.on_error` is the callback the run
@@ -351,3 +331,20 @@ async def test_send_each_without_posthog_raises_before_sending(
     with pytest.raises(RuntimeError, match="PostHog is not configured"):
         await posthog_client.send_each([("0", send)])
     send.assert_not_called()
+
+
+def test_capture_dedup_key_is_insert_id_and_a_stable_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = Mock()
+    monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: client)
+
+    posthog_client.capture(
+        "user-1", PostHogEvent.BRIEFING_DELIVERED, {}, dedup_key="briefing:b-1"
+    )
+
+    kwargs = client.capture.call_args.kwargs
+    assert kwargs["properties"]["$insert_id"] == "briefing:b-1"
+    assert kwargs["uuid"] == str(
+        uuid.uuid5(uuid.NAMESPACE_URL, "user-1:briefing_delivered:briefing:b-1")
+    )
