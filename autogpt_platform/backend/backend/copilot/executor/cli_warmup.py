@@ -1,13 +1,10 @@
 """Warm the Claude CLI binary once per executor process, off the turn path.
 
-On a fresh pod the first CLI spawn took about 7 s on a preview, against
-0.6 s on a warm one: the ~250 MB binary is still being read from the
-container image. Reading it through once when the executor starts, in a
-background thread, moves that cost off the first turn.
-
-This used to be a ``claude -v`` run in each worker thread's initializer. That
-made every thread's first turn wait for it, and ``-v`` doesn't read the
-whole binary, so the first real spawn stayed slow.
+On a fresh pod the first spawn of the ~250 MB bundled binary is slow (about
+7 s, against 0.6 s on a warm pod) because the binary is still being read from
+the container image. ``claude -v`` alone doesn't read all of it, so the
+warm-up reads it through once, in a background thread started with the
+executor. No turn waits for it.
 """
 
 import logging
@@ -21,6 +18,7 @@ from typing import cast
 logger = logging.getLogger(__name__)
 
 _CHUNK_BYTES = 8 * 1024 * 1024
+_VERSION_TIMEOUT_SECONDS = 30
 
 
 def start_cli_warmup() -> threading.Thread:
@@ -38,7 +36,9 @@ def warm_cli(cli_path: str | None = None) -> None:
             return
         started = time.monotonic()
         size = _read_through(path)
-        result = subprocess.run([path, "-v"], capture_output=True, timeout=30)
+        result = subprocess.run(
+            [path, "-v"], capture_output=True, timeout=_VERSION_TIMEOUT_SECONDS
+        )
         logger.info(
             f"CLI warm-up read {size / 1e6:.0f} MB and ran -v "
             f"(rc={result.returncode}) in {time.monotonic() - started:.1f}s: {path}"
