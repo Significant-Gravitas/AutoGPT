@@ -29,7 +29,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import MetaData, create_engine, or_
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
@@ -55,6 +55,11 @@ from backend.copilot.dream.scope_crons import (
     record_scope_run,
 )
 from backend.copilot.dream.scope_jobs import scope_label
+from backend.copilot.dream.scope_reconcile import (
+    RECONCILE_INTERVAL_MINUTES,
+    ListedCron,
+    reconcile,
+)
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
 from backend.copilot.graphiti.scope import MemoryScope
@@ -152,6 +157,10 @@ SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
 # The Stripe tier sweep pages through every active subscription, so it needs a
 # generous ceiling relative to the per-op default.
 STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
+
+# The memory cron reconcile reads every registry row; it must finish well
+# inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
+MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS = 20 * 60
 
 
 def job_listener(event):
@@ -1604,6 +1613,58 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
         )
 
 
+# Each dream-system cron's body and crontab, by job-id prefix: weekly
+# community rebuild at owner-local 04:00 on Mondays (APScheduler counts
+# weekdays from 0 = Monday), nightly batch at owner-local 03:00.
+_MEMORY_CRONS: dict[str, tuple[Callable[..., object], str]] = {
+    COMMUNITY_REBUILD_JOB_PREFIX: (execute_community_rebuild, "0 4 * * 0"),
+    NIGHTLY_BATCH_JOB_PREFIX: (execute_nightly_batch_sync, "0 3 * * *"),
+}
+
+
+def reconcile_memory_scope_crons() -> None:
+    """System task, every ``RECONCILE_INTERVAL_MINUTES``: the dream-system
+    crons back in step with the registry rows (``copilot/dream/
+    scope_reconcile.py``). Safe on two schedulers at once."""
+    if _scheduler_instance is None:
+        logger.warning("Memory cron reconcile skipped: scheduler not running")
+        return
+    _scheduler_instance._reconcile_memory_crons()
+
+
+def listed_cron(job: JobObj) -> ListedCron | None:
+    """The scope a dream-system job runs for, from its kwargs; None when they
+    do not name one."""
+    try:
+        scope = MemoryScope.build(job.kwargs["user_id"], job.kwargs.get("expert_id"))
+    except (KeyError, ValueError):
+        logger.warning("Memory cron %s names no memory scope; left alone", job.id)
+        return None
+    return ListedCron(job_id=job.id, scope=scope)
+
+
+class _SchedulerCrons:
+    """``scope_reconcile.CronStore`` over this scheduler's own jobstore. The
+    jobstore calls block, so they run off the event loop."""
+
+    def __init__(self, scheduler: "Scheduler") -> None:
+        self._scheduler = scheduler
+
+    async def add(
+        self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
+    ) -> None:
+        await asyncio.to_thread(
+            self._scheduler._add_memory_job,
+            *_MEMORY_CRONS[job.job_id_prefix],
+            job,
+            scope,
+            user_timezone,
+        )
+
+    async def remove(self, scope: MemoryScope) -> None:
+        await asyncio.to_thread(self._scheduler.remove_scope_memory_jobs, scope)
+
+
 def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
     """Bridge ``forget_registration`` onto the scheduler's event loop.
 
@@ -2424,6 +2485,21 @@ class Scheduler(AppService):
                 hours=24,
                 replace_existing=True,
                 max_instances=1,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
+            # Memory Cron Reconcile - every RECONCILE_INTERVAL_MINUTES. The
+            # level-triggered backstop for the registry's pause, resume and
+            # ensure: registers an ACTIVE scope's missing crons, removes a
+            # non-ACTIVE or deleted one's (copilot/dream/scope_reconcile.py).
+            self.scheduler.add_job(
+                reconcile_memory_scope_crons,
+                id="reconcile_memory_scope_crons",
+                trigger="interval",
+                minutes=RECONCILE_INTERVAL_MINUTES,
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
                 jobstore=Jobstores.EXECUTION.value,
             )
 
@@ -3365,8 +3441,7 @@ class Scheduler(AppService):
                 scope, user_timezone, "graphiti_communities_disabled"
             )
         job = self._add_memory_job(
-            execute_community_rebuild,
-            "0 4 * * 0",
+            *_MEMORY_CRONS[COMMUNITY_REBUILD_JOB_PREFIX],
             dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX),
             scope,
             user_timezone,
@@ -3398,6 +3473,46 @@ class Scheduler(AppService):
         if present:
             logger.info("Removed the memory crons of %s", scope_label(scope))
         return [job.id for job in present]
+
+    def _reconcile_memory_crons(self) -> None:
+        """One reconcile pass (``reconcile_memory_scope_crons``): the
+        scheduler's dream-system crons, listed once, against every registry
+        row."""
+        listed = [
+            cron
+            for job in self._memory_jobs()
+            if (cron := listed_cron(job)) is not None
+        ]
+        try:
+            report = run_async(
+                reconcile(listed, _SchedulerCrons(self)),
+                timeout=MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS,
+                cancel_on_timeout=True,
+            )
+        except concurrent.futures.TimeoutError:
+            logger.warning("Memory cron reconcile cut off; the next pass goes on")
+            return
+        if report.restored or report.removed or report.failed:
+            logger.info(
+                "Memory cron reconcile: restored %d, removed the crons of %d "
+                "scopes, %d failed",
+                len(report.restored),
+                len(report.removed),
+                len(report.failed),
+            )
+
+    def _memory_jobs(self) -> list[JobObj]:
+        """Every dream-system cron in the EXECUTION jobstore, in one read
+        filtered by job-id prefix."""
+        ids = self._execution_jobstore.jobs_t.c.id
+        return self._execution_jobstore._get_jobs(
+            or_(
+                *(
+                    ids.startswith(f"{job.job_id_prefix}_", autoescape=True)
+                    for job in DREAM_SYSTEM_JOBS
+                )
+            )
+        )
 
     def _add_memory_job(
         self,
@@ -3627,8 +3742,7 @@ class Scheduler(AppService):
             )
             return memory_job_skipped(scope, user_timezone, "dream_pass_disabled")
         job = self._add_memory_job(
-            execute_nightly_batch_sync,
-            "0 3 * * *",
+            *_MEMORY_CRONS[NIGHTLY_BATCH_JOB_PREFIX],
             dream_system_job(NIGHTLY_BATCH_JOB_PREFIX),
             scope,
             user_timezone,

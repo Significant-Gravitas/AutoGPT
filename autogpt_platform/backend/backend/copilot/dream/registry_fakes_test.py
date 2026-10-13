@@ -1,7 +1,8 @@
 """Shared fakes for the schedule registry tests (no tests of its own).
 
 ``install_registry_env`` swaps the registry's data module, scheduler client,
-flags and timezone lookup for in-memory fakes with the real ownership rules;
+flags and timezone lookup for in-memory fakes with the real ownership rules,
+and ``reconcile`` runs the scheduler's reconcile pass against them;
 ``Hang`` and ``HangingTransport`` stand in for a dependency that never
 answers, recording whether the caller cancelled it.
 """
@@ -24,7 +25,8 @@ from backend.util.exceptions import NotAuthorizedError
 from backend.util.feature_flag import Flag
 from backend.util.service import get_service_client
 
-from . import deadline, registry, scope_crons, scope_jobs
+from . import deadline, registry, scope_crons, scope_jobs, scope_reconcile
+from .scheduling import DreamSystemJob
 
 ACTIVE = MemoryScopeScheduleState.ACTIVE
 PAUSED = MemoryScopeScheduleState.PAUSED
@@ -153,6 +155,14 @@ class FakeRegistryDB:
     ) -> list[MemoryScopeSchedule]:
         return [row for row in self.rows.values() if row.user_id == user_id]
 
+    async def list_scope_schedules(
+        self, *, after: str | None = None, limit: int = 500
+    ) -> list[MemoryScopeSchedule]:
+        if self.fail:
+            raise ConnectionError("db down")
+        keys = sorted(key for key in self.rows if after is None or key > after)
+        return [self.rows[key] for key in keys[:limit]]
+
     def update(self, scope_key: str, **fields: Any) -> None:
         self.rows[scope_key] = self.rows[scope_key].model_copy(update=fields)
 
@@ -162,6 +172,7 @@ class FakeScheduler:
 
     def __init__(self) -> None:
         self.jobs: dict[str, str] = {}  # job id -> timezone it runs in
+        self.scopes: dict[str, MemoryScope] = {}  # job id -> the scope it is for
         self.add_scope_community_rebuild_schedule = AsyncMock(
             side_effect=self._adder("community_rebuild")
         )
@@ -174,6 +185,7 @@ class FakeScheduler:
         async def add(*, scope: MemoryScope, user_timezone: str) -> dict:
             job_id = f"{prefix}_{scope.scope_key}"
             self.jobs[job_id] = user_timezone
+            self.scopes[job_id] = scope
             return {"id": job_id, "scope_key": scope.scope_key, "next_run_time": None}
 
         return add
@@ -182,13 +194,37 @@ class FakeScheduler:
         removed = [job_id for job_id in job_ids(scope) if job_id in self.jobs]
         for job_id in removed:
             del self.jobs[job_id]
+            self.scopes.pop(job_id, None)
         return removed
+
+
+class FakeCronStore:
+    """``scope_reconcile.CronStore`` over the fake scheduler, through the
+    same registration calls the registry makes."""
+
+    def __init__(self, scheduler: FakeScheduler) -> None:
+        self.scheduler = scheduler
+
+    def listed(self) -> list[scope_reconcile.ListedCron]:
+        return [
+            scope_reconcile.ListedCron(job_id=job_id, scope=scope)
+            for job_id, scope in self.scheduler.scopes.items()
+        ]
+
+    async def add(
+        self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
+    ) -> None:
+        await job.register(self.scheduler, scope, user_timezone)
+
+    async def remove(self, scope: MemoryScope) -> None:
+        await self.scheduler.remove_scope_memory_jobs(scope=scope)
 
 
 class RegistryEnv:
     def __init__(self) -> None:
         self.db = FakeRegistryDB()
         self.scheduler = FakeScheduler()
+        self.crons = FakeCronStore(self.scheduler)
         self.flags = {
             Flag.GRAPHITI_COMMUNITIES_ENABLED: True,
             Flag.DREAM_PASS_ENABLED: True,
@@ -201,6 +237,11 @@ class RegistryEnv:
             + self.scheduler.add_scope_nightly_batch_schedule.await_count
         )
 
+    async def reconcile(self) -> scope_reconcile.ReconcileReport:
+        """One reconcile pass, the scheduler listed first, as the scheduler
+        runs it."""
+        return await scope_reconcile.reconcile(self.crons.listed(), self.crons)
+
 
 def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     """Point the registry modules at a fresh set of fakes."""
@@ -212,7 +253,7 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     async def owner_timezone(user_id: str) -> str | None:
         return env.timezone
 
-    for module in (registry, scope_jobs, scope_crons):
+    for module in (registry, scope_jobs, scope_crons, scope_reconcile):
         monkeypatch.setattr(module, "memory_schedule_db", lambda: env.db)
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
     monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)

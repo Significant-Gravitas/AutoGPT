@@ -19,6 +19,7 @@ from apscheduler.triggers.date import DateTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
@@ -50,6 +51,7 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
 )
 from backend.util.exceptions import (
@@ -1738,6 +1740,22 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_memory_cron_reconcile_registered_on_its_interval_single_instance(
+    monkeypatch,
+):
+    """The level-triggered backstop of the memory registry runs every
+    ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
+    coalesced."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).add_job_calls
+
+    [call] = [c for c in calls if c.args and c.args[0] is reconcile_memory_scope_crons]
+    assert call.kwargs["id"] == "reconcile_memory_scope_crons"
+    assert call.kwargs["trigger"] == "interval"
+    assert call.kwargs["minutes"] == RECONCILE_INTERVAL_MINUTES == 30
+    assert call.kwargs["max_instances"] == 1
+    assert call.kwargs["coalesce"] is True
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):
