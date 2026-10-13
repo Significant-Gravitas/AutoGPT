@@ -42,6 +42,12 @@ MIN_COMPLETION_TOKENS = 16
 
 DEFAULT_MODEL = "gpt-4.1-nano"
 
+# Every candidate is scored at once, up to this many. graphiti's own default
+# (``SEMAPHORE_LIMIT``, 20) splits a typical 40-candidate warm-context rerank
+# into two waves, the second adding a classifier round trip (~1 s) to the
+# chat's first turn.
+MAX_PARALLEL_SCORES = 64
+
 
 class CompatOpenAIRerankerClient(OpenAIRerankerClient):
     """Stock reranker with an OpenAI-compliant ``max_tokens`` floor."""
@@ -84,7 +90,8 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
                         top_logprobs=2,
                     )
                     for openai_messages in openai_messages_list
-                ]
+                ],
+                max_coroutines=max(1, min(len(passages), MAX_PARALLEL_SCORES)),
             )
 
             responses_top_logprobs = [
