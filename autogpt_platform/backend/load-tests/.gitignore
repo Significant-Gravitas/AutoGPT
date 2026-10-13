@@ -1,8 +1,11 @@
-# Load testing credentials and sensitive data
+# Credentials: LOAD_TEST_ACCOUNTS is read from the environment, and
+# configs/accounts.json is the place to keep it between runs.
+configs/accounts.json
 configs/pre-authenticated-tokens.js
 configs/k6-credentials.env
+
+# Results
 results/
-k6-cloud-results.txt
 
 # Node.js
 node_modules/

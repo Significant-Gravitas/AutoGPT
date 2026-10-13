@@ -3,7 +3,7 @@ import http from "k6/http";
 import { check, sleep, group } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 import { getEnvironmentConfig } from "../../configs/environment.js";
-import { getPreAuthenticatedHeaders } from "../../configs/pre-authenticated-tokens.js";
+import { authHeaders, authSetupTimeout, setupAuth } from "../../lib/auth.js";
 // Test data generation functions
 function generateTestGraph(name = null) {
   const graphName =
@@ -53,13 +53,10 @@ function generateTestGraph(name = null) {
   };
 }
 
+// Graph inputs are keyed by the input block's `name`.
 function generateExecutionInputs() {
   return {
-    "Load Test Input": {
-      name: "Load Test Input",
-      description: "Test input for load testing",
-      value: `Test execution at ${new Date().toISOString()}`,
-    },
+    "Load Test Input": `Test execution at ${new Date().toISOString()}`,
   };
 }
 
@@ -92,7 +89,7 @@ export const options = {
     name: "AutoGPT Platform - Graph Creation & Execution Test",
   },
   // Timeout configurations to prevent early termination
-  setupTimeout: "60s",
+  setupTimeout: authSetupTimeout(),
   teardownTimeout: "60s",
   noConnectionReuse: false,
   userAgent: "k6-load-test/1.0",
@@ -104,6 +101,7 @@ export function setup() {
     `Configuration: VUs=${parseInt(__ENV.VUS) || 5}, Duration=${__ENV.DURATION || "2m"}`,
   );
   return {
+    ...setupAuth(),
     timestamp: Date.now(),
   };
 }
@@ -111,20 +109,7 @@ export function setup() {
 export default function (data) {
   // Get load multiplier - how many concurrent operations each VU should perform
   const requestsPerVU = parseInt(__ENV.REQUESTS_PER_VU) || 1;
-
-  // Get pre-authenticated headers (no auth API calls during test)
-  const headers = getPreAuthenticatedHeaders(__VU);
-
-  // Handle missing token gracefully
-  if (!headers || !headers.Authorization) {
-    console.log(
-      `⚠️ VU ${__VU} has no valid pre-authenticated token - skipping graph execution`,
-    );
-    check(null, {
-      "Graph Execution: Failed gracefully without crashing VU": () => true,
-    });
-    return; // Exit iteration gracefully without crashing
-  }
+  const headers = authHeaders(data);
 
   console.log(
     `🚀 VU ${__VU} performing ${requestsPerVU} concurrent graph operations...`,
@@ -140,7 +125,7 @@ export default function (data) {
     // Add graph creation request
     graphRequests.push({
       method: "POST",
-      url: `${config.API_BASE_URL}/api/graphs`,
+      url: `${config.API_BASE_URL}/graphs`,
       body: JSON.stringify(graphData),
       params: { headers },
     });
@@ -195,7 +180,7 @@ export default function (data) {
 
       executionRequests.push({
         method: "POST",
-        url: `${config.API_BASE_URL}/api/graphs/${graph.id}/execute/${graph.version}`,
+        url: `${config.API_BASE_URL}/graphs/${graph.id}/execute/${graph.version}`,
         body: JSON.stringify({
           inputs: executionInputs,
           credentials_inputs: {},

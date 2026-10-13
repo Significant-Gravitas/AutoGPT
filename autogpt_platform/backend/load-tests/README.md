@@ -1,297 +1,159 @@
 # AutoGPT Platform Load Tests
 
-Clean, streamlined load testing infrastructure for the AutoGPT Platform using k6.
+[k6](https://grafana.com/docs/k6/latest/) tests that drive traffic at a deployed platform: a `!deploy` preview, dev, or a local stack. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) compares runs there.
 
-## 🚀 Quick Start
+Docker is the only requirement. `./k6.sh` runs k6 from the pinned `grafana/k6` image with this directory mounted, and takes the same arguments as `k6`.
 
-```bash
-# 1. Set up Supabase service key (required for token generation)
-export SUPABASE_SERVICE_KEY="your-supabase-service-key"
+## Quick start: a preview
 
-# 2. Generate pre-authenticated tokens (first time setup - creates 160+ tokens with 24-hour expiry)  
-node generate-tokens.js --count=160
+1. Comment `!deploy` on the pull request. A few minutes later its backend answers at `https://pr-<N>-server.agpt.co/health`, and its frontend is `https://autogpt-pr-<N>.vercel.app`.
+2. Run a test against it:
 
-# 3. Set up k6 cloud credentials (for cloud testing - see Credential Setup section below)
-export K6_CLOUD_TOKEN="your-k6-cloud-token"  
-export K6_CLOUD_PROJECT_ID="4254406"
+   ```bash
+   cd autogpt_platform/backend/load-tests
+   export K6_ENVIRONMENT=PREVIEW PR_NUMBER=<N>
+   VUS=2 DURATION=1m RAMP_UP=10s RAMP_DOWN=10s ./k6.sh run tests/api/core-api-test.js
+   ```
 
-# 4. Run orchestrated load tests locally
-node orchestrator/orchestrator.js DEV local
+Nothing else is needed: on a preview, the tests sign up their own throwaway accounts (see [Accounts](#accounts)).
 
-# 5. Run orchestrated load tests in k6 cloud (recommended)
-node orchestrator/orchestrator.js DEV cloud
-```
+## Quick start: dev
 
-## 📋 Load Test Orchestrator
-
-The AutoGPT Platform uses a comprehensive load test orchestrator (`orchestrator/orchestrator.js`) that runs 12 optimized tests with maximum VU counts:
-
-### Available Tests
-
-#### Basic Tests (Simple validation)
-
-- **connectivity-test**: Basic connectivity and authentication validation
-- **single-endpoint-test**: Individual API endpoint testing with high concurrency
-
-#### API Tests (Core functionality)
-
-- **core-api-test**: Core API endpoints (`/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`)
-- **graph-execution-test**: Complete graph creation and execution pipeline
-
-#### Marketplace Tests (User-facing features)
-
-- **marketplace-public-test**: Public marketplace browsing and search
-- **marketplace-library-test**: Authenticated marketplace and user library operations
-
-#### Comprehensive Tests (End-to-end scenarios)
-
-- **comprehensive-test**: Complete user journey simulation with multiple operations
-
-### Test Modes
-
-- **Local Mode**: 5 VUs × 30s - Quick validation and debugging
-- **Cloud Mode**: 80-160 VUs × 3-6m - Real performance testing
-
-## 🛠️ Usage
-
-### Basic Commands
+The whole team shares dev, so keep the load small and tell the team first. The tests cannot create accounts on dev; they sign in with accounts you supply (see [Accounts on dev](#dev)):
 
 ```bash
-# Run 12 optimized tests locally (for debugging)
-node orchestrator/orchestrator.js DEV local
-
-# Run 12 optimized tests in k6 cloud (recommended for performance testing)
-node orchestrator/orchestrator.js DEV cloud
-
-# Run against production (coordinate with team!)
-node orchestrator/orchestrator.js PROD cloud
-
-# Run individual test directly with k6
-K6_ENVIRONMENT=DEV VUS=100 DURATION=3m k6 run tests/api/core-api-test.js
+cd autogpt_platform/backend/load-tests
+export K6_ENVIRONMENT=DEV
+export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"   # gitignored
+VUS=2 DURATION=1m RAMP_UP=10s RAMP_DOWN=10s ./k6.sh run tests/api/core-api-test.js
 ```
 
-### NPM Scripts
+## Tests
+
+| Test                                           | Auth | What it does                                                                                   |
+| ---------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------- |
+| `tests/basic/connectivity-test.js`             | yes  | Backend `/health`, the frontend's JWKS, and one authenticated request                          |
+| `tests/basic/single-endpoint-test.js`          | yes  | One endpoint (`ENDPOINT=credits\|graphs\|blocks\|executions`)                                  |
+| `tests/api/core-api-test.js`                   | yes  | `/api/credits`, `/api/graphs` and `/api/blocks` together                                       |
+| `tests/api/graph-execution-test.js`            | yes  | Creates small graphs and executes them (402 counts as handled when the account has no credits) |
+| `tests/marketplace/public-access-test.js`      | no   | Store browsing: agents, search, categories, creators                                           |
+| `tests/marketplace/library-access-test.js`     | yes  | Library listing and search; adds a store agent to the library when the store has one           |
+| `tests/comprehensive/platform-journey-test.js` | yes  | Credits, graphs, blocks and executions with think time                                         |
+
+A preview starts with an empty database: store and library lists come back empty, so costs that grow with data do not show there.
+
+## How authentication works
+
+The backend accepts only the ES256 JWTs that the frontend's Better Auth issues (audience `authenticated`), and verifies them against `<frontend>/api/auth/jwks`. `lib/auth.js` gets them the way the browser does:
+
+- `setup()` signs each account in once per run (`POST <frontend>/api/auth/sign-in/email`, or `sign-up/email` for throwaway accounts) and exchanges the session for a token (`GET <frontend>/api/auth/token`). Every VU then uses one account's token, so a run signs in once per account however many VUs it has.
+- Better Auth lets one IP make 3 sign-in or sign-up requests, then refuses more until 10 seconds pass without one. `setup()` sends them in bursts of 3 with an 11-second pause, and waits out any `429`. Five accounts take about 15 seconds.
+- Tokens last an hour. Each VU fetches a new one with its account's session 10 to 20 minutes before the old one expires, so runs can last longer than an hour.
+- Before the load starts, `setup()` sends one authenticated request and stops the run if the backend rejects the token.
+
+Passwords, cookies and tokens stay in memory and are never logged.
+
+## Accounts
+
+### Previews
+
+With `LOAD_TEST_ACCOUNTS` unset, `setup()` signs up `LOAD_TEST_ACCOUNT_COUNT` (default 5) throwaway accounts named `loadtest-<run>-<n>@previews.agpt.co`, with random passwords that never leave the run. This works because previews allow sign-up for `@previews.agpt.co` and do not require email verification, so no email is sent and no shared secret is needed. The accounts stay in the preview's database until the preview is torn down.
+
+To run as the seeded personas instead (`preview-existing@previews.agpt.co` and the others), set `LOAD_TEST_ACCOUNTS`. Their password is the `PREVIEW_ACCOUNTS_PASSWORD` secret in the team Bitwarden:
 
 ```bash
-# Run orchestrator locally
-npm run local
-
-# Run orchestrator in k6 cloud
-npm run cloud
+export LOAD_TEST_ACCOUNTS="$(jq -n --arg p "$PREVIEW_ACCOUNTS_PASSWORD" \
+  '[{email: "preview-existing@previews.agpt.co", password: $p}]')"
 ```
 
-## 🔧 Test Configuration
+### Dev
 
-### Pre-Authenticated Tokens
+Dev's sign-up allowlist does not include `@previews.agpt.co`, and `@agpt.co` addresses can only sign up through Google, so the tests cannot sign up on dev. Running the authenticated tests there needs:
 
-- **Generation**: Run `node generate-tokens.js --count=160` to create tokens
-- **File**: `configs/pre-authenticated-tokens.js` (gitignored for security)  
-- **Capacity**: 160+ tokens supporting high-concurrency testing
-- **Expiry**: 24 hours (86400 seconds) - extended for long-duration testing
-- **Benefit**: Eliminates Supabase auth rate limiting at scale
-- **Regeneration**: Run `node generate-tokens.js --count=160` when tokens expire after 24 hours
+- A few dedicated email-and-password accounts. An admin can create them with Better Auth's admin API (`POST https://dev-builder.agpt.co/api/auth/admin/create-user`, signed in as an admin), or a domain for them can be added to dev's `AUTH_SIGNUP_ALLOWLIST` (`DEV_AUTH_SIGNUP_ALLOWLIST` in the infra repo's dev CD workflow) so they can sign up.
+- Verified email addresses, if dev requires email verification.
+- Their passwords in the team secret store, handed to the tests as `LOAD_TEST_ACCOUNTS`.
 
-### Environment Configuration
+### `LOAD_TEST_ACCOUNTS`
 
-- **LOCAL**: `http://localhost:8006` (local development)
-- **DEV**: `https://dev-server.agpt.co` (development environment)
-- **PROD**: `https://api.agpt.co` (production environment - coordinate with team!)
-- **PREVIEW**: `https://pr-<N>-server.agpt.co`, the `!deploy` preview of PR `<N>`. Set `PR_NUMBER=<N>` next to `K6_ENVIRONMENT=PREVIEW`. A preview starts with an empty database and has its own sign-in, so `generate-tokens.js` tokens are not valid there; `tests/marketplace/public-access-test.js` needs no token. `tests/basic/connectivity-test.js` also calls the preview's own Supabase project, so it needs `SUPABASE_URL` and `SUPABASE_ANON_KEY` for that project. Measuring a preview against a baseline is covered in `.claude/skills/perf-compare/SKILL.md`.
+A JSON array of accounts that already exist on the target:
 
-## 📊 Performance Testing Features
-
-### Real-Time Monitoring
-
-- **k6 Cloud Dashboard**: Live performance metrics during cloud test execution
-- **URL Tracking**: Test URLs automatically saved to `k6-cloud-results.txt`
-- **Error Tracking**: Detailed failure analysis and HTTP status monitoring
-- **Custom Metrics**: Request success/failure rates, response times, user journey tracking
-- **Authentication Monitoring**: Tracks auth success/failure rates separately from HTTP errors
-
-### Load Testing Capabilities
-
-- **High Concurrency**: Up to 160+ virtual users per test
-- **Authentication Scaling**: Pre-auth tokens support 160+ concurrent users
-- **Sequential Execution**: Multiple tests run one after another with proper delays
-- **Cloud Infrastructure**: Tests run on k6 cloud servers for consistent results
-- **ES Module Support**: Full ES module compatibility with modern JavaScript features
-
-## 📈 Performance Expectations
-
-### Validated Performance Limits
-
-- **Core API**: 100+ VUs successfully handling `/api/credits`, `/api/graphs`, `/api/blocks`, `/api/executions`
-- **Graph Execution**: 80+ VUs for complete workflow pipeline  
-- **Marketplace Browsing**: 160 VUs for public marketplace access (verified)
-- **Marketplace Library**: 160 VUs for authenticated library operations (verified)
-- **Authentication**: 160+ concurrent users with pre-authenticated tokens
-
-### Target Metrics
-
-- **P95 Latency**: Target < 5 seconds (marketplace), < 2 seconds (core API)
-- **P99 Latency**: Target < 10 seconds (marketplace), < 5 seconds (core API)
-- **Success Rate**: Target > 95% under normal load
-- **Error Rate**: Target < 5% for all endpoints
-
-### Recent Performance Results (160 VU Test - Verified)
-
-- **Marketplace Library Operations**: 500-1000ms response times at 160 VUs
-- **Authentication**: 100% success rate with pre-authenticated tokens
-- **Library Journeys**: 5 operations per journey completing successfully
-- **Test Duration**: 6+ minutes sustained load without degradation
-- **k6 Cloud Execution**: Stable performance on Amazon US Columbus infrastructure
-
-## 🔍 Troubleshooting
-
-### Common Issues
-
-**1. Authentication Failures**
-
-```
-❌ No valid authentication token available
-❌ Token has expired
+```json
+[{ "email": "loadtest-1@example.com", "password": "..." }]
 ```
 
-- **Solution**: Run `node generate-tokens.js --count=160` to create fresh 24-hour tokens
-- **Note**: Use `--count` parameter to generate appropriate number of tokens for your test scale
+The tests read it only from the environment. To keep it between runs, save it as `configs/accounts.json` (gitignored) and `export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"`. The tests sign in each account in the list once; VUs share them round-robin.
 
-**2. Cloud Credentials Missing**
+### Local stack
 
-```
-❌ Missing k6 cloud credentials
-```
+`K6_ENVIRONMENT=LOCAL` targets `http://localhost:8006` and `http://localhost:3000`; inside Docker, `./k6.sh` points it at `host.docker.internal`. The tests sign up throwaway accounts unless the local frontend restricts sign-up.
 
-- **Solution**: Set `K6_CLOUD_TOKEN` and `K6_CLOUD_PROJECT_ID=4254406`
+## Environment variables
 
-**3. k6 Cloud VU Scaling Issue**
+`./k6.sh` passes these into the container by name when they are set in your shell, so values never appear on a command line.
 
-```
-❌ Test shows only 5 VUs instead of requested 100+ VUs
-```
+| Variable                                                     | Used for                                                                                  |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| `K6_ENVIRONMENT`                                             | `PREVIEW`, `DEV`, `LOCAL` or `PROD` (default `DEV`)                                       |
+| `PR_NUMBER`                                                  | The pull request whose preview `PREVIEW` targets                                          |
+| `LOAD_TEST_ACCOUNTS`                                         | Accounts to sign in with; required on `DEV` and `PROD`                                    |
+| `LOAD_TEST_ACCOUNT_COUNT`                                    | Throwaway accounts to sign up when `LOAD_TEST_ACCOUNTS` is unset (default 5, at most 100) |
+| `VUS`, `DURATION`, `RAMP_UP`, `RAMP_DOWN`                    | Load shape                                                                                |
+| `REQUESTS_PER_VU`                                            | Requests per VU per iteration                                                             |
+| `ENDPOINT`, `CONCURRENT_REQUESTS`                            | `single-endpoint-test.js` only                                                            |
+| `THRESHOLD_*`                                                | Threshold overrides in the marketplace tests                                              |
+| `K6_ALLOW_PROD`                                              | Must be `true` for `PROD`; agree a production run with the team first                     |
+| `K6_CLOUD_TOKEN`, `K6_CLOUD_STACK_ID`, `K6_CLOUD_PROJECT_ID` | Grafana Cloud k6 runs only                                                                |
+| `K6_IMAGE`                                                   | Another k6 image for `./k6.sh` (default `grafana/k6:2.3.0`)                               |
+| `K6_BIN`                                                     | A k6 binary for the orchestrator to use instead of `./k6.sh`                              |
 
-- **Problem**: Using `K6_ENVIRONMENT=DEV VUS=160 k6 cloud run test.js` (incorrect)
-- **Solution**: Use `k6 cloud run --env K6_ENVIRONMENT=DEV --env VUS=160 test.js` (correct)
-- **Note**: The unified test runner (`run-tests.js`) already uses the correct syntax
+## Results in Sentry and perf-compare
 
-**4. Setup Verification Failed**
+k6 prints its own summary at the end of a run. For comparisons, use the backend's traces in Sentry:
 
-```
-❌ Verification failed
-```
+| Target  | Sentry project                                                     | Environment                      |
+| ------- | ------------------------------------------------------------------ | -------------------------------- |
+| Preview | `autogpt-server-previews` (backend), `builder-previews` (frontend) | `pr-<N>`                         |
+| Dev     | `autogpt-server` (backend), `builder` (frontend)                   | `app:dev-behave:cloud` (backend) |
 
-- **Solution**: Check tokens exist and local API is accessible
-
-### Required Setup
-
-**1. Supabase Service Key (Required for all testing):**
+Each route is a transaction named by its path, such as `/api/credits` or `/api/store/agents`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. Note the UTC start and end of each run (`date -u +%FT%TZ`), wait a few minutes for Sentry to ingest the last events, then compare windows with perf-compare. For example, a candidate preview against a control preview under the same load:
 
 ```bash
-# Option 1: From your local environment (if available)
-export SUPABASE_SERVICE_KEY="your-supabase-service-key"
-
-# Option 2: From Kubernetes secret (for platform developers)
-kubectl get secret supabase-service-key -o jsonpath='{.data.service-key}' | base64 -d
-
-# Option 3: From Supabase dashboard
-# Go to Project Settings > API > service_role key (never commit this!)
+S=$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py
+python3 "$S" --project autogpt-server-previews --transaction '/api/credits' \
+  --baseline env=pr-<CONTROL> window=<START>/<END> \
+  --candidate env=pr-<N> window=<START>/<END>
 ```
 
-**2. Generate Pre-Authenticated Tokens (Required):**
+perf-compare wants at least 200 samples from 30 traces per side, and recommends 1000 requests per transaction. The skill covers choosing baselines, interleaving runs and reading the verdict.
+
+## Orchestrator
+
+`orchestrator/orchestrator.js` runs all twelve scenarios in turn, at 100 to 500 VUs each, for about an hour: a stress suite rather than a comparison run. It needs Node and, by default, Docker:
 
 ```bash
-# Creates 160 tokens with 24-hour expiry - prevents auth rate limiting
-node generate-tokens.js --count=160
-
-# Generate fewer tokens for smaller tests (minimum 10)
-node generate-tokens.js --count=50
-
-# Regenerate when tokens expire (every 24 hours)
-node generate-tokens.js --count=160
+PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW          # local, through ./k6.sh
+LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)" node orchestrator/orchestrator.js DEV
 ```
 
-**3. k6 Cloud Credentials (Required for cloud testing):**
+It checks its settings before the first test, and writes a summary to `results/`.
+
+## Grafana Cloud k6 (optional)
+
+Runs can also execute on Grafana Cloud k6 (project `4254406`) with a Grafana Cloud k6 API token and the stack's numeric ID:
 
 ```bash
-# Get from k6 cloud dashboard: https://app.k6.io/account/api-token
-export K6_CLOUD_TOKEN="your-k6-cloud-token"
-export K6_CLOUD_PROJECT_ID="4254406"  # AutoGPT Platform project ID
-
-# Verify credentials work by running orchestrator
-node orchestrator/orchestrator.js DEV cloud
+export K6_CLOUD_TOKEN=... K6_CLOUD_STACK_ID=... K6_CLOUD_PROJECT_ID=4254406
+./k6.sh cloud run --env K6_ENVIRONMENT=PREVIEW --env PR_NUMBER=<N> --env VUS=50 tests/api/core-api-test.js
+PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW cloud
 ```
 
-## 📂 File Structure
+A remote cloud run sees only the variables passed with `--env`, and Grafana Cloud keeps those with the run. So the orchestrator refuses to send `LOAD_TEST_ACCOUNTS` there; cloud runs suit previews, where the tests sign up throwaway accounts. Results appear at <https://significantgravitas.grafana.net/a/k6-app/>.
 
-```
-load-tests/
-├── README.md                              # This documentation
-├── generate-tokens.js                     # Generate pre-auth tokens (MAIN TOKEN SETUP)
-├── package.json                           # Node.js dependencies and scripts
-├── orchestrator/
-│   └── orchestrator.js                    # Main test orchestrator (MAIN ENTRY POINT)
-├── configs/
-│   ├── environment.js                     # Environment URLs and configuration
-│   └── pre-authenticated-tokens.js        # Generated tokens (gitignored)
-├── tests/
-│   ├── basic/
-│   │   ├── connectivity-test.js           # Basic connectivity validation
-│   │   └── single-endpoint-test.js        # Individual API endpoint testing
-│   ├── api/
-│   │   ├── core-api-test.js               # Core authenticated API endpoints
-│   │   └── graph-execution-test.js        # Graph workflow pipeline testing
-│   ├── marketplace/
-│   │   ├── public-access-test.js          # Public marketplace browsing
-│   │   └── library-access-test.js         # Authenticated marketplace/library
-│   └── comprehensive/
-│       └── platform-journey-test.js       # Complete user journey simulation
-├── results/                               # Local test results (auto-created)
-├── unified-results-*.json                 # Orchestrator results (auto-created)
-└── *.log                                  # Test execution logs (auto-created)
-```
+## Troubleshooting
 
-## 🎯 Best Practices
-
-1. **Generate Tokens First**: Always run `node generate-tokens.js --count=160` before testing
-2. **Local for Development**: Use `DEV local` for debugging and development
-3. **Cloud for Performance**: Use `DEV cloud` for actual performance testing
-4. **Monitor Real-Time**: Check k6 cloud dashboards during test execution
-5. **Regenerate Tokens**: Refresh tokens every 24 hours when they expire
-6. **Unified Testing**: Orchestrator runs 12 optimized tests automatically
-
-## 🚀 Advanced Usage
-
-### Direct k6 Execution
-
-For granular control over individual test scripts:
-
-```bash
-# k6 Cloud execution (recommended for performance testing)
-# IMPORTANT: Use --env syntax for k6 cloud to ensure proper VU scaling
-k6 cloud run --env K6_ENVIRONMENT=DEV --env VUS=160 --env DURATION=5m --env RAMP_UP=30s --env RAMP_DOWN=30s tests/marketplace/library-access-test.js
-
-# Local execution with cloud output (debugging)
-K6_ENVIRONMENT=DEV VUS=10 DURATION=1m \
-k6 run tests/api/core-api-test.js --out cloud
-
-# Local execution with JSON output (offline testing)
-K6_ENVIRONMENT=DEV VUS=10 DURATION=1m \
-k6 run tests/api/core-api-test.js --out json=results.json
-```
-
-### Custom Token Generation
-
-```bash
-# Generate specific number of tokens
-node generate-tokens.js --count=200
-
-# Generate tokens with custom timeout
-node generate-tokens.js --count=100 --timeout=60
-```
-
-## 🔗 Related Documentation
-
-- [k6 Documentation](https://k6.io/docs/)
-- [AutoGPT Platform API Documentation](https://agpt.co/docs)
-- [k6 Cloud Dashboard](https://significantgravitas.grafana.net/a/k6-app/)
-
-For questions or issues, please refer to the [AutoGPT Platform issues](https://github.com/Significant-Gravitas/AutoGPT/issues).
+- **`DEV needs LOAD_TEST_ACCOUNTS`**: dev and prod have no throwaway sign-up; see [Accounts on dev](#dev).
+- **`Signing up throwaway account ... failed: HTTP 403`**: the target does not allow sign-up for `@previews.agpt.co`. Use `LOAD_TEST_ACCOUNTS`.
+- **`Getting a token ... failed: HTTP 401` right after sign-up**: the target requires email verification, so a sign-up gets no session. Use verified accounts in `LOAD_TEST_ACCOUNTS`.
+- **`... rejected the token from ...`**: the backend verifies tokens against a different frontend's JWKS than the one the test signed in at.
+- **`429` during setup**: another sign-in from the same IP used up the burst. `setup()` waits and retries; it fails only after five refusals in a row.
