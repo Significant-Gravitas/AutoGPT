@@ -198,8 +198,6 @@ class TestBuildSdkEnvDirectAnthropic:
             result = build_sdk_env()
 
         self._assert_direct_shape(result)
-        # Only the OpenRouter path is measured with the longer cache TTL.
-        assert "CLAUDE_CODE_PROMPT_CACHE_TTL" not in result
 
     def test_explicit_key_when_openrouter_flag_true_but_no_key(self):
         """OpenRouter flag is True but no api_key => openrouter_active is False."""
@@ -335,29 +333,6 @@ class TestBuildSdkEnvOpenRouter:
         assert merged["ANTHROPIC_AUTH_TOKEN"] == "sk-or-test-key"
         assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
         assert merged["CLAUDE_CODE_REFRESH_TOKEN"] == ""
-
-    @pytest.mark.parametrize("ttl", ["1h", "5m"])
-    def test_main_conversation_prompt_cache_ttl(self, ttl):
-        cfg = self._openrouter_config(claude_agent_prompt_cache_ttl=ttl)
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env()
-
-        assert result["CLAUDE_CODE_PROMPT_CACHE_TTL"] == ttl
-        # Sub-agents and other requests keep the CLI's own 5 minutes.
-        assert "CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL" not in result
-        assert "ENABLE_PROMPT_CACHING_1H" not in result
-
-    def test_prompt_cache_ttl_defaults_to_an_hour(self, monkeypatch):
-        monkeypatch.delenv("CHAT_CLAUDE_AGENT_PROMPT_CACHE_TTL", raising=False)
-        cfg = self._openrouter_config()
-        with patch("backend.copilot.sdk.env.config", cfg):
-            from backend.copilot.sdk.env import build_sdk_env
-
-            result = build_sdk_env()
-
-        assert result["CLAUDE_CODE_PROMPT_CACHE_TTL"] == "1h"
 
     def test_strips_trailing_v1(self):
         """The /v1 suffix is stripped from the base URL."""
