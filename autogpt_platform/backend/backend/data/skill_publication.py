@@ -303,3 +303,21 @@ async def abandon_publication(
         disposition=disposition,
         reason=reason,
     )
+
+
+async def get_pending_publication_for_skill(
+    user_id: str, owner_key: str, skill_name: str
+) -> SkillVersionRecord | None:
+    rows = await query_raw_with_schema(
+        """SELECT v.* FROM {schema_prefix}"SkillVersion" v
+        JOIN {schema_prefix}"SkillHead" h ON h."currentVersionId" = v."id"
+             AND h."id" = v."headId"
+        WHERE h."userId" = $1 AND v."userId" = $1 AND h."ownerKey" = $2
+              AND h."skillName" = $3 AND h."usePausedAt" IS NULL
+              AND v."state" = 'pending_write' """,
+        user_id,
+        owner_key,
+        skill_name,
+        model=prisma.models.SkillVersion,
+    )
+    return SkillVersionRecord.from_db(rows[0]) if rows else None

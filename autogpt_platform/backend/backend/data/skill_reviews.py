@@ -22,6 +22,20 @@ from backend.data.skill_learning import (
     list_pending_sources,
     require_owned_source,
 )
+from backend.util.json import SafeJson
+
+TERMINAL_REVIEW_DISPOSITIONS = frozenset(
+    {
+        "applied",
+        "skipped",
+        "no_novel_procedure",
+        "blocked_content",
+        "suppressed",
+        "needs_decision",
+        "stale_eligibility",
+        "inaccessible_evidence",
+    }
+)
 
 
 class LearningReviewRecord(BaseModel):
@@ -36,6 +50,8 @@ class LearningReviewRecord(BaseModel):
     disposition: str
     reason: str
     attempts: int
+    model_attempts: int = 0
+    replay: dict[str, Any] | None = None
     change_fingerprint: str | None
     skill_name: str | None
     applied_version_id: str | None
@@ -60,6 +76,8 @@ class LearningReviewRecord(BaseModel):
             disposition=row.disposition,
             reason=row.reason,
             attempts=row.attempts,
+            model_attempts=row.modelAttempts,
+            replay=row.reviewReplay if isinstance(row.reviewReplay, dict) else None,
             change_fingerprint=row.changeFingerprint,
             skill_name=row.skillName,
             applied_version_id=row.appliedVersionId,
@@ -89,7 +107,7 @@ def review_data(
     completed: bool = True,
 ) -> dict[str, Any]:
     """Column payload shared by the standalone upsert and the publication tx."""
-    return {
+    result = {
         "runId": run_id,
         "disposition": disposition,
         "reason": reason[:2000],
@@ -102,6 +120,17 @@ def review_data(
         "costMicrodollars": cost_microdollars,
         "completedAt": datetime.now(timezone.utc) if completed else None,
     }
+    if (
+        model is None
+        and not input_tokens
+        and not output_tokens
+        and cost_microdollars is None
+    ):
+        for key in ("model", "inputTokens", "outputTokens", "costMicrodollars"):
+            result.pop(key)
+    if completed or disposition in ("applied_pending", "conflict"):
+        result["reviewReplay"] = SafeJson(None)
+    return result
 
 
 async def upsert_review_in(
@@ -260,3 +289,133 @@ async def summarize_learning(user_id: str) -> LearningRunSummary:
             if r.created_at.timestamp() >= since
         ),
     )
+
+
+async def reserve_model_review(
+    user_id: str,
+    *,
+    source_id: str,
+    source_revision: str,
+    policy_version: int,
+    run_id: str,
+    max_attempts: int,
+    expected_epoch: int,
+) -> LearningReviewRecord | None:
+    from backend.data.db import query_raw_with_schema, transaction
+
+    async with transaction() as tx:
+        owned = await query_raw_with_schema(
+            'SELECT * FROM {schema_prefix}"SkillLearningSource" '
+            'WHERE "id" = $1 AND "userId" = $2 FOR UPDATE',
+            source_id,
+            user_id,
+            client=tx,
+            model=prisma.models.SkillLearningSource,
+        )
+        if not owned:
+            return None
+        source = LearningSourceRecord.from_db(owned[0])
+        rev = canonical_revision(source_revision)
+        if (
+            source.revision != rev
+            or source.epoch != expected_epoch
+            or source.eligibility != "eligible"
+        ):
+            return None
+        key: prisma.types.SkillLearningReviewWhereUniqueInput = {
+            "sourceId_sourceRevision_policyVersion": {
+                "sourceId": source_id,
+                "sourceRevision": rev,
+                "policyVersion": policy_version,
+            }
+        }
+        existing = await tx.skilllearningreview.find_unique(where=key)
+        if existing is not None and (
+            existing.userId != user_id
+            or existing.modelAttempts >= max_attempts
+            or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
+            or existing.disposition == "applied_pending"
+            or existing.reviewReplay is not None
+        ):
+            return None
+        if existing is None:
+            row = await tx.skilllearningreview.create(
+                data={
+                    "userId": user_id,
+                    "expertId": source.expert_id,
+                    "ownerKey": source.owner_key,
+                    "sourceId": source_id,
+                    "sourceRevision": rev,
+                    "policyVersion": policy_version,
+                    "runId": run_id,
+                    "disposition": "reviewing",
+                    "attempts": 0,
+                    "modelAttempts": 1,
+                }
+            )
+        else:
+            row = await tx.skilllearningreview.update(
+                where={"id": existing.id},
+                data={
+                    "runId": run_id,
+                    "disposition": "reviewing",
+                    "reason": "review started",
+                    "modelAttempts": {"increment": 1},
+                    "completedAt": None,
+                },
+            )
+    return LearningReviewRecord.from_db(row) if row else None
+
+
+async def checkpoint_review_usage(
+    user_id: str,
+    review_id: str,
+    run_id: str,
+    *,
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    cost_microdollars: int | None,
+) -> bool:
+    updated = await prisma.models.SkillLearningReview.prisma().update_many(
+        where={
+            "id": review_id,
+            "userId": user_id,
+            "runId": run_id,
+            "completedAt": None,
+            "disposition": "reviewing",
+        },
+        data={
+            "model": model,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "costMicrodollars": cost_microdollars,
+        },
+    )
+    return updated > 0
+
+
+async def set_review_replay(
+    user_id: str,
+    review_id: str,
+    run_id: str,
+    replay: dict[str, Any] | None,
+) -> bool:
+    import json
+
+    from backend.util.json import SafeJson
+
+    if replay is not None and len(json.dumps(replay).encode("utf-8")) > 524_288:
+        raise ValueError("review replay exceeds its storage budget")
+    updated = await prisma.models.SkillLearningReview.prisma().update_many(
+        where={
+            "id": review_id,
+            "userId": user_id,
+            "runId": run_id,
+            "completedAt": None,
+        },
+        data={
+            "reviewReplay": SafeJson(replay) if replay is not None else SafeJson(None)
+        },
+    )
+    return updated > 0

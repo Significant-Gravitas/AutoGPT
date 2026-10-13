@@ -110,10 +110,22 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     invalid = _validate_request(request)
     if invalid is not None:
         return invalid
-    current_text = await read_user_skill_markdown(
-        request.user_id, request.skill_name, expert_id=request.expert_id
-    )
+    try:
+        current_text = await read_user_skill_markdown(
+            request.user_id,
+            request.skill_name,
+            expert_id=request.expert_id,
+            strict=True,
+        )
+    except UnicodeDecodeError:
+        return PublishOutcome(
+            status="invalid_proposal", reason="existing skill is not valid UTF-8"
+        )
     current = parse_skill_markdown(current_text) if current_text else None
+    if request.create_only and current_text is not None:
+        return PublishOutcome(
+            status="conflict", reason="the target skill already exists"
+        )
     try:
         current_files = await read_user_skill_files(
             request.user_id, request.skill_name, expert_id=request.expert_id
@@ -179,6 +191,10 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     head = await versions.ensure_head(
         request.user_id, request.expert_id, request.skill_name
     )
+    if request.create_only and head.current_version_id is not None:
+        return PublishOutcome(
+            status="conflict", reason="the target skill already has a version"
+        )
     if head.current_version_id is None and current is not None and current_text:
         await record_registry_write(
             request.user_id,
@@ -329,7 +345,7 @@ async def _record_untracked_edit(
     if head.content_hash is None:
         return None
     raw = await read_user_skill_markdown(
-        request.user_id, request.skill_name, expert_id=request.expert_id
+        request.user_id, request.skill_name, expert_id=request.expert_id, strict=True
     )
     if raw is None:
         return None
@@ -585,3 +601,15 @@ async def reconcile_pending(user_id: str) -> int:
         if outcome.status == "applied":
             completed += 1
     return completed
+
+
+async def reconcile_skill_for_read(
+    user_id: str, expert_id: str | None, skill_name: str
+) -> None:
+    from backend.data.skill_learning import owner_key_for
+
+    pending = await skill_publication_db().get_pending_publication_for_skill(
+        user_id, owner_key_for(expert_id), skill_name
+    )
+    if pending is not None:
+        await write_committed_version(user_id, pending, pending.review_id)

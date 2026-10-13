@@ -55,6 +55,7 @@ class PublishRequest(BaseModel):
     body: str
     files: list[SkillFile] | None = None
     expected_package_hash: str | None = None
+    create_only: bool = False
     summary: str
     origin: str
     sources: list[SourceSnapshot] = Field(default_factory=list)

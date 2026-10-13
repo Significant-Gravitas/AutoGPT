@@ -78,4 +78,4 @@ async def test_transient_package_read_failure_remains_retryable(
 
     assert recovered.dispositions == {"needs_decision": 1}
     assert not (await fake_store.get_source(USER, source.id)).has_unprocessed_revision
-    assert boundaries["review"].await_count == 2
+    assert boundaries["review"].await_count == 1

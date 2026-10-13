@@ -47,7 +47,7 @@ async def test_pausing_during_review_preserves_the_revision_until_resume(
     boundaries["review"].return_value = _completion(_proposal(supported_by=["msg:2"]))
     resumed = await _run()
     assert resumed.applied == 1
-    assert boundaries["review"].await_count == 2
+    assert boundaries["review"].await_count == 1
     boundaries["write"].assert_awaited_once()
     assert (
         await fake_store.get_source(USER, source.id)

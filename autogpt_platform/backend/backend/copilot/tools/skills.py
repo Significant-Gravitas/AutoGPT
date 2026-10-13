@@ -2258,6 +2258,7 @@ async def read_user_skill_markdown(
     *,
     expert_id: str | None = None,
     scope: WorkspaceScope | None = None,
+    strict: bool = False,
 ) -> str | None:
     """Raw ``SKILL.md`` text as stored — the bytes a version hash refers to."""
     slug = name.strip().lower()
@@ -2267,7 +2268,11 @@ async def read_user_skill_markdown(
     try:
         raw = await manager.read_file(_skill_md_path(slug, expert_id))
         return raw.decode("utf-8")
-    except (FileNotFoundError, UnicodeDecodeError):
+    except FileNotFoundError:
+        return None
+    except UnicodeDecodeError:
+        if strict:
+            raise
         return None
 
 
@@ -3079,8 +3084,8 @@ async def resolve_loaded_skill_version(
 
     Raises :class:`SkillUsePausedError` when the owner stopped this skill
     and propagates registry errors so the caller fails closed. A body whose
-    hash differs from the head's current version (a write that bypassed
-    version tracking, or a pending write) is reported unversioned.
+    hash differs from the head's ready version (a write that bypassed
+    version tracking) is reported unversioned. Unsettled versions are refused.
     """
     resolved = await resolve_current_version(user_id, expert_id, name)
     if resolved is None:
@@ -3196,7 +3201,10 @@ class ReadSkillTool(BaseTool):
             )
 
         try:
+            from backend.copilot.learning.publish import reconcile_skill_for_read
+
             manager = await _get_user_skill_manager(user_id, owner.scope)
+            await reconcile_skill_for_read(user_id, owner.expert_id, name)
             raw = await manager.read_file(_skill_md_path(name, owner.expert_id))
         except WorkspaceAccessDeniedError:
             return ErrorResponse(

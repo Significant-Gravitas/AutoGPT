@@ -48,6 +48,7 @@ def fake_store(monkeypatch):
         "dispositions",
         "review_preconditions",
         "content_approvals",
+        "review_replay",
         "chat_source",
     )
     seams = (

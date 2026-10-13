@@ -634,6 +634,9 @@ class DatabaseManager(AppService):
     list_pending_sources = _(skill_learning_data.list_pending_sources)
     list_pending_owner_keys = _(skill_learning_data.list_pending_owner_keys)
     get_review_for_revision = _(skill_reviews_data.get_review_for_revision)
+    reserve_model_review = _(skill_reviews_data.reserve_model_review)
+    checkpoint_review_usage = _(skill_reviews_data.checkpoint_review_usage)
+    set_review_replay = _(skill_reviews_data.set_review_replay)
     require_owned_source = _(skill_learning_data.require_owned_source)
     set_source_eligibility = _(skill_learning_data.set_source_eligibility)
     set_source_approval = _(skill_learning_data.set_source_approval)
@@ -653,6 +656,9 @@ class DatabaseManager(AppService):
     complete_publication = _(skill_publication_data.complete_publication)
     abandon_publication = _(skill_publication_data.abandon_publication)
     list_pending_publications = _(skill_publication_data.list_pending_publications)
+    get_pending_publication_for_skill = _(
+        skill_publication_data.get_pending_publication_for_skill
+    )
     create_version = _(skill_versions_data.create_version)
     set_version_state = _(skill_versions_data.set_version_state)
     get_version = _(skill_versions_data.get_version)
@@ -1119,6 +1125,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_pending_sources = d.list_pending_sources
     list_pending_owner_keys = d.list_pending_owner_keys
     get_review_for_revision = d.get_review_for_revision
+    reserve_model_review = d.reserve_model_review
+    checkpoint_review_usage = d.checkpoint_review_usage
+    set_review_replay = d.set_review_replay
     require_owned_source = d.require_owned_source
     set_source_eligibility = d.set_source_eligibility
     set_source_approval = d.set_source_approval
@@ -1138,6 +1147,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     complete_publication = d.complete_publication
     abandon_publication = d.abandon_publication
     list_pending_publications = d.list_pending_publications
+    get_pending_publication_for_skill = d.get_pending_publication_for_skill
     create_version = d.create_version
     set_version_state = d.set_version_state
     get_version = d.get_version

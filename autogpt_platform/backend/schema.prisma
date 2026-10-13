@@ -1555,6 +1555,10 @@ model SkillLearningReview {
   disposition String
   reason      String @default("")
   attempts    Int    @default(1)
+  // Model-call reservations also bound retries after an ambiguous crash.
+  modelAttempts Int  @default(0)
+  // Validated publication input only; cleared when the review settles.
+  reviewReplay Json?
   // Normalised fingerprint of the proposed behaviour (see fingerprint.py).
   changeFingerprint String?
   skillName         String?

@@ -9,7 +9,10 @@ from backend.copilot.tools.skills import (
     parse_skill_markdown,
     read_user_skill_package,
 )
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_version_files import SkillVersionFile, version_package_hash
+
+from .content_approvals import current_content_approvals
 
 MAX_REVIEW_PACKAGE_CHARS = 48_000
 MAX_REVIEW_FILES_CHARS = 96_000
@@ -33,6 +36,7 @@ class ReviewedPackage(BaseModel):
     package_hash: str
     files: list[LearningFile] = Field(default_factory=list)
     complete: bool
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
 
 
 async def load_reviewed_packages(
@@ -57,6 +61,9 @@ async def load_reviewed_packages(
         skills[index] = parsed
         reviewed = _reviewed_package(
             package.skill_md, package.files, min(remaining, MAX_REVIEW_PACKAGE_CHARS)
+        )
+        reviewed.content_approvals = await current_content_approvals(
+            user_id, expert_id, skill.name
         )
         packages[skill.name] = reviewed
         remaining -= sum(len(f.content) for f in reviewed.files)

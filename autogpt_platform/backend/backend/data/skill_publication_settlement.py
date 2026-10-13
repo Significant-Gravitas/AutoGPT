@@ -6,6 +6,7 @@ import prisma.types
 
 from backend.data.db import transaction
 from backend.data.skill_versions import PENDING_WRITE_STATE
+from backend.util.json import SafeJson
 
 
 async def settle_publication(
@@ -34,6 +35,7 @@ async def settle_publication(
             where={"id": review_id, "userId": user_id, "appliedVersionId": version_id},
             data={
                 "disposition": disposition,
+                "reviewReplay": SafeJson(None),
                 "reason": reason[:2000],
                 "completedAt": datetime.now(timezone.utc),
             },

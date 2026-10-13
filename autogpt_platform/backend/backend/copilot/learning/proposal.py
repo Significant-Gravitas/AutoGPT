@@ -13,10 +13,12 @@ import re
 from backend.copilot.tools.skills import (
     ParsedSkill,
     SkillPackage,
+    render_skill_markdown,
     validate_package,
     validate_skill_content,
 )
 from backend.data.skill_publication import ReviewStamp
+from backend.data.skill_version_files import version_package_hash
 
 from .contract import EvidenceBundle, SourceRevision
 from .packages import ReviewedPackage
@@ -119,6 +121,7 @@ def build_publish_request(
     bundle: EvidenceBundle,
     stamp: ReviewStamp,
     packages: dict[str, ReviewedPackage] | None = None,
+    existing: list[ParsedSkill] | None = None,
 ) -> PublishRequest:
     assert proposal.skill_name and proposal.description and proposal.body
     signal_labels = {s.ref: s.label for s in source.outcome_signals}
@@ -139,6 +142,7 @@ def build_publish_request(
         user_id=user_id,
         expert_id=source.scope.expert_id,
         skill_name=proposal.skill_name,
+        create_only=proposal.decision == "create",
         description=proposal.description,
         triggers=proposal.triggers,
         body=proposal.body,
@@ -152,7 +156,17 @@ def build_publish_request(
             if packages
             and proposal.decision == "update"
             and proposal.skill_name in packages
-            else None
+            else version_package_hash(
+                next(
+                    (
+                        render_skill_markdown(skill)
+                        for skill in existing or []
+                        if skill.name == proposal.skill_name
+                    ),
+                    "",
+                ),
+                [],
+            )
         ),
         summary=proposal.summary
         or f"{proposal.decision.capitalize()}d from a verified procedure",

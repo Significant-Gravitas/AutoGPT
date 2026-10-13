@@ -372,6 +372,9 @@ class _patch_skills_path:
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
             patch(
+                "backend.copilot.learning.publish.reconcile_skill_for_read", AsyncMock()
+            ),
+            patch(
                 "backend.copilot.tools.workdir.make_session_path",
                 lambda session_id: self.workdir,
             ),

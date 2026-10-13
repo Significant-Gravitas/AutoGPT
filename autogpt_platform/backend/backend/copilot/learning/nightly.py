@@ -28,7 +28,11 @@ from backend.copilot.tools.skills import (
     list_user_skills,
     read_user_skill_with_body,
 )
-from backend.data.db_accessors import skill_learning_db, skill_versions_db
+from backend.data.db_accessors import (
+    skill_learning_db,
+    skill_reviews_db,
+    skill_versions_db,
+)
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_learning import LearningSourceRecord
 from backend.data.skill_publication import ReviewStamp
@@ -38,6 +42,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .chat_source import source_revision_from_record
 from .content_checks import safe_diagnostic
 from .contract import (
+    SourceRevision,
     check_approval_precondition,
     eligibility_snapshot_changed,
     get_source_adapter,
@@ -56,7 +61,8 @@ from .dispositions import (
 )
 from .packages import load_reviewed_packages
 from .proposal import build_publish_request, validate_proposal
-from .publish import publish_learned_version, reconcile_pending
+from .publish import PublishRequest, publish_learned_version, reconcile_pending
+from .review_replay import MAX_MODEL_ATTEMPTS, load_review_replay, save_review_replay
 from .reviewer import DreamLLMError, record_review_cost, review_evidence
 
 logger = logging.getLogger(__name__)
@@ -120,14 +126,9 @@ async def _run_under_lease(
         result.skip_reason = "no_eligible_work"
         return
     budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
-    if not budget_ok:
-        if budget_skip == "rate_limit_unavailable":
-            result.error = f"billing: {budget_skip}"
-        else:
-            result.skipped = True
-            result.skip_reason = budget_skip or "insufficient_credits"
-        return
-    budget_exhausted = False
+    if budget_skip == "rate_limit_unavailable":
+        result.error = f"billing: {budget_skip}"
+    budget_exhausted = not budget_ok
     for stored in pending:
         if not await lock.refresh():
             result.error = "learning lease lost"
@@ -135,15 +136,23 @@ async def _run_under_lease(
         if result.applied + result.proposed >= MAX_CHANGES_PER_RUN:
             count(result, "deferred")
             continue
-        if budget_exhausted:
+        if (
+            budget_exhausted
+            and await load_review_replay(
+                user_id, source_revision_from_record(stored), POLICY_VERSION
+            )
+            is None
+        ):
             count(result, "budget_exhausted")
             continue
         try:
             await skill_learning_db().mark_source_attempted(
                 user_id, stored.id, stored.revision
             )
-            disposition = await _process_source(user_id, stored, result, config, lock)
-            budget_exhausted = disposition == "budget_exhausted"
+            disposition = await _process_source(
+                user_id, stored, result, config, lock, budget_exhausted
+            )
+            budget_exhausted = budget_exhausted or disposition == "budget_exhausted"
         except Exception as exc:
             logger.warning(
                 "Skill learning source %s failed for user %s",
@@ -154,6 +163,9 @@ async def _run_under_lease(
             result.per_source_errors.append(f"{stored.id[:12]}: {type(exc).__name__}")
             disposition = "provider_error"
         count(result, disposition)
+    if not budget_ok and not result.reviewed:
+        result.skipped = True
+        result.skip_reason = budget_skip or "insufficient_credits"
 
 
 async def _select_sources(
@@ -191,6 +203,7 @@ async def _process_source(
     result: SkillLearningResult,
     config: ChatConfig,
     lock: AsyncClusterLock,
+    budget_exhausted: bool = False,
 ) -> str:
     source = source_revision_from_record(stored)
     settled = await already_settled(user_id, source, result, before_review=True)
@@ -251,8 +264,19 @@ async def _process_source(
             "verification evidence is clipped or missing; not reviewed",
         )
 
-    budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
+    cached = await load_review_replay(user_id, source, POLICY_VERSION)
+    if cached is not None and cached.review is not None:
+        return await _publish_paid_request(
+            user_id, source, result, cached, cached.review
+        )
+
+    if budget_exhausted:
+        budget_ok, budget_skip = False, "insufficient_credits"
+    else:
+        budget_ok, budget_skip = await check_dream_budget(user_id, config=config)
     if not budget_ok:
+        if budget_skip == "rate_limit_unavailable":
+            result.error = f"billing: {budget_skip}"
         return await record(
             user_id,
             source,
@@ -263,14 +287,56 @@ async def _process_source(
         )
     existing = await _existing_skills(user_id, source.scope.expert_id)
     packages = await load_reviewed_packages(user_id, source.scope.expert_id, existing)
+    reviews = skill_reviews_db()
+    claim = await reviews.reserve_model_review(
+        user_id,
+        source_id=source.source_id,
+        source_revision=source.revision,
+        policy_version=POLICY_VERSION,
+        run_id=result.run_id,
+        max_attempts=MAX_MODEL_ATTEMPTS,
+        expected_epoch=source.epoch,
+    )
+    if claim is None:
+        current = await adapter.revalidate(
+            source_id=source.source_id,
+            revision=source.revision,
+            scope=source.scope,
+            approval_event_id=source.approval.event_id if source.approval else None,
+        )
+        problem = check_approval_precondition(adapter, current, source)
+        if problem is not None:
+            if eligibility_snapshot_changed(current, source):
+                return await record(
+                    user_id, source, result, "deferred", problem, advance=False
+                )
+            return await settle_ineligible(
+                user_id, source, result, current.state, problem
+            )
+        previous = await reviews.get_review_for_revision(
+            user_id, source.source_id, source.revision, POLICY_VERSION
+        )
+        if previous is not None and previous.model_attempts >= MAX_MODEL_ATTEMPTS:
+            return await settle(
+                user_id,
+                source,
+                result,
+                "skipped",
+                "model review attempt limit reached; new evidence can be reviewed again",
+            )
+        return await record(
+            user_id,
+            source,
+            result,
+            "deferred",
+            "review state changed before model call",
+            advance=False,
+        )
     try:
         completion = await review_evidence(config, bundle, existing, packages)
     except DreamLLMError as exc:
         return await record_provider_error(user_id, source, result, exc, config)
     result.model_calls += 1
-    cost = await record_review_cost(
-        user_id=user_id, run_id=result.run_id, usage=completion.usage
-    )
     stamp = ReviewStamp(
         source=stored,
         source_revision=source.revision,
@@ -279,35 +345,98 @@ async def _process_source(
         model=completion.usage.model,
         input_tokens=completion.usage.input_tokens,
         output_tokens=completion.usage.output_tokens,
-        cost_microdollars=cost,
     )
-    if not await lock.refresh():
-        result.error = "learning lease lost"
-        return await record(
-            user_id,
-            source,
-            result,
-            "deferred",
-            "learning lease lost during review; not published",
-            advance=False,
-            stamp=stamp,
+    try:
+        cost = await record_review_cost(
+            user_id=user_id, run_id=result.run_id, usage=completion.usage
         )
-    proposal = completion.value
-    rejection = validate_proposal(proposal, bundle, existing, packages)
-    if rejection is not None:
-        disposition = "no_novel_procedure" if proposal.decision == "skip" else "skipped"
-        return await settle(
-            user_id,
-            source,
-            result,
-            disposition,
-            safe_diagnostic(rejection),
-            stamp=stamp,
+        stamp = stamp.model_copy(update={"cost_microdollars": cost})
+        if not await _checkpoint_usage(user_id, claim.id, stamp):
+            result.reviewed += 1
+            return "deferred"
+        if not await lock.refresh():
+            result.error = "learning lease lost"
+            return await record(
+                user_id,
+                source,
+                result,
+                "deferred",
+                "learning lease lost during review; not published",
+                advance=False,
+                stamp=stamp,
+            )
+        proposal = completion.value
+        rejection = validate_proposal(proposal, bundle, existing, packages)
+        if rejection is not None:
+            disposition = (
+                "no_novel_procedure" if proposal.decision == "skip" else "skipped"
+            )
+            return await settle(
+                user_id,
+                source,
+                result,
+                disposition,
+                safe_diagnostic(rejection),
+                stamp=stamp,
+            )
+        request = build_publish_request(
+            user_id, source, proposal, bundle, stamp, packages, existing
         )
+        await save_review_replay(user_id, claim, request, packages)
+        return await _publish_paid_request(user_id, source, result, request, stamp)
+    except Exception as exc:
+        return await _record_post_review_failure(user_id, source, result, stamp, exc)
 
-    request = build_publish_request(user_id, source, proposal, bundle, stamp, packages)
-    outcome = await publish_learned_version(request)
-    return await settle_outcome(user_id, source, result, outcome, stamp, request)
+
+async def _checkpoint_usage(user_id: str, review_id: str, stamp: ReviewStamp) -> bool:
+    return await skill_reviews_db().checkpoint_review_usage(
+        user_id,
+        review_id,
+        stamp.run_id,
+        model=stamp.model,
+        input_tokens=stamp.input_tokens,
+        output_tokens=stamp.output_tokens,
+        cost_microdollars=stamp.cost_microdollars,
+    )
+
+
+async def _publish_paid_request(
+    user_id: str,
+    source: SourceRevision,
+    result: SkillLearningResult,
+    request: PublishRequest,
+    stamp: ReviewStamp,
+) -> str:
+    try:
+        outcome = await publish_learned_version(request)
+        return await settle_outcome(user_id, source, result, outcome, stamp, request)
+    except Exception as exc:
+        return await _record_post_review_failure(user_id, source, result, stamp, exc)
+
+
+async def _record_post_review_failure(
+    user_id: str,
+    source: SourceRevision,
+    result: SkillLearningResult,
+    stamp: ReviewStamp,
+    exc: Exception,
+) -> str:
+    settled = await already_settled(user_id, source, result)
+    if settled is not None:
+        return settled
+    result.per_source_errors.append(f"{source.source_id[:12]}: {type(exc).__name__}")
+    logger.warning(
+        "Paid skill review processing failed for user %s", user_id[:12], exc_info=True
+    )
+    return await record(
+        user_id,
+        source,
+        result,
+        "provider_error",
+        f"post-review processing failed: {type(exc).__name__}",
+        advance=False,
+        stamp=stamp,
+    )
 
 
 async def _existing_skills(user_id: str, expert_id: str | None) -> list[ParsedSkill]:

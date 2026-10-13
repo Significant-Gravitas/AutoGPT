@@ -43,7 +43,7 @@ async def test_paused_skill_reuses_its_ledger_until_resumed(
         USER, head.owner_key, NAME, learning_paused=False, use_paused=True
     )
     assert (await _run()).applied == 1
-    assert boundaries["review"].await_count == charge.await_count == 2
+    assert boundaries["review"].await_count == charge.await_count == 1
     assert (
         await fake_store.get_head(USER, head.owner_key, NAME)
     ).use_paused_at is not None
@@ -89,6 +89,10 @@ async def test_pause_returning_during_a_paid_retry_keeps_its_cost_stamp(
     source = await _source(fake_store)
     assert (await _run()).dispositions == {"paused": 1}
     await fake_store.update_head_policy(USER, EXPERT, NAME, learning_paused=False)
+    previous = await fake_store.get_review_for_revision(
+        USER, source.id, source.revision, 1
+    )
+    await fake_store.set_review_replay(USER, previous.id, previous.run_id, None)
 
     async def pause_during_review(*_args):
         await fake_store.update_head_policy(USER, EXPERT, NAME, learning_paused=True)

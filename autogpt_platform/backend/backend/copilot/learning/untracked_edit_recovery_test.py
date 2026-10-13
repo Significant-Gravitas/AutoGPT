@@ -106,7 +106,7 @@ async def test_transient_edit_write_failure_keeps_source_retryable(
     boundaries["write"].side_effect = _validate_registry_write
     retried = await _run()
     assert retried.dispositions == {"conflict": 1}
-    assert boundaries["review"].await_count == 2
+    assert boundaries["review"].await_count == 1
     assert boundaries["write"].await_count == 2
     ledger = await fake_store.get_review_for_revision(
         USER, source.id, source.revision, 1

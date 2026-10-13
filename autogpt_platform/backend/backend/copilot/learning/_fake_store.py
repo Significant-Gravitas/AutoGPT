@@ -27,7 +27,11 @@ from backend.data.skill_publication import (
     ReviewStamp,
     VersionDraft,
 )
-from backend.data.skill_reviews import LearningReviewRecord, LearningRunSummary
+from backend.data.skill_reviews import (
+    TERMINAL_REVIEW_DISPOSITIONS,
+    LearningReviewRecord,
+    LearningRunSummary,
+)
 from backend.data.skill_revocations import RevokedVersion
 from backend.data.skill_use import SkillSuppressionRecord, SkillUseEventRecord
 from backend.data.skill_version_files import SkillVersionFile
@@ -280,6 +284,19 @@ class FakeLearningStore:
         existing = self.reviews.get(key)
         if existing is not None and existing.user_id != user_id:
             raise LearningAccessError("review belongs to another user")
+        if (
+            existing
+            and model is None
+            and not input_tokens
+            and not output_tokens
+            and cost_microdollars is None
+        ):
+            model, input_tokens, output_tokens, cost_microdollars = (
+                existing.model,
+                existing.input_tokens,
+                existing.output_tokens,
+                existing.cost_microdollars,
+            )
         record = LearningReviewRecord(
             id=existing.id if existing else str(uuid.uuid4()),
             user_id=user_id,
@@ -292,6 +309,14 @@ class FakeLearningStore:
             disposition=disposition,
             reason=reason,
             attempts=(existing.attempts + 1) if existing else 1,
+            model_attempts=existing.model_attempts if existing else 0,
+            replay=(
+                existing.replay
+                if existing
+                and not completed
+                and disposition not in ("applied_pending", "conflict")
+                else None
+            ),
             change_fingerprint=change_fingerprint,
             skill_name=skill_name,
             applied_version_id=applied_version_id,
@@ -304,6 +329,108 @@ class FakeLearningStore:
         )
         self.reviews[key] = record
         return record
+
+    async def reserve_model_review(
+        self,
+        user_id: str,
+        *,
+        source_id: str,
+        source_revision: str,
+        policy_version: int,
+        run_id: str,
+        max_attempts: int,
+        expected_epoch: int,
+    ) -> LearningReviewRecord | None:
+        source = await self.get_source(user_id, source_id)
+        if (
+            source is None
+            or source.eligibility != "eligible"
+            or source.epoch != expected_epoch
+            or source.revision != canonical_revision(source_revision)
+        ):
+            return None
+        existing = await self.get_review_for_revision(
+            user_id, source_id, source_revision, policy_version
+        )
+        if existing and (
+            existing.model_attempts >= max_attempts
+            or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
+            or existing.disposition == "applied_pending"
+            or existing.replay is not None
+        ):
+            return None
+        if existing is None:
+            existing = await self.upsert_review(
+                user_id,
+                source_id=source_id,
+                source_revision=source_revision,
+                policy_version=policy_version,
+                run_id=run_id,
+                disposition="reviewing",
+                completed=False,
+            )
+            existing = existing.model_copy(update={"attempts": 0})
+        claimed = existing.model_copy(
+            update={
+                "model_attempts": existing.model_attempts + 1,
+                "run_id": run_id,
+                "disposition": "reviewing",
+                "reason": "review started",
+                "completed_at": None,
+            }
+        )
+        self.reviews[self._review_key(source_id, source_revision, policy_version)] = (
+            claimed
+        )
+        return claimed
+
+    async def checkpoint_review_usage(
+        self,
+        user_id: str,
+        review_id: str,
+        run_id: str,
+        *,
+        model: str | None,
+        input_tokens: int,
+        output_tokens: int,
+        cost_microdollars: int | None,
+    ) -> bool:
+        found = self._find_review(review_id)
+        if not found:
+            return False
+        key, row = found
+        if (
+            row.user_id != user_id
+            or row.run_id != run_id
+            or row.completed_at is not None
+            or row.disposition != "reviewing"
+        ):
+            return False
+        self.reviews[key] = row.model_copy(
+            update={
+                "model": model,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_microdollars": cost_microdollars,
+            }
+        )
+        return True
+
+    async def set_review_replay(
+        self, user_id: str, review_id: str, run_id: str, replay: dict[str, Any] | None
+    ) -> bool:
+        found = self._find_review(review_id)
+        if not found:
+            return False
+        key, row = found
+        if (
+            row.user_id != user_id
+            or row.run_id != run_id
+            or row.completed_at is not None
+        ):
+            return False
+        self.reviews[key] = row.model_copy(update={"replay": replay})
+        return True
 
     async def get_review_for_revision(
         self, user_id: str, source_id: str, source_revision: str, policy_version: int
@@ -628,6 +755,7 @@ class FakeLearningStore:
                     "disposition": "applied",
                     "reason": reason,
                     "completed_at": _now(),
+                    "replay": None,
                 }
             )
 
@@ -663,8 +791,22 @@ class FakeLearningStore:
                     "disposition": disposition,
                     "reason": reason,
                     "completed_at": _now(),
+                    "replay": None,
                 }
             )
+
+    async def get_pending_publication_for_skill(
+        self, user_id: str, owner_key: str, skill_name: str
+    ) -> SkillVersionRecord | None:
+        head = await self.get_head(user_id, owner_key, skill_name)
+        if (
+            head is None
+            or not head.current_version_id
+            or head.use_paused_at is not None
+        ):
+            return None
+        version = await self.get_version(user_id, head.current_version_id)
+        return version if version and version.state == "pending_write" else None
 
     async def list_pending_publications(self, user_id: str) -> list[SkillVersionRecord]:
         return await self.list_versions_in_states(user_id, [PENDING_WRITE_STATE])

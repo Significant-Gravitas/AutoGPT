@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from backend.copilot.config import ChatConfig
 from backend.data.db_accessors import skill_learning_db, skill_reviews_db
 from backend.data.skill_publication import APPLIED_PENDING_DISPOSITION, ReviewStamp
+from backend.data.skill_reviews import TERMINAL_REVIEW_DISPOSITIONS
 
 from .content_checks import safe_diagnostic
 from .contract import EligibilityState, SourceRevision
@@ -30,18 +31,7 @@ logger = logging.getLogger(__name__)
 POLICY_VERSION = 1
 
 # Dispositions that settle a revision: the cursor moves past it.
-_TERMINAL_DISPOSITIONS = frozenset(
-    {
-        "applied",
-        "skipped",
-        "no_novel_procedure",
-        "blocked_content",
-        "suppressed",
-        "needs_decision",
-        "stale_eligibility",
-        "inaccessible_evidence",
-    }
-)
+_TERMINAL_DISPOSITIONS = TERMINAL_REVIEW_DISPOSITIONS
 
 
 class SkillLearningResult(BaseModel):
