@@ -62,6 +62,10 @@ function generateExecutionInputs() {
 
 const config = getEnvironmentConfig();
 
+// 402 means the account has no credits, as a new account may not, so it is
+// not counted as a failed request.
+const EXECUTION_STATUSES = http.expectedStatuses(200, 402);
+
 // Custom metrics for graph execution testing
 const graphCreations = new Counter("graph_creations_total");
 const graphExecutions = new Counter("graph_executions_total");
@@ -185,7 +189,7 @@ export default function (data) {
           inputs: executionInputs,
           credentials_inputs: {},
         }),
-        params: { headers },
+        params: { headers, responseCallback: EXECUTION_STATUSES },
       });
     }
 
@@ -220,9 +224,8 @@ export default function (data) {
 // These functions are no longer used since implementing http.batch() for true concurrency
 
 export function teardown(data) {
+  // graph_creations_total and graph_executions_total are in k6's summary.
   console.log("🧹 Cleaning up graph execution load test...");
-  console.log(`Total graph creations: ${graphCreations.value || 0}`);
-  console.log(`Total graph executions: ${graphExecutions.value || 0}`);
 
   const testDuration = Date.now() - data.timestamp;
   console.log(`Test completed in ${testDuration}ms`);

@@ -61,6 +61,8 @@ export const options = {
     test_type: "marketplace_public_access",
     environment: __ENV.K6_ENVIRONMENT || "DEV",
   },
+  // handleSummary reports p(99), which k6 leaves out by default.
+  summaryTrendStats: ["avg", "min", "med", "max", "p(90)", "p(95)", "p(99)"],
 };
 
 export default function () {
@@ -396,11 +398,11 @@ export function handleSummary(data) {
       ramp_down: RAMP_DOWN,
     },
     performance_metrics: {
-      total_requests: data.metrics.http_reqs?.count || 0,
+      total_requests: data.metrics.http_reqs?.values?.count || 0,
       failed_requests: data.metrics.http_req_failed?.values?.passes || 0,
       avg_response_time: data.metrics.http_req_duration?.values?.avg || 0,
-      p95_response_time: data.metrics.http_req_duration?.values?.p95 || 0,
-      p99_response_time: data.metrics.http_req_duration?.values?.p99 || 0,
+      p95_response_time: data.metrics.http_req_duration?.values?.["p(95)"] || 0,
+      p99_response_time: data.metrics.http_req_duration?.values?.["p(99)"] || 0,
     },
     custom_metrics: {
       marketplace_requests:
@@ -411,9 +413,11 @@ export function handleSummary(data) {
     },
     thresholds_met: {
       p95_threshold:
-        (data.metrics.http_req_duration?.values?.p95 || 0) < THRESHOLD_P95,
+        (data.metrics.http_req_duration?.values?.["p(95)"] || 0) <
+        THRESHOLD_P95,
       p99_threshold:
-        (data.metrics.http_req_duration?.values?.p99 || 0) < THRESHOLD_P99,
+        (data.metrics.http_req_duration?.values?.["p(99)"] || 0) <
+        THRESHOLD_P99,
       error_rate_threshold:
         (data.metrics.http_req_failed?.values?.rate || 0) <
         THRESHOLD_ERROR_RATE,

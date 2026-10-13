@@ -116,7 +116,7 @@ k6 prints its own summary at the end of a run. For comparisons, use the backend'
 | Preview | `autogpt-server-previews` (backend), `builder-previews` (frontend) | `pr-<N>`                         |
 | Dev     | `autogpt-server` (backend), `builder` (frontend)                   | `app:dev-behave:cloud` (backend) |
 
-Each route is a transaction named by its path, such as `/api/credits` or `/api/store/agents`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. Note the UTC start and end of each run (`date -u +%FT%TZ`), wait a few minutes for Sentry to ingest the last events, then compare windows with perf-compare. For example, a candidate preview against a control preview under the same load:
+Each route is a transaction named by its path, such as `/api/credits` or `/api/graphs/{graph_id}/execute/{graph_version}`. `/health` is not traced, and the sign-in requests from `setup()` go to the frontend project. Sentry's `failure_rate()` counts the 402 an account without credits gets from graph execution, although k6 does not. Note the UTC start and end of each run (`date -u +%FT%TZ`), wait a few minutes for Sentry to ingest the last events, then compare windows with perf-compare. For example, a candidate preview against a control preview under the same load:
 
 ```bash
 S=$(git rev-parse --show-toplevel)/.claude/skills/perf-compare/scripts/perf_compare.py
