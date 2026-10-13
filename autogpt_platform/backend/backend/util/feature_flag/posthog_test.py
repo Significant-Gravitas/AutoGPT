@@ -18,9 +18,10 @@ def fresh_client(mocker):
     mocker.patch.object(ph, "_shut_down", False)
 
 
-def configure(mocker, *, api_key="phc_test", secret_key=""):
+def configure(mocker, *, api_key="phc_test", secret_key="", flags_key=""):
     mocker.patch.object(ph.settings.secrets, "posthog_api_key", api_key)
     mocker.patch.object(ph.settings.secrets, "posthog_secret_key", secret_key)
+    mocker.patch.object(ph.settings.secrets, "posthog_flags_api_key", flags_key)
 
 
 def snapshot(mocker, *, value, payload=None):
@@ -148,6 +149,119 @@ class TestClientConstruction:
         ph.initialize_posthog_flags()
 
         assert ph.get_flag_client() is not None
+
+
+class TestTheFlagProject:
+    """Dev reads prod's flag definitions while its analytics stay in dev."""
+
+    def test_without_a_flags_key_flags_come_from_the_analytics_project(self, mocker):
+        configure(mocker, api_key="phc_analytics")
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+
+        args, kwargs = posthog.call_args
+        assert args[0] == "phc_analytics"
+        assert kwargs["send"] is True
+        assert ph.reads_another_project() is False
+
+    def test_the_same_key_twice_is_one_project(self, mocker):
+        configure(mocker, api_key="phc_prod", flags_key="phc_prod")
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+
+        args, kwargs = posthog.call_args
+        assert args[0] == "phc_prod"
+        assert kwargs["send"] is True
+
+    def test_a_flags_key_reads_that_project_and_sends_it_nothing(self, mocker):
+        configure(
+            mocker, api_key="phc_dev", flags_key="phc_prod", secret_key="phs_prod"
+        )
+        posthog = mocker.patch.object(ph, "Posthog")
+
+        ph.get_flag_client()
+
+        args, kwargs = posthog.call_args
+        assert args[0] == "phc_prod"
+        assert kwargs["secret_key"] == "phs_prod"
+        assert kwargs["send"] is False
+
+    def test_a_flags_key_alone_configures_flag_reads(self, mocker):
+        configure(mocker, api_key="", flags_key="phc_prod")
+
+        assert ph.is_configured() is True
+        assert ph.reads_another_project() is True
+
+    def test_a_separate_project_without_the_secret_key_warns(self, mocker):
+        configure(mocker, api_key="phc_dev", flags_key="phc_prod")
+        mocker.patch.object(ph, "Posthog")
+        warn = mocker.patch.object(ph.logger, "warning")
+
+        ph.get_flag_client()
+
+        assert "POSTHOG_SECRET_KEY" in warn.call_args.args[0]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flags_key,only_locally", [("", False), ("phc_test", False), ("phc_prod", True)]
+    )
+    async def test_only_a_separate_project_is_read_locally_only(
+        self, mocker, flags_key, only_locally
+    ):
+        configure(mocker, flags_key=flags_key)
+        client = mocker.Mock()
+        client.evaluate_flags.return_value = snapshot(mocker, value=True)
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+
+        await ph.evaluate_flag("hire-experts", "u-1")
+
+        _, kwargs = client.evaluate_flags.call_args
+        assert kwargs["only_evaluate_locally"] is only_locally
+
+
+class TestASeparateFlagProjectThroughTheRealSDK:
+    """What the installed posthog-python does with the client built above."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flags_key,asks_remotely", [("", True), ("phc_prod", False)]
+    )
+    async def test_a_flag_missing_locally_goes_remote_only_within_one_project(
+        self, mocker, flags_key, asks_remotely
+    ):
+        """The remote fallback would hand the flag project a user's email."""
+        client, remote = _real_client(mocker, flags_key=flags_key)
+        try:
+            value = await ph.evaluate_flag(
+                "not-in-the-definitions", "u-1", {"email": "x@agpt.co"}
+            )
+        finally:
+            ph.shutdown_posthog_flags()
+
+        assert value == (None, False)
+        assert remote.called is asks_remotely
+
+    @pytest.mark.asyncio
+    async def test_reads_from_a_separate_project_send_it_no_events(self, mocker):
+        uploads = [
+            mocker.patch("posthog.consumer.batch_post"),
+            mocker.patch("posthog.consumer._send_v1_batch"),
+        ]
+        client, remote = _real_client(mocker, flags_key="phc_prod")
+        try:
+            assert await ph.evaluate_flag("hire-experts", "u-1") == (True, True)
+            assert await ph.evaluate_flag("not-in-the-definitions", "u-1") == (
+                None,
+                False,
+            )
+            client.flush()
+        finally:
+            ph.shutdown_posthog_flags()
+
+        assert not remote.called
+        assert not any(upload.called for upload in uploads)
 
 
 class TestRawRead:
@@ -282,3 +396,23 @@ class TestRawRead:
             assert loop.run_until_complete(scenario()) == "probe"
         finally:
             loop.close()
+
+
+def _real_client(mocker, *, flags_key: str):
+    """A real flag client holding one rolled-out flag, with /flags recorded."""
+    configure(mocker, api_key="phc_dev", flags_key=flags_key, secret_key="phs_test")
+    mocker.patch.object(ph, "get_flag_definition_cache", return_value=None)
+    client = ph.get_flag_client()
+    assert client is not None
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": "hire-experts",
+            "active": True,
+            "filters": {"groups": [{"properties": [], "rollout_percentage": 100}]},
+        }
+    ]
+    remote = mocker.patch.object(
+        client, "_get_flags_decision", side_effect=ConnectionError("offline")
+    )
+    return client, remote

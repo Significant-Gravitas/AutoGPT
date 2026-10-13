@@ -675,13 +675,21 @@ def _person_properties(context: Context) -> dict[str, Any]:
     because PostHog targets flat properties. ``email`` is sent because the
     ported email rules and the ``ld:employee`` cohort match on it, and a rule
     on a property the read omits cannot be evaluated in-process.
+
+    ``environment`` rides on every read, anonymous ones included: dev reads
+    prod's flag definitions, so a rollout to dev alone is a release condition
+    on it. It is the app env the analytics events also carry.
     """
+    environment = {"environment": settings.config.app_env.value}
     if context.anonymous:
-        return {}
+        return environment
     return {
-        attribute: context.get(attribute)
-        for attribute in ("role", "email", "email_domain", "created_at", "country")
-        if context.get(attribute) is not None
+        **{
+            attribute: context.get(attribute)
+            for attribute in ("role", "email", "email_domain", "created_at", "country")
+            if context.get(attribute) is not None
+        },
+        **environment,
     }
 
 
