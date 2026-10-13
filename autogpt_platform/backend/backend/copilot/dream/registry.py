@@ -31,9 +31,11 @@ scheduling.
 
 These paths act on events, so two of them can interleave and leave a scope's
 crons out of step with its row: a takedown that lands after a later resume,
-or a re-read that fails. The scheduler's reconcile pass
-(``scope_reconcile.py``) puts that right within one interval, comparing the
-scheduler's crons with every row whatever the rows record.
+a re-read that fails, or a registration that lands after a timezone change.
+The scheduler's reconcile pass (``scope_reconcile.py``) puts that right on
+its next pass that reaches the scope: every cron an ACTIVE row records that
+the scheduler lacks, or runs in another timezone, is registered again in the
+row's timezone. What a row records is decided here, on the owner's flags.
 """
 
 import logging

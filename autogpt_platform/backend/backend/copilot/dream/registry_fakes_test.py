@@ -2,7 +2,8 @@
 
 ``install_registry_env`` swaps the registry's data module, scheduler client,
 flags and timezone lookup for in-memory fakes with the real ownership rules,
-and ``reconcile`` runs the scheduler's reconcile pass against them;
+and ``reconcile`` runs the scheduler's reconcile pass against them (Redis is
+the dream conftest's ``fake_dream_redis``);
 ``Hang`` and ``HangingTransport`` stand in for a dependency that never
 answers, recording whether the caller cancelled it.
 """
@@ -205,9 +206,11 @@ class FakeCronStore:
     def __init__(self, scheduler: FakeScheduler) -> None:
         self.scheduler = scheduler
 
-    def listed(self) -> list[scope_reconcile.ListedCron]:
+    async def listing(self) -> list[scope_reconcile.ListedCron]:
         return [
-            scope_reconcile.ListedCron(job_id=job_id, scope=scope)
+            scope_reconcile.ListedCron(
+                job_id=job_id, scope=scope, timezone=self.scheduler.jobs[job_id]
+            )
             for job_id, scope in self.scheduler.scopes.items()
         ]
 
@@ -238,9 +241,8 @@ class RegistryEnv:
         )
 
     async def reconcile(self) -> scope_reconcile.ReconcileReport:
-        """One reconcile pass, the scheduler listed first, as the scheduler
-        runs it."""
-        return await scope_reconcile.reconcile(self.crons.listed(), self.crons)
+        """One reconcile pass, as the scheduler runs it."""
+        return await scope_reconcile.reconcile(self.crons)
 
 
 def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:

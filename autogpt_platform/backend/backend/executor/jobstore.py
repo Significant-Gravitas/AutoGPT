@@ -2,7 +2,7 @@ import logging
 import pickle
 
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, text
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,11 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         super().__init__(*args, **kwargs)
         self._parked_ids: set[str] = set()
 
-    def _get_jobs(self, *conditions):
+    def _get_jobs(self, *conditions, statement_timeout: float | None = None):
+        """Upstream's read, parking what it cannot restore. On PostgreSQL a
+        ``statement_timeout`` (seconds) bounds this read alone, in its own
+        transaction, for a caller that must not wait on a stalled query: the
+        engine's other queries keep their limits."""
         jobs = []
         selectable = select(
             self.jobs_t.c.id, self.jobs_t.c.job_state, self.jobs_t.c.next_run_time
@@ -36,6 +40,14 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         unrestorable: list = []
 
         with self.engine.begin() as connection:
+            if (
+                statement_timeout is not None
+                and connection.dialect.name == "postgresql"
+            ):
+                connection.execute(
+                    text("SELECT set_config('statement_timeout', :ms, true)"),
+                    {"ms": str(int(statement_timeout * 1000))},
+                )
             for row in connection.execute(selectable):
                 try:
                     jobs.append(self._reconstitute_job(row.job_state))

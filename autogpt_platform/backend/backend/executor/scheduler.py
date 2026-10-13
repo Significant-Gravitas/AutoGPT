@@ -22,10 +22,12 @@ from apscheduler.events import (
     EVENT_JOB_MISSED,
 )
 from apscheduler.job import Job as JobObj
+from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
@@ -160,7 +162,12 @@ STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
 
 # The memory cron reconcile reads every registry row; it must finish well
 # inside its own interval (``scope_reconcile.RECONCILE_INTERVAL_MINUTES``).
+# Its listing of the dream-system crons runs inside that ceiling, and the
+# database stops that query at its own limit: cancelling the wait leaves
+# the thread running.
 MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS = 20 * 60
+MEMORY_CRON_LISTING_TIMEOUT_SECONDS = 60
+_MEMORY_CRON_RECONCILE_JOB_ID = "reconcile_memory_scope_crons"
 
 
 def job_listener(event):
@@ -1633,14 +1640,14 @@ def reconcile_memory_scope_crons() -> None:
 
 
 def listed_cron(job: JobObj) -> ListedCron | None:
-    """The scope a dream-system job runs for, from its kwargs; None when they
-    do not name one."""
+    """The scope a dream-system job runs for, from its kwargs, and the
+    timezone its trigger runs in; None when the kwargs name no scope."""
     try:
         scope = MemoryScope.build(job.kwargs["user_id"], job.kwargs.get("expert_id"))
     except (KeyError, ValueError):
         logger.warning("Memory cron %s names no memory scope; left alone", job.id)
         return None
-    return ListedCron(job_id=job.id, scope=scope)
+    return ListedCron(job_id=job.id, scope=scope, timezone=_job_timezone_name(job))
 
 
 class _SchedulerCrons:
@@ -1649,6 +1656,9 @@ class _SchedulerCrons:
 
     def __init__(self, scheduler: "Scheduler") -> None:
         self._scheduler = scheduler
+
+    async def listing(self) -> list[ListedCron]:
+        return await asyncio.to_thread(self._scheduler._memory_crons)
 
     async def add(
         self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
@@ -1663,6 +1673,15 @@ class _SchedulerCrons:
 
     async def remove(self, scope: MemoryScope) -> None:
         await asyncio.to_thread(self._scheduler.remove_scope_memory_jobs, scope)
+
+
+def _removed(job: JobObj) -> bool:
+    """Remove ``job``; False when another scheduler removed it first."""
+    try:
+        job.remove()
+    except JobLookupError:
+        return False
+    return True
 
 
 def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
@@ -2488,21 +2507,6 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
-            # Memory Cron Reconcile - every RECONCILE_INTERVAL_MINUTES. The
-            # level-triggered backstop for the registry's pause, resume and
-            # ensure: registers an ACTIVE scope's missing crons, removes a
-            # non-ACTIVE or deleted one's (copilot/dream/scope_reconcile.py).
-            self.scheduler.add_job(
-                reconcile_memory_scope_crons,
-                id="reconcile_memory_scope_crons",
-                trigger="interval",
-                minutes=RECONCILE_INTERVAL_MINUTES,
-                replace_existing=True,
-                max_instances=1,
-                coalesce=True,
-                jobstore=Jobstores.EXECUTION.value,
-            )
-
             # Schedule Index Reconcile - Every 24 hours
             # Safety net for the best-effort index writes: re-adds rows a
             # failed write missed and clears rows for jobs APScheduler
@@ -2525,6 +2529,7 @@ class Scheduler(AppService):
             # After start: until then get_job only sees pending jobs, not the
             # jobstore, so the "leave an unchanged job alone" check can't work.
             self._register_posthog_lifecycle_sweep()
+            self._register_memory_cron_reconcile()
         self._report_parked_jobs()
 
         global _scheduler_instance
@@ -3467,30 +3472,26 @@ class Scheduler(AppService):
             )
             for job in DREAM_SYSTEM_JOBS
         ]
-        present = [job for job in jobs if job is not None]
-        for job in present:
-            job.remove()
-        if present:
+        removed = [job.id for job in jobs if job is not None and _removed(job)]
+        if removed:
             logger.info("Removed the memory crons of %s", scope_label(scope))
-        return [job.id for job in present]
+        return removed
 
     def _reconcile_memory_crons(self) -> None:
-        """One reconcile pass (``reconcile_memory_scope_crons``): the
-        scheduler's dream-system crons, listed once, against every registry
-        row."""
-        listed = [
-            cron
-            for job in self._memory_jobs()
-            if (cron := listed_cron(job)) is not None
-        ]
+        """One reconcile pass (``reconcile_memory_scope_crons``), its listing
+        of the dream-system crons included, under
+        ``MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS``."""
         try:
             report = run_async(
-                reconcile(listed, _SchedulerCrons(self)),
+                reconcile(_SchedulerCrons(self)),
                 timeout=MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS,
                 cancel_on_timeout=True,
             )
         except concurrent.futures.TimeoutError:
-            logger.warning("Memory cron reconcile cut off; the next pass goes on")
+            logger.warning(
+                "Memory cron reconcile cut off; the next pass carries on after "
+                "the last scope it settled"
+            )
             return
         if report.restored or report.removed or report.failed:
             logger.info(
@@ -3501,9 +3502,18 @@ class Scheduler(AppService):
                 len(report.failed),
             )
 
+    def _memory_crons(self) -> list[ListedCron]:
+        """Every dream-system cron that names a scope, with its timezone."""
+        return [
+            cron
+            for job in self._memory_jobs()
+            if (cron := listed_cron(job)) is not None
+        ]
+
     def _memory_jobs(self) -> list[JobObj]:
         """Every dream-system cron in the EXECUTION jobstore, in one read
-        filtered by job-id prefix."""
+        filtered by job-id prefix and stopped by the database after
+        ``MEMORY_CRON_LISTING_TIMEOUT_SECONDS``."""
         ids = self._execution_jobstore.jobs_t.c.id
         return self._execution_jobstore._get_jobs(
             or_(
@@ -3511,7 +3521,8 @@ class Scheduler(AppService):
                     ids.startswith(f"{job.job_id_prefix}_", autoescape=True)
                     for job in DREAM_SYSTEM_JOBS
                 )
-            )
+            ),
+            statement_timeout=MEMORY_CRON_LISTING_TIMEOUT_SECONDS,
         )
 
     def _add_memory_job(
@@ -3592,6 +3603,33 @@ class Scheduler(AppService):
             id=_POSTHOG_LIFECYCLE_JOB_ID,
             replace_existing=True,
             max_instances=1,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
+    def _register_memory_cron_reconcile(self) -> None:
+        """The memory cron reconcile (``reconcile_memory_scope_crons``), the
+        level-triggered backstop of the registry's pause, resume and ensure
+        (``copilot/dream/scope_reconcile.py``), every
+        ``RECONCILE_INTERVAL_MINUTES``.
+
+        Registered after start and left alone while unchanged, as the
+        PostHog sweep is: replacing it re-arms the interval from now, so
+        every scheduler that starts, a second one in a rolling deploy
+        included, would push the next pass back, an overdue one too.
+        """
+        trigger = IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES)
+        existing = self.scheduler.get_job(
+            _MEMORY_CRON_RECONCILE_JOB_ID, jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and str(existing.trigger) == str(trigger):
+            return
+        self.scheduler.add_job(
+            reconcile_memory_scope_crons,
+            trigger,
+            id=_MEMORY_CRON_RECONCILE_JOB_ID,
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
             jobstore=Jobstores.EXECUTION.value,
         )
 

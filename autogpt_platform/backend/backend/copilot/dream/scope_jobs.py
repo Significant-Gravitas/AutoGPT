@@ -65,7 +65,7 @@ async def register_scope_jobs(
     stale = force_refresh or row.timezone != user_timezone
     outcomes: dict[str, Any] = {}
     for job in enabled:
-        if not stale and _recorded_job_id(row, job) is not None:
+        if not stale and recorded_job_id(row, job) is not None:
             outcomes[job.job_id_prefix] = None
             continue
         outcomes[job.job_id_prefix] = await _register_job(scope, job, user_timezone)
@@ -160,7 +160,7 @@ async def _record(
         for job in DREAM_SYSTEM_JOBS
     }
     if not stale and all(
-        ids[job.row_field] == _recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
+        ids[job.row_field] == recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
     ):
         return outcomes
     try:
@@ -205,10 +205,11 @@ def _next_job_id(
     was registered in a timezone that no longer holds."""
     if _registered(outcome):
         return outcome["id"]
-    return None if stale else _recorded_job_id(row, job)
+    return None if stale else recorded_job_id(row, job)
 
 
-def _recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
+def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
+    """The job id ``row`` records for ``job``, None when it records none."""
     if job.row_field == "community_job_id":
         return row.community_job_id
     return row.nightly_job_id
