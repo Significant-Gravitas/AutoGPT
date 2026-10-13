@@ -33,7 +33,8 @@ export function countHeldCalls(
   );
 }
 
-// What a wake row says: the cards its turn delivered, by their own headlines.
+// What a wake row says: the cards its turn delivered, by their own headlines,
+// and what each answer sent on, from the result row's recorded outcome.
 export function answeredLabel(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
   wakeIndex: number,
@@ -48,7 +49,7 @@ export function answeredLabel(
       asks.set(reviewId, heldAskText(card, heldToolName(card, partTool(part))));
     }
   }
-  const names: string[] = [];
+  const byOutcome = new Map<HeldOutcomeKind | null, string[]>();
   for (const message of messages.slice(wakeIndex + 1)) {
     if (getHeldCallRowKind(message.metadata) !== "result") break;
     const held = (message.metadata as { held_call: Record<string, unknown> })
@@ -56,11 +57,36 @@ export function answeredLabel(
     const tool = str(held?.tool_name);
     const name =
       asks.get(str(held?.review_id) ?? "") ?? (tool && fallbackAsk(tool));
-    if (name) names.push(name);
+    if (!name) continue;
+    const outcome = str(held?.outcome);
+    const kind =
+      outcome && OUTCOMES.has(outcome) ? (outcome as HeldOutcomeKind) : null;
+    byOutcome.set(kind, [...(byOutcome.get(kind) ?? []), name]);
   }
-  return names.length
-    ? `Approval answered: ${names.join(", ")}. Result sent to ${AUTOPILOT_NAME}.`
-    : "Approval answered";
+  if (!byOutcome.size) return "Approval answered";
+  const clauses = [...byOutcome].map(([outcome, names]) =>
+    [`${names.join(", ")}.`, outcome && sentOn(outcome, names.length > 1)]
+      .filter(Boolean)
+      .join(" "),
+  );
+  return `Approval answered: ${clauses.join(" ")}`;
+}
+
+// Every answer writes a result row, but only an approval's carries a result.
+function sentOn(outcome: HeldOutcomeKind, several: boolean): string {
+  switch (outcome) {
+    case "approved":
+      return `${several ? "Results" : "Result"} sent to ${AUTOPILOT_NAME}.`;
+    case "rejected":
+      return `Declined; nothing was sent to ${AUTOPILOT_NAME}.`;
+    case "expired":
+      return `Expired; nothing was sent to ${AUTOPILOT_NAME}.`;
+    case "closed":
+      // A closed read was already delivered to an identical re-read.
+      return `Closed; nothing more was sent to ${AUTOPILOT_NAME}.`;
+    case "unknown":
+      return "Unclear; check before relying on it.";
+  }
 }
 
 function heldReviewId(output: unknown): string | null {

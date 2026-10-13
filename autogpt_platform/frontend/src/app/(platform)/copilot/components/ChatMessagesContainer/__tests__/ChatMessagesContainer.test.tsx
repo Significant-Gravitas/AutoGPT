@@ -1528,6 +1528,114 @@ describe("ChatMessagesContainer — held call rows", () => {
     expect(screen.queryByText(/folder_created/)).toBeNull();
     expect(screen.getByText("Approval answered")).toBeDefined();
   });
+
+  it.each([
+    ["approved", "Result sent to Otto."],
+    ["rejected", "Declined; nothing was sent to Otto."],
+    ["expired", "Expired; nothing was sent to Otto."],
+    ["closed", "Closed; nothing more was sent to Otto."],
+    ["unknown", "Unclear; check before relying on it."],
+  ])(
+    "labels the wake by the card's recorded outcome: %s",
+    (outcome, clause) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={answeredCards([["a", outcome]])}
+        />,
+      );
+
+      expect(
+        screen.getByText(`Approval answered: Read "a.example.com". ${clause}`),
+      ).toBeDefined();
+    },
+  );
+
+  it("claims nothing for a result row with no recorded outcome", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([["a", undefined]])}
+      />,
+    );
+
+    expect(
+      screen.getByText('Approval answered: Read "a.example.com".'),
+    ).toBeDefined();
+  });
+
+  it("gives each answer in one wake its own clause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([
+          ["a", "approved"],
+          ["b", "rejected"],
+          ["c", "approved"],
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'Approval answered: Read "a.example.com", Read "c.example.com". ' +
+          'Results sent to Otto. Read "b.example.com". ' +
+          "Declined; nothing was sent to Otto.",
+      ),
+    ).toBeDefined();
+  });
+
+  // A turn's held read cards, its wake row, and a result row per card, as the
+  // server persists them.
+  function answeredCards(cards: [string, string | undefined][]): Message[] {
+    return [
+      {
+        id: "assistant-cards",
+        role: "assistant",
+        parts: cards.map(([id]) => ({
+          type: "tool-run_capability",
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output: JSON.stringify({
+            type: "approval_required",
+            review_id: `review-${id}`,
+            ask: "Read",
+            object: `${id}.example.com`,
+          }),
+        })),
+      } as Message,
+      {
+        id: "wake",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      ...cards.map(([id, outcome]) => ({
+        id: `result-${id}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `<held_call_result tool="run_capability">\n${outcome === "approved" ? "page text" : "Nothing ran."}\n</held_call_result>`,
+          },
+        ],
+        metadata: {
+          held_call: {
+            review_id: `review-${id}`,
+            tool_name: "run_capability",
+            tool_call_id: `call-${id}`,
+            outcome,
+          },
+        },
+      })),
+    ];
+  }
 });
 
 describe("ChatMessagesContainer — pending reviews", () => {
