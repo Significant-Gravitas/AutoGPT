@@ -347,9 +347,9 @@ class DreamPassResult(BaseModel):
     # in-process (lost if the process stops), waiting for the graph's write
     # lock, or being written. Every one on the batch path, which does not
     # wait for them.
-    pending_write_count: int = 0
+    pending_writes: int = 0
     # The ones whose write raised: dropped, logged, not retried.
-    failed_write_count: int = 0
+    failed_writes: int = 0
 
     summary_for_user: str = ""
     dream_session_id: str | None = None

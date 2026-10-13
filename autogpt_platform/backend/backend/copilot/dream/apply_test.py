@@ -636,7 +636,7 @@ async def test_drain_timeout_reports_partial_visibility_not_failure(mocker, capl
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
     assert stats["consolidated_count"] == 1
-    assert (stats["pending_write_count"], stats["failed_write_count"]) == (1, 0)
+    assert (stats["pending_writes"], stats["failed_writes"]) == (1, 0)
     assert any(
         "did not drain" in record.getMessage()
         for record in caplog.records
@@ -675,7 +675,7 @@ async def test_counts_only_what_the_worker_wrote_of_each_kind(mocker):
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
     assert (stats["consolidated_count"], stats["proposal_count"]) == (1, 0)
-    assert (stats["failed_write_count"], stats["pending_write_count"]) == (1, 1)
+    assert (stats["failed_writes"], stats["pending_writes"]) == (1, 1)
 
 
 @pytest.mark.asyncio
@@ -702,7 +702,7 @@ async def test_zero_drain_timeout_skips_wait_and_reports_skipped(mocker, caplog)
     drain.assert_not_awaited()
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.skipped
     # Not waited for, so not known written: counted pending, not consolidated.
-    assert (stats["consolidated_count"], stats["pending_write_count"]) == (0, 1)
+    assert (stats["consolidated_count"], stats["pending_writes"]) == (0, 1)
     assert any("drain skipped" in record.getMessage() for record in caplog.records)
 
 

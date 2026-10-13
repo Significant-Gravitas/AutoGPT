@@ -247,7 +247,7 @@ def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        pending_write_count=len(ops.writes) + len(ops.proposals),
+        pending_writes=len(ops.writes) + len(ops.proposals),
         demotion_count=len(ops.demotions),
         entity_invalidation_count=len(ops.entity_invalidations),
         # Batch apply never drains in-line by design; the first

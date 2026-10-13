@@ -126,7 +126,7 @@ async def test_the_writes_the_worker_dropped_are_reported(mocker) -> None:
 
     assert stats["consolidated_count"] == 1
     assert stats["dropped_forgotten"] == 1
-    assert stats["pending_write_count"] == 0
+    assert stats["pending_writes"] == 0
 
 
 @pytest.mark.asyncio
