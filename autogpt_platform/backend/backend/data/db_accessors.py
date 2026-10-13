@@ -183,6 +183,16 @@ def workspace_folder_db():
     return workspace_folder_db
 
 
+def openui_files_db():
+    if db.is_connected():
+        from backend.data import openui_files
+
+        return openui_files
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def skill_db():
     """Marketplace skill listings: active versions and packages, read by the
     copy reconcile in copilot.tools.skills."""

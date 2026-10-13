@@ -1,5 +1,6 @@
 import json
-from unittest.mock import AsyncMock
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -22,16 +23,75 @@ from backend.copilot.sdk.tool_adapter import (
     reset_tool_failure_counters,
     set_execution_context,
 )
-from backend.copilot.tools import TOOL_REGISTRY, get_available_tools, render_ui
+from backend.copilot.tools import TOOL_REGISTRY, get_available_tools, openui_files
 from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.models import ResponseType
 from backend.copilot.tools.openui_validator import (
     ValidationResult,
     ValidatorUnavailable,
+    validate_openui_source,
 )
+from backend.data.workspace import OPENUI_MIME_TYPE, WorkspaceFile
 from backend.util.tool_call_loop import LLMToolCall
 
 SOURCE = 'root = Workspace("Revenue", "From the uploaded report", [Metrics([Metric("Revenue", "$42,000", "Q3", "positive")])], "revenue")'
+
+
+FILE_ID = "0b6a3c1e-7d2f-4f5a-9c8b-1a2b3c4d5e6f"
+
+
+@pytest.fixture(autouse=True)
+def saved_views(monkeypatch):
+    """No view of the chat is saved yet; tests that save one say so."""
+    db = MagicMock()
+    db.find_openui_view_file = AsyncMock(return_value=None)
+    monkeypatch.setattr(openui_files, "openui_files_db", MagicMock(return_value=db))
+    return db
+
+
+@pytest.fixture
+def workspace(monkeypatch):
+    manager = MagicMock()
+    manager.write_file = AsyncMock(side_effect=_written)
+    manager.replace_file_content = AsyncMock(side_effect=_replaced)
+    manager.get_file_info = AsyncMock(return_value=_view_file())
+    monkeypatch.setattr(
+        openui_files, "get_workspace_manager", AsyncMock(return_value=manager)
+    )
+    return manager
+
+
+def _view_file(**overrides) -> WorkspaceFile:
+    values = {
+        "id": FILE_ID,
+        "workspace_id": "ws-1",
+        "created_at": datetime(2026, 10, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 10, 1, tzinfo=timezone.utc),
+        "name": "revenue.openui",
+        "path": "/sessions/earlier-chat/revenue.openui",
+        "storage_path": "local://revenue.openui",
+        "mime_type": OPENUI_MIME_TYPE,
+        "size_bytes": 10,
+        "metadata": {
+            "origin": "agent-created",
+            "openui": {"viewId": "revenue", "originSessionId": "earlier-chat"},
+        },
+    }
+    return WorkspaceFile(**{**values, **overrides})
+
+
+async def _written(*, content, filename, mime_type, metadata, **kwargs):
+    return _view_file(
+        id="new-file",
+        name=filename,
+        path=f"/sessions/chat/{filename}",
+        mime_type=mime_type,
+        metadata=metadata,
+    )
+
+
+async def _replaced(file_id, content, *, mime_type, metadata):
+    return _view_file(id=file_id, mime_type=mime_type, metadata=metadata)
 
 
 @pytest.fixture
@@ -196,7 +256,7 @@ async def test_render_ui_returns_a_persistable_result():
 @pytest.mark.asyncio
 async def test_new_views_require_an_id_but_historical_sources_remain_readable():
     legacy = SOURCE.replace(', "revenue")', ")")
-    parsed = await render_ui.validate_openui_source(legacy)
+    parsed = await validate_openui_source(legacy)
     assert parsed.valid
     assert parsed.view_id is None
     rejected = await TOOL_REGISTRY["render_ui"]._execute(
@@ -274,7 +334,7 @@ async def test_validator_outage_returns_text_guidance_without_publishing(
     render_ui_tool, monkeypatch
 ):
     monkeypatch.setattr(
-        render_ui,
+        openui_files,
         "validate_openui_source",
         AsyncMock(side_effect=ValidatorUnavailable("Unavailable")),
     )
@@ -291,7 +351,7 @@ async def test_missing_canonical_summary_does_not_publish_a_view(
     render_ui_tool, monkeypatch
 ):
     monkeypatch.setattr(
-        render_ui,
+        openui_files,
         "validate_openui_source",
         AsyncMock(return_value=ValidationResult(valid=True, error="", summary="")),
     )
@@ -353,3 +413,120 @@ async def test_sdk_returns_repair_feedback_then_publishes_only_corrected_view(
     finally:
         set_execution_context(None, None)
         reset_pending_tool_outputs()
+
+
+@pytest.mark.asyncio
+async def test_a_new_filename_saves_the_view_as_a_file(render_ui_tool, workspace):
+    session = make_session("owner")
+    result = await render_ui_tool._execute(
+        "owner", session, source=SOURCE, file="Q3 revenue"
+    )
+    payload = json.loads(result.model_dump_json())
+    assert payload["type"] == "ui_rendered"
+    assert payload["file_id"] == "new-file"
+    assert payload["file_name"] == "Q3 revenue.openui"
+    assert payload["file_path"] == "/sessions/chat/Q3 revenue.openui"
+    assert payload["file_uri"] == f"workspace://new-file#{OPENUI_MIME_TYPE}"
+    written = workspace.write_file.await_args.kwargs
+    assert written["content"] == SOURCE.encode()
+    assert written["mime_type"] == OPENUI_MIME_TYPE
+    assert written["metadata"]["openui"] == {
+        "viewId": "revenue",
+        "originSessionId": session.session_id,
+    }
+    workspace.replace_file_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_rerendering_a_saved_view_revises_the_same_file(
+    render_ui_tool, workspace, saved_views
+):
+    saved_views.find_openui_view_file.return_value = FILE_ID
+    session = make_session("owner")
+    result = await render_ui_tool._execute("owner", session, source=SOURCE)
+    assert json.loads(result.model_dump_json())["file_id"] == FILE_ID
+    saved_views.find_openui_view_file.assert_awaited_once_with(
+        "owner", session.session_id, "revenue"
+    )
+    file_id, content = workspace.replace_file_content.await_args.args
+    metadata = workspace.replace_file_content.await_args.kwargs["metadata"]
+    assert (file_id, content) == (FILE_ID, SOURCE.encode())
+    assert metadata["origin"] == "agent-created"
+    assert metadata["openui"]["originSessionId"] == session.session_id
+    workspace.write_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "reference",
+    [f"workspace://{FILE_ID}#{OPENUI_MIME_TYPE}", FILE_ID, FILE_ID.upper()],
+    ids=["uri", "bare-id", "upper-case"],
+)
+async def test_a_file_reference_revises_that_file(
+    render_ui_tool, workspace, saved_views, reference
+):
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE, file=reference
+    )
+    assert json.loads(result.model_dump_json())["file_id"] == FILE_ID
+    workspace.get_file_info.assert_awaited_once_with(FILE_ID)
+    assert workspace.replace_file_content.await_args.args[0] == FILE_ID
+    saved_views.find_openui_view_file.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "existing",
+    [None, _view_file(name="notes.md", mime_type="text/markdown", metadata={})],
+    ids=["missing-or-not-owned", "not-a-view"],
+)
+async def test_only_an_owned_view_file_can_be_revised(
+    render_ui_tool, workspace, existing
+):
+    workspace.get_file_info.return_value = existing
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE, file=FILE_ID
+    )
+    assert result.type == ResponseType.ERROR
+    assert "not an OpenUI view file" in result.message
+    assert "source" not in result.model_dump()
+    workspace.replace_file_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_invalid_view_is_never_written(render_ui_tool, workspace):
+    result = await render_ui_tool._execute(
+        "owner",
+        make_session("owner"),
+        source='root = Workspace("Test", "Data", [MadeUpComponent("hi")], "test")',
+        file="test.openui",
+    )
+    assert result.type == ResponseType.ERROR
+    workspace.write_file.assert_not_awaited()
+    workspace.replace_file_content.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_failed_file_write_does_not_publish_the_view(render_ui_tool, workspace):
+    workspace.write_file.side_effect = ValueError(
+        "File already exists at path: /sessions/chat/revenue.openui"
+    )
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE, file="revenue"
+    )
+    assert result.type == ResponseType.ERROR
+    assert "already exists" in result.message
+    assert "source" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_a_chat_only_view_survives_a_failed_saved_view_lookup(
+    render_ui_tool, saved_views
+):
+    saved_views.find_openui_view_file.side_effect = RuntimeError("db down")
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE
+    )
+    payload = json.loads(result.model_dump_json())
+    assert payload["type"] == "ui_rendered"
+    assert payload["file_id"] is None

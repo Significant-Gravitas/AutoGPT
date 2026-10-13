@@ -17,12 +17,19 @@ from backend.copilot.context import (
     sdk_tool_result_redirect_hint,
 )
 from backend.copilot.model import ChatSession
+from backend.copilot.tools.openui_files import (
+    MAX_SOURCE_CHARS,
+    read_view_file,
+    write_view_file,
+)
 from backend.copilot.tools.workdir import (
     resolve_sandbox_path_or_error,
     save_to_workdir,
     validate_ephemeral_path,
 )
 from backend.data.activity_event import ActivityEventDraft
+from backend.data.openui_files import is_openui_file, is_openui_name
+from backend.data.workspace import OPENUI_MIME_TYPE
 from backend.data.workspace_folder import WorkspaceFolder
 from backend.data.workspace_scope import WorkspaceAccessDeniedError
 from backend.util.settings import Config
@@ -148,6 +155,7 @@ _TEXT_MIME_PREFIXES = (
     "application/javascript",
     "application/x-python",
     "application/x-sh",
+    OPENUI_MIME_TYPE,
 )
 
 _IMAGE_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -680,6 +688,17 @@ class ReadWorkspaceFileTool(BaseTool):
                 return resolved
             target_file_id, file_info = resolved
 
+            if (
+                is_openui_file(file_info)
+                and not save_to_path
+                and not force_download_url
+                and char_offset == 0
+                and char_length is None
+                and file_info.size_bytes <= 4 * MAX_SOURCE_CHARS
+            ):
+                content = await manager.read_file_by_id(target_file_id)
+                return await read_view_file(user_id, session_id, file_info, content)
+
             # If save_to_path, read + save; cache bytes for possible inline reuse.
             cached_content: bytes | None = None
             if save_to_path:
@@ -842,6 +861,7 @@ class WriteWorkspaceFileTool(BaseTool):
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
             f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
+            ".openui files hold a validated render_ui view. "
             "Paths scoped to current session; use /sessions/<id>/... for "
             "cross-session access (expert chats are limited to their own "
             "conversations)."
@@ -985,14 +1005,31 @@ class WriteWorkspaceFileTool(BaseTool):
 
         try:
             manager = await get_workspace_manager(user_id, session_id)
-            rec = await manager.write_file(
-                content=content_bytes,
-                filename=filename,
-                path=path,
-                mime_type=mime_type,
-                overwrite=overwrite,
-                metadata={"origin": "agent-created"},
-            )
+            if (
+                is_openui_name(filename)
+                or is_openui_name(path)
+                or mime_type == OPENUI_MIME_TYPE
+            ):
+                written = await write_view_file(
+                    manager,
+                    session_id,
+                    content=content_bytes,
+                    filename=filename,
+                    path=path,
+                    overwrite=overwrite,
+                )
+                if isinstance(written, ErrorResponse):
+                    return written
+                rec = written
+            else:
+                rec = await manager.write_file(
+                    content=content_bytes,
+                    filename=filename,
+                    path=path,
+                    mime_type=mime_type,
+                    overwrite=overwrite,
+                    metadata={"origin": "agent-created"},
+                )
 
             # Build informative source label and message.
             if source_path_arg:

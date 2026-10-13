@@ -25,11 +25,25 @@ The schemas live in `autogpt_platform/frontend/src/lib/openui/catalog*.ts`. The 
 
 The model sees the component list through the `source` parameter description, which comes from `backend/copilot/tools/openui_library.txt`. Prompt guidance for when and how to use views is in `backend/copilot/openui_prompt.py`.
 
-## How drafts are stored today
+## How edits are stored
 
-Every new view needs a stable `viewId`. User edits (form values, ticked checklist items, itinerary changes) are saved per `(session, viewId)` in the `ChatUIDraft` table through `GET`/`PUT /api/chat/sessions/{session_id}/ui-drafts/{view_id}`. Writes carry a revision number, so a stale tab gets a 409 instead of overwriting newer edits. The browser also keeps a local cache of unsynced edits.
+Every new view needs a stable `viewId`. User edits (form values, ticked checklist items, itinerary changes) live in the `ChatUIDraft` table. Each row belongs to exactly one chat or one file; a check constraint enforces it.
+
+- **Chat views** keep edits per `(session, viewId)` through `GET`/`PUT /api/chat/sessions/{session_id}/ui-drafts/{view_id}`. Writes carry a revision number, so a stale tab gets a 409 instead of overwriting newer edits. The browser also keeps a local cache of unsynced edits.
+- **Saved views** keep edits on the file through `GET`/`PUT /api/workspace/files/{file_id}/view-state`. A write carries the edits revision and the file checksum it was made against; if either has moved on, it gets a 409, so edits never land on a newer program.
 
 When the model revises a view with the same `viewId`, edits to fields the model did not change are kept, and the model's changes win where it did change a default. Older versions of a view become read-only. Shared chats show the saved source without edits and with actions turned off.
+
+## Saved views
+
+A view the user wants to keep is a workspace file: `<name>.openui`, MIME `application/vnd.autogpt.openui`, body the OpenUI program, metadata `{"openui": {"viewId", "originSessionId"}}`. It lives in the chat's folder (`/sessions/<id>/`), so it shows on the Files page and can be mentioned in later chats.
+
+- `render_ui` saves one when given `file`: a new filename creates it, `workspace://<id>` revises that file. A view already saved from the chat is revised whenever it is rendered again with the same `viewId`. Revisions keep the file's ID and path, and `originSessionId` names the chat that last wrote it.
+- `write_workspace_file` with a `.openui` name validates the program the same way, which is how experts keep notes without showing them in chat.
+- `read_workspace_file` on a view returns its summary, its program and the user's current edits.
+- `POST /api/chat/sessions/{session_id}/ui-drafts/{view_id}/save` saves a chat view from the "Save to files" button and moves its edits onto the file. Saving it again returns the same file.
+
+The code is in `backend/copilot/tools/openui_files.py`, `backend/copilot/ui_view_files.py` and `backend/data/openui_files.py`.
 
 ## Regenerating
 

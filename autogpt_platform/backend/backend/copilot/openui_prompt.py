@@ -12,6 +12,11 @@ rules below; do not add a view merely because a previous turn had one.
 Get the component library with `describe_capability(id="tool:render_ui")` before
 the first view, then call `run_capability(id="tool:render_ui", input={source})`. Use the working
 view rather than an offer to build one later or an ASCII substitute.
+Set `file` (e.g. "lisbon-trip.openui") when the view is a durable artifact the
+user will come back to: plans, itineraries, notes, dashboards, reports. Omit it
+for quick choices and one-off forms. To revise a view file the user mentions or
+you saved earlier, pass its `workspace://<file_id>` as `file` and keep its
+viewId; `read_workspace_file` returns its source and the user's current edits.
 
 First solve the user's task, then choose the smallest useful view. Check totals,
 units, available quantities, time windows and dependencies before presenting a

@@ -1,36 +1,43 @@
 import logging
-import re
 from functools import cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ErrorResponse, ResponseType, ToolResponseBase
-from backend.copilot.tools.openui_source import validate_complete_delimiters
-from backend.copilot.tools.openui_validator import (
-    ValidatorUnavailable,
-    validate_openui_source,
+from backend.copilot.tools.openui_files import (
+    MAX_SOURCE_CHARS,
+    RENDER_FALLBACK,
+    RENDER_RETRY,
+    check_workspace_program,
+    save_view,
+    validate_view,
 )
+from backend.data.workspace import OPENUI_MIME_TYPE, WorkspaceFile
+from backend.data.workspace_scope import WorkspaceAccessDeniedError
 
 logger = logging.getLogger(__name__)
+
+_MAX_RESPONSE_BYTES = 70_000
+# Room for the file fields, which are only known once the view is saved.
+_FILE_FIELDS_BYTES = 1_000
 
 
 class RenderUIInput(BaseModel):
     model_config = ConfigDict(strict=True, str_strip_whitespace=True)
 
-    source: str = Field(min_length=1, max_length=60_000)
+    source: str = Field(min_length=1, max_length=MAX_SOURCE_CHARS)
     summary: str = Field(default="", max_length=10_000)
+    file: str | None = Field(default=None, min_length=1, max_length=255)
 
     @field_validator("source")
     @classmethod
     def workspace_program(cls, value: str) -> str:
-        if not re.match(r"root\s*=\s*Workspace\s*\(", value):
-            raise ValueError("Start source with root = Workspace(...), without fences")
-        validate_complete_delimiters(value)
-        return value
+        return check_workspace_program(value)
 
 
 class RenderUIResponse(ToolResponseBase):
@@ -38,6 +45,10 @@ class RenderUIResponse(ToolResponseBase):
     version: Literal[1] = 1
     source: str
     view_id: str | None = None
+    file_id: str | None = None
+    file_uri: str | None = None
+    file_path: str | None = None
+    file_name: str | None = None
 
 
 @cache
@@ -72,7 +83,7 @@ class RenderUITool(BaseTool):
                 "source": {
                     "type": "string",
                     "description": openui_library(),
-                    "maxLength": 60_000,
+                    "maxLength": MAX_SOURCE_CHARS,
                 },
                 "summary": {
                     "type": "string",
@@ -82,6 +93,15 @@ class RenderUITool(BaseTool):
                         "Put all findings, caveats and sources in the view itself."
                     ),
                     "maxLength": 10_000,
+                },
+                "file": {
+                    "type": "string",
+                    "description": (
+                        "New filename to also save the view as a workspace "
+                        "file, or workspace://<file_id> of a view file to "
+                        "revise. Omit for chat-only views."
+                    ),
+                    "maxLength": 255,
                 },
             },
             "required": ["source"],
@@ -113,51 +133,83 @@ class RenderUITool(BaseTool):
             message="",
             session_id=session.session_id,
         )
-        if len(response.model_dump_json().encode()) > 70_000:
-            return ErrorResponse(
-                message="This view is too large. Use fewer rows or shorter descriptions.",
-                session_id=session.session_id,
-            )
-        return await _validated_response(response)
+        if _too_large(response):
+            return _too_large_error(session.session_id)
+        published = await _validated_response(response)
+        if isinstance(published, ErrorResponse):
+            return published
+        return await _saved_response(user_id, published, request.file)
 
 
-async def _validated_response(response: RenderUIResponse) -> ToolResponseBase:
-    try:
-        validation = await validate_openui_source(response.source)
-    except ValidatorUnavailable as error:
-        logger.warning(f"OpenUI validation unavailable: {error}")
-        return ErrorResponse(
-            message="Interactive validation is temporarily unavailable. "
-            "Provide the complete answer as plain text instead of retrying this view.",
-            session_id=response.session_id,
-        )
-    if not validation.valid:
-        return ErrorResponse(
-            message=f"View not published: {validation.error} "
-            'Correct these issues and retry run_capability(id="tool:render_ui", '
-            "input={...}) with a complete source. "
-            "Preserve the user's data and constraints; the summary is generated.",
-            session_id=response.session_id,
-        )
-    if not validation.summary:
-        return ErrorResponse(
-            message="Interactive validation returned no text summary. "
-            "Provide the complete answer as plain text instead.",
-            session_id=response.session_id,
-        )
-    if not validation.view_id:
-        return ErrorResponse(
-            message="View not published: Workspace requires a stable viewId from "
-            "the first render so edits can be saved. Retry with "
-            'Workspace(title, description, children, "stable-view-id"). '
-            "Reuse this ID when revising this task; use a new ID for a new task.",
-            session_id=response.session_id,
-        )
-    response.message = validation.summary
-    response.view_id = validation.view_id
-    if len(response.model_dump_json().encode()) > 70_000:
-        return ErrorResponse(
-            message="This view is too large. Use fewer rows or shorter descriptions.",
-            session_id=response.session_id,
-        )
+async def _validated_response(
+    response: RenderUIResponse,
+) -> RenderUIResponse | ErrorResponse:
+    session_id = response.session_id or ""
+    view = await validate_view(
+        response.source,
+        session_id=session_id,
+        retry=RENDER_RETRY,
+        fallback=RENDER_FALLBACK,
+    )
+    if isinstance(view, ErrorResponse):
+        return view
+    response.message = view.summary
+    response.view_id = view.view_id
+    if _too_large(response, reserve=_FILE_FIELDS_BYTES):
+        return _too_large_error(session_id)
     return response
+
+
+async def _saved_response(
+    user_id: str, response: RenderUIResponse, file: str | None
+) -> RenderUIResponse | ErrorResponse:
+    """Save the validated view when asked to, or when this chat already
+    saved it, and point the response at the file."""
+    session_id = response.session_id or ""
+    assert response.view_id is not None
+    try:
+        saved = await save_view(
+            user_id,
+            session_id,
+            source=response.source,
+            view_id=response.view_id,
+            file=file,
+        )
+    except (
+        ValueError,
+        FileNotFoundError,
+        WorkspaceAccessDeniedError,
+        VirusDetectedError,
+        VirusScanError,
+    ) as error:
+        return _not_saved_error(str(error), session_id)
+    if saved is not None:
+        _attach_file(response, saved)
+    return response
+
+
+def _attach_file(response: RenderUIResponse, file: WorkspaceFile) -> None:
+    response.file_id = file.id
+    response.file_uri = f"workspace://{file.id}#{OPENUI_MIME_TYPE}"
+    response.file_path = file.path
+    response.file_name = file.name
+
+
+def _too_large(response: RenderUIResponse, reserve: int = 0) -> bool:
+    size = len(response.model_dump_json().encode())
+    return size > _MAX_RESPONSE_BYTES - reserve
+
+
+def _too_large_error(session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message="This view is too large. Use fewer rows or shorter descriptions.",
+        session_id=session_id,
+    )
+
+
+def _not_saved_error(reason: str, session_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        message=f"View not published: it could not be saved as a file. {reason} "
+        "Fix the file argument, or omit it to show the view in chat only.",
+        session_id=session_id,
+    )

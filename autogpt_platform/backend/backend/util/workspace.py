@@ -476,6 +476,75 @@ class WorkspaceManager:
 
         return file
 
+    async def replace_file_content(
+        self, file_id: str, content: bytes, *, mime_type: str, metadata: dict
+    ) -> WorkspaceFile:
+        """Give an existing file new content in place.
+
+        Unlike ``write_file(overwrite=True)``, which replaces the record, the
+        file keeps its ID, name, path and folder, so anything tied to the ID
+        (shares, a saved view's edits) stays attached. Same size limit, quota
+        and virus scan as ``write_file``. Skill files are refused: the skills
+        registry owns them.
+
+        Raises:
+            FileNotFoundError: no such live file in this workspace.
+            ValueError: size limit, storage quota, or a skill file.
+        """
+        db = workspace_db()
+        file = await db.get_workspace_file(file_id, self.workspace_id)
+        if file is None:
+            raise FileNotFoundError(f"File not found: {file_id}")
+        self._authorize_file(file, write=True)
+        if skill_owner_folder(file.path) is not None:
+            raise ValueError("Skill files are managed by the skills registry")
+        await self._enforce_replacement_limits(len(content), file.size_bytes)
+        await scan_content_safe(content, filename=file.name)
+        storage = await get_workspace_storage()
+        storage_path = await storage.store(
+            workspace_id=self.workspace_id,
+            file_id=file.id,
+            filename=file.name,
+            content=content,
+        )
+        updated = await db.update_workspace_file_content(
+            file.id,
+            self.workspace_id,
+            storage_path=storage_path,
+            mime_type=mime_type,
+            size_bytes=len(content),
+            checksum=compute_file_checksum(content),
+            metadata=metadata,
+        )
+        if updated is None:
+            raise FileNotFoundError(f"File not found: {file_id}")
+        if file.storage_path != storage_path:
+            try:
+                await storage.delete(file.storage_path)
+            except Exception:
+                logger.warning("Failed to clean up replaced blob", exc_info=True)
+        logger.info(f"Replaced content of file {file.id} ({len(content)} bytes)")
+        return updated
+
+    async def _enforce_replacement_limits(self, size: int, replaced_size: int) -> None:
+        max_file_size = Config().max_file_size_mb * 1024 * 1024
+        if size > max_file_size:
+            raise ValueError(
+                f"File too large: {size} bytes exceeds "
+                f"{Config().max_file_size_mb}MB limit"
+            )
+        storage_limit, current_usage = await asyncio.gather(
+            get_workspace_storage_limit_bytes(self.user_id),
+            workspace_db().get_workspace_total_size(self.workspace_id),
+        )
+        projected = max(0, current_usage - replaced_size) + size
+        if storage_limit > 0 and projected > storage_limit:
+            raise ValueError(
+                f"Storage limit exceeded. You've used {format_bytes(current_usage)} "
+                f"of your {format_bytes(storage_limit)} quota. "
+                "Delete some files or upgrade your plan for more storage."
+            )
+
     async def list_folders(self) -> list["WorkspaceFolder"]:
         """The folder tree; empty for a scope without the owner's files, whose
         folders these are."""

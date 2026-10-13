@@ -151,6 +151,7 @@ from backend.data.human_review import (
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
+from backend.data.openui_files import find_openui_view_file, get_openui_file_state
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
@@ -203,6 +204,7 @@ from backend.data.workspace import (
     list_workspace_files,
     resolve_expert_workspace_scope,
     soft_delete_workspace_file,
+    update_workspace_file_content,
 )
 from backend.data.workspace_folder import list_workspace_folders
 from backend.data.workspace_skill import publish_workspace_skill_file
@@ -510,6 +512,9 @@ class DatabaseManager(AppService):
     list_workspace_files = _(list_workspace_files)
     list_workspace_folders = _(list_workspace_folders)
     soft_delete_workspace_file = _(soft_delete_workspace_file)
+    update_workspace_file_content = _(update_workspace_file_content)
+    find_openui_view_file = _(find_openui_view_file)
+    get_openui_file_state = _(get_openui_file_state)
     resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
@@ -965,6 +970,9 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_workspace_files = d.list_workspace_files
     list_workspace_folders = d.list_workspace_folders
     soft_delete_workspace_file = d.soft_delete_workspace_file
+    update_workspace_file_content = d.update_workspace_file_content
+    find_openui_view_file = d.find_openui_view_file
+    get_openui_file_state = d.get_openui_file_state
     resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #

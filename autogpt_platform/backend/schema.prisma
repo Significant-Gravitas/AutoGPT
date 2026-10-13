@@ -544,6 +544,7 @@ model UserWorkspaceFile {
 
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
+  UIDraft              ChatUIDraft?
 
   // Paths are unique among LIVE files, which Prisma cannot express: the rule is
   // a partial unique index created in migrations
@@ -739,18 +740,25 @@ model ChatLinkedShare {
   @@index([executionId])
 }
 
+// User edits to an OpenUI view. An unsaved view's row belongs to its chat
+// (sessionId); saving the view as a file moves the row onto the file (fileId),
+// so the edits outlive the chat. A CHECK constraint in the migration requires
+// exactly one of sessionId / fileId.
 model ChatUIDraft {
-  sessionId String
-  viewId String
-  toolCallId String
-  sequence Int
-  source String
-  state Json
-  revision Int @default(1)
-  updatedAt DateTime @default(now()) @updatedAt
-  Session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id         String             @id @default(uuid())
+  sessionId  String?
+  Session    ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  viewId     String
+  fileId     String?            @unique
+  File       UserWorkspaceFile? @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  toolCallId String?
+  sequence   Int
+  source     String
+  state      Json
+  revision   Int                @default(1)
+  updatedAt  DateTime           @default(now()) @updatedAt
 
-  @@id([sessionId, viewId])
+  @@unique([sessionId, viewId])
 }
 
 model ChatMessage {

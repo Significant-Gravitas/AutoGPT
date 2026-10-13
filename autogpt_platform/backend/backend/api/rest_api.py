@@ -75,6 +75,7 @@ import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
 import backend.api.features.workspace.routes as team_routes
+import backend.api.features.workspace.view_state_routes as workspace_view_state_routes
 import backend.data.autopilot_migrate
 import backend.data.block
 import backend.data.db
@@ -595,6 +596,11 @@ app.include_router(
 )
 app.include_router(
     workspace_folder_routes.router,
+    tags=["workspace"],
+    prefix="/api/workspace",
+)
+app.include_router(
+    workspace_view_state_routes.router,
     tags=["workspace"],
     prefix="/api/workspace",
 )

@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import mimetypes
 import posixpath
 import re
 from datetime import datetime, timezone
@@ -32,6 +33,12 @@ _UUID_RE = re.compile(
 )
 
 logger = logging.getLogger(__name__)
+
+# Saved OpenUI views: the body is the OpenUI program. Registered so a filename
+# alone resolves to this type wherever the workspace guesses a MIME type.
+OPENUI_MIME_TYPE = "application/vnd.autogpt.openui"
+OPENUI_EXTENSION = ".openui"
+mimetypes.add_type(OPENUI_MIME_TYPE, OPENUI_EXTENSION)
 
 
 class Workspace(pydantic.BaseModel):
@@ -480,6 +487,36 @@ async def rename_workspace_file(
         return None
     logger.info(f"Renamed workspace file {file_id} to {new_path}")
     return WorkspaceFile.from_db(updated)
+
+
+async def update_workspace_file_content(
+    file_id: str,
+    workspace_id: str,
+    *,
+    storage_path: str,
+    mime_type: str,
+    size_bytes: int,
+    checksum: str,
+    metadata: dict,
+) -> Optional[WorkspaceFile]:
+    """Point a live file at new content, keeping its ID, name and path.
+
+    Returns the updated file, or None when it is not a live file of the
+    workspace.
+    """
+    updated = await UserWorkspaceFile.prisma().update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={
+            "storagePath": storage_path,
+            "mimeType": mime_type,
+            "sizeBytes": size_bytes,
+            "checksum": checksum,
+            "metadata": SafeJson(metadata),
+        },
+    )
+    if not updated:
+        return None
+    return await get_workspace_file(file_id, workspace_id)
 
 
 async def soft_delete_workspace_file(

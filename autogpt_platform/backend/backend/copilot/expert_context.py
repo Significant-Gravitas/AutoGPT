@@ -303,6 +303,7 @@ async def _expert_session_context(
         render_expert_workflows_block(expert)
         + await _routines_block(user_id, expert_id)
         + render_expert_computer_block()
+        + render_expert_files_block()
         + teammates
     )
 
@@ -470,6 +471,20 @@ def render_expert_computer_block() -> str:
         "- Never ask the user to sign into personal accounts on this "
         "desktop; use their connected integrations instead.\n"
         "</expert_computer>\n\n"
+    )
+
+
+def render_expert_files_block() -> str:
+    """How an expert keeps notes: as OpenUI view files the user can open,
+    edit and mention, rather than Markdown."""
+    return (
+        "<expert_files>\n"
+        "Notes, plans and reports you keep for the user default to `.openui` "
+        "view files: describe `tool:render_ui` first for the component "
+        "library, then save one complete program with `write_workspace_file` "
+        "(a `.openui` filename and a stable Workspace viewId). Use Prose for "
+        "mostly-text notes. Markdown stays for skills, plain text and code.\n"
+        "</expert_files>\n\n"
     )
 
 

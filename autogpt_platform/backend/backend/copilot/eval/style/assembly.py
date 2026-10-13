@@ -25,6 +25,7 @@ from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     render_account_standing_work_block,
     render_expert_computer_block,
+    render_expert_files_block,
     render_expert_identity_suffix,
     render_expert_workflows_block,
     render_team_context,
@@ -137,6 +138,7 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
     return (
         render_expert_workflows_block(expert)
         + render_expert_computer_block()
+        + render_expert_files_block()
         + render_team_context(
             roster,
             delegation_enabled=DELEGATION_ENABLED,

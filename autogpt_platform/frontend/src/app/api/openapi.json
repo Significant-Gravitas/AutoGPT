@@ -5059,6 +5059,64 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/ui-drafts/{view_id}/save": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Save Ui Draft To File",
+        "description": "Save the newest revision of a chat view as a workspace file; its edits\nmove onto the file. Saving an already saved view returns that file.",
+        "operationId": "postV2SaveUiDraftToFile",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,79}$",
+              "title": "View Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UIDraftSaveRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SavedUIViewResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "View not found" },
+          "409": { "description": "A file with this name already exists" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/speech": {
       "post": {
         "tags": ["chat", "speech"],
@@ -17206,6 +17264,91 @@
         }
       }
     },
+    "/api/workspace/files/{file_id}/view-state": {
+      "get": {
+        "tags": ["workspace"],
+        "summary": "Get a saved view and its edits",
+        "operationId": "getWorkspaceFileViewState",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UIFileStateResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Saved view not found" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["workspace"],
+        "summary": "Save edits to a saved view",
+        "operationId": "putWorkspaceFileViewState",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "File Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UIFileStateWrite" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UIFileStateResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Saved view not found" },
+          "409": {
+            "description": "The view or its edits changed; reload first"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/workspace/folders": {
       "get": {
         "tags": ["workspace"],
@@ -25260,7 +25403,6 @@
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
-      "JsonValue": {},
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -29390,6 +29532,26 @@
         "title": "SandboxSummary",
         "description": "The owner's box as E2B reports it, without waking it."
       },
+      "SavedUIViewResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "file_name": { "type": "string", "title": "File Name" },
+          "file_path": { "type": "string", "title": "File Path" },
+          "file_uri": { "type": "string", "title": "File Uri" },
+          "view_id": { "type": "string", "title": "View Id" },
+          "checksum": { "type": "string", "title": "Checksum" }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "file_name",
+          "file_path",
+          "file_uri",
+          "view_id",
+          "checksum"
+        ],
+        "title": "SavedUIViewResponse"
+      },
       "ScheduleCleanupRequest": {
         "properties": {
           "schedule_ids": {
@@ -32647,20 +32809,32 @@
             "title": "State"
           },
           "tool_call_id": { "type": "string", "title": "Tool Call Id" },
-          "writable": { "type": "boolean", "title": "Writable" }
+          "writable": { "type": "boolean", "title": "Writable" },
+          "file_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "File Id"
+          }
         },
         "type": "object",
         "required": ["revision", "source", "state", "tool_call_id", "writable"],
         "title": "UIDraftResponse"
       },
+      "UIDraftSaveRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Filename"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["filename"],
+        "title": "UIDraftSaveRequest"
+      },
       "UIDraftWrite": {
         "properties": {
-          "tool_call_id": {
-            "type": "string",
-            "maxLength": 256,
-            "minLength": 1,
-            "title": "Tool Call Id"
-          },
           "expected_revision": {
             "type": "integer",
             "maximum": 2147483646.0,
@@ -32671,12 +32845,72 @@
             "additionalProperties": true,
             "type": "object",
             "title": "State"
+          },
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Tool Call Id"
           }
         },
         "additionalProperties": false,
         "type": "object",
-        "required": ["tool_call_id", "expected_revision", "state"],
+        "required": ["expected_revision", "state", "tool_call_id"],
         "title": "UIDraftWrite"
+      },
+      "UIFileStateResponse": {
+        "properties": {
+          "file_id": { "type": "string", "title": "File Id" },
+          "view_id": { "type": "string", "title": "View Id" },
+          "source": { "type": "string", "title": "Source" },
+          "checksum": { "type": "string", "title": "Checksum" },
+          "state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "State"
+          },
+          "revision": { "type": "integer", "title": "Revision" },
+          "origin_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin Session Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "view_id",
+          "source",
+          "checksum",
+          "state",
+          "revision",
+          "origin_session_id"
+        ],
+        "title": "UIFileStateResponse"
+      },
+      "UIFileStateWrite": {
+        "properties": {
+          "expected_revision": {
+            "type": "integer",
+            "maximum": 2147483646.0,
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "State"
+          },
+          "expected_checksum": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Expected Checksum"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["expected_revision", "state", "expected_checksum"],
+        "title": "UIFileStateWrite"
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
