@@ -45,6 +45,10 @@ from backend.data.subscription_checkout import (
     subscription_checkout_lock,
 )
 from backend.data.subscription_trial import get_subscription_trial
+from backend.data.subscription_upgrade_models import (
+    StoredUpgradePreview,
+    UpgradePreviewUnavailable,
+)
 from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications.queue import queue_notification_async
 from backend.util import posthog_client
@@ -2089,11 +2093,14 @@ async def modify_stripe_subscription_for_tier(
     user_id: str,
     tier: SubscriptionTier,
     billing_cycle: BillingCycle = "monthly",
+    *,
+    proration_date: int | None = None,
+    upgrade_preview: StoredUpgradePreview | None = None,
 ) -> bool:
     """Change a Stripe subscription to a new paid tier.
 
     Upgrades (e.g. PRO→BUSINESS) apply immediately via ``stripe.Subscription.modify``
-    with ``proration_behavior="create_prorations"``: Stripe credits unused time on
+    with ``proration_behavior="always_invoice"``: Stripe credits unused time on
     the old plan and charges the pro-rated amount for the new plan in the same
     billing cycle.
 
@@ -2131,6 +2138,18 @@ async def modify_stripe_subscription_for_tier(
     if not items:
         return False
     sub_id = sub.id
+    if upgrade_preview and (
+        upgrade_preview.user_id != user_id
+        or upgrade_preview.subscription_id != sub_id
+        or upgrade_preview.target_price_id != price_id
+        or upgrade_preview.item_id != items[0].id
+        or upgrade_preview.current_price_id != items[0].price.id
+        or upgrade_preview.quantity != items[0].quantity
+        or upgrade_preview.preview.proration_date != proration_date
+    ):
+        raise UpgradePreviewUnavailable(
+            "Your subscription changed. Review the upgrade again."
+        )
 
     # Invalidate the cache unconditionally on exit (success OR failure): any
     # Stripe mutation below — clearing cancel_at_period_end, releasing an old
@@ -2190,6 +2209,13 @@ async def modify_stripe_subscription_for_tier(
                 "billing_cycle": billing_cycle,
             },
         }
+        if proration_date is not None:
+            modify_kwargs["proration_date"] = proration_date
+        if upgrade_preview is not None:
+            modify_kwargs["items"][0]["quantity"] = upgrade_preview.quantity
+            modify_kwargs["idempotency_key"] = (
+                f"subscription-upgrade:{upgrade_preview.preview.preview_id}"
+            )
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
 
@@ -2850,7 +2876,8 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
     owns_trial = enrollment is not None and (
         enrollment.subscription_id == new_sub_id
         or (
-            enrollment.converted_at is None
+            not enrollment.subscription_id
+            and enrollment.converted_at is None
             and stripe_subscription.get("trial_end") is not None
         )
     )
@@ -2873,6 +2900,18 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             price_id = items[0].get("price", {}).get("id", "")
         price_to_tier = await build_price_to_tier_map()
         matched = price_to_tier.get(price_id) if price_id else None
+        if (
+            matched is None
+            and enrollment is not None
+            and enrollment.converted_at is not None
+            and enrollment.subscription_id == new_sub_id
+        ):
+            async with transaction() as tx:
+                target = await subscription_activation.accepted_conversion_target(
+                    enrollment, stripe_subscription, tx
+                )
+            if target:
+                matched = target[0]
         if matched is not None:
             tier = matched
         else:
@@ -2944,7 +2983,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
             )
             return
         tier = SubscriptionTier.NO_TIER
-    if tier == SubscriptionTier.PRO:
+    if tier in subscription_activation.PAID_CONVERSION_TIERS:
         if status != "active":
             return
         async with transaction() as tx:

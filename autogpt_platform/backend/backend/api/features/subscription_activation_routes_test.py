@@ -121,3 +121,35 @@ async def test_current_ready_preserves_return_destination(app, monkeypatch):
     ) as client:
         response = await client.get("/api/credits/pro-activation/current")
     assert response.json()["return_to"] == "/chat/123?resume=1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("plan", ["PRO", "MAX", None])
+async def test_preview_forwards_plan_to_quote(app, monkeypatch, plan):
+    authorize(app)
+    preview = AsyncMock(return_value=ActivationResponse(status="confirmation_required"))
+    monkeypatch.setattr(routes, "preview_activation", preview)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://app.test"
+    ) as client:
+        result = await client.post(
+            "/api/credits/pro-activation/preview",
+            json={"plan": plan, "return_to": "/chat"},
+        )
+    assert result.status_code == 200
+    preview.assert_awaited_once_with("authenticated-user", "/chat", plan)
+
+
+@pytest.mark.asyncio
+async def test_preview_rejects_unrelated_plan(app, monkeypatch):
+    authorize(app)
+    preview = AsyncMock(return_value=ActivationResponse(status="confirmation_required"))
+    monkeypatch.setattr(routes, "preview_activation", preview)
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="https://app.test"
+    ) as client:
+        result = await client.post(
+            "/api/credits/pro-activation/preview", json={"plan": "BUSINESS"}
+        )
+    assert result.status_code == 422
+    preview.assert_not_awaited()

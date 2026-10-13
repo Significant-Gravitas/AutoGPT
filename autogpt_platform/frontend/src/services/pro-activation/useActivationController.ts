@@ -31,11 +31,14 @@ export function useActivationController() {
   const destination = useRef("/settings/billing");
   const returnFocus = useRef<HTMLElement | null>(null);
   const [retryConsent, setRetryConsent] = useState(false);
-  const { isReady, isRefreshing, finish } = useActivationReadiness(
-    userID,
-    setOpen,
-    setError,
-  );
+  const {
+    isReady,
+    readyPlan,
+    hasFreshUsage,
+    isRefreshing,
+    finish,
+    clearReadiness,
+  } = useActivationReadiness(userID, setOpen, setError);
 
   function isCurrentUser() {
     return !!userID && useAuthStore.getState().user?.id === userID;
@@ -49,13 +52,22 @@ export function useActivationController() {
     recovered = false,
     background = false,
   ) {
-    if (!isCurrentUser() || (recovered && interacted.current)) return;
+    if (!userID || !isCurrentUser() || (recovered && interacted.current))
+      return;
     if (background && latestAttempt.current?.status === "ready") return;
     const resumed = !!pendingConsent(userID) || checkoutReturn.current;
     if (recovered && !resumed) return;
     latestAttempt.current = response;
     setAttempt(response);
     setError("");
+    if (response.status === "not_applicable") {
+      clearReadiness();
+      consent.current = null;
+      storeConsent(userID, null);
+      setRetryConsent(false);
+      if (recovered) setOpen(false);
+      return;
+    }
     if (response.status === "ready") {
       void finish(response, !recovered || resumed);
     } else if (
@@ -196,6 +208,8 @@ export function useActivationController() {
     setOpen: changeOpen,
     isBusy: isBusy || isRefreshing,
     isReady,
+    hasFreshUsage,
+    readyPlan,
     error,
     needsNewTerms,
     retryConsent,

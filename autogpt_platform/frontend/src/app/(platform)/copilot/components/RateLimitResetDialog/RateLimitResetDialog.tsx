@@ -9,6 +9,7 @@ import { ProviderContinuation } from "@/components/organisms/UsageExperience/Pro
 import { UsageMeter } from "@/components/organisms/UsageExperience/UsageMeter";
 import {
   getUsageExperience,
+  getUsageOfferAction,
   type UsageExperience,
 } from "@/services/usageExperience/helpers";
 import { usagePresentation } from "@/services/usageExperience/presentation";
@@ -60,14 +61,14 @@ export function RateLimitResetDialog({
         resets_at: resetsAt ? new Date(resetsAt).toISOString() : "",
       },
     });
-  const copy = usagePresentation(model);
+  const copy = usagePresentation(model, offer?.usageMultiplier);
   const fallbackTitle =
     failureWindow === "trial"
-      ? "Trial allowance reached."
+      ? "You’ve used your trial allowance"
       : failureWindow === "weekly"
-        ? "Weekly usage reached."
+        ? "You’ve hit this week’s limit"
         : failureWindow === "daily"
-          ? "Daily usage reached."
+          ? "You’ve hit today’s limit"
           : "We couldn’t check your usage.";
   function upgrade() {
     if (onUpgrade) onUpgrade();
@@ -152,9 +153,16 @@ export function RateLimitResetDialog({
               <PlanOffer
                 tier={model.targetTier}
                 {...offer}
+                actionLabel={getUsageOfferAction(model, offer ?? {})}
                 onUpgrade={upgrade}
               />
             )}
+            {isBillingEnabled &&
+              model.inactiveTrialStatus === "payment_failed" && (
+                <Button className="w-full" onClick={upgrade}>
+                  Review billing details
+                </Button>
+              )}
             {isBillingEnabled && model.isTopTier && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4">
                 <div>
