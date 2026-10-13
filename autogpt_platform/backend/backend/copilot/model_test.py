@@ -22,6 +22,7 @@ from .model import (
     ChatMessage,
     ChatSession,
     Usage,
+    _get_session_from_db,
     _save_session_to_db,
     append_and_save_message,
     create_chat_session,
@@ -329,6 +330,27 @@ async def test_chatsession_db_storage(setup_test_user, test_user_id):
                 loaded.tool_calls is not None
             ), f"Tool calls missing for {orig.role} message"
             assert len(orig.tool_calls) == len(loaded.tool_calls)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_chats_messages_sent_one_at_a_time_are_all_saved(
+    setup_test_user, test_user_id
+):
+    """The first message and every follow-up reach the database, in order."""
+    session = await create_chat_session(test_user_id, dry_run=False)
+    sent = [("user", "first"), ("assistant", "reply"), ("user", "second")]
+    for role, content in sent:
+        appended = await append_and_save_message(
+            session.session_id, ChatMessage(role=role, content=content)
+        )
+        assert appended is not None
+
+    saved = await _get_session_from_db(session.session_id)
+
+    assert saved is not None
+    assert [(m.role, m.content, m.sequence) for m in saved.messages] == [
+        (role, content, sequence) for sequence, (role, content) in enumerate(sent)
+    ]
 
 
 @pytest.mark.asyncio(loop_scope="session")
