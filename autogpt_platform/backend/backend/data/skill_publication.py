@@ -24,7 +24,11 @@ from backend.data.skill_content_approvals import (
 )
 from backend.data.skill_learning import LearningSourceRecord, canonical_revision
 from backend.data.skill_publication_settlement import settle_publication
-from backend.data.skill_reviews import review_data, upsert_review_in
+from backend.data.skill_reviews import (
+    TERMINAL_REVIEW_DISPOSITIONS,
+    review_data,
+    upsert_review_in,
+)
 from backend.data.skill_version_files import SkillVersionFile, version_files_json
 from backend.data.skill_versions import (
     PENDING_WRITE_STATE,
@@ -239,8 +243,13 @@ async def _require_no_terminal_review(
         return
     if existing.userId != user_id:
         raise _CommitConflict("review belongs to another user")
-    if existing.disposition in ("applied", APPLIED_PENDING_DISPOSITION):
-        raise _CommitConflict("this revision was already applied")
+    if (
+        existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
+        or existing.disposition == APPLIED_PENDING_DISPOSITION
+    ):
+        raise _CommitConflict("this revision was already settled")
+    if existing.modelAttempts and existing.runId != review.run_id:
+        raise _CommitConflict("review ownership changed before publication")
 
 
 async def commit_version_safe(

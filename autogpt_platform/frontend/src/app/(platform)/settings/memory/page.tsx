@@ -2,8 +2,7 @@
 
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
-import { Flag } from "@/services/feature-flags/use-get-flag";
-import { withFeatureFlag } from "@/services/feature-flags/with-feature-flag";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useEffect } from "react";
 
 import { EraseMemoryCard } from "./components/EraseMemoryCard";
@@ -18,8 +17,10 @@ import { ScopeCard } from "./components/ScopeCard";
 import { SummaryCard } from "./components/SummaryCard";
 import { useLearningHistory } from "./useLearningHistory";
 import { useMemoryPage } from "./useMemoryPage";
+import { MemoryPageAccess } from "./components/MemoryPageAccess";
 
 function SettingsMemoryPage() {
+  const memoryEnabled = Boolean(useGetFlag(Flag.GRAPHITI_MEMORY));
   useEffect(() => {
     document.title = "Memory – AutoGPT Platform";
   }, []);
@@ -39,7 +40,7 @@ function SettingsMemoryPage() {
     forgettingUuid,
     eraseScope,
     isErasing,
-  } = useMemoryPage();
+  } = useMemoryPage(memoryEnabled);
 
   const chatPanel = useMemoryChatPanel({ scopeExpertID });
   const learning = useLearningHistory(scopeExpertID);
@@ -51,7 +52,9 @@ function SettingsMemoryPage() {
           Memory
         </Text>
         <Text variant="body" className="mt-4 max-w-[600px] text-zinc-700">
-          What AutoGPT remembers about you — and who remembers it.
+          {memoryEnabled
+            ? "What AutoGPT remembers about you — and who remembers it."
+            : "Skills learned from your work and when they changed."}
         </Text>
       </header>
 
@@ -61,27 +64,31 @@ function SettingsMemoryPage() {
         onSelect={selectScope}
       />
 
-      <SummaryCard
-        scopeExpertID={scopeExpertID}
-        scopeName={scopeName}
-        onViewSummary={() => void chatPanel.openWithSeed("summary")}
-      />
+      {memoryEnabled ? (
+        <>
+          <SummaryCard
+            scopeExpertID={scopeExpertID}
+            scopeName={scopeName}
+            onViewSummary={() => void chatPanel.openWithSeed("summary")}
+          />
 
-      {isFactsError ? (
-        <ErrorCard
-          responseError={factsError || undefined}
-          context="memory"
-          onRetry={refetchFacts}
-        />
-      ) : (
-        <RecentMemoriesCard
-          facts={facts}
-          isLoading={isLoadingFacts}
-          forgettingUuid={forgettingUuid}
-          onForget={forgetFact}
-          onForgetTopic={() => void chatPanel.openWithSeed("forget")}
-        />
-      )}
+          {isFactsError ? (
+            <ErrorCard
+              responseError={factsError || undefined}
+              context="memory"
+              onRetry={refetchFacts}
+            />
+          ) : (
+            <RecentMemoriesCard
+              facts={facts}
+              isLoading={isLoadingFacts}
+              forgettingUuid={forgettingUuid}
+              onForget={forgetFact}
+              onForgetTopic={() => void chatPanel.openWithSeed("forget")}
+            />
+          )}
+        </>
+      ) : null}
 
       {learning.enabled ? (
         <>
@@ -114,30 +121,40 @@ function SettingsMemoryPage() {
         </>
       ) : null}
 
-      <EraseMemoryCard
-        scopeName={scopeName}
-        memoryCount={memoryCount}
-        isErasing={isErasing}
-        onErase={eraseScope}
-      />
+      {memoryEnabled ? (
+        <>
+          <EraseMemoryCard
+            scopeName={scopeName}
+            memoryCount={memoryCount}
+            isErasing={isErasing}
+            onErase={eraseScope}
+          />
 
-      <MemoryChatPanel
-        scopeName={scopeName}
-        isOpen={chatPanel.isOpen}
-        isStarting={chatPanel.isStarting}
-        startError={chatPanel.startError}
-        sessionId={chatPanel.sessionId}
-        messages={chatPanel.messages}
-        status={chatPanel.status}
-        error={chatPanel.error}
-        queuedMessages={chatPanel.queuedMessages}
-        onSend={chatPanel.onSend}
-        onStop={chatPanel.stop}
-        onRetry={chatPanel.retryStart}
-        onClose={chatPanel.close}
-      />
+          <MemoryChatPanel
+            scopeName={scopeName}
+            isOpen={chatPanel.isOpen}
+            isStarting={chatPanel.isStarting}
+            startError={chatPanel.startError}
+            sessionId={chatPanel.sessionId}
+            messages={chatPanel.messages}
+            status={chatPanel.status}
+            error={chatPanel.error}
+            queuedMessages={chatPanel.queuedMessages}
+            onSend={chatPanel.onSend}
+            onStop={chatPanel.stop}
+            onRetry={chatPanel.retryStart}
+            onClose={chatPanel.close}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
 
-export default withFeatureFlag(SettingsMemoryPage, Flag.GRAPHITI_MEMORY);
+export default function SettingsMemoryPageWithAccess() {
+  return (
+    <MemoryPageAccess>
+      <SettingsMemoryPage />
+    </MemoryPageAccess>
+  );
+}

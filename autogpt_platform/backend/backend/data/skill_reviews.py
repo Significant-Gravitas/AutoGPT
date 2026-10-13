@@ -15,13 +15,14 @@ import prisma.models
 import prisma.types
 from pydantic import BaseModel
 
+from backend.data.db import transaction
 from backend.data.skill_learning import (
     LearningAccessError,
     LearningSourceRecord,
     canonical_revision,
     list_pending_sources,
-    require_owned_source,
 )
+from backend.data.skill_review_lock import lock_review_source
 from backend.util.json import SafeJson
 
 TERMINAL_REVIEW_DISPOSITIONS = frozenset(
@@ -141,11 +142,11 @@ async def upsert_review_in(
     source_revision: str,
     policy_version: int,
     data: dict[str, Any],
+    expected_run_id: str | None = None,
 ) -> prisma.models.SkillLearningReview:
     """Ledger upsert on ``client`` (a transaction or the default client).
 
-    The source must already be verified as the caller's — see
-    :func:`require_owned_source`.
+    The caller must hold the owned source row lock throughout the update.
     """
     rev = canonical_revision(source_revision)
     existing = await client.skilllearningreview.find_unique(
@@ -158,6 +159,8 @@ async def upsert_review_in(
         }
     )
     if existing is None:
+        if expected_run_id is not None:
+            raise LearningAccessError("review claim no longer exists")
         return await client.skilllearningreview.create(
             data={
                 "userId": user_id,
@@ -171,6 +174,14 @@ async def upsert_review_in(
         )
     if existing.userId != user_id:
         raise LearningAccessError("review belongs to another user")
+    if (
+        existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
+        or existing.disposition == "applied_pending"
+        or (expected_run_id is not None and existing.runId != expected_run_id)
+    ):
+        return existing
+    if existing.reviewReplay is not None and not data.get("completedAt"):
+        data = {**data, "runId": existing.runId}
     row = await client.skilllearningreview.update(
         where={"id": existing.id},
         data={**data, "attempts": existing.attempts + 1},
@@ -195,29 +206,34 @@ async def upsert_review(
     output_tokens: int = 0,
     cost_microdollars: int | None = None,
     completed: bool = True,
+    expected_run_id: str | None = None,
 ) -> LearningReviewRecord:
     """Write the ledger row for one review attempt (update in place on retry)."""
-    source = await require_owned_source(user_id, source_id)
-    row = await upsert_review_in(
-        prisma.get_client(),
-        user_id,
-        source=source,
-        source_revision=source_revision,
-        policy_version=policy_version,
-        data=review_data(
-            run_id=run_id,
-            disposition=disposition,
-            reason=reason,
-            change_fingerprint=change_fingerprint,
-            skill_name=skill_name,
-            applied_version_id=applied_version_id,
-            model=model,
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            cost_microdollars=cost_microdollars,
-            completed=completed,
-        ),
-    )
+    async with transaction() as tx:
+        source = await lock_review_source(tx, user_id, source_id)
+        if source is None:
+            raise LearningAccessError("source no longer accessible")
+        row = await upsert_review_in(
+            tx,
+            user_id,
+            source=source,
+            source_revision=source_revision,
+            policy_version=policy_version,
+            expected_run_id=expected_run_id,
+            data=review_data(
+                run_id=run_id,
+                disposition=disposition,
+                reason=reason,
+                change_fingerprint=change_fingerprint,
+                skill_name=skill_name,
+                applied_version_id=applied_version_id,
+                model=model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_microdollars=cost_microdollars,
+                completed=completed,
+            ),
+        )
     return LearningReviewRecord.from_db(row)
 
 
@@ -301,20 +317,10 @@ async def reserve_model_review(
     max_attempts: int,
     expected_epoch: int,
 ) -> LearningReviewRecord | None:
-    from backend.data.db import query_raw_with_schema, transaction
-
     async with transaction() as tx:
-        owned = await query_raw_with_schema(
-            'SELECT * FROM {schema_prefix}"SkillLearningSource" '
-            'WHERE "id" = $1 AND "userId" = $2 FOR UPDATE',
-            source_id,
-            user_id,
-            client=tx,
-            model=prisma.models.SkillLearningSource,
-        )
-        if not owned:
+        source = await lock_review_source(tx, user_id, source_id)
+        if source is None:
             return None
-        source = LearningSourceRecord.from_db(owned[0])
         rev = canonical_revision(source_revision)
         if (
             source.revision != rev

@@ -277,7 +277,7 @@ async def test_publication_commit_is_transactional_and_recoverable(
             run_id="run-2",
             disposition="applied",
         )
-        assert again.id == ledger.id and again.attempts == 2
+        assert again.id == ledger.id and again.attempts == ledger.attempts
     finally:
         await _cleanup(user)
 

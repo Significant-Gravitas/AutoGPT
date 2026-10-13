@@ -99,3 +99,56 @@ async def test_capture_records_the_users_confirmation_signal(fake_store, monkeyp
     assert ("tool_result", "msg:3") in kinds
     assert all(":?" not in r["ref"] for r in record.evidence_refs)
     assert record.revision == "000000000004"
+
+
+@pytest.mark.asyncio
+async def test_capture_keeps_first_turn_identity_after_context_rewrite(
+    fake_store, monkeypatch
+):
+    monkeypatch.setattr(capture, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(capture, "_spawn", lambda coro, name: coro.close())
+    text = "That worked, thanks."
+    initiating = ChatMessage(role="user", content=text, sequence=0)
+    generated = [ChatMessage(role="assistant", content="Great.", sequence=1)]
+    session = _session([initiating, *generated])
+    initiating.content = "<user_context>Trusted context</user_context>\n" + text
+    record = await capture_chat_turn(
+        USER, session, generated, text, initiating_user=initiating
+    )
+    assert record is not None
+    assert ("user_confirmation", "msg:0") in {
+        (s["kind"], s["ref"]) for s in record.outcome_signals
+    }
+
+
+def test_queued_duplicate_does_not_replace_the_initiating_row():
+    initiating = ChatMessage(role="user", content="That worked", sequence=2)
+    queued = ChatMessage(role="user", content="That worked", sequence=3)
+    generated = [queued, ChatMessage(role="assistant", content="Great", sequence=4)]
+    session = _session([initiating, *generated])
+    assert [
+        m.sequence
+        for m in turn_with_initiating_user_row(
+            session, generated, "That worked", initiating_user=initiating
+        )
+    ] == [2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_injected_context_is_not_a_user_confirmation(fake_store, monkeypatch):
+    monkeypatch.setattr(capture, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(capture, "_spawn", lambda coro, name: coro.close())
+    text = "Please import the file."
+    initiating = ChatMessage(
+        role="user",
+        content="<memory_context>\nThat worked.\n</memory_context>\n" + text,
+        sequence=0,
+    )
+    generated = [ChatMessage(role="assistant", content="I will check it.", sequence=1)]
+    session = _session([initiating, *generated])
+    record = await capture_chat_turn(
+        USER, session, generated, text, initiating_user=initiating
+    )
+    assert record is not None
+    assert not any(s["kind"] == "user_confirmation" for s in record.outcome_signals)
+    assert "<memory_context>" in session.messages[0].content

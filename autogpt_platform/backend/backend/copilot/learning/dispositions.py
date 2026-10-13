@@ -196,6 +196,7 @@ async def record_provider_error(
         advance=False,
         stamp=stamp,
         model=reviewer_model(config),
+        expected_run_id=result.run_id,
     )
 
 
@@ -239,14 +240,16 @@ async def record(
     skill_name: str | None = None,
     version_id: str | None = None,
     model: str | None = None,
+    expected_run_id: str | None = None,
 ) -> str:
     result.reviewed += 1
-    await skill_reviews_db().upsert_review(
+    run_id = stamp.run_id if stamp else result.run_id
+    row = await skill_reviews_db().upsert_review(
         user_id,
         source_id=source.source_id,
         source_revision=source.revision,
         policy_version=POLICY_VERSION,
-        run_id=result.run_id,
+        run_id=run_id,
         disposition=disposition,
         reason=reason,
         change_fingerprint=fingerprint,
@@ -257,7 +260,12 @@ async def record(
         output_tokens=stamp.output_tokens if stamp else 0,
         cost_microdollars=stamp.cost_microdollars if stamp else None,
         completed=advance or disposition in _TERMINAL_DISPOSITIONS,
+        expected_run_id=stamp.run_id if stamp else expected_run_id,
     )
+    if row.disposition != disposition or row.run_id != run_id:
+        if row.disposition not in _TERMINAL_DISPOSITIONS:
+            return "deferred"
+        disposition, advance = row.disposition, True
     if advance:
         await skill_learning_db().advance_source_cursor(
             user_id, source.source_id, source.revision

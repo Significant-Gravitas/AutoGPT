@@ -55,7 +55,7 @@ from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-from backend.copilot.learning.capture import capture_chat_turn
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -1791,6 +1791,8 @@ async def stream_chat_completion_baseline(
     # Capture count *before* the pending drain so is_first_turn and the
     # transcript staleness check are not skewed by queued messages.
     _pre_drain_msg_count = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
     # The stream's rows start after the message that triggered it; the rows
     # appended before the turn's first yield are announced once it opens.
     turn_start = _pre_drain_msg_count
@@ -2952,6 +2954,8 @@ async def stream_chat_completion_baseline(
                     session,
                     list(session.messages[turn_start:]),
                     message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
                 )
             )
             _background_tasks.add(_capture_task)

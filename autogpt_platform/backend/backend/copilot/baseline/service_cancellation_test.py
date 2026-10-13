@@ -233,6 +233,8 @@ async def test_learning_capture_contains_tools_and_the_final_persisted_reply(
             pass
         await asyncio.sleep(0)
     capture.assert_awaited_once()
+    assert capture.await_args.kwargs["initiating_user"].role == "user"
+    assert "Run both workflows" in capture.await_args.kwargs["initiating_user"].content
     rows = capture.await_args.args[2]
     assert sum(row.role == "tool" for row in rows) == 2
     assert rows[-1].content == "Both checks passed."

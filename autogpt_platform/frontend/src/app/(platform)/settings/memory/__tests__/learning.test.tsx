@@ -21,6 +21,10 @@ import { within } from "@testing-library/react";
 import { SkillVersionSummary } from "@/app/api/__generated__/models/skillVersionSummary";
 import { server } from "@/mocks/mock-server";
 
+let graphitiEnabled = true;
+let learningEnabled = true;
+let flagsAnswered = true;
+
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
   return {
@@ -49,15 +53,15 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importOriginal) => {
   return {
     ...actual,
     useGetFlag: (flag: string) =>
-      flag === "graphiti-memory" ||
+      (flag === "graphiti-memory" && graphitiEnabled) ||
       flag === "hire-experts" ||
-      flag === "dream-skill-learning-enabled",
+      (flag === "dream-skill-learning-enabled" && learningEnabled),
+    useFlagStatus: (flag: string) => ({
+      answered: flagsAnswered,
+      enabled: flag === "graphiti-memory" ? graphitiEnabled : learningEnabled,
+    }),
   };
 });
-
-vi.mock("@/services/feature-flags/with-feature-flag", () => ({
-  withFeatureFlag: (Component: React.ComponentType) => Component,
-}));
 
 import SettingsMemoryPage from "../page";
 
@@ -97,6 +101,9 @@ const proposal: SkillVersionSummary = {
 };
 
 beforeEach(() => {
+  graphitiEnabled = true;
+  learningEnabled = true;
+  flagsAnswered = true;
   resetCopilotChatRegistry();
   window.history.replaceState({}, "", "/settings/memory");
   server.use(
@@ -146,6 +153,39 @@ beforeEach(() => {
     }),
     getListSkillLearningDecisionsMockHandler200({ items: [proposal] }),
   );
+});
+
+it("keeps personal learning controls available without requesting Graphiti data", async () => {
+  graphitiEnabled = false;
+  const facts = vi.fn(() => ({ expert_id: null, items: [] }));
+  const overview = vi.fn(() => ({
+    expert_id: null,
+    facts: 0,
+    entities: 0,
+    episodes: 0,
+  }));
+  server.use(
+    getListMyMemoryFactsMockHandler200(facts),
+    getGetMyMemoryOverviewMockHandler200(overview),
+  );
+  render(<SettingsMemoryPage />);
+  expect(await screen.findByText("Learning history")).toBeDefined();
+  expect(screen.queryByText("Recent memories")).toBeNull();
+  expect(facts).not.toHaveBeenCalled();
+  expect(overview).not.toHaveBeenCalled();
+});
+
+it("waits for a flag answer before showing controls", () => {
+  flagsAnswered = false;
+  render(<SettingsMemoryPage />);
+  expect(screen.queryByRole("heading", { name: "Memory" })).toBeNull();
+});
+
+it("hides the page when both features are disabled", () => {
+  graphitiEnabled = false;
+  learningEnabled = false;
+  render(<SettingsMemoryPage />);
+  expect(screen.queryByRole("heading", { name: "Memory" })).toBeNull();
 });
 
 describe("Settings memory page — learning", () => {
@@ -297,6 +337,7 @@ describe("Settings memory page — learning", () => {
   });
 
   it("deep links from a chat chip open the requested personal version", async () => {
+    graphitiEnabled = false;
     window.history.replaceState(
       {},
       "",

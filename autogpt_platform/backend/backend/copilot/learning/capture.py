@@ -24,32 +24,55 @@ _background_tasks: set[asyncio.Task] = set()
 
 
 def turn_with_initiating_user_row(
-    session: ChatSession, generated: list[ChatMessage], user_message: str
+    session: ChatSession,
+    generated: list[ChatMessage],
+    user_message: str,
+    *,
+    initiating_user: ChatMessage | None = None,
+    initiating_text: str | None = None,
 ) -> list[ChatMessage]:
     """The turn's messages including the persisted user row that started it.
 
     Both chat engines hand the capture hook only the rows generated during
     the turn: the SDK takes a fixed per-call slice of ``session.messages``
     and the baseline passes its per-turn state, while the initiating user
-    message was appended (and persisted) before either slice begins. The
-    user's own confirmation or acceptance lives on that row, so it is
-    located by content among the persisted user rows and prepended. A row
+    message was appended (and persisted) before either slice begins.
+    Engines retain the initiating row before trusted context changes its
+    content. Content lookup remains a fallback for older callers. A row
     without a sequence is not persisted and is never referenced.
     """
-    if any(
-        m.role == "user" and (m.content or "").strip() == user_message.strip()
-        for m in generated
-    ):
+    message = initiating_user or find_initiating_user_row(session, user_message)
+    if message is None or message.role != "user" or message.sequence is None:
         return list(generated)
-    present = {id(m) for m in generated}
-    for message in reversed(session.messages):
-        if id(message) in present:
-            continue
-        if message.role != "user" or message.sequence is None:
-            continue
-        if (message.content or "").strip() == user_message.strip():
-            return [message, *generated]
-    return list(generated)
+    if initiating_user is not None:
+        message = message.model_copy(
+            update={
+                "content": (
+                    initiating_text if initiating_text is not None else user_message
+                )
+            }
+        )
+    if any(m.role == "user" and m.sequence == message.sequence for m in generated):
+        return [
+            message if m.role == "user" and m.sequence == message.sequence else m
+            for m in generated
+        ]
+    return [message, *generated]
+
+
+def find_initiating_user_row(
+    session: ChatSession, user_message: str | None
+) -> ChatMessage | None:
+    if not user_message:
+        return None
+    return next(
+        (
+            m
+            for m in reversed(session.messages)
+            if m.role == "user" and (m.content or "").strip() == user_message.strip()
+        ),
+        None,
+    )
 
 
 async def capture_chat_turn(
@@ -57,6 +80,9 @@ async def capture_chat_turn(
     session: ChatSession,
     turn_messages: list[ChatMessage],
     user_message: str,
+    *,
+    initiating_user: ChatMessage | None = None,
+    initiating_text: str | None = None,
 ) -> LearningSourceRecord | None:
     """Record this turn as a learning source revision. Never raises.
 
@@ -67,7 +93,13 @@ async def capture_chat_turn(
     try:
         if not await is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id):
             return None
-        messages = turn_with_initiating_user_row(session, turn_messages, user_message)
+        messages = turn_with_initiating_user_row(
+            session,
+            turn_messages,
+            user_message,
+            initiating_user=initiating_user,
+            initiating_text=initiating_text,
+        )
         record = await record_chat_turn(user_id, session, messages, user_message)
         _spawn(
             ensure_dream_system_scheduled(user_id),

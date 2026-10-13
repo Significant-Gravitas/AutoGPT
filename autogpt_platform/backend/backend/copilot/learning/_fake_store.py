@@ -278,12 +278,23 @@ class FakeLearningStore:
         output_tokens: int = 0,
         cost_microdollars: int | None = None,
         completed: bool = True,
+        expected_run_id: str | None = None,
     ) -> LearningReviewRecord:
         source = await self.require_owned_source(user_id, source_id)
         key = self._review_key(source_id, source_revision, policy_version)
         existing = self.reviews.get(key)
         if existing is not None and existing.user_id != user_id:
             raise LearningAccessError("review belongs to another user")
+        if existing is None and expected_run_id is not None:
+            raise LearningAccessError("review claim no longer exists")
+        if existing is not None and (
+            existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
+            or existing.disposition == APPLIED_PENDING_DISPOSITION
+            or (expected_run_id is not None and existing.run_id != expected_run_id)
+        ):
+            return existing
+        if existing is not None and existing.replay is not None and not completed:
+            run_id = existing.run_id
         if (
             existing
             and model is None
@@ -659,12 +670,21 @@ class FakeLearningStore:
             settled = await self.get_review_for_revision(
                 user_id, review.source.id, review.source_revision, review.policy_version
             )
-            if settled is not None and settled.disposition in (
-                "applied",
-                APPLIED_PENDING_DISPOSITION,
+            if settled is not None and (
+                settled.disposition in TERMINAL_REVIEW_DISPOSITIONS
+                or settled.disposition == APPLIED_PENDING_DISPOSITION
             ):
                 return CommitResult(
-                    committed=False, reason="this revision was already applied"
+                    committed=False, reason="this revision was already settled"
+                )
+            if (
+                settled is not None
+                and settled.model_attempts
+                and settled.run_id != review.run_id
+            ):
+                return CommitResult(
+                    committed=False,
+                    reason="review ownership changed before publication",
                 )
             if live.learning_paused_at is not None:
                 return CommitResult(

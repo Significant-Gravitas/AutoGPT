@@ -130,6 +130,7 @@ async def test_building_restart_preserves_cost_and_learning_capture(
     assert capture.await_args.args[0] == "test-user"
     assert capture.await_args.args[1] is session
     assert capture.await_args.args[3] == "build an agent"
+    assert capture.await_args.kwargs["initiating_user"] is session.messages[2]
     assert [message.content for message in session.messages[3:]] == [
         "before restart",
         "after restart",
