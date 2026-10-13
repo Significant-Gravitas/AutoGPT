@@ -339,6 +339,8 @@ async def health():
 
 
 class WebsocketServer(AppProcess):
+    reads_feature_flags = False
+
     def run(self):
         logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
         cors_params = build_cors_params(

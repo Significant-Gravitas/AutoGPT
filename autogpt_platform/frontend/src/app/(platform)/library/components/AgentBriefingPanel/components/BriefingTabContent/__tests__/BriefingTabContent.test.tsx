@@ -17,6 +17,11 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BriefingTabContent } from "../BriefingTabContent";
 
+// The costs breakdown is billing UI: these tests are a billed install's view.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+}));
+
 const mockUseGetV1UserCostSummary = vi.fn();
 vi.mock(
   "@/app/api/__generated__/endpoints/graphs/graphs",

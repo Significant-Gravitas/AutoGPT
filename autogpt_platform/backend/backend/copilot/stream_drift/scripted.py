@@ -4,7 +4,7 @@ import contextlib
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,6 +20,10 @@ from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
+
+# Its presence alone picks the OpenRouter transport the fixtures were recorded
+# under; without a key (fork PRs have no secrets) the turns record differently.
+UNSENT_MODEL_KEY = "test-placeholder-not-a-key"
 
 
 def session_with_prompt(prompt: str) -> ChatSession:
@@ -145,11 +149,13 @@ async def sdk_service_turn(
     queries: list[list[Message]],
     *,
     queued_after_first: list[PendingMessage],
+    held_results: list[PendingMessage] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
-    its turn-end persist and auto-continue included. Only what reaches
-    beyond the process (CLI, sandbox, RPC services, billing) is stubbed."""
+    its turn-end persist and auto-continue included. ``held_results`` are the
+    answered cards' results the turn opens with. Only what reaches beyond the
+    process (CLI, sandbox, RPC services, billing) is stubbed."""
     scripted = iter(queries)
 
     def cli(*_: Any, **__: Any) -> AsyncMock:
@@ -164,9 +170,14 @@ async def sdk_service_turn(
         connection.__aenter__.return_value = client
         return connection
 
-    async def no_answered_cards(
-        *_: Any, **__: Any
+    async def answered_cards(
+        _user_id: str,
+        _session: ChatSession,
+        deliver: Callable[[PendingMessage], None],
+        **__: Any,
     ) -> AsyncGenerator[StreamBaseResponse, None]:
+        for result in held_results or []:
+            deliver(result)
         return
         yield
 
@@ -197,7 +208,7 @@ async def sdk_service_turn(
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),
-        "resolve_answered": no_answered_cards,
+        "resolve_answered": answered_cards,
         "build_session_context": AsyncMock(return_value=""),
         "build_skills_context": AsyncMock(return_value=""),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
@@ -206,6 +217,7 @@ async def sdk_service_turn(
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
+                "api_key": UNSENT_MODEL_KEY,
                 "use_claude_code_subscription": False,
                 "use_e2b_sandbox": False,
                 "claude_agent_fallback_model": None,

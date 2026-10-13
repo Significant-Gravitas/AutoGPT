@@ -238,7 +238,10 @@ def _stop_shadow_evaluations() -> None:
     global _shadow_evaluations_stopped
     _shadow_evaluations_stopped = True
     for task in list(_shadow_evaluations):
-        task.cancel()
+        # A service's cleanup can close the task's loop first, and cancelling
+        # a task on a closed loop raises.
+        if not task.get_loop().is_closed():
+            task.cancel()
     _shadow_evaluations.clear()
 
 
@@ -298,9 +301,8 @@ def shutdown_launchdarkly() -> None:
     if not _is_initialized:
         # `initialize_launchdarkly` returns early when no SDK key is configured,
         # so `ldclient.set_config` was never called and `ldclient.get()` would
-        # raise "set_config was not called". Callers pair init/shutdown on
-        # app_env alone (see `rest_api.feature_flag_context` and
-        # `scheduler._shutdown_feature_flags_for_scheduler`), so an unconfigured
+        # raise "set_config was not called". `AppProcess.execute_run_command`
+        # pairs init/shutdown on app_env alone, so an unconfigured
         # non-LOCAL deployment would otherwise raise out of service teardown and
         # leave the process alive instead of exiting.
         return
