@@ -256,14 +256,20 @@ async def complete_brain_dump_greeting(
 async def download_brain_dump_recording(
     user_id: Annotated[str, Security(get_user_id)],
 ) -> RedirectResponse:
-    """Hand back the user's own recording.
+    """Hand back the user's own recording, for as long as it is kept.
 
     Kept working even when ``status`` is ``failed`` — "your recording is
-    safe" has to be true, and this is what makes it checkable.
+    safe" has to be true, and this is what makes it checkable. Recordings
+    are deleted after 7 days (see ``retention.py``); a signed URL for one
+    that is gone would only fail at the bucket, so say so here instead.
     """
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:
         raise fastapi.HTTPException(status_code=404, detail="No recording found")
+    if not await storage.audio_exists(dump.audioPath):
+        raise fastapi.HTTPException(
+            status_code=404, detail="Recording no longer available"
+        )
 
     url = await storage.audio_download_url(user_id, dump.audioPath)
     return RedirectResponse(url=url, status_code=307)

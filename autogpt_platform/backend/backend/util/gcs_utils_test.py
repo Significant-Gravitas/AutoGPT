@@ -7,6 +7,7 @@ from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 from backend.util.gcs_utils import (
+    blob_exists,
     download_range,
     download_with_fresh_session,
     generate_iam_signed_url,
@@ -171,3 +172,29 @@ async def test_download_keeps_other_errors_when_url_contains_404(mocker, status)
 
     with pytest.raises(aiohttp.ClientResponseError):
         await download_range("bucket", "blob", 16)
+
+
+@pytest.mark.asyncio
+async def test_blob_exists_reads_metadata_only(mocker):
+    client = _mock_client(mocker, download=AsyncMock())
+    client.download_metadata = AsyncMock(return_value={"name": "blob"})
+
+    assert await blob_exists("bucket", "blob") is True
+    client.download_metadata.assert_awaited_once_with("bucket", "blob")
+    client.download.assert_not_awaited()
+    client.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_blob_exists_is_false_only_for_a_real_404(mocker):
+    client = _mock_client(mocker, download=AsyncMock())
+    client.download_metadata = AsyncMock(
+        side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
+    )
+    assert await blob_exists("bucket", "missing") is False
+
+    client.download_metadata = AsyncMock(
+        side_effect=_gcs_http_error(503, _URL_CONTAINING_404)
+    )
+    with pytest.raises(aiohttp.ClientResponseError):
+        await blob_exists("bucket", "blob")

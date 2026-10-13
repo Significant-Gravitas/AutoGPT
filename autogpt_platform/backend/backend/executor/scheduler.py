@@ -31,6 +31,10 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
+from backend.api.features.onboarding_dump.retention import (
+    RecordingPurgeResult,
+    purge_expired_recordings,
+)
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPins
@@ -1015,9 +1019,22 @@ async def _cleanup_old_schedules_without_id(graph_id: str, user_id: str) -> None
 
 
 def cleanup_expired_files():
-    """Clean up expired files from cloud storage."""
-    # Wait for completion
+    """Clean up expired files from cloud storage, voice recordings first.
+
+    Recordings go first so their rows are cleared before the generic
+    cleanup can delete the blob under them; a failure there must not stop
+    the generic cleanup.
+    """
+    try:
+        run_async(_purge_expired_recordings())
+    except Exception:
+        logger.exception("Failed to purge expired brain-dump recordings")
     run_async(cleanup_expired_files_async())
+
+
+async def _purge_expired_recordings() -> RecordingPurgeResult:
+    db = get_database_manager_async_client()
+    return await purge_expired_recordings(db.clear_brain_dump_audio_paths)
 
 
 def execute_community_rebuild(user_id: str):

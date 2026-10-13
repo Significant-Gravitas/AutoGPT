@@ -200,6 +200,7 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "store_audio": AsyncMock(return_value="brain-dumps/rec-1.webm"),
         "discard_parts": AsyncMock(),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
+        "audio_exists": AsyncMock(return_value=True),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -537,6 +538,20 @@ def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
     recording = client.get(RECORDING_URL, follow_redirects=False)
     assert recording.status_code == 307
     assert recording.headers["location"] == "https://signed.example/audio"
+
+
+def test_recording_deleted_by_retention_is_404_not_a_dead_link(
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock]
+):
+    upload_part()
+    finalize()
+    storage_mocks["audio_exists"].return_value = False
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
+
+    assert recording.status_code == 404
+    assert recording.json()["detail"] == "Recording no longer available"
+    storage_mocks["audio_download_url"].assert_not_awaited()
 
 
 def test_discard_clears_the_part_buffer_of_an_unfinished_take(

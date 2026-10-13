@@ -28,6 +28,8 @@ from backend.api.features.onboarding_dump import (
     transcription,
 )
 from backend.api.features.onboarding_dump.models import (
+    AUDIO_FILE_EXTENSIONS,
+    RECORDING_FILENAME_PREFIX,
     ExpertRecommendations,
     FinalizeResponse,
     IntroCardResponse,
@@ -700,15 +702,8 @@ def _pipeline_response(
 
 
 def _audio_filename(recording_id: str, mime_type: str | None) -> str:
-    extensions = {
-        "audio/webm": "webm",
-        "audio/mp4": "m4a",
-        "audio/mpeg": "mp3",
-        "audio/wav": "wav",
-        "audio/x-wav": "wav",
-        "audio/ogg": "ogg",
-    }
-    return f"brain-dump-{recording_id}.{extensions.get(mime_type or '', 'webm')}"
+    extension = AUDIO_FILE_EXTENSIONS.get(mime_type or "", "webm")
+    return f"{RECORDING_FILENAME_PREFIX}{recording_id}.{extension}"
 
 
 async def get_intro_card(user_id: str) -> IntroCardResponse:

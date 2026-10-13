@@ -14,10 +14,12 @@ never a recording.
 
 import base64
 import logging
+from datetime import timedelta
 from typing import Any, Awaitable, cast
 
 from backend.data import redis_client
 from backend.util.cloud_storage import get_cloud_storage_handler
+from backend.util.gcs_utils import blob_exists, parse_gcs_path
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,11 @@ logger = logging.getLogger(__name__)
 # accumulate.
 PART_BUFFER_TTL_SECONDS = 6 * 60 * 60
 
-# The audio has to outlive the onboarding session by enough for the user
-# to come back and download it. 48h is the ceiling ``store_file`` accepts.
-AUDIO_EXPIRATION_HOURS = 48
+# Privacy policy: "We delete the recording within 7 days and keep the
+# transcript while your account exists." ``retention.py`` enforces it; the
+# blob's own expiry is the backstop for a recording no row points at.
+AUDIO_RETENTION = timedelta(days=7)
+AUDIO_EXPIRATION_HOURS = int(AUDIO_RETENTION.total_seconds() // 3600)
 
 
 def _buffer_key(user_id: str, recording_id: str, suffix: str) -> str:
@@ -125,7 +129,21 @@ async def store_audio(user_id: str, content: bytes, filename: str) -> str:
         filename,
         expiration_hours=AUDIO_EXPIRATION_HOURS,
         user_id=user_id,
+        delete_when_expired=True,
     )
+
+
+async def audio_exists(audio_path: str) -> bool:
+    """Whether the stored recording is still in the bucket.
+
+    A path outside the configured private bucket can't be served either,
+    so it counts as gone.
+    """
+    handler = await get_cloud_storage_handler()
+    bucket, blob = parse_gcs_path(audio_path)
+    if bucket != handler.config.gcs_bucket_name:
+        return False
+    return await blob_exists(bucket, blob)
 
 
 async def audio_download_url(user_id: str, audio_path: str) -> str:

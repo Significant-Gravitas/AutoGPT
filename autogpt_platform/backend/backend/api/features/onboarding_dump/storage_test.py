@@ -7,6 +7,7 @@ exercised against a fake hash rather than mocked away.
 """
 
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from pytest_mock import MockerFixture
@@ -165,3 +166,49 @@ async def test_the_buffer_and_its_size_index_expire_and_are_dropped_together(
 
     assert redis.hashes == {}
     assert await storage.buffered_size(USER_ID, RECORDING_ID) == 0
+
+
+def _handler(mocker: MockerFixture, bucket: str = "private-bucket") -> MagicMock:
+    handler = MagicMock()
+    handler.config.gcs_bucket_name = bucket
+    handler.store_file = AsyncMock(return_value="gcs://private-bucket/x")
+    mocker.patch.object(
+        storage, "get_cloud_storage_handler", AsyncMock(return_value=handler)
+    )
+    return handler
+
+
+@pytest.mark.asyncio
+async def test_recordings_are_stored_to_expire_after_seven_days(
+    mocker: MockerFixture,
+):
+    handler = _handler(mocker)
+
+    await storage.store_audio(USER_ID, b"audio", "brain-dump-rec-1.webm")
+
+    kwargs = handler.store_file.call_args.kwargs
+    assert kwargs["expiration_hours"] == 7 * 24
+    assert kwargs["delete_when_expired"] is True
+    assert kwargs["user_id"] == USER_ID
+
+
+@pytest.mark.asyncio
+async def test_audio_exists_checks_the_configured_bucket(mocker: MockerFixture):
+    _handler(mocker)
+    exists = mocker.patch.object(storage, "blob_exists", AsyncMock(return_value=False))
+
+    path = "gcs://private-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+    assert await storage.audio_exists(path) is False
+    exists.assert_awaited_once_with(
+        "private-bucket", "uploads/users/user-1/u/brain-dump-rec-1.webm"
+    )
+
+
+@pytest.mark.asyncio
+async def test_audio_in_another_bucket_counts_as_gone(mocker: MockerFixture):
+    _handler(mocker)
+    exists = mocker.patch.object(storage, "blob_exists", AsyncMock())
+
+    path = "gcs://legacy-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+    assert await storage.audio_exists(path) is False
+    exists.assert_not_awaited()
