@@ -36,7 +36,12 @@ from . import context
 from .falkordb_driver import open_driver
 from .guarded_writes import WriteOutcome, supersede_unless_recalled
 from .memory_model import MemoryForgetFailureCode
-from .recall import FORGOTTEN_FACT, forgotten_fact_predicate, is_forgotten
+from .recall import (
+    FORGOTTEN_FACT,
+    forgotten_fact_predicate,
+    is_forgotten,
+    search_forgotten_facts,
+)
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -56,13 +61,15 @@ from .scope import MemoryScope
 
 _LONG_AGO = "2025-01-01T00:00:00+00:00"
 # (status, expiration_reason, expired_at, invalid_at, forgotten_at) -> forgotten?
+# Only the forget's marker, or the pre-policy shape, makes a fact forgotten.
 _EDGE_SHAPES = {
     ("active", None, None, None, None): False,
     (None, None, None, None, None): False,  # an edge from before MemoryFact
     (None, None, _LONG_AGO, None, None): True,
     ("retracted", "user_signal", _LONG_AGO, None, _LONG_AGO): True,
-    ("retracted", "user_signal", _LONG_AGO, None, None): True,
-    ("superseded", "user_signal", _LONG_AGO, None, None): True,
+    ("retracted", None, None, None, None): False,
+    ("retracted", "user_signal", _LONG_AGO, None, None): False,
+    ("superseded", "user_signal", _LONG_AGO, None, None): False,
     ("superseded", "stale_fact", _LONG_AGO, None, None): False,
     ("superseded", "stale_fact", _LONG_AGO, _LONG_AGO, _LONG_AGO): True,
     ("active", None, _LONG_AGO, _LONG_AGO, None): False,
@@ -285,6 +292,14 @@ async def test_the_forgotten_fact_cypher_and_python_agree(
     kept = {row["uuid"]: row["kept"] for row in found}
     assert kept == {edge_uuid: not f for edge_uuid, f in in_cypher.items()}
     assert (kept[uuids[0]], kept[uuids[1]]) == (True, True)
+    # The search for a permanent delete ranks these alone: with every fact
+    # equally close (the stub embeds everything alike), those not forgotten
+    # take none of the slots, however few.
+    gone = {edge_uuid for edge_uuid, f in in_cypher.items() if f}
+    every = await search_forgotten_facts(scope, "Atlas", limit=len(uuids))
+    assert {edge.uuid for edge in every} == gone
+    two = await search_forgotten_facts(scope, "Atlas", limit=2)
+    assert len(two) == 2 and {edge.uuid for edge in two} <= gone
 
 
 @pytest.mark.integration

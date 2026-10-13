@@ -40,6 +40,8 @@ from backend.executor.batch_executor import PendingEntry
 from . import job_status
 from .batch_costs import recorded_usage
 from .batch_outcome import BatchPass, clean_up_after, fail_pass, mark_job_errored
+from .batch_submit import read_input_bundle
+from .fetch import DreamInput
 from .pass_record import stop_error
 from .schemas import DreamOperations, DreamPassResult, IngestionDrainStatus
 from .store import read_pass, record_batch_failed, record_expired
@@ -71,34 +73,37 @@ async def should_dispatch(entry: PendingEntry) -> bool:
 
 async def drop_closed(entry: PendingEntry) -> None:
     """The executor's drop hook, run only by the walker whose claim took a
-    closed pass's batch off the queue: the pass ended out as its owner on
-    the row, its batch stopped at the provider as part of the cleanup. The
-    row refuses the failure ``fail_pass`` writes: it keeps how it closed."""
+    closed pass's batch off the queue: the pass ended out as the owner a
+    record of it names (``_owner_of``), its batch stopped at the provider as
+    part of the cleanup. The row refuses the failure ``fail_pass`` writes:
+    it keeps how it closed. With no owner to go by, the drop does no more:
+    the closed row is marked, and the reaper cleans up after the pass from
+    it."""
     bp = BatchPass.from_payload(entry.payload or {})
-    row = await _closed_row(bp.pass_id)
-    owner = bp
+    row, owner = await _owner_of(bp)
     reason = "pass already closed"
     if row is not None:
-        owner = bp.model_copy(
-            update={"user_id": row.user_id, "expert_id": row.expert_id}
-        )
         reason = stop_error(row) or f"pass already {row.status.value.lower()}"
     logger.info(
         f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id} dropped "
         f"unpolled: {reason}"
     )
-    await fail_pass(owner, reason, provider_batch_id=entry.provider_batch_id)
+    if owner is not None:
+        await fail_pass(owner, reason, provider_batch_id=entry.provider_batch_id)
 
 
 async def end_dead_end(bp: BatchPass, error: str) -> None:
-    """A payload no phase handler can take ends its pass as far as the
-    payload names it: with an owner and a pass, like any failure. Without an
-    owner, the admin job closes and so does the record, marked: the reaper
-    cleans up after the pass from its row, which names the owner to charge
-    and keeps the token to release the lock with. Without a pass there is
-    nothing more to end."""
-    if bp.user_id and bp.pass_id:
-        await fail_pass(bp, error)
+    """A payload no phase handler can take ends its pass as the owner a
+    record of it names (``_owner_of``), like any failure: the payload is the
+    part that went wrong, so the owner it names is never the one charged, nor
+    whose lock is released. With no owner to go by, the admin job closes and
+    so does the record, marked, nothing charged, unlocked or deleted: the
+    reaper cleans up after the pass from its row, which names the owner to
+    charge and keeps the token to release the lock with. Without a pass
+    there is nothing more to end."""
+    owner = (await _owner_of(bp))[1] if bp.pass_id else None
+    if owner is not None:
+        await fail_pass(owner, error)
         return
     await mark_job_errored(bp.job_id, error, dead_end=True)
     if bp.pass_id:
@@ -124,18 +129,64 @@ async def finish_duplicate(bp: BatchPass, ops: DreamOperations) -> None:
     await clean_up_after(bp)
 
 
-async def _closed_row(pass_id: str) -> DreamPassRecord | None:
-    """The dropped pass's row again, for its owner and how it closed; ``None``
-    when the store cannot say in time, and the payload's owner stands."""
+async def _owner_of(
+    bp: BatchPass,
+) -> tuple[DreamPassRecord | None, BatchPass | None]:
+    """The ended pass's row, when it can be read, and *bp* as the owner a
+    record of the pass names: its row, else its input bundle, the scope the
+    phase handler checks a payload against. ``None`` for the owner when
+    neither can be read: a batch's payload is only a copy, never enough to
+    charge an account or release its lock."""
+    row = await _row_again(bp.pass_id)
+    if row is not None:
+        return row, _as_owner(bp, row.user_id, row.expert_id, "its row")
+    bundle = await _input_bundle(bp.pass_id)
+    if bundle is not None:
+        return None, _as_owner(bp, bundle.user_id, bundle.expert_id, "its input bundle")
+    logger.warning(
+        f"Dream pass {bp.pass_id}: neither its row nor its input bundle could be "
+        "read; nothing charged or released on its batch's payload alone"
+    )
+    return None, None
+
+
+async def _row_again(pass_id: str) -> DreamPassRecord | None:
+    """The ended pass's row again; ``None`` when there is none or the store
+    cannot say in time."""
     try:
         return await read_pass(pass_id, timeout=DISPATCH_CHECK_READ_TIMEOUT_SECONDS)
     except Exception:
         logger.warning(
-            f"Dream pass {pass_id}: could not read its row again to end it; "
-            "going by its batch's payload",
+            f"Dream pass {pass_id}: could not read its row again to end it",
             exc_info=True,
         )
         return None
+
+
+async def _input_bundle(pass_id: str) -> DreamInput | None:
+    """The ended pass's input bundle; ``None`` when there is none or Redis
+    cannot give it."""
+    try:
+        return await read_input_bundle(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its input bundle to end it",
+            exc_info=True,
+        )
+        return None
+
+
+def _as_owner(
+    bp: BatchPass, user_id: str, expert_id: str | None, source: str
+) -> BatchPass:
+    """*bp* with the owner *source* names: a record of the pass is the
+    authority on whose pass it is, a batch's payload only a copy."""
+    if bp.user_id and (bp.user_id, bp.expert_id) != (user_id, expert_id):
+        logger.warning(
+            f"Dream pass {bp.pass_id}: its batch's payload names another owner "
+            f"than {source}; ending it as {source} says"
+        )
+    return bp.model_copy(update={"user_id": user_id, "expert_id": expert_id})
 
 
 async def _row(pass_id: str) -> DreamPassRecord | None:
@@ -183,18 +234,20 @@ async def _finalize_stuck_duplicate(bp: BatchPass, ops: DreamOperations) -> None
 
 def _attempted_result(bp: BatchPass, ops: DreamOperations) -> DreamPassResult:
     """The first delivery's per-edge outcomes (and dream session id) died
-    with it, so the counts here are the clamped *attempted* ops — annotated
-    so the admin UI doesn't present them as confirmed apply results."""
+    with it: the writes and proposals it queued are counted pending, none
+    written, and the demotion counts are the clamped *attempted* ops —
+    annotated so the admin UI doesn't present them as confirmed apply
+    results."""
     note = (
-        "[finalized after duplicate delivery — counts reflect attempted "
-        "operations; the original delivery may or may not have written them] "
+        "[finalized after duplicate delivery — writes and proposals were "
+        "queued by the original delivery, counted pending; demotion counts "
+        "reflect attempted operations] "
     )
     return DreamPassResult(
         user_id=bp.user_id,
         pass_id=bp.pass_id,
         execution_path="anthropic_batch",
-        consolidated_count=len(ops.writes),
-        proposal_count=len(ops.proposals),
+        pending_writes=len(ops.writes) + len(ops.proposals),
         demotion_count=len(ops.demotions),
         entity_invalidation_count=len(ops.entity_invalidations),
         # Batch apply never drains in-line by design; the first

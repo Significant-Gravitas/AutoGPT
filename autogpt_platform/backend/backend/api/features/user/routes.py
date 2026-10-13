@@ -8,12 +8,18 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi import APIRouter, Body, HTTPException, Query, Response, Security
 from prisma.enums import BriefingFrequency
 
-from backend.api.model import TimezoneResponse, UpdateTimezoneRequest
+from backend.api.model import (
+    RecordUserConsentRequest,
+    TimezoneResponse,
+    UpdateTimezoneRequest,
+    UserConsentResponse,
+)
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.user import (
     get_or_create_user,
     get_or_create_user_with_status,
     get_user_notification_preference,
+    record_signup_consent,
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
@@ -24,7 +30,7 @@ from backend.util.settings import Settings
 settings = Settings()
 logger = logging.getLogger(__name__)
 
-# Nothing is hoisted onto this router, tags included. Six of the seven routes
+# Nothing is hoisted onto this router, tags included. Seven of the eight routes
 # take Security(requires_user); POST /auth/user/preferences/from-email takes
 # none — it is reached from an email link and verifies its own signed token —
 # so a router-level dependency would silently authenticate it.
@@ -116,6 +122,28 @@ async def update_user_timezone_route(
     """Update user timezone. The timezone should be a valid IANA timezone identifier."""
     user = await update_user_timezone(user_id, str(request.timezone))
     return TimezoneResponse(timezone=user.timezone)
+
+
+@router.post(
+    "/auth/user/consent",
+    summary="Record user consent",
+    tags=["auth"],
+    dependencies=[Security(requires_user)],
+)
+async def record_user_consent_route(
+    user_id: Annotated[str, Security(get_user_id)], request: RecordUserConsentRequest
+) -> UserConsentResponse:
+    """Record the terms version accepted at signup and, if the user refused
+    marketing email, the opt-out. Idempotent; never clears an opt-out."""
+    user = await record_signup_consent(
+        user_id, request.terms_version, request.marketing_opt_out
+    )
+    return UserConsentResponse(
+        terms_accepted_at=user.terms_accepted_at,
+        terms_version=user.terms_version,
+        marketing_opt_out_at=user.marketing_opt_out_at,
+        marketing_opt_out_source=user.marketing_opt_out_source,
+    )
 
 
 @router.get(

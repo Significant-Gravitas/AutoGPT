@@ -44,7 +44,7 @@ async def test_an_approved_card_rules_on_the_subject_it_named(redis):
     [
         (ReviewStatus.REJECTED, {"a": "mcp:h/t"}),
         (ReviewStatus.WAITING, {"a": "mcp:h/t"}),
-        # A bare tool or a held read names no subject, so a click cannot rule on it.
+        # A held read or a money card offers no key, so a click cannot rule on it.
         (ReviewStatus.APPROVED, {}),
     ],
 )
@@ -121,7 +121,7 @@ def test_a_decline_names_its_scope_and_day(scope, otto, reason):
     assert hit.reason == reason
 
 
-async def test_only_a_held_call_with_a_subject_offers_a_key():
+async def test_a_held_call_offers_the_key_its_card_can_rule_on():
     calls = {
         "mcp": held.HeldCall(
             review_id="mcp",
@@ -140,10 +140,18 @@ async def test_only_a_held_call_with_a_subject_offers_a_key():
         "read": held.HeldCall(
             review_id="read", tool_name="web_fetch", tool_call_id="c", args={}
         ),
+        # Parked over the spend ceiling: reads never consult a rule.
+        "paid": held.HeldCall(
+            review_id="paid",
+            tool_name="consult_teammate",
+            tool_call_id="c",
+            args={},
+            rule_key="consult_teammate",
+        ),
     }
     with patch.object(held, "_held", AsyncMock(return_value=calls)):
-        keys = await held.subject_keys("s", ["mcp", "tool", "read", "gone"])
-    assert keys == {"mcp": "mcp:h/t"}
+        keys = await held.subject_keys("s", ["mcp", "tool", "read", "paid", "gone"])
+    assert keys == {"mcp": "mcp:h/t", "tool": "bash_exec"}
 
 
 async def test_an_unreadable_store_approves_without_a_rule():

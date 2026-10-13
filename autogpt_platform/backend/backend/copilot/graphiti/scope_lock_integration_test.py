@@ -2,7 +2,8 @@
 worker against a live FalkorDB whose own Redis holds the lock
 (``scope_lock.py``): a forget the lock keeps waiting fails as busy and writes
 nothing (the chat tool tries once more), an ingestion it keeps waiting goes
-to the back of the queue once, and without Redis both go ahead.
+to the back of the queue, as often as it takes, and without Redis both go
+ahead.
 ``recall_inflight_integration_test.py``
 covers a forget and an ingestion meeting mid-episode.
 
@@ -11,7 +12,6 @@ Run with FalkorDB reachable (see ``conftest.py``)::
     poetry run pytest -m integration backend/copilot/graphiti/scope_lock_integration_test.py
 """
 
-import asyncio
 from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -125,51 +125,57 @@ async def test_the_chat_tool_tries_a_busy_forget_once_more(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_worker_a_forget_keeps_waiting_requeues_the_episode_once(
+async def test_a_worker_a_forget_keeps_waiting_requeues_the_episode(
     scope_graph,
     stub_graphiti_client,
     ingest_worker_cleanup,
     live_lock: Redis,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The first wait runs out and writes nothing; the forget finishes, and
-    the episode, back at the end of the queue, is written."""
+    """The first wait runs out and writes nothing; the forget finishes while
+    the episode pauses, and the episode, back at the end of the queue, is
+    written."""
     driver, scope = scope_graph
     key = write_lock_key(scope.group_id)
     await live_lock.set(key, "a long forget", px=60000)
-    requeue = ingest._requeue_once
 
-    def forget_finishes(*args: Any) -> bool:
-        asyncio.ensure_future(live_lock.delete(key))
-        return requeue(*args)
+    async def forget_finishes(waits: int) -> None:
+        await live_lock.delete(key)
 
     client = stub_graphiti_client(driver, scripted_responses([BOB]))
     with (
         patch.object(ingest, "INGEST_LOCK_WAIT_SECONDS", 0.5),
-        patch.object(ingest, "_requeue_once", forget_finishes),
+        patch.object(ingest, "_pause_before_retry", forget_finishes),
     ):
         await ingest_through_the_worker(driver, scope, client, [BOB], session_id="s-q")
 
-    assert "requeued once" in caplog.text and "dropping" not in caplog.text
     assert list((await live_facts(driver)).values()) == [BOB[2]]
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_a_worker_locked_out_twice_drops_the_episode(
+async def test_a_worker_locked_out_wait_after_wait_keeps_the_episode(
     scope_graph,
     stub_graphiti_client,
     ingest_worker_cleanup,
     live_lock: Redis,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
+    """A stuck forget keeps the lock through four waits: the episode is never
+    dropped, a warning names it at the third, and it is written once the
+    lock frees."""
     driver, scope = scope_graph
-    await live_lock.set(write_lock_key(scope.group_id), "a stuck forget", px=60000)
+    key = write_lock_key(scope.group_id)
+    await live_lock.set(key, "a stuck forget", px=60000)
     client = stub_graphiti_client(driver, scripted_responses([BOB]))
     completion = ingest.IngestionCompletion()
 
+    async def pause(waits: int) -> None:
+        if waits == 4:
+            await live_lock.delete(key)
+
     with (
         patch.object(ingest, "INGEST_LOCK_WAIT_SECONDS", 0.3),
+        patch.object(ingest, "_pause_before_retry", pause),
         patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
     ):
         assert await ingest.enqueue_episode(
@@ -181,11 +187,11 @@ async def test_a_worker_locked_out_twice_drops_the_episode(
             completion=completion,
         )
         completion.register()
-        assert await ingest.wait_for_ingestion(completion, 10), "never completed"
+        assert await ingest.wait_for_ingestion(completion, 20), "never completed"
 
-    assert "requeued once" in caplog.text and "dropping" in caplog.text
-    assert await count(driver, "MATCH (ep:Episodic) RETURN count(ep) AS c") == 0
-    await live_lock.delete(write_lock_key(scope.group_id))
+    assert (completion.written, completion.pending) == (1, 0)
+    assert "'conversation_s-d' is still queued" in caplog.text
+    assert await count(driver, "MATCH (ep:Episodic) RETURN count(ep) AS c") == 1
 
 
 @pytest.mark.integration

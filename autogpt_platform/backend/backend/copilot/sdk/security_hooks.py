@@ -222,16 +222,10 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        #
-        # LIMITATION: For background (async) agents the SDK returns the
-        # Agent/Task tool immediately with {isAsync: true}, which triggers
-        # PostToolUse and releases the slot while the agent is still running.
-        # SubagentStop fires later when the background process finishes but
-        # does not currently hold a slot.  This means the concurrency limit
-        # only gates *launches*, not true concurrent execution.  To fix this
-        # we would need to track background agent_ids separately and release
-        # in SubagentStop, but the SDK does not guarantee SubagentStop fires
-        # for every background agent (e.g. on session abort).
+        # Sub-agents run in the foreground (build_sdk_env sets
+        # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
+        # as long as the sub-agent and PostToolUse releases the slot when it
+        # finishes.
         subagent_tool_use_ids: set[str] = set()
 
         async def pre_tool_use_hook(
@@ -247,9 +241,6 @@ def create_security_hooks(
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.
             if tool_name in _SUBAGENT_TOOLS:
-                # Background agents are allowed — the SDK returns immediately
-                # with {isAsync: true} and the model polls via TaskOutput.
-                # Still count them against the concurrency limit.
                 if len(subagent_tool_use_ids) >= max_subtasks:
                     logger.warning(
                         f"[SDK] Sub-agent limit reached ({max_subtasks}), "

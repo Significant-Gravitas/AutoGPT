@@ -224,15 +224,13 @@ class TestTheWorker:
         client = _client(_still([], []))
         completion = ingest.IngestionCompletion()
         completion.register()
-        requeue = ingest._requeue_once
 
-        def forget_finishes(*args, **kwargs) -> bool:
+        async def forget_finishes(waits: int) -> None:
             client.driver.execute_query.assert_not_awaited()
             del lock_redis.values[lock]
-            return requeue(*args, **kwargs)
 
         monkeypatch.setattr(ingest, "INGEST_LOCK_WAIT_SECONDS", 0)
-        monkeypatch.setattr(ingest, "_requeue_once", forget_finishes)
+        monkeypatch.setattr(ingest, "_pause_before_retry", forget_finishes)
         payload = _payload(Citations(fact_uuids=["f1"]), completion)
         await _work(client, monkeypatch, payload)
 

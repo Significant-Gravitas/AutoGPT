@@ -205,24 +205,47 @@ async def read_open_passes(
 
 
 async def read_expired_passes(
-    expired_before: datetime, *, limit: int
+    expired_before: datetime,
+    *,
+    limit: int,
+    after: tuple[datetime, str] | None = None,
 ) -> list[DreamPassRecord]:
     """Open passes, of every user, whose lease lapsed before
-    *expired_before*, the oldest lapse first. Raises when the read fails or
-    runs out of time."""
-    return await _bounded(
-        dream_db().list_expired_dream_passes(expired_before, limit=limit)
-    )
+    *expired_before*, in lapse order (the lapse, then the id): the first
+    ones, or those after *after*, a lapse and an id. Raises when the read
+    fails or runs out of time."""
+    if after is None:
+        listing = dream_db().list_expired_dream_passes(expired_before, limit=limit)
+    else:
+        listing = dream_db().list_expired_dream_passes(
+            expired_before, limit=limit, after_lapse=after[0], after_id=after[1]
+        )
+    return await _bounded(listing)
 
 
 async def read_pending_cleanups(
-    *, due_before: datetime, limit: int
+    *,
+    due_before: datetime,
+    limit: int,
+    marked_through: datetime | None = None,
+    after: tuple[datetime, str] | None = None,
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked, or their lease lapsed, before *due_before*;
-    the longest pending first. Raises when the read fails or runs out of
-    time."""
-    return await _bounded(dream_db().list_dream_pass_cleanups(due_before, limit=limit))
+    in mark order (the mark, then the id), only those marked by
+    *marked_through* and after *after*, a mark and an id, when given.
+    Raises when the read fails or runs out of time."""
+    if marked_through is None and after is None:
+        listing = dream_db().list_dream_pass_cleanups(due_before, limit=limit)
+    else:
+        listing = dream_db().list_dream_pass_cleanups(
+            due_before,
+            limit=limit,
+            marked_through=marked_through,
+            after_mark=after[0] if after else None,
+            after_id=after[1] if after else None,
+        )
+    return await _bounded(listing)
 
 
 async def read_user_passes(
@@ -286,4 +309,5 @@ async def _write(
 async def _bounded(call: Awaitable[_T], timeout: float | None = None) -> _T:
     """*call*, or ``TimeoutError`` once it has taken *timeout* (the write
     deadline by default); the abandoned call is cancelled, not left running."""
-    return await asyncio.wait_for(call, timeout=timeout or RECORD_WRITE_TIMEOUT_SECONDS)
+    async with asyncio.timeout(timeout or RECORD_WRITE_TIMEOUT_SECONDS):
+        return await call

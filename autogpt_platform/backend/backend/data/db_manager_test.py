@@ -181,18 +181,35 @@ def test_the_reaper_and_retention_arguments_survive_the_rpc_round_trip() -> None
     class's functions, as the service registers them."""
     cutoff = datetime(2026, 9, 26, 3, 0, 0, 123000, tzinfo=timezone.utc)
     manager = DatabaseManager()
-    for method, cutoff_name in (
-        (DatabaseManager.list_expired_dream_passes, "expired_before"),
-        (DatabaseManager.list_dream_pass_cleanups, "due_before"),
-        (DatabaseManager.delete_old_dream_passes, "created_before"),
+    # Both scans also carry where the reaper's scan cycle stands.
+    open_scan = {"after_lapse": cutoff, "after_id": "p1"}
+    cleanup_scan = {"marked_through": cutoff, "after_mark": cutoff, "after_id": "p1"}
+    for method, args in (
+        (
+            DatabaseManager.list_expired_dream_passes,
+            {"expired_before": cutoff, "limit": 7, **open_scan},
+        ),
+        (
+            DatabaseManager.list_dream_pass_cleanups,
+            {"due_before": cutoff, "limit": 7, **cleanup_scan},
+        ),
+        (
+            DatabaseManager.delete_old_dream_passes,
+            {"created_before": cutoff, "limit": 7},
+        ),
     ):
         endpoint = manager._create_fastapi_endpoint(method)
         body = inspect.signature(endpoint).parameters["body"].annotation
-        sent = body.model_validate(to_dict({cutoff_name: cutoff, "limit": 7}))
-        assert sent.model_dump() == {cutoff_name: cutoff, "limit": 7}
+        sent = body.model_validate(to_dict(args))
+        assert sent.model_dump() == args
 
 
 def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.claim_scope_schedule)
     manager._create_fastapi_endpoint(manager.record_scope_run)
+
+
+def test_the_audience_consumer_can_read_the_opt_out() -> None:
+    assert hasattr(DatabaseManager, "is_marketing_opted_out")
+    assert hasattr(DatabaseManagerAsyncClient, "is_marketing_opted_out")

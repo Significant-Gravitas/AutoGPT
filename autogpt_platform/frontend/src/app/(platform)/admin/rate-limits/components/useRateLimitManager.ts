@@ -177,7 +177,7 @@ export function useRateLimitManager() {
   }
 
   async function handleTierChange(newTier: string) {
-    if (!rateLimitData) return;
+    if (!rateLimitData) return null;
 
     const response = await postV2SetUserRateLimitTier({
       user_id: rateLimitData.user_id,
@@ -187,6 +187,8 @@ export function useRateLimitManager() {
     if (response.status !== 200) {
       throw new Error("Failed to update tier");
     }
+
+    const warning = response.data.warning ?? null;
 
     // Re-fetch rate limit data to reflect new tier-adjusted limits.
     try {
@@ -200,6 +202,7 @@ export function useRateLimitManager() {
       // Tier was changed server-side; UI will be stale but not incorrect.
       // The caller's success toast is still valid — the tier change worked.
     }
+    return warning;
   }
 
   return {

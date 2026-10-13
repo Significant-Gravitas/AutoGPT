@@ -97,10 +97,10 @@ async def _dream_pass_enabled(run: DreamPassRun) -> bool:
     as the cron entry that fired it (if any) already let it through."""
     flag = Flag.DREAM_PASS_ENABLED.value
     try:
-        enabled, authoritative = await asyncio.wait_for(
-            evaluate_feature_flag(Flag.DREAM_PASS_ENABLED, run.user_id),
-            timeout=FLAG_READ_TIMEOUT_SECONDS,
-        )
+        async with asyncio.timeout(FLAG_READ_TIMEOUT_SECONDS):
+            enabled, authoritative = await evaluate_feature_flag(
+                Flag.DREAM_PASS_ENABLED, run.user_id
+            )
     except Exception:
         logger.warning(
             f"Dream pass {run.pass_id}: could not read {flag}; going on",

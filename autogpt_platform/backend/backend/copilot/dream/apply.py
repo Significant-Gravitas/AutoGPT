@@ -23,6 +23,7 @@ guard at the top of ``apply_operations``.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid as uuidlib
 from collections.abc import Collection, Mapping
@@ -50,7 +51,7 @@ from backend.copilot.transports import resolve_default_chat_route
 from .citations import source_description, validated_citations
 from .demotions import apply_demotions
 from .fetch import DREAM_EPISODE_NAME_PREFIX
-from .locks import DreamLockHandle, DreamLockLostError
+from .locks import LOCK_CHECK_TIMEOUT_SECONDS, DreamLockHandle, DreamLockLostError
 from .schemas import (
     ConsolidatedFact,
     DreamOperations,
@@ -301,10 +302,12 @@ async def _queue_cited(
     pass_id: str,
     cited: _Cited,
     session_id: str,
-    completion: IngestionCompletion,
+    writes_done: IngestionCompletion,
+    proposals_done: IngestionCompletion,
 ) -> tuple[list[WriteSummary], list[WriteSummary]]:
     """Queue the cited writes, then the cited proposals, registering each
-    queued episode on ``completion``; the snapshot lines of those queued."""
+    queued write on ``writes_done`` and each proposal on ``proposals_done``;
+    the snapshot lines of those queued."""
     writes: list[WriteSummary] = []
     for i, fact, citations in cited.writes:
         if await _write_consolidated_fact(
@@ -313,10 +316,10 @@ async def _queue_cited(
             i,
             fact,
             session_id=session_id,
-            completion=completion,
+            completion=writes_done,
             citations=citations,
         ):
-            completion.register()
+            writes_done.register()
             writes.append(_summary(fact, citations, "active"))
     proposals: list[WriteSummary] = []
     for i, finding, citations in cited.proposals:
@@ -326,10 +329,10 @@ async def _queue_cited(
             i,
             finding,
             session_id=session_id,
-            completion=completion,
+            completion=proposals_done,
             citations=citations,
         ):
-            completion.register()
+            proposals_done.register()
             proposals.append(_summary(finding, citations, "tentative"))
     return writes, proposals
 
@@ -348,18 +351,17 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
     """
     # Lazy import — avoids circular dependency at module-import time
     # AND keeps the dream-pass / chat-model coupling explicit. Routing
-    # through ``chat_db()`` means the dream pass (running in the
-    # Scheduler subprocess) auto-uses the DatabaseManager RPC client;
+    # through ``chat_db()``/``orgs_db()`` means the dream pass (running in
+    # the Scheduler subprocess) auto-uses the DatabaseManager RPC client;
     # the DatabaseManager process itself uses the direct module.
-    from backend.api.features.orgs.db import get_user_default_team
     from backend.copilot.model import ChatSessionMetadata
-    from backend.data.db_accessors import chat_db
+    from backend.data.db_accessors import chat_db, orgs_db
 
     user_id = scope.owner_user_id
     # Dream passes run per-user with no request context; the user's
     # default (personal) org is the correct tenant for their dreams.
     try:
-        org_id, team_id = await get_user_default_team(user_id)
+        org_id, team_id = await orgs_db().get_user_default_team(user_id)
     except Exception:
         logger.warning(
             f"Could not resolve default team for dream session (user {user_id}); "
@@ -427,10 +429,13 @@ async def _write_dream_summary_message(
 
 
 async def _drain_ingestion(
-    pass_id: str, completion: IngestionCompletion, timeout_seconds: float
+    pass_id: str,
+    trackers: tuple[IngestionCompletion, ...],
+    timeout_seconds: float,
 ) -> IngestionDrainStatus:
-    """Wait for the worker to finish the dream's OWN enqueued episodes:
-    each written, dropped for resting on a forget, or failed.
+    """Wait for the worker to finish the dream's OWN enqueued episodes, on
+    each of *trackers* at once: each written, dropped for resting on a
+    forget, or failed.
 
     ``enqueue_episode`` returning True only proves the episode reached the
     in-process asyncio queue; the real write (LLM extraction + embedding in
@@ -441,7 +446,7 @@ async def _drain_ingestion(
     scheduler pod restart silently discards queued writes while the pass
     stays recorded successful.
 
-    Scoped to ``completion`` — only the episodes THIS pass enqueued. The
+    Scoped to *trackers* — only the episodes THIS pass enqueued. The
     per-user queue is shared with live-chat ingestion, so a whole-queue
     barrier would let a user's concurrent chat activity extend the in-lock
     hold up to the full timeout (and items enqueued after the drain starts
@@ -456,28 +461,30 @@ async def _drain_ingestion(
       * ``skipped`` — ``timeout_seconds <= 0``; the batch path uses this to
         avoid stalling the shared, serial ``BatchExecutor.walk_once`` loop
         (see ``BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS``). The episodes still
-        process fire-and-forget in the executor process.
+        process fire-and-forget in the executor process, counted pending.
       * ``timed_out`` — the worker did not finish all the episodes within
         the timeout.
-        They keep processing fire-and-forget; apply warns rather than
-        failing the pass — partial visibility beats a failed pass.
+        They keep processing fire-and-forget, counted pending, not written;
+        apply warns rather than failing the pass — partial visibility beats
+        a failed pass.
     """
-    if not completion.registered:
+    waiting = [tracker for tracker in trackers if tracker.registered]
+    if not waiting:
         return IngestionDrainStatus.drained
     if timeout_seconds <= 0:
         logger.info(
             "Dream pass %s: ingestion drain skipped (no wait) — %d episode(s) "
             "processing fire-and-forget; reporting drain status=skipped",
             pass_id,
-            completion.registered,
+            sum(tracker.registered for tracker in waiting),
         )
         return IngestionDrainStatus.skipped
-    drained = await wait_for_ingestion(completion, timeout_seconds)
-    if drained:
+    waits = [wait_for_ingestion(tracker, timeout_seconds) for tracker in waiting]
+    if all(await asyncio.gather(*waits)):
         return IngestionDrainStatus.drained
     logger.warning(
         "Dream pass %s: own ingestion episodes did not drain within %.0fs — "
-        "reported write/proposal counts include episodes still queued "
+        "those not written yet are reported pending; they stay queued "
         "in-process (lost if this pod restarts)",
         pass_id,
         timeout_seconds,
@@ -504,10 +511,17 @@ async def apply_operations(
     detailed ``DreamOperationsSnapshot`` payload for consumers that
     need per-operation rollups (eval, admin UI, future P9 SSE event),
     and an ``ingestion_drain_status`` (``IngestionDrainStatus``) —
-    ``timed_out`` means the write/proposal counts were reported while
-    episodes were still queued in-process, ``skipped`` is the by-design
-    batch skip, ``drained`` is a pass whose writes the worker all finished
-    (see ``_drain_ingestion``). Read it back via ``drain_status_from_stats``.
+    ``timed_out`` means episodes were still queued in-process when the pass
+    was reported, ``skipped`` is the by-design batch skip, ``drained`` is a
+    pass whose writes the worker all finished (see ``_drain_ingestion``).
+    Read it back via ``drain_status_from_stats``.
+
+    ``consolidated_count`` and ``proposal_count`` count the writes and
+    proposals graphiti saved by the time apply returned, never one merely
+    queued: those not written yet are ``pending_writes`` (every one on
+    the batch path, which does not wait), those whose write raised
+    ``failed_writes``, those dropped for resting on a forget
+    ``dropped_forgotten``.
 
     An empty pass — no writes, proposals, demotions, or entity
     invalidations, once the writes citing nothing the pass read are
@@ -619,6 +633,7 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
+            "pending_writes": 0,
             "failed_writes": 0,
             "provenance_pending": 0,
             "uncited_writes_dropped": cited.uncited,
@@ -642,31 +657,16 @@ async def apply_operations(
     if lease is not None and not await lease.renew():
         raise DreamLockLostError(user_id)
 
-    # Tracks completion of only the episodes THIS pass enqueues, so the
-    # drain below waits on the dream's own writes and not on unrelated
-    # live-chat ingestion sharing the same per-user queue. Registered once
-    # per successful enqueue; the worker signals each as it finishes it.
-    completion = IngestionCompletion()
+    # Track only the episodes THIS pass enqueues, its writes on one tracker
+    # and its proposals on another: the drain below waits on the dream's own
+    # episodes, not on unrelated live-chat ingestion sharing the same
+    # per-user queue, and the pass reports as written only what graphiti
+    # saved of each. Registered once per successful enqueue; the worker
+    # records what became of each episode as it finishes it.
+    writes_done, proposals_done = IngestionCompletion(), IngestionCompletion()
     write_summaries, proposal_summaries = await _queue_cited(
-        scope, pass_id, cited, session_id, completion
+        scope, pass_id, cited, session_id, writes_done, proposals_done
     )
-    written, proposed = len(write_summaries), len(proposal_summaries)
-
-    # One episode was registered per successful enqueue, so the tracker's
-    # count is exactly the writes + proposals we report — the drain waits on
-    # precisely those and nothing else. A mismatch does not endanger the
-    # writes (the drain would just resolve early or wait out its cap), so
-    # log loudly instead of failing a pass that has already written.
-    if completion.registered != written + proposed:
-        logger.error(
-            "Dream pass %s: ingestion tracker registered %d episode(s) but "
-            "reported %d write(s) + %d proposal(s) — drain barrier is not "
-            "scoped to exactly the reported writes",
-            pass_id,
-            completion.registered,
-            written,
-            proposed,
-        )
 
     # Renew the dream lock right before the longest non-LLM tail (the
     # ingestion drain plus the demotions / summary write that follow), to a
@@ -681,17 +681,18 @@ async def apply_operations(
     # The episodes already enqueued above keep processing fire-and-forget
     # (they cannot be recalled), but the pass is reported errored instead of
     # pretending exclusive ownership.
+    queued = writes_done.registered + proposals_done.registered
     if lock_handle is not None and (
-        completion.registered or ops.demotions or ops.entity_invalidations
+        queued or ops.demotions or ops.entity_invalidations
     ):
-        if not await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS):
+        if not await _renewed_for_the_tail(lock_handle, pass_id):
             raise DreamLockLostError(user_id)
 
     # Drain the in-process ingestion queue before anything downstream
     # treats the writes as finished (and before we return and the caller
     # releases the dream lock). See ``_drain_ingestion``.
     ingestion_drain_status = await _drain_ingestion(
-        pass_id, completion, ingestion_drain_timeout
+        pass_id, (writes_done, proposals_done), ingestion_drain_timeout
     )
 
     destroyed = await apply_demotions(scope, pass_id, ops, known_fact_uuids)
@@ -700,20 +701,26 @@ async def apply_operations(
     # once the memory ops above have been attempted.
     await _write_dream_summary_message(session_id, pass_id, ops.summary_for_user)
 
+    trackers = (writes_done, proposals_done)
+    dropped = sum(tracker.dropped_forgotten for tracker in trackers)
+    pending = sum(tracker.pending for tracker in trackers)
+    failed = sum(tracker.failed for tracker in trackers)
+    provenance_pending = sum(tracker.provenance_pending for tracker in trackers)
     logger.info(
         "Dream pass %s applied for user %s: "
-        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d "
-        "failed_writes=%d provenance_pending=%d demoted=%d "
-        "(failed=%d) protected=%d entity_edges=%d indeterminate=%d "
-        "accounting_complete=%s ingestion_drain_status=%s",
+        "writes=%d proposals=%d uncited=%d dropped_forgotten=%d pending=%d "
+        "failed_writes=%d provenance_pending=%d demoted=%d (failed=%d) "
+        "protected=%d entity_edges=%d indeterminate=%d accounting_complete=%s "
+        "ingestion_drain_status=%s",
         pass_id,
         user_id[:12],
-        written,
-        proposed,
+        writes_done.written,
+        proposals_done.written,
         cited.uncited,
-        completion.dropped_forgotten,
-        completion.failed,
-        completion.provenance_pending,
+        dropped,
+        pending,
+        failed,
+        provenance_pending,
         destroyed.demoted,
         destroyed.failed,
         destroyed.protected,
@@ -732,20 +739,24 @@ async def apply_operations(
 
     return {
         "session_id": session_id,
-        "consolidated_count": written,
-        "proposal_count": proposed,
+        # The writes and proposals graphiti saved by the time apply returned.
+        "consolidated_count": writes_done.written,
+        "proposal_count": proposals_done.written,
         "demotion_count": destroyed.demoted,
         "demotion_failed_count": destroyed.failed,
         "entity_invalidation_count": destroyed.entity_edges,
         # Writes and proposals dropped unwritten: a forget reached what they
         # rest on after the pass read the graph.
-        "dropped_forgotten": completion.dropped_forgotten,
+        "dropped_forgotten": dropped,
+        # Writes and proposals not written yet: queued, waiting for the
+        # graph's lock, or being written.
+        "pending_writes": pending,
         # Writes and proposals the worker did not make: their citation marker
         # could not be written (it fails closed) or the graph write raised.
-        "failed_writes": completion.failed,
+        "failed_writes": failed,
         # Writes made whose derivation record failed after the write: their
         # marker stays until reconciled (``graphiti/recall_reconcile.py``).
-        "provenance_pending": completion.provenance_pending,
+        "provenance_pending": provenance_pending,
         # Writes and proposals dropped before they were queued: they cited
         # nothing the pass read, or a fact of another scope.
         "uncited_writes_dropped": cited.uncited,
@@ -761,3 +772,21 @@ async def apply_operations(
         "ingestion_drain_status": ingestion_drain_status,
         "snapshot": snapshot,
     }
+
+
+async def _renewed_for_the_tail(lock_handle: DreamLockHandle, pass_id: str) -> bool:
+    """Renew the lock for the drain and the writes after it. A renewal Redis
+    does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS`` fails closed, as
+    the lease renewals that admit apply do: ownership unknown is not
+    ownership."""
+    try:
+        async with asyncio.timeout(LOCK_CHECK_TIMEOUT_SECONDS):
+            return await lock_handle.extend(LOCK_DRAIN_RENEWAL_SECONDS)
+    except TimeoutError:
+        logger.warning(
+            "Dream pass %s: the lock renewal before the drain did not answer "
+            "within %ss; stopping before the destructive tail",
+            pass_id,
+            LOCK_CHECK_TIMEOUT_SECONDS,
+        )
+        return False

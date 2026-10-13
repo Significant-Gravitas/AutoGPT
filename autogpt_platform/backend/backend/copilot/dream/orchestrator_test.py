@@ -568,16 +568,20 @@ def test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope():
     )
     non_drain_headroom = orchestrator_mod.DREAM_NON_LLM_HEADROOM_SECONDS
     drain = INGESTION_DRAIN_TIMEOUT_SECONDS
+    store_io = orchestrator_mod.DREAM_STORE_IO_SECONDS
 
     # Whole pass (including the drain) must fit the scheduler abandonment
-    # boundary with real margin.
+    # boundary with real margin. The store round trips only reach their
+    # total when every one runs to its deadline; past the boundary the
+    # scheduler stops waiting, and the pass, not cancelled, finishes.
     worst_case = llm + drain + non_drain_headroom
     assert worst_case < SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
     # The lock only has to cover everything UP TO the drain, because the
-    # drain runs under a freshly renewed lock. Require 10% slack so the lock
-    # never expires mid-write.
-    assert llm + non_drain_headroom <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
+    # drain runs under a freshly renewed lock: every store round trip at its
+    # deadline included. Require 10% slack so the lock never expires
+    # mid-write.
+    assert llm + non_drain_headroom + store_io <= 0.9 * DEFAULT_LOCK_TTL_SECONDS
 
     # The renewal must comfortably outlast the drain cap it protects.
     assert LOCK_DRAIN_RENEWAL_SECONDS > drain

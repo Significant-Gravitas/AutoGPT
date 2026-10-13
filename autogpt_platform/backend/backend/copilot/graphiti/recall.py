@@ -15,14 +15,14 @@ an edge with no ``status`` predates the ``MemoryFact`` edge type and counts
 as ``active``. A forgotten fact (``forgotten_fact_predicate``) is never live:
 a forget stamps ``forgotten_at``, which only a forget writes
 (``recall_forget.py`` and the cascade it runs on what the dream derived
-from the fact, or a backfill for older forgets), so no
-other writer's status or reason can make it look remembered again. An
-episode is recallable while no forget has stamped ``redacted_at`` on it and
-none of the facts extracted from it is forgotten: one forgotten fact hides
-the whole text, since nothing records which sentence it came from. The
-episode's other facts stay live. Nor is an episode a dream write placed
-and is still writing (``write_pending``, ``marked_write.py``): graphiti's
-save of it clears that.
+from the fact, or the legacy-forget backfill for older ones), so no other
+writer's status or reason can make it look remembered again, nor make a fact
+look forgotten. An episode is recallable while no forget has stamped
+``redacted_at`` on it and none of the facts extracted from it is forgotten:
+one forgotten fact hides the whole text, since nothing records which
+sentence it came from. The episode's other facts stay live. Nor is an
+episode a dream write placed and is still writing (``write_pending``,
+``marked_write.py``): graphiti's save of it clears that.
 """
 
 import asyncio
@@ -30,7 +30,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
-from graphiti_core.edges import EntityEdge
+from graphiti_core.edges import EntityEdge, get_entity_edge_from_record
+from graphiti_core.graph_queries import get_vector_cosine_func_query
+from graphiti_core.models.edges.edge_db_queries import get_entity_edge_return_query
 from graphiti_core.nodes import EpisodicNode, get_episodic_node_from_record
 from graphiti_core.search.search_config import SearchConfig
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
@@ -39,6 +41,7 @@ from graphiti_core.search.search_filters import (
     DateFilter,
     SearchFilters,
 )
+from graphiti_core.search.search_utils import DEFAULT_MIN_SCORE
 
 from backend.copilot.dream.ratification_hits import record_memory_hit
 
@@ -96,22 +99,16 @@ def forgotten_fact_predicate(alias: str = "e") -> str:
     """The forgotten-fact test as a Cypher ``WHERE`` fragment on edge ``alias``.
 
     A user forgot the fact: a forget stamped ``forgotten_at`` (the marker
-    only a forget writes), or, from before that marker, it is ``retracted``,
-    its ``expiration_reason`` is ``USER_FORGET_REASON`` (a dream demotion made
-    on the user's word records that too), or it has the
-    ``legacy_forget_predicate`` shape.
+    only a forget writes), or, from before that marker, it has the
+    ``legacy_forget_predicate`` shape. Never its ``status`` or
+    ``expiration_reason``: graphiti's attribute extraction fills both from an
+    episode's text, and a dream demotion picks its reason, so neither may
+    make a fact (and every episode and session it came from) look forgotten.
 
-    It is never null: a ``status`` or ``expiration_reason`` left unset reads
-    as matching neither value, so ``NOT`` it is the not-forgotten test on
-    every edge, a live one included (a bare ``e.status = 'retracted'`` is
-    null there, and so would the negation be).
+    It is never null: it only asks whether properties are set, so ``NOT`` it
+    is the not-forgotten test on every edge, a live one included.
     """
-    return (
-        f"({alias}.forgotten_at IS NOT NULL"
-        f" OR coalesce({alias}.status, '') = '{MemoryStatus.retracted.value}'"
-        f" OR coalesce({alias}.expiration_reason, '') = '{USER_FORGET_REASON}'"
-        f" OR ({legacy_forget_predicate(alias)}))"
-    )
+    return f"({alias}.forgotten_at IS NOT NULL OR ({legacy_forget_predicate(alias)}))"
 
 
 def legacy_forget_predicate(alias: str = "e") -> str:
@@ -132,11 +129,8 @@ def is_forgotten(fact: EntityEdge) -> bool:
     """The forgotten-fact test for an edge graphiti returned."""
     reason = fact.attributes.get("expiration_reason")
     legacy = fact.expired_at is not None and fact.invalid_at is None
-    return (
-        fact.attributes.get("forgotten_at") is not None
-        or fact_status(fact) == MemoryStatus.retracted.value
-        or reason == USER_FORGET_REASON
-        or (legacy and reason is None)
+    return fact.attributes.get("forgotten_at") is not None or (
+        legacy and reason is None
     )
 
 
@@ -204,6 +198,43 @@ async def search_facts(
     tentative = include_tentative
     found = [f for f in results.edges if is_live(f, include_tentative=tentative)]
     return await live_now(client.driver, found, include_tentative=tentative)
+
+
+async def search_forgotten_facts(
+    scope: MemoryScope, query: str, *, limit: int
+) -> list[EntityEdge]:
+    """Forgotten facts matching ``query`` by meaning, best first, at most
+    ``limit``: for making a soft forget permanent
+    (``recall_forget.retract(hard=True)``).
+
+    A forget leaves a fact's embedding but makes its sentence read
+    ``FORGOTTEN_FACT``, so in graphiti's hybrid search, which ranks every
+    fact by both, live facts would take the slots ahead of it. This ranks
+    the forgotten facts alone, by the similarity graphiti's own search uses,
+    above the same threshold: none is crowded out by a live one.
+    """
+    client = await get_graphiti_client(scope.group_id)
+    vector = await client.embedder.create(input_data=[query.replace("\n", " ")])
+    return await _forgotten_by_meaning(client.driver, scope.group_id, vector, limit)
+
+
+async def _forgotten_by_meaning(
+    driver: GraphDriver, group_id: str, vector: list[float], limit: int
+) -> list[EntityEdge]:
+    provider = driver.provider
+    score = get_vector_cosine_func_query("e.fact_embedding", "$search_vector", provider)
+    records, _, _ = await driver.execute_query(
+        "MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)"
+        f" WHERE e.group_id = $group_id AND {forgotten_fact_predicate('e')}"
+        f" WITH DISTINCT e, n, m, {score} AS score WHERE score > $min_score"
+        f" RETURN {get_entity_edge_return_query(provider)}"
+        " ORDER BY score DESC LIMIT $limit",
+        group_id=group_id,
+        search_vector=vector,
+        min_score=DEFAULT_MIN_SCORE,
+        limit=limit,
+    )
+    return [get_entity_edge_from_record(row, provider) for row in records]
 
 
 async def live_now(

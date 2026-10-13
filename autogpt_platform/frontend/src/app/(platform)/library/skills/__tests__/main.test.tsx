@@ -484,7 +484,7 @@ describe("SkillsPage", () => {
 
     await vi.waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith(
-        expect.stringContaining("/copilot#prompt="),
+        expect.stringContaining("/home#prompt="),
       );
     });
     const url = pushMock.mock.calls[0][0] as string;

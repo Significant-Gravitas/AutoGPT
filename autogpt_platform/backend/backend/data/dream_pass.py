@@ -126,39 +126,76 @@ async def list_dream_passes(
 
 
 async def list_expired_dream_passes(
-    expired_before: datetime, limit: int = 100
+    expired_before: datetime,
+    limit: int = 100,
+    after_lapse: datetime | None = None,
+    after_id: str | None = None,
 ) -> list[DreamPassRecord]:
     """Open passes, of every user, whose lease lapsed before
-    *expired_before*: the oldest lapse first, at most *limit*. A pass with
-    no lease is not listed."""
+    *expired_before*, in lapse order (the lapse, then the id), at most
+    *limit*: the first ones, or, given *after_lapse* and *after_id*, those
+    after that point (keyset pagination, so the reaper can go on past rows it
+    tried). A pass with no lease is not listed."""
+    where: DreamPassWhereInput = {
+        "status": {"in": list(OPEN_STATUSES)},
+        "leaseExpiresAt": {"lt": expired_before},
+    }
+    if after_lapse is not None and after_id is not None:
+        where["OR"] = [
+            {"leaseExpiresAt": {"gt": after_lapse}},
+            {"leaseExpiresAt": {"equals": after_lapse}, "id": {"gt": after_id}},
+        ]
     rows = await prisma.models.DreamPass.prisma().find_many(
-        where={
-            "status": {"in": list(OPEN_STATUSES)},
-            "leaseExpiresAt": {"lt": expired_before},
-        },
-        order={"leaseExpiresAt": "asc"},
+        where=where,
+        order=[{"leaseExpiresAt": "asc"}, {"id": "asc"}],
         take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]
 
 
 async def list_dream_pass_cleanups(
-    due_before: datetime, limit: int = 100
+    due_before: datetime,
+    limit: int = 100,
+    marked_through: datetime | None = None,
+    after_mark: datetime | None = None,
+    after_id: str | None = None,
 ) -> list[DreamPassRecord]:
     """Closed passes, of every user, marked for a cleanup that has not
     finished and is due: marked before *due_before*, or holding no lease or
-    one that lapsed before it. The longest pending first, at most *limit*."""
-    rows = await prisma.models.DreamPass.prisma().find_many(
-        where={
-            "status": {"in": list(CLOSED_STATUSES)},
-            "cleanupPendingAt": {"not": None},
+    one that lapsed before it. In mark order (the mark, then the id), at
+    most *limit*: given *marked_through*, only those marked by then, and,
+    given *after_mark* and *after_id*, only those after that point (keyset
+    pagination, so the reaper can go on past cleanups it tried)."""
+    where: list[DreamPassWhereInput] = [
+        {
             "OR": [
                 {"cleanupPendingAt": {"lte": due_before}},
                 {"leaseExpiresAt": None},
                 {"leaseExpiresAt": {"lte": due_before}},
-            ],
+            ]
+        }
+    ]
+    if marked_through is not None:
+        where.append({"cleanupPendingAt": {"lte": marked_through}})
+    if after_mark is not None and after_id is not None:
+        where.append(
+            {
+                "OR": [
+                    {"cleanupPendingAt": {"gt": after_mark}},
+                    {
+                        "cleanupPendingAt": {"equals": after_mark},
+                        "id": {"gt": after_id},
+                    },
+                ]
+            }
+        )
+    rows = await prisma.models.DreamPass.prisma().find_many(
+        where={
+            "status": {"in": list(CLOSED_STATUSES)},
+            "cleanupPendingAt": {"not": None},
+            "AND": where,
         },
-        order={"cleanupPendingAt": "asc"},
+        order=[{"cleanupPendingAt": "asc"}, {"id": "asc"}],
         take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]

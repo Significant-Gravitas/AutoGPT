@@ -2,10 +2,12 @@
 database: a new row carries its lease, a renewal moves it, the sync route's
 own end empties it and the input bundle (the statement's ``clear``), a close
 that leaves a cleanup behind (a cancel, the reaper's expiry) marks the row
-and keeps its lease until the one write a closed row takes clears both, the
-reaper lists open rows whose lease lapsed and closed rows whose cleanup is
-due, oldest first, on their indexes, and retention deletes closed rows past
-their retention, a batch at a time, none whose cleanup is pending."""
+and keeps its lease until the closed-row write of a finished cleanup clears
+both, the reaper lists open rows whose lease lapsed (in lapse order, then by
+id) and closed rows whose cleanup is due (in mark order, then by id), each
+from a point it gives, so its scan goes on past rows it tried, on their
+indexes, and retention deletes closed rows past their retention, a batch at
+a time, none whose cleanup is pending."""
 
 import uuid
 from collections.abc import AsyncIterator
@@ -163,6 +165,26 @@ async def test_the_reaper_lists_open_passes_whose_lease_lapsed_oldest_first(owne
     assert [row.id for row in first] == [oldest]
 
 
+async def test_the_reapers_scan_of_open_passes_goes_on_from_where_it_stopped(
+    owner,
+):
+    """Keyset pages in lapse order, then by id: rows that share a lapse are
+    neither skipped nor listed twice across the pages."""
+    lapse = _LONG_AGO - timedelta(days=1)
+    tied = sorted([await _new_pass(owner, lease_expires_at=lapse) for _ in range(3)])
+    later = await _new_pass(owner, lease_expires_at=lapse + timedelta(seconds=1))
+
+    first = await list_expired_dream_passes(_NOW, limit=2)
+    assert [row.id for row in first] == tied[:2]
+
+    after = (first[-1].lease_expires_at, first[-1].id)
+    assert after[0] == lapse
+    second = await list_expired_dream_passes(
+        _NOW, limit=2, after_lapse=after[0], after_id=after[1]
+    )
+    assert [row.id for row in second] == [tied[2], later]
+
+
 async def test_the_reaper_scans_an_index_on_status_and_lease_expiry():
     indexes = await query_raw_with_schema(
         "SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'DreamPass'"
@@ -230,6 +252,44 @@ async def test_the_cleanup_scan_lists_closed_marked_rows_longest_pending_first(
     assert [r.id for r in rows if r.user_id == owner] == marked
     first = await list_dream_pass_cleanups(_NOW, limit=1)
     assert [r.id for r in first] == marked[:1]
+
+
+async def test_the_reapers_scan_of_cleanups_goes_on_from_where_it_stopped(
+    owner,
+):
+    """Keyset pages in mark order, then by id, up to a mark: rows that share
+    a mark are neither skipped nor listed twice, and one marked after the
+    bound waits."""
+    mark = _LONG_AGO - timedelta(days=1)
+    tied = []
+    for _ in range(3):
+        pass_id = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+        await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
+        await PrismaDreamPass.prisma().update(
+            where={"id": pass_id}, data={"cleanupPendingAt": mark}
+        )
+        tied.append(pass_id)
+    tied.sort()
+    later = await _new_pass(owner, lease_expires_at=_LONG_AGO)
+    await update_dream_pass(later, cancelled("testing", owner_user_id=owner))
+    await PrismaDreamPass.prisma().update(
+        where={"id": later}, data={"cleanupPendingAt": mark + timedelta(seconds=1)}
+    )
+
+    first = await list_dream_pass_cleanups(_NOW, limit=2, marked_through=mark)
+    assert [row.id for row in first] == tied[:2]
+    rest = await list_dream_pass_cleanups(
+        _NOW,
+        limit=10,
+        marked_through=mark,
+        after_mark=first[-1].cleanup_pending_at,
+        after_id=first[-1].id,
+    )
+    assert [row.id for row in rest] == tied[2:]
+    unbounded = await list_dream_pass_cleanups(
+        _NOW, limit=2, after_mark=mark, after_id=tied[1]
+    )
+    assert [row.id for row in unbounded] == [tied[2], later]
 
 
 async def test_the_cleanup_scan_lists_a_row_once_its_cleanup_is_due(owner):

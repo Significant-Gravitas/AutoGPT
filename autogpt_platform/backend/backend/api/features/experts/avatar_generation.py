@@ -96,7 +96,7 @@ async def generate_avatar(request: ExpertAvatarRequest) -> io.BytesIO:
             image=reference_images(request.category),
             prompt=avatar_prompt(request),
             size="1024x1024",
-            quality="high",
+            quality="medium",
             background="opaque",
             output_format="png",
             n=1,

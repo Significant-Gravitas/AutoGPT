@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { describe, expect, it } from "vitest";
 import {
   WORKSPACE_FILE_PATTERN,
@@ -8,7 +9,6 @@ import {
   getLatestCompactionStats,
   getMessageArtifacts,
   getMostRecentArtifact,
-  parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
 import type { MessagePart } from "../helpers";

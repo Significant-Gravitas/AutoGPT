@@ -25,6 +25,7 @@ from ._test_data import (
 )
 from .complete import _normalize_ollama_host, structured_complete
 from .context import InferenceError
+from .record import price
 from .routing import anthropic_batch_route
 
 
@@ -109,6 +110,56 @@ class TestDelegation:
         ):
             result = await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
         assert (result.usage.cost_usd, result.usage.cost_source) == (None, "none")
+
+    @pytest.mark.asyncio
+    async def test_openai_compat_cache_buckets_come_off_the_input(self):
+        """OpenRouter counts cached reads and writes inside ``prompt_tokens``.
+        The usage keeps the four buckets disjoint, so each cached token is
+        counted once."""
+        call_provider = AsyncMock(
+            return_value=ProviderResponse(
+                content=ONE_FACT,
+                prompt_tokens=10_000,
+                completion_tokens=100,
+                cache_read_tokens=8_000,
+                cache_creation_tokens=500,
+            )
+        )
+        with patch(ROUTING, return_value=platform_routing()), patch(
+            CALL_PROVIDER, call_provider
+        ):
+            result = await structured_complete(sync_ctx(), MESSAGES, SampleOutput)
+
+        usage = result.usage
+        assert (
+            usage.input_tokens,
+            usage.cache_read_tokens,
+            usage.cache_creation_tokens,
+        ) == (1_500, 8_000, 500)
+
+    @pytest.mark.asyncio
+    async def test_an_unpriced_openrouter_call_prices_cached_input_once(self):
+        """With no ``usage.cost`` from OpenRouter the call is priced off the
+        card. 8k of 10k prompt tokens cached on Haiku 4.5: 2k fresh input at
+        $1/1M plus 8k cache reads at $0.10/1M is $0.0028, not the $0.0108 of
+        charging the cached tokens as input too."""
+        call_provider = AsyncMock(
+            return_value=ProviderResponse(
+                content=ONE_FACT,
+                prompt_tokens=10_000,
+                completion_tokens=0,
+                cache_read_tokens=8_000,
+            )
+        )
+        ctx = sync_ctx(model="anthropic/claude-haiku-4-5")
+        with patch(ROUTING, return_value=platform_routing()), patch(
+            CALL_PROVIDER, call_provider
+        ):
+            result = await structured_complete(ctx, MESSAGES, SampleOutput)
+
+        priced = price(result.usage, ctx.route)
+        assert priced.cost_source == "catalog"
+        assert priced.cost_usd == pytest.approx(0.0028)
 
     @pytest.mark.asyncio
     async def test_routes_to_ollama_with_the_raw_host(self):

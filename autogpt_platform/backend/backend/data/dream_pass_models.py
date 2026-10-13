@@ -83,6 +83,9 @@ class DreamPassApplied(BaseModel):
     # Writes and proposals the worker dropped unwritten for resting on a
     # forget, before the pass was reported; a row written before it reads 0.
     dropped_forgotten: int = 0
+    # Writes and proposals not written yet when the pass was reported; a
+    # row written before it reads 0.
+    pending_writes: int = 0
     # Writes and proposals the worker did not make (their citation marker or
     # the graph write failed), and writes made whose derivation record
     # failed and awaits reconcile; a row written before them reads 0.
@@ -154,9 +157,9 @@ class DreamPassUpdate(BaseModel):
     a cleanup (``cleanup_pending_at``). A column is given a value or cleared,
     not both.
 
-    ``closed_row`` is the one write a closed row takes: the cleanup after its
-    pass saying it has finished. It applies to a closed row only, and may
-    only clear columns.
+    ``closed_row`` is the one kind of write a closed row takes: the cleanup
+    after its pass saying it has finished. It applies to a closed row only,
+    and may only clear columns.
     """
 
     status: DreamPassStatus | None = None

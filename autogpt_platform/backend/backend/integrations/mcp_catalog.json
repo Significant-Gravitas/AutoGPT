@@ -54,7 +54,7 @@
     "mcp_server": {
       "server_url": "https://mcp.airtable.com/mcp",
       "documentation_url": "https://support.airtable.com/articles/9897799762-using-the-airtable-mcp-server",
-      "setup_instructions": "Sign in and select bases to authorize. Records, comments and schema reads are selected initially. Allow changes adds record, comment and schema writes. A personal access token can further limit automation to selected bases or workspaces.",
+      "setup_instructions": "Sign in and select bases to authorize. This requests record, comment and schema reads and writes. A personal access token can further limit automation to selected bases or workspaces.",
       "connection_mode": "hosted",
       "icon_id": "airtable",
       "auth_methods": [
@@ -65,9 +65,7 @@
         "data.records:read",
         "schema.bases:read",
         "data.recordComments:read",
-        "workspacesAndBases:read"
-      ],
-      "oauth_write_scopes": [
+        "workspacesAndBases:read",
         "data.records:write",
         "schema.bases:write",
         "data.recordComments:write"
@@ -179,11 +177,11 @@
   {
     "name": "mcp_apollo_io",
     "display_name": "Apollo.io",
-    "description": "Find people and read existing Apollo contacts, with optional contact creation and updates.",
+    "description": "Find people and read, create and update Apollo contacts.",
     "mcp_server": {
       "server_url": "https://mcp.apollo.io/mcp",
       "documentation_url": "https://docs.apollo.io/docs/apollo-mcp",
-      "setup_instructions": "Sign in for people search and existing-contact reads. Allow changes adds contact creation and updates. Account access rules still apply.",
+      "setup_instructions": "Sign in for people search, contact reads, and contact creation and updates. Account access rules still apply.",
       "connection_mode": "hosted",
       "icon_id": "apollo",
       "auth_methods": [
@@ -194,9 +192,7 @@
         "app_scopes",
         "mixed_people_api_search",
         "contacts_search",
-        "contact_read"
-      ],
-      "oauth_write_scopes": [
+        "contact_read",
         "contact_write",
         "contact_update"
       ],
@@ -376,6 +372,21 @@
     }
   },
   {
+    "name": "mcp_canva",
+    "display_name": "Canva",
+    "description": "Search, create, edit, autofill, and export Canva designs, and manage folders, assets, brand templates, and comments.",
+    "mcp_server": {
+      "server_url": "https://mcp.canva.com/mcp",
+      "documentation_url": "https://www.canva.dev/docs/apps/mcp/",
+      "setup_instructions": "Sign in with your Canva account and approve access. Your existing Canva permissions apply. Autofill, brand templates, and resize tools require a Canva Pro, Business, or Enterprise plan.",
+      "connection_mode": "hosted",
+      "auth_methods": [
+        "oauth"
+      ],
+      "icon_id": "canva"
+    }
+  },
+  {
     "name": "mcp_chargebee",
     "display_name": "Chargebee",
     "description": "Look up and export billing data through your Chargebee site MCP server.",
@@ -448,15 +459,13 @@
     "mcp_server": {
       "server_url": "https://mcp.context.dev/mcp",
       "documentation_url": "https://docs.context.dev/install-mcp",
-      "setup_instructions": "Sign in to research and retrieve web content. Read access is selected initially; allow changes only when you want to create or update monitors. Account credits apply.",
+      "setup_instructions": "Sign in to research and retrieve web content, and to create or update monitors. Account credits apply.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
       ],
       "oauth_scopes": [
-        "api.read"
-      ],
-      "oauth_write_scopes": [
+        "api.read",
         "api.write"
       ],
       "icon_id": "context_dev"
@@ -520,15 +529,13 @@
     "mcp_server": {
       "server_url": "https://mcp.customer.io/mcp",
       "documentation_url": "https://docs.customer.io/ai/mcp/get-started/",
-      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Sign in and select your US workspaces. Read access is selected initially; Allow changes adds draft-write access. Sensitive data, live publishing and configuration need separate grants and are not requested here.",
+      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Sign in and select your US workspaces. This requests read and draft-write access; sensitive data, live publishing and configuration need separate grants and are not requested here.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
       ],
       "oauth_scopes": [
-        "read"
-      ],
-      "oauth_write_scopes": [
+        "read",
         "write"
       ],
       "icon_id": "customer_io"
@@ -541,15 +548,13 @@
     "mcp_server": {
       "server_url": "https://mcp-eu.customer.io/mcp",
       "documentation_url": "https://docs.customer.io/ai/mcp/get-started/",
-      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Sign in and select your EU workspaces. Read access is selected initially; Allow changes adds draft-write access. Sensitive data, live publishing and configuration need separate grants and are not requested here.",
+      "setup_instructions": "An account admin must enable Customer.io MCP under Settings > AI. Sign in and select your EU workspaces. This requests read and draft-write access; sensitive data, live publishing and configuration need separate grants and are not requested here.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth"
       ],
       "oauth_scopes": [
-        "read"
-      ],
-      "oauth_write_scopes": [
+        "read",
         "write"
       ],
       "icon_id": "customer_io"
@@ -572,17 +577,20 @@
   {
     "name": "mcp_github",
     "display_name": "GitHub",
-    "description": "Search repositories and read code, issues, and pull requests with GitHub's read-only MCP tools.",
+    "description": "Search repositories, read code, and work with issues and pull requests through GitHub's MCP tools.",
     "mcp_server": {
-      "server_url": "https://api.githubcopilot.com/mcp/readonly",
+      "server_url": "https://api.githubcopilot.com/mcp/",
       "documentation_url": "https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md",
-      "setup_instructions": "Use a fine-grained personal access token limited to the repositories and read permissions you need. Organization approval or SSO authorization may be required. This connection exposes read-only tools.",
+      "setup_instructions": "Use a fine-grained personal access token limited to the repositories and permissions you need. Organization approval or SSO authorization may be required.",
       "connection_mode": "hosted",
       "auth_methods": [
         "bearer"
       ],
       "icon_id": "github",
-      "provider": "github"
+      "provider": "github",
+      "legacy_server_urls": [
+        "https://api.githubcopilot.com/mcp/readonly"
+      ]
     }
   },
   {
@@ -724,20 +732,18 @@
   {
     "name": "mcp_linear",
     "display_name": "Linear",
-    "description": "Search issues, projects, and documents, with optional updates to your team's work.",
+    "description": "Search and update issues, projects, and documents.",
     "mcp_server": {
       "server_url": "https://mcp.linear.app/mcp",
       "documentation_url": "https://linear.app/docs/mcp",
-      "setup_instructions": "Sign in to the Linear workspace to connect. Read access is selected initially; Allow changes adds write access. You can also use a Linear API key limited to the teams and permissions you need.",
+      "setup_instructions": "Sign in to the Linear workspace to connect. You can also use a Linear API key limited to the teams and permissions you need.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth",
         "bearer"
       ],
       "oauth_scopes": [
-        "read"
-      ],
-      "oauth_write_scopes": [
+        "read",
         "write"
       ],
       "icon_id": "linear",
@@ -817,6 +823,23 @@
     }
   },
   {
+    "name": "mcp_openseo",
+    "display_name": "OpenSEO",
+    "description": "Research keywords, SERPs, backlinks and competitor domains, run site audits, track rankings, and build SEO reports.",
+    "mcp_server": {
+      "server_url": "https://app.openseo.so/mcp",
+      "documentation_url": "https://openseo.so/docs/mcp",
+      "setup_instructions": "Sign in to OpenSEO, or use an OpenSEO API key. OpenSEO's cloud service requires an active subscription; keyword, SERP, backlink, local SEO and rank tracking tools spend OpenSEO credits. Self-hosting OpenSEO on Cloudflare? Replace the server URL with your instance's /mcp URL and sign in; turn on Managed OAuth in its Cloudflare Access application first.",
+      "connection_mode": "hosted",
+      "allow_custom_url": true,
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "icon_id": "openseo"
+    }
+  },
+  {
     "name": "mcp_opsera",
     "display_name": "Opsera",
     "description": "Use DevSecOps investigation, architecture, compliance, and security tools.",
@@ -850,6 +873,31 @@
         "key:read"
       ],
       "icon_id": "parallel"
+    }
+  },
+  {
+    "name": "mcp_paypal",
+    "display_name": "PayPal",
+    "description": "Manage PayPal invoices, orders, payments, subscriptions, and disputes through natural language.",
+    "mcp_server": {
+      "documentation_url": "https://developer.paypal.com/ai-tools/mcp-server",
+      "setup_instructions": "Sign in with your PayPal account, or use a client ID and secret from the PayPal Developer Dashboard to generate a bearer access token. Existing account permissions apply. Choose Sandbox for testing or Production for live data.",
+      "connection_mode": "custom",
+      "auth_methods": [
+        "oauth",
+        "bearer"
+      ],
+      "server_url_options": [
+        {
+          "label": "Production",
+          "url": "https://mcp.paypal.com/mcp"
+        },
+        {
+          "label": "Sandbox",
+          "url": "https://mcp.sandbox.paypal.com/mcp"
+        }
+      ],
+      "icon_id": "paypal"
     }
   },
   {
@@ -957,7 +1005,7 @@
     "mcp_server": {
       "server_url": "https://api.fullstory.com/mcp/subtext",
       "documentation_url": "https://subtext.fullstory.com/docs/install/manual",
-      "setup_instructions": "Sign in to Subtext or use a project API key from Settings > API Keys. Configure the capture snippet to make recordings available. Session and privacy-setting reads are selected initially; allow changes only to modify privacy rules.",
+      "setup_instructions": "Sign in to Subtext or use a project API key from Settings > API Keys. Configure the capture snippet to make recordings available. This requests session reads and privacy-rule changes.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth",
@@ -965,9 +1013,7 @@
       ],
       "oauth_scopes": [
         "sessions:read",
-        "settings.privacy:read"
-      ],
-      "oauth_write_scopes": [
+        "settings.privacy:read",
         "settings.privacy.element_block:write",
         "settings.privacy.url:write"
       ],
@@ -1045,7 +1091,7 @@
     "mcp_server": {
       "server_url": "https://treg.to/mcp/",
       "documentation_url": "https://treg.to/llms.txt",
-      "setup_instructions": "Sign in and choose your Treg team, or use a team-scoped dashboard API key. Discovery and account reads are selected initially; allow changes to grant tool execution, which may consume team credits.",
+      "setup_instructions": "Sign in and choose your Treg team, or use a team-scoped dashboard API key. This requests discovery, account reads and tool execution, which may consume team credits.",
       "connection_mode": "hosted",
       "auth_methods": [
         "oauth",
@@ -1053,9 +1099,7 @@
       ],
       "oauth_scopes": [
         "treg:catalog",
-        "treg:read"
-      ],
-      "oauth_write_scopes": [
+        "treg:read",
         "treg:call"
       ],
       "icon_id": "treg"

@@ -18,13 +18,17 @@ from backend.data.redis_client import get_redis_async
 logger = logging.getLogger(__name__)
 JOB_TTL = 3600
 GENERATION_TIMEOUT = 240
-_RESERVE = """
+# Regenerating is the picker's main control, so the gap between attempts is
+# short enough to feel like a shuffle and long enough to stop a held key.
+DAILY_LIMIT = 10
+COOLDOWN = 15
+_RESERVE = f"""
 local count = tonumber(redis.call('HGET', KEYS[1], 'count') or '0')
-if count >= 5 then return math.max(1, redis.call('TTL', KEYS[1])) end
+if count >= {DAILY_LIMIT} then return math.max(1, redis.call('TTL', KEYS[1])) end
 local next = tonumber(redis.call('HGET', KEYS[1], 'next') or '0')
 local now = tonumber(ARGV[1])
 if next > now then return next - now end
-redis.call('HSET', KEYS[1], 'count', count + 1, 'next', now + 240)
+redis.call('HSET', KEYS[1], 'count', count + 1, 'next', now + {COOLDOWN})
 if count == 0 then redis.call('EXPIRE', KEYS[1], 86400) end
 return 0
 """
@@ -54,7 +58,8 @@ async def reserve_generation(user_id: str) -> None:
     if retry_after:
         raise HTTPException(
             429,
-            "Please wait before generating again. Limit: five avatars per day.",
+            "Please wait before generating again. "
+            f"Limit: {DAILY_LIMIT} avatars per day.",
             headers={"Retry-After": str(retry_after)},
         )
 

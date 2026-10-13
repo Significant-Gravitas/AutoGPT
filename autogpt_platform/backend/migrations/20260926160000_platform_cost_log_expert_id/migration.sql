@@ -2,11 +2,9 @@
 -- memory, a consult from an expert's chat. NULL for the account's own spend
 -- and on every row written before this column.
 
--- Nullable with no default: a catalog-only change, no table rewrite.
-ALTER TABLE "PlatformCostLog" ADD COLUMN "expertId" TEXT;
-
--- Plain CREATE INDEX: Prisma runs each migration in a transaction, which
--- rejects CONCURRENTLY. Where the brief write lock on PlatformCostLog matters,
--- build the same index CONCURRENTLY out of band first; IF NOT EXISTS then
--- skips it here.
-CREATE INDEX IF NOT EXISTS "PlatformCostLog_expertId_createdAt_idx" ON "PlatformCostLog"("expertId", "createdAt");
+-- Nullable with no default: a catalog-only change, no table rewrite, so the
+-- ACCESS EXCLUSIVE lock ADD COLUMN takes is brief. The (expertId, createdAt)
+-- index is built CONCURRENTLY by the next migration (20260926160001), never
+-- under this lock. IF NOT EXISTS keeps a rerun, or a column an operator
+-- already added out of band, from failing the deploy.
+ALTER TABLE "PlatformCostLog" ADD COLUMN IF NOT EXISTS "expertId" TEXT;

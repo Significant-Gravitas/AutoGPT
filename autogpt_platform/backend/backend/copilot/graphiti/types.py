@@ -16,7 +16,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from .memory_model import MemoryStatus, SourceKind
+from .memory_model import ExtractedStatus, SourceKind
 
 
 class MemoryFact(BaseModel):
@@ -28,8 +28,8 @@ class MemoryFact(BaseModel):
     properties preserve the same shape.
     """
 
-    status: MemoryStatus = Field(
-        default=MemoryStatus.active,
+    status: ExtractedStatus = Field(
+        default=ExtractedStatus.active,
         description="Lifecycle state — active, tentative, superseded, contradicted.",
     )
     confidence: float | None = Field(
@@ -61,9 +61,9 @@ class MemoryFact(BaseModel):
     expiration_reason: str | None = Field(
         default=None,
         description=(
-            "Short reason recorded when a fact is retracted or superseded. Examples: "
+            "Short reason recorded when a fact is superseded. Examples: "
             "'stale_fact', 'contradicted_by:{uuid}', 'entity_invalidated:{uuid}', "
-            "'web_contradicted:{url}', 'user_signal', 'unratified'."
+            "'web_contradicted:{url}', 'unratified'."
         ),
     )
 

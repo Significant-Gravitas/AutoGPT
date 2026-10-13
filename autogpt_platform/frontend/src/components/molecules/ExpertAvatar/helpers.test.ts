@@ -54,7 +54,7 @@ describe("managed expert identities", () => {
   });
 
   it("serves every identity from its own versioned library path", () => {
-    expect(MANAGED_IDENTITIES).toHaveLength(34);
+    expect(MANAGED_IDENTITIES).toHaveLength(35);
     for (const identity of MANAGED_IDENTITIES) {
       expect(identity.url).toBe(
         `${identity.base_url}/${identity.id}/neutral/128.webp`,

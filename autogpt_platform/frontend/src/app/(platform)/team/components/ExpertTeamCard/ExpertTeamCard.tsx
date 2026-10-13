@@ -144,14 +144,14 @@ export function ExpertTeamCard({
             role={expert.role}
             jobTitle={expert.job_title}
             nameAlign="baseline"
-            nameAccessory={
-              <IntegrationIcons
-                expertName={expert.name}
-                providers={expert.credential_providers ?? []}
-              />
-            }
           />
-          {topic ? <CategoryTag category={topic} /> : null}
+          <div className="flex items-center gap-2 empty:hidden">
+            {topic ? <CategoryTag category={topic} /> : null}
+            <IntegrationIcons
+              expertName={expert.name}
+              providers={expert.credential_providers ?? []}
+            />
+          </div>
           <ExpertTagline tagline={expert.tagline} compact />
         </div>
 

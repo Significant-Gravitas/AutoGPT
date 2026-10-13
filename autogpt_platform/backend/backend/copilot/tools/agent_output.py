@@ -347,7 +347,7 @@ class AgentOutputTool(BaseTool):
                 library_agent_id=agent.id,
                 library_agent_link=library_agent_link,
                 total_executions=0,
-            )
+            ).from_outside()
 
         node_executions_data = None
         node_failures: list[NodeFailureSummary] = []
@@ -391,7 +391,13 @@ class AgentOutputTool(BaseTool):
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
             message = f"Found execution outputs for agent '{agent.name}'"
-            health_warning = build_run_health_warning(execution.outputs, node_failures)
+            health_warning = build_run_health_warning(
+                execution.outputs,
+                node_failures,
+                failed_node_count=(
+                    execution.stats.node_error_count if execution.stats else 0
+                ),
+            )
             if health_warning:
                 if not isinstance(execution, GraphExecutionWithNodes):
                     health_warning += (
@@ -435,7 +441,7 @@ class AgentOutputTool(BaseTool):
             execution=execution_info,
             available_executions=available_list,
             total_executions=len(available_executions) if available_executions else 1,
-        )
+        ).from_outside(execution_info)
 
     async def _execute(
         self,
@@ -460,14 +466,14 @@ class AgentOutputTool(BaseTool):
                 message="Invalid input parameters",
                 error=str(e),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Ensure user_id is present (should be guaranteed by requires_auth)
         if not user_id:
             return ErrorResponse(
                 message="User authentication required",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # Check if at least one identifier is provided
         if not any(
@@ -484,7 +490,7 @@ class AgentOutputTool(BaseTool):
                     "library_agent_id, store_slug, or execution_id"
                 ),
                 session_id=session_id,
-            )
+            ).from_outside()
 
         # If only execution_id provided, we need to find the agent differently
         if (
@@ -503,7 +509,7 @@ class AgentOutputTool(BaseTool):
                 return ErrorResponse(
                     message=f"Execution '{input_data.execution_id}' not found",
                     session_id=session_id,
-                )
+                ).from_outside()
 
             # Find library agent by graph_id
             agent = await library_db().get_library_agent_by_graph_id(
@@ -517,7 +523,7 @@ class AgentOutputTool(BaseTool):
                     ),
                     session_id=session_id,
                     suggestions=["Add the agent to your library to see more details"],
-                )
+                ).from_outside()
 
             return self._build_response(agent, execution, [], session_id)
 

@@ -258,7 +258,15 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 77_401 for memory_forget_search's `include_forgotten`
+# argument (#14972): a soft forget left a fact the chat could no longer find,
+# so it could never be made permanent with hard_delete. No tool was added.
+# Measured on this branch merged with dev 8432f734f5:
+#     merged tree, before                         76,975 (89 tools)
+#     + include_forgotten              +126       77,101 (89 tools)
+#     + headroom                       +300       77,401
+# The same deliberate margin as the line above, for the same reason.
+_CHAR_BUDGET = 77_401
 
 
 @pytest.fixture(scope="module")
@@ -448,7 +456,12 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+_SESSION_WIRE_BUDGET = 69_788
 
 
 def test_largest_declared_session_wire_budget() -> None:

@@ -191,8 +191,10 @@ def graph(mocker) -> SimpleNamespace:
     database.add_chat_message = AsyncMock()
     mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=(None, None)),
+        "backend.data.db_accessors.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=(None, None))
+        ),
     )
     return state
 
