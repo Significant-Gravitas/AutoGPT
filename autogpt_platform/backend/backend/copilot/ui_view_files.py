@@ -201,7 +201,9 @@ async def _write_view_file(
             content=view.source.encode(),
             filename=filename,
             mime_type=OPENUI_MIME_TYPE,
-            metadata=openui_metadata({"origin": "agent-created"}, view_id, session_id),
+            metadata=openui_metadata(
+                {"origin": "agent-created"}, view_id, session_id, view.summary
+            ),
         )
     except VirusDetectedError as error:
         raise HTTPException(400, str(error)) from error

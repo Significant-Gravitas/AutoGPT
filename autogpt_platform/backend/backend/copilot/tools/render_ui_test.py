@@ -435,10 +435,11 @@ async def test_a_new_filename_saves_the_view_as_a_file(
     written = workspace.write_file.await_args.kwargs
     assert written["content"] == SOURCE.encode()
     assert written["mime_type"] == OPENUI_MIME_TYPE
-    assert written["metadata"]["openui"] == {
-        "viewId": "revenue",
-        "originSessionId": session.session_id,
-    }
+    openui = written["metadata"]["openui"]
+    assert openui["viewId"] == "revenue"
+    assert openui["originSessionId"] == session.session_id
+    assert openui["summary"] == payload["message"]
+    assert "Revenue: $42,000 (Q3)" in openui["summary"]
     workspace.replace_file_content.assert_not_awaited()
     saved_views.move_chat_edits_to_file.assert_awaited_once_with(
         "owner", session.session_id, "revenue", "new-file"
@@ -461,6 +462,7 @@ async def test_rerendering_a_saved_view_revises_the_same_file(
     assert (file_id, content) == (FILE_ID, SOURCE.encode())
     assert metadata["origin"] == "agent-created"
     assert metadata["openui"]["originSessionId"] == session.session_id
+    assert "Revenue: $42,000 (Q3)" in metadata["openui"]["summary"]
     workspace.write_file.assert_not_awaited()
     saved_views.move_chat_edits_to_file.assert_not_awaited()
 
@@ -593,3 +595,19 @@ async def test_a_named_file_that_cannot_be_revised_does_not_publish_the_view(
     assert "View not published" in result.message
     assert str(failure) in result.message
     assert "source" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file", ["revenue", FILE_ID], ids=["new-name", "file-reference"]
+)
+async def test_an_unexpected_error_saving_a_named_file_propagates(
+    render_ui_tool, workspace, file
+):
+    failure = RuntimeError("db down")
+    workspace.write_file.side_effect = failure
+    workspace.replace_file_content.side_effect = failure
+    with pytest.raises(RuntimeError, match="db down"):
+        await render_ui_tool._execute(
+            "owner", make_session("owner"), source=SOURCE, file=file
+        )

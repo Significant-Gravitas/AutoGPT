@@ -13,6 +13,7 @@ from backend.copilot.tools.openui_files import (
     MAX_SOURCE_CHARS,
     RENDER_FALLBACK,
     RENDER_RETRY,
+    PublishedView,
     check_workspace_program,
     save_view,
     validate_view,
@@ -182,7 +183,7 @@ async def _saved_response(
             user_id,
             session_id,
             source=response.source,
-            view_id=response.view_id,
+            view=PublishedView(view_id=response.view_id, summary=response.message),
             file=file,
         )
     except Exception as error:

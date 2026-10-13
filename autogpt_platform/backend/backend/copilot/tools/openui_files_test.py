@@ -1,15 +1,17 @@
 """write_workspace_file / read_workspace_file on OpenUI view files."""
 
 import base64
-from unittest.mock import AsyncMock, patch
+from datetime import datetime, timezone
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.models import ChatSession, ChatUIDraft, UserWorkspaceFile
 
 from backend.copilot.db import create_chat_session
+from backend.copilot.tools import openui_files
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
-from backend.copilot.tools.openui_files import OpenUIFileContentResponse
+from backend.copilot.tools.openui_files import OpenUIFileContentResponse, read_view_file
 from backend.copilot.tools.workspace_files import (
     DeleteWorkspaceFileTool,
     ReadWorkspaceFileTool,
@@ -17,7 +19,7 @@ from backend.copilot.tools.workspace_files import (
     WorkspaceWriteResponse,
     WriteWorkspaceFileTool,
 )
-from backend.data.workspace import OPENUI_MIME_TYPE
+from backend.data.workspace import OPENUI_MIME_TYPE, WorkspaceFile
 from backend.util.json import SafeJson
 
 # Re-export so pytest discovers the session-scoped fixture
@@ -48,10 +50,11 @@ async def test_view_files_are_saved_revised_in_place_and_read_with_edits(
             where={"id": written.file_id}
         )
         assert record is not None and isinstance(record.metadata, dict)
-        assert record.metadata["openui"] == {
-            "viewId": "revenue",
-            "originSessionId": session.session_id,
-        }
+        openui = record.metadata["openui"]
+        assert isinstance(openui, dict)
+        assert openui["viewId"] == "revenue"
+        assert openui["originSessionId"] == session.session_id
+        assert "Revenue: $42,000 (Q3)" in str(openui["summary"])
 
         revised = await write._execute(
             user_id=user.id,
@@ -171,3 +174,44 @@ async def test_view_files_must_be_valid_programs(content, issue):
     assert issue in result.message
     manager.write_file.assert_not_awaited()
     manager.replace_file_content.assert_not_awaited()
+
+
+def _stored_view(openui: dict) -> WorkspaceFile:
+    return WorkspaceFile(
+        id="file-1",
+        workspace_id="ws-1",
+        created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+        name="revenue.openui",
+        path="/revenue.openui",
+        storage_path="local://revenue.openui",
+        mime_type=OPENUI_MIME_TYPE,
+        size_bytes=len(SOURCE),
+        metadata={"openui": openui},
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "openui, validated",
+    [
+        ({"viewId": "revenue", "summary": "Stored summary"}, False),
+        ({"viewId": "revenue"}, True),
+    ],
+    ids=["stored", "older-file"],
+)
+async def test_reading_a_view_uses_its_stored_summary(monkeypatch, openui, validated):
+    db = MagicMock()
+    db.get_openui_file_state = AsyncMock(return_value=None)
+    monkeypatch.setattr(openui_files, "openui_files_db", MagicMock(return_value=db))
+    validator = AsyncMock(wraps=openui_files.validate_openui_source)
+    monkeypatch.setattr(openui_files, "validate_openui_source", validator)
+    result = await read_view_file(
+        "owner", "chat", _stored_view(openui), SOURCE.encode()
+    )
+    if validated:
+        validator.assert_awaited_once_with(SOURCE)
+        assert "Revenue: $42,000 (Q3)" in result.summary
+    else:
+        validator.assert_not_awaited()
+        assert result.summary == "Stored summary"

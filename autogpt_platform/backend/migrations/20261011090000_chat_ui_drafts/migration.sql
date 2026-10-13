@@ -21,3 +21,6 @@ CREATE UNIQUE INDEX "ChatUIDraft_sessionId_viewId_key" ON "ChatUIDraft"("session
 ALTER TABLE "ChatUIDraft" ADD CONSTRAINT "ChatUIDraft_sessionId_fkey" FOREIGN KEY ("sessionId") REFERENCES "ChatSession"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 ALTER TABLE "ChatUIDraft" ADD CONSTRAINT "ChatUIDraft_fileId_fkey" FOREIGN KEY ("fileId") REFERENCES "UserWorkspaceFile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- Finds the live file that holds a view (find_openui_view_file).
+CREATE INDEX "UserWorkspaceFile_openui_viewId_idx" ON "UserWorkspaceFile"("workspaceId", (metadata->'openui'->>'viewId')) WHERE "isDeleted" = false AND metadata ? 'openui';

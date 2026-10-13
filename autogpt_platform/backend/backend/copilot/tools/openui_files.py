@@ -26,6 +26,7 @@ from backend.data.openui_files import (
     is_openui_name,
     openui_filename,
     openui_metadata,
+    openui_summary,
     openui_view_id,
 )
 from backend.data.workspace import OPENUI_EXTENSION, OPENUI_MIME_TYPE, WorkspaceFile
@@ -129,7 +130,7 @@ async def save_view(
     session_id: str,
     *,
     source: str,
-    view_id: str,
+    view: PublishedView,
     file: str | None,
 ) -> WorkspaceFile | None:
     """Save a validated view for render_ui.
@@ -142,21 +143,21 @@ async def save_view(
     file_id = parse_file_ref(file) if file else None
     if file_id is None:
         file_id = await _chat_view_file(
-            user_id, session_id, view_id, required=bool(file)
+            user_id, session_id, view.view_id, required=bool(file)
         )
     if file_id is None and not file:
         return None
     manager = await get_workspace_manager(user_id, session_id)
     if file_id is not None:
-        return await revise_view_file(manager, file_id, source, view_id, session_id)
+        return await revise_view_file(manager, file_id, source, view, session_id)
     assert file is not None
     created = await manager.write_file(
         content=source.encode(),
         filename=openui_filename(file),
         mime_type=OPENUI_MIME_TYPE,
-        metadata=openui_metadata(_AGENT_ORIGIN, view_id, session_id),
+        metadata=openui_metadata(_AGENT_ORIGIN, view.view_id, session_id, view.summary),
     )
-    await _move_chat_edits(user_id, session_id, view_id, created)
+    await _move_chat_edits(user_id, session_id, view.view_id, created)
     return created
 
 
@@ -164,7 +165,7 @@ async def revise_view_file(
     manager: WorkspaceManager,
     file_id: str,
     source: str,
-    view_id: str,
+    view: PublishedView,
     session_id: str,
 ) -> WorkspaceFile:
     """Replace a view file's program in place, so its ID and edits stay."""
@@ -178,7 +179,9 @@ async def revise_view_file(
         existing.id,
         source.encode(),
         mime_type=OPENUI_MIME_TYPE,
-        metadata=openui_metadata(existing.metadata, view_id, session_id),
+        metadata=openui_metadata(
+            existing.metadata, view.view_id, session_id, view.summary
+        ),
     )
 
 
@@ -211,16 +214,14 @@ async def write_view_file(
         if existing is not None and is_openui_file(existing):
             file_id = existing.id
     if file_id is not None:
-        return await revise_view_file(
-            manager, file_id, source, view.view_id, session_id
-        )
+        return await revise_view_file(manager, file_id, source, view, session_id)
     created = await manager.write_file(
         content=source.encode(),
         filename=name,
         path=path,
         mime_type=OPENUI_MIME_TYPE,
         overwrite=overwrite,
-        metadata=openui_metadata(_AGENT_ORIGIN, view.view_id, session_id),
+        metadata=openui_metadata(_AGENT_ORIGIN, view.view_id, session_id, view.summary),
     )
     await _move_chat_edits(manager.user_id, session_id, view.view_id, created)
     return created
@@ -230,10 +231,7 @@ async def read_view_file(
     user_id: str, session_id: str, file: WorkspaceFile, content: bytes
 ) -> OpenUIFileContentResponse:
     source = content.decode("utf-8", errors="replace")
-    try:
-        summary = (await validate_openui_source(source)).summary
-    except ValidatorUnavailable:
-        summary = ""
+    summary = openui_summary(file.metadata) or await _computed_summary(source)
     edits = await openui_files_db().get_openui_file_state(user_id, file.id)
     note = ""
     if edits is not None and len(json.dumps(edits).encode()) > _MAX_EDITS_BYTES:
@@ -256,6 +254,14 @@ async def read_view_file(
         ),
         session_id=session_id,
     )
+
+
+async def _computed_summary(source: str) -> str:
+    """The summary of a file saved before summaries were stored with it."""
+    try:
+        return (await validate_openui_source(source)).summary
+    except ValidatorUnavailable:
+        return ""
 
 
 def _program_text(content: bytes, session_id: str) -> str | ErrorResponse:

@@ -182,7 +182,15 @@ describe("saved interactive views in chat", () => {
     const dialog = await screen.findByRole("dialog");
     const name = within(dialog).getByLabelText("File name") as HTMLInputElement;
     expect(name.value).toBe("Review.openui");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+    const save = within(dialog).getByRole("button", {
+      name: "Save",
+    }) as HTMLButtonElement;
+    fireEvent.change(name, { target: { value: "  " } });
+    expect(within(dialog).getByText("Enter a file name")).toBeDefined();
+    expect(save.disabled).toBe(true);
+    fireEvent.change(name, { target: { value: "Review.openui" } });
+    expect(within(dialog).queryByText("Enter a file name")).toBeNull();
+    fireEvent.click(save);
 
     await waitFor(() => expect(saves).toEqual([{ filename: "Review.openui" }]));
     expect(await screen.findByText("Review.openui")).toBeDefined();

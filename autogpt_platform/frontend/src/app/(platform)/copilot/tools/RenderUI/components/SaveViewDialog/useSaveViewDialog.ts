@@ -56,7 +56,7 @@ export function useSaveViewDialog(args: Args) {
   return {
     name,
     setName,
-    error: trimmed.length > 0 ? (validationError ?? error) : error,
+    error: validationError ?? error,
     canSubmit: !validationError && !isPending,
     isPending,
     handleSubmit,

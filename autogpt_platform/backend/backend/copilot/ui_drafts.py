@@ -3,7 +3,6 @@ keyed by ``(sessionId, viewId)``). Saved views keep theirs on the file; see
 ``ui_view_files``."""
 
 import json
-from collections.abc import Mapping, Sequence
 from typing import Self
 from uuid import uuid4
 
@@ -20,20 +19,26 @@ from backend.data.openui_files import find_openui_view_file
 # an empty ``JsonValue`` schema to the OpenAPI document.
 DraftState = dict[str, object]
 
-_VIEW_MESSAGES = (
-    'SELECT m."content", m."sequence", m."toolCallId" FROM {schema_prefix}"ChatMessage" m '
+_SELECTED_VIEW = (
+    'SELECT m."content", m."sequence" FROM {schema_prefix}"ChatMessage" m '
     'JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId" '
-    'WHERE s.id = $1 AND s."userId" = $2 '
-    'AND (m."toolCallId" = $3 OR (m.content LIKE \'%"ui_rendered"%\' AND m.content LIKE \'%"view_id"%\')) '
+    'WHERE s.id = $1 AND s."userId" = $2 AND m."toolCallId" = $3 '
     "AND m.role = 'tool' ORDER BY m.sequence DESC"
 )
-_LATEST_VIEW_MESSAGES = (
-    'SELECT m."content", m."sequence", m."toolCallId" FROM {schema_prefix}"ChatMessage" m '
+# Sequences only: each candidate's content is then read on its own, newest
+# first, until one really publishes the view.
+_VIEW_SEQUENCES = (
+    'SELECT m."sequence" FROM {schema_prefix}"ChatMessage" m '
     'JOIN {schema_prefix}"ChatSession" s ON s.id = m."sessionId" '
-    'WHERE s.id = $1 AND s."userId" = $2 '
-    "AND m.content LIKE '%\"ui_rendered\"%' AND m.content LIKE '%\"view_id\"%' "
-    "AND m.role = 'tool' ORDER BY m.sequence DESC"
+    "WHERE s.id = $1 AND s.\"userId\" = $2 AND m.role = 'tool' AND m.sequence > $3 "
+    "AND m.content LIKE '%\"ui_rendered\"%' AND m.content LIKE $4 "
+    "ORDER BY m.sequence DESC"
 )
+_MESSAGE_AT = (
+    'SELECT "content", "toolCallId" FROM {schema_prefix}"ChatMessage" '
+    "WHERE \"sessionId\" = $1 AND sequence = $2 AND role = 'tool'"
+)
+_NOT_FOUND = "Interactive view not found"
 _CONFLICT = "A newer draft or view exists. Reload it before saving."
 _SAVED = "This view is saved as a file. Reload it to keep editing."
 
@@ -72,15 +77,15 @@ class PublishedView(BaseModel):
     source: str
     sequence: int
     tool_call_id: str | None
+    # The generated text summary render_ui published with the view.
+    summary: str = ""
 
 
 async def read_draft(
     user_id: str, session_id: str, view_id: str, tool_call_id: str
 ) -> UIDraftResponse:
-    messages = await query_raw_with_schema(
-        _VIEW_MESSAGES, session_id, user_id, tool_call_id
-    )
-    source, sequence, latest = _published_view(messages, view_id, tool_call_id)
+    source, sequence = await _selected_view(user_id, session_id, view_id, tool_call_id)
+    latest = await _newest_view(user_id, session_id, view_id, after=sequence) is None
     file_id = await find_openui_view_file(user_id, session_id, view_id)
     if file_id is not None:
         return UIDraftResponse(
@@ -124,16 +129,11 @@ async def write_draft(
         await lock_owned_session(tx, user_id, session_id)
         if await find_openui_view_file(user_id, session_id, view_id):
             raise HTTPException(409, _SAVED)
-        messages = await query_raw_with_schema(
-            'SELECT content, sequence, "toolCallId" FROM {schema_prefix}"ChatMessage" WHERE "sessionId" = $1 '
-            'AND ("toolCallId" = $2 OR (content LIKE \'%"ui_rendered"%\' AND content LIKE \'%"view_id"%\')) '
-            "AND role = 'tool' ORDER BY sequence DESC",
-            session_id,
-            request.tool_call_id,
-            client=tx,
+        source, sequence = await _selected_view(
+            user_id, session_id, view_id, request.tool_call_id, client=tx
         )
-        source, sequence, latest = _published_view(
-            messages, view_id, request.tool_call_id
+        newer = await _newest_view(
+            user_id, session_id, view_id, after=sequence, client=tx
         )
         rows = await query_raw_with_schema(
             'SELECT revision, sequence FROM {schema_prefix}"ChatUIDraft" WHERE "sessionId" = $1 AND "viewId" = $2',
@@ -143,7 +143,7 @@ async def write_draft(
         )
         revision = rows[0]["revision"] if rows else 0
         if (
-            not latest
+            newer is not None
             or revision != request.expected_revision
             or (rows and rows[0]["sequence"] > sequence)
         ):
@@ -183,59 +183,96 @@ async def lock_owned_session(tx: Prisma, user_id: str, session_id: str) -> None:
         client=tx,
     )
     if not owners:
-        raise HTTPException(404, "Interactive view not found")
+        raise HTTPException(404, _NOT_FOUND)
 
 
 async def latest_published_view(
     user_id: str, session_id: str, view_id: str
 ) -> PublishedView:
     """The newest revision of ``view_id`` published in the user's chat."""
-    messages = await query_raw_with_schema(_LATEST_VIEW_MESSAGES, session_id, user_id)
-    for message in messages:
-        content, sequence = message.get("content"), message.get("sequence")
-        if not isinstance(content, str) or not isinstance(sequence, int):
+    view = await _newest_view(user_id, session_id, view_id)
+    if view is None:
+        raise HTTPException(404, _NOT_FOUND)
+    return view
+
+
+async def _selected_view(
+    user_id: str,
+    session_id: str,
+    view_id: str,
+    tool_call_id: str,
+    client: Prisma | None = None,
+) -> tuple[str, int]:
+    """Source and sequence of the card ``tool_call_id`` published."""
+    rows = await query_raw_with_schema(
+        _SELECTED_VIEW, session_id, user_id, tool_call_id, client=client
+    )
+    for row in rows:
+        payload = _payload(row.get("content"), view_id)
+        sequence = row.get("sequence")
+        if payload is not None and isinstance(sequence, int):
+            return payload["source"], sequence
+    raise HTTPException(404, _NOT_FOUND)
+
+
+async def _newest_view(
+    user_id: str,
+    session_id: str,
+    view_id: str,
+    *,
+    after: int = -1,
+    client: Prisma | None = None,
+) -> PublishedView | None:
+    """The newest revision of ``view_id`` published after sequence ``after``."""
+    candidates = await query_raw_with_schema(
+        _VIEW_SEQUENCES,
+        session_id,
+        user_id,
+        after,
+        _view_pattern(view_id),
+        client=client,
+    )
+    for candidate in candidates:
+        sequence = candidate["sequence"]
+        rows = await query_raw_with_schema(
+            _MESSAGE_AT, session_id, sequence, client=client
+        )
+        payload = _payload(rows[0].get("content"), view_id) if rows else None
+        if payload is None:
             continue
-        try:
-            source = _source(content, view_id)
-        except HTTPException:
-            continue
-        tool_call_id = message.get("toolCallId")
+        tool_call_id = rows[0].get("toolCallId")
+        summary = payload.get("message")
         return PublishedView(
-            source=source,
+            source=payload["source"],
             sequence=sequence,
             tool_call_id=tool_call_id if isinstance(tool_call_id, str) else None,
+            summary=summary if isinstance(summary, str) else "",
         )
-    raise HTTPException(404, "Interactive view not found")
+    return None
 
 
-def _source(content: str | None, view_id: str) -> str:
+def _view_pattern(view_id: str) -> str:
+    """A LIKE pattern for content naming ``view_id``: its JSON string after a
+    ``view_id`` key, whatever the spacing. ``_payload`` confirms the match."""
+    quoted = json.dumps(view_id, ensure_ascii=False)
+    escaped = quoted.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f'%"view\\_id"%{escaped}%'
+
+
+def _payload(content: object, view_id: str) -> dict | None:
+    """The ``ui_rendered`` tool result in ``content`` when it publishes
+    ``view_id``."""
+    if not isinstance(content, str):
+        return None
     try:
-        value = json.loads(content or "null")
-    except (ValueError, TypeError):
-        value = None
+        value = json.loads(content)
+    except ValueError:
+        return None
     if (
         not isinstance(value, dict)
         or value.get("type") != "ui_rendered"
         or value.get("view_id") != view_id
         or not isinstance(value.get("source"), str)
     ):
-        raise HTTPException(404, "Interactive view not found")
-    return value["source"]
-
-
-def _published_view(
-    messages: Sequence[Mapping[str, object]], view_id: str, tool_call_id: str
-) -> tuple[str, int, bool]:
-    latest = -1
-    for message in messages:
-        content, sequence = message.get("content"), message.get("sequence")
-        if not isinstance(content, str) or not isinstance(sequence, int):
-            continue
-        try:
-            source = _source(content, view_id)
-        except HTTPException:
-            continue
-        latest = max(latest, sequence)
-        if message.get("toolCallId") == tool_call_id:
-            return source, sequence, sequence == latest
-    raise HTTPException(404, "Interactive view not found")
+        return None
+    return value

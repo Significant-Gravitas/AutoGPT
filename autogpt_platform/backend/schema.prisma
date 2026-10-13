@@ -549,7 +549,9 @@ model UserWorkspaceFile {
   // Paths are unique among LIVE files, which Prisma cannot express: the rule is
   // a partial unique index created in migrations
   // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
-  // the path it was deleted at.
+  // the path it was deleted at. Saved OpenUI views are found through a partial
+  // expression index on metadata.openui.viewId
+  // ("UserWorkspaceFile_openui_viewId_idx"), also created in migrations.
   @@index([workspaceId, isDeleted])
   @@index([folderId])
 }

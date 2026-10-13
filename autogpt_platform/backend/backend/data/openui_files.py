@@ -1,7 +1,8 @@
 """Saved OpenUI views: workspace files whose body is an OpenUI program.
 
-The file's metadata names the view (``{"openui": {"viewId", "originSessionId"}}``)
-and the user's edits live in a ``ChatUIDraft`` row tied to the file. These
+The file's metadata names the view and keeps its generated text summary
+(``{"openui": {"viewId", "originSessionId", "summary"}}``), and the user's
+edits live in a ``ChatUIDraft`` row tied to the file. These
 run in the CoPilot executor too, so they are exposed on the DatabaseManager.
 """
 
@@ -29,14 +30,26 @@ def is_openui_file(file: WorkspaceFile) -> bool:
     return file.mime_type == OPENUI_MIME_TYPE or is_openui_name(file.name)
 
 
-def openui_metadata(base: dict, view_id: str, session_id: str) -> dict:
-    """``base`` with the view's identity, naming ``session_id`` as the chat
-    that last wrote it."""
-    return {**base, "openui": {"viewId": view_id, "originSessionId": session_id}}
+# The validator already caps summaries at this length.
+MAX_SUMMARY_CHARS = 10_000
+
+
+def openui_metadata(base: dict, view_id: str, session_id: str, summary: str) -> dict:
+    """``base`` with the view's identity and summary, naming ``session_id``
+    as the chat that last wrote it."""
+    openui = {"viewId": view_id, "originSessionId": session_id}
+    if summary:
+        openui["summary"] = summary[:MAX_SUMMARY_CHARS]
+    return {**base, "openui": openui}
 
 
 def openui_view_id(metadata: dict) -> str | None:
     return _openui_field(metadata, "viewId")
+
+
+def openui_summary(metadata: dict) -> str | None:
+    """The summary stored when the view was written; None on older files."""
+    return _openui_field(metadata, "summary")
 
 
 def openui_origin_session_id(metadata: dict) -> str | None:
@@ -63,7 +76,8 @@ async def find_openui_view_file(
         'SELECT f.id FROM {schema_prefix}"UserWorkspaceFile" f '
         'JOIN {schema_prefix}"UserWorkspace" w ON w.id = f."workspaceId" '
         'WHERE w."userId" = $1 AND f."isDeleted" = false '
-        "AND f.metadata->'openui'->>'viewId' = $2 "
+        # Matches the partial index "UserWorkspaceFile_openui_viewId_idx".
+        "AND f.metadata ? 'openui' AND f.metadata->'openui'->>'viewId' = $2 "
         "AND (f.metadata->'openui'->>'originSessionId' = $3 "
         "OR starts_with(f.path, $4)) "
         'ORDER BY f."createdAt", f.id LIMIT 1',

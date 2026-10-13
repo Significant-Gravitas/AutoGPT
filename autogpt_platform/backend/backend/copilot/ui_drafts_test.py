@@ -52,6 +52,7 @@ async def _view(user_id: str) -> str:
                 "type": "ui_rendered",
                 "view_id": "trip",
                 "source": 'root = Workspace("Trip", "", [], "trip")',
+                "message": "Trip",
             }
         ),
     )
@@ -302,6 +303,13 @@ async def test_saving_moves_the_edits_onto_a_file_that_outlives_the_chat(
     assert saved.file_path == f"/sessions/{session}/Trip.openui"
     assert saved.file_uri == f"workspace://{saved.file_id}#{OPENUI_MIME_TYPE}"
     assert saved.view_id == "trip"
+    record = await db.prisma.userworkspacefile.find_unique(where={"id": saved.file_id})
+    assert record is not None and isinstance(record.metadata, dict)
+    assert record.metadata["openui"] == {
+        "viewId": "trip",
+        "originSessionId": session,
+        "summary": "Trip",
+    }
 
     again = await save_draft_as_file(draft_user, session, "trip", _save("Other"))
     assert again.file_id == saved.file_id
