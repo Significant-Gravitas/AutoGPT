@@ -1,0 +1,239 @@
+"""What reaches Langfuse must not carry what a Google block returned."""
+
+import json
+from collections.abc import Iterator
+from typing import Any
+from unittest.mock import patch
+
+import langsmith
+import pytest
+from langfuse import Langfuse, get_client
+from langfuse._client.resource_manager import LangfuseResourceManager
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+from backend.blocks.google.gmail import GmailReadBlock
+from backend.blocks.text import MatchTextPatternBlock
+from backend.copilot.tools.models import BlockOutputResponse
+
+from . import google_data_redaction
+from .google_data_redaction import (
+    REDACTED,
+    install_trace_redaction,
+    mask_langfuse_data,
+    redact_google_data,
+    remember_google_output,
+)
+
+GMAIL_BLOCK_ID = GmailReadBlock().id
+TEXT_BLOCK_ID = MatchTextPatternBlock().id
+EMAIL = "Subject: quarterly numbers -- revenue is down 12%"
+
+
+def _output(block_id: str, provider: str | None, text: str) -> str:
+    return BlockOutputResponse(
+        message="ran",
+        block_id=block_id,
+        block_name="block",
+        outputs={"result": [text]},
+        provider=provider,
+    ).model_dump_json(exclude_none=True)
+
+
+GMAIL_OUTPUT = _output(GMAIL_BLOCK_ID, "google", EMAIL)
+TEXT_OUTPUT = _output(TEXT_BLOCK_ID, None, "a harmless match")
+
+
+def _sdk_history(call: dict[str, Any], result: str) -> dict[str, Any]:
+    """An SDK turn's model input, as LangSmith records it."""
+    return {
+        "messages": [
+            {"role": "user", "content": "what did finance send me?"},
+            {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_1",
+                        "name": "mcp__copilot__run_block",
+                        "input": call,
+                    }
+                ],
+            },
+            {"role": "tool", "content": result, "tool_call_id": "toolu_1"},
+        ]
+    }
+
+
+def _baseline_history(call: dict[str, Any], result: str) -> list[dict[str, Any]]:
+    """A baseline turn's model input, as the Langfuse OpenAI wrapper records it."""
+    return [
+        {"role": "user", "content": "what did finance send me?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "run_block", "arguments": json.dumps(call)},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_1", "content": result},
+    ]
+
+
+def test_sdk_history_redacts_google_result_and_its_input():
+    call = {"block_id": GMAIL_BLOCK_ID, "input_data": {"query": "from:finance"}}
+
+    redacted = redact_google_data(_sdk_history(call, GMAIL_OUTPUT))
+
+    assistant, tool = redacted["messages"][1], redacted["messages"][2]
+    assert tool["content"] == REDACTED
+    assert tool["tool_call_id"] == "toolu_1"
+    tool_use = assistant["content"][0]
+    assert tool_use["name"] == "mcp__copilot__run_block"
+    assert tool_use["input"] == {"block_id": GMAIL_BLOCK_ID, "input_data": REDACTED}
+    assert EMAIL not in json.dumps(redacted)
+    assert "from:finance" not in json.dumps(redacted)
+
+
+def test_sdk_history_keeps_other_blocks_readable():
+    call = {"block_id": TEXT_BLOCK_ID, "input_data": {"text": "hello"}}
+    history = _sdk_history(call, TEXT_OUTPUT)
+
+    assert redact_google_data(history) == history
+
+
+def test_baseline_history_redacts_google_result_and_arguments():
+    call = {"id": f"block:{GMAIL_BLOCK_ID}", "input": {"query": "from:finance"}}
+
+    redacted = redact_google_data(_baseline_history(call, GMAIL_OUTPUT))
+
+    tool_call = redacted[1]["tool_calls"][0]
+    assert tool_call["function"]["name"] == "run_block"
+    assert json.loads(tool_call["function"]["arguments"]) == {
+        "id": f"block:{GMAIL_BLOCK_ID}",
+        "input": REDACTED,
+    }
+    assert redacted[2] == {
+        "role": "tool",
+        "tool_call_id": "call_1",
+        "content": REDACTED,
+    }
+
+
+def test_baseline_history_keeps_other_blocks_readable():
+    call = {"block_id": TEXT_BLOCK_ID, "input_data": {"text": "hello"}}
+    history = _baseline_history(call, TEXT_OUTPUT)
+
+    assert redact_google_data(history) == history
+
+
+def test_result_identifies_the_call_when_the_call_does_not():
+    """``continue_run_block`` names a review, not the block it resumes."""
+    call = {"review_id": "rev-1"}
+
+    redacted = redact_google_data(_baseline_history(call, GMAIL_OUTPUT))
+
+    assert redacted[2]["content"] == REDACTED
+    assert json.loads(redacted[1]["tool_calls"][0]["function"]["arguments"]) == call
+
+
+def test_google_call_without_its_result_redacts_the_result():
+    """A truncated result no longer parses; the call it answers still names
+    the block, as in history a later turn reloads."""
+    call = {"block_id": GMAIL_BLOCK_ID, "input_data": {}}
+    preview = '<tool-output-truncated total_chars=90000>\n{"type": "block_output", ...'
+
+    redacted = redact_google_data(_sdk_history(call, preview))
+
+    assert redacted["messages"][2]["content"] == REDACTED
+
+
+def test_tool_run_output_redacted_by_what_the_tool_produced():
+    """LangSmith records a tool run's output without its call."""
+    preview = f"<tool-output-truncated total_chars=90000>\n{EMAIL[:20]}"
+    remember_google_output(preview)
+
+    outputs = {"content": [{"type": "text", "text": preview}]}
+
+    assert redact_google_data(outputs) == {
+        "content": [{"type": "text", "text": REDACTED}]
+    }
+    assert redact_google_data({"output": GMAIL_OUTPUT}) == {"output": REDACTED}
+    assert redact_google_data({"output": TEXT_OUTPUT}) == {"output": TEXT_OUTPUT}
+
+
+def test_tool_run_input_redacted():
+    inputs = {"input": {"block_id": GMAIL_BLOCK_ID, "input_data": {"q": "x"}}}
+
+    assert redact_google_data(inputs) == {
+        "input": {"block_id": GMAIL_BLOCK_ID, "input_data": REDACTED}
+    }
+
+
+def test_google_block_output_response_is_remembered():
+    response = BlockOutputResponse(
+        message="ran", block_id=GMAIL_BLOCK_ID, block_name="b", outputs={}
+    )
+    assert not response.holds_google_data
+    assert response.model_copy(update={"provider": "google"}).holds_google_data
+
+
+@pytest.fixture
+def langfuse_spans() -> Iterator[InMemorySpanExporter]:
+    """A Langfuse client built the way production builds it, exporting to
+    memory instead of to Langfuse."""
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    LangfuseResourceManager.reset()
+    Langfuse(
+        public_key="pk-lf-test",
+        secret_key="sk-lf-test",
+        base_url="http://127.0.0.1:9",
+        tracer_provider=provider,
+        mask=mask_langfuse_data,
+    )
+    try:
+        yield exporter
+    finally:
+        LangfuseResourceManager.reset()
+
+
+def test_langfuse_generation_input_is_masked(langfuse_spans: InMemorySpanExporter):
+    call = {"block_id": GMAIL_BLOCK_ID, "input_data": {"query": "from:finance"}}
+    history = _baseline_history(call, GMAIL_OUTPUT)
+    client = get_client()
+
+    generation = client.start_observation(
+        name="OpenAI-generation", as_type="generation", input=history
+    )
+    generation.update(output={"role": "assistant", "content": "Done."})
+    generation.end()
+
+    sent = json.dumps(
+        [dict(span.attributes or {}) for span in langfuse_spans.get_finished_spans()]
+    )
+    assert EMAIL not in sent
+    assert "from:finance" not in sent
+    assert REDACTED in sent
+    assert "run_block" in sent
+
+
+def test_install_trace_redaction_masks_both_tracers():
+    with (
+        patch.object(google_data_redaction, "Langfuse") as langfuse,
+        patch.object(google_data_redaction.langsmith, "configure") as configure,
+    ):
+        install_trace_redaction()
+
+    langfuse.assert_called_once_with(mask=mask_langfuse_data)
+    client = configure.call_args.kwargs["client"]
+    assert isinstance(client, langsmith.Client)
+    inputs = {"input": {"block_id": GMAIL_BLOCK_ID, "input_data": {"q": "x"}}}
+    assert client._hide_run_inputs(inputs)["input"]["input_data"] == REDACTED
+    assert client._hide_run_outputs({"output": GMAIL_OUTPUT}) == {"output": REDACTED}

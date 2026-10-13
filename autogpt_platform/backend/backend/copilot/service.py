@@ -36,6 +36,7 @@ from .config import ChatConfig, CopilotLLMModel
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
+from .google_data_redaction import install_langfuse_mask
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -434,6 +435,12 @@ def _is_langfuse_configured() -> bool:
     return bool(
         settings.secrets.langfuse_public_key and settings.secrets.langfuse_secret_key
     )
+
+
+# Before anything asks for a Langfuse client: the SDK keeps the first one's
+# settings, and this one's mask keeps Google data out of the traces.
+if _is_langfuse_configured():
+    install_langfuse_mask()
 
 
 async def _fetch_langfuse_prompt() -> str | None:

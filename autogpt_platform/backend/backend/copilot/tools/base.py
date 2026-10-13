@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from openai.types.chat import ChatCompletionToolParam
 
 from backend.copilot.context import get_current_envelope
+from backend.copilot.google_data_redaction import remember_google_output
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
 from backend.copilot.turn_tracing import tool_transaction
@@ -529,12 +530,15 @@ class BaseTool:
                 raw_output = await _persist_and_summarize(
                     raw_output, user_id, session.session_id, tool_call_id, digest
                 )
-
             output = StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,
                 output=raw_output,
             )
+            # Remembered as the model gets it, previews and caps included, so
+            # the traces can redact it even where it no longer parses.
+            if result.holds_google_data and isinstance(output.output, str):
+                remember_google_output(output.output)
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
             tracing.set_status("internal_error")

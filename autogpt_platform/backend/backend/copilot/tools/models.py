@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from backend.copilot.tools.execution_utils import NodeFailureSummary
 from backend.data.graph import BaseGraph, GraphTriggerInfo
 from backend.data.model import CredentialsMetaInput
+from backend.integrations.providers import ProviderName
 
 
 class ResponseType(str, Enum):
@@ -174,6 +175,12 @@ class ToolResponseBase(BaseModel):
     @property
     def outside(self) -> tuple[Any, ...] | None:
         return self._outside
+
+    @property
+    def holds_google_data(self) -> bool:
+        """Whether this carries what a Google block returned, which must stay
+        out of LLM traces (see ``backend.copilot.google_data_redaction``)."""
+        return False
 
 
 # Agent discovery models
@@ -1025,6 +1032,10 @@ class BlockOutputResponse(ToolResponseBase):
     is_dry_run: bool | None = (
         None  # only set to True on dry-run; omitted in normal runs
     )
+
+    @property
+    def holds_google_data(self) -> bool:
+        return self.provider == ProviderName.GOOGLE.value
 
 
 class ReviewRequiredResponse(ToolResponseBase):

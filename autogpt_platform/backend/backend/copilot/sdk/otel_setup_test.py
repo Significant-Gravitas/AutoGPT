@@ -48,6 +48,9 @@ class TestSetupLangfuseOtel:
             ),
             patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
             patch(
+                "backend.copilot.sdk.service.install_trace_redaction"
+            ) as mock_redaction,
+            patch(
                 "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
             ) as mock_configure,
@@ -88,6 +91,7 @@ class TestSetupLangfuseOtel:
                 )
 
                 mock_configure.assert_called_once_with(tags=["sdk"])
+                mock_redaction.assert_called_once_with()
             finally:
                 for k, v in saved.items():
                     if v is not None:
@@ -108,6 +112,7 @@ class TestSetupLangfuseOtel:
                 return_value=True,
             ),
             patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch("backend.copilot.sdk.service.install_trace_redaction"),
             patch(
                 "backend.copilot.sdk.service.configure_claude_agent_sdk",
                 return_value=True,
@@ -142,6 +147,35 @@ class TestSetupLangfuseOtel:
                         os.environ[key] = value
                     else:
                         os.environ.pop(key, None)
+
+    def test_sdk_left_untraced_when_redaction_cannot_install(self):
+        """Tracing without the Google data redaction would export it."""
+        mock_settings = MagicMock()
+        mock_settings.secrets.langfuse_public_key = "pk-test"
+        mock_settings.secrets.langfuse_secret_key = "sk-test"
+        mock_settings.secrets.langfuse_host = "https://langfuse.example.com"
+        mock_settings.secrets.langfuse_tracing_environment = "test"
+
+        with (
+            patch(
+                "backend.copilot.sdk.service._is_langfuse_configured",
+                return_value=True,
+            ),
+            patch("backend.copilot.sdk.service.Settings", return_value=mock_settings),
+            patch(
+                "backend.copilot.sdk.service.install_trace_redaction",
+                side_effect=RuntimeError("no client"),
+            ),
+            patch(
+                "backend.copilot.sdk.service.configure_claude_agent_sdk"
+            ) as mock_configure,
+            patch.dict(os.environ, {}, clear=False),
+        ):
+            from backend.copilot.sdk.service import _setup_langfuse_otel
+
+            _setup_langfuse_otel()
+
+        mock_configure.assert_not_called()
 
     def test_graceful_failure_on_exception(self):
         """Setup should not raise even if internal code fails."""
