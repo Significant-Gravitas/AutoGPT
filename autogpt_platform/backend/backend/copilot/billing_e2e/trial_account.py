@@ -1,6 +1,6 @@
 """A trial user's subscription trial and spend counters, in place of the database and Redis.
 
-Only the rows are stubbed. Everything that reads or writes them runs as in
+Only the stored state is stubbed. Everything that reads or writes them runs as in
 production: the executor's snapshot of which trial a turn is spent from, the
 engines' budget lookups, the spend recording and the paywall.
 """
@@ -37,9 +37,9 @@ class TrialAccount:
         self.user_id = user_id
         self.turn = 0
         self.tier = SubscriptionTier.TRIAL
-        self.trial = _trial(user_id, spent=spent_before)
+        self.trial = active_trial(user_id, spent=spent_before)
         self.charges: list[TrialCharge] = []
-        self._counters: dict[str, int] = {}
+        self.counters = SpendCounters()
 
     def install(self, monkeypatch: pytest.MonkeyPatch, ledger: PlatformLedger) -> None:
         store = MagicMock(
@@ -51,12 +51,8 @@ class TrialAccount:
         monkeypatch.setattr(
             rate_limit, "_fetch_user_tier", AsyncMock(side_effect=self._read_tier)
         )
-        redis = MagicMock(get=AsyncMock(side_effect=self._read_counter))
         monkeypatch.setattr(
-            rate_limit, "get_redis_async", AsyncMock(return_value=redis)
-        )
-        monkeypatch.setattr(
-            rate_limit, "_incr_counter_atomic", AsyncMock(side_effect=self._increment)
+            rate_limit, "get_redis_async", AsyncMock(return_value=self.counters)
         )
         # The flag service's overrides of the default limits; none are set.
         monkeypatch.setattr(
@@ -79,10 +75,9 @@ class TrialAccount:
 
     def remaining_usd(self) -> float:
         """What the trial still allows today, as the budget lookups compute it."""
-        daily = DAILY_LIMIT - self._counters.get(rate_limit._daily_key(self.user_id), 0)
-        weekly = WEEKLY_LIMIT - self._counters.get(
-            rate_limit._weekly_key(self.user_id), 0
-        )
+        spent = self.counters.values
+        daily = DAILY_LIMIT - spent.get(rate_limit._daily_key(self.user_id), 0)
+        weekly = WEEKLY_LIMIT - spent.get(rate_limit._weekly_key(self.user_id), 0)
         total = TOTAL_LIMIT - self.trial.cost_microdollars
         return max(0, min(daily, weekly, total)) / 1_000_000
 
@@ -108,34 +103,82 @@ class TrialAccount:
     async def _charge_trial(
         self, user_id: str, cost_microdollars: int, trial_id: str | None = None
     ) -> None:
-        """``record_subscription_trial_cost``: the same rows its update matches."""
+        """``record_subscription_trial_cost``: it updates the rows that match, and
+        an attributed charge that matches none is an error."""
         assert user_id == self.user_id
-        self.charges.append(
-            TrialCharge(
-                turn=self.turn, microdollars=cost_microdollars, trial_id=trial_id
-            )
-        )
+        if cost_microdollars <= 0:
+            return
         matches = (
             self.trial.status == "trialing"
             if trial_id is None
             else self.trial.id == trial_id and self.trial.consumed_at is not None
         )
-        if matches:
-            self.trial = self.trial.model_copy(
-                update={
-                    "cost_microdollars": self.trial.cost_microdollars
-                    + cost_microdollars
-                }
+        if not matches:
+            if trial_id is not None:
+                raise ValueError("Trial cost attribution was not found for this user")
+            return
+        self.charges.append(
+            TrialCharge(
+                turn=self.turn, microdollars=cost_microdollars, trial_id=trial_id
             )
+        )
+        self.trial = self.trial.model_copy(
+            update={
+                "cost_microdollars": self.trial.cost_microdollars + cost_microdollars
+            }
+        )
 
-    async def _read_counter(self, key: str) -> int | None:
-        return self._counters.get(key)
 
-    async def _increment(self, _redis: object, key: str, delta: int, _ttl: int) -> None:
-        self._counters[key] = self._counters.get(key, 0) + delta
+class SpendCounters:
+    """The Redis holding the daily and weekly spend counters.
+
+    It answers the reads and the INCRBY + EXPIRE transactions the rate limiter
+    issues, so the limiter's own Redis code runs; anything else it would call
+    is missing and fails the test.
+    """
+
+    def __init__(self) -> None:
+        self.values: dict[str, int] = {}
+        self.ttls: dict[str, int] = {}
+
+    async def get(self, key: str) -> bytes | None:
+        value = self.values.get(key)
+        return None if value is None else str(value).encode()
+
+    def pipeline(self, transaction: bool) -> "_Transaction":
+        assert transaction, "the spend counters are only written in a transaction"
+        return _Transaction(self)
 
 
-def _trial(user_id: str, *, spent: int) -> TrialState:
+class _Transaction:
+    def __init__(self, counters: SpendCounters) -> None:
+        self._counters = counters
+        self._queued: list[tuple[str, str, int]] = []
+
+    def incrby(self, key: str, amount: int) -> None:
+        self._queued.append(("incrby", key, amount))
+
+    def expire(self, key: str, seconds: int) -> None:
+        self._queued.append(("expire", key, seconds))
+
+    async def execute(self) -> None:
+        for command, key, value in self._queued:
+            if command == "incrby":
+                self._counters.values[key] = self._counters.values.get(key, 0) + value
+            else:
+                self._counters.ttls[key] = value
+        self._queued.clear()
+
+
+def active_trial(
+    user_id: str,
+    *,
+    spent: int = 0,
+    daily_limit: int = DAILY_LIMIT,
+    weekly_limit: int = WEEKLY_LIMIT,
+    total_limit: int = TOTAL_LIMIT,
+) -> TrialState:
+    """A card-verified trial a week from its end, with these spend limits."""
     now = datetime.now(UTC)
     return TrialState(
         id=TRIAL_ID,
@@ -147,9 +190,9 @@ def _trial(user_id: str, *, spent: int) -> TrialState:
             duration_days=7,
             tier="PRO",
             billing_cycle="monthly",
-            daily_cost_limit=DAILY_LIMIT,
-            weekly_cost_limit=WEEKLY_LIMIT,
-            total_cost_limit=TOTAL_LIMIT,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+            total_cost_limit=total_limit,
             onboarding_credit_amount=300,
             price_id="price_pro",
             unit_amount=2000,

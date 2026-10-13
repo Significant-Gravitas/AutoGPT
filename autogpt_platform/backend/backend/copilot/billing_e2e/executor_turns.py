@@ -29,6 +29,9 @@ from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMetadata
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk import tool_adapter
+from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+from backend.copilot.tools.base import BaseTool
 from backend.copilot.tree import root_envelope
 
 from .baseline_turns import BaselineTurns
@@ -89,7 +92,11 @@ class Executor:
 
 
 class SdkTurnsViaExecutor(SdkTurns):
-    """SDK turns from the executor, with the trial sizing each turn's budget."""
+    """SDK turns from the executor, with the trial sizing each turn's budget.
+
+    With ``tools``, the CLI runs the model's tool calls on the copilot's real
+    MCP server and tool adapter, serving only those tools.
+    """
 
     def __init__(
         self,
@@ -98,9 +105,14 @@ class SdkTurnsViaExecutor(SdkTurns):
         provider: FakeProvider,
         config: ChatConfig,
         executor: Executor,
+        *,
+        tools: dict[str, BaseTool] | None = None,
     ) -> None:
         super().__init__(tmp_path, monkeypatch, provider, config)
         self._executor = executor
+        self._tools = tools or {}
+        if self._tools:
+            monkeypatch.setattr(tool_adapter, "TOOL_REGISTRY", self._tools)
         # The CLI's spending cap for each launch, by turn.
         self.budgets: list[tuple[int, float | None]] = []
 
@@ -119,13 +131,21 @@ class SdkTurnsViaExecutor(SdkTurns):
         stubs = super()._stubs(session)
         del stubs["get_user_tier"]
         del stubs["_resolve_dynamic_max_budget_usd"]
+        if self._tools:
+            del stubs["create_copilot_mcp_server"]
         return stubs
 
     def _client(
         self, *args: Any, options: ClaudeAgentOptions, **kwargs: Any
     ) -> ClaudeSDKClient:
         self.budgets.append((self._turn, options.max_budget_usd))
-        return super()._client(*args, options=options, **kwargs)
+        if not self._tools:
+            return super()._client(*args, options=options, **kwargs)
+        self.resumed.append((self._turn, options.resume))
+        options.hooks = None
+        options.allowed_tools = [f"{MCP_TOOL_PREFIX}{name}" for name in self._tools]
+        options.disallowed_tools = []
+        return ClaudeSDKClient(*args, options=options, **kwargs)
 
 
 class BaselineTurnsViaExecutor(BaselineTurns):
@@ -144,6 +164,7 @@ class BaselineTurnsViaExecutor(BaselineTurns):
         super().__init__(monkeypatch, config, base_url=base_url, model=model)
         self._executor = executor
         self.user_context = AsyncMock(return_value=None)
+        # BaselineTurns stubs it; the trial is what sizes this budget.
         monkeypatch.setattr(baseline, "build_budget_ctx", rate_limit.build_budget_ctx)
         monkeypatch.setattr(baseline, "inject_user_context", self.user_context)
 
