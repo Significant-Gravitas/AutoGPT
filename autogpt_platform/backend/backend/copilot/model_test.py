@@ -917,6 +917,93 @@ async def test_append_and_save_message_appends_new_message(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_follow_up_message_is_saved_without_rereading_the_session(
+    mocker: MockerFixture,
+) -> None:
+    """A chat with messages already has its row, so the follow-up's save goes
+    straight to the session update and the message insert."""
+    session = _make_session_with_messages(
+        ChatMessage(role="user", content="hello", sequence=0),
+        ChatMessage(role="assistant", content="hi", sequence=1),
+    )
+    db = _stub_save_path(mocker, session, next_sequence=2)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="second message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_not_awaited()
+    db.create_chat_session.assert_not_awaited()
+    db.update_chat_session.assert_awaited_once()
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 2
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("row_exists", [True, False])
+async def test_a_chats_first_message_checks_the_session_row_first(
+    mocker: MockerFixture, row_exists: bool
+) -> None:
+    """With no messages saved yet, the save checks for the session row and
+    creates it if it is missing, before inserting the message."""
+    session = _make_session_with_messages()
+    db = _stub_save_path(mocker, session, next_sequence=0, row_exists=row_exists)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="user", content="first message")
+    )
+
+    assert result is not None
+    db.get_chat_session_metadata.assert_awaited_once_with(session.session_id)
+    assert db.create_chat_session.await_count == (0 if row_exists else 1)
+    [insert] = db.add_chat_messages_batch.await_args_list
+    assert insert.kwargs["start_sequence"] == 0
+    assert [m["content"] for m in insert.kwargs["messages"]] == ["first message"]
+
+
+def _stub_save_path(
+    mocker: MockerFixture,
+    session: ChatSession,
+    *,
+    next_sequence: int,
+    row_exists: bool = True,
+):
+    """The session lock, cache and database behind ``append_and_save_message``;
+    its ``_save_session_to_db`` runs for real against the returned database."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+    db = mocker.MagicMock(
+        get_next_sequence=mocker.AsyncMock(return_value=next_sequence),
+        get_chat_session_metadata=mocker.AsyncMock(
+            return_value=mocker.MagicMock() if row_exists else None
+        ),
+        create_chat_session=mocker.AsyncMock(),
+        update_chat_session=mocker.AsyncMock(),
+        add_chat_messages_batch=mocker.AsyncMock(return_value=next_sequence),
+    )
+    mocker.patch("backend.copilot.model.chat_db", return_value=db)
+    return db
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_append_and_save_message_raises_when_session_not_found(
     mocker: MockerFixture,
 ) -> None:
