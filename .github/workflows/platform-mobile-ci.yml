@@ -1,0 +1,45 @@
+name: Platform mobile shells
+
+on:
+  pull_request:
+    paths:
+      - autogpt_platform/mobile/**
+      - .github/workflows/platform-mobile-ci.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    runs-on: macos-15
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/ios
+    steps:
+      - uses: actions/checkout@v6
+      - run: brew install xcodegen
+      - run: swift test
+      - run: xcodegen generate
+      - run: >-
+          xcodebuild -project AutoGPT.xcodeproj -scheme AutoGPT
+          -sdk iphonesimulator -configuration Debug
+          CODE_SIGNING_ALLOWED=NO build
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: autogpt_platform/mobile/android
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - run: ./gradlew --no-daemon :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
