@@ -22,7 +22,7 @@ from backend.data.notifications import (
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_trial import TrialState
 from backend.notifications.dedupe import claim_once, release_claim
-from backend.notifications.lifecycle_plan import format_amount
+from backend.notifications.lifecycle_plan import currency_symbol, format_amount
 from backend.notifications.queue import queue_notification_async
 from backend.notifications.trial_audience import (
     join_paying_audience,
@@ -266,7 +266,7 @@ def trial_notice_data(
     title = plan.tier.title()
     cycle_noun = "month" if plan.cycle == "monthly" else "year"
     amount = format_amount(plan.unit_amount, plan.currency)
-    if plan.currency not in {"usd", "eur", "gbp"}:
+    if not currency_symbol(plan.currency):
         amount = f"{amount} {plan.currency.upper()}"
     return TrialUpdateData(
         user_name=name,
