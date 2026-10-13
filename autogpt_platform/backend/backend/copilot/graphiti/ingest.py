@@ -15,6 +15,7 @@ from graphiti_core import Graphiti
 from graphiti_core.graphiti import AddEpisodeResults
 from graphiti_core.nodes import EpisodeType
 
+from backend.copilot.dream.ratification import _promote_if_tentative
 from backend.copilot.dream.registry import ensure_scope_scheduled
 from backend.util.background import spawn_background_task
 
@@ -402,7 +403,9 @@ async def _write_locked(
     """Write one episode holding the graph's write lock (``scope_lock.py``),
     so no forget lands between what graphiti reads and what it saves over
     it; False, writing nothing, when another writer kept it for the wait.
-    A dream write resting on a forget is dropped under the same lock."""
+    A dream write resting on a forget is dropped under the same lock, and a
+    user's chat turn promotes the tentative facts it states under it
+    (``_promote_restated``)."""
     wait = INGEST_LOCK_WAIT_SECONDS
     async with graph_write_lock(group_id, wait_seconds=wait) as lock:
         if lock is LockState.BUSY:
@@ -417,8 +420,12 @@ async def _write_locked(
         # ``_edge_metadata`` is a sidecar (not an add_episode kwarg) — pop it
         # before the **payload spread. Present only for dream writes.
         edge_metadata = payload.pop("_edge_metadata", None)
+        # Sidecar, set only on a chat turn's user-message episode.
+        restatement = payload.pop("_restatement", False)
         result = await _add_episode(client, group_id, payload)
         await _undo_extracted_retractions(client, result)
+        if restatement:
+            await _promote_restated(client, result)
         # graphiti's attribute extraction fills MemoryFact fields from the
         # episode text, not the envelope, so dream metadata doesn't survive:
         # stamp it onto the edges THIS episode newly created (see
@@ -428,6 +435,23 @@ async def _write_locked(
         if completion is not None:
             completion.written += 1
     return True
+
+
+async def _promote_restated(client: Graphiti, result: AddEpisodeResults) -> None:
+    """Promote each tentative fact a user's chat turn states, new or merged
+    into, to ``active`` with a ``ratified_at`` stamp (the ratification
+    loop's promotion, ``dream.ratification``). Tentative is probation for
+    what the system inferred, a dream proposal or an assistant's finding,
+    and the user saying it ends it; their own statement is not put on
+    probation because graphiti's model labelled it tentative. Only the facts
+    whose ``episodes`` include the turn's: the ones graphiti invalidated are
+    left alone. The recall stamps and hit counts stay: saying a fact is no
+    recall of it. Best-effort, like the promotion: the episode is written
+    either way."""
+    episode = result.episode.uuid
+    for edge in result.edges:
+        if episode in edge.episodes:
+            await _promote_if_tentative(client.driver, edge.uuid)
 
 
 async def _undo_extracted_retractions(
@@ -614,6 +638,9 @@ async def enqueue_conversation_turn(
             "reference_time": datetime.now(timezone.utc),
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
+            # Sidecar: the user's own words, so the worker promotes the
+            # tentative facts they state (``_promote_restated``).
+            "_restatement": True,
         },
     )
     if not queued:

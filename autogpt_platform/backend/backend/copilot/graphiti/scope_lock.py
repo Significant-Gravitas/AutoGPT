@@ -2,8 +2,10 @@
 ingestion.
 
 graphiti's ``add_episode`` saves the edges and entities it read when it
-began (``SET r = edge``, ``SET n = node``): a forget that landed while it
-ran would be written over by the older copy. So these writers hold this
+began (``SET r += edge``, as the driver runs it, ``fact_attributes.py``, and
+``SET n = node``): a forget that landed while it ran would be written over by
+the older copy, the fact's text and its entities' summaries. So these
+writers hold this
 lock: the ingestion worker around ``add_episode`` and what it writes after
 it (``ingest.py``), ``recall_forget.retract`` around the whole forget, and
 the legacy-forget backfill around each graph's restamp
