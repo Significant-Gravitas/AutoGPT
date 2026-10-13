@@ -98,12 +98,18 @@ afterEach(() => {
 });
 
 function usageExhaustedAfterSending() {
-  let reads = 0;
+  let exhausted = false;
   server.use(
+    http.post(
+      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+      () => {
+        exhausted = true;
+      },
+    ),
     getGetV2GetCopilotUsageMockHandler200(() => ({
       tier: "PRO",
       daily: {
-        percent_used: reads++ === 0 ? 0 : 100,
+        percent_used: exhausted ? 100 : 0,
         resets_at: new Date("2099-10-08T00:00:00Z"),
       },
       weekly: { percent_used: 40, resets_at: new Date("2099-10-12T00:00:00Z") },
