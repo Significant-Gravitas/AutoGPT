@@ -8,7 +8,7 @@ Each trial turn must be charged to the trial, as much as the provider billed
 for it, and the next turn's budget must come from what the trial has left
 after it. Once the trial has converted, nothing more may be charged to it.
 A tool the model calls must see the trial as it is when the tool runs, not as
-it was when the turn started.
+it was when the turn started, on either engine's own tool path.
 """
 
 from pathlib import Path
@@ -21,6 +21,7 @@ from backend.copilot.baseline import service as baseline_service
 from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
+from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.tools import TOOL_REGISTRY
 from backend.copilot.tools.base import BaseTool
@@ -104,15 +105,23 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
     )
     assert account.trial.cost_microdollars == SPENT_BEFORE + trial_spend
 
+    # Every spend counter the limiter wrote expires, so a window resets.
+    assert account.counters.ttls.keys() == account.counters.values.keys()
+    assert all(ttl > 0 for ttl in account.counters.ttls.values())
+
     if isinstance(run_turn, SdkTurnsViaExecutor):
         static_cap = sdk_service.config.claude_agent_max_budget_usd
-        budgets = dict(run_turn.budgets)
-        for turn in range(CONVERTED_TURN):
-            assert budgets[turn] == pytest.approx(
-                resolve_trial_sdk_budget(static_cap, remaining_at_start[turn])
-            )
-        assert budgets[CONVERTED_TURN] > remaining_at_start[0]
+        assert {turn for turn, _ in run_turn.budgets} == set(range(len(PROMPTS)))
+        for turn, budget in run_turn.budgets:
+            if turn < CONVERTED_TURN:
+                assert budget == pytest.approx(
+                    resolve_trial_sdk_budget(static_cap, remaining_at_start[turn])
+                )
+            else:
+                assert budget is not None and budget > remaining_at_start[0]
     else:
+        # The baseline tells the model its budget once, on the chat's first
+        # turn (``should_inject_user_context``).
         [first_turn] = run_turn.user_context.await_args_list
         assert first_turn.kwargs["budget_ctx"].startswith(
             f"Approximate remaining USD budget for this user: ${remaining_at_start[0]:.2f}."
@@ -120,23 +129,23 @@ async def test_a_trial_users_turns_are_spent_from_the_trial(
 
 
 @pytest.mark.asyncio(loop_scope="function")
+@pytest.mark.parametrize("scenario", TRIAL_SCENARIOS, ids=lambda scenario: scenario.id)
 async def test_a_tool_sees_the_trial_as_it_is_when_the_tool_runs(
+    scenario: Scenario,
     provider: FakeProvider,
     ledger: PlatformLedger,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    [scenario] = [s for s in TRIAL_SCENARIOS if s.engine == "baseline"]
+    if scenario.needs_cli and _resolve_cli_path() is None:
+        pytest.skip("No Claude Code CLI binary available")
     session = _session(scenario)
     account = TrialAccount(session.user_id, spent_before=SPENT_BEFORE)
     account.install(monkeypatch, ledger)
-    run_turn, executor = _turn_runner(
-        scenario, provider, session, tmp_path, monkeypatch
-    )
-    assert isinstance(run_turn, BaselineTurnsViaExecutor)
     tool = _PaywalledLookup(account)
-    monkeypatch.setitem(TOOL_REGISTRY, TOOL_NAME, tool)
-    run_turn.run_registry_tools(monkeypatch)
+    run_turn, executor = _turn_runner(
+        scenario, provider, session, tmp_path, monkeypatch, tool=tool
+    )
     prompt = PROMPTS[1]
     session.messages.append(ChatMessage(role="user", content=prompt))
 
@@ -188,7 +197,11 @@ def _turn_runner(
     session: ChatSession,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    *,
+    tool: BaseTool | None = None,
 ) -> tuple[SdkTurnsViaExecutor | BaselineTurnsViaExecutor, Executor]:
+    """The scenario's engine behind the executor; with ``tool``, the model's
+    tool calls run it through that engine's own tool path."""
     if scenario.engine == "baseline":
         config = _config(baseline_service.config, scenario, provider)
         executor = Executor(monkeypatch, config, session, use_sdk=False)
@@ -199,10 +212,17 @@ def _turn_runner(
             base_url=f"{provider.url}{scenario.client_path}",
             model=scenario.model,
         )
+        if tool is not None:
+            monkeypatch.setitem(TOOL_REGISTRY, TOOL_NAME, tool)
+            runner.run_registry_tools(monkeypatch)
         return runner, executor
     config = _config(sdk_service.config, scenario, provider)
     executor = Executor(monkeypatch, config, session, use_sdk=True)
-    return (
-        SdkTurnsViaExecutor(tmp_path, monkeypatch, provider, config, executor),
-        executor,
+    tools = None
+    if tool is not None:
+        provider.tool_name = f"{MCP_TOOL_PREFIX}{TOOL_NAME}"
+        tools = {TOOL_NAME: tool}
+    runner = SdkTurnsViaExecutor(
+        tmp_path, monkeypatch, provider, config, executor, tools=tools
     )
+    return runner, executor
