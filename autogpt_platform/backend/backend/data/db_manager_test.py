@@ -68,6 +68,8 @@ _DREAM_PASS_METHODS = (
     "list_expired_dream_passes",
     "list_dream_pass_cleanups",
     "delete_old_dream_passes",
+    "blank_dream_pass_text",
+    "blank_dream_narratives",
 )
 
 

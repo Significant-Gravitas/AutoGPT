@@ -41,7 +41,12 @@ from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import dream_db
-from backend.data.dream_pass_models import DreamPassRecord, DreamPassUpdate
+from backend.data.dream_pass_models import (
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPassUpdate,
+    DreamPhaseOutputs,
+)
 
 from .fetch import DreamInput
 from .pass_record import (
@@ -255,6 +260,30 @@ async def read_user_passes(
     *open_only*. Raises when the read fails or runs out of time."""
     return await _bounded(
         dream_db().list_dream_passes(user_id, limit=limit, open_only=open_only)
+    )
+
+
+async def read_scope_passes(
+    user_id: str, scope_key: str, *, limit: int
+) -> list[DreamPassRecord]:
+    """*user_id*'s passes of the scope *scope_key*, newest first, at most
+    *limit*. Raises when the read fails or runs out of time."""
+    return await _bounded(
+        dream_db().list_dream_passes(user_id, limit=limit, scope_key=scope_key)
+    )
+
+
+async def blank_pass_text(
+    pass_id: str,
+    user_id: str,
+    phase_outputs: DreamPhaseOutputs,
+    operations: DreamPassOperations,
+) -> bool:
+    """Write a closed pass's phase outputs and operations with the dream's
+    text blanked (``forget_copies.py``); False when there is no such closed
+    pass of the user's. Raises when the write fails or runs out of time."""
+    return await _bounded(
+        dream_db().blank_dream_pass_text(pass_id, user_id, phase_outputs, operations)
     )
 
 

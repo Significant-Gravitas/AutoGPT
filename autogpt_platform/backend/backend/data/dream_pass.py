@@ -10,7 +10,8 @@ forward and merges its JSON columns in the database.
 A pass that has reached a terminal status (complete, errored, cancelled,
 expired, skipped) is final: no update writes it, the way
 ``job_status.mark_complete`` never rewrites a finished job, but for the
-cleanup after it marking itself finished.
+cleanup after it marking itself finished, and a hard forget blanking the
+dream's text in it (``blank_dream_pass_text``).
 
 Three queries work across users: the reaper lists open passes whose lease
 lapsed (``list_expired_dream_passes``, on the status and lease expiry index)
@@ -30,10 +31,13 @@ from backend.data.dream_pass_models import (
     CLOSED_STATUSES,
     OPEN_STATUSES,
     DreamPassDraft,
+    DreamPassOperations,
     DreamPassRecord,
     DreamPassUpdate,
+    DreamPhaseOutputs,
 )
 from backend.data.dream_pass_update import TRANSITION_SQL, transition_args
+from backend.util.json import dumps, sanitize_json
 
 # One batch of the retention delete: at most $3 closed passes created before
 # $2 whose cleanup is not still pending. DELETE takes no LIMIT, so the batch's
@@ -46,6 +50,14 @@ DELETE FROM {schema_prefix}"DreamPass" WHERE "id" IN (
         AND "createdAt" < $2::timestamptz AT TIME ZONE 'UTC'
     LIMIT $3::int
 )
+"""
+
+# A closed pass's phase outputs and operations replaced whole, by its owner's
+# hard forget; an open pass is left, since its next phase reads them.
+BLANK_TEXT_SQL = """
+UPDATE {schema_prefix}"DreamPass"
+SET "phaseOutputs" = $3::jsonb, "operations" = $4::jsonb
+WHERE "id" = $1 AND "userId" = $2 AND NOT ("status"::text = ANY($5::text[]))
 """
 
 
@@ -112,13 +124,18 @@ async def list_open_dream_passes(
 
 
 async def list_dream_passes(
-    user_id: str, limit: int = 20, open_only: bool = False
+    user_id: str,
+    limit: int = 20,
+    open_only: bool = False,
+    scope_key: str | None = None,
 ) -> list[DreamPassRecord]:
-    """The user's passes, across every scope, newest first; only those still
-    open when *open_only*."""
+    """The user's passes, across every scope or only *scope_key*'s, newest
+    first; only those still open when *open_only*."""
     where: DreamPassWhereInput = {"userId": user_id}
     if open_only:
         where["status"] = {"in": list(OPEN_STATUSES)}
+    if scope_key is not None:
+        where["scopeKey"] = scope_key
     rows = await prisma.models.DreamPass.prisma().find_many(
         where=where, order={"createdAt": "desc"}, take=limit
     )
@@ -199,6 +216,27 @@ async def list_dream_pass_cleanups(
         take=limit,
     )
     return [DreamPassRecord.from_db(row) for row in rows]
+
+
+async def blank_dream_pass_text(
+    pass_id: str,
+    user_id: str,
+    phase_outputs: DreamPhaseOutputs,
+    operations: DreamPassOperations,
+) -> bool:
+    """Replace the phase outputs and operations of *user_id*'s closed pass
+    *pass_id* with *phase_outputs* and *operations*, the dream's text in them
+    blanked (``copilot/dream/forget_copies.py``). ``False`` when there is no
+    such closed pass of the user's."""
+    written = await execute_raw_with_schema(
+        BLANK_TEXT_SQL,
+        pass_id,
+        user_id,
+        dumps(sanitize_json(phase_outputs.model_dump(mode="json"))),
+        dumps(sanitize_json(operations.model_dump(mode="json"))),
+        [status.value for status in OPEN_STATUSES],
+    )
+    return written > 0
 
 
 async def delete_old_dream_passes(created_before: datetime, limit: int = 1000) -> int:

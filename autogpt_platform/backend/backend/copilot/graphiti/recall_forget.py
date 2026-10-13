@@ -19,6 +19,8 @@ from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
 
+from backend.copilot.dream.forget_copies import blank_dream_copies
+
 from .falkordb_driver import open_driver
 from .memory_model import (
     ForgetResult,
@@ -37,6 +39,15 @@ from .scope import MemoryScope
 from .scope_lock import FORGET_LOCK_WAIT_SECONDS, LockState, graph_write_lock
 
 logger = logging.getLogger(__name__)
+
+# Failures that mean the forget did nothing to a uuid.
+_NOTHING_DONE = frozenset(
+    {
+        MemoryForgetFailureCode.NO_MATCH,
+        MemoryForgetFailureCode.QUERY_ERROR,
+        MemoryForgetFailureCode.BUSY,
+    }
+)
 
 
 async def retract(
@@ -78,7 +89,11 @@ async def retract(
     derived text it reaches (``recall_erase.py``), then empties and deletes
     what only the forgotten edges kept, the edges last
     (``recall_orphans.purge``), so forgetting again after any failure
-    finishes the job, a purged fact's cascade included (below). A failed
+    finishes the job, a purged fact's cascade included (below). Last, out of
+    the lock, it blanks the dream's copies of that text in Postgres
+    (``dream/forget_copies.py``): a failure there, or a dream pass of the
+    scope still running, which may have read the fact, is a
+    ``cleanup_error`` too. A failed
     step after the edge write is a ``cleanup_error`` on each edge it
     concerned, one failure per uuid however many steps failed; recall hides
     the fact and its text regardless.
@@ -101,9 +116,50 @@ async def retract(
             return ForgetResult(failures=busy)
         driver = open_driver(scope)
         try:
-            return await _forget(driver, scope.group_id, requested, hard, reason)
+            result = await _forget(driver, scope.group_id, requested, hard, reason)
         finally:
             await driver.close()
+    if hard:
+        await _blank_copies(scope, requested, result)
+    return result
+
+
+async def _blank_copies(
+    scope: MemoryScope, requested: list[str], result: ForgetResult
+) -> None:
+    """Blank the dream's copies in Postgres of what a hard forget reached
+    (``dream/forget_copies.py``); a failure, or a pass of the scope still
+    running, is a ``cleanup_error`` on each uuid forgotten."""
+    unreached = {f.uuid for f in result.failures if f.code in _NOTHING_DONE}
+    forgotten = [uuid for uuid in requested if uuid not in unreached]
+    if not forgotten:
+        return
+    reached = {
+        *forgotten,
+        *result.derived,
+        *result.passed,
+        *result.redacted_episodes,
+        *result.tombstoned_episodes,
+    }
+    try:
+        running = await blank_dream_copies(
+            scope, reached=reached, dream_writes=result.dream_writes
+        )
+    except Exception as exc:
+        logger.warning(
+            f"Hard forget could not blank the dream's copies in graph "
+            f"{scope.group_id[:20]}",
+            exc_info=True,
+        )
+        result.failures.extend(
+            MemoryForgetFailure.cleanup_error(uuid, exc) for uuid in forgotten
+        )
+    else:
+        if running:
+            result.failures.extend(
+                MemoryForgetFailure.dream_running(uuid) for uuid in forgotten
+            )
+    result.failures = _first_per_uuid(result.failures)
 
 
 async def _forget(

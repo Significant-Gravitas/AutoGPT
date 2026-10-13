@@ -21,6 +21,7 @@ import pytest_asyncio
 from pytest_mock import MockerFixture
 
 from backend.copilot.dream import apply
+from backend.copilot.dream.forget_copies import pass_of
 
 from . import recall
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -100,7 +101,7 @@ async def _keys(driver: AutoGPTFalkorDriver, uuids: list[str]) -> dict[str, set[
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
-    scope_graph, stub_graphiti_client, dream_apply
+    scope_graph, stub_graphiti_client, dream_apply, dream_copies: AsyncMock
 ) -> None:
     """The forgotten fact is deleted and its chat turn emptied. What the dream
     derived is retracted softly, its edges and reasons kept, and its text
@@ -175,3 +176,7 @@ async def test_a_hard_forget_erases_the_sentences_the_dream_derived(
     turn = await episode_row(driver, boule_turn)
     assert turn["redacted_at"] is not None and BOULE[2] in turn["content"]
     assert set(await live_facts(driver)) == {bakery.boule, bakery.cafe, pays[_PAYS[2]]}
+    passes = sorted(pass_of(name) or name for name in result.dream_writes)
+    assert passes == ["pass-1", "pass-2", "pass-3"], "each erased write names its pass"
+    assert dream_copies.await_args is not None
+    assert dream_copies.await_args.kwargs["dream_writes"] == result.dream_writes

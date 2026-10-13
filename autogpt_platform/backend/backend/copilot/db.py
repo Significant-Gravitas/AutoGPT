@@ -1257,6 +1257,29 @@ async def update_message_content_by_sequence(
         return False
 
 
+async def blank_dream_narratives(
+    user_id: str, pass_ids: list[str], placeholder: str
+) -> int:
+    """Replace the narrative of each of *user_id*'s dream sessions for
+    *pass_ids* (the assistant message a dream opens its session with,
+    ``dream/apply._write_dream_summary_message``) with *placeholder*, for a
+    hard forget (``dream/forget_copies.py``); how many were. The rest of the
+    session is the user's chat with it, which no forget reaches."""
+    if not pass_ids:
+        return 0
+    return await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $3 '
+        'FROM {schema_prefix}"ChatSession" AS s '
+        'WHERE m."sessionId" = s."id" AND s."userId" = $1 '
+        "AND s.\"metadata\"->>'kind' = 'dream' "
+        "AND s.\"metadata\"->>'dream_pass_id' = ANY($2::text[]) "
+        'AND m."sequence" = 0 AND m."role" = \'assistant\'',
+        user_id,
+        pass_ids,
+        sanitize_string(placeholder),
+    )
+
+
 async def update_chat_message_stamps(
     session_id: str,
     sequence: int,

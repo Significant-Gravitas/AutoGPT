@@ -277,6 +277,41 @@ class FakeDreamDb:
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
         ][:limit]
 
+    async def list_dream_passes(
+        self,
+        user_id: str,
+        limit: int = 20,
+        open_only: bool = False,
+        scope_key: str | None = None,
+    ) -> list[DreamPassRecord]:
+        """The user's rows, of every scope or only *scope_key*'s, the last
+        inserted first, at most *limit*."""
+        self._raise_if_down()
+        return [
+            self.record(pass_id)
+            for pass_id, row in reversed(self.rows.items())
+            if row["user_id"] == user_id
+            and scope_key in (None, row["scope_key"])
+            and (not open_only or row["status"] in OPEN_STATUSES)
+        ][:limit]
+
+    async def blank_dream_pass_text(
+        self,
+        pass_id: str,
+        user_id: str,
+        phase_outputs: DreamPhaseOutputs,
+        operations: DreamPassOperations,
+    ) -> bool:
+        """Replace a closed row's JSON columns whole, as its owner's hard
+        forget does; False for an open row or another user's."""
+        self._raise_if_down()
+        row = self.rows.get(pass_id)
+        if row is None or row["user_id"] != user_id or row["status"] in OPEN_STATUSES:
+            return False
+        row["phase_outputs"] = phase_outputs.model_dump(mode="json")
+        row["operations"] = operations.model_dump(mode="json")
+        return True
+
     async def list_expired_dream_passes(
         self,
         expired_before: datetime,

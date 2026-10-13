@@ -25,21 +25,33 @@ Each write is idempotent, so a hard forget repeated after a failure erases
 what the first one left.
 """
 
+from typing import Any
+
 from graphiti_core.driver.driver import GraphDriver
 
 from .recall import FORGOTTEN_FACT
 
 
-async def erase(driver: GraphDriver, facts: list[str], episodes: list[str]) -> None:
+async def erase(
+    driver: GraphDriver, facts: list[str], episodes: list[str]
+) -> list[str]:
     """Blank ``facts``' text and audit copies (their entities already
     scrubbed, ``recall_hide.scrub``), then the dream episodes among
-    ``episodes``."""
+    ``episodes``; the names of those, each naming the dream pass that wrote
+    it (Postgres keeps that pass's copies of the text,
+    ``dream/forget_copies.py``)."""
     if facts:
         await driver.execute_query(
             ERASE_FACTS_QUERY, uuids=facts, placeholder=FORGOTTEN_FACT
         )
-    if episodes:
-        await driver.execute_query(ERASE_DREAM_EPISODES_QUERY, uuids=episodes)
+    if not episodes:
+        return []
+    erased = await driver.execute_query(ERASE_DREAM_EPISODES_QUERY, uuids=episodes)
+    return [row["name"] for row in _rows(erased)]
+
+
+def _rows(result: Any) -> list[dict[str, Any]]:
+    return result[0] if result else []
 
 
 ERASE_FACTS_QUERY = """
@@ -58,4 +70,5 @@ MATCH (ep:Episodic)
 WHERE ep.uuid IN $uuids AND ep.derived_from_facts IS NOT NULL
 SET ep.content = '',
     ep.source_description = split(ep.source_description, ';')[0]
+RETURN ep.name AS name
 """

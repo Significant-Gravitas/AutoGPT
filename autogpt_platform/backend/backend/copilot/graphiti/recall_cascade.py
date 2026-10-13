@@ -159,7 +159,7 @@ async def _resume(
     facts = [*walk.roots, *again]
     hidden = [*walk.seeds, *await _redact_citing(driver, walk, facts, now, result)]
     if walk.erase:
-        await erase_text(driver, again, hidden)
+        result.dream_writes.extend(await erase_text(driver, again, hidden))
     return Frontier(facts=facts, episodes=hidden)
 
 
@@ -222,7 +222,8 @@ async def _retire(
         await scrub(driver, scrubbed)
     hidden = await _redact_citing(driver, walk, reached, now, result)
     if walk.erase:
-        await erase_text(driver, reached, [*tainted, *hidden])
+        erased = await erase_text(driver, reached, [*tainted, *hidden])
+        result.dream_writes.extend(erased)
     return Frontier(facts=reached, episodes=[*tainted, *hidden])
 
 
