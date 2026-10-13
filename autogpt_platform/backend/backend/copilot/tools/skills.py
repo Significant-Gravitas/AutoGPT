@@ -37,9 +37,11 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.learning.content_approvals import current_content_approvals
 from backend.copilot.learning.content_checks import (
     ContentCheckFailure,
     check_skill_bundle,
+    collect_content_approvals,
 )
 from backend.copilot.learning.history import record_registry_write
 from backend.copilot.learning.retrieval import (
@@ -68,6 +70,7 @@ from backend.data.skill_capacity import SKILL_ORIGINS as _SKILL_ORIGINS
 from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.skill_capacity import skill_name_key
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
@@ -865,6 +868,7 @@ class SkillWritePolicy(BaseModel):
     summary: str = ""
     keep_auto_improve: bool | None = None
     allowed_pattern_classes: list[str] = Field(default_factory=list)
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
     seeded_secret_values: list[str] = Field(default_factory=list)
     expected_head: ExpectedHead | None = None
 
@@ -889,6 +893,7 @@ async def store_user_skill(
     summary: str = "",
     keep_auto_improve: bool | None = None,
     allowed_pattern_classes: list[str] | None = None,
+    content_approvals: list[SkillContentApproval] | None = None,
     seeded_secret_values: list[str] | None = None,
     expected_head: ExpectedHead | None = None,
 ) -> ParsedSkill:
@@ -933,6 +938,7 @@ async def store_user_skill(
                     summary=summary,
                     keep_auto_improve=keep_auto_improve,
                     allowed_pattern_classes=allowed_pattern_classes or [],
+                    content_approvals=content_approvals or [],
                     seeded_secret_values=seeded_secret_values or [],
                     expected_head=expected_head,
                 ),
@@ -1058,8 +1064,13 @@ async def store_user_skills(
                         skill.learning.expected_head,
                     )
                 if origin == SKILL_ORIGIN_USER:
-                    await _check_prepared_content(
+                    approvals = await _check_prepared_content(
                         user_id, expert_id, scope, manager, skill
+                    )
+                    skill = skill._replace(
+                        learning=skill.learning.model_copy(
+                            update={"content_approvals": approvals}
+                        )
                     )
                 is_new = skill.parsed.name not in same_origin
                 checksums = await _write_skill(
@@ -1170,7 +1181,7 @@ async def _record_package_history(
         bundle["SKILL.md"] = skill.rendered
         failure = check_skill_bundle(
             bundle,
-            allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+            approved_matches=skill.learning.content_approvals,
             seeded_values=skill.learning.seeded_secret_values,
         )
         if failure is not None:
@@ -1190,6 +1201,7 @@ async def _record_package_history(
             actor_user_id=skill.learning.actor_user_id,
             summary=skill.learning.summary,
             keep_auto_improve=skill.learning.keep_auto_improve,
+            content_approvals=skill.learning.content_approvals,
             files=[
                 SkillVersionFile.from_content(
                     f.relative_path, f.content, f.is_executable
@@ -1287,7 +1299,7 @@ async def _check_prepared_content(
     scope: WorkspaceScope | None,
     manager: WorkspaceManager,
     skill: _PreparedSkill,
-) -> None:
+) -> list[SkillContentApproval]:
     bundle = (
         await read_skill_bundle_files(
             user_id,
@@ -1305,13 +1317,31 @@ async def _check_prepared_content(
         except UnicodeDecodeError:
             continue
     bundle["SKILL.md"] = skill.rendered
+    approvals = skill.learning.content_approvals
     failure = check_skill_bundle(
         bundle,
         seeded_values=skill.learning.seeded_secret_values,
         allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
     )
+    if failure is not None and not approvals:
+        approvals = await current_content_approvals(
+            user_id, expert_id, skill.parsed.name
+        )
+        failure = check_skill_bundle(
+            bundle,
+            seeded_values=skill.learning.seeded_secret_values,
+            allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+            approved_matches=approvals,
+        )
     if failure is not None:
         raise SkillContentBlockedError(failure)
+    return collect_content_approvals(
+        bundle,
+        approved_by_user_id=user_id,
+        allowed_pattern_classes=skill.learning.allowed_pattern_classes,
+        approved_matches=approvals,
+    )
 
 
 async def _write_skill(

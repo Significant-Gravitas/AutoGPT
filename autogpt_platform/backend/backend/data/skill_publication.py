@@ -18,6 +18,10 @@ import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.data.db import query_raw_with_schema, transaction
+from backend.data.skill_content_approvals import (
+    SkillContentApproval,
+    content_approvals_json,
+)
 from backend.data.skill_learning import LearningSourceRecord, canonical_revision
 from backend.data.skill_publication_settlement import settle_publication
 from backend.data.skill_reviews import review_data, upsert_review_in
@@ -42,6 +46,7 @@ class VersionDraft(BaseModel):
 
     content: str
     files: list[SkillVersionFile] | None = None
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
     description: str
     triggers: list[str] = Field(default_factory=list)
     origin: str
@@ -112,6 +117,7 @@ async def commit_version(
                     "content": draft.content,
                     "contentHash": content_hash(draft.content),
                     "packageFiles": version_files_json(draft.files),
+                    "contentApprovals": content_approvals_json(draft.content_approvals),
                     "description": draft.description,
                     "triggers": list(draft.triggers),
                     "origin": draft.origin,

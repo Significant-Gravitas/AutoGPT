@@ -1627,6 +1627,7 @@ model SkillVersion {
   contentHash String
   // Null for legacy Markdown-only versions; [] is an explicitly empty package.
   packageFiles Json?
+  contentApprovals Json @default("[]")
   description String
   triggers    String[] @default([])
 

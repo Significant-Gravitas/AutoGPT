@@ -14,6 +14,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import (
     LearningAccessError,
     LearningSourceRecord,
@@ -459,6 +460,7 @@ class FakeLearningStore:
         blocked_pattern_class: str | None = None,
         blocked_step: str | None = None,
         files: list[SkillVersionFile] | None = None,
+        content_approvals: list[SkillContentApproval] | None = None,
     ) -> SkillVersionRecord:
         version = SkillVersionRecord(
             id=str(uuid.uuid4()),
@@ -471,6 +473,7 @@ class FakeLearningStore:
             content=content,
             content_hash=content_hash(content),
             files=files,
+            content_approvals=content_approvals or [],
             description=description,
             triggers=list(triggers),
             origin=origin,
@@ -545,6 +548,7 @@ class FakeLearningStore:
             head=live,
             content=draft.content,
             files=draft.files,
+            content_approvals=draft.content_approvals,
             description=draft.description,
             triggers=draft.triggers,
             origin=draft.origin,

@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 
 from backend.data.db_accessors import skill_publication_db, skill_versions_db
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_publication import VersionDraft
 from backend.data.skill_version_files import SkillVersionFile, version_package_hash
@@ -40,6 +41,7 @@ async def record_registry_write(
     summary: str,
     keep_auto_improve: bool | None,
     files: list[SkillVersionFile] | None = None,
+    content_approvals: list[SkillContentApproval] | None = None,
 ) -> SkillVersionRecord | None:
     """Append the version for a workspace write that already succeeded.
 
@@ -53,12 +55,16 @@ async def record_registry_write(
         head = await versions.ensure_head(user_id, expert_id, skill_name)
         if head.content_hash == content_hash(rendered) and head.current_version_id:
             current = await versions.get_version(user_id, head.current_version_id)
-            if current is not None and (
-                files is None
-                or (
-                    current.files is not None
-                    and version_package_hash(rendered, current.files)
-                    == version_package_hash(rendered, files)
+            if (
+                current is not None
+                and current.content_approvals == (content_approvals or [])
+                and (
+                    files is None
+                    or (
+                        current.files is not None
+                        and version_package_hash(rendered, current.files)
+                        == version_package_hash(rendered, files)
+                    )
                 )
             ):
                 return None
@@ -70,6 +76,7 @@ async def record_registry_write(
                 draft=VersionDraft(
                     content=rendered,
                     files=files,
+                    content_approvals=content_approvals or [],
                     description=description,
                     triggers=triggers,
                     origin=origin,

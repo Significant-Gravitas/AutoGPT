@@ -9,10 +9,14 @@ so the diagnostic cannot itself leak a secret.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from collections import Counter
 from typing import Iterable
 
 from pydantic import BaseModel
+
+from backend.data.skill_content_approvals import SkillContentApproval
 
 # Typed-input placeholders a reusable recipe may legitimately contain:
 # ``{{API_KEY}}``, ``${SLACK_TOKEN}``, ``<API_KEY>``. Only an upper-case
@@ -73,6 +77,7 @@ def check_skill_bundle(
     *,
     seeded_values: Iterable[str] = (),
     allowed_pattern_classes: Iterable[str] = (),
+    approved_matches: Iterable[SkillContentApproval] = (),
 ) -> ContentCheckFailure | None:
     """Return the first failure across the bundle, or ``None`` when clean.
 
@@ -83,12 +88,70 @@ def check_skill_bundle(
     """
     allowed = set(allowed_pattern_classes) - {SEEDED_PATTERN_CLASS}
     seeds = [value for value in seeded_values if value and len(value) >= 8]
+    approved = _approval_budget(approved_matches)
     for index, (file_name, text) in enumerate(files.items(), start=1):
         label = _safe_file_label(file_name, index)
-        failure = _check_text(text, label, seeds, allowed)
+        failure = _check_text(
+            text, label, seeds, allowed, approved=approved, file_path=file_name
+        )
         if failure is not None:
             return failure
     return None
+
+
+def collect_content_approvals(
+    files: dict[str, str],
+    *,
+    approved_by_user_id: str,
+    allowed_pattern_classes: Iterable[str] = (),
+    approved_matches: Iterable[SkillContentApproval] = (),
+) -> list[SkillContentApproval]:
+    previous = {
+        (a.file_path, a.pattern_class, a.match_hash): a
+        for a in approved_matches
+        if a.approved_by_user_id == approved_by_user_id
+    }
+    allowed = set(allowed_pattern_classes) - {SEEDED_PATTERN_CLASS}
+    matches: Counter[tuple[str, str, str]] = Counter()
+    for path, text in files.items():
+        for line in text.splitlines():
+            scrubbed = _PLACEHOLDER_RE.sub("", line)
+            for pattern_class, pattern in _PATTERNS:
+                for match in pattern.finditer(scrubbed):
+                    matches[(path, pattern_class, _match_hash(match.group()))] += 1
+    result = []
+    for key, occurrences in matches.items():
+        path, pattern_class, digest = key
+        count = (
+            occurrences
+            if pattern_class in allowed
+            else min(occurrences, previous[key].count if key in previous else 0)
+        )
+        if count:
+            result.append(
+                SkillContentApproval(
+                    file_path=path,
+                    pattern_class=pattern_class,
+                    match_hash=digest,
+                    count=count,
+                    approved_by_user_id=approved_by_user_id,
+                )
+            )
+    return result
+
+
+def _approval_budget(
+    approvals: Iterable[SkillContentApproval],
+) -> Counter[tuple[str, str, str]]:
+    budget: Counter[tuple[str, str, str]] = Counter()
+    for approval in approvals:
+        key = (approval.file_path, approval.pattern_class, approval.match_hash)
+        budget[key] = max(budget[key], approval.count)
+    return budget
+
+
+def _match_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def check_skill_content(
@@ -139,7 +202,13 @@ def _safe_file_label(file_name: str, index: int) -> str:
 
 
 def _check_text(
-    text: str, file_label: str, seeds: list[str], allowed: set[str]
+    text: str,
+    file_label: str,
+    seeds: list[str],
+    allowed: set[str],
+    *,
+    approved: Counter[tuple[str, str, str]] | None = None,
+    file_path: str = "",
 ) -> ContentCheckFailure | None:
     section = 0
     step: int | None = None
@@ -160,7 +229,11 @@ def _check_text(
         for pattern_class, pattern in _PATTERNS:
             if pattern_class in allowed:
                 continue
-            if pattern.search(scrubbed):
+            for match in pattern.finditer(scrubbed):
+                key = (file_path, pattern_class, _match_hash(match.group()))
+                if approved is not None and approved[key] > 0:
+                    approved[key] -= 1
+                    continue
                 return ContentCheckFailure(
                     pattern_class=pattern_class, step=location, file=file_label
                 )

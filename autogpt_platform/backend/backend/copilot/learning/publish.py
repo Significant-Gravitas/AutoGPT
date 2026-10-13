@@ -42,6 +42,7 @@ from backend.data.db_accessors import (
     skill_use_db,
     skill_versions_db,
 )
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_publication import ReviewStamp, VersionDraft
 from backend.data.skill_version_files import version_package_hash
 from backend.data.skill_versions import (
@@ -50,7 +51,13 @@ from backend.data.skill_versions import (
     content_hash,
 )
 
-from .content_checks import check_metadata, check_skill_bundle, safe_diagnostic
+from .content_approvals import current_content_approvals
+from .content_checks import (
+    check_metadata,
+    check_skill_bundle,
+    collect_content_approvals,
+    safe_diagnostic,
+)
 from .fingerprint import (
     UNCERTAIN_EQUIVALENCE_THRESHOLD,
     behavior_fingerprint,
@@ -123,15 +130,22 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         return PublishOutcome(
             status="conflict", reason="the skill package changed after review"
         )
+    approvals: list[SkillContentApproval] = []
     if current_text:
         previous_bundle = {
             f.relative_path: f.content.decode("utf-8", errors="replace")
             for f in current_files
         }
         previous_bundle["SKILL.md"] = current_text
-        failure = check_metadata(
+        metadata_failure = check_metadata(
             {str(i): f.relative_path for i, f in enumerate(current_files)}
-        ) or check_skill_bundle(previous_bundle)
+        )
+        failure = metadata_failure or check_skill_bundle(previous_bundle)
+        if failure is not None and metadata_failure is None:
+            approvals = await current_content_approvals(
+                request.user_id, request.expert_id, request.skill_name
+            )
+            failure = check_skill_bundle(previous_bundle, approved_matches=approvals)
         if failure is not None:
             return PublishOutcome(
                 status="blocked_content",
@@ -157,7 +171,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         return PublishOutcome(
             status="invalid_proposal", reason=safe_diagnostic(str(exc))
         )
-    blocked = await _check_bundle(request, rendered, files)
+    blocked = await _check_bundle(request, rendered, files, approvals)
     if blocked is not None:
         return blocked
 
@@ -213,6 +227,17 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         sources=[s.as_dependency() for s in request.sources],
         evidence=request.evidence,
         limits=request.limits,
+        content_approvals=collect_content_approvals(
+            {
+                "SKILL.md": rendered,
+                **{
+                    f.relative_path: f.content.decode("utf-8", errors="replace")
+                    for f in files
+                },
+            },
+            approved_by_user_id=request.user_id,
+            approved_matches=approvals,
+        ),
     )
     if not head.auto_improve or suppression is not None:
         return await _file_proposal(request, head, draft, suppression)
@@ -220,14 +245,19 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
 
 
 async def _check_bundle(
-    request: PublishRequest, rendered: str, files: list[SkillFile]
+    request: PublishRequest,
+    rendered: str,
+    files: list[SkillFile],
+    content_approvals: list[SkillContentApproval] | None = None,
 ) -> PublishOutcome | None:
     bundle = {
         f.relative_path: f.content.decode("utf-8", errors="replace") for f in files
     }
     failure = check_metadata({str(i): f.relative_path for i, f in enumerate(files)})
     bundle["SKILL.md"] = rendered
-    failure = failure or check_skill_bundle(bundle)
+    failure = failure or check_skill_bundle(
+        bundle, approved_matches=content_approvals or []
+    )
     if failure is None:
         return None
     # Record the blocked attempt without any rejected content: history can
@@ -404,6 +434,7 @@ async def _file_proposal(
         sources=draft.sources,
         evidence=draft.evidence,
         limits=draft.limits,
+        content_approvals=draft.content_approvals,
     )
     return PublishOutcome(status="needs_decision", version=version, reason=reason)
 
@@ -416,7 +447,24 @@ async def commit_and_write(
     *,
     auto_improve: bool | None = None,
 ) -> PublishOutcome:
-    invalid = _validate_version_content(draft.content, draft.files)
+    draft = draft.model_copy(
+        update={
+            "content_approvals": collect_content_approvals(
+                {
+                    "SKILL.md": draft.content,
+                    **{
+                        f.relative_path: f.content.decode("utf-8", errors="replace")
+                        for f in draft.files or []
+                    },
+                },
+                approved_by_user_id=user_id,
+                approved_matches=draft.content_approvals,
+            )
+        }
+    )
+    invalid = _validate_version_content(
+        draft.content, draft.files, draft.content_approvals
+    )
     if invalid is not None:
         return invalid
     result = await skill_publication_db().commit_version_safe(
@@ -442,7 +490,16 @@ async def write_committed_version(
     a newer human correction is abandoned instead of putting its older
     bytes on top of that correction.
     """
-    invalid = _validate_version_content(version.content, version.files)
+    version = version.model_copy(
+        update={
+            "content_approvals": [
+                a for a in version.content_approvals if a.approved_by_user_id == user_id
+            ]
+        }
+    )
+    invalid = _validate_version_content(
+        version.content, version.files, version.content_approvals
+    )
     if invalid is not None:
         await skill_publication_db().abandon_publication(
             user_id,
@@ -473,6 +530,7 @@ async def write_committed_version(
             version_origin=None,
             expected_head=ExpectedHead(version_id=version.id),
             files=restore_files(version.files) if version.files is not None else None,
+            content_approvals=version.content_approvals,
         )
     except (SkillContentBlockedError, VirusDetectedError):
         reason = "skill package rejected by content or malware scan"

@@ -174,6 +174,7 @@ async def restore_version(
         sources=target.sources,
         evidence=target.evidence,
         limits=target.limits,
+        content_approvals=target.content_approvals,
     )
     outcome = await commit_and_write(user_id, head, draft, None, auto_improve=False)
     if outcome.status == "applied" and replaced is not None:
@@ -291,6 +292,7 @@ async def decide_proposal(
         sources=proposal.sources,
         evidence=proposal.evidence,
         limits=proposal.limits,
+        content_approvals=proposal.content_approvals,
     )
     outcome = await commit_and_write(user_id, head, draft, None)
     if outcome.status == "applied":

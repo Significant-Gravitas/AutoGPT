@@ -17,6 +17,11 @@ import prisma.models
 import prisma.types
 from pydantic import BaseModel, Field
 
+from backend.data.skill_content_approvals import (
+    SkillContentApproval,
+    content_approvals_json,
+    parse_content_approvals,
+)
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_revocations import (
     invalidate_source_versions as invalidate_source_versions,
@@ -90,6 +95,7 @@ class SkillVersionRecord(BaseModel):
     content: str
     content_hash: str
     files: list[SkillVersionFile] | None = None
+    content_approvals: list[SkillContentApproval] = Field(default_factory=list)
     description: str
     triggers: list[str] = Field(default_factory=list)
     origin: str
@@ -120,6 +126,7 @@ class SkillVersionRecord(BaseModel):
             content=row.content,
             content_hash=row.contentHash,
             files=parse_version_files(row.packageFiles),
+            content_approvals=parse_content_approvals(row.contentApprovals),
             description=row.description,
             triggers=list(row.triggers or []),
             origin=row.origin,
@@ -286,6 +293,7 @@ async def create_version(
     blocked_pattern_class: str | None = None,
     blocked_step: str | None = None,
     files: list[SkillVersionFile] | None = None,
+    content_approvals: list[SkillContentApproval] | None = None,
 ) -> SkillVersionRecord:
     """Append an immutable version row (numbers are monotonic per head)."""
     for _ in range(3):
@@ -302,6 +310,7 @@ async def create_version(
                     "content": content,
                     "contentHash": content_hash(content),
                     "packageFiles": version_files_json(files),
+                    "contentApprovals": content_approvals_json(content_approvals or []),
                     "description": description,
                     "triggers": list(triggers),
                     "origin": origin,

@@ -9,6 +9,7 @@ from backend.copilot.tools.skills import (
     validate_package,
     validate_skill_content,
 )
+from backend.data.skill_content_approvals import SkillContentApproval
 from backend.data.skill_version_files import SkillVersionFile
 
 from .content_checks import check_metadata, check_skill_bundle, safe_diagnostic
@@ -54,7 +55,9 @@ def _validate_skill_metadata(skill: ParsedSkill) -> PublishOutcome | None:
 
 
 def _validate_version_content(
-    content: str, files: list[SkillVersionFile] | None
+    content: str,
+    files: list[SkillVersionFile] | None,
+    content_approvals: list[SkillContentApproval] | None = None,
 ) -> PublishOutcome | None:
     parsed = parse_skill_markdown(content)
     if parsed is None:
@@ -82,7 +85,7 @@ def _validate_version_content(
     bundle["SKILL.md"] = content
     failure = check_metadata(
         {str(i): f.relative_path for i, f in enumerate(files or [])}
-    ) or check_skill_bundle(bundle)
+    ) or check_skill_bundle(bundle, approved_matches=content_approvals or [])
     if failure is not None:
         return PublishOutcome(
             status="blocked_content",
