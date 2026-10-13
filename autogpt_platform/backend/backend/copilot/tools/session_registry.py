@@ -19,7 +19,6 @@ from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.mcp_connections import (
     catalog_mcp_entry,
     connected_mcp_entries,
-    stored_mcp_urls,
 )
 from backend.copilot.capabilities.models import CapabilityEntry
 from backend.copilot.capabilities.ranking import normalize_server_url
@@ -137,14 +136,9 @@ async def _resolve_platform_entry(
         or normalize_server_url(key) == normalize_server_url(entry.connection.key)
     ):
         return entry
-    connections = await load_connection_state(user_id, session.expert_id)
     if entry.connection.key:
-        return (
-            None
-            if normalize_server_url(key)
-            in {normalize_server_url(url) for url in stored_mcp_urls(connections)}
-            else entry
-        )
+        return None
+    connections = await load_connection_state(user_id, session.expert_id)
     return next(
         (
             bound
