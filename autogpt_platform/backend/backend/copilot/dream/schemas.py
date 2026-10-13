@@ -39,11 +39,13 @@ class IngestionDrainStatus(str, Enum):
         with a logged error; or the pass enqueued nothing to drain. Healthy.
       * ``skipped`` — the drain was intentionally not run to avoid stalling
         a shared serial loop (batch path). The episodes process
-        fire-and-forget; healthy by design, NOT a failure signal.
+        fire-and-forget, counted pending; healthy by design, NOT a failure
+        signal.
       * ``timed_out`` — the sync-path drain was attempted but did not finish
-        within its budget. The reported write/proposal counts include
-        episodes still queued in-process, which are lost if the worker's pod
-        restarts. This is the only value that warrants an operator warning.
+        within its budget. The episodes not written yet are counted pending,
+        not written; they stay queued in-process, and are lost if the
+        worker's pod restarts. This is the only value that warrants an
+        operator warning.
     """
 
     drained = "drained"
@@ -330,15 +332,24 @@ class DreamPassResult(BaseModel):
     elapsed_seconds: float | None = None
     execution_path: ExecutionPath = "sync_baseline"
 
-    # Per-phase telemetry — null when the phase did not run.
+    # Per-phase telemetry — null when the phase did not run. The writes and
+    # proposals count only those graphiti saved before the pass was
+    # reported, never one merely queued.
     consolidated_count: int = 0
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
-    # Of those writes and proposals, the ones dropped unwritten because a
-    # forget reached what they rest on after the pass read the graph; only
+    # Of the pass's writes and proposals, the ones dropped unwritten because
+    # a forget reached what they rest on after the pass read the graph; only
     # those dropped before the pass was reported (see ingestion_drain_status).
     dropped_forgotten: int = 0
+    # The ones not written yet when the pass was reported: still queued
+    # in-process (lost if the process stops), waiting for the graph's write
+    # lock, or being written. Every one on the batch path, which does not
+    # wait for them.
+    pending_write_count: int = 0
+    # The ones whose write raised: dropped, logged, not retried.
+    failed_write_count: int = 0
 
     summary_for_user: str = ""
     dream_session_id: str | None = None

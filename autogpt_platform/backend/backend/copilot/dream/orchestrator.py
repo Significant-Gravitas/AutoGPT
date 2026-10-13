@@ -712,6 +712,8 @@ def _applied_result(
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
+        pending_write_count=_as_int("pending_write_count"),
+        failed_write_count=_as_int("failed_write_count"),
         summary_for_user=ops.summary_for_user,
         # Fail-closed: a missing/malformed drain flag reads as
         # ``timed_out`` (writes at risk), never a confirmed drain.

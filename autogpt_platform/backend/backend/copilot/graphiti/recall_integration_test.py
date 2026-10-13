@@ -36,7 +36,12 @@ from backend.copilot.tools.models import MemorySearchResponse
 from . import context
 from .falkordb_driver import open_driver
 from .memory_model import MemoryForgetFailureCode
-from .recall import FORGOTTEN_FACT, forgotten_fact_predicate, is_forgotten
+from .recall import (
+    FORGOTTEN_FACT,
+    forgotten_fact_predicate,
+    is_forgotten,
+    search_forgotten_facts,
+)
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -276,6 +281,14 @@ async def test_the_forgotten_fact_cypher_and_python_agree(
     read_back = await EntityEdge.get_by_uuids(driver, uuids)
     assert in_cypher == {edge.uuid: is_forgotten(edge) for edge in read_back}
     assert [in_cypher[edge_uuid] for edge_uuid in uuids] == list(_EDGE_SHAPES.values())
+    # The search for a permanent delete ranks these alone: with every fact
+    # equally close (the stub embeds everything alike), six that are not
+    # forgotten take none of the slots, however few.
+    forgotten = {edge_uuid for edge_uuid, gone in in_cypher.items() if gone}
+    every = await search_forgotten_facts(scope, "Atlas", limit=len(uuids))
+    assert {edge.uuid for edge in every} == forgotten
+    two = await search_forgotten_facts(scope, "Atlas", limit=2)
+    assert len(two) == 2 and {edge.uuid for edge in two} <= forgotten
 
 
 @pytest.mark.integration

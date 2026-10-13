@@ -27,7 +27,9 @@ from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.driver.driver import GraphDriver
-from graphiti_core.edges import EntityEdge
+from graphiti_core.edges import EntityEdge, get_entity_edge_from_record
+from graphiti_core.graph_queries import get_vector_cosine_func_query
+from graphiti_core.models.edges.edge_db_queries import get_entity_edge_return_query
 from graphiti_core.nodes import EpisodicNode, get_episodic_node_from_record
 from graphiti_core.search.search_config import SearchConfig
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_RRF
@@ -36,6 +38,7 @@ from graphiti_core.search.search_filters import (
     DateFilter,
     SearchFilters,
 )
+from graphiti_core.search.search_utils import DEFAULT_MIN_SCORE
 
 from backend.copilot.dream.ratification_hits import record_memory_hit
 
@@ -52,10 +55,6 @@ USER_FORGET_REASON = "user_signal"
 FORGOTTEN_FACT = "[forgotten]"
 
 _LIVE_STATUSES = (MemoryStatus.active, MemoryStatus.tentative)
-
-# How many of a search's best matches ``search_forgotten_facts`` reads for
-# each forgotten fact it may return: live facts take most of them.
-_FORGOTTEN_OVERFETCH = 5
 
 # The ``expired_at`` half of the live test, applied inside every graphiti
 # search method so a retired fact never takes one of the ``limit`` slots. The
@@ -192,22 +191,38 @@ async def search_facts(
 async def search_forgotten_facts(
     scope: MemoryScope, query: str, *, limit: int
 ) -> list[EntityEdge]:
-    """Forgotten facts matching ``query``, best first, at most ``limit``: for
-    making a soft forget permanent (``recall_forget.retract(hard=True)``).
+    """Forgotten facts matching ``query`` by meaning, best first, at most
+    ``limit``: for making a soft forget permanent
+    (``recall_forget.retract(hard=True)``).
 
-    A forget leaves a fact's embedding, so graphiti still finds it by
-    meaning, though its sentence reads ``FORGOTTEN_FACT`` (the original is in
-    ``fact_redacted``). Live facts take most of a search's best matches, so
-    it reads ``_FORGOTTEN_OVERFETCH`` times ``limit`` of them.
+    A forget leaves a fact's embedding but makes its sentence read
+    ``FORGOTTEN_FACT``, so in graphiti's hybrid search, which ranks every
+    fact by both, live facts would take the slots ahead of it. This ranks
+    the forgotten facts alone, by the similarity graphiti's own search uses,
+    above the same threshold: none is crowded out by a live one.
     """
     client = await get_graphiti_client(scope.group_id)
-    config = EDGE_HYBRID_SEARCH_RRF.model_copy(
-        update={"limit": limit * _FORGOTTEN_OVERFETCH}
+    vector = await client.embedder.create(input_data=[query.replace("\n", " ")])
+    return await _forgotten_by_meaning(client.driver, scope.group_id, vector, limit)
+
+
+async def _forgotten_by_meaning(
+    driver: GraphDriver, group_id: str, vector: list[float], limit: int
+) -> list[EntityEdge]:
+    provider = driver.provider
+    score = get_vector_cosine_func_query("e.fact_embedding", "$search_vector", provider)
+    records, _, _ = await driver.execute_query(
+        "MATCH (n:Entity)-[e:RELATES_TO]->(m:Entity)"
+        f" WHERE e.group_id = $group_id AND {forgotten_fact_predicate('e')}"
+        f" WITH DISTINCT e, n, m, {score} AS score WHERE score > $min_score"
+        f" RETURN {get_entity_edge_return_query(provider)}"
+        " ORDER BY score DESC LIMIT $limit",
+        group_id=group_id,
+        search_vector=vector,
+        min_score=DEFAULT_MIN_SCORE,
+        limit=limit,
     )
-    results = await client.search_(
-        query=query, config=config, group_ids=[scope.group_id]
-    )
-    return [fact for fact in results.edges if is_forgotten(fact)][:limit]
+    return [get_entity_edge_from_record(row, provider) for row in records]
 
 
 async def live_now(
