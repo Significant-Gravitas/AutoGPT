@@ -1,4 +1,4 @@
-"""Public contract and persisted terms for explicitly ending a Pro trial."""
+"""Public contract and persisted terms for explicitly ending a trial on Pro or Max."""
 
 from datetime import datetime
 from hashlib import sha256
@@ -6,12 +6,15 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, Json, field_validator
 
+ActivationPlan = Literal["PRO", "MAX"]
+
 ActivationStatus = Literal[
     "confirmation_required",
     "payment_required",
     "action_required",
     "processing",
     "ready",
+    "not_applicable",
     "failed",
 ]
 
@@ -40,7 +43,7 @@ class RenewalTax(BaseModel):
 
 
 class ActivationTerms(BaseModel):
-    plan: Literal["PRO"] = "PRO"
+    plan: ActivationPlan = "PRO"
     price_id: str
     accepted_offer_token: str
     amount_due: int = Field(ge=0)
@@ -53,15 +56,31 @@ class ActivationTerms(BaseModel):
     charge_timing: Literal["on_confirmation"] = "on_confirmation"
     renewal_terms: str
     expires_at: datetime
+    trial_ends_at: datetime | None = None
+    period_starts_at: datetime | None = None
+    next_payment_at: datetime | None = None
+    tax_amount: int | None = None
 
     @property
     def token(self) -> str:
-        return sha256(self.model_dump_json().encode()).hexdigest()
+        return sha256(self.persisted_json().encode()).hexdigest()
+
+    def persisted_json(self) -> str:
+        return self.model_dump_json(exclude=self._undisclosed_fields())
 
     def same_charge_as(self, other: "ActivationTerms") -> bool:
-        return self.model_dump(exclude={"expires_at"}) == other.model_dump(
-            exclude={"expires_at"}
-        )
+        excluded = {"expires_at", "period_starts_at", "next_payment_at"}
+        excluded |= self._undisclosed_fields() | other._undisclosed_fields()
+        return self.model_dump(exclude=excluded) == other.model_dump(exclude=excluded)
+
+    def _undisclosed_fields(self) -> set[str]:
+        fields = {
+            "trial_ends_at": self.trial_ends_at,
+            "period_starts_at": self.period_starts_at,
+            "next_payment_at": self.next_payment_at,
+            "tax_amount": self.tax_amount,
+        }
+        return {name for name, value in fields.items() if value is None}
 
 
 class ActivationConfirmRequest(BaseModel):
@@ -77,6 +96,7 @@ class ActivationConfirmRequest(BaseModel):
 
 
 class ActivationPreviewRequest(BaseModel):
+    plan: ActivationPlan | None = None
     return_to: str = "/settings/billing"
 
     @field_validator("return_to")
@@ -92,6 +112,12 @@ class ActivationPreviewRequest(BaseModel):
         return value
 
 
+class PaidActivationResult(BaseModel):
+    invoice_id: str
+    usage_reset: bool
+    activation_id: str | None = None
+
+
 class ActivationResponse(BaseModel):
     id: str | None = None
     status: ActivationStatus
@@ -102,6 +128,8 @@ class ActivationResponse(BaseModel):
     hosted_invoice_url: str | None = None
     retry_after_seconds: int | None = None
     error_code: str | None = None
+    usage_reset: bool = False
+    activation_id: str | None = None
 
 
 class ActivationAttempt(BaseModel):
@@ -132,3 +160,96 @@ class ActivationUnavailable(ValueError):
 
 class ActivationNotFound(ValueError):
     """No activation owned by this authenticated user."""
+
+
+class InvoicePaymentSource(BaseModel):
+    type: str
+    payment_intent: str | None = None
+
+
+class InvoicePayment(BaseModel):
+    invoice: str
+    is_default: bool = False
+    payment: InvoicePaymentSource
+
+
+class InvoicePayments(BaseModel):
+    data: list[InvoicePayment] = Field(default_factory=list)
+    has_more: bool = False
+
+
+class BillingInvoice(BaseModel):
+    id: str
+    customer: str
+    status: str | None = None
+    amount_remaining: int | None = None
+    hosted_invoice_url: str | None = None
+    payment_intent: str | None = None
+    payments: InvoicePayments | None = None
+
+
+class CouponProducts(BaseModel):
+    products: list[str]
+
+
+class Coupon(BaseModel):
+    applies_to: CouponProducts | None = None
+    amount_off: int | None = None
+    percent_off: float | None = None
+    currency: str | None = None
+    duration: str
+    duration_in_months: int | None = None
+
+
+class Discount(BaseModel):
+    coupon: Coupon
+    end: int | None = None
+
+
+class InvoicePreview(BaseModel):
+    customer: str
+    currency: str
+    amount_due: int
+    discounts: list[Discount] = Field(default_factory=list)
+
+
+class AutomaticTax(BaseModel):
+    enabled: bool = False
+
+
+class RecurringPrice(BaseModel):
+    interval: Literal["month", "year"]
+    interval_count: int
+
+
+class ActivationPrice(BaseModel):
+    id: str
+    product: str | None = None
+    unit_amount: int
+    currency: str
+    recurring: RecurringPrice
+    tax_behavior: str = "unspecified"
+
+
+class ActivationItem(BaseModel):
+    id: str | None = None
+    price: ActivationPrice
+    quantity: int
+
+
+class ActivationItems(BaseModel):
+    data: list[ActivationItem]
+    has_more: bool = False
+
+
+class BillingSubscription(BaseModel):
+    id: str
+    customer: str
+    status: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+    cancel_at_period_end: bool = False
+    trial_end: int | None = None
+    items: ActivationItems
+    latest_invoice: BillingInvoice | None = None
+    automatic_tax: AutomaticTax = Field(default_factory=AutomaticTax)
+    default_tax_rates: list[RenewalTaxRate] = Field(default_factory=list)

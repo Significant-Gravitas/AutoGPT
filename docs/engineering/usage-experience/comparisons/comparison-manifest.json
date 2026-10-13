@@ -1,0 +1,440 @@
+{
+  "productionRelease": "4473fbbcb1951471df0a05374d47c93c4e39bea6",
+  "source": "Actual components with illustrative data; no independently drawn UI",
+  "pairs": [
+    {
+      "id": "01-trial-popup",
+      "title": "Trial \u00b7 limit popup",
+      "improvement": "Explain the exhausted trial, automatic Pro date, price, and choice to wait.",
+      "note": "Trial allowance policy comes from #15184; fresh paid usage comes from #15208.",
+      "before": "01-trial-popup.png",
+      "after": "01-trial-popup-1280.png",
+      "dimensions": [
+        1000,
+        665
+      ],
+      "beforeSha256": "5b280e7c87d9ee5283f1c13e7f0a4e85292396ed995fea1e3d714834559c275c",
+      "afterSha256": "9ee6aa56a7711615f5def2c2092c4cbd7f082e0b582f34379673af3280fac222"
+    },
+    {
+      "id": "02-trial-chat",
+      "title": "Trial \u00b7 in-chat notice",
+      "improvement": "One neutral notice shows the start date and price; the draft stays editable.",
+      "note": null,
+      "before": "02-trial-chat.png",
+      "after": "02-trial-chat-1280.png",
+      "dimensions": [
+        1000,
+        426
+      ],
+      "beforeSha256": "2c92970044e77257761bed7fbbf39411e9dd3bc5190d6bd503164665be973d6f",
+      "afterSha256": "4a32aa3c7fcc18ef3b89aa7e666ecf6c49bd630e0fce60d8edb0954f26223d6d"
+    },
+    {
+      "id": "03-trial-billing",
+      "title": "Trial \u00b7 exhausted allowance",
+      "improvement": "One trial meter, the agreed renewal terms, and a clear option to start Pro now.",
+      "note": null,
+      "before": "03-trial-billing.png",
+      "after": "03-trial-billing-1280.png",
+      "dimensions": [
+        1000,
+        648
+      ],
+      "beforeSha256": "6a5b4b9e660438be219a16d14525f5caed5f0c156e33bc4a75904c68f1dd705c",
+      "afterSha256": "0b80c3d1efbdc048760693f47a62e3b5fdf0ed0f0170cb44ec930cf03d4ddfa3"
+    },
+    {
+      "id": "04-trial-active",
+      "title": "Trial \u00b7 allowance remaining",
+      "improvement": "One percentage for the whole trial, with an end date instead of a reset timer.",
+      "note": null,
+      "before": "04-trial-active.png",
+      "after": "04-trial-active-1280.png",
+      "dimensions": [
+        1000,
+        648
+      ],
+      "beforeSha256": "87bc6a72e432d40185e28c28a39b4a48d09131c27a2f9431d0a0f312983dd414",
+      "afterSha256": "dd6e11c1e072d65d1532ce6f8f45b2ba104c9148ce8d8f544c2409dee2edbdfa"
+    },
+    {
+      "id": "05-pro-popup",
+      "title": "Pro \u00b7 daily limit",
+      "improvement": "Show the actual next plan, benefits, price, and the option to wait.",
+      "note": null,
+      "before": "05-pro-popup.png",
+      "after": "05-pro-popup-1280.png",
+      "dimensions": [
+        1000,
+        713
+      ],
+      "beforeSha256": "5b280e7c87d9ee5283f1c13e7f0a4e85292396ed995fea1e3d714834559c275c",
+      "afterSha256": "c377c34daa1ccdce390aa3cf67597cd9a7ed229194734b52538440b3300052e4"
+    },
+    {
+      "id": "06-pro-chat",
+      "title": "Pro \u00b7 in-chat notice",
+      "improvement": "Replace the generic billing detour with a contextual Max offer.",
+      "note": null,
+      "before": "06-pro-chat.png",
+      "after": "06-pro-chat-1280.png",
+      "dimensions": [
+        1000,
+        426
+      ],
+      "beforeSha256": "0df0bbd028dfe74b6179cd695077ee88abfd079a00482ca4d618fb23f0e7fd00",
+      "afterSha256": "a55029444de16df66b25de3a408984ad3ac5399aa5ed66a522c78d9410a13463"
+    },
+    {
+      "id": "07-pro-billing",
+      "title": "Pro \u00b7 both limits reached",
+      "improvement": "The later weekly reset takes priority; both usage windows remain visible.",
+      "note": null,
+      "before": "07-pro-billing.png",
+      "after": "07-pro-billing-1280.png",
+      "dimensions": [
+        1000,
+        596
+      ],
+      "beforeSha256": "5beb2242c8fbb474624a3bb24a5eaa8d0512d29fb47db5da9db971407ac3b500",
+      "afterSha256": "3ec49df43f854b233243240e904220004bf17c9fe41be2234f15e33f440e8a00"
+    },
+    {
+      "id": "08-pro-weekly",
+      "title": "Pro \u00b7 weekly limit",
+      "improvement": "Correct the daily-limit wording and identify the weekly reset.",
+      "note": null,
+      "before": "08-pro-weekly.png",
+      "after": "08-pro-weekly-1280.png",
+      "dimensions": [
+        1000,
+        713
+      ],
+      "beforeSha256": "29f2ec0a523b21e93e19e5fe3b5210fa6c1d61614671023850c06b1b1dca9152",
+      "afterSha256": "d6d545dfa096107e552ab3a83811388d0fcda4d34d4c162db8f1d0e2d9da4eaa"
+    },
+    {
+      "id": "09-max-popup",
+      "title": "Max \u00b7 daily limit",
+      "improvement": "Put the next usable time first, with a restrained capacity contact.",
+      "note": null,
+      "before": "09-max-popup.png",
+      "after": "09-max-popup-1280.png",
+      "dimensions": [
+        1000,
+        510
+      ],
+      "beforeSha256": "969a571edfc77046209d85955d44353e8ed16810ead2c679ef6dea90a4eadc5a",
+      "afterSha256": "48a342885f93c81fe7123b0f94476712c2847e2f89675b9db2ba296b50eb0b1f"
+    },
+    {
+      "id": "10-max-chat",
+      "title": "Max \u00b7 in-chat notice",
+      "improvement": "A calm reset notice and direct contact replace the generic billing button.",
+      "note": null,
+      "before": "10-max-chat.png",
+      "after": "10-max-chat-1280.png",
+      "dimensions": [
+        1000,
+        426
+      ],
+      "beforeSha256": "2147c1b42edc130bc117d48ba73550e4406f7b355e4ec70436522b04d7db504f",
+      "afterSha256": "7bcd7ed39b3248c702c470c1533ff3e963cea3cb502c2043c0d6678b320a01b2"
+    },
+    {
+      "id": "11-max-billing",
+      "title": "Max \u00b7 billing and capacity",
+      "improvement": "Group plan, usage, and capacity help; keep payment details compact.",
+      "note": null,
+      "before": "11-max-billing.png",
+      "after": "11-max-billing-1280.png",
+      "dimensions": [
+        1000,
+        596
+      ],
+      "beforeSha256": "f294599582d4f57305085e0207af9f3fe3e2333518c001fbd0f5daba0707ccdd",
+      "afterSha256": "a29e85b8007d60e79b9ce915ae289e929632efb65a905f6046d5b7e43c487ca2"
+    },
+    {
+      "id": "12-team-popup",
+      "title": "Team \u00b7 weekly limit",
+      "improvement": "Identify the plan and blocking week; offer the appropriate support action.",
+      "note": null,
+      "before": "12-team-popup.png",
+      "after": "12-team-popup-1280.png",
+      "dimensions": [
+        1000,
+        510
+      ],
+      "beforeSha256": "efde33219e8a1dfe60d7954ae99807d74ab360ae7ca6d901b5e84e16c043dc8a",
+      "afterSha256": "8df01910ff98bb174050ae28ce8c6871f0f955a3f5dfa47d03e1adde714e9f99"
+    },
+    {
+      "id": "13-team-billing",
+      "title": "Team \u00b7 billing and usage",
+      "improvement": "Usage and organization billing become a coherent page with capacity help.",
+      "note": null,
+      "before": "13-team-billing.png",
+      "after": "13-team-billing-1280.png",
+      "dimensions": [
+        1000,
+        596
+      ],
+      "beforeSha256": "9d397967d9ed3ace2b61554d7d0df5c9fd94cbcde3e397aa486d74e1cdd37ca0",
+      "afterSha256": "e2cd8c659406dd34f25728570643f3a0cf1265756486cdd9a847a240dc5502e1"
+    },
+    {
+      "id": "14-enterprise-popup",
+      "title": "Enterprise \u00b7 weekly limit",
+      "improvement": "Clear weekly timing and a direct route to the account team.",
+      "note": null,
+      "before": "14-enterprise-popup.png",
+      "after": "14-enterprise-popup-1280.png",
+      "dimensions": [
+        1000,
+        510
+      ],
+      "beforeSha256": "969a571edfc77046209d85955d44353e8ed16810ead2c679ef6dea90a4eadc5a",
+      "afterSha256": "efc40b9cb5621a45e4095b8c5cfdda3e3941ab8020c60b0b5f27d5cef669bb30"
+    },
+    {
+      "id": "15-enterprise-billing",
+      "title": "Enterprise \u00b7 billing and usage",
+      "improvement": "Bring usage timing and account-team support together with organization billing.",
+      "note": "Current production already uses organization-managed Enterprise billing. This comparison does not claim to introduce that fix.",
+      "before": "15-enterprise-billing.png",
+      "after": "15-enterprise-billing-1280.png",
+      "dimensions": [
+        1000,
+        602
+      ],
+      "beforeSha256": "5fbc6b0bc4f30ab4723923a9703fe6e398b5458846e4af38d1d7ef89a009b5f2",
+      "afterSha256": "2676ac04bc3adb6d2dcdeb955b3c0738d1b525354a384dfa29865bc83be14f9d"
+    },
+    {
+      "id": "16-basic-chat",
+      "title": "Basic \u00b7 legacy-plan notice",
+      "improvement": "A contextual Pro action replaces a generic billing destination.",
+      "note": null,
+      "before": "16-basic-chat.png",
+      "after": "16-basic-chat-1280.png",
+      "dimensions": [
+        1000,
+        358
+      ],
+      "beforeSha256": "bdd1279339732d57531b7436276f8bd364d909a51d653969dc139991c1e6df06",
+      "afterSha256": "1ddbf8f12ddb6a1f862aec1614373c26b2b6bef17390201ef2f59dbb5c8095ea"
+    },
+    {
+      "id": "17-basic-billing",
+      "title": "Basic \u00b7 legacy-plan settings",
+      "improvement": "Keep the existing entitlement visible alongside usage and upgrade options.",
+      "note": null,
+      "before": "17-basic-billing.png",
+      "after": "17-basic-billing-1280.png",
+      "dimensions": [
+        1000,
+        592
+      ],
+      "beforeSha256": "12472630b7222b7049bc813b41e56511c8e4a94bff5aa75e0680ae26a300ccf8",
+      "afterSha256": "9a50c6a6eceb7d89d26d0a11086dfb077314d22b67a05bcf5d0633c7417d1658"
+    },
+    {
+      "id": "18-choose-plan",
+      "title": "No active plan \u00b7 plan selection",
+      "improvement": "Explain product benefits, prices, and billing choices before choosing a plan.",
+      "note": "Monthly example for a trial-ineligible account. Annual billing retains its derived savings label.",
+      "before": "18-choose-plan.png",
+      "after": "18-choose-plan-1280.png",
+      "dimensions": [
+        885,
+        760
+      ],
+      "beforeSha256": "6b65d10495606bbd4f80dc80d3d6dcbb1382d5ed1b06086ce62d4e5424e01708",
+      "afterSha256": "b1100af369e0155e1849d9676f53b4b6ca7b10cbd2e88fe483dd003f051d2a9b"
+    },
+    {
+      "id": "19-no-plan-billing",
+      "title": "No active plan \u00b7 settings",
+      "improvement": "Show account context and the path back to a subscription.",
+      "note": "Production currently covers billing with its plan paywall; the proposal makes these settings accessible.",
+      "before": "19-no-plan-billing.png",
+      "after": "19-no-plan-billing-1280.png",
+      "dimensions": [
+        1000,
+        728
+      ],
+      "beforeSha256": "6b65d10495606bbd4f80dc80d3d6dcbb1382d5ed1b06086ce62d4e5424e01708",
+      "afterSha256": "ad4eb8e4da1dc211e5f887c9c00dae0bb24aa3b85e576ca86f121ebcafa6049f"
+    },
+    {
+      "id": "20-trial-ended",
+      "title": "Trial ended \u00b7 recovery",
+      "improvement": "Explain ended access and offer a fresh start in the conversation.",
+      "note": "Before: existing billing trial status. Production has no dedicated in-chat equivalent.",
+      "before": "20-trial-ended.png",
+      "after": "20-trial-ended-1280.png",
+      "dimensions": [
+        1000,
+        338
+      ],
+      "beforeSha256": "78db56f76874f6833ee6c52eccdf2976cc9b700fcd00f7bb2f3078d79618af5d",
+      "afterSha256": "1349af8ec025972bfb515f5c1bbc40781b7965c1aff4e7faeeea30dc0d69e2ee"
+    },
+    {
+      "id": "21-trial-canceled",
+      "title": "Trial canceled \u00b7 recovery",
+      "improvement": "Respect the cancellation and offer a low-pressure way to return.",
+      "note": "Before: existing billing trial status. The sample cancellation has already ended access.",
+      "before": "21-trial-canceled.png",
+      "after": "21-trial-canceled-1280.png",
+      "dimensions": [
+        1000,
+        338
+      ],
+      "beforeSha256": "6434f9151bdee8ad7e20f859a0605491047a153b9f5244596a22ff990ac93372",
+      "afterSha256": "1096eb8e7fdd104404834485cf72f6f4a9b8fa6a8e2292bb18ac83568d0f9069"
+    },
+    {
+      "id": "22-payment-failed",
+      "title": "Payment failure \u00b7 recovery",
+      "improvement": "A dedicated action to recover the existing subscription.",
+      "note": "Before: existing payment-method management card; production has no equivalent recovery popup.",
+      "before": "22-payment-failed.png",
+      "after": "22-payment-failed-1280.png",
+      "dimensions": [
+        1000,
+        338
+      ],
+      "beforeSha256": "8aa37c901955301e2f4c2fb86bf3bea782beee2304ea65285acd710c7c194b1c",
+      "afterSha256": "282e0eac2fb68025a9e93e666554087d67a6809c02e6e8028c791c5e7303c3f5"
+    },
+    {
+      "id": "23-payment-billing",
+      "title": "Payment failure \u00b7 settings",
+      "improvement": "Bring payment recovery into the plan and usage summary.",
+      "note": "Before: generic Pro billing; no dedicated payment-failure state. After: recovery only when billing confirms suspended access.",
+      "before": "23-payment-billing.png",
+      "after": "23-payment-billing-1280.png",
+      "dimensions": [
+        1000,
+        626
+      ],
+      "beforeSha256": "b81ba25f4d295eca8ce9156cf2d9cc6d52cf185459687749d2b8948c7e936872",
+      "afterSha256": "622820a03d9f2c545fc719f77c96da4c37a13aa5a939f40944834d1e32c210d4"
+    },
+    {
+      "id": "24-usage-unavailable",
+      "title": "Usage unavailable \u00b7 in-chat feedback",
+      "improvement": "Explain the missing usage data and offer retry without displaying a false zero.",
+      "note": null,
+      "before": null,
+      "after": "24-usage-unavailable-1280.png",
+      "dimensions": [
+        1000,
+        326
+      ],
+      "beforeSha256": null,
+      "afterSha256": "ba39d2205940cb080cdedb3c6a57ea27ac9155f98fcf9cc119f22cff53cd0bdc"
+    },
+    {
+      "id": "25-unavailable-billing",
+      "title": "Usage unavailable \u00b7 settings",
+      "improvement": "Keep a visible usage error and retry action instead of silently removing the section.",
+      "note": null,
+      "before": "25-unavailable-billing.png",
+      "after": "25-unavailable-billing-1280.png",
+      "dimensions": [
+        1000,
+        549
+      ],
+      "beforeSha256": "dacae8acfc0e7632e9b989c28d71d6e8ee99047c0100997b47064bcde85acdf0",
+      "afterSha256": "e86ea73c2e261ba14dd2c37fc7cff6b569a5597e3884fb1d4a8996f7cbc77528"
+    },
+    {
+      "id": "26-linked-provider",
+      "title": "Connected provider \u00b7 continuation",
+      "improvement": "Keep a connected-provider continuation option next to the upgrade.",
+      "note": "Before: provider continuation exists in the popup, but not in the in-chat limit card.",
+      "before": "26-linked-provider.png",
+      "after": "26-linked-provider-1280.png",
+      "dimensions": [
+        1000,
+        338
+      ],
+      "beforeSha256": "07f5d39dbd1f7f3cf4f6397e5cd7487d13a29af5a81a193a43aa664ed9b36e21",
+      "afterSha256": "3fb58c71c9167b115d45fd382881cb5bb91ba52ff9054c71ac4de450cd706d0c"
+    },
+    {
+      "id": "27-pro-review",
+      "title": "Start Pro \u00b7 payment review",
+      "improvement": "Review the trial ending early, exact charge, and next payment before paying.",
+      "note": "Sample billing quote. Actual charge, tax, period, and renewal terms come from Stripe. No invented card details.",
+      "before": null,
+      "after": "27-pro-review-1280.png",
+      "dimensions": [
+        912,
+        760
+      ],
+      "beforeSha256": null,
+      "afterSha256": "2ff5ce900f4904f2b562d7ddbf0987e7a30db5c21b43ab21ac3c5691ed6ed2cc"
+    },
+    {
+      "id": "28-max-review",
+      "title": "Pro to Max \u00b7 upgrade review",
+      "improvement": "See the prorated charge, credit, tax, and renewal before upgrading to Max.",
+      "note": "The quoted proration date is reused on confirmation. A failed preview offers retry and Keep Pro, never an unquoted UI charge.",
+      "before": "28-max-review.png",
+      "after": "28-max-review-1280.png",
+      "dimensions": [
+        996,
+        760
+      ],
+      "beforeSha256": "23c82133524a7e015712f15d8bdd3d388fac05d18be1cca412ea5743d5bb7d32",
+      "afterSha256": "ed3b23d116c2c8c4c0218a7c82969ff219be8c2e48ddd8314bf9ba0510c105dd"
+    },
+    {
+      "id": "29-payment-pending",
+      "title": "Start Pro \u00b7 payment processing",
+      "improvement": "Wait for confirmed payment, entitlement, and usage reset before continuing.",
+      "note": null,
+      "before": null,
+      "after": "29-payment-pending-1280.png",
+      "dimensions": [
+        1000,
+        447
+      ],
+      "beforeSha256": null,
+      "afterSha256": "71ef024ba75b15c1de65b038d863bdda7a23d8089ded7048cb5170d14b477ca5"
+    },
+    {
+      "id": "30-activation-success",
+      "title": "Pro activated \u00b7 return to work",
+      "improvement": "Confirm successful paid activation and fresh allowances before returning to work.",
+      "note": "Before: ordinary paid composer. After: the actual activation-success dialog; no equivalent exists in production.",
+      "before": "30-activation-success.png",
+      "after": "30-activation-success-1280.png",
+      "dimensions": [
+        1000,
+        344
+      ],
+      "beforeSha256": "a2024d072f55884882a306dcfb3fa19d41a74cac036015e552081bb947f5176e",
+      "afterSha256": "48e7bd613f39e33a8898b84e67abc3fd7c93e0db592de910e190e31981f49f8c"
+    },
+    {
+      "id": "31-fresh-billing",
+      "title": "Pro activated \u00b7 fresh allowance",
+      "improvement": "Show fresh allowances after confirmed trial-to-paid activation.",
+      "note": "Illustrative before usage is carried over. After zero usage depends on the reset receipt and successful data refresh.",
+      "before": "31-fresh-billing.png",
+      "after": "31-fresh-billing-1280.png",
+      "dimensions": [
+        1000,
+        596
+      ],
+      "beforeSha256": "b81ba25f4d295eca8ce9156cf2d9cc6d52cf185459687749d2b8948c7e936872",
+      "afterSha256": "3ea7d0e7459b52ba01d566e6454d8d2adf51bb24a1ddb4c6355d77f038721efd"
+    }
+  ]
+}

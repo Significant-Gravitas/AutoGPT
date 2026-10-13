@@ -6132,6 +6132,47 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/subscription/preview": {
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Review the prorated charge for a paid Pro-to-Max upgrade",
+        "operationId": "previewSubscriptionUpgrade",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionUpgradePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionUpgradePreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/transactions": {
       "get": {
         "tags": ["v1", "credits"],
@@ -17692,6 +17733,13 @@
       },
       "ActivationPreviewRequest": {
         "properties": {
+          "plan": {
+            "anyOf": [
+              { "type": "string", "enum": ["PRO", "MAX"] },
+              { "type": "null" }
+            ],
+            "title": "Plan"
+          },
           "return_to": {
             "type": "string",
             "title": "Return To",
@@ -17715,6 +17763,7 @@
               "action_required",
               "processing",
               "ready",
+              "not_applicable",
               "failed"
             ],
             "title": "Status"
@@ -17749,6 +17798,15 @@
           "error_code": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error Code"
+          },
+          "usage_reset": {
+            "type": "boolean",
+            "title": "Usage Reset",
+            "default": false
+          },
+          "activation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activation Id"
           }
         },
         "type": "object",
@@ -17759,7 +17817,7 @@
         "properties": {
           "plan": {
             "type": "string",
-            "const": "PRO",
+            "enum": ["PRO", "MAX"],
             "title": "Plan",
             "default": "PRO"
           },
@@ -17806,6 +17864,31 @@
             "type": "string",
             "format": "date-time",
             "title": "Expires At"
+          },
+          "trial_ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Trial Ends At"
+          },
+          "period_starts_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Period Starts At"
+          },
+          "next_payment_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Payment At"
+          },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
           }
         },
         "type": "object",
@@ -31295,6 +31378,20 @@
             "title": "Billing Cycle",
             "default": "monthly"
           },
+          "proration_date": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Proration Date"
+          },
+          "preview_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+              { "type": "null" }
+            ],
+            "title": "Preview Id"
+          },
           "surface": {
             "anyOf": [
               {
@@ -31310,6 +31407,74 @@
         "type": "object",
         "required": ["tier"],
         "title": "SubscriptionTierRequest"
+      },
+      "SubscriptionUpgradePreview": {
+        "properties": {
+          "preview_id": { "type": "string", "title": "Preview Id" },
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
+          },
+          "tax_included": { "type": "boolean", "title": "Tax Included" },
+          "adjustment_amount": {
+            "type": "integer",
+            "title": "Adjustment Amount"
+          },
+          "currency": { "type": "string", "title": "Currency" },
+          "proration_date": { "type": "integer", "title": "Proration Date" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "expires_at": { "type": "integer", "title": "Expires At" },
+          "recurring_amount": {
+            "type": "integer",
+            "title": "Recurring Amount"
+          },
+          "recurring_tax_included": {
+            "type": "boolean",
+            "title": "Recurring Tax Included"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "lines": {
+            "items": { "$ref": "#/components/schemas/UpgradeProrationLine" },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preview_id",
+          "amount_due",
+          "tax_amount",
+          "tax_included",
+          "adjustment_amount",
+          "currency",
+          "proration_date",
+          "period_end",
+          "expires_at",
+          "recurring_amount",
+          "recurring_tax_included",
+          "billing_cycle",
+          "lines"
+        ],
+        "title": "SubscriptionUpgradePreview"
+      },
+      "SubscriptionUpgradePreviewRequest": {
+        "properties": {
+          "tier": { "type": "string", "const": "MAX", "title": "Tier" },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionUpgradePreviewRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -33412,6 +33577,24 @@
         "type": "object",
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
+      },
+      "UpgradeProrationLine": {
+        "properties": {
+          "description": { "type": "string", "title": "Description" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "period_start": { "type": "integer", "title": "Period Start" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "proration": { "type": "boolean", "title": "Proration" }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "amount",
+          "period_start",
+          "period_end",
+          "proration"
+        ],
+        "title": "UpgradeProrationLine"
       },
       "UploadCopilotSkillRequest": {
         "properties": { "content": { "type": "string", "title": "Content" } },
