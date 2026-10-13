@@ -44,7 +44,8 @@ def warm_cli(cli_path: str | None = None) -> None:
             f"(rc={result.returncode}) in {time.monotonic() - started:.1f}s: {path}"
         )
     except Exception as e:
-        logger.warning(f"CLI warm-up skipped: {e}")
+        # The type only: an OSError's text carries the binary's full path.
+        logger.warning(f"CLI warm-up skipped: {type(e).__name__}")
 
 
 def _resolve_cli_path() -> str | None:
