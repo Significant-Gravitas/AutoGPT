@@ -77,6 +77,11 @@ describe("Usage notice", () => {
     expect(
       await screen.findByRole("button", { name: "Start Pro now · $50.13" }),
     ).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Start Pro now · $50.13" })
+        .closest(".sentry-unmask, [data-sentry-unmask]"),
+    ).toBeNull();
     expect(screen.getByText("You’ve used your trial allowance")).toBeDefined();
     expect(
       screen.getByText(

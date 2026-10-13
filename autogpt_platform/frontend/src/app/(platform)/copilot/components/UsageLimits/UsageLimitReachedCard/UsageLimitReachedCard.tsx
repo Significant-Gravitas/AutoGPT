@@ -65,6 +65,7 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             size="small"
             onClick={state.upgrade}
             disabled={state.offer.disabled}
+            unmask={!state.experience.freshProUsage}
             rightIcon={<Icon icon={ArrowRight02Icon} size={14} />}
           >
             {getUsageOfferAction(state.experience, state.offer)}

@@ -11,20 +11,25 @@ type TrialRefetchInterval =
   | ((trial: TrialStatusResponse | undefined) => number | false);
 
 interface Options {
+  poll?: boolean;
   refetchInterval?: TrialRefetchInterval;
 }
 
-export function useTrialStatus({ refetchInterval }: Options = {}) {
+export function useTrialStatus({ poll = false, refetchInterval }: Options = {}) {
   const userID = useAuthStore((state) => state.user?.id);
   return useGetTrialsGetTrialStatus({
     query: {
       queryKey: [...getGetTrialsGetTrialStatusQueryKey(), userID],
       enabled: Boolean(userID),
       retry: false,
-      refetchInterval:
-        typeof refetchInterval === "function"
-          ? (query) => refetchInterval(readTrial(query.state.data))
-          : (refetchInterval ?? 30_000),
+      refetchInterval: (query) => {
+        const trial = readTrial(query.state.data);
+        if (typeof refetchInterval === "function") return refetchInterval(trial);
+        if (refetchInterval !== undefined) return refetchInterval;
+        return poll && trial?.active ? 30_000 : false;
+      },
+      refetchIntervalInBackground: false,
+      refetchOnWindowFocus: true,
       staleTime: 10_000,
       select: readTrial,
     },

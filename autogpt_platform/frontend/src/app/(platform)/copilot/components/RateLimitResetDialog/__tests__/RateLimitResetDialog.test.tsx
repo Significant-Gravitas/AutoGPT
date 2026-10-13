@@ -43,6 +43,9 @@ describe("Usage limit dialog", () => {
       screen.getByText("One allowance for your trial. It doesn’t refresh."),
     ).toBeDefined();
     expect(screen.queryByText(/Wait for reset|Max/)).toBeNull();
+    for (const amount of screen.getAllByText(/\$50/)) {
+      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
+    }
     const wait = screen.getByRole("button", { name: "Wait until Oct 12" });
     expect(wait).toBeDefined();
     fireEvent.click(

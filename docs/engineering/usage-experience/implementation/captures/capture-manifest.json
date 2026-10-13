@@ -107,7 +107,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard.tsx",
-        "sha256": "cfb43706c8ff6ff4f42557d67f1c05e1bb63983dcef4bd05fc312adaf210c64e"
+        "sha256": "9c9c25a367d4dcc0c70a4f0249e1ec788d3b99758f6b0f195f10ece511b7dcef"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard.ts",
@@ -135,11 +135,11 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/BillingOffer.tsx",
-        "sha256": "52fd3abee89d28d92ce74f40f2bcc3fbfed1a524432ba38fb26fc1c77734029e"
+        "sha256": "a8a1fe75dcad2c1d608ff0f24916dd3c60c948a5111408a35e98490fb798b3ba"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/BillingPlanOffer.tsx",
-        "sha256": "417877fd7ecfcd99eb9bb61b6b8c01cd5220d4000465958cae4689b8b0cef63a"
+        "sha256": "2d89b54522bd6faf37672ecd7a379dfbd2c51dba232245c6753e6f7a610c5d4a"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/InvoicesCard/InvoicesCard.tsx",
@@ -167,7 +167,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/MaxUpgradeSummary.tsx",
-        "sha256": "f9f95caf0c8d8f64314fe791b0c1b776ead576a5e37351ac9ac3fb118bffc69f"
+        "sha256": "d1eb7ecf0bafa290835b1146f791d397739d00e7269c3f65cd0c395b4377f90b"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/SwitchCycleDialog.tsx",
@@ -175,7 +175,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog.tsx",
-        "sha256": "3639c39278e4ec395657c3c3d1159ebdf34e53acba89668eeb51b421a617d480"
+        "sha256": "4b3cd1e05d08a11c4b8d9f5711cec6bdb074562de6d7276e59d80436788c6097"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/YourPlanCard.tsx",
@@ -371,11 +371,11 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/ProActivation/ProActivationDialog.tsx",
-        "sha256": "1264a4264921ae5daa3403c6d8e67ccb00a2ebcf8816c9a63786b207fde999c3"
+        "sha256": "ea49756f62cde3711128ab51254f79353736a4a50cb5afd6e0119fe0a578eb41"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/ProActivation/RenewalDetails.tsx",
-        "sha256": "9d9a057ec6868a372aca426cbc87c37fb7e8e0b2e82e693ad68cbb74ef051a57"
+        "sha256": "2a225fea1faf3c1364179aec64149f000a57235fbb8902b194ebc2f86bb0110b"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/SubscriptionPlans/SubscriptionPlans.tsx",
@@ -455,7 +455,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/PlanOffer.tsx",
-        "sha256": "2a3b8ae4b48973345dd651c7014803be8d13d41ea735a0346b9bee0b8ea06f02"
+        "sha256": "65910fb1ee9e4659062b365f2583dfed60e143076c26a9c20fb242235b858c0f"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/ProviderContinuation.tsx",
@@ -618,10 +618,10 @@
         "width": 560,
         "height": 554
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nYou\u2019ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn\u2019t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now \u00b7 $50\n\nYou\u2019ll see the full charge before you pay.\n\nWait until Oct 12",
+      "content": "Free trial · Trial allowance used\n\nYou’ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn’t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now · $50\n\nYou’ll see the full charge before you pay.\n\nWait until Oct 12",
       "reachableControls": [
         "Close",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Wait until Oct 12"
       ],
       "horizontalOverflow": false,
@@ -646,12 +646,12 @@
         "width": 768,
         "height": 330
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -676,17 +676,17 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "0b80c3d1efbdc048760693f47a62e3b5fdf0ed0f0170cb44ec930cf03d4ddfa3"
+      "sha256": "6cbba6341c773974e7890b0b8197b869605693ba2680f7d2e4db6bef09b5ccf9"
     },
     {
       "id": "04-trial-active",
@@ -706,12 +706,12 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -736,7 +736,7 @@
         "width": 560,
         "height": 630
       },
-      "content": "Pro \u00b7 daily usage reached\n\nYou\u2019ve hit today\u2019s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -764,12 +764,12 @@
         "width": 768,
         "height": 330
       },
-      "content": "Pro \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Pro · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Upgrade to Max",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -794,7 +794,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5\u00d7 the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -826,7 +826,7 @@
         "width": 560,
         "height": 630
       },
-      "content": "Pro \u00b7 weekly usage reached\n\nYou\u2019ve hit this week\u2019s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -854,7 +854,7 @@
         "width": 560,
         "height": 386
       },
-      "content": "Max \u00b7 daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -882,12 +882,12 @@
         "width": 768,
         "height": 298
       },
-      "content": "Max \u00b7 daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Max · daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Contact us",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -912,7 +912,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month · Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -945,7 +945,7 @@
         "width": 560,
         "height": 386
       },
-      "content": "Team \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -973,7 +973,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month · Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1006,7 +1006,7 @@
         "width": 560,
         "height": 386
       },
-      "content": "Enterprise \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -1064,7 +1064,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Basic \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
+      "content": "Basic · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Upgrade to Pro"
@@ -1091,7 +1091,7 @@
         "width": 900,
         "height": 888
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1164,7 +1164,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ad4eb8e4da1dc211e5f887c9c00dae0bb24aa3b85e576ca86f121ebcafa6049f"
+      "sha256": "9b6e5b4f07b76b1e379010e4037c1be2746fefa298c38b1a1e66536bc81f18d5"
     },
     {
       "id": "20-trial-ended",
@@ -1184,7 +1184,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial \u00b7 Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -1211,7 +1211,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial \u00b7 Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won\u2019t turn into a paid subscription. Your chats, agents and results are saved whenever you\u2019re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -1238,7 +1238,7 @@
         "width": 560,
         "height": 284
       },
-      "content": "Payment needs attention\n\nYour payment didn\u2019t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
       "reachableControls": [
         "Close",
         "Review billing details",
@@ -1246,7 +1246,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "282e0eac2fb68025a9e93e666554087d67a6809c02e6e8028c791c5e7303c3f5"
+      "sha256": "e3d814bf99c088bd73911e021de91a55658b797a7c9b72fb17723060551ec6d8"
     },
     {
       "id": "23-payment-billing",
@@ -1266,7 +1266,7 @@
         "width": 900,
         "height": 931
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn\u2019t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1296,7 +1296,7 @@
         "width": 768,
         "height": 194
       },
-      "content": "Usage temporarily unavailable\n\nWe couldn\u2019t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
+      "content": "Usage temporarily unavailable\n\nWe couldn’t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
       "reachableControls": [
         "Try again"
       ],
@@ -1322,7 +1322,7 @@
         "width": 900,
         "height": 805
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn\u2019t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn\u2019t load your usage\n\nWe\u2019re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1358,15 +1358,15 @@
         "width": 768,
         "height": 297
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Continue on Claude"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3fb58c71c9167b115d45fd382881cb5bb91ba52ff9054c71ac4de450cd706d0c"
+      "sha256": "9de17ef3d6252d6bc92f3da2558b26d0c0069ef65b7a44dd69ba4e45088af378"
     },
     {
       "id": "27-pro-review",
@@ -1386,7 +1386,7 @@
         "width": 560,
         "height": 754.9375
       },
-      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro \u00b7 Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
+      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro · Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
       "reachableControls": [
         "Close",
         "Full renewal terms",
@@ -1416,7 +1416,7 @@
         "width": 520,
         "height": 672
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax \u00b7 Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max\u2019s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you\u2019ve used today counts toward Max\u2019s limit, which is 8.5 times as high as Pro\u2019s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -1444,7 +1444,7 @@
         "width": 560,
         "height": 309.1875
       },
-      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe\u2019re confirming your payment and preparing your Pro allowance. You can close this window; we\u2019ll keep checking.\n\nCheck activation status",
+      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe’re confirming your payment and preparing your Pro allowance. You can close this window; we’ll keep checking.\n\nCheck activation status",
       "reachableControls": [
         "Close",
         "Check activation status"
@@ -1502,7 +1502,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1534,10 +1534,10 @@
         "width": 1000,
         "height": 554
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nYou\u2019ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn\u2019t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now \u00b7 $50\n\nYou\u2019ll see the full charge before you pay.\n\nWait until Oct 12",
+      "content": "Free trial · Trial allowance used\n\nYou’ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn’t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now · $50\n\nYou’ll see the full charge before you pay.\n\nWait until Oct 12",
       "reachableControls": [
         "Close",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Wait until Oct 12"
       ],
       "horizontalOverflow": false,
@@ -1562,12 +1562,12 @@
         "width": 768,
         "height": 330
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -1592,17 +1592,17 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "52c1bd63308ad1979cd08c408b8077ddafee43597a514b8ac00ed5fcfeb27c83"
+      "sha256": "0f035ba0b4102080ab75eda2fa12c645747f6b90e738558caaab0753416912d9"
     },
     {
       "id": "04-trial-active",
@@ -1622,12 +1622,12 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -1652,7 +1652,7 @@
         "width": 1000,
         "height": 606
       },
-      "content": "Pro \u00b7 daily usage reached\n\nYou\u2019ve hit today\u2019s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -1680,12 +1680,12 @@
         "width": 768,
         "height": 330
       },
-      "content": "Pro \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Pro · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Upgrade to Max",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -1710,7 +1710,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5\u00d7 the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1722,7 +1722,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ff2405991f50509e585169d0efa61bb7f5c8ed577f0b3496e3b6587640444911"
+      "sha256": "781d332ae9e260fe5435fb46663534e8914082dae77b0b343b46179b1b8d6d0f"
     },
     {
       "id": "08-pro-weekly",
@@ -1742,7 +1742,7 @@
         "width": 1000,
         "height": 606
       },
-      "content": "Pro \u00b7 weekly usage reached\n\nYou\u2019ve hit this week\u2019s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -1750,7 +1750,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "760aafb3bd7a8e2bee5e91c6b67dd91e9c4b38183f3ca3a86f53c6ab6d63a3d5"
+      "sha256": "69a1127861112ad1ac37ed503e8b2a2e7821b43bbd4315809dff2186001ea348"
     },
     {
       "id": "09-max-popup",
@@ -1770,7 +1770,7 @@
         "width": 1000,
         "height": 386
       },
-      "content": "Max \u00b7 daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -1798,12 +1798,12 @@
         "width": 768,
         "height": 298
       },
-      "content": "Max \u00b7 daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Max · daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Contact us",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -1828,7 +1828,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month · Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1861,7 +1861,7 @@
         "width": 1000,
         "height": 386
       },
-      "content": "Team \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -1889,7 +1889,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month · Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1922,7 +1922,7 @@
         "width": 1000,
         "height": 386
       },
-      "content": "Enterprise \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -1980,7 +1980,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Basic \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
+      "content": "Basic · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Upgrade to Pro"
@@ -2007,7 +2007,7 @@
         "width": 900,
         "height": 888
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2080,7 +2080,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c6ddfdbe64b00693a50dca721b615abc1e75b6c93df4e66034c8744e107c3ef0"
+      "sha256": "bf7cc6b2cc9d534e008ad938db57de814451b1ee63e4e755bd9f7a343d65e69d"
     },
     {
       "id": "20-trial-ended",
@@ -2100,7 +2100,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial \u00b7 Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -2127,7 +2127,7 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial \u00b7 Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won\u2019t turn into a paid subscription. Your chats, agents and results are saved whenever you\u2019re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -2154,7 +2154,7 @@
         "width": 1000,
         "height": 260
       },
-      "content": "Payment needs attention\n\nYour payment didn\u2019t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
       "reachableControls": [
         "Close",
         "Review billing details",
@@ -2162,7 +2162,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9a5ff9f7dfeb417a35345f7821986d0cf105d0a171e3042c6e4a4c64cf537056"
+      "sha256": "35334c30e267cbf3f6b1f8f7a1ef4c57f012ea21e62b076b60a441fc806dedc1"
     },
     {
       "id": "23-payment-billing",
@@ -2182,7 +2182,7 @@
         "width": 900,
         "height": 931
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn\u2019t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2192,7 +2192,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2054d37f8a93aa7d37b18d2161c2f75389bc6d2e3970968a7d8878691c014eb2"
+      "sha256": "4d23a5a4d69f076c4c6fd07db14c6dcf12d1cb30738bd77c6554e4281b0c6e2e"
     },
     {
       "id": "24-usage-unavailable",
@@ -2212,7 +2212,7 @@
         "width": 768,
         "height": 194
       },
-      "content": "Usage temporarily unavailable\n\nWe couldn\u2019t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
+      "content": "Usage temporarily unavailable\n\nWe couldn’t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
       "reachableControls": [
         "Try again"
       ],
@@ -2238,7 +2238,7 @@
         "width": 900,
         "height": 805
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn\u2019t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn\u2019t load your usage\n\nWe\u2019re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2274,15 +2274,15 @@
         "width": 768,
         "height": 297
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Continue on Claude"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4be89437ea32744b556f1537cf4991573968c549ea8381ada1884159e8151a10"
+      "sha256": "08557dadc64bc1dfece8d0eb74142522a1a81059fff778e2957e0b46f1373f6f"
     },
     {
       "id": "27-pro-review",
@@ -2302,7 +2302,7 @@
         "width": 1000,
         "height": 709.4375
       },
-      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro \u00b7 Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
+      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro · Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
       "reachableControls": [
         "Close",
         "Full renewal terms",
@@ -2312,7 +2312,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "d2c50ed75216228e62f2a2b100cdb1fa8cc97189cc2e9d4e1726ce7ce0da954c"
+      "sha256": "82d04c049ca3638d55fe3b53af9bf0db34166fdebba03670b2440e96e6dd3fe2"
     },
     {
       "id": "28-max-review",
@@ -2332,7 +2332,7 @@
         "width": 1000,
         "height": 628
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax \u00b7 Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max\u2019s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you\u2019ve used today counts toward Max\u2019s limit, which is 8.5 times as high as Pro\u2019s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -2360,7 +2360,7 @@
         "width": 1000,
         "height": 287.1875
       },
-      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe\u2019re confirming your payment and preparing your Pro allowance. You can close this window; we\u2019ll keep checking.\n\nCheck activation status",
+      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe’re confirming your payment and preparing your Pro allowance. You can close this window; we’ll keep checking.\n\nCheck activation status",
       "reachableControls": [
         "Close",
         "Check activation status"
@@ -2418,7 +2418,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2450,15 +2450,15 @@
         "width": 390,
         "height": 642
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nYou\u2019ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn\u2019t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now \u00b7 $50\n\nYou\u2019ll see the full charge before you pay.\n\nWait until Oct 12",
+      "content": "Free trial · Trial allowance used\n\nYou’ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn’t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now · $50\n\nYou’ll see the full charge before you pay.\n\nWait until Oct 12",
       "reachableControls": [
         "Close",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Wait until Oct 12"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "825bff598c12f4e4a36e8c8cdfe4c0641f24c9fa69f12bb4f49383b914c0db64"
+      "sha256": "a62d71ea04ec7f436b148c3d7bccbd9df4783496c91e9cace918122766dd43aa"
     },
     {
       "id": "02-trial-chat",
@@ -2478,12 +2478,12 @@
         "width": 390,
         "height": 438
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -2508,12 +2508,12 @@
         "width": 390,
         "height": 1502
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -2538,12 +2538,12 @@
         "width": 390,
         "height": 1502
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -2568,7 +2568,7 @@
         "width": 390,
         "height": 638
       },
-      "content": "Pro \u00b7 daily usage reached\n\nYou\u2019ve hit today\u2019s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -2596,12 +2596,12 @@
         "width": 390,
         "height": 414
       },
-      "content": "Pro \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Pro · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Upgrade to Max",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -2626,7 +2626,7 @@
         "width": 390,
         "height": 1388
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5\u00d7 the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2658,7 +2658,7 @@
         "width": 390,
         "height": 670
       },
-      "content": "Pro \u00b7 weekly usage reached\n\nYou\u2019ve hit this week\u2019s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -2686,7 +2686,7 @@
         "width": 390,
         "height": 418
       },
-      "content": "Max \u00b7 daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -2714,12 +2714,12 @@
         "width": 390,
         "height": 362
       },
-      "content": "Max \u00b7 daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Max · daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Contact us",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -2744,7 +2744,7 @@
         "width": 390,
         "height": 1288
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month · Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2777,7 +2777,7 @@
         "width": 390,
         "height": 418
       },
-      "content": "Team \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -2805,7 +2805,7 @@
         "width": 390,
         "height": 1288
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month · Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2838,7 +2838,7 @@
         "width": 390,
         "height": 466
       },
-      "content": "Enterprise \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -2896,7 +2896,7 @@
         "width": 390,
         "height": 228
       },
-      "content": "Basic \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
+      "content": "Basic · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Upgrade to Pro"
@@ -2923,7 +2923,7 @@
         "width": 390,
         "height": 1398
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3016,7 +3016,7 @@
         "width": 390,
         "height": 248
       },
-      "content": "Free trial \u00b7 Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -3043,7 +3043,7 @@
         "width": 390,
         "height": 268
       },
-      "content": "Free trial \u00b7 Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won\u2019t turn into a paid subscription. Your chats, agents and results are saved whenever you\u2019re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -3070,7 +3070,7 @@
         "width": 390,
         "height": 316
       },
-      "content": "Payment needs attention\n\nYour payment didn\u2019t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
       "reachableControls": [
         "Close",
         "Review billing details",
@@ -3078,7 +3078,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6cedcd52125110582d31749071ed46bb0facab13bb4adeefa30bf99b544fef65"
+      "sha256": "baae72bbf16e9e7aac4431b2d3d91367d492454c48b26164827c548b3587cc85"
     },
     {
       "id": "23-payment-billing",
@@ -3098,7 +3098,7 @@
         "width": 390,
         "height": 1357
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn\u2019t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3128,7 +3128,7 @@
         "width": 390,
         "height": 194
       },
-      "content": "Usage temporarily unavailable\n\nWe couldn\u2019t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
+      "content": "Usage temporarily unavailable\n\nWe couldn’t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
       "reachableControls": [
         "Try again"
       ],
@@ -3154,7 +3154,7 @@
         "width": 390,
         "height": 1339
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn\u2019t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn\u2019t load your usage\n\nWe\u2019re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3190,10 +3190,10 @@
         "width": 390,
         "height": 385
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Continue on Claude"
       ],
       "horizontalOverflow": false,
@@ -3218,7 +3218,7 @@
         "width": 390,
         "height": 800.4375
       },
-      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro \u00b7 Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
+      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro · Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
       "reachableControls": [
         "Close",
         "Full renewal terms",
@@ -3228,7 +3228,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "bc344969d593c562e629da6fe470ee3f8a3a199557e8e5220b62e440875561bc"
+      "sha256": "aaa336b0ee9fd573c36de04e2d31b056bd01c9d43ebbdb64107cf5284503280a"
     },
     {
       "id": "28-max-review",
@@ -3248,7 +3248,7 @@
         "width": 390,
         "height": 716
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax \u00b7 Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max\u2019s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you\u2019ve used today counts toward Max\u2019s limit, which is 8.5 times as high as Pro\u2019s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -3256,7 +3256,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "59d817788b901a01b8bcabf83bdb9bf81a3671f7ddfe120ff0aac4c70465f4f2"
+      "sha256": "9ad797edc58d553c1a9ecafccf8cf5dca83ec2c65965599306380223f596e15f"
     },
     {
       "id": "29-payment-pending",
@@ -3276,7 +3276,7 @@
         "width": 390,
         "height": 331.1875
       },
-      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe\u2019re confirming your payment and preparing your Pro allowance. You can close this window; we\u2019ll keep checking.\n\nCheck activation status",
+      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe’re confirming your payment and preparing your Pro allowance. You can close this window; we’ll keep checking.\n\nCheck activation status",
       "reachableControls": [
         "Close",
         "Check activation status"
@@ -3334,7 +3334,7 @@
         "width": 390,
         "height": 1288
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3366,10 +3366,10 @@
         "width": 320,
         "height": 662
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nYou\u2019ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn\u2019t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now \u00b7 $50\n\nYou\u2019ll see the full charge before you pay.\n\nWait until Oct 12",
+      "content": "Free trial · Trial allowance used\n\nYou’ve used your trial allowance\n\nDialog\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nTrial allowance\n\n100% used\n\nOne allowance for your trial. It doesn’t refresh.\n\nPro\n\nBilled monthly\n\n$50\n\nper month + tax\n\nA full daily and weekly allowance once payment goes through\nYour chats, agents and files stay where they are\nStart Pro now · $50\n\nYou’ll see the full charge before you pay.\n\nWait until Oct 12",
       "reachableControls": [
         "Close",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Wait until Oct 12"
       ],
       "horizontalOverflow": false,
@@ -3394,12 +3394,12 @@
         "width": 320,
         "height": 506
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -3424,12 +3424,12 @@
         "width": 320,
         "height": 1560
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -3454,12 +3454,12 @@
         "width": 320,
         "height": 1560
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn\u2019t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now \u00b7 $50\n\nStarting now ends your trial early. You\u2019ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Open portal"
       ],
       "horizontalOverflow": false,
@@ -3484,7 +3484,7 @@
         "width": 320,
         "height": 670
       },
-      "content": "Pro \u00b7 daily usage reached\n\nYou\u2019ve hit today\u2019s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -3492,7 +3492,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1cd77590ffa1dbf23aa4d0b97e3f395cb46ad0fe1dc73fd0f8ac1dccadc0de66"
+      "sha256": "3831aff92435f9e012b6a39cef69937094674fc6f88c25cae62a486a7d7cfea4"
     },
     {
       "id": "06-pro-chat",
@@ -3512,12 +3512,12 @@
         "width": 320,
         "height": 438
       },
-      "content": "Pro \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Pro · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nUpgrade to Max\n\nYou can keep editing your draft.\n\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Upgrade to Max",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -3542,7 +3542,7 @@
         "width": 320,
         "height": 1426
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5\u00d7 the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3574,7 +3574,7 @@
         "width": 320,
         "height": 670
       },
-      "content": "Pro \u00b7 weekly usage reached\n\nYou\u2019ve hit this week\u2019s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5\u00d7 the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you\u2019ve used today counts toward Max\u2019s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -3602,7 +3602,7 @@
         "width": 320,
         "height": 466
       },
-      "content": "Max \u00b7 daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -3630,12 +3630,12 @@
         "width": 320,
         "height": 434
       },
-      "content": "Max \u00b7 daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
+      "content": "Max · daily usage reached\n\nView usage\nYou can continue today at 9:00 PM\n\nYour chats, agents and results are saved.\n\nYou can keep editing your draft.\n\nContact us\nPress Enter to send, Shift+Enter for new line, Space to record voice\n\nYour draft is saved. You can keep editing while sending is paused.",
       "reachableControls": [
         "View usage",
         "Contact us",
         "Add files and more",
-        "Model tier Balanced \u2014 change",
+        "Model tier Balanced — change",
         "Start recording"
       ],
       "horizontalOverflow": false,
@@ -3660,7 +3660,7 @@
         "width": 320,
         "height": 1386
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nMax\nActive\nMonthly\nYearly Save 15%\n$320.00 / month · Renews on Nov 5, 2026\nDowngrade to Pro\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3693,7 +3693,7 @@
         "width": 320,
         "height": 498
       },
-      "content": "Team \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -3721,7 +3721,7 @@
         "width": 320,
         "height": 1386
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month \u00b7 Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nTeam\nActive\nMonthly\nYearly Save 15%\n$1,000.00 / month · Renews on Nov 5, 2026\nDowngrade to Max\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n38% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nYour plan\n\nNeed more capacity?\n\nWhen your work calls for more capacity, talk with us about what you need.\n\nContact us\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3754,7 +3754,7 @@
         "width": 320,
         "height": 498
       },
-      "content": "Enterprise \u00b7 weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe\u2019ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -3812,7 +3812,7 @@
         "width": 320,
         "height": 248
       },
-      "content": "Basic \u00b7 daily usage reached\n\nView usage\nYou\u2019ve hit today\u2019s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
+      "content": "Basic · daily usage reached\n\nView usage\nYou’ve hit today’s limit\n\nYou can continue today at 9:00 PM, or upgrade to Pro.\n\nUpgrade to Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Upgrade to Pro"
@@ -3839,7 +3839,7 @@
         "width": 320,
         "height": 1418
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nBasic\nActive\n$10.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nToday\n\n100\n%\nused\n100% used\n\nResets in 9h 0m\n\nThis week\n\n62% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nUpgrade to Pro\n$50.00\n/ month\n\nExperts for content, sales and research, with Otto coordinating\n\nAgents that keep working in the background on a schedule\n\nUpgrade to Pro\n\nReview your options before paying.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3882,7 +3882,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "731fbcd67939caa69875d72e901f5c2d3651b68e9fbc4958714596eed7bbfeb3"
+      "sha256": "47416ef77955890c32ae2b9c83739036dcce5ddee2ad49678d3c5c3759a51ee6"
     },
     {
       "id": "19-no-plan-billing",
@@ -3932,7 +3932,7 @@
         "width": 320,
         "height": 248
       },
-      "content": "Free trial \u00b7 Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Ended\n\nView usage\nYour trial has ended\n\nYour chats, agents and results are saved. Choose a plan to keep going.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -3959,7 +3959,7 @@
         "width": 320,
         "height": 268
       },
-      "content": "Free trial \u00b7 Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won\u2019t turn into a paid subscription. Your chats, agents and results are saved whenever you\u2019re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Canceled\n\nView usage\nYour trial was canceled\n\nYour trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan.\n\nStart Pro\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
         "Start Pro"
@@ -3986,7 +3986,7 @@
         "width": 320,
         "height": 316
       },
-      "content": "Payment needs attention\n\nYour payment didn\u2019t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
       "reachableControls": [
         "Close",
         "Review billing details",
@@ -4014,7 +4014,7 @@
         "width": 320,
         "height": 1429
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn\u2019t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -4044,7 +4044,7 @@
         "width": 320,
         "height": 262
       },
-      "content": "Usage temporarily unavailable\n\nWe couldn\u2019t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
+      "content": "Usage temporarily unavailable\n\nWe couldn’t check your usage.\n\nYour work is saved. Try again to check your allowance.\n\nYou can keep editing your draft.\n\nTry again",
       "reachableControls": [
         "Try again"
       ],
@@ -4070,7 +4070,7 @@
         "width": 320,
         "height": 1371
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn\u2019t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn\u2019t load your usage\n\nWe\u2019re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -4106,10 +4106,10 @@
         "width": 320,
         "height": 429
       },
-      "content": "Free trial \u00b7 Trial allowance used\n\nView usage\nYou\u2019ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now \u00b7 $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\nStart Pro now · $50\n\n+ tax. Review before you pay.\n\nOr keep going with your connected Claude account. The rest of this chat runs there.\n\nContinue on Claude\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro now \u00b7 $50",
+        "Start Pro now · $50",
         "Continue on Claude"
       ],
       "horizontalOverflow": false,
@@ -4134,7 +4134,7 @@
         "width": 320,
         "height": 863.9375
       },
-      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro \u00b7 Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
+      "content": "Payment review\n\nStart Pro today\n\nDialog\n\nYour free trial ends now instead of Oct 12, and your billing date moves to the 7th.\n\nPro · Monthly\n\n$50.00 / month\n\nPro, Oct 7 to Nov 7\n$50.00\nTax\n$0.00\nDue today\n$50.00\nToday\nAfter payment succeeds, Pro starts and your daily and weekly allowances reset.\nNov 7\nNext payment of $50.00 plus tax, then every month.\nFull renewal terms\nPayment method\nManage\nPay $50.00 and start Pro\n\nRenews monthly until you cancel. Cancel anytime in Billing.\n\nNot now",
       "reachableControls": [
         "Close",
         "Full renewal terms",
@@ -4164,7 +4164,7 @@
         "width": 320,
         "height": 784
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax \u00b7 Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max\u2019s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you\u2019ve used today counts toward Max\u2019s limit, which is 8.5 times as high as Pro\u2019s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -4192,7 +4192,7 @@
         "width": 320,
         "height": 353.1875
       },
-      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe\u2019re confirming your payment and preparing your Pro allowance. You can close this window; we\u2019ll keep checking.\n\nCheck activation status",
+      "content": "AutoGPT Pro\n\nGetting Pro ready.\n\nDialog\n\nWe’re confirming your payment and preparing your Pro allowance. You can close this window; we’ll keep checking.\n\nCheck activation status",
       "reachableControls": [
         "Close",
         "Check activation status"
@@ -4250,7 +4250,7 @@
         "width": 320,
         "height": 1308
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month \u00b7 Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nPlenty left\n\nToday\n\n0\n%\nused\n0% used\n\nResets in 9h 0m\n\nThis week\n\n0% used\n\nResets Mon, 1:00 PM UTC\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro is active\n\nPro is active. Pick up where you left off with your conversations and agents.\n\nBack to your work\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -4270,62 +4270,5 @@
     "browserClosed": true,
     "serverClosed": true
   },
-  "browserVersion": "149.0.7827.114",
-  "metadataMigration": {
-    "reason": "Source provenance is serialized as path/sha256 entries to avoid credential-word false positives in secret scanning. No UI source or screenshots changed.",
-    "originalCaptureManifestSha256": "1422216ac6c74ed6c963bbe17bc86a9b841c1d864a32836982db9499bda28aa6",
-    "changedRendererFiles": [
-      {
-        "path": "docs/engineering/usage-experience/render/build.mjs",
-        "beforeSha256": "726930162489a58eb243f969306c4c88249ae850222c64993d4a7fb15fc5bf1f",
-        "sha256": "3d301647bbfd895ba86da99b05074aaf5db28aff7555bb0769d976a62090c280"
-      },
-      {
-        "path": "docs/engineering/usage-experience/render/verify.mjs",
-        "beforeSha256": "bf37c1da165c7ac45680615a7513b3c3ae486196e696ea81e9b56466b8e9cd7c",
-        "sha256": "a2a27a3fe1dfb8c61403b78bf6c0fce84c316f8c875674425268e684685341ad"
-      }
-    ],
-    "rebuiltArtifactIdentityVerified": true,
-    "identicalArtifacts": [
-      {
-        "path": "bundle.js",
-        "sha256": "c315e04b239a63755e547fb7fbac03be398cc849eac06c1d248045bcfaab982d"
-      },
-      {
-        "path": "fonts/028c0d39d2e8f589-s.p.woff2",
-        "sha256": "46525b05bbf4527d263f8624ca7024c7d0dce3c64430267d30c31c6dd3821e4d"
-      },
-      {
-        "path": "fonts/0484562807a97172-s.p.woff2",
-        "sha256": "872e862918591a9e824dc03ed92f05729435ffbb8ebbb10eff7eda26592b1798"
-      },
-      {
-        "path": "fonts/8888a3826f4a3af4-s.p.woff2",
-        "sha256": "289e0afc8be731a86822349e54557296f145926496bd2138db1bac0db77f77a2"
-      },
-      {
-        "path": "fonts/b957ea75a84b6ea7-s.p.woff2",
-        "sha256": "197a3cbd7290c242c5c765268cdd69a9a39867fdc80cd13071f243a81c56fb76"
-      },
-      {
-        "path": "fonts/eafabf029ad39a43-s.p.woff2",
-        "sha256": "3dc5d0c52428fe1696264907a1054ebbaac07f8cbe45832c105f819c2ae397c0"
-      },
-      {
-        "path": "index.html",
-        "sha256": "87dce04e30bb6cad6a699ee28ace94705976b264d0a346ad9799106bf5cdcbca"
-      },
-      {
-        "path": "style.css",
-        "sha256": "94232169afd9a5194de57912e5b5574d5fc42cceffc68c0454f0b4dbbac9cc7d"
-      },
-      {
-        "path": "tailwind.cjs",
-        "sha256": "badf886a620790117991a305687acb659a7273f3c26953ae9494a294956852e3"
-      }
-    ],
-    "unchangedUiSourceFiles": 146,
-    "unchangedScreenshots": 124
-  }
+  "browserVersion": "149.0.7827.114"
 }

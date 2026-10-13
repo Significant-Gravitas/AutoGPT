@@ -55,6 +55,7 @@ from backend.data.subscription_pending_cache import (
     invalidate_pending_subscription_change,
 )
 from backend.data.subscription_trial import get_subscription_trial
+from backend.data.subscription_upgrade_cache import discard_subscription_upgrade_preview
 from backend.data.subscription_upgrade_models import (
     StoredUpgradePreview,
     UpgradePreviewUnavailable,
@@ -2250,7 +2251,22 @@ async def modify_stripe_subscription_for_tier(
         if sub.cancel_at_period_end:
             modify_kwargs["cancel_at_period_end"] = False
 
-        await stripe_call(stripe.Subscription.modify_async, sub_id, **modify_kwargs)
+        # Retire definitive failures cached by Stripe. Connection errors and
+        # 5xx may have charged, so they must retain the same idempotency key.
+        try:
+            await stripe_call(stripe.Subscription.modify_async, sub_id, **modify_kwargs)
+        except stripe.CardError:
+            if upgrade_preview is not None:
+                await discard_subscription_upgrade_preview(
+                    user_id, upgrade_preview.preview.preview_id
+                )
+            raise
+        except stripe.InvalidRequestError as exc:
+            if upgrade_preview is not None and exc.http_status in {400, 402}:
+                await discard_subscription_upgrade_preview(
+                    user_id, upgrade_preview.preview.preview_id
+                )
+            raise
         # Flip the DB tier immediately. The customer.subscription.updated webhook
         # will also fire and set it again — idempotent. Without this synchronous
         # update, the UI refetches before the webhook lands and shows the old

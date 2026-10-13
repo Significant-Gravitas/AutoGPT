@@ -297,8 +297,16 @@ export function useYourPlanCard() {
       ]);
       return true;
     } catch (error) {
-      if (preview && error instanceof ApiError && error.status === 409) {
-        upgradeReview.invalidate();
+      if (
+        preview &&
+        error instanceof ApiError &&
+        (error.status === 409 || error.status === 402)
+      ) {
+        upgradeReview.invalidate(
+          error.status === 402
+            ? "Payment wasn’t completed. Check your payment method, then review the charge again."
+            : undefined,
+        );
         return false;
       }
       // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for

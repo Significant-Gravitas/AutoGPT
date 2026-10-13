@@ -129,6 +129,7 @@ export function BillingOffer({ controller }: Props) {
           : undefined
       }
       price={price}
+      isTrialOffer={isTrial}
       benefits={benefits}
       actionLabel={
         isTrial && price ? `${title} · ${price.split(" / ")[0]}` : title
