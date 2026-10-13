@@ -13,7 +13,7 @@ where the sentence was and blanks those summaries (``recall_hide.py``).
 These drive the production worker (``ingest.enqueue_episode``) with only the
 LLM boundary scripted and read every message the model was sent. A status of
 ``retracted`` the extraction model gives a fact is no forget: the worker puts
-it back to ``active``.
+it back to ``active``. Nor is a forget's marker it invents: none is saved.
 ``recall_ingest_integration_test.py`` covers a forgotten fact stated again.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
@@ -22,15 +22,24 @@ Run with FalkorDB reachable (see ``conftest.py``)::
 """
 
 from collections.abc import AsyncIterator
+from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from graphiti_core.edges import EntityEdge
 from pytest_mock import MockerFixture
+
+from backend.copilot.model import ChatSession
+from backend.copilot.tools import graphiti_forget
+from backend.copilot.tools.models import (
+    MemoryForgetCandidatesResponse,
+    MemoryForgetConfirmResponse,
+)
 
 from . import ingest
 from .falkordb_driver import AutoGPTFalkorDriver
-from .recall import FORGOTTEN_FACT
+from .recall import FORGOTTEN_FACT, is_forgotten, is_live
 from .recall_forget import retract
 from .recall_integration_fixtures import (
     ALICE,
@@ -42,11 +51,13 @@ from .recall_integration_fixtures import (
     ingest_through_the_worker,
     live_facts,
     model_of,
+    patch_recall_boundaries,
     rows,
     scripted_responses,
     stop_ingestion_workers,
 )
 from .scope import MemoryScope
+from .types import POLICY_EDGE_FIELDS
 
 _INGEST_TIMEOUT_SECONDS = 25.0
 # Text only an episode body holds: no fact, entity or summary repeats it, so
@@ -171,3 +182,60 @@ async def test_a_retraction_the_extraction_gives_is_no_forget(
         ALICE[2],
     )
     assert (await episode_row(driver, episode))["redacted_at"] is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_a_forget_marker_the_extraction_invents_is_never_saved(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup, mocker: MockerFixture
+) -> None:
+    """Codex's probe: graphiti-core 0.30.2 saves every key its extraction
+    model answers, and this one answers a ``forgotten_at`` and audit copies
+    holding a sentence nobody stated. The worker saves none of them: the fact
+    stays live, and nothing ``memory_forget_search`` or
+    ``memory_forget_confirm`` answers holds the sentence, before the fact is
+    forgotten or after."""
+    invented = "Alice works on the secret Atlas plan"
+    driver, scope = scope_graph
+    responses = scripted_responses([BOB])
+    responses["MemoryFact"] |= dict.fromkeys(POLICY_EDGE_FIELDS, invented)
+    client = stub_graphiti_client(driver, responses)
+
+    await ingest_through_the_worker(driver, scope, client, [BOB], session_id="s-bob")
+
+    [bob] = await live_facts(driver)
+    stored = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() RETURN properties(e) AS p",
+        uuid=bob,
+    )
+    assert POLICY_EDGE_FIELDS.isdisjoint(stored[0]["p"])
+    [edge] = await EntityEdge.get_by_uuids(driver, [bob])
+    assert is_live(edge) and not is_forgotten(edge)
+
+    patch_recall_boundaries(mocker, driver, stub_graphiti_client)
+    mocker.patch.object(
+        graphiti_forget, "is_enabled_for_user", AsyncMock(return_value=True)
+    )
+    user, session = scope.owner_user_id, ChatSession.new(
+        scope.owner_user_id, dry_run=False
+    )
+    search = graphiti_forget.MemoryForgetSearchTool()
+    confirm = graphiti_forget.MemoryForgetConfirmTool()
+    live = await search._execute(user, session, query="Atlas", include_forgotten=True)
+    soft = await confirm._execute(user, session, uuids=[bob])
+    gone = await search._execute(user, session, query="Atlas", include_forgotten=True)
+    hard = await confirm._execute(user, session, uuids=[bob], hard_delete=True)
+
+    assert isinstance(live, MemoryForgetCandidatesResponse)
+    assert [(c["uuid"], c.get("forgotten")) for c in live.candidates] == [(bob, None)]
+    assert isinstance(gone, MemoryForgetCandidatesResponse)
+    [candidate] = gone.candidates
+    assert (candidate["uuid"], candidate["forgotten"]) == (bob, "true")
+    assert datetime.fromisoformat(candidate["forgotten_at"]).tzinfo is not None
+    for done in (soft, hard):
+        assert isinstance(done, MemoryForgetConfirmResponse)
+        assert done.deleted_uuids == [bob]
+    for answer in (live, soft, gone, hard):
+        assert invented not in answer.model_dump_json()
+    assert await edge_row(driver, bob) == {}

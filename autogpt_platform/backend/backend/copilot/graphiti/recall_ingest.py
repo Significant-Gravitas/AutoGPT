@@ -40,6 +40,12 @@ prompt: the error is never let into graphiti's ``add_episode``. Every prompt
 it cannot read in full is logged at error once per process for each shape
 and reason, so a graphiti upgrade that changes the prompt is noticed even
 before a forgotten edge shows up in it.
+
+Its attribute answers keep only what their edge or entity type declares
+(``types.extracted_attributes``), inside ``add_episode`` and so under the
+graph's write lock: graphiti-core 0.30.2 saves every key its model answers,
+so an invented ``forgotten_at`` would hide a live fact. A forget's marker and
+audit copies are never extracted.
 """
 
 import ast
@@ -59,6 +65,7 @@ from graphiti_core.tracer import Tracer
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from .recall import FORGOTTEN_FACT, recallable_episodes
+from .types import extracted_attributes
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +110,8 @@ _CANDIDATE_LIST = TypeAdapter(list[_Candidate])
 
 class ForgetAwareLLMClient(LLMClient):
     """``inner``, except that a forgotten edge is never a duplicate or a
-    contradiction in graphiti's edge dedup answers."""
+    contradiction in graphiti's edge dedup answers, and an attribute answer
+    keeps only what its type declares."""
 
     def __init__(self, inner: LLMClient) -> None:
         super().__init__(inner.config)
@@ -137,6 +145,8 @@ class ForgetAwareLLMClient(LLMClient):
             prompt_name,
             attribute_extraction=attribute_extraction,
         )
+        if attribute_extraction and response_model is not None:
+            answer = extracted_attributes(answer, response_model)
         return answer if forgotten == set() else off_forgotten(answer, forgotten)
 
     async def _generate_response(

@@ -20,6 +20,7 @@ from .types import (
     EDGE_TYPE_MAP,
     EDGE_TYPES,
     ENTITY_TYPES,
+    POLICY_EDGE_FIELDS,
     MemoryFact,
     Organization,
     Person,
@@ -142,3 +143,12 @@ def test_organization_entity_has_optional_industry():
     assert o.industry is None
     o = Organization(industry="aerospace")
     assert o.industry == "aerospace"
+
+
+@pytest.mark.parametrize(
+    "model", [*EDGE_TYPES.values(), *ENTITY_TYPES.values()], ids=lambda m: m.__name__
+)
+def test_no_extraction_model_declares_a_policy_field(model) -> None:
+    """Only a forget and its redaction write these: a model declaring one
+    would let graphiti's extraction write it (``extracted_attributes``)."""
+    assert not model.model_fields.keys() & POLICY_EDGE_FIELDS

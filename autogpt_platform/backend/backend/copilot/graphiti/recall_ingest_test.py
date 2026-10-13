@@ -1,6 +1,7 @@
 """Unit tests for ``recall_ingest``: graphiti's edge dedup never names a
 forgotten edge, checked against graphiti's own dedup prompt, and a prompt the
-guard cannot read in full names no edge at all.
+guard cannot read in full names no edge at all; an attribute answer keeps
+only what its type declares.
 
 The live runs, through the production worker, are
 ``recall_ingest_integration_test.py`` and ``recall_reteach_integration_test.py``.
@@ -21,12 +22,14 @@ from graphiti_core.prompts import prompt_library
 from graphiti_core.prompts.dedupe_edges import EdgeDuplicate
 from graphiti_core.prompts.extract_edges import ExtractedEdges
 from graphiti_core.prompts.models import Message
+from graphiti_core.utils.maintenance.attribute_utils import apply_capped_attributes
 from graphiti_core.utils.maintenance.edge_operations import resolve_extracted_edge
 
 from . import recall_ingest
 from .client import _build_graphiti
 from .recall import FORGOTTEN_FACT
 from .recall_ingest import ForgetAwareLLMClient, forgotten_candidates, off_forgotten
+from .types import MemoryFact, Person
 
 _EXISTING = "EXISTING FACTS"
 _CANDIDATES = "FACT INVALIDATION CANDIDATES"
@@ -262,6 +265,46 @@ class TestForgetAwareLLMClient:
         prompt = [Message(role="user", content=f"extract: {FORGOTTEN_FACT}")]
 
         assert await client.generate_response(prompt, ExtractedEdges) == answer
+
+    @pytest.mark.asyncio
+    async def test_an_attribute_answer_keeps_only_what_its_type_declares(
+        self,
+    ) -> None:
+        """Codex's probe: graphiti-core 0.30.2 keeps every key its model
+        answers, so one inventing a forget's marker and audit copies would
+        have them saved on a live fact. Through the client, graphiti's own
+        merge keeps only ``MemoryFact``'s fields."""
+        secret = "Alice works on the secret Atlas plan"
+        answer = {
+            "status": "active",
+            "scope": "real:global",
+            "forgotten_at": secret,
+            "fact_redacted": secret,
+            "name_redacted": secret,
+            "made_up": secret,
+        }
+        client = ForgetAwareLLMClient(_inner(dict(answer)))
+        prompt = [Message(role="user", content="Alice works on Atlas")]
+
+        kept = await client.generate_response(
+            prompt, MemoryFact, attribute_extraction=True
+        )
+        merged, _ = apply_capped_attributes(kept, MemoryFact, {}, merge_mode="replace")
+
+        assert kept == merged == {"status": "active", "scope": "real:global"}
+        unfiltered, _ = apply_capped_attributes(
+            answer, MemoryFact, {}, merge_mode="replace"
+        )
+        assert unfiltered["forgotten_at"] == secret, "graphiti keeps it unfiltered"
+
+    @pytest.mark.asyncio
+    async def test_an_entity_attribute_answer_keeps_its_types_fields(self) -> None:
+        answer = {"role": "CTO", "email": "bob@example.com", "forgotten_at": "x"}
+        client = ForgetAwareLLMClient(_inner(answer))
+
+        kept = await client.generate_response([], Person, attribute_extraction=True)
+
+        assert kept == {"role": "CTO", "email": "bob@example.com"}
 
     def test_it_shares_the_inner_clients_tracer_and_token_counts(self) -> None:
         inner = _inner({})
