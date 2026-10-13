@@ -224,3 +224,76 @@ async def test_canceled_subscription_revokes_access_even_if_items_changed(
         boundaries.subscriptiontrial.update.await_args.kwargs["data"]["cardVerifiedAt"]
         is None
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tier", [SubscriptionTier.BASIC, SubscriptionTier.BUSINESS])
+async def test_other_accepted_trial_plan_converts_without_usage_reset(
+    trial, subscription, boundaries, tier
+):
+    now = datetime.now(UTC)
+    trial.offer = trial.offer.model_copy(update={"tier": tier.value})
+    subscription.update(
+        status="active",
+        trial_end=int(now.timestamp()) - 60,
+        latest_invoice={
+            "id": "in_other_plan",
+            "status": "paid",
+            "created": int(now.timestamp()),
+            "billing_reason": "subscription_cycle",
+        },
+    )
+    with patch.object(
+        fulfillment.subscription_activation,
+        "publish_initial_pro_activation",
+        AsyncMock(),
+    ) as publish:
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == tier
+    publish.assert_not_awaited()
+    saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert saved["convertedAt"] is not None
+    assert saved["stripeConversionInvoiceId"] == "in_other_plan"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("offer_tier", ["BASIC", "BUSINESS"])
+async def test_selected_paid_target_checks_payment_before_other_trial_plan_grant(
+    trial, subscription, boundaries, offer_tier
+):
+    now = int(datetime.now(UTC).timestamp())
+    trial.offer = trial.offer.model_copy(update={"tier": offer_tier})
+    subscription.update(
+        status="active",
+        trial_end=now - 60,
+        latest_invoice={
+            "id": "in_max",
+            "status": "paid",
+            "created": now,
+            "billing_reason": "subscription_update",
+        },
+    )
+    subscription["items"]["data"][0]["price"]["id"] = "price_max"
+    boundaries.user.find_unique_or_raise = AsyncMock()
+    boundaries.subscriptiontrial.find_unique_or_raise = AsyncMock(
+        return_value=MagicMock(convertedAt=None)
+    )
+    with (
+        patch.object(
+            fulfillment.subscription_activation,
+            "accepted_conversion_target",
+            AsyncMock(return_value=(SubscriptionTier.MAX, "price_max")),
+        ),
+        patch.object(
+            fulfillment.subscription_activation,
+            "publish_initial_pro_activation",
+            AsyncMock(return_value=False),
+        ) as publish,
+    ):
+        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
+    assert result is not None and result[1] == SubscriptionTier.NO_TIER
+    assert publish.await_args.args[2] == "price_max"
+    assert trial.consumed_at is not None
+    assert trial.subscription_id == "sub_1"
+    saved = boundaries.subscriptiontrial.update.await_args.kwargs["data"]
+    assert saved["convertedAt"] is None

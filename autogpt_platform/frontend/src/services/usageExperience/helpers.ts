@@ -102,3 +102,75 @@ export function formatUsageDate(value: string | Date) {
     timeZoneName: "short",
   });
 }
+
+export function formatTrialDate(value: string | Date | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+export function formatTrialStartDescription(value: string | Date | null) {
+  const date = formatTrialDate(value);
+  return `Pro starts on its own ${date ? `on ${date}` : "when your trial ends"}. Start it now to keep working today.`;
+}
+
+export function formatResumeTime(value: string | Date | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const nextWeek = new Date(today);
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const day =
+    date.toDateString() === today.toDateString()
+      ? "today"
+      : date.toDateString() === tomorrow.toDateString()
+        ? "tomorrow"
+        : date > today && date < nextWeek
+          ? date.toLocaleDateString(undefined, { weekday: "long" })
+          : date.toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              ...(date.getFullYear() !== today.getFullYear()
+                ? { year: "numeric" as const }
+                : {}),
+            });
+  return `${day} at ${date.toLocaleTimeString(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  })}`;
+}
+
+export function formatOfferPrice(price?: number, currency = "USD") {
+  if (price === undefined || !Number.isFinite(price)) return null;
+  const digits =
+    new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+    }).resolvedOptions().maximumFractionDigits ?? 2;
+  const amount = price / 10 ** digits;
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: Number.isInteger(amount) ? 0 : digits,
+    maximumFractionDigits: digits,
+  }).format(amount);
+}
+
+export function getUsageOfferAction(
+  experience: UsageExperience,
+  offer: { price?: number; currency?: string },
+) {
+  if (experience.targetTier === "MAX") return "Upgrade to Max";
+  if (experience.freshProUsage) {
+    const amount = formatOfferPrice(offer.price, offer.currency);
+    return `Start Pro now${amount ? ` · ${amount}` : ""}`;
+  }
+  return experience.tier === "BASIC" ? "Upgrade to Pro" : "Start Pro";
+}

@@ -14,7 +14,11 @@ import {
   getV2GetCopilotUsage,
 } from "@/app/api/__generated__/endpoints/chat/chat";
 
-export async function refreshActivation(client: QueryClient, userID: string) {
+export async function refreshActivation(
+  client: QueryClient,
+  userID: string,
+  expectedPlan?: "PRO" | "MAX",
+) {
   const keys = [
     getGetTrialsGetTrialStatusQueryKey(),
     getGetSubscriptionStatusQueryKey(),
@@ -51,10 +55,12 @@ export async function refreshActivation(client: QueryClient, userID: string) {
     subscription.status !== 200 ||
     usage.status !== 200 ||
     trial.data.active ||
-    subscription.data.tier !== "PRO" ||
-    usage.data.tier !== "PRO"
+    !["PRO", "MAX"].includes(subscription.data.tier ?? "") ||
+    usage.data.tier !== subscription.data.tier ||
+    (expectedPlan != null && subscription.data.tier !== expectedPlan)
   )
     throw new Error("Your plan and allowance are still being refreshed");
+  return subscription.data.tier === "MAX" ? "MAX" : "PRO";
 }
 
 async function ownedResponse<T>(

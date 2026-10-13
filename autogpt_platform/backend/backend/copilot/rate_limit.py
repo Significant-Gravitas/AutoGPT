@@ -567,13 +567,12 @@ async def get_usage_status(
     state = await get_ready_usage_state(user_id)
     if daily_cost_limit == 0 and weekly_cost_limit == 0:
         # No plan, or the trial is over: nothing can be spent, so the
-        # counters don't matter. Answered before the tier guard, which
-        # takes an ended trial's stale TRIAL state for a subscription
-        # change and would fail every usage read until the downgrade.
+        # counters don't matter. An ended trial still has its stale TRIAL
+        # state here, which reports it as a spent trial rather than no plan.
         return _no_allowance_status(
             now, tier, trial_ended=state.tier == SubscriptionTier.TRIAL
         )
-    if state.tier != tier:
+    if await _effective_usage_tier(user_id, state.tier) != tier:
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
     daily_used = 0
@@ -699,7 +698,10 @@ async def get_remaining_usd_budget(
             faithful "no remaining budget" signal instead of a floor.
     """
     state = await get_ready_usage_state(user_id)
-    if expected_tier is not None and state.tier != expected_tier:
+    if (
+        expected_tier is not None
+        and await _effective_usage_tier(user_id, state.tier) != expected_tier
+    ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     trial = None
     if state.tier == SubscriptionTier.TRIAL:
@@ -839,7 +841,10 @@ async def check_rate_limit(
     """
     now = datetime.now(UTC)
     state = await get_ready_usage_state(user_id)
-    if expected_tier is not None and state.tier != expected_tier:
+    if (
+        expected_tier is not None
+        and await _effective_usage_tier(user_id, state.tier) != expected_tier
+    ):
         raise RateLimitUnavailable("Subscription changed while resolving usage limits")
     d_key, w_key = usage_keys(user_id, state.generation, now)
     if state.tier == SubscriptionTier.TRIAL:
@@ -1106,7 +1111,7 @@ class _UserNotFoundError(Exception):
     """Raised when a user record is missing or has no subscription tier.
 
     Raising (rather than returning ``DEFAULT_TIER``) prevents ``@cached``
-    from persisting the fallback, which would otherwise keep serving FREE
+    from persisting the fallback, which would otherwise keep serving NO_TIER
     for up to the TTL after the user's real tier is set.
     """
 
@@ -1179,10 +1184,19 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
     state = await get_ready_usage_state(user_id)
     tier = SubscriptionTier(state.tier)
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
-        return tier if trial and trial.active else SubscriptionTier.NO_TIER
+        return await _effective_usage_tier(user_id, tier)
     if tier == SubscriptionTier.NO_TIER and await _maybe_reconcile_stripe_tier(user_id):
         return SubscriptionTier((await get_ready_usage_state(user_id)).tier)
+    return tier
+
+
+async def _effective_usage_tier(
+    user_id: str, tier: SubscriptionTier
+) -> SubscriptionTier:
+    if tier == SubscriptionTier.TRIAL:
+        trial = await credit_db().get_subscription_trial(user_id)
+        if trial is None or not trial.active:
+            return SubscriptionTier.NO_TIER
     return tier
 
 
@@ -1540,28 +1554,12 @@ def _weekly_reset_time(now: datetime | None = None) -> datetime:
 async def is_user_paywalled(user_id: str) -> bool:
     """Return ``True`` if the user has no entitlement to paywalled features.
 
-    A user with no DB tier record (``_UserNotFoundError`` — fresh signup
-    that hasn't been provisioned yet, or row missing) is treated as
-    ``NO_TIER`` here: paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
-    Without this branch the missing-tier case would propagate as a 500
-    in any caller that doesn't already have a generic ``except`` (e.g.
-    the external API ``execute_graph_block`` route).
-
-    Other tier-lookup errors propagate: HTTP gates return 503, and background
-    work fails or retries without spending while entitlement is unknown.
+    Missing users, incomplete activations, and lookup errors propagate:
+    HTTP gates return 503, and background work fails or retries without
+    spending while entitlement is unknown. A confirmed ``NO_TIER`` user
+    is paywalled iff ``ENABLE_PLATFORM_PAYMENT`` is on.
     """
-    try:
-        tier = SubscriptionTier((await get_ready_usage_state(user_id)).tier)
-    except _UserNotFoundError:
-        # No DB row / no subscription_tier set — fresh signup that hasn't
-        # been provisioned yet, or row missing entirely. Logged at debug
-        # so ops can correlate "402s on fresh signups" with provisioning
-        # gaps without spamming the warning level.
-        logger.debug(
-            "is_user_paywalled: tier lookup empty for %s, treating as NO_TIER",
-            user_id[:8],
-        )
-        tier = SubscriptionTier.NO_TIER
+    tier = SubscriptionTier((await get_ready_usage_state(user_id)).tier)
     if tier == SubscriptionTier.TRIAL:
         trial = await credit_db().get_subscription_trial(user_id)
         return trial is None or not trial.active
