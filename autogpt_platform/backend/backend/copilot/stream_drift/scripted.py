@@ -21,6 +21,10 @@ from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
 
+# Its presence alone picks the OpenRouter transport the fixtures were recorded
+# under; without a key (fork PRs have no secrets) the turns record differently.
+UNSENT_MODEL_KEY = "test-placeholder-not-a-key"
+
 
 def session_with_prompt(prompt: str) -> ChatSession:
     session = ChatSession.new("drift-user", dry_run=False)
@@ -200,6 +204,7 @@ async def sdk_service_turn(
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
+                "api_key": UNSENT_MODEL_KEY,
                 "use_claude_code_subscription": False,
                 "use_e2b_sandbox": False,
                 "claude_agent_fallback_model": None,

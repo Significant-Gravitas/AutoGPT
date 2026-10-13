@@ -370,6 +370,7 @@ TRIAL_CREDITS_ROUTES = {
     "cancel_trial",
     "confirm_trial",
     "get_trial_status",
+    "resume_trial",
     "start_trial_checkout",
 }
 # Routes that never resolve the org-pooled credit model at all. The reason is

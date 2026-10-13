@@ -471,9 +471,11 @@ class ChatConfig(BaseSettings):
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
         description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
-        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
-        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
+        "both the baseline and Claude Agent SDK paths, including Codex models "
+        "on the SDK path, where each Codex function call counts as one round. "
+        "Prevents runaway tool loops from burning budget. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
+        "still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
@@ -619,6 +621,18 @@ class ChatConfig(BaseSettings):
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
         "from the prefix. Set to True to opt in. When False, our system prompt "
         "is passed as a raw string and replaces the Claude Code default prompt.",
+    )
+    claude_agent_prompt_cache_ttl: Literal["5m", "1h"] = Field(
+        default="1h",
+        description="Prompt-cache TTL for the main conversation on the SDK "
+        "OpenRouter path, passed to the CLI as CLAUDE_CODE_PROMPT_CACHE_TTL. "
+        "The CLI's default is 5m, so a chat resumed more than five minutes "
+        "after its last request re-sends its whole prompt as a cache write: "
+        "slower to the first token (4-6 s instead of 1-1.5 s) and billed at "
+        "the write price. 1h keeps it readable for an hour, at 2x input price "
+        "per write instead of 1.25x. The CLI applies it to main-conversation "
+        "requests, including inline helpers it counts as such; sub-agents and "
+        "other requests keep 5m. Same trade-off as `baseline_prompt_cache_ttl`.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",

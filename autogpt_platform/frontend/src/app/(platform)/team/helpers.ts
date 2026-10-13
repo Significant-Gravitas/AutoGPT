@@ -393,3 +393,22 @@ export const SETUP_POLL_MS = 2_000;
 export function isSettingUp(experts: Expert[]) {
   return experts.some((expert) => expert.setup_status === "installing");
 }
+
+/** Matches the backend's per-request cap on `GET /library/agents/batch`. */
+const LIBRARY_AGENT_BATCH_SIZE = 50;
+
+/** Sorted so filtering or re-ordering the grid reuses the cached batches. */
+export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
+  const ids = [
+    ...new Set(
+      workflows
+        .map((workflow) => workflow.library_agent_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ].sort();
+  const chunks: string[][] = [];
+  for (let start = 0; start < ids.length; start += LIBRARY_AGENT_BATCH_SIZE) {
+    chunks.push(ids.slice(start, start + LIBRARY_AGENT_BATCH_SIZE));
+  }
+  return chunks;
+}

@@ -1,6 +1,5 @@
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { uploadFileDirect } from "@/lib/direct-upload";
-import type { UseChatHelpers } from "@ai-sdk/react";
 import type { FileUIPart, UIMessage } from "ai";
 import { useEffect, useRef } from "react";
 import {
@@ -9,7 +8,7 @@ import {
   type PendingUploadAttachment,
   type PendingUploadSend,
 } from "./copilotStreamStore";
-import { describeSendFailure } from "./components/ChatInput/helpers";
+import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
   buildStoredAttachmentParts,
@@ -20,6 +19,7 @@ import {
   type WorkspaceAttachment,
 } from "./helpers/workspaceAttachments";
 import { useCopilotUIStore } from "./store";
+import type { SendInput } from "./stream/turnRuntime";
 
 const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 
@@ -29,7 +29,7 @@ interface UploadedFile {
   mime_type: string;
 }
 
-type SendMessageFn = UseChatHelpers<UIMessage>["sendMessage"];
+type SendMessageFn = (message: SendInput) => Promise<void>;
 
 interface Args {
   sessionId: string | null;
@@ -349,15 +349,12 @@ export function recoverFailedDeferredSend(
   if (text) useCopilotUIStore.getState().setInitialPrompt(text);
   if (parts.length > 0)
     useCopilotStreamStore.getState().setPendingFileParts(parts);
-  toast({
+  toastSendFailure({
     title: "Couldn't send message",
-    description: describeSendFailure(
-      error,
-      text
-        ? "your message is back in the composer"
-        : "your files were not sent",
-    ),
-    variant: "destructive",
+    error,
+    recovery: text
+      ? "your message is back in the composer"
+      : "your files were not sent",
   });
 }
 
