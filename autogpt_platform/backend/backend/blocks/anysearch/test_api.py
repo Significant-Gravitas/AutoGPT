@@ -16,6 +16,7 @@ from backend.blocks.anysearch._api import (
 )
 from backend.blocks.anysearch.test_helpers import TEST_CREDENTIALS
 from backend.sdk import APIKeyCredentials
+from backend.util.request import HTTPServerError
 
 
 def test_unwrap_envelope_success():
@@ -321,4 +322,22 @@ async def test_client_catalog_non_ok_raises():
         await client.domains()
 
     with pytest.raises(ValueError, match="HTTP 502"):
+        await client.sub_domains(["code"])
+
+
+@pytest.mark.asyncio
+async def test_client_catalog_server_error_propagates():
+    """Requests(raise_for_status=True) converts a >=400 response into
+    HTTPServerError inside the client before the response.ok guard is
+    ever reached - the block-level stale-catalog hint keys on exactly
+    this type, so pin the propagation contract at the client seam."""
+    client = AnySearchClient(None)
+    client.requests.get = mock.AsyncMock(
+        side_effect=HTTPServerError("HTTP 502 Error: Bad Gateway, Body: upstream", 502)
+    )
+
+    with pytest.raises(HTTPServerError):
+        await client.domains()
+
+    with pytest.raises(HTTPServerError):
         await client.sub_domains(["code"])
