@@ -94,8 +94,8 @@ class Executor:
 class SdkTurnsViaExecutor(SdkTurns):
     """SDK turns from the executor, with the trial sizing each turn's budget.
 
-    With ``tools``, the CLI runs the model's tool calls on the copilot's real
-    MCP server and tool adapter, serving only those tools.
+    With ``served_tools``, the CLI runs the model's tool calls on the
+    copilot's real MCP server and tool adapter, serving only those tools.
     """
 
     def __init__(
@@ -106,11 +106,11 @@ class SdkTurnsViaExecutor(SdkTurns):
         config: ChatConfig,
         executor: Executor,
         *,
-        tools: dict[str, BaseTool] | None = None,
+        served_tools: dict[str, BaseTool] | None = None,
     ) -> None:
         super().__init__(tmp_path, monkeypatch, provider, config)
         self._executor = executor
-        self._tools = tools or {}
+        self._tools = served_tools or {}
         if self._tools:
             monkeypatch.setattr(tool_adapter, "TOOL_REGISTRY", self._tools)
         # The CLI's spending cap for each launch, by turn.
