@@ -64,7 +64,9 @@ Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies both last, so a caller cannot
 overwrite them. The browser registers them once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
-at logout; a Vercel preview reports `environment: preview`.
+at logout; a Vercel preview reports `environment: preview`, while the dev
+deployment, which is Vercel's `staging` custom environment rather than a
+preview, reports `environment: dev`.
 
 `source` is reserved for the emitter. The three events that used it for
 something else now use `hire_started.surface`,
