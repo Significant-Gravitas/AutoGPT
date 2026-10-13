@@ -2,7 +2,9 @@
 
 Whatever queued the turn -- the chat route, a schedule, the AutoPilot block, a
 sub-session, a chat bot -- a turn the allowance can't cover never runs: it
-ends as a not-started pause, live and on a marker row, without an error.
+ends as a not-started pause, live and on a marker row, without an error. The
+one exception is the AutoPilot block's turn, which runs on the credit balance
+instead when the balance covers it.
 """
 
 import logging
@@ -22,6 +24,7 @@ from backend.copilot.executor.utils import CoPilotExecutionEntry, CoPilotLogMeta
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import StreamStart, StreamTurnPaused
+from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.turn_pause import TurnPause, pause_of
 
 _PROC = "backend.copilot.executor.processor"
@@ -201,3 +204,159 @@ async def test_a_turn_on_the_users_own_subscription_is_not_checked():
 
     refusal.assert_not_awaited()
     manager.acquire_lease.assert_awaited_once()
+
+
+class _SpendingStream:
+    """A turn that records its cost the way an engine does, then ends."""
+
+    def __init__(self, cost_usd: float) -> None:
+        self.cost_usd = cost_usd
+        self.done = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.done:
+            self.done = True
+            await persist_and_record_usage(
+                session=None,
+                user_id="user-1",
+                prompt_tokens=1_000,
+                completion_tokens=100,
+                cost_usd=self.cost_usd,
+            )
+        raise StopAsyncIteration
+
+    async def aclose(self) -> None:
+        return None
+
+
+@pytest.fixture
+def credits(mocker) -> MagicMock:
+    db = MagicMock()
+    db.get_credits = AsyncMock(return_value=500)
+    db.spend_credits = AsyncMock(return_value=0)
+    mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
+    return db
+
+
+@pytest.fixture
+def windows(mocker) -> AsyncMock:
+    """What records spend on the plan's daily and weekly windows."""
+    mocker.patch("backend.copilot.token_tracking._schedule_cost_log")
+    return mocker.patch(
+        "backend.copilot.token_tracking.record_cost_usage", new=AsyncMock()
+    )
+
+
+def _paused(turn: _Turn) -> list:
+    return [c.pause for c in turn.published() if isinstance(c, StreamTurnPaused)]
+
+
+@pytest.mark.asyncio
+async def test_a_block_turn_past_its_allowance_runs_on_credits_and_pays_its_cost(
+    credits, windows
+):
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=_SpendingStream(cost_usd=0.1234))
+
+    await turn.run(_entry(tool_name="autopilot_block"), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_called_once()
+    assert _paused(turn) == []
+    # $0.1234 is 1,234 tenths of a cent: 13 credits, rounded up.
+    credits.spend_credits.assert_awaited_once()
+    charge = credits.spend_credits.await_args.kwargs
+    assert (charge["user_id"], charge["cost"]) == ("user-1", 13)
+    assert charge["metadata"].chat_session_id == "sess-1"
+    assert charge["metadata"].block == "AutoPilotBlock"
+    windows.assert_not_awaited()
+    turn.complete.assert_awaited_once_with(
+        "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_turn_the_allowance_covers_still_spends_from_its_windows(
+    credits, windows
+):
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=_SpendingStream(cost_usd=0.1234))
+
+    await turn.run(_entry(tool_name="autopilot_block"), AsyncMock(return_value=None))
+
+    windows.assert_awaited_once()
+    assert windows.await_args.kwargs["cost_microdollars"] == 123_400
+    credits.get_credits.assert_not_awaited()
+    credits.spend_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_block_turn_the_balance_cant_cover_is_refused_and_charged_nothing(
+    credits, windows
+):
+    credits.get_credits.return_value = 49
+    turn = _Turn(_session())
+
+    await turn.run(_entry(tool_name="autopilot_block"), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    turn.stream.assert_not_called()
+    assert _paused(turn) == [PAUSE.as_part()]
+    credits.spend_credits.assert_not_awaited()
+    windows.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool_name", [None, "chat", "run_sub_session"])
+async def test_a_turn_the_block_didnt_start_is_refused_whatever_the_balance(
+    credits, windows, tool_name
+):
+    credits.get_credits.return_value = 5_000
+    turn = _Turn(_session())
+
+    await turn.run(_entry(tool_name=tool_name), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    assert _paused(turn) == [PAUSE.as_part()]
+    credits.get_credits.assert_not_awaited()
+    credits.spend_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_allowance_fails_a_block_turn_closed_too(credits):
+    turn = _Turn(_session())
+
+    await turn.run(
+        _entry(tool_name="autopilot_block"),
+        AsyncMock(side_effect=RateLimitUnavailable()),
+    )
+
+    turn.engine.assert_not_called()
+    assert _paused(turn) == []
+    credits.get_credits.assert_not_awaited()
+    turn.complete.assert_awaited_once_with(
+        "sess-1",
+        error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
+        error_code=RATE_LIMIT_UNAVAILABLE_CODE,
+        turn_id="turn-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_balance_fails_a_block_turn_closed(credits):
+    credits.get_credits.side_effect = ConnectionError("db down")
+    turn = _Turn(_session())
+
+    await turn.run(_entry(tool_name="autopilot_block"), AsyncMock(return_value=PAUSE))
+
+    turn.engine.assert_not_called()
+    assert _paused(turn) == []
+    credits.spend_credits.assert_not_awaited()
+    turn.complete.assert_awaited_once_with(
+        "sess-1",
+        error_message=RATE_LIMIT_UNAVAILABLE_MESSAGE,
+        error_code=RATE_LIMIT_UNAVAILABLE_CODE,
+        turn_id="turn-1",
+    )

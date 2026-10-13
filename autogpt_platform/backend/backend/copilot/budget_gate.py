@@ -7,7 +7,9 @@ engine starts by itself to answer messages queued while it ran. So the
 executor checks every platform turn it picks up, and the SDK engine checks
 before it continues. A turn the allowance can't cover doesn't start: it ends
 as a "not started" pause naming the limit and when it refills, recorded in
-the chat like any other pause.
+the chat like any other pause. The one exception is the AutoPilot block's
+turn, which the executor runs on the credit balance instead when the balance
+can pay for it (see ``backend.copilot.credit_billing``).
 
 ChatGPT and Microsoft 365 turns are paid for by the user's own subscription,
 so they never come here.

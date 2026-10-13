@@ -21,6 +21,11 @@ from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
+from backend.copilot.credit_billing import (
+    CreditBilledTurn,
+    bill_to_credits,
+    credit_billing,
+)
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
@@ -597,6 +602,7 @@ class CoPilotProcessor:
         credential_lease = None
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
+        credit_turn: CreditBilledTurn | None = None
 
         try:
             from backend.copilot.model import get_chat_session
@@ -626,16 +632,34 @@ class CoPilotProcessor:
             if entry.llm_auth_provider == "platform":
                 # Every platform-billed turn passes the allowance here, from
                 # whichever path queued it (see backend.copilot.budget_gate).
+                # An AutoPilot block turn the allowance can't cover may run on
+                # the credit balance instead (see backend.copilot.credit_billing).
                 try:
                     pause = await refusal_for(entry.user_id)
+                    if pause is not None:
+                        credit_turn = await bill_to_credits(
+                            user_id=entry.user_id,
+                            session_id=entry.session_id,
+                            tool_name=entry.tool_name,
+                            refusal=pause,
+                        )
                 except RateLimitUnavailable:
                     error_msg = RATE_LIMIT_UNAVAILABLE_MESSAGE
                     error_code = RATE_LIMIT_UNAVAILABLE_CODE
                     return
-                if pause is not None:
+                if pause is not None and credit_turn is None:
                     log.info(f"Turn not started: the {pause.reason} limit is used up")
                     await _refuse_turn(entry, session, pause)
                     return
+                if credit_turn is not None:
+                    log.info(
+                        f"The {credit_turn.refusal.reason} limit is used up: "
+                        f"billing this block turn to credits, up to "
+                        f"{credit_turn.cap_credits} credits"
+                    )
+                    await cost_context_stack.enter_async_context(
+                        credit_billing(credit_turn)
+                    )
             await _wait_for_expert_setup(session)
 
             if entry.llm_auth_provider == "codex":
@@ -760,6 +784,11 @@ class CoPilotProcessor:
                             log.info(
                                 "Forcing SDK engine: session is in agent building mode"
                             )
+                    if credit_turn is not None and not use_sdk:
+                        # Only the SDK engine caps a turn's spend, and a turn
+                        # on the credit balance mustn't overdraw it.
+                        use_sdk = True
+                        log.info("Forcing SDK engine: turn is billed to credits")
                     stream_fn = (
                         sdk_service.stream_chat_completion_sdk
                         if use_sdk

@@ -352,6 +352,12 @@ class CoPilotExecutionEntry(BaseModel):
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
 
+    tool_name: str | None = None
+    """What started the turn, as registered with the stream registry
+    (``"autopilot_block"`` for the AutoPilot block, whose turns may run on the
+    credit balance once the plan's allowance is used up). ``None`` for entries
+    queued before the field existed."""
+
 
 class CancelCoPilotEvent(BaseModel):
     """Event to cancel a CoPilot operation."""
@@ -384,6 +390,7 @@ async def enqueue_copilot_turn(
     unattended: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    tool_name: str | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
 
@@ -431,6 +438,7 @@ async def enqueue_copilot_turn(
         credential_pins=credential_pins or {},
         scheduled=scheduled,
         cost_context=await capture_cost_context(user_id),
+        tool_name=tool_name,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -635,6 +643,7 @@ async def dispatch_turn(
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            tool_name=tool_name,
         )
         slot.keep()
         committed = True
