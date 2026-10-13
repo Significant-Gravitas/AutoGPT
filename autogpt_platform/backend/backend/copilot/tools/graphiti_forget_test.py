@@ -131,7 +131,13 @@ class TestForgetSearchCandidates:
 
 class TestForgetSearchForgottenCandidates:
     @staticmethod
-    def _edge(uuid: str, fact: str, **attributes: str) -> EntityEdge:
+    def _edge(
+        uuid: str,
+        fact: str,
+        expired_at: datetime | None = None,
+        valid_at: datetime | None = None,
+        **attributes: str,
+    ) -> EntityEdge:
         return EntityEdge(
             uuid=uuid,
             group_id="user_user-abc",
@@ -140,6 +146,8 @@ class TestForgetSearchForgottenCandidates:
             created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
             name="works_on",
             fact=fact,
+            expired_at=expired_at,
+            valid_at=valid_at,
             attributes=attributes,
         )
 
@@ -171,21 +179,32 @@ class TestForgetSearchForgottenCandidates:
         assert "forgotten" not in response.candidates[0]
 
     @pytest.mark.asyncio
-    async def test_when_asked_come_after_the_live_ones_marked_with_their_sentence(
+    async def test_when_asked_come_after_the_live_ones_saying_nothing_they_said(
         self,
     ) -> None:
-        """A soft forget can be made permanent: the forgotten fact is offered
-        by the sentence its forget kept for audit (``fact_redacted``), its own
-        text being the placeholder, and marked forgotten."""
+        """A soft forget can be made permanent, but nothing a forgotten fact
+        said goes back to the model: not the audit copy its forget kept
+        (``fact_redacted``), not the text a fact forgotten before the policy
+        still has, not its scope nor the dates it held true. Only that it
+        exists, when it was stored and when forgotten, searched for in the
+        whole response the model reads."""
         live = [self._edge("e1", "Bob leads Atlas")]
         gone = [
             self._edge(
                 "e2",
                 FORGOTTEN_FACT,
-                fact_redacted="Alice works on Atlas",
+                valid_at=datetime(2024, 3, 9, tzinfo=timezone.utc),
+                fact_redacted="Alice works on the secret Atlas plan",
+                name_redacted="works_on_secret_plan",
+                scope="project:Orion",
                 forgotten_at="2026-01-01T00:00:00+00:00",
             ),
-            self._edge("e3", "Carol owns Atlas"),  # forgotten before the policy
+            # Forgotten before the policy: its own text was never scrubbed.
+            self._edge(
+                "e3",
+                "Carol owns the Atlas budget",
+                expired_at=datetime(2025, 6, 1, tzinfo=timezone.utc),
+            ),
         ]
 
         response, search_forgotten = await self._search(True, live, gone)
@@ -193,13 +212,26 @@ class TestForgetSearchForgottenCandidates:
         search_forgotten.assert_awaited_once_with(
             MemoryScope.for_user("user-abc"), "atlas", limit=10
         )
-        assert [
-            (c["uuid"], c["fact"], c.get("forgotten")) for c in response.candidates
-        ] == [
-            ("e1", "Bob leads Atlas", None),
-            ("e2", "Alice works on Atlas", "true"),
-            ("e3", "Carol owns Atlas", "true"),
+        assert response.candidates[1:] == [
+            {
+                "uuid": "e2",
+                "fact": FORGOTTEN_FACT,
+                "stored_at": "2025-01-01 00:00:00+00:00",
+                "forgotten_at": "2026-01-01T00:00:00+00:00",
+                "forgotten": "true",
+            },
+            {
+                "uuid": "e3",
+                "fact": FORGOTTEN_FACT,
+                "stored_at": "2025-01-01 00:00:00+00:00",
+                "forgotten_at": "2025-06-01 00:00:00+00:00",
+                "forgotten": "true",
+            },
         ]
+        assert response.candidates[0]["fact"] == "Bob leads Atlas"
+        seen = response.model_dump_json()
+        for said in ("secret", "Carol", "budget", "Orion", "2024-03-09"):
+            assert said not in seen, said
         assert "hard_delete=true" in response.message
 
     @pytest.mark.asyncio
