@@ -62,13 +62,16 @@ function generateExecutionInputs() {
 
 const config = getEnvironmentConfig();
 
-// 402 means the account has no credits, as a new account may not, so it is
-// not counted as a failed request.
+// 402 means the account has no credits, as a new account may not: the route
+// answered as designed, so it is not a failed request, but no graph ran.
+// graph_executions_total counts only the runs that started, and
+// graph_executions_refused_total the 402s.
 const EXECUTION_STATUSES = http.expectedStatuses(200, 402);
 
 // Custom metrics for graph execution testing
 const graphCreations = new Counter("graph_creations_total");
 const graphExecutions = new Counter("graph_executions_total");
+const graphExecutionsRefused = new Counter("graph_executions_refused_total");
 const graphExecutionTime = new Trend("graph_execution_duration");
 const graphCreationTime = new Trend("graph_creation_duration");
 const executionErrors = new Rate("execution_errors");
@@ -197,22 +200,26 @@ export default function (data) {
     const executionResponses = http.batch(executionRequests);
 
     let executionSuccessCount = 0;
+    let refusedCount = 0;
     for (let i = 0; i < executionResponses.length; i++) {
       const response = executionResponses[i];
 
-      const success = check(response, {
-        [`Graph ${i + 1} execution initiated`]: (r) =>
-          r.status === 200 || r.status === 402,
+      check(response, {
+        [`Graph ${i + 1} execution started, or refused for lack of credits (402)`]:
+          (r) => r.status === 200 || r.status === 402,
       });
 
-      if (success) {
+      if (response.status === 200) {
         executionSuccessCount++;
         graphExecutions.add(1);
+      } else if (response.status === 402) {
+        refusedCount++;
+        graphExecutionsRefused.add(1);
       }
     }
 
     console.log(
-      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs`,
+      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs (${refusedCount} refused for lack of credits)`,
     );
   }
 

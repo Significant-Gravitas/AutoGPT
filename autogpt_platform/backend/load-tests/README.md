@@ -69,15 +69,15 @@ Grafana Cloud k6 bills each test as its peak VUs times its whole duration, in vi
 
 ## Tests
 
-| Test                                           | Auth | What it does                                                                                   |
-| ---------------------------------------------- | ---- | ---------------------------------------------------------------------------------------------- |
-| `tests/basic/connectivity-test.js`             | yes  | Backend `/health`, the frontend's JWKS, and one authenticated request                          |
-| `tests/basic/single-endpoint-test.js`          | yes  | One endpoint (`ENDPOINT=credits\|graphs\|blocks\|executions`)                                  |
-| `tests/api/core-api-test.js`                   | yes  | `/api/credits`, `/api/graphs` and `/api/blocks` together                                       |
-| `tests/api/graph-execution-test.js`            | yes  | Creates small graphs and executes them (402 counts as handled when the account has no credits) |
-| `tests/marketplace/public-access-test.js`      | no   | Store browsing: agents, search, categories, creators                                           |
-| `tests/marketplace/library-access-test.js`     | yes  | Library listing and search; adds a store agent to the library when the store has one           |
-| `tests/comprehensive/platform-journey-test.js` | yes  | Credits, graphs, blocks and executions with think time                                         |
+| Test                                           | Auth | What it does                                                                                                                                            |
+| ---------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/basic/connectivity-test.js`             | yes  | Backend `/health`, the frontend's JWKS, and one authenticated request                                                                                   |
+| `tests/basic/single-endpoint-test.js`          | yes  | One endpoint (`ENDPOINT=credits\|graphs\|blocks\|executions`)                                                                                           |
+| `tests/api/core-api-test.js`                   | yes  | `/api/credits`, `/api/graphs` and `/api/blocks` together                                                                                                |
+| `tests/api/graph-execution-test.js`            | yes  | Creates small graphs and executes them. An account without credits gets a 402, which k6 counts in `graph_executions_refused_total` rather than as a run |
+| `tests/marketplace/public-access-test.js`      | no   | Store browsing: agents, search, categories, creators                                                                                                    |
+| `tests/marketplace/library-access-test.js`     | yes  | Library listing and search; adds a store agent to the library when the store has one                                                                    |
+| `tests/comprehensive/platform-journey-test.js` | yes  | Credits, graphs, blocks and executions with think time                                                                                                  |
 
 A preview starts with an empty database: store and library lists come back empty, so costs that grow with data do not show there.
 
