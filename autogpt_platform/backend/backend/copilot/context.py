@@ -57,6 +57,7 @@ MAX_CONSULTS_PER_TURN = 3
 # How many teammates one turn may message. Sending does not block the turn,
 # so without a cap a single turn can wake every session the user owns.
 MAX_SESSION_MESSAGES_PER_TURN = 3
+MAX_OPENUI_RESEARCH_CALLS = 12
 
 # Both counters live in one dict, mutated in place, like the tool-adapter's
 # _consecutive_tool_failures: the SDK CLI runs each tool call in its own task,
@@ -71,6 +72,44 @@ def reset_consult_budget() -> None:
     """Give the turn a fresh consult and message allowance. Called by both
     engines' setters."""
     _turn_budget.set({})
+
+
+def enable_openui_research_budget() -> None:
+    budget = _turn_budget.get()
+    if budget is None:
+        budget = {}
+        _turn_budget.set(budget)
+    budget["openui_research_limit"] = MAX_OPENUI_RESEARCH_CALLS
+
+
+def take_web_research_slot() -> str | None:
+    budget = _turn_budget.get()
+    if budget is None:
+        budget = {}
+        _turn_budget.set(budget)
+    used = budget.get("web_research", 0)
+    limit = budget.get("openui_research_limit")
+    if limit is not None and used >= limit:
+        return (
+            f"The interactive plan's web research limit has been reached ({limit} lookups "
+            "this turn, including retries). Finish using the evidence already "
+            "retrieved. Label unresolved hours, access and travel details unverified; "
+            "do not invent facts or retry through another tool."
+        )
+    budget["web_research"] = used + 1
+    return None
+
+
+def web_research_progress() -> str:
+    budget = _turn_budget.get()
+    if not budget or "openui_research_limit" not in budget:
+        return ""
+    return (
+        f"Interactive plan research: {budget.get('web_research', 0)} of "
+        f"{budget['openui_research_limit']} lookups used. Verify enough distinct "
+        "required destinations before optional routing detail. Use retrieved "
+        "links or official homepages, not guessed paths."
+    )
 
 
 def take_session_message_slot() -> str | None:

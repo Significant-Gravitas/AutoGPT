@@ -656,6 +656,7 @@ model ChatSession {
   chatStatus ChatSessionStatus @default(idle)
 
   Messages ChatMessage[]
+  UIDrafts ChatUIDraft[]
 
   // Expert this session is scoped to; null = plain Autopilot session.
   // Sessions keep expertId for history when the expert is archived (soft delete).
@@ -736,6 +737,20 @@ model ChatLinkedShare {
   @@unique([sessionId, executionId])
   @@index([sessionId])
   @@index([executionId])
+}
+
+model ChatUIDraft {
+  sessionId String
+  viewId String
+  toolCallId String
+  sequence Int
+  source String
+  state Json
+  revision Int @default(1)
+  updatedAt DateTime @default(now()) @updatedAt
+  Session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, viewId])
 }
 
 model ChatMessage {

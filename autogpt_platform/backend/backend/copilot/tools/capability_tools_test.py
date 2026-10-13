@@ -15,7 +15,11 @@ from backend.copilot.capabilities.mcp_review import COPILOT_MCP_NODE_PREFIX
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import get_registry
 from backend.copilot.capabilities.sources import EAGER_CORE
-from backend.copilot.context import set_execution_context
+from backend.copilot.context import (
+    MAX_OPENUI_RESEARCH_CALLS,
+    set_execution_context,
+    take_web_research_slot,
+)
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompting import SHARED_TOOL_NOTES
 from backend.copilot.tools import (
@@ -449,6 +453,28 @@ async def test_describe_tool_returns_parameters_without_the_card_hints():
     assert isinstance(result, CapabilityDetailsResponse)
     assert result.capability["id"] == "tool:schedule_followup"
     assert result.parameters == TOOL_REGISTRY["schedule_followup"].model_parameters
+
+
+async def test_describing_openui_activates_the_research_limit_without_resetting_it():
+    session = make_session(USER)
+    for _ in range(MAX_OPENUI_RESEARCH_CALLS):
+        assert take_web_research_slot() is None
+    for _ in range(2):
+        result = await DescribeCapabilityTool()._execute(
+            USER, session, id="tool:render_ui"
+        )
+        assert isinstance(result, CapabilityDetailsResponse)
+        assert take_web_research_slot() is not None
+
+
+async def test_describing_another_tool_leaves_research_unlimited():
+    result = await DescribeCapabilityTool()._execute(
+        USER, make_session(USER), id="tool:web_fetch"
+    )
+    assert isinstance(result, CapabilityDetailsResponse)
+    assert all(
+        take_web_research_slot() is None for _ in range(MAX_OPENUI_RESEARCH_CALLS + 2)
+    )
 
 
 async def test_describe_block_collapses_large_enums_unless_expanded():

@@ -10,6 +10,7 @@ from typing import Any
 import aiohttp
 import html2text
 
+from backend.copilot.context import take_web_research_slot, web_research_progress
 from backend.copilot.model import ChatSession
 from backend.util.request import Requests
 
@@ -162,7 +163,11 @@ class WebFetchTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Fetch a public web page. Public URLs only — internal addresses blocked. Returns readable text from HTML by default."
+        return (
+            "Fetch a public page as readable text. Internal addresses blocked. "
+            "Use a supplied or retrieved link. If the path is unknown, start at "
+            "the official homepage and follow its links; do not guess deep paths."
+        )
 
     @property
     def parameters(self) -> dict[str, Any]:
@@ -196,6 +201,8 @@ class WebFetchTool(BaseTool):
     ) -> ToolResponseBase:
         url = url.strip()
         session_id = session.session_id if session else None
+        if refusal := take_web_research_slot():
+            return ErrorResponse(message=refusal, session_id=session_id)
 
         if not url:
             return ErrorResponse(
@@ -221,6 +228,18 @@ class WebFetchTool(BaseTool):
                 error="fetch_failed",
                 session_id=session_id,
             ).from_outside(str(e))
+
+        if not 200 <= response.status < 300:
+            return ErrorResponse(
+                message=(
+                    f"The page returned HTTP {response.status}; retrieval failed. "
+                    "Its error page, navigation and footer do not verify the requested "
+                    "facts. Use an official homepage or an actual retrieved link; "
+                    "do not guess another path. " + web_research_progress()
+                ),
+                error="http_error",
+                session_id=session_id,
+            )
 
         content_type = response.headers.get("content-type", "")
         if not _is_text_content(content_type):
@@ -280,7 +299,7 @@ class WebFetchTool(BaseTool):
             text += f"\n\n[Content truncated — response body exceeded network cap of {_MAX_DOWNLOAD_BYTES:,} bytes]"
 
         return WebFetchResponse(
-            message=message,
+            message=" ".join(filter(None, (message, web_research_progress()))),
             url=response.url,
             status_code=response.status,
             content_type=content_type.split(";")[0].strip(),

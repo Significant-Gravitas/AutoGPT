@@ -9,6 +9,7 @@ from backend.copilot.capabilities.registry import configured_tool
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
 from backend.copilot.capabilities.sources import expert_dispatch
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
+from backend.copilot.context import enable_openui_research_budget
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
 
@@ -62,7 +63,8 @@ class DescribeCapabilityTool(BaseTool):
         return (
             "Inputs and outputs of one capability by id, before its first use. "
             "Skip ids listed in the <seen_capabilities> block of the current "
-            "user message: those were already described this session. "
+            "user message: those were already described this session. Exception: "
+            "describe tool:render_ui before interactive-plan research each turn. "
             "Blocks return their schema; MCP servers list their tools; platform "
             "tools return their parameters. Large enums are sampled unless "
             "expand=true."
@@ -124,6 +126,8 @@ class DescribeCapabilityTool(BaseTool):
             name = entry.implementations[0].ref
             if gate_denied(name):
                 return gate_denied_error(name, session_id)
+            if name == "render_ui":
+                enable_openui_research_budget()
             return _describe_tool(entry, session_id, expand)
         if entry.kind == "mcp_server":
             if gate_denied(MCP_GATE):

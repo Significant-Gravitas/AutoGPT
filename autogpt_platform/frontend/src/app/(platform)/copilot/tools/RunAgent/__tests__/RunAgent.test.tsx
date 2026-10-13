@@ -3,15 +3,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@sentry/nextjs", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/nextjs")>()),
   captureMessage: vi.fn(),
+  getTraceData: vi.fn(() => ({})),
 }));
 
 import * as Sentry from "@sentry/nextjs";
+import { fireEvent } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
+import { server } from "@/mocks/mock-server";
 import {
   render,
   screen,
   normalizeWhitespace,
 } from "@/tests/integrations/test-utils";
 import { RunAgentTool, type RunAgentToolPart } from "../RunAgent";
+import { CopilotChatActionsProvider } from "../../../components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 
 function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
   return {
@@ -24,6 +29,44 @@ function makePart(overrides: Partial<RunAgentToolPart> = {}): RunAgentToolPart {
 }
 
 describe("RunAgentTool streaming state", () => {
+  it("opens actual execution outputs inside the conversation", async () => {
+    const graph = "10000000-0000-4000-8000-000000000001";
+    const execution = "20000000-0000-4000-8000-000000000002";
+    server.use(
+      http.get(`*/api/graphs/${graph}/executions/${execution}`, () =>
+        HttpResponse.json({
+          id: execution,
+          graph_id: graph,
+          status: "COMPLETED",
+          outputs: { report: ["Finished report"] },
+        }),
+      ),
+    );
+    render(
+      <CopilotChatActionsProvider onSend={vi.fn()} chatSurface="copilot">
+        <RunAgentTool
+          part={makePart({
+            state: "output-available",
+            output: JSON.stringify({
+              type: "execution_started",
+              graph_id: graph,
+              execution_id: execution,
+              status: "QUEUED",
+              message: "Started",
+            }),
+          })}
+        />
+      </CopilotChatActionsProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Status: QUEUED" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "View Execution" }),
+    );
+    expect(await screen.findByText("Finished report")).toBeDefined();
+    expect(screen.getByText("Status: completed")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Hide Execution" }));
+    expect(screen.queryByText("Finished report")).toBeNull();
+  });
   it("shows the plain loading line (no mini-game) while streaming", () => {
     const { container } = render(
       <RunAgentTool part={makePart({ state: "input-streaming" })} />,

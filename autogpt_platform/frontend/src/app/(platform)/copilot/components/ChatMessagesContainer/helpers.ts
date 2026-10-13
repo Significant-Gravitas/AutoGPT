@@ -10,6 +10,7 @@ import {
 } from "../CompactionCard/helpers";
 import { COMPACTION_PART_TYPE, isExpertChangePart } from "../ToolChain/helpers";
 import { EXPERT_ONBOARDING_PART_TYPE } from "../ExpertOnboardingCard/helpers";
+import { isRenderUIPart } from "../../tools/RenderUI/isRenderUIPart";
 
 export type MessagePart = UIMessage<
   unknown,
@@ -27,7 +28,8 @@ export function isChainableToolPart(part: MessagePart): boolean {
   if (
     part.type === COMPACTION_PART_TYPE ||
     part.type === EXPERT_ONBOARDING_PART_TYPE ||
-    isExpertChangePart(part)
+    isExpertChangePart(part) ||
+    isRenderUIPart(part)
   ) {
     return false;
   }

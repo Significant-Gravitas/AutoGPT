@@ -258,7 +258,18 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# OpenUI adds a deferred component library: 82,865 measured, plus existing margin.
+# Maps, timelines, two charts and three typed fields add 2,664 deferred chars.
+# Measured 85,529; preserve the existing 300-char margin. Wire budget is unchanged.
+# Explicit component limits and splitting guidance add 426 deferred characters.
+# Measured 85,955; preserve the existing 300-char margin. Wire budget is unchanged.
+# Shared-quantity and formula guidance adds 434 deferred characters in #15362.
+# CI merge ref measures 86,359; preserve the 300-char margin. Wire is unchanged.
+# Schedule and nullable numeric inputs expand only the deferred OpenUI catalog.
+# Measured registry: 88,091 characters; retain the existing 300-character margin.
+# Comparison evidence guidance and per-turn discovery add 366 characters.
+# Measured 88,457; retain the 300-character margin. Wire budget remains unchanged.
+_CHAR_BUDGET = 88_757
 
 
 @pytest.fixture(scope="module")
@@ -453,7 +464,8 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+# Count only the eager tools actually registered by tool_adapter.
+_SESSION_WIRE_BUDGET = 18_948
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -483,6 +495,7 @@ def _largest_session_wire_chars() -> int:
         _build_input_schema,
     )
     from backend.copilot.tools import (
+        DEFERRED_TOOL_NAMES,
         expert_tool_disabled_groups,
         origin_disabled_tools,
         tool_names_in_groups,
@@ -501,7 +514,8 @@ def _largest_session_wire_chars() -> int:
             expert_tool_disabled_groups(experts_enabled=True, expert_id=None)
         )
     )
-    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
+    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | set(DEFERRED_TOOL_NAMES)
+    hidden.add("get_agent_building_guide")
     hidden |= origin_disabled_tools("interactive")
 
     total = sum(

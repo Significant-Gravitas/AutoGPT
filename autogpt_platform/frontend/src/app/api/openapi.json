@@ -4948,6 +4948,117 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/ui-drafts/{view_id}": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Get Ui Draft",
+        "operationId": "getV2GetUiDraft",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,79}$",
+              "title": "View Id"
+            }
+          },
+          {
+            "name": "tool_call_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Tool Call Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UIDraftResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Save Ui Draft",
+        "operationId": "putV2SaveUiDraft",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "view_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^[a-zA-Z][a-zA-Z0-9_-]{0,79}$",
+              "title": "View Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UIDraftWrite" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UIDraftResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/speech": {
       "post": {
         "tags": ["chat", "speech"],
@@ -25149,6 +25260,7 @@
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
       },
+      "JsonValue": {},
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28974,6 +29086,7 @@
           "error",
           "no_results",
           "need_login",
+          "ui_rendered",
           "agents_found",
           "agent_details",
           "setup_requirements",
@@ -32523,6 +32636,47 @@
         "required": ["entry_id", "rows", "sequence"],
         "title": "TurnCheckpoint",
         "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
+      },
+      "UIDraftResponse": {
+        "properties": {
+          "revision": { "type": "integer", "title": "Revision" },
+          "source": { "type": "string", "title": "Source" },
+          "state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "State"
+          },
+          "tool_call_id": { "type": "string", "title": "Tool Call Id" },
+          "writable": { "type": "boolean", "title": "Writable" }
+        },
+        "type": "object",
+        "required": ["revision", "source", "state", "tool_call_id", "writable"],
+        "title": "UIDraftResponse"
+      },
+      "UIDraftWrite": {
+        "properties": {
+          "tool_call_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Tool Call Id"
+          },
+          "expected_revision": {
+            "type": "integer",
+            "maximum": 2147483646.0,
+            "minimum": 0.0,
+            "title": "Expected Revision"
+          },
+          "state": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "State"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": ["tool_call_id", "expected_revision", "state"],
+        "title": "UIDraftWrite"
       },
       "UnderstandingUpdatedResponse": {
         "properties": {

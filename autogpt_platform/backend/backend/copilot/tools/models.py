@@ -18,6 +18,7 @@ class ResponseType(str, Enum):
     ERROR = "error"
     NO_RESULTS = "no_results"
     NEED_LOGIN = "need_login"
+    UI_RENDERED = "ui_rendered"
 
     # Agent discovery & execution
     AGENTS_FOUND = "agents_found"

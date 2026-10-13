@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { InlineExecution } from "@/components/organisms/InlineExecution/InlineExecution";
 import type { ExecutionStartedResponse } from "@/app/api/__generated__/models/executionStartedResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { executionSharePath } from "@/lib/share/routes";
@@ -36,6 +38,7 @@ export function titleForStatus(status: string | undefined): string {
 
 export function ExecutionStartedCard({ output }: Props) {
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
   // In the builder panel the run_agent effect already drops the exec_id
   // onto the URL so the builder's in-place execution UI opens — the
   // "View Execution" button here would navigate the user away from the
@@ -65,10 +68,23 @@ export function ExecutionStartedCard({ output }: Props) {
           <Button
             size="small"
             className="mt-3"
-            onClick={() => router.push(href)}
+            onClick={() =>
+              chatSurface === "share"
+                ? router.push(href)
+                : setExpanded(!expanded)
+            }
           >
-            View Execution
+            {expanded ? "Hide Execution" : "View Execution"}
           </Button>
+        )}
+        {expanded && (
+          <div className="mt-4">
+            <InlineExecution
+              graphId={output.graph_id}
+              executionId={output.execution_id}
+              title="Execution details"
+            />
+          </div>
         )}
       </ContentCard>
     </ContentGrid>

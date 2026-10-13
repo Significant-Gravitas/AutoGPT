@@ -34,6 +34,7 @@ from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletion
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.context import take_web_research_slot, web_research_progress
 from backend.copilot.model import ChatSession
 from backend.copilot.token_tracking import persist_and_record_usage
 
@@ -141,6 +142,8 @@ class WebSearchTool(BaseTool):
     ) -> ToolResponseBase:
         query = (query or "").strip()
         session_id = session.session_id if session else None
+        if refusal := take_web_research_slot():
+            return ErrorResponse(message=refusal, session_id=session_id)
         if not query:
             return ErrorResponse(
                 message="Please provide a non-empty search query.",
@@ -209,7 +212,15 @@ class WebSearchTool(BaseTool):
             logger.warning("[web_search] usage tracking failed: %s", exc)
 
         return WebSearchResponse(
-            message=f"Found {len(results)} result(s) for {query!r}.",
+            message=" ".join(
+                filter(
+                    None,
+                    (
+                        f"Found {len(results)} result(s) for {query!r}.",
+                        web_research_progress(),
+                    ),
+                )
+            ),
             query=query,
             answer=answer,
             results=results,
