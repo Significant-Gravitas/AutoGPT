@@ -10,8 +10,9 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfoNotFoundError
 
 from apscheduler.events import (
     EVENT_JOB_ERROR,
@@ -31,6 +32,7 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.active_turns import ConcurrentTurnLimitError
+from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.credential_selection import CredentialPins
 from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_REGISTRATION_PREFIX,
@@ -43,6 +45,7 @@ from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.transports import resolve_default_chat_route
+from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput, GraphInput
@@ -78,7 +81,6 @@ from backend.util.exceptions import (
     NotFoundError,
     UserPaywalledError,
 )
-from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import PrefixFilter
 from backend.util.retry import func_retry
 from backend.util.service import (
@@ -88,7 +90,7 @@ from backend.util.service import (
     endpoint_to_async,
     expose,
 )
-from backend.util.settings import AppEnvironment, Config
+from backend.util.settings import Config
 
 
 def _extract_schema_from_url(database_url) -> tuple[str, str]:
@@ -124,27 +126,6 @@ SCHEDULER_OPERATION_TIMEOUT_SECONDS = 300  # 5 minutes for scheduler operations
 # legitimately take >5 min. Match the dream lock's 30 min TTL so the
 # future resolves before the lock expires under the dream pass.
 SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS = 1800
-
-
-def _init_feature_flags_for_scheduler() -> None:
-    """Eagerly initialize the feature flag backend unless running LOCAL.
-
-    Mirrors ``rest_api.py``'s ``feature_flag_context``: the @expose flag
-    gates (e.g. ``add_nightly_batch_schedule``'s ``DREAM_PASS_ENABLED``
-    check) fail closed, so evaluating them against a lazily-initialized
-    client right after a pod restart would silently skip registrations
-    until the first lazy init completed. Skipped LOCAL, where no vendor is
-    configured and flags resolve to their mock defaults.
-    """
-    if config.app_env != AppEnvironment.LOCAL:
-        initialize_feature_flags()
-
-
-def _shutdown_feature_flags_for_scheduler() -> None:
-    """Reverse of ``_init_feature_flags_for_scheduler`` — only tears down the
-    client when it was actually initialized (non-LOCAL)."""
-    if config.app_env != AppEnvironment.LOCAL:
-        shutdown_feature_flags()
 
 
 # The Stripe tier sweep pages through every active subscription, so it needs a
@@ -462,6 +443,8 @@ async def _execute_copilot_turn(**kwargs):
             llm_auth_provider, llm_credential_id = await resolve_default_chat_route(
                 args.user_id
             )
+            if await _refuse_if_turn_may_not_start(args, llm_auth_provider):
+                return
             new_session = await create_chat_session(
                 args.user_id,
                 dry_run=False,
@@ -550,6 +533,10 @@ async def _execute_copilot_turn(**kwargs):
                 if expert_status != "active":
                     await _skip_inactive_expert_scope(args, expert_status)
                     return
+            if await _refuse_if_turn_may_not_start(
+                args, session.metadata.llm_auth_provider
+            ):
+                return
             target_session_id = args.session_id
             target_session = session
             # The target may be the user's own interactive Otto chat,
@@ -658,6 +645,50 @@ async def _execute_copilot_turn(**kwargs):
         )
 
 
+async def _refuse_if_turn_may_not_start(
+    job_args: "CopilotTurnJobArgs", llm_auth_provider: CopilotLlmAuthProvider
+) -> bool:
+    """Refuse a fire that may not start, as ``dispatch_next_for_user`` refuses
+    a queued turn, and say whether it did: the owner has no access to the route
+    it bills to, or has used up their AutoPilot usage for the window.
+
+    A cron schedule stays registered and resumes once the owner has access or
+    the window resets. APScheduler drops a one-shot once it fires, so one
+    refused by an outage (unreadable usage limits or plan) is retried, and any
+    other is dropped with its routine switched off rather than left pending for
+    a time that has passed.
+    """
+    retry = None
+    try:
+        refusal = await turn_refusal(job_args.user_id, llm_auth_provider)
+        if refusal is not None and refusal.transient:
+            retry = _reschedule_one_shot_after_limits_unreadable
+    except Exception as exc:
+        # Unknown access is no access: skip the fire, and retry a one-shot.
+        refusal = TurnRefusal(
+            reason=f"has an unreadable plan ({type(exc).__name__}: {exc})",
+            transient=True,
+        )
+        retry = _reschedule_one_shot_after_plan_unreadable
+    if refusal is None:
+        return False
+    if job_args.run_at is None:
+        outcome = "the schedule stays registered"
+    elif retry is None:
+        await _drop_job_from_routine(job_args)
+        outcome = "the one-shot is dropped"
+    elif await retry(job_args):
+        outcome = "the one-shot is retried"
+    else:
+        outcome = "the one-shot is dropped"
+    logger.log(
+        logging.WARNING if refusal.transient else logging.INFO,
+        f"Skipping scheduled copilot turn {job_args.schedule_id}: owner "
+        f"{refusal.reason}; {outcome}",
+    )
+    return True
+
+
 def _credential_pins_for_turn(
     args: "CopilotTurnJobArgs", routine: ExpertRoutine | None
 ) -> CredentialPins:
@@ -690,6 +721,15 @@ def _session_id_label(args: "CopilotTurnJobArgs") -> str:
 _CONCURRENCY_RETRY_DELAY_SECONDS = 300
 _MAX_CAP_RETRIES = 1
 _MAX_EXPERT_LOOKUP_RETRIES = 1
+_MAX_PLAN_LOOKUP_RETRIES = 1
+_MAX_LIMITS_RETRIES = 1
+_RetryKind = Literal["cap", "expert_lookup", "plan_lookup", "limits"]
+_MAX_RETRIES: dict[_RetryKind, int] = {
+    "cap": _MAX_CAP_RETRIES,
+    "expert_lookup": _MAX_EXPERT_LOOKUP_RETRIES,
+    "plan_lookup": _MAX_PLAN_LOOKUP_RETRIES,
+    "limits": _MAX_LIMITS_RETRIES,
+}
 
 
 async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
@@ -698,6 +738,28 @@ async def _reschedule_one_shot_after_cap(args: "CopilotTurnJobArgs") -> None:
         reason="concurrency cap",
         name_suffix="cap-retry",
         retry_kind="cap",
+    )
+
+
+async def _reschedule_one_shot_after_plan_unreadable(
+    args: "CopilotTurnJobArgs",
+) -> bool:
+    return await _reschedule_one_shot(
+        args,
+        reason="unreadable owner plan",
+        name_suffix="plan-retry",
+        retry_kind="plan_lookup",
+    )
+
+
+async def _reschedule_one_shot_after_limits_unreadable(
+    args: "CopilotTurnJobArgs",
+) -> bool:
+    return await _reschedule_one_shot(
+        args,
+        reason="unreadable usage limits",
+        name_suffix="limits-retry",
+        retry_kind="limits",
     )
 
 
@@ -717,25 +779,25 @@ async def _reschedule_one_shot(
     *,
     reason: str,
     name_suffix: str,
-    retry_kind: Literal["cap", "expert_lookup"],
-) -> None:
-    """Re-create a one-shot copilot-turn schedule after a transient failure.
+    retry_kind: _RetryKind,
+) -> bool:
+    """Re-create a one-shot copilot-turn schedule after a transient failure,
+    and say whether it did.
 
     Best-effort: failures are logged. Schedules that have already been
     retried the limit for this failure kind are dropped to avoid loops. Retry
     depths round-trip independently through APScheduler's persisted kwargs so
     a transient expert lookup does not consume the concurrency-cap budget.
     """
-    if retry_kind == "cap":
-        retry_count = args.cap_retry_count
-        max_retries = _MAX_CAP_RETRIES
-        next_cap_retry_count = retry_count + 1
-        next_expert_lookup_retry_count = args.expert_lookup_retry_count
-    else:
-        retry_count = args.expert_lookup_retry_count
-        max_retries = _MAX_EXPERT_LOOKUP_RETRIES
-        next_cap_retry_count = args.cap_retry_count
-        next_expert_lookup_retry_count = retry_count + 1
+    counts: dict[_RetryKind, int] = {
+        "cap": args.cap_retry_count,
+        "expert_lookup": args.expert_lookup_retry_count,
+        "plan_lookup": args.plan_lookup_retry_count,
+        "limits": args.limits_retry_count,
+    }
+    retry_count = counts[retry_kind]
+    max_retries = _MAX_RETRIES[retry_kind]
+    counts[retry_kind] = retry_count + 1
 
     if retry_count >= max_retries:
         logger.error(
@@ -743,7 +805,8 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} — exhausted {max_retries} "
             f"retry/retries after {reason}"
         )
-        return
+        await _drop_job_from_routine(args)
+        return False
     try:
         new_run_at = datetime.now(tz=timezone.utc) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
@@ -754,8 +817,10 @@ async def _reschedule_one_shot(
             message=args.message,
             run_at=new_run_at,
             name=f"{args.schedule_id or 'copilot'}-{name_suffix}",
-            cap_retry_count=next_cap_retry_count,
-            expert_lookup_retry_count=next_expert_lookup_retry_count,
+            cap_retry_count=counts["cap"],
+            expert_lookup_retry_count=counts["expert_lookup"],
+            plan_lookup_retry_count=counts["plan_lookup"],
+            limits_retry_count=counts["limits"],
             # Preserve the user's timezone across the reschedule so the new
             # one-shot job's trigger/timezone matches the original request.
             user_timezone=args.user_timezone,
@@ -773,6 +838,9 @@ async def _reschedule_one_shot(
             # an ungranted routine that merely lost a race to the concurrency
             # cap would come back with everything the mute exists to withhold.
             routine_id=args.routine_id,
+            # The retry gets a new schedule_id; this is the one the routine's
+            # row holds, so the retry can still switch the routine off.
+            routine_schedule_id=args.routine_schedule_id or args.schedule_id,
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
@@ -782,12 +850,15 @@ async def _reschedule_one_shot(
             f"{_session_id_label(args)} to {new_run_at.isoformat()} after "
             f"{reason} (retry {retry_count + 1}/{max_retries})"
         )
+        return True
     except Exception:
         logger.warning(
             f"Failed to reschedule one-shot copilot turn for session "
             f"{_session_id_label(args)} after {reason}",
             exc_info=True,
         )
+        await _drop_job_from_routine(args)
+        return False
 
 
 async def _best_effort_unschedule(
@@ -838,21 +909,26 @@ async def _self_delete_copilot_turn_schedule(args: "CopilotTurnJobArgs") -> None
         args.user_id,
         reason="session unavailable or scope mismatch",
     )
+    await _drop_job_from_routine(args)
+
+
+async def _drop_job_from_routine(args: "CopilotTurnJobArgs") -> None:
     # A job with no schedule_id predates the field and cannot be matched
     # against the ids a routine row holds, so there is nothing to drop.
-    if args.routine_id is None or args.schedule_id is None:
+    schedule_id = args.routine_schedule_id or args.schedule_id
+    if args.routine_id is None or schedule_id is None:
         return
     # The row outlives the job it lost, and a routine still listed as switched
     # on with nothing scheduled behind it is the one state the owner cannot act
     # on: the UI offers to switch off something that is already not running.
-    # Most often this is a PINNED routine whose chat the owner deleted.
+    # Most often this is a PINNED routine whose chat the owner deleted, or a
+    # one-shot that fired while its owner could not pay.
     try:
-        await experts_db().mark_routine_unscheduled(args.routine_id, args.schedule_id)
+        await experts_db().mark_routine_unscheduled(args.routine_id, schedule_id)
     except Exception:
         logger.warning(
-            "Could not switch off routine %s after removing its schedule %s",
-            args.routine_id[:12],
-            args.schedule_id,
+            f"Could not switch off routine {args.routine_id[:12]} after removing "
+            f"its schedule {schedule_id}",
             exc_info=True,
         )
 
@@ -1720,6 +1796,8 @@ class CopilotTurnJobArgs(BaseModel):
     # concurrency-cap retry (or vice versa).
     cap_retry_count: int = 0
     expert_lookup_retry_count: int = 0
+    plan_lookup_retry_count: int = 0
+    limits_retry_count: int = 0
     # Persisted so ``_reschedule_one_shot_after_cap`` can preserve the user's
     # timezone when re-creating a one-shot job after a concurrency-cap miss —
     # otherwise the rescheduled job's trigger defaults to UTC and the timezone
@@ -1745,6 +1823,9 @@ class CopilotTurnJobArgs(BaseModel):
     # decides whether the turn may touch a connected service at all. None keeps
     # ordinary ``schedule_followup`` jobs on their existing path.
     routine_id: str | None = None
+    # The routine row's id for this job when it is a one-shot's retry, which
+    # gets a schedule_id of its own that the row does not hold.
+    routine_schedule_id: str | None = None
     # ``{provider: pin}``: the account the user chose for each provider when
     # the follow-up was made, which every fire runs on (SECRT-2804). A routine
     # keeps its pins on its row instead. Empty on rows persisted before pins.
@@ -1931,11 +2012,37 @@ def _build_trigger(
 ) -> Union[CronTrigger, DateTrigger]:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
-    if cron is not None:
-        return CronTrigger.from_crontab(
-            _normalize_cron_day_of_week(cron), timezone=user_timezone
-        )
-    return DateTrigger(run_date=run_at, timezone=user_timezone)
+    try:
+        if cron is not None:
+            return CronTrigger.from_crontab(
+                _normalize_cron_day_of_week(cron), timezone=user_timezone
+            )
+        return DateTrigger(run_date=run_at, timezone=user_timezone)
+    except ZoneInfoNotFoundError as e:
+        # A KeyError, which the API would turn into a 500, not a 400.
+        raise ValueError(f"Unknown timezone {user_timezone!r}") from e
+
+
+def _updated_graph_job_args(
+    info: GraphExecutionJobInfo,
+    *,
+    name: str | None,
+    cron: str | None,
+    input_data: GraphInput | None,
+    input_credentials: dict[str, CredentialsMetaInput] | None,
+) -> GraphExecutionJobArgs:
+    """The stored job args with each provided field replaced. Identity fields
+    (schedule id, owner, graph, tenancy, expert) are never editable."""
+    current = info.model_dump(include=set(GraphExecutionJobArgs.model_fields))
+    overrides = {
+        "agent_name": normalize_schedule_name(name) if name else None,
+        "cron": cron,
+        "input_data": input_data,
+        "input_credentials": input_credentials,
+    }
+    return GraphExecutionJobArgs.model_validate(
+        current | {k: v for k, v in overrides.items() if v is not None}
+    )
 
 
 def _job_to_info(
@@ -2024,11 +2131,6 @@ class Scheduler(AppService):
 
     def run_service(self):
         load_dotenv()
-
-        # Eagerly initialize LaunchDarkly before any @expose flag gate can
-        # run (see the helper for why lazy init would skip registrations
-        # after a pod restart).
-        _init_feature_flags_for_scheduler()
 
         # Initialize the event loop for async jobs
         global _event_loop
@@ -2341,10 +2443,6 @@ class Scheduler(AppService):
             logger.info("⏳ Waiting for event loop thread to finish...")
             _event_loop_thread.join(timeout=SCHEDULER_OPERATION_TIMEOUT_SECONDS)
 
-        # Reverse order of run_service: LD was initialized before the
-        # scheduler started, so close it after all jobs have drained.
-        _shutdown_feature_flags_for_scheduler()
-
         super().cleanup()
 
     def _persist_schedule(
@@ -2457,11 +2555,14 @@ class Scheduler(AppService):
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
+        plan_lookup_retry_count: int = 0,
+        limits_retry_count: int = 0,
         organization_id: str | None = None,
         team_id: str | None = None,
         expert_id: str | None = None,
         routine_id: str | None = None,
         credential_pins: CredentialPins | None = None,
+        routine_schedule_id: str | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2470,9 +2571,8 @@ class Scheduler(AppService):
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
 
-        *cap_retry_count* and *expert_lookup_retry_count* are set internally
-        to bound their respective transient retry paths; normal callers should
-        leave both at 0.
+        The ``*_retry_count`` arguments are set internally to bound their
+        respective transient retry paths; normal callers should leave them at 0.
         """
         # Mirror add_graph_execution_schedule: validate the expert scope at
         # creation (active, owned, PRIVATE) and pin the schedule to the
@@ -2494,12 +2594,15 @@ class Scheduler(AppService):
             run_at=run_at,
             cap_retry_count=cap_retry_count,
             expert_lookup_retry_count=expert_lookup_retry_count,
+            plan_lookup_retry_count=plan_lookup_retry_count,
+            limits_retry_count=limits_retry_count,
             user_timezone=user_timezone,
             organization_id=organization_id,
             team_id=team_id,
             expert_id=expert_id,
             routine_id=routine_id,
             credential_pins=credential_pins or {},
+            routine_schedule_id=routine_schedule_id,
         )
         default_name = (
             f"copilot turn (session {session_id[:8]})"
@@ -2540,6 +2643,72 @@ class Scheduler(AppService):
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
         return info
+
+    @expose
+    def update_graph_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        name: Optional[str] = None,
+        cron: Optional[str] = None,
+        user_timezone: Optional[str] = None,
+        input_data: Optional[GraphInput] = None,
+        input_credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    ) -> GraphExecutionJobInfo:
+        """Change an agent schedule's name, timing or inputs in place.
+
+        The job keeps its id, owner, graph and tenancy, so every reference to
+        it (Library links, the schedule index, run attribution) stays valid.
+        Trigger, kwargs and name land in one ``modify_job`` call, which the
+        jobstore writes as a single row update: a concurrent reader sees the
+        old schedule or the new one, never a mix. Omitted fields keep their
+        current value, and a paused schedule stays paused.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="update")
+        if not isinstance(info, GraphExecutionJobInfo):
+            raise NotFoundError(f"Agent schedule #{schedule_id} not found.")
+
+        job_args = _updated_graph_job_args(
+            info,
+            name=name,
+            cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
+        )
+        if input_data is not None or input_credentials is not None:
+            run_async(
+                execution_utils.validate_and_construct_node_execution_input(
+                    graph_id=job_args.graph_id,
+                    user_id=user_id,
+                    graph_inputs=job_args.input_data,
+                    graph_version=job_args.graph_version,
+                    graph_credentials_inputs=job_args.input_credentials,
+                )
+            )
+
+        changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+        if name:
+            changes["name"] = job_args.agent_name
+        if cron is not None or user_timezone:
+            trigger = _build_trigger(
+                cron=job_args.cron,
+                run_at=None,
+                user_timezone=user_timezone or info.timezone,
+            )
+            changes["trigger"] = trigger
+            if job.next_run_time is not None:
+                changes["next_run_time"] = trigger.get_next_fire_time(
+                    None, datetime.now(timezone.utc)
+                )
+        updated = self.scheduler.modify_job(
+            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+        )
+        self._invalidate_jobs_cache()
+        logger.info(
+            f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
+            f"{_timezone_from_job(updated)}"
+        )
+        return GraphExecutionJobInfo.from_db(job_args, updated)
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
@@ -3516,6 +3685,9 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    update_execution_schedule = endpoint_to_async(
+        Scheduler.update_graph_execution_schedule
+    )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.

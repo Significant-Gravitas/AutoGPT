@@ -64,9 +64,11 @@ from pydantic import BaseModel, Field
 from redis.exceptions import RedisClusterException, RedisError
 
 from backend.copilot.trial_cost_context import record_attributed_trial_cost
+from backend.copilot.trial_reads import shared_trial_read
 from backend.data.db_accessors import credit_db, user_db
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
+from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.exceptions import UserPaywalledError
@@ -569,7 +571,7 @@ async def get_remaining_usd_budget(
     """
     trial = None
     if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0.0
     now = datetime.now(UTC)
@@ -693,7 +695,7 @@ async def check_rate_limit(
     """
     now = datetime.now(UTC)
     if await _fetch_user_tier(user_id) == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             raise RateLimitExceeded("trial", now)
         if trial.cost_microdollars >= trial.offer.total_cost_limit:
@@ -964,6 +966,13 @@ async def _fetch_user_tier(user_id: str) -> SubscriptionTier:
     raise _UserNotFoundError(user_id)
 
 
+async def _subscription_trial(user_id: str) -> TrialState | None:
+    """The user's trial; one read serves every check inside ``trial_reads_shared``."""
+    return await shared_trial_read(
+        user_id, lambda: credit_db().get_subscription_trial(user_id)
+    )
+
+
 _STRIPE_RECONCILE_PREFIX = "stripe_reconcile:"
 _STRIPE_RECONCILE_TTL = 300  # seconds — matches the tier cache TTL
 
@@ -1034,7 +1043,7 @@ async def get_user_tier(user_id: str) -> SubscriptionTier:
         tier_from_db = False
 
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         return tier if trial and trial.active else SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:
         return tier
@@ -1087,11 +1096,7 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
         data={"subscriptionTier": tier.value},
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
-    # Local import: backend.data.credit imports from this module.
-    from backend.data.credit import get_pending_subscription_change
-
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
-    get_pending_subscription_change.cache_delete(user_id)  # type: ignore[attr-defined]
     schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
@@ -1300,7 +1305,7 @@ async def get_global_rate_limits(
     # falls back to BASIC limits so testers retain access.
     tier = await get_user_tier(user_id)
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         if trial is None or not trial.active:
             return 0, 0, SubscriptionTier.NO_TIER
         return trial.offer.daily_cost_limit, trial.offer.weekly_cost_limit, tier
@@ -1429,7 +1434,7 @@ async def is_user_paywalled(user_id: str) -> bool:
         )
         tier = SubscriptionTier.NO_TIER
     if tier == SubscriptionTier.TRIAL:
-        trial = await credit_db().get_subscription_trial(user_id)
+        trial = await _subscription_trial(user_id)
         return trial is None or not trial.active
     if tier != SubscriptionTier.NO_TIER:
         return False
