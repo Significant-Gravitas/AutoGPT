@@ -21791,14 +21791,14 @@
             "title": "Dropped Forgotten",
             "default": 0
           },
-          "pending_write_count": {
+          "pending_writes": {
             "type": "integer",
-            "title": "Pending Write Count",
+            "title": "Pending Writes",
             "default": 0
           },
-          "failed_write_count": {
+          "failed_writes": {
             "type": "integer",
-            "title": "Failed Write Count",
+            "title": "Failed Writes",
             "default": 0
           },
           "protected_demotions": {
@@ -22107,14 +22107,14 @@
             "title": "Dropped Forgotten",
             "default": 0
           },
-          "pending_write_count": {
+          "pending_writes": {
             "type": "integer",
-            "title": "Pending Write Count",
+            "title": "Pending Writes",
             "default": 0
           },
-          "failed_write_count": {
+          "failed_writes": {
             "type": "integer",
-            "title": "Failed Write Count",
+            "title": "Failed Writes",
             "default": 0
           },
           "protected_demotions": {

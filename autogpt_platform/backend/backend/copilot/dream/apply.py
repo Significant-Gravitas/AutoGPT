@@ -431,9 +431,9 @@ async def apply_operations(
 
     ``consolidated_count`` and ``proposal_count`` count the writes and
     proposals graphiti saved by the time apply returned, never one merely
-    queued: those not written yet are ``pending_write_count`` (every one on
+    queued: those not written yet are ``pending_writes`` (every one on
     the batch path, which does not wait), those whose write raised
-    ``failed_write_count``, those dropped for resting on a forget
+    ``failed_writes``, those dropped for resting on a forget
     ``dropped_forgotten``.
 
     An empty pass — no writes, proposals, demotions, or entity
@@ -520,8 +520,8 @@ async def apply_operations(
             "demotion_failed_count": 0,
             "entity_invalidation_count": 0,
             "dropped_forgotten": 0,
-            "pending_write_count": 0,
-            "failed_write_count": 0,
+            "pending_writes": 0,
+            "failed_writes": 0,
             "protected_demotions": 0,
             "indeterminate_demotion_writes": 0,
             "demotion_accounting_complete": True,
@@ -676,8 +676,8 @@ async def apply_operations(
         "dropped_forgotten": dropped,
         # Writes and proposals not written yet (queued, waiting for the
         # graph's lock, or being written), and those whose write failed.
-        "pending_write_count": pending,
-        "failed_write_count": failed,
+        "pending_writes": pending,
+        "failed_writes": failed,
         # Distinct facts an acknowledged write spared and the accounting read
         # found live; provisional when the accounting is incomplete.
         "protected_demotions": destroyed.protected,

@@ -81,8 +81,8 @@ class DreamPassApplied(BaseModel):
     demotion_count: int = 0
     entity_invalidation_count: int = 0
     dropped_forgotten: int = 0
-    pending_write_count: int = 0
-    failed_write_count: int = 0
+    pending_writes: int = 0
+    failed_writes: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.
