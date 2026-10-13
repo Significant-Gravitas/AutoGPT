@@ -12,6 +12,7 @@ from backend.api.features.integrations.router import router as integrations_rout
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import utils as webhooks_utils
 from backend.integrations.webhooks.github import GithubWebhooksManager
+from backend.util.test import SpinTestServer
 
 
 def test_webhook_ingress_url_matches_route(monkeypatch) -> None:
@@ -273,7 +274,7 @@ async def test_backfill_keeps_a_committed_page_when_the_budget_runs_out():
 
 
 @pytest.mark.asyncio
-async def test_concurrent_backfills_convert_a_preset_once():
+async def test_concurrent_backfills_convert_a_preset_once(server: SpinTestServer):
     """Every REST replica runs the backfill at boot. Against real Postgres, two
     that both read the same flat preset must leave one mask row, not two."""
     from prisma.models import (
