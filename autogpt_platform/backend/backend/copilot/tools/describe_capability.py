@@ -188,7 +188,7 @@ def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase
             f"id='{entry.id}', input={{...}}) calls {name}. {tool.description}"
         ),
         capability=entry.listing(),
-        parameters=_without_properties(tool.parameters, set(bound)),
+        parameters=_without_properties(tool.model_parameters, set(bound)),
         session_id=session_id,
     ).from_outside()
 
@@ -211,7 +211,8 @@ def _describe_tool(
     tool = configured_tool(entry.implementations[0].ref)
     if tool is None:
         return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
-    parameters = tool.parameters if expand else collapse_large_enums(tool.parameters)
+    parameters = tool.model_parameters
+    parameters = parameters if expand else collapse_large_enums(parameters)
     return CapabilityDetailsResponse(
         message=(
             f"{tool.description} Run it with run_capability(id='{entry.id}', "

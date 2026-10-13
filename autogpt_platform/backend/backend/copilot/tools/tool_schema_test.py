@@ -258,15 +258,24 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-# Raised 77_014 -> 77_280 for #11220's `constant_inputs`
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+# Raised 77_176 -> 77_653 for #11220's `constant_inputs`
 # (setup_agent_webhook_trigger) and `trigger_config` (update_preset), which an
 # agent carrying both a trigger node and input nodes needs to configure the two
-# separately. Measured on that branch merged with dev 5d28ec680a (2026-09-23):
-#     dev 5d28ec680a                              76,714 (89 tools)
-#     + #11220's two arguments        +178        76,892 (89 tools)
-#     + headroom (~0.5%)              +388        77,280
+# separately. Measured on that branch merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              77,175 (89 tools)
+#     + #11220's two arguments        +178        77,353 (89 tools)
+#     + headroom                      +300        77,653
 # On conflict keep the higher value: this line must cover every in-flight PR.
-_CHAR_BUDGET = 77_280
+_CHAR_BUDGET = 77_653
 
 
 @pytest.fixture(scope="module")
@@ -463,12 +472,14 @@ def test_total_schema_char_budget() -> None:
 #     + headroom                       +300       69,788
 #
 # #11220's `constant_inputs` and `trigger_config`, the same two arguments as
-# ``_CHAR_BUDGET`` above, ride the largest session and fit under that
-# headroom. Measured on #11220 merged with dev fab04d6ac9 (2026-10-09):
-#     dev fab04d6ac9                              69,488
-#     + #11220's two arguments        +164        69,652
+# ``_CHAR_BUDGET`` above, ride the largest session. Dev grew 199 past the
+# fab04d6ac9 measurement, so they no longer fit under that headroom.
+# Measured on #11220 merged with dev b92c8bdf24 (2026-10-13):
+#     dev b92c8bdf24                              69,687
+#     + #11220's two arguments        +164        69,851
+#     + headroom                      +300        70,151
 # On conflict keep the higher value.
-_SESSION_WIRE_BUDGET = 69_788
+_SESSION_WIRE_BUDGET = 70_151
 
 
 def test_largest_declared_session_wire_budget() -> None:

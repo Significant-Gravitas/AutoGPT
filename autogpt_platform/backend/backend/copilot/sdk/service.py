@@ -99,6 +99,7 @@ from ..constants import (
     STREAM_INCOMPLETE_MARKER,
     STREAM_LOCK_PREFIX,
     is_transient_api_error,
+    is_transient_assistant_error,
 )
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
@@ -170,7 +171,6 @@ from ..response_model import (
     StreamTextStart,
     StreamToolDisplayAvailable,
     StreamToolInputAvailable,
-    StreamToolInputStart,
     StreamToolOutputAvailable,
     StreamUsage,
 )
@@ -227,7 +227,7 @@ from .compaction import (
     transcript_stats,
 )
 from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
-from .openrouter_cost import record_turn_cost_from_openrouter
+from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
@@ -516,12 +516,8 @@ async def _consume_sdk_until_done(
         # doesn't know about — harmlessly ignored at reconcile time.
         if isinstance(sdk_msg, AssistantMessage):
             msg_id = sdk_msg.message_id
-            if (
-                msg_id is not None
-                and msg_id.startswith("gen-")
-                and msg_id not in state.generation_ids
-            ):
-                state.generation_ids.append(msg_id)
+            if msg_id is not None and msg_id.startswith("gen-"):
+                state.generations.add(msg_id)
             # Track the model the SDK actually used — when a fallback
             # activates, this differs from ``state.options.model``.
             # Consumed by the Moonshot cost-override decision so we
@@ -597,14 +593,12 @@ async def _consume_sdk_until_done(
                 )
                 raise RuntimeError("Prompt is too long")
 
-            # Intercept transient API errors (socket closed,
-            # ECONNRESET) — replace the raw message with a
-            # user-friendly error text and use the retryable
-            # error prefix so the frontend shows a retry button.
-            # Check both the error field and content for patterns.
-            if is_transient_api_error(error_text) or is_transient_api_error(
-                error_preview
-            ):
+            # Intercept transient API errors (5xx, overloaded, 429,
+            # socket closed, ECONNRESET) — replace the raw message with
+            # a user-friendly error text and use the retryable error
+            # prefix so the frontend shows a retry button. The error
+            # field carries the CLI's category; the content its text.
+            if is_transient_assistant_error(category=error_text, content=error_preview):
                 logger.warning(
                     "%s Transient Anthropic API error detected, "
                     "suppressing raw error text",
@@ -1170,6 +1164,15 @@ _RETRYABLE_STREAM_ERROR_CODES: frozenset[str] = frozenset(
 )
 
 
+# Limits the platform sets on purpose: the turn spent its USD budget or made its
+# maximum number of LLM calls, and the user is told how to carry on. They are
+# outcomes, not failures, so they log at info: Sentry's LoggingIntegration files
+# every ERROR record as an issue (AUTOGPT-SERVER-8C4).
+_EXPECTED_STOP_CODES: frozenset[str] = frozenset(
+    {"max_budget_exhausted", "max_turns_exhausted"}
+)
+
+
 # Handled-error codes whose StreamError the outer retry loop yields itself,
 # after it has persisted the history marker, rather than the attempt.
 _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
@@ -1181,20 +1184,24 @@ _OUTER_LOOP_YIELDS_ERROR_CODES: frozenset[str] = frozenset(
 # ``events_yielded`` in the transient-retry loop.  Counting them would prevent
 # the backoff retry from firing because ``_next_transient_backoff`` returns
 # ``None`` when ``events_yielded > 0``.
+#
+# Tool events are deliberately absent: a tool row, a call the model made or
+# the CLI's own compaction, is output the retry cannot take back.  The retry
+# rolls the attempt's rows out of the session, so a row the user watched would
+# vanish on refresh, and the resent query can run a side-effecting tool (an
+# email, an agent run) a second time.  Not retrying keeps every row that
+# closed.  A compaction the failure cuts short is the exception: its row was
+# opened but is never closed or persisted, and the frontend hides a row left
+# unfinished.  Pre-query compaction rows are yielded by the retry loop itself,
+# outside the attempt, so they never count.
 _EPHEMERAL_EVENT_TYPES = (
     StreamHeartbeat,
     StreamCheckpoint,
     StreamPendingDrained,
-    StreamToolDisplayAvailable,
-    # Compaction UI events are cosmetic and must not block retry — they're
-    # emitted before the SDK query on compacted attempts.
     StreamStartStep,
     StreamFinishStep,
-    StreamToolInputStart,
-    StreamToolInputAvailable,
-    StreamToolOutputAvailable,
-    # The compaction row's live progress phases ride along with those UI
-    # events on the SDK-internal path, inside the attempt loop.
+    # A compaction row's progress phases ride along with its tool events,
+    # which count on their own.
     StreamCompactionProgress,
     # Transient StreamError and StreamStatus are ephemeral notifications,
     # not content.  Counting them would prevent the backoff retry from
@@ -1388,14 +1395,15 @@ class _RetryState:
     # not reset the per-turn cap to zero — otherwise multiple retries
     # could each fire their own re-prompt round.
     thinking_only_reprompted: bool = False
-    # OpenRouter generation IDs collected across all attempts of this turn.
-    # Populated from ``AssistantMessage.message_id`` when routed via
+    # OpenRouter generations this turn is billed for, collected launch by
+    # launch.  Populated from ``AssistantMessage.message_id`` when routed via
     # OpenRouter (``gen-...`` prefix).  Consumed by the finally block to
     # fire ``record_turn_cost_from_openrouter`` for non-Anthropic models —
     # the CLI's static-Anthropic-priced estimate is replaced with the
     # authoritative ``/generation`` total_cost.  Lives on ``_RetryState``
-    # (not per-attempt ``_StreamAccumulator``) so it survives retries.
-    generation_ids: list[str] = dataclass_field(default_factory=list)
+    # (not per-attempt ``_StreamAccumulator``) so it survives retries; a
+    # transient retry absorbs the failed launch's (``_do_transient_backoff``).
+    generations: TurnGenerations = dataclass_field(default_factory=TurnGenerations)
     # The *actually executed* model observed on ``AssistantMessage.model`` —
     # differs from ``state.options.model`` (the requested primary) when
     # ``_resolve_fallback_model`` swaps to a fallback mid-attempt.  The
@@ -1814,7 +1822,9 @@ async def _apply_building_mode_restart(
         if building_suffix
         else _BUILDING_MODE_UNAVAILABLE_CONTINUATION
     )
-    # Fresh adapter, same carry-over rules as a transient retry.
+    # Fresh adapter, carrying over the same flags as a transient retry. Unlike
+    # a transient retry, this relaunch keeps the CLI cost baseline: it is
+    # deliberate, so the interrupted run's spend is the user's.
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
     # the original message once more, which only surfaces in the
@@ -2037,6 +2047,10 @@ def _setup_langfuse_otel() -> None:
         os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", f"{host}/api/public/otel")
         os.environ.setdefault(
             "OTEL_EXPORTER_OTLP_HEADERS", f"Authorization=Basic {creds}"
+        )
+        os.environ.setdefault(
+            "OTEL_PYTHON_EXPORTER_OTLP_HTTP_TRACES_CREDENTIAL_PROVIDER",
+            "autogpt-copilot-traces",
         )
 
         # Set the Langfuse environment via OTEL resource attributes so the
@@ -2385,6 +2399,32 @@ def _codex_gateway_usage(
     return result.usage if result is not None else None
 
 
+def _reconciles_openrouter_cost(is_codex_transport: bool) -> bool:
+    """Whether a turn's cost is read back from OpenRouter's ``/generation``."""
+    return (
+        not is_codex_transport
+        and config.openrouter_active
+        and config.sdk_reconcile_openrouter_cost
+    )
+
+
+def _cli_project_dir(sdk_cwd: str) -> str | None:
+    """The CLI's project dir, where the OpenRouter reconcile sweeps for
+    subagents' gen-IDs.
+
+    ``sdk_cwd`` is the per-session CLI working directory; the CLI encodes it
+    into the project-dir name the same way ``encode_cwd_for_cli`` does, and
+    writes the main transcript + any ``subagents/`` alongside it under
+    ``~/.claude/projects/<encoded>/``.  ``None`` when sdk_cwd isn't set
+    (shouldn't happen in practice for SDK turns).
+    """
+    if not sdk_cwd:
+        return None
+    return os.path.join(
+        os.path.expanduser("~/.claude/projects"), encode_cwd_for_cli(sdk_cwd)
+    )
+
+
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
 
 
@@ -2432,23 +2472,43 @@ def _next_transient_backoff(
 async def _do_transient_backoff(
     backoff: int,
     state: "_RetryState",
-    message_id: str,
-    session_id: str,
+    ctx: _StreamContext,
 ) -> AsyncIterator[StreamStatus]:
     """Emit a retry notification, sleep, and reset the SDK adapter.
 
     Yields a single :class:`StreamStatus` so the caller can forward it to
     the client, then sleeps for *backoff* seconds and resets ``state.adapter``.
-    Usage and the CLI cost baseline survive because the retry resumes the session.
+    Usage already reported survives the retry, but the CLI cost baseline does
+    not: the relaunch re-reads the total the resumed session restores, so
+    whatever the failed attempt spent without reporting a result is not
+    charged. Its OpenRouter generations, live or a subagent's, are absorbed
+    for the same reason. The user pays for the attempt that succeeds, not for
+    our failure.
+
+    A launch that started a fresh CLI session (``--session-id``, no
+    ``--resume``: a chat's first turn, or a turn whose session could not be
+    restored) wrote that session's file before its call failed, and the CLI
+    refuses the id again ("Session ID ... is already in use"). The file goes,
+    so the relaunch can start the session again; the failed launch streamed
+    nothing, so it holds nothing worth resuming.
+
+    All of that is settled before the first yield. A turn torn down while it
+    waits out the backoff, by a client that goes away or a stop, never comes
+    back to this generator, yet the failed launch is no less ours.
 
     Extracted from both exception handlers in the retry loop to remove
     near-identical code duplication.
     """
+    state.usage.cli_session_total_usd = None
+    await state.generations.absorb_launch()
+    fresh_session = state.options.session_id
+    if ctx.sdk_cwd and fresh_session and state.options.resume is None:
+        delete_stale_cli_session_file(ctx.sdk_cwd, fresh_session, ctx.log_prefix)
     yield StreamStatus(message=f"Connection interrupted, retrying in {backoff}s…")
     await asyncio.sleep(backoff)
     state.adapter = SDKResponseAdapter(
-        message_id=message_id,
-        session_id=session_id,
+        message_id=ctx.message_id,
+        session_id=ctx.session_id,
     )
 
 
@@ -3777,7 +3837,8 @@ def _dispatch_response(
 
     # Persist error markers so they survive page refresh
     if isinstance(response, StreamError):
-        logger.error(
+        logger.log(
+            logging.INFO if response.code in _EXPECTED_STOP_CODES else logging.ERROR,
             "%s Sending error to frontend: %s (code=%s)",
             log_prefix,
             response.errorText,
@@ -4147,6 +4208,8 @@ async def _run_stream_attempt(
         `stream_chat_completion_sdk` — owns the retry loop that calls this
         function up to `_MAX_STREAM_ATTEMPTS` times with reduced context.
     """
+    # First, so whatever fails from here on is this launch's to absorb.
+    await state.generations.start_launch()
     acc = _StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],
@@ -4166,8 +4229,11 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
-    # An interruption can precede ResultMessage. Keep the baseline across
-    # resumed retries so the next result includes that unreported spend.
+    # An interruption can precede ResultMessage. A building-mode relaunch keeps
+    # the baseline, so its next result includes that unreported spend; a
+    # transient retry clears it first (see ``_do_transient_backoff``). The
+    # baseline is the total the CLI restores, and only ``--resume`` restores
+    # one: a launch with ``session_id`` starts at zero, so don't read its file.
     if state.usage.cli_session_total_usd is None:
         baseline = await asyncio.to_thread(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
@@ -5691,6 +5757,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             adapter=adapter,
             transcript_builder=transcript_builder,
             usage=_TokenUsage(),
+            # Subagent files are read only on a turn the reconcile bills.
+            generations=TurnGenerations(
+                (
+                    _cli_project_dir(sdk_cwd)
+                    if _reconciles_openrouter_cost(is_codex_transport)
+                    else None
+                ),
+                session_id,
+                turn_start_ts,
+            ),
         )
 
         attempt = 0
@@ -5943,7 +6019,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             max_transient_retries,
                         )
                         async for evt in _do_transient_backoff(
-                            backoff, state, message_id, session_id
+                            backoff, state, stream_ctx
                         ):
                             yield evt
                         continue  # retry the same context-level attempt
@@ -6017,7 +6093,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                             max_transient_retries,
                         )
                         async for evt in _do_transient_backoff(
-                            backoff, state, message_id, session_id
+                            backoff, state, stream_ctx
                         ):
                             yield evt
                         continue  # retry same context-level attempt
@@ -6296,31 +6372,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         effective_model = sdk_model or config.thinking_standard_model
         # ``state`` is populated lazily inside the retry loop; when the
         # turn exits before the first attempt runs (e.g. very early
-        # validation error) it's still None, so ``generation_ids`` is
-        # empty by definition.
+        # validation error) it's still None, so it has no generations.
         collected_gen_ids: list[str] = (
-            list(state.generation_ids) if state is not None else []
+            list(state.generations.ids) if state is not None else []
+        )
+        absorbed_gen_ids: set[str] = (
+            state.generations.absorbed if state is not None else set()
         )
         _use_openrouter_reconcile = bool(
-            not is_codex_transport
-            and config.openrouter_active
-            and config.sdk_reconcile_openrouter_cost
-            and collected_gen_ids
+            _reconciles_openrouter_cost(is_codex_transport) and collected_gen_ids
         )
-
-        # CLI project dir — used by the reconcile task to sweep for
-        # compaction subagents' gen-IDs.  ``sdk_cwd`` is the per-session
-        # CLI working directory; the CLI encodes it into the project-dir
-        # name the same way ``encode_cwd_for_cli`` does, and writes
-        # the main transcript + any ``subagents/`` alongside it under
-        # ``~/.claude/projects/<encoded>/``.  Empty when sdk_cwd isn't
-        # set (shouldn't happen in practice for SDK turns).
-        cli_project_dir: str | None = None
-        if sdk_cwd:
-            cli_project_dir = os.path.join(
-                os.path.expanduser("~/.claude/projects"),
-                encode_cwd_for_cli(sdk_cwd),
-            )
 
         if is_codex_transport:
             await persist_and_record_usage(
@@ -6376,13 +6437,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     cache_read_tokens=turn_cache_read_tokens,
                     cache_creation_tokens=turn_cache_creation_tokens,
                     generation_ids=collected_gen_ids,
-                    cli_project_dir=cli_project_dir,
+                    cli_project_dir=_cli_project_dir(sdk_cwd),
                     cli_session_id=session_id,
                     turn_start_ts=turn_start_ts,
                     fallback_cost_usd=turn_cost_usd,
                     api_key=config.api_key,
                     log_prefix=log_prefix,
                     langfuse_trace_id=langfuse_trace_id,
+                    absorbed_generation_ids=absorbed_gen_ids,
                 )
             )
             _background_tasks.add(cost_reconcile_task)
