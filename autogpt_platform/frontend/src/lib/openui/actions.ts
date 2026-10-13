@@ -1,6 +1,5 @@
-import { costRowSchema } from "./catalog-connected";
 import { asNumber } from "./calculations";
-import { scheduleTaskSchema } from "./catalog-schedule";
+import { scheduleTaskSchema } from "./schedule";
 
 export const MAX_FORM_VALUES = 36;
 
@@ -67,29 +66,6 @@ function actionValue(value: unknown, depth = 0): ActionValue | undefined {
     .safeParse(record);
   if (legacyTask && completedTask.success && completedTask.data.done)
     return completedTask.data;
-  const cost = costRowSchema.safeParse({
-    ...record,
-    quantity: asNumber(record.quantity),
-    unitPrice: asNumber(record.unitPrice),
-  });
-  const legacyCost = Object.keys(record).every((key) =>
-    ["id", "label", "quantity", "unitPrice", "included"].includes(key),
-  );
-  if (legacyCost && cost.success) return cost.data;
-  if (
-    legacyCost &&
-    typeof record.id === "string" &&
-    typeof record.label === "string" &&
-    record.included === false &&
-    "quantity" in record &&
-    "unitPrice" in record
-  ) {
-    return {
-      id: record.id.slice(0, 200),
-      label: record.label.slice(0, 200),
-      included: false,
-    };
-  }
   return Object.fromEntries(
     Object.entries(record).flatMap(([key, item]) => {
       const safe = actionValue(item, depth + 1);

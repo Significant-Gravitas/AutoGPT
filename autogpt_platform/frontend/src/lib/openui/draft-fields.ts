@@ -9,15 +9,6 @@ export interface DraftField {
   props: Record<string, unknown>;
   type: string;
 }
-const privateDrafts = new Set([
-  "DataGrid",
-  "FieldGroup",
-  "ValidatedField",
-  "RangeField",
-  "DateTimeField",
-  "TaskBoard",
-  "Itinerary",
-]);
 export function draftFields(source: string) {
   const result: DraftField[] = [];
   function visit(node: ElementNode) {
@@ -25,30 +16,21 @@ export function draftFields(source: string) {
     if (node.typeName === "Form")
       for (const field of props.fields as ElementNode[]) {
         const p = field.props;
-        let value = p.value;
-        if (["CostTable", "FieldGroup"].includes(field.typeName))
-          value = p.rows;
-        if (["Schedule", "TaskBoard"].includes(field.typeName)) value = p.tasks;
-        if (field.typeName === "DataGrid")
-          value = { rows: p.rows, selected: p.selected };
-        if (field.typeName === "Itinerary")
-          value = {
-            days: p.days,
-            tasks: p.tasks,
-            timeZone: p.timeZone,
-            selected: (p.locations as { id: string }[])[0].id,
-          };
+        const itinerary = field.typeName === "Itinerary";
         result.push({
           form: String(props.name),
-          key: `${p.name}${privateDrafts.has(field.typeName) ? "__draft" : ""}`,
-          value,
+          key: `${p.name}${itinerary ? "__draft" : ""}`,
+          value: itinerary
+            ? {
+                days: p.days,
+                tasks: p.tasks,
+                timeZone: p.timeZone,
+                selected: (p.locations as { id: string }[])[0].id,
+              }
+            : p.value,
           type: field.typeName,
           props: p,
-          contract: [
-            field.typeName,
-            p.columns ?? p.column ?? null,
-            p.selection ?? p.multiple ?? null,
-          ],
+          contract: [field.typeName, p.selection ?? null],
         });
       }
     if (node.typeName === "Checklist")
@@ -61,15 +43,6 @@ export function draftFields(source: string) {
           item.done ? [index] : [],
         ),
         contract: ["Checklist"],
-      });
-    if (node.typeName === "Dashboard")
-      result.push({
-        form: null,
-        key: `dashboard:${props.name}`,
-        type: "Dashboard",
-        props,
-        value: { query: "", categories: {}, ranges: {}, selectedOnly: false },
-        contract: ["Dashboard", props.columns, props.binding ?? null],
       });
     for (const child of (props.children as ElementNode[] | undefined) ?? [])
       visit(child);

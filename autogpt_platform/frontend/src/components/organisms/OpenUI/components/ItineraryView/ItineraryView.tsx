@@ -4,7 +4,7 @@ import type { ItineraryProps } from "@/lib/openui/itinerary";
 import { scheduleTime } from "@/lib/openui/schedule";
 import { Button } from "@/components/atoms/Button/Button";
 import { useOpenUIDisabled } from "../../interactionContext";
-import { ScheduleTaskRow } from "../ScheduleView/ScheduleTaskRow";
+import { ScheduleTaskRow } from "./ScheduleTaskRow";
 import { ControlValidity } from "../ControlValidity";
 import { AvailabilityEditor } from "./AvailabilityEditor";
 import { useItinerary } from "./useItinerary";

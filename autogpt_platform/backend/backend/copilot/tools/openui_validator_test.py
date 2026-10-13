@@ -22,20 +22,21 @@ async def test_real_validator_accepts_literal_data_and_rejects_bad_rows():
 
 
 @pytest.mark.asyncio
-async def test_real_validator_checks_connected_fields_and_nullable_bounds():
+async def test_real_validator_checks_field_names_and_nullable_bounds():
     source = (
-        'root = Workspace("Estimate", "Supplied data", [brief, total])\n'
+        'root = Workspace("Estimate", "Supplied data", [brief])\n'
         'brief = Form("plan", "Adjust", [NumberField("days", "Days", '
-        '2, null, null, 1)], "Continue", "Use these values")\n'
-        'total = CalculatedMetric("plan", "Total", "days * 25 + 10", '
-        '"currency", "USD", 2)'
+        '2, null, null, 1)], "Continue", "Use these values")'
     )
     assert (await openui_validator.validate_openui_source(source)).valid
     invalid = await openui_validator.validate_openui_source(
-        source.replace("days * 25 + 10", "missing * 25 + 10")
+        source.replace(
+            "2, null, null, 1)]",
+            '2, null, null, 1), NumberField("days", "Again", 1, null, null, 1)]',
+        )
     )
     assert not invalid.valid
-    assert "missing" in invalid.error
+    assert "unique" in invalid.error
 
 
 @pytest.mark.asyncio

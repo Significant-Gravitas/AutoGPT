@@ -258,18 +258,9 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-# OpenUI adds a deferred component library: 82,865 measured, plus existing margin.
-# Maps, timelines, two charts and three typed fields add 2,664 deferred chars.
-# Measured 85,529; preserve the existing 300-char margin. Wire budget is unchanged.
-# Explicit component limits and splitting guidance add 426 deferred characters.
-# Measured 85,955; preserve the existing 300-char margin. Wire budget is unchanged.
-# Shared-quantity and formula guidance adds 434 deferred characters in #15362.
-# CI merge ref measures 86,359; preserve the 300-char margin. Wire is unchanged.
-# Schedule and nullable numeric inputs expand only the deferred OpenUI catalog.
-# Measured registry: 88,091 characters; retain the existing 300-character margin.
-# Comparison evidence guidance and per-turn discovery add 366 characters.
-# Measured 88,457; retain the 300-character margin. Wire budget remains unchanged.
-_CHAR_BUDGET = 88_757
+# render_ui adds the deferred OpenUI component library (12,308 chars after the
+# catalog trim). Measured 89,285 with it; plus the same 300-char margin.
+_CHAR_BUDGET = 89_585
 
 
 @pytest.fixture(scope="module")

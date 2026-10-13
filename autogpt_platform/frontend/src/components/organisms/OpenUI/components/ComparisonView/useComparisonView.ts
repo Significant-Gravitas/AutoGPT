@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { z } from "zod/v4";
-import type { Comparison } from "@/lib/openui/catalog-connected";
+import type { Comparison } from "@/lib/openui/catalog-results";
 import { useFieldView } from "../useFieldView";
 import { useDerivedField } from "../useDerivedField";
 

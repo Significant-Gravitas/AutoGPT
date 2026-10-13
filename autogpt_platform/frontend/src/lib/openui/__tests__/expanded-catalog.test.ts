@@ -20,11 +20,11 @@ describe("useful OpenUI components", () => {
   it.each([
     places.replace("41.8924", "1000"),
     places.replace("-87.6341", "181"),
-    planning.replace("value: 3}", "value: -3}"),
+    planning.replace('"line"', '"stacked"'),
     planning.replace('"2026-10-09"', '"2026-02-31"'),
     planning.replace('"walking", [{label:', '"flying", [{label:'),
     planning.replace("100, 0, 1000, 10", "1100, 0, 1000, 10"),
-  ])("rejects invalid geographic and part-to-whole data", (source) => {
+  ])("rejects invalid geographic, chart and field data", (source) => {
     expect(() => parseWorkspace(source)).toThrow();
   });
 });

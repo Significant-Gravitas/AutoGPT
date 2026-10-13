@@ -1,32 +1,52 @@
 import { z } from "zod/v4";
-import { Schedule, scheduleTaskSchema } from "./catalog-schedule";
 import { asNumber } from "./calculations";
 
-export type ScheduleProps = z.infer<typeof Schedule.props>;
-export type ScheduleTask = z.infer<typeof scheduleTaskSchema>;
-const draftSchema = scheduleTaskSchema.extend({
-  minutes: z.union([z.number(), z.string().max(10)]),
+const clockTime = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+const boundary = z.object({
+  day: z.number().int().min(0).max(13),
+  time: clockTime,
 });
-export type ScheduleDraft = z.infer<typeof draftSchema>;
 
-export function readScheduleTasks(
-  value: unknown,
-  defaults: ScheduleTask[],
-): ScheduleDraft[] {
-  const parsed = z.array(draftSchema).max(12).safeParse(value);
-  if (
-    !parsed.success ||
-    parsed.data.length !== defaults.length ||
-    new Set(parsed.data.map((task) => task.id)).size !== defaults.length ||
-    parsed.data.some((task) => !defaults.some((item) => item.id === task.id))
-  )
-    return defaults;
-  return parsed.data.map((task) => ({
-    ...defaults.find((item) => item.id === task.id)!,
-    minutes: task.minutes,
-    done: task.done,
-  }));
-}
+export const scheduleTaskSchema = z.object({
+  id: z.string().min(1).max(80),
+  title: z.string().min(1).max(200),
+  minutes: z.number().int().min(1).max(20_160),
+  done: z.boolean(),
+  splittable: z.boolean(),
+  earliest: boundary.optional(),
+  deadline: boundary.optional(),
+});
+
+export const scheduleSchema = z
+  .object({
+    name: z.string().min(1).max(200),
+    title: z.string().min(1).max(200),
+    days: z
+      .array(
+        z.object({
+          label: z.string().min(1).max(80),
+          windows: z
+            .array(z.object({ start: clockTime, end: clockTime }))
+            .min(1)
+            .max(4),
+        }),
+      )
+      .min(1)
+      .max(14),
+    tasks: z.array(scheduleTaskSchema).min(1).max(12),
+  })
+  .superRefine(({ days, tasks }, context) => {
+    for (const message of scheduleErrors(days, tasks))
+      context.addIssue({ code: "custom", message });
+  });
+
+type ScheduleProps = z.infer<typeof scheduleSchema>;
+export type ScheduleDraft = Omit<
+  z.infer<typeof scheduleTaskSchema>,
+  "minutes"
+> & {
+  minutes: number | string;
+};
 
 export function durationError(value: unknown) {
   const minutes = asNumber(value);
@@ -116,4 +136,41 @@ export function calculateSchedule(
     feasible: unscheduled === 0,
     allocations,
   };
+}
+
+function scheduleErrors(
+  days: ScheduleProps["days"],
+  tasks: ScheduleProps["tasks"],
+) {
+  const errors: string[] = [];
+  if (new Set(days.map((day) => day.label)).size !== days.length)
+    errors.push("Use unique day labels.");
+  if (new Set(tasks.map((task) => task.id)).size !== tasks.length)
+    errors.push("Use unique task ids.");
+  for (const day of days) {
+    let end = "00:00";
+    for (const window of day.windows) {
+      if (window.start < end || window.start >= window.end)
+        errors.push(
+          "Availability windows must be ordered, nonoverlapping and start before they end.",
+        );
+      end = window.end;
+    }
+  }
+  for (const task of tasks) {
+    for (const value of [task.earliest, task.deadline])
+      if (value && value.day >= days.length)
+        errors.push(
+          "Task time constraints must reference an existing zero-based day index.",
+        );
+    if (
+      task.earliest &&
+      task.deadline &&
+      (task.earliest.day > task.deadline.day ||
+        (task.earliest.day === task.deadline.day &&
+          task.earliest.time >= task.deadline.time))
+    )
+      errors.push("A task must start before its deadline.");
+  }
+  return errors;
 }

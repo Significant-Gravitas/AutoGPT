@@ -1,11 +1,11 @@
 import { defineComponent } from "@openuidev/lang-core";
 import { z } from "zod/v4";
-import { Schedule, scheduleTaskSchema } from "./catalog-schedule";
+import { scheduleSchema, scheduleTaskSchema } from "./schedule";
 import { mapLocationSchema } from "./catalog-sections";
 import { identifier, sourceLink } from "./data-values";
 import { validTimeZone } from "./temporal";
 
-export const itineraryDay = Schedule.props.shape.days.element.extend({
+export const itineraryDay = scheduleSchema.shape.days.element.extend({
   date: z.iso.date(),
 });
 export const itineraryTask = scheduleTaskSchema.extend({
@@ -23,10 +23,10 @@ export const travelLeg = z.object({
 export const Itinerary = defineComponent({
   name: "Itinerary",
   description:
-    "Connected calendar, editable availability, visit durations/order/completion and map inside Form. days add ISO date to Schedule's label/windows; timeZone is IANA. tasks add optional placeId referencing locations (verified coordinates with stable id). legs are supplied travel estimates with from/to place ids, minutes, mode, validOn date and optional source. Required transfers are inserted automatically between consecutive places; do NOT duplicate transfer tasks. Reordering or changing dates invalidates missing/stale legs and pauses the schedule until researched in chat. Completed visits remain visible on the map. Includes current-plan calendar download; this does not book or create calendar events externally. Up to14 days,12 visits,50 places,50 directed legs. Use Schedule for non-geographic work, Itinerary for trips with known dates/locations/transfers. Missing facts require research or clarification, never guess.",
+    "Connected calendar, editable availability, visit durations/order/completion and map inside Form. days have a unique label, an ISO date and up to four nonoverlapping HH:mm availability windows; timeZone is IANA. tasks run in array order with id, title, minutes, done, splittable, optional earliest/deadline {day (zero-based), time HH:mm} for verified opening/departure limits, and optional placeId referencing locations (verified coordinates with stable id). Only mark done for reported completion; splittable=false for uninterrupted visits. legs are supplied travel estimates with from/to place ids, minutes, mode, validOn date and optional source. Required transfers are inserted automatically between consecutive places; do NOT duplicate transfer tasks. Reordering or changing dates invalidates missing/stale legs and pauses the schedule until researched in chat. Completed visits remain visible on the map. Includes current-plan calendar download; this does not book or create calendar events externally. Up to14 days,12 visits,50 places,50 directed legs. Use Itinerary for trips with known dates/locations/transfers; use Checklist or Timeline for non-geographic plans. Missing facts require research or clarification, never guess.",
   props: z
     .object({
-      ...Schedule.props.shape,
+      ...scheduleSchema.shape,
       name: identifier,
       days: z.array(itineraryDay).min(1).max(14),
       tasks: z.array(itineraryTask).min(1).max(12),
@@ -38,7 +38,7 @@ export const Itinerary = defineComponent({
       legs: z.array(travelLeg).max(50),
     })
     .superRefine((props, context) => {
-      const schedule = Schedule.props.safeParse(props);
+      const schedule = scheduleSchema.safeParse(props);
       if (!schedule.success)
         for (const issue of schedule.error.issues)
           context.addIssue({ code: "custom", message: issue.message });

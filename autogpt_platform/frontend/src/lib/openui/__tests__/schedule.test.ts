@@ -1,39 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkspace, workspaceText } from "../parse";
-import { calculateSchedule } from "../schedule";
-import {
-  launchSchedule,
-  rehearsalSchedule,
-  revisedLaunch,
-} from "./schedule-fixtures";
+import { calculateSchedule, scheduleSchema } from "../schedule";
 
-describe("schedule constraints and matching text", () => {
-  it("splits work around lunch and derives the buffer from availability", () => {
-    const text = workspaceText(launchSchedule);
-    expect(text).toContain(
-      "780 min remaining; 840 min available; 60 min spare",
-    );
-    expect(text).toContain(
-      "Monday 09:00–Monday 12:00, Monday 13:00–Monday 14:00",
-    );
-    expect(text).toContain("Delivery (60 min): Tuesday 15:00–Tuesday 16:00");
-  });
-  it("preserves completed history and exposes an infeasible revision", () => {
-    const text = workspaceText(revisedLaunch);
-    expect(text).toContain(
-      "660 min remaining; 600 min available; 60 min unscheduled",
-    );
-    expect(text).toContain("Research: completed; excluded from remaining work");
-    expect(text).not.toContain("Research (240 min): Monday 14:00");
-  });
-  it("derives the same 140 remaining and 20 spare minutes for the revised rehearsal", () => {
-    expect(workspaceText(rehearsalSchedule)).toContain(
-      "140 min remaining; 160 min available; 20 min spare",
-    );
-    expect(workspaceText(rehearsalSchedule)).toContain(
-      "Rehearsal B (40 min): Today 14:20–Today 15:00",
-    );
-  });
+const plan = {
+  name: "plan",
+  title: "Plan",
+  days: [
+    {
+      label: "Monday",
+      windows: [
+        { start: "09:00", end: "12:00" },
+        { start: "13:00", end: "17:00" },
+      ],
+    },
+  ],
+  tasks: [
+    { id: "a", title: "A", minutes: 60, done: false, splittable: true },
+    { id: "b", title: "B", minutes: 60, done: false, splittable: false },
+  ],
+};
+
+describe("schedule logic shared by itineraries", () => {
   it("does not call spare capacity feasible when a contiguous activity cannot fit", () => {
     const result = calculateSchedule(
       [
@@ -88,11 +74,31 @@ describe("schedule constraints and matching text", () => {
     expect(result?.allocations[1].conflict).toBe("Waiting for an earlier task");
   });
   it.each([
-    launchSchedule.replace('start:"13:00"', 'start:"11:00"'),
-    launchSchedule.replace('end:"12:00"', 'end:"08:00"'),
-    launchSchedule.replace('id:"design"', 'id:"research"'),
-    rehearsalSchedule.replace('day:0,time:"15:10"', 'day:2,time:"15:10"'),
-  ])("rejects contradictory or malformed scheduling constraints", (source) => {
-    expect(() => parseWorkspace(source)).toThrow();
+    {
+      ...plan,
+      days: [
+        {
+          label: "Monday",
+          windows: [
+            { start: "09:00", end: "12:00" },
+            { start: "11:00", end: "17:00" },
+          ],
+        },
+      ],
+    },
+    {
+      ...plan,
+      days: [{ label: "Monday", windows: [{ start: "09:00", end: "08:00" }] }],
+    },
+    { ...plan, tasks: [plan.tasks[0], { ...plan.tasks[1], id: "a" }] },
+    {
+      ...plan,
+      tasks: [{ ...plan.tasks[0], deadline: { day: 2, time: "15:10" } }],
+    },
+  ])("rejects contradictory or malformed scheduling constraints", (value) => {
+    expect(scheduleSchema.safeParse(value).success).toBe(false);
+  });
+  it("accepts a coherent plan", () => {
+    expect(scheduleSchema.safeParse(plan).success).toBe(true);
   });
 });

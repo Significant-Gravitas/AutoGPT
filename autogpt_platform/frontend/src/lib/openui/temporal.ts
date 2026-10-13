@@ -41,38 +41,3 @@ export function localInstants(local: string, timeZone: string) {
   }
   return result;
 }
-
-export interface LocalDateTime {
-  local: string;
-  timeZone: string;
-  occurrence: "" | "earlier" | "later";
-}
-export function resolveDateTime(value: LocalDateTime, required = true) {
-  if (!value.local)
-    return { error: required ? "Choose a date and time." : "", instant: null };
-  if (!validTimeZone(value.timeZone))
-    return {
-      error: "Enter a valid time zone, for example America/Los_Angeles.",
-      instant: null,
-    };
-  const instants = localInstants(value.local, value.timeZone);
-  if (!instants.length)
-    return {
-      error:
-        "This local time does not exist or is invalid. Choose another time; check daylight saving changes.",
-      instant: null,
-    };
-  if (instants.length > 1 && !value.occurrence)
-    return {
-      error:
-        "This time occurs twice when the clocks change. Choose the earlier or later occurrence.",
-      instant: null,
-    };
-  return {
-    error: "",
-    instant:
-      value.occurrence === "later"
-        ? instants[instants.length - 1]
-        : instants[0],
-  };
-}

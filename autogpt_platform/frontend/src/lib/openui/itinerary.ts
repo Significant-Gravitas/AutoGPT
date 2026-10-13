@@ -1,7 +1,6 @@
 import { z } from "zod/v4";
 import { Itinerary, itineraryDay, itineraryTask } from "./catalog-itinerary";
-import { Schedule } from "./catalog-schedule";
-import { durationError } from "./schedule";
+import { durationError, scheduleSchema } from "./schedule";
 import { scheduleTransfers } from "./itinerary-transfers";
 import { localInstants, validTimeZone } from "./temporal";
 
@@ -68,7 +67,7 @@ export function itineraryInputError(draft: ItineraryDraft) {
     )
   )
     return "Use valid, distinct dates in chronological order.";
-  const windows = Schedule.props.safeParse({
+  const windows = scheduleSchema.safeParse({
     name: "plan",
     title: "Plan",
     days: draft.days,

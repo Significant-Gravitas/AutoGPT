@@ -6,20 +6,3 @@ export function downloadText(filename: string, text: string, type: string) {
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-
-export function csvText(rows: unknown[][]) {
-  return rows
-    .map((row) =>
-      row
-        .map((value) => {
-          const text = value == null ? "" : String(value);
-          const safe =
-            typeof value === "string" && /^[\s]*[=+\-@\t\r]/.test(text)
-              ? `'${text}`
-              : text;
-          return `"${safe.replaceAll('"', '""')}"`;
-        })
-        .join(","),
-    )
-    .join("\r\n");
-}

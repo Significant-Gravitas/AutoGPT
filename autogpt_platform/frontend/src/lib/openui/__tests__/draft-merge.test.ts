@@ -1,45 +1,37 @@
 import { describe, expect, it } from "vitest";
 import { mergeDraft } from "../draft-merge";
 import { draftFields, fieldValue, packFields } from "../draft-fields";
-import { dataDashboard, formView } from "./capability-fixtures";
+import { formView, tripProps, tripSource } from "./capability-fixtures";
 
 describe("reconciling drafts with model revisions", () => {
-  it("retains a user's cell edit while accepting a new source row and removing a deleted one", () => {
-    const before = dataDashboard();
+  it("retains a user's task edit while accepting the model's change to another task", () => {
+    const before = tripSource;
+    const after = before.replace('"minutes":90', '"minutes":120');
     const field = draftFields(before).find(
-      (field) => field.type === "DataGrid",
+      (field) => field.type === "Itinerary",
     )!;
-    const state = packFields([
-      {
-        field,
-        value: {
-          rows: [
-            { id: "jan", cells: { month: "January", revenue: 150, cost: 40 } },
-            {
-              id: "feb",
-              cells: { month: "February", revenue: 200, cost: null },
-            },
-          ],
-          selected: ["feb"],
-        },
-      },
-    ]);
-    const after = dataDashboard([
-      { id: "jan", cells: { month: "January", revenue: 100, cost: 40 } },
-      { id: "mar", cells: { month: "March", revenue: 300, cost: 40 } },
-    ]);
-    const result = mergeDraft(before, after, state);
+    const draft = {
+      days: tripProps.days,
+      tasks: [{ ...tripProps.tasks[0], minutes: 75 }, tripProps.tasks[1]],
+      timeZone: tripProps.timeZone,
+      selected: "bridge",
+    };
+    const result = mergeDraft(
+      before,
+      after,
+      packFields([{ field, value: draft }]),
+    );
     expect(
       fieldValue(
         result.state,
-        draftFields(after).find((field) => field.type === "DataGrid")!,
+        draftFields(after).find((field) => field.type === "Itinerary")!,
       ),
     ).toEqual({
-      rows: [
-        { id: "jan", cells: { month: "January", revenue: 150, cost: 40 } },
-        { id: "mar", cells: { month: "March", revenue: 300, cost: 40 } },
+      ...draft,
+      tasks: [
+        { ...tripProps.tasks[0], minutes: 75 },
+        { ...tripProps.tasks[1], minutes: 120 },
       ],
-      selected: [],
     });
   });
   it("uses an explicit revised value and reports the change instead of silently restoring stale input", () => {

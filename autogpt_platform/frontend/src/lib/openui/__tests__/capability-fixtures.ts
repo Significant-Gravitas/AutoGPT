@@ -1,19 +1,3 @@
-export const salesColumns = [
-  { key: "month", label: "Month", type: "text", required: true },
-  { key: "revenue", label: "Revenue", type: "number", unit: "USD" },
-  { key: "cost", label: "Cost", type: "number", unit: "USD" },
-];
-export const salesRows = [
-  { id: "jan", cells: { month: "January", revenue: 100, cost: 40 } },
-  { id: "feb", cells: { month: "February", revenue: 200, cost: null } },
-];
-export function dataDashboard(rows = salesRows) {
-  return `root = Workspace("Sales review", "Supplied data", [form, dashboard])
-form = Form("sales", "Edit observations", [grid], "Review changes", "Review these observations")
-grid = DataGrid("data", "Sales data", ${JSON.stringify(salesColumns)}, ${JSON.stringify(rows)}, true, "multiple", [], true)
-dashboard = Dashboard("sales_dashboard", "Sales overview", ${JSON.stringify(salesColumns)}, [], [{title: "Revenue and cost", kind: "line", x: "month", series: [{key: "revenue", label: "Revenue"}, {key: "cost", label: "Cost"}], unit: "USD"}], [{label: "Total revenue", column: "revenue", aggregate: "sum", unit: "USD"}, {label: "Total cost", column: "cost", aggregate: "sum", unit: "USD"}], {form: "sales", field: "data"})`;
-}
-
 export function formView(control: string, extras = "") {
   return `root = Workspace("Review", "Supplied choices", [form])\nform = Form("review", "Your choices", [control${extras ? ", extra" : ""}], "Continue", "Use my choices")\ncontrol = ${control}${extras ? `\nextra = ${extras}` : ""}`;
 }

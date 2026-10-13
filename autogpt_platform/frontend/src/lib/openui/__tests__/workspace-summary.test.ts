@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { parseWorkspace, workspaceText } from "../parse";
 import { connected } from "./connected-fixtures";
 import { planning } from "./expanded-fixtures";
-import { launchSchedule, rehearsalSchedule } from "./schedule-fixtures";
 
 describe("saved workspace text", () => {
   it("uses readable choices, keeps false preferences, and marks empty values as missing", () => {
@@ -29,20 +28,15 @@ describe("saved workspace text", () => {
     expect(summary).toContain(
       "Source: Hotel quote (https://example.com/quote)",
     );
-    expect(summary).toContain("Estimated total: Unknown / incomplete inputs");
     expect(summary).not.toContain("amount: 0");
   });
 
   it.each([
-    {
-      nights: "null",
-      amount: "Unknown / incomplete inputs",
-      field: "Unknown / not supplied",
-    },
-    { nights: "0", amount: "$66.00", field: "0" },
+    { nights: "null", field: "Unknown / not supplied" },
+    { nights: "0", field: "0" },
   ])(
     "distinguishes an unknown number from an explicitly supplied zero: $nights",
-    ({ nights, amount, field }) => {
+    ({ nights, field }) => {
       const source = connected
         .replace(
           '"Where would you stay?", ""',
@@ -51,53 +45,22 @@ describe("saved workspace text", () => {
         .replace('"Nights", 1, 1,', `"Nights", ${nights}, 0,`);
       const summary = workspaceText(source);
       expect(summary).toContain(`Nights: ${field}`);
-      expect(summary).toContain(`Estimated total: ${amount}`);
     },
   );
 
-  it("summarizes the selected labels and computes their count without exposing internal ids", () => {
-    const source = connected
-      .replace('["art"]', '["art", "history"]')
-      .replace(
-        '"Estimated total", "stay_amount * nights + extras_total", "currency", "USD", 2',
-        '"Interests selected", "count(interests) / 2", "percent", "", 0',
-      );
-    const summary = workspaceText(source);
+  it("summarizes the selected labels without exposing internal ids", () => {
+    const summary = workspaceText(
+      connected.replace('["art"]', '["art", "history"]'),
+    );
     expect(summary).toContain("Interests: Art, History");
-    expect(summary).toContain("Interests selected: 100%");
+    expect(summary).not.toContain('"history"');
   });
 
-  it("preserves reported completion, availability gaps, and allocation times", () => {
-    const summary = workspaceText(launchSchedule);
-    expect(summary).toContain("Monday available: 09:00–12:00, 13:00–17:00");
-    expect(summary).toContain(
-      "780 min remaining; 840 min available; 60 min spare.",
+  it("includes Prose markdown as text", () => {
+    const summary = workspaceText(
+      'root = Workspace("Notes", "", [Prose("## Packing\\n\\n- Passport\\n- Charger")])',
     );
-    expect(summary).toContain(
-      "Research (240 min): Monday 09:00–Monday 12:00, Monday 13:00–Monday 14:00",
-    );
-    const rehearsal = workspaceText(rehearsalSchedule);
-    expect(rehearsal).toContain(
-      "Setup: completed; excluded from remaining work",
-    );
-    expect(rehearsal).toContain(
-      "140 min remaining; 160 min available; 20 min spare.",
-    );
-    expect(rehearsal).toContain(
-      "Rehearsal B (40 min): Today 14:20–Today 15:00",
-    );
-  });
-
-  it("does not confuse a capacity deficit with unscheduled whole tasks", () => {
-    const source = `root = Workspace("Museum visits", "Illustrative", [form])
-form = Form("day", "Choose a reduction", [Schedule("visits", "Requested visits", [{label:"Afternoon",windows:[{start:"13:00",end:"16:00"}]}], [{id:"first",title:"Museum one",minutes:75,done:false,splittable:false},{id:"transfer1",title:"Transfer",minutes:20,done:false,splittable:false},{id:"second",title:"Museum two",minutes:75,done:false,splittable:false},{id:"transfer2",title:"Second transfer",minutes:20,done:false,splittable:false},{id:"third",title:"Museum three",minutes:75,done:false,splittable:false}])], "Discuss plan", "Help reduce this plan")`;
-    const summary = workspaceText(source);
-    expect(summary).toContain(
-      "265 min remaining; 180 min available; 95 min unscheduled; plan does not fit.",
-    );
-    expect(summary).toContain("85 min over available time.");
-    expect(summary).toContain("10 min unused.");
-    expect(summary).not.toContain("85 min unscheduled");
+    expect(summary).toContain("## Packing\n\n- Passport\n- Charger");
   });
 
   it("bounds large valid summaries and makes truncation explicit", () => {
@@ -118,11 +81,8 @@ form = Form("day", "Choose a reduction", [Schedule("visits", "Requested visits",
 
   it.each([
     'root = Workspace("Truncated", "", [',
-    connected.replace(
-      "stay_amount * nights + extras_total",
-      "missing_total + 1",
-    ),
-    connected.replace("quantity:2,unitPrice:25", "quantity:2,unitPrice:-25"),
+    connected.replace('id:"coast"', 'id:"city"'),
+    connected.replace('"Nights", 1, 1,', '"Nights", 0, 1,'),
   ])(
     "uses a safe fallback instead of presenting invalid output as complete",
     (source) => {

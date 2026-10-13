@@ -71,7 +71,7 @@ function validSelections(field: DraftField, value: unknown) {
     | { id?: string; value?: string }[]
     | undefined;
   if (
-    ["ResultList", "SearchSelect", "MultiSelectField"].includes(field.type) &&
+    ["ResultList", "MultiSelectField"].includes(field.type) &&
     Array.isArray(value)
   )
     return value.filter((id) =>
@@ -83,27 +83,6 @@ function validSelections(field: DraftField, value: unknown) {
     !choices.some((choice) => (choice.id ?? choice.value) === value)
   )
     return field.value;
-  if (
-    field.type === "DataGrid" &&
-    record(value) &&
-    Array.isArray(record(value)!.rows) &&
-    Array.isArray(record(value)!.selected)
-  ) {
-    const rows = record(value)!.rows as { id: string }[];
-    return {
-      ...record(value),
-      selected: (record(value)!.selected as unknown[]).filter((id) =>
-        rows.some((row) => row.id === id),
-      ),
-    };
-  }
-  if (field.type === "RankedList" && Array.isArray(value)) {
-    const ids = (field.props.items as { id: string }[]).map((item) => item.id);
-    return [
-      ...value.filter((id) => ids.includes(String(id))),
-      ...ids.filter((id) => !value.includes(id)),
-    ];
-  }
   return value;
 }
 

@@ -29,7 +29,9 @@ describe("OpenUI workspace contracts", () => {
     expect(() => parseWorkspace(source)).toThrow();
   });
   it("retains numeric chart values in the text comparison", () => {
-    expect(workspaceText(performance)).toContain("Mon: 126 runs");
+    expect(workspaceText(performance)).toContain(
+      "Mon: Completed runs 126 runs",
+    );
     expect(workspaceText(performance)).toContain("Completed runs: 1,284");
   });
 });

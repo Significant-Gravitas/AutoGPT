@@ -1,42 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { parseWorkspace, workspaceText } from "../parse";
-import { taskErrors, type BoardTask } from "../catalog-tasks";
-import { localInstants, resolveDateTime } from "../temporal";
+import { localInstants } from "../temporal";
 import { planItinerary } from "../itinerary";
 import { itineraryCalendar } from "../calendar-export";
-import { csvText } from "../download";
-import {
-  dataDashboard,
-  formView,
-  tripProps,
-  tripSource,
-} from "./capability-fixtures";
+import { formView, tripProps, tripSource } from "./capability-fixtures";
 
 describe("component contracts and data integrity", () => {
-  it("validates connected data and produces a matching summary", () => {
-    expect(parseWorkspace(dataDashboard())).toBeDefined();
-    const text = workspaceText(dataDashboard());
-    expect(text).toContain("Total revenue: 300 USD");
-    expect(text).toContain("Total cost: Unknown USD");
-  });
-  it("rejects disconnected dashboards and reserved field collisions", () => {
-    expect(() =>
-      parseWorkspace(
-        dataDashboard().replace('field: "data"', 'field: "missing"'),
-      ),
-    ).toThrow(/binding/);
+  it("rejects reserved field collisions", () => {
     expect(() =>
       parseWorkspace(formView('NumberField("a__draft", "Count", 1, 0, 10, 1)')),
     ).toThrow(/reserved/);
-  });
-  it("requires meaningful conditional field references", () => {
-    expect(() =>
-      parseWorkspace(
-        formView(
-          'FieldGroup("details", "Details", [{key:"name",label:"Name",type:"text"}], [{id:"one",cells:{name:null}}], false, true, {field:"missing",equals:true})',
-        ),
-      ),
-    ).toThrow(/condition/);
   });
   it.each([
     "javascript:alert(1)",
@@ -50,42 +23,31 @@ describe("component contracts and data integrity", () => {
       ),
     ).toThrow();
   });
-  it("keeps signed numbers and escapes spreadsheet formulas on export", () => {
-    expect(
-      csvText([
-        ["value"],
-        [-10.5],
-        ['=IMPORTXML("https://example.org")'],
-        ["multi\nline"],
-      ]),
-    ).toContain('"-10.5"');
-    expect(csvText([["=1+1"]])).toContain("'=1+1");
-  });
   it("retains null chart gaps and rejects incomplete/misleading series", () => {
     const source =
       'root = Workspace("Trend", "", [SeriesChart("Trend", "", "USD", "line", [{key:"a",label:"A"},{key:"b",label:"B"}], [{label:"Jan",values:{a:2,b:null}}])])';
     expect(workspaceText(source)).toContain("B Unknown USD");
     expect(() => parseWorkspace(source.replace("b:null", "c:null"))).toThrow();
+    expect(() =>
+      parseWorkspace(source.replace('key:"b",label:"B"', 'key:"a",label:"B"')),
+    ).toThrow();
+    expect(() =>
+      parseWorkspace(
+        source.replace('"line"', '"stacked"').replace("a:2", "a:-2"),
+      ),
+    ).toThrow();
   });
 });
 
-describe("time and dependency correctness", () => {
-  it("rejects nonexistent times and requires an explicit repeated-time choice", () => {
+describe("time correctness", () => {
+  it("rejects nonexistent times and finds both instants of a repeated time", () => {
     expect(localInstants("2026-03-08T02:30", "America/Los_Angeles")).toEqual(
       [],
     );
-    const value = {
-      local: "2026-11-01T01:30",
-      timeZone: "America/Los_Angeles",
-      occurrence: "" as const,
-    };
-    expect(resolveDateTime(value).error).toContain("twice");
-    expect(resolveDateTime({ ...value, occurrence: "earlier" }).instant).toBe(
+    expect(localInstants("2026-11-01T01:30", "America/Los_Angeles")).toEqual([
       "2026-11-01T08:30:00.000Z",
-    );
-    expect(resolveDateTime({ ...value, occurrence: "later" }).instant).toBe(
       "2026-11-01T09:30:00.000Z",
-    );
+    ]);
     expect(localInstants("2026-10-17T09:00", "Asia/Kathmandu")).toEqual([
       "2026-10-17T03:15:00.000Z",
     ]);
@@ -113,33 +75,6 @@ describe("time and dependency correctness", () => {
         days: [{ ...draft.days[0], date: "2026-10-18" }],
       }).error,
     ).toContain("different date");
-  });
-  it("detects cycles and unfinished prerequisites without treating local progress as execution", () => {
-    const tasks: BoardTask[] = [
-      {
-        id: "a",
-        title: "Prepare",
-        owner: "",
-        due: "",
-        status: "todo",
-        dependsOn: [],
-      },
-      {
-        id: "b",
-        title: "Ship",
-        owner: "",
-        due: "",
-        status: "todo",
-        dependsOn: ["a"],
-      },
-    ];
-    expect(taskErrors(tasks)).toEqual([]);
-    expect(taskErrors([{ ...tasks[0], dependsOn: ["b"] }, tasks[1]])).toContain(
-      "Dependencies contain a cycle.",
-    );
-    expect(
-      taskErrors([tasks[0], { ...tasks[1], status: "doing" }]).join(),
-    ).toContain("not complete");
   });
 });
 

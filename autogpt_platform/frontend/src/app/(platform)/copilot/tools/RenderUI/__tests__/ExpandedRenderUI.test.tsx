@@ -140,10 +140,7 @@ describe("useful generated views in chat", () => {
     fireEvent.click(screen.getByRole("combobox", { name: "Travel mode" }));
     fireEvent.click(await screen.findByRole("option", { name: "Transit" }));
     expect(
-      screen.getByRole("img", { name: /Weekly change.*-2/ }),
-    ).toBeDefined();
-    expect(
-      screen.getByRole("img", { name: /Visit mix.*Customers 3/ }),
+      screen.getByRole("img", { name: /Weekly change.*Net leads/ }),
     ).toBeDefined();
     expect(screen.getByText("Current")).toBeDefined();
     first.unmount();

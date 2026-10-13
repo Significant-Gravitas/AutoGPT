@@ -1,7 +1,7 @@
 import { useId, type CSSProperties } from "react";
 import type { ComponentRenderProps } from "@openuidev/react-lang";
 import type { z } from "zod/v4";
-import type { Comparison } from "@/lib/openui/catalog-connected";
+import type { Comparison } from "@/lib/openui/catalog-results";
 import { Button } from "@/components/atoms/Button/Button";
 import { useOpenUIDisabled } from "../../interactionContext";
 import { useFieldValidation } from "../useFieldValidation";

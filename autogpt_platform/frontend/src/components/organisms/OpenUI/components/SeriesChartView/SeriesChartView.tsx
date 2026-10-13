@@ -1,19 +1,12 @@
 import { useState } from "react";
 import type { ComponentRenderProps } from "@openuidev/react-lang";
 import type { z } from "zod/v4";
-import type { SeriesChart } from "@/lib/openui/catalog-dashboard";
+import type { SeriesChart } from "@/lib/openui/catalog-sections";
 import { SeriesPlot } from "./SeriesPlot";
 
 export function SeriesChartView({
-  props,
+  props: data,
 }: ComponentRenderProps<z.infer<typeof SeriesChart.props>>) {
-  return <SeriesChartContent data={props} />;
-}
-
-interface Props {
-  data: z.infer<typeof SeriesChart.props>;
-}
-export function SeriesChartContent({ data }: Props) {
   const [hidden, setHidden] = useState<string[]>([]);
   return (
     <section className="min-w-0 space-y-3" aria-label={data.title}>

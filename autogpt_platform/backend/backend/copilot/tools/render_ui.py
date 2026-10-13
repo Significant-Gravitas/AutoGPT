@@ -53,11 +53,11 @@ class RenderUITool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Present an inline artifact, connected dashboard, editable data grid, map, "
-            "itinerary, task board, chart, comparison, live execution status, "
-            "or input form in "
-            "the conversation using existing data. Forms continue this conversation; "
-            "rendering never performs external actions."
+            "Present an inline view in the conversation using existing data: "
+            "notes (Markdown prose), metrics, charts, tables, checklists, timelines, "
+            "maps, itineraries, comparisons, result lists, artifacts or input forms. "
+            "Forms continue this conversation; rendering never performs external "
+            "actions."
         )
 
     @property
@@ -78,7 +78,7 @@ class RenderUITool(BaseTool):
                     "type": "string",
                     "description": (
                         "Optional legacy summary. The saved fallback is generated "
-                        "from the validated view, including its computed totals. "
+                        "from the validated view, including its computed values. "
                         "Put all findings, caveats and sources in the view itself."
                     ),
                     "maxLength": 10_000,

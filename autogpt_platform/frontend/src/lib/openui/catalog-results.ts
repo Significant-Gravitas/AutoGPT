@@ -3,6 +3,8 @@ import { z } from "zod/v4";
 import { identifier, shortText, sourceLink } from "./data-values";
 import { artifactURI } from "./catalog-artifacts";
 
+const webURL = z.url({ protocol: /^https?$/ }).max(2000);
+
 export const resultOption = z.object({
   id: identifier,
   title: shortText,
@@ -49,33 +51,39 @@ export const ResultList = defineComponent({
   component: null,
 });
 
-export const RankedList = defineComponent({
-  name: "RankedList",
+export const Comparison = defineComponent({
+  name: "Comparison",
   description:
-    "Rank a supplied list inside Form using accessible move-up/down buttons. Items have stable ids, labels and details. The submitted value is the ordered array of ids. No candidate is dropped and ranking is a preference, not execution.",
+    "Two selectable comparison cards inside Form. On mobile, swipe left chooses the first option and right the second; buttons and undo also work. Selection stays local until Form submission. value is an option id, or empty for no choice. Facts, images and source links must be supplied or verified. Preserve the scope of EACH option's supplied facts: a generic warranty duration cannot go under a part-specific coverage label, and labels need not match across cards. Use broad Warranty duration and Coverage unknown instead. Unknown condition for both does not prove either lower risk. Optional amount is a comparable numeric value in the SAME unit for both options; it is published as name_amount, with name_label for the title. Do not invent prices or use 0 for unknown amounts.",
   props: z
     .object({
-      name: identifier,
+      name: shortText,
       label: shortText,
-      items: z
+      value: z.string(),
+      options: z
         .array(
           z.object({
-            id: identifier,
-            label: shortText,
-            detail: z.string().max(500),
+            id: shortText,
+            title: shortText,
+            description: z.string().max(500),
+            facts: z
+              .array(z.object({ label: shortText, value: z.string().max(300) }))
+              .max(6),
+            amount: z.number().optional(),
+            image: z.object({ url: webURL, alt: shortText }).optional(),
+            source: z.object({ url: webURL, label: shortText }).optional(),
           }),
         )
-        .min(2)
-        .max(30),
-      value: z.array(identifier).min(2).max(30),
+        .length(2),
     })
     .refine(
-      ({ items, value }) =>
-        new Set(items.map((i) => i.id)).size === items.length &&
-        new Set(value).size === items.length &&
-        value.length === items.length &&
-        value.every((id) => items.some((i) => i.id === id)),
-      { message: "Ranking must contain every unique item id exactly once." },
+      ({ options, value }) =>
+        new Set(options.map((option) => option.id)).size === 2 &&
+        (!value || options.some((option) => option.id === value)),
+      {
+        message:
+          "Use two distinct option ids and an empty or matching selected value.",
+      },
     ),
   component: null,
 });

@@ -1,20 +1,7 @@
 import { Itinerary } from "./catalog-itinerary";
-import { DateTimeField } from "./catalog-temporal";
-import { TaskBoard } from "./catalog-tasks";
-import { DataGrid } from "./catalog-data";
-import { ResultList, RankedList } from "./catalog-results";
-import {
-  ValidatedField,
-  SearchSelect,
-  FieldGroup,
-  DateRangeField,
-  RangeField,
-  DocumentEditor,
-} from "./catalog-inputs";
+import { ResultList, Comparison } from "./catalog-results";
 import { defineComponent } from "@openuidev/lang-core";
 import { z } from "zod/v4";
-import { Comparison, CostTable } from "./catalog-connected";
-import { Schedule } from "./catalog-schedule";
 import {
   TextAreaField,
   ToggleField,
@@ -58,7 +45,7 @@ export const DateField = defineComponent({
 export const NumberField = defineComponent({
   name: "NumberField",
   description:
-    "A numeric input inside a Form. Use null for an unknown initial value: it stays blank and dependent calculations pause until supplied. Never substitute 0 for missing data. Provide minimum/maximum (null if unbounded) and a positive step. Known initial values must satisfy those constraints.",
+    "A numeric input inside a Form. Use null for an unknown initial value: it stays blank until the user supplies it. Never substitute 0 for missing data. Provide minimum/maximum (null if unbounded) and a positive step. Known initial values must satisfy those constraints.",
   props: z
     .object({
       name: z.string(),
@@ -104,28 +91,16 @@ export const Form = defineComponent({
     fields: z
       .array(
         z.union([
-          TaskBoard.ref,
-          DateTimeField.ref,
-          Itinerary.ref,
-          DataGrid.ref,
-          ResultList.ref,
-          RankedList.ref,
-          ValidatedField.ref,
-          SearchSelect.ref,
-          FieldGroup.ref,
-          DateRangeField.ref,
-          RangeField.ref,
-          DocumentEditor.ref,
           Field.ref,
-          SelectField.ref,
-          DateField.ref,
-          NumberField.ref,
-          Comparison.ref,
-          CostTable.ref,
-          Schedule.ref,
           TextAreaField.ref,
-          ToggleField.ref,
+          SelectField.ref,
           MultiSelectField.ref,
+          NumberField.ref,
+          DateField.ref,
+          ToggleField.ref,
+          ResultList.ref,
+          Comparison.ref,
+          Itinerary.ref,
         ]),
       )
       .max(6),

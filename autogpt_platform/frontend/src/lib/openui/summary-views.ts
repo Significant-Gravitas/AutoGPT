@@ -1,27 +1,19 @@
-import { Dashboard, SeriesChart } from "./catalog-dashboard";
-import { Artifact, ExecutionView } from "./catalog-artifacts";
+import { SeriesChart } from "./catalog-sections";
+import { Artifact } from "./catalog-artifacts";
 import { Itinerary } from "./catalog-itinerary";
+import { Comparison, ResultList } from "./catalog-results";
+import { Prose } from "./catalog";
 import { planItinerary } from "./itinerary";
-import { aggregateRows } from "./dashboard";
-import { calculatedRows, rowsSchema } from "./data-values";
-import { tableText } from "./summary-interactive";
 import { scheduleTime } from "./schedule";
 
 export function sectionText(
   type: string,
   props: Record<string, unknown>,
-  fields: Map<string, Map<string, unknown>>,
 ): string[] | null {
+  if (type === "Prose") return [Prose.props.parse(props).markdown];
   if (type === "Artifact") {
     const p = Artifact.props.parse(props);
     return [p.title, p.description, `${p.filename} (${p.mimeType}): ${p.uri}`];
-  }
-  if (type === "ExecutionView") {
-    const p = ExecutionView.props.parse(props);
-    return [
-      p.title,
-      `Execution ${p.executionId}. Open the live view for current backend status and outputs.`,
-    ];
   }
   if (type === "SeriesChart") {
     const p = SeriesChart.props.parse(props);
@@ -32,23 +24,6 @@ export function sectionText(
         (point) =>
           `${point.label}: ${p.series.map((series) => `${series.label} ${point.values[series.key] ?? "Unknown"} ${p.unit}`).join("; ")}`,
       ),
-    ];
-  }
-  if (type === "Dashboard") {
-    const p = Dashboard.props.parse(props);
-    const rows = p.binding
-      ? rowsSchema.parse(
-          fields.get(p.binding.form)?.get(`${p.binding.field}_rows`),
-        )
-      : calculatedRows(p.columns, p.rows);
-    return [
-      p.title,
-      "Snapshot before interactive filtering",
-      ...p.metrics.map(
-        (metric) =>
-          `${metric.label}: ${aggregateRows(rows, metric) ?? "Unknown"} ${metric.unit}`,
-      ),
-      tableText(p.columns, rows),
     ];
   }
   if (type === "Itinerary") {
@@ -77,6 +52,26 @@ export function sectionText(
           ]
         : [error]),
       ...p.locations.map((place) => `${place.name}: ${place.detail}`),
+    ];
+  }
+  if (type === "ResultList") {
+    const p = ResultList.props.parse(props);
+    return [
+      p.label,
+      ...p.options.map(
+        (option) =>
+          `${p.value.includes(option.id) ? "[selected] " : ""}${option.title}: ${option.description}\n${option.facts.map((fact) => `${fact.label}: ${fact.value}${fact.source ? ` (${fact.source.url})` : ""}`).join("; ")}${option.amount == null ? "" : `; ${option.amount} ${p.unit}`}${option.source ? `\nSource: ${option.source.url}` : ""}`,
+      ),
+    ];
+  }
+  if (type === "Comparison") {
+    const p = Comparison.props.parse(props);
+    return [
+      p.label,
+      ...p.options.map(
+        (option) =>
+          `${option.title}${p.value === option.id ? " (selected)" : ""}: ${option.description}\n${option.facts.map((fact) => `${fact.label}: ${fact.value}`).join("; ")}${option.amount == null ? "" : `; amount: ${option.amount}`}${option.source ? `\nSource: ${option.source.label} (${option.source.url})` : ""}`,
+      ),
     ];
   }
   return null;

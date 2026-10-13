@@ -11,7 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import type { z } from "zod/v4";
-import type { SeriesChart } from "@/lib/openui/catalog-dashboard";
+import type { SeriesChart } from "@/lib/openui/catalog-sections";
 
 interface Props {
   data: z.infer<typeof SeriesChart.props>;
