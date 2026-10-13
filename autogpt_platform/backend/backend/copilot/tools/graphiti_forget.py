@@ -13,6 +13,7 @@ limits ``graphiti/AGENTS.md`` lists.
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core.edges import EntityEdge
