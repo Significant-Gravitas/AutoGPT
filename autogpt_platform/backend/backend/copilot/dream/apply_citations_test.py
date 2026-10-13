@@ -107,8 +107,11 @@ async def test_without_what_the_pass_read_it_is_checked_by_its_statement(
 
 @pytest.mark.asyncio
 async def test_the_writes_the_worker_dropped_are_reported(mocker) -> None:
+    """A dropped write is reported dropped, not consolidated."""
+
     async def worker_dropped_one(completion: IngestionCompletion, _: float) -> bool:
         completion.dropped_forgotten += 1
+        completion.written = completion.registered - 1
         return True
 
     mocker.patch.object(apply_mod, "wait_for_ingestion", worker_dropped_one)
@@ -121,8 +124,9 @@ async def test_the_writes_the_worker_dropped_are_reported(mocker) -> None:
 
     stats = await apply_mod.apply_operations(_SCOPE, "p1", ops)
 
-    assert stats["consolidated_count"] == 2
+    assert stats["consolidated_count"] == 1
     assert stats["dropped_forgotten"] == 1
+    assert stats["pending_write_count"] == 0
 
 
 @pytest.mark.asyncio

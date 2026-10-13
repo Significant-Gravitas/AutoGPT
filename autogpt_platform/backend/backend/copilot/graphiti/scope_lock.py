@@ -25,10 +25,11 @@ two of them instead of taking it straight back within one Redis round trip,
 which a poll every ``_POLL_SECONDS`` almost never beat.
 
 A writer waits a bounded time: an ingestion ``INGEST_LOCK_WAIT_SECONDS``,
-then its episode goes to the back of the queue, up to
-``ingest.INGEST_LOCK_ATTEMPTS`` times in all, before it is dropped with an
-error; a forget ``FORGET_LOCK_WAIT_SECONDS``, then it fails as ``busy`` with
-nothing written; the backfill skips the graph as busy. Two windows remain
+then its episode goes to the back of the queue after a pause and waits
+again, as often as it takes, never dropped for waiting
+(``ingest._write_or_requeue``); a forget ``FORGET_LOCK_WAIT_SECONDS``, then
+it fails as ``busy`` with nothing written; the backfill skips the graph as
+busy. Two windows remain
 in which a forget can be written over, and neither has a bound. When Redis
 cannot be reached, the ingestion worker and a forget go ahead without the
 lock and log a warning (a lock taken by a request that timed out after Redis

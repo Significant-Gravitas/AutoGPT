@@ -69,7 +69,8 @@ async def _run_worker(
         patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
         patch.object(ingest, "ensure_indices_once", AsyncMock()),
     ):
-        await ingest._ingestion_worker("test-user", "user_test", queue)
+        worker = ingest._ingestion_worker("test-user", "user_test", queue)
+        await asyncio.wait_for(worker, 10)
 
 
 def _graphiti_client() -> MagicMock:
@@ -201,54 +202,119 @@ class TestWriteLock:
         assert _LOCK not in lock_redis.values, "released afterwards"
 
     @pytest.mark.asyncio
-    async def test_a_graph_a_forget_keeps_locked_is_tried_again_once(
+    async def test_a_graph_a_forget_keeps_locked_is_tried_again(
         self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The first attempt writes nothing; the forget finishes and the
-        episode, back at the end of the queue, is written, and only then
-        does the enqueuer's completion count it."""
+        """The first attempt writes nothing; the forget finishes while the
+        episode pauses, and the episode, back at the end of the queue, is
+        written, and only then does the enqueuer's completion count it."""
         client = _graphiti_client()
         lock_redis.values[_LOCK] = "a forget's token"
         completion = ingest.IngestionCompletion()
         completion.register()
-        requeue = ingest._requeue_once
 
-        def forget_finishes(*args, **kwargs) -> bool:
-            assert completion.registered == 1 and not client.add_episode.called
+        async def forget_finishes(waits: int) -> None:
+            assert completion.pending == 1 and not client.add_episode.called
             del lock_redis.values[_LOCK]
-            return requeue(*args, **kwargs)
 
         monkeypatch.setattr(ingest, "INGEST_LOCK_WAIT_SECONDS", 0)
-        monkeypatch.setattr(ingest, "_requeue_once", forget_finishes)
+        monkeypatch.setattr(ingest, "_pause_before_retry", forget_finishes)
         await _run_worker(client, monkeypatch, _payload(_completion=completion))
 
         client.add_episode.assert_awaited_once()
-        assert "_lock_retried" not in client.add_episode.await_args.kwargs
+        assert "_lock_waits" not in client.add_episode.await_args.kwargs
         assert await completion.wait(0)
+        assert (completion.written, completion.pending) == (1, 0)
 
     @pytest.mark.asyncio
-    async def test_a_graph_locked_for_both_waits_drops_the_episode(
+    async def test_a_graph_locked_for_many_waits_keeps_the_episode(
         self,
         lock_redis: FakeRedis,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
+        """Codex's probe: an episode the graph's lock kept out wait after wait
+        is never dropped. It goes back on the queue each time, after a pause
+        that doubles up to its cap; every third wait a warning names it; it
+        is written once the lock frees."""
+        client = _graphiti_client()
+        lock_redis.values[_LOCK] = "a stuck forget's token"
+        completion = ingest.IngestionCompletion()
+        completion.register()
+        pauses: list[int] = []
+
+        async def pause(waits: int) -> None:
+            pauses.append(waits)
+            if waits == 7:
+                del lock_redis.values[_LOCK]
+
+        monkeypatch.setattr(ingest, "INGEST_LOCK_WAIT_SECONDS", 0)
+        monkeypatch.setattr(ingest, "_pause_before_retry", pause)
+        payload = _payload(name="remember-me", _completion=completion)
+        await _run_worker(client, monkeypatch, payload)
+
+        assert pauses == [1, 2, 3, 4, 5, 6, 7]
+        client.add_episode.assert_awaited_once()
+        assert (completion.written, completion.pending) == (1, 0)
+        warned = [r.getMessage() for r in caplog.records if r.levelname == "WARNING"]
+        assert [m for m in warned if "'remember-me' is still queued" in m] == [
+            f"Graph user_test locked by another writer for {waits} waits; the "
+            "episode 'remember-me' is still queued, unwritten"
+            for waits in (3, 6)
+        ]
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+
+    @pytest.mark.asyncio
+    async def test_with_no_room_in_the_queue_the_episode_is_tried_again_in_place(
+        self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The queue filled up while the episode waited: it keeps its turn,
+        is tried again where it stands, written first once the lock frees,
+        and the episode behind it after."""
         client = _graphiti_client()
         lock_redis.values[_LOCK] = "a forget's token"
+        queue: asyncio.Queue = asyncio.Queue(maxsize=1)
+        queue.put_nowait(_payload(name="first"))
+        behind: list[str] = []
+
+        async def pause(waits: int) -> None:
+            if not behind:
+                behind.append("second")
+                queue.put_nowait(_payload(name="second"))
+            else:
+                lock_redis.values.pop(_LOCK, None)
+
+        monkeypatch.setattr(ingest, "INGEST_LOCK_WAIT_SECONDS", 0)
+        monkeypatch.setattr(ingest, "_pause_before_retry", pause)
+        monkeypatch.setattr(ingest, "_WORKER_IDLE_TIMEOUT", 0.05)
+        with (
+            patch.object(ingest, "get_graphiti_client", AsyncMock(return_value=client)),
+            patch.object(ingest, "ensure_indices_once", AsyncMock()),
+        ):
+            worker = ingest._ingestion_worker("test-user", "user_test", queue)
+            await asyncio.wait_for(worker, 10)
+
+        written = [call.kwargs["name"] for call in client.add_episode.await_args_list]
+        assert written == ["first", "second"]
+
+    def test_the_pause_doubles_up_to_its_cap(self) -> None:
+        pauses = [ingest._retry_pause(waits) for waits in (1, 2, 3, 5, 6, 10_000)]
+
+        assert pauses == [1.0, 2.0, 4.0, 16.0, 30.0, 30.0]
+
+    @pytest.mark.asyncio
+    async def test_a_write_that_raises_is_counted_failed(
+        self, lock_redis: FakeRedis, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        client = _graphiti_client()
+        client.add_episode.side_effect = RuntimeError("extraction failed")
         completion = ingest.IngestionCompletion()
         completion.register()
 
-        monkeypatch.setattr(ingest, "INGEST_LOCK_WAIT_SECONDS", 0)
         await _run_worker(client, monkeypatch, _payload(_completion=completion))
 
-        client.add_episode.assert_not_called()
-        assert "requeued once" in caplog.text and "dropping" in caplog.text
-        # Never quietly: the drop is an error, which reaches Sentry.
-        assert any(
-            record.levelname == "ERROR" and "dropping" in record.getMessage()
-            for record in caplog.records
-        )
-        assert await completion.wait(0), "a dropped episode is no longer pending"
+        assert await completion.wait(0)
+        assert (completion.written, completion.failed, completion.pending) == (0, 1, 0)
 
     @pytest.mark.asyncio
     async def test_without_redis_the_episode_is_written_anyway(
