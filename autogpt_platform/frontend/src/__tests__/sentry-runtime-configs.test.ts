@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { initMock } = vi.hoisted(() => ({ initMock: vi.fn() }));
 
@@ -22,6 +22,10 @@ vi.mock("@sentry/nextjs", async (importOriginal) => {
 beforeEach(() => {
   initMock.mockReset();
   vi.resetModules();
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe.each([
@@ -135,5 +139,27 @@ describe.each([
     };
     expect(beforeSend(withCredentials(), {}).request).toEqual(stripped);
     expect(beforeSendTransaction(withCredentials()).request).toEqual(stripped);
+  });
+
+  it("tags events with the environment the deployment names for itself", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
+
+    await load();
+
+    expect(initMock.mock.calls[0][0].environment).toBe("pr-123");
+  });
+
+  it("tags events with the computed environment when none is named", async () => {
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", undefined);
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "");
+
+    await load();
+
+    expect(initMock.mock.calls[0][0].environment).toBe(
+      "app:local-behave:local",
+    );
   });
 });

@@ -1,5 +1,7 @@
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
-import { cardArguments } from "../ApprovalQueue/helpers";
+import { cardArguments, fallbackAsk } from "../ApprovalQueue/helpers";
+import { heldAskText, heldToolName } from "../ToolChain/heldRow";
 
 // Rows the server writes for a held call: the one that starts the turn when a
 // card is answered, and the call's late result, which the reply narrates.
@@ -31,7 +33,42 @@ export function countHeldCalls(
   );
 }
 
+// What a wake row says: the cards its turn delivered, by their own headlines.
+export function answeredLabel(
+  messages: UIMessage<unknown, UIDataTypes, UITools>[],
+  wakeIndex: number,
+): string {
+  const asks = new Map<string, string>();
+  for (const message of messages.slice(0, wakeIndex)) {
+    for (const part of message.parts) {
+      if (!("output" in part)) continue;
+      const card = heldCardOutput(part.output);
+      const reviewId = card ? str(card.review_id) : null;
+      if (!card || !reviewId) continue;
+      asks.set(reviewId, heldAskText(card, heldToolName(card, partTool(part))));
+    }
+  }
+  const names: string[] = [];
+  for (const message of messages.slice(wakeIndex + 1)) {
+    if (getHeldCallRowKind(message.metadata) !== "result") break;
+    const held = (message.metadata as { held_call: Record<string, unknown> })
+      .held_call;
+    const tool = str(held?.tool_name);
+    const name =
+      asks.get(str(held?.review_id) ?? "") ?? (tool && fallbackAsk(tool));
+    if (name) names.push(name);
+  }
+  return names.length
+    ? `Approval answered: ${names.join(", ")}. Result sent to ${AUTOPILOT_NAME}.`
+    : "Approval answered";
+}
+
 function heldReviewId(output: unknown): string | null {
+  const reviewId = heldCardOutput(output)?.review_id;
+  return typeof reviewId === "string" ? reviewId : null;
+}
+
+function heldCardOutput(output: unknown): Record<string, unknown> | null {
   let value = output;
   if (typeof value === "string") {
     try {
@@ -46,8 +83,16 @@ function heldReviewId(output: unknown): string | null {
     (value as { type?: unknown }).type !== "approval_required"
   )
     return null;
-  const reviewId = (value as { review_id?: unknown }).review_id;
-  return typeof reviewId === "string" ? reviewId : null;
+  return value as Record<string, unknown>;
+}
+
+function partTool(part: { type: string; toolName?: unknown }): string {
+  if (part.type === "dynamic-tool") return str(part.toolName) ?? "";
+  return part.type.startsWith("tool-") ? part.type.slice(5) : "";
+}
+
+function str(value: unknown): string | null {
+  return typeof value === "string" && value ? value : null;
 }
 
 export type HeldOutcomeKind =
