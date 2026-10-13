@@ -39,6 +39,7 @@ from backend.copilot.tools.models import (
 
 from . import ingest
 from .falkordb_driver import AutoGPTFalkorDriver
+from .migrations.backfill_legacy_forgets import ForgetMarkers, scan_markers
 from .recall import FORGOTTEN_FACT, is_forgotten, is_live
 from .recall_forget import retract
 from .recall_integration_fixtures import (
@@ -239,3 +240,30 @@ async def test_a_forget_marker_the_extraction_invents_is_never_saved(
     for answer in (live, soft, gone, hard):
         assert invented not in answer.model_dump_json()
     assert await edge_row(driver, bob) == {}
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_the_marker_scan_tells_an_invented_marker_from_a_forget(
+    scope_graph, stub_graphiti_client
+) -> None:
+    """The pre-deploy scan (``backfill_legacy_forgets --scan-markers``) lists
+    both marked facts by uuid, and as unscrubbed only the one whose marker a
+    past extraction invented: a forget scrubs the sentence it marks."""
+    driver, scope = scope_graph
+    _, edges = await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
+    alice, bob = edges[ALICE[2]], edges[BOB[2]]
+    await retract(scope, [alice])
+    await driver.execute_query(
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e.forgotten_at = $invented",
+        uuid=bob,
+        invented="2026-01-01T00:00:00+00:00",
+    )
+
+    found = await scan_markers(scope.group_id)
+
+    assert found == [
+        ForgetMarkers(
+            graph=scope.group_id, marked=sorted([alice, bob]), unscrubbed=[bob]
+        )
+    ]
