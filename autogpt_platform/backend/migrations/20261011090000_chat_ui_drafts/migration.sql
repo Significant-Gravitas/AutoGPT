@@ -23,4 +23,4 @@ ALTER TABLE "ChatUIDraft" ADD CONSTRAINT "ChatUIDraft_sessionId_fkey" FOREIGN KE
 ALTER TABLE "ChatUIDraft" ADD CONSTRAINT "ChatUIDraft_fileId_fkey" FOREIGN KEY ("fileId") REFERENCES "UserWorkspaceFile"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- Finds the live file that holds a view (find_openui_view_file).
-CREATE INDEX "UserWorkspaceFile_openui_viewId_idx" ON "UserWorkspaceFile"("workspaceId", (metadata->'openui'->>'viewId')) WHERE "isDeleted" = false AND metadata ? 'openui';
+CREATE INDEX IF NOT EXISTS "UserWorkspaceFile_openui_viewId_idx" ON "UserWorkspaceFile"("workspaceId", (metadata->'openui'->>'viewId')) WHERE "isDeleted" = false AND metadata ? 'openui';
