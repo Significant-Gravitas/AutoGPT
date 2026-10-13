@@ -34,7 +34,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from posthog import Posthog
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.data.notifications import SubscriberField
 from backend.notifications.audience_enrichment import (
@@ -54,13 +54,39 @@ CHECKOUT_OPENED_AT = "checkout_opened_at"
 # Always `$set`: the account's current values, under MailerLite's own keys.
 _ALWAYS_SET = (SubscriberField.EMAIL_TYPE, SubscriberField.SIGNIN_METHOD)
 
+# Every MailerLite field is one or the other, which `posthog_audience_test`
+# holds to the whole of `SubscriberField`, so a field added there can't skip
+# PostHog unnoticed. The checkout open goes as CHECKOUT_OPENED_AT.
+MIRRORED = frozenset(
+    {
+        *_ALWAYS_SET,
+        SubscriberField.EXCLUDE_DE_AT,
+        *COUNTRY_FIELDS,
+        SubscriberField.CHECKOUT_OPENED,
+    }
+)
+# The lifecycle sync sends the status and its dates, and the profile step the
+# role.
+NOT_MIRRORED = frozenset(
+    {
+        SubscriberField.STATUS,
+        SubscriberField.SIGNUP,
+        SubscriberField.TRIAL_STARTED,
+        SubscriberField.SUBSCRIPTION_STARTED,
+        SubscriberField.SUBSCRIPTION_CANCELED,
+        SubscriberField.SUBSCRIPTION_ENDED,
+        SubscriberField.ROLE,
+        SubscriberField.ROLE_OTHER,
+    }
+)
+
 
 class PersonUpdate(BaseModel):
     """One `$set` event: values that replace the person's, and values that
     only fill in ones the person doesn't hold yet."""
 
-    to_set: dict[str, str] = {}
-    to_set_once: dict[str, str] = {}
+    to_set: dict[str, str] = Field(default_factory=dict)
+    to_set_once: dict[str, str] = Field(default_factory=dict)
 
     def properties(self) -> dict[str, dict[str, str]]:
         return {

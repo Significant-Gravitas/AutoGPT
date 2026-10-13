@@ -10,22 +10,25 @@ import pytest
 from backend.data.notifications import SubscriberField
 from backend.data.onboarding_role import OnboardingRole
 from backend.notifications import posthog_audience
-from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
-from backend.notifications.posthog_audience import CHECKOUT_OPENED_AT, PersonUpdate
+from backend.notifications.audience_enrichment import (
+    checkout_fields,
+    merge_with_held,
+    role_fields,
+)
+from backend.notifications.posthog_audience import (
+    CHECKOUT_OPENED_AT,
+    MIRRORED,
+    NOT_MIRRORED,
+    PersonUpdate,
+)
 from backend.util import posthog_client
 
 CREATED = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
 OPENED = 1788305400
 OPENED_ISO = "2026-09-01T23:30:00+00:00"
 COUNTRY_KEYS = {"country", "country_code", "country_source"}
-SHARED = (
-    SubscriberField.EMAIL_TYPE,
-    SubscriberField.SIGNIN_METHOD,
-    SubscriberField.COUNTRY,
-    SubscriberField.COUNTRY_CODE,
-    SubscriberField.COUNTRY_SOURCE,
-    SubscriberField.EXCLUDE_DE_AT,
-)
+# Mirrored under MailerLite's own key and value; the open goes as a moment.
+SHARED = MIRRORED - {SubscriberField.CHECKOUT_OPENED}
 
 
 @pytest.fixture
@@ -106,20 +109,26 @@ def test_a_new_account_is_sent_from_its_signup_method(
 # ── checkout openers ─────────────────────────────────────────────────────────
 
 
-def test_an_opener_gets_mailerlites_values_under_its_keys():
-    fields = _fields(ip_country="AT")
+def test_every_mailerlite_field_is_mirrored_or_left_to_another_sender():
+    """A field added to SubscriberField fails this until it is placed, so it
+    can't skip PostHog unnoticed."""
+    assert MIRRORED | NOT_MIRRORED == set(SubscriberField)
+    assert not MIRRORED & NOT_MIRRORED
+
+
+def test_an_opener_gets_every_mirrored_field_and_nothing_else():
+    """With every signal a checkout can carry, and the role on top: the
+    mirrored fields arrive with MailerLite's values under its keys, the open as
+    a moment rather than MailerLite's day, and nothing another sender owns."""
+    fields = {
+        **_fields(stripe_country="AT", ip_country="US", signin_providers=["google"]),
+        **role_fields(OnboardingRole(choice="Other", other="Dentist")),
+    }
     person = _person(posthog_audience.checkout_update(fields, OPENED))
     for field in SHARED:
         assert person[field.value] == fields[field]
     assert person[CHECKOUT_OPENED_AT] == OPENED_ISO
-
-
-def test_the_status_its_dates_and_the_role_are_left_to_their_own_senders():
-    """The lifecycle sync owns the status and dates, and the profile step the
-    role; the open is a moment here, not MailerLite's day."""
-    fields = _fields(role=OnboardingRole(choice="Other", other="Dentist"))
-    sent = _sent(posthog_audience.checkout_update(fields, OPENED))
-    assert sent.keys() == {f.value for f in SHARED} | {CHECKOUT_OPENED_AT}
+    assert person.keys() == {f.value for f in SHARED} | {CHECKOUT_OPENED_AT}
 
 
 @pytest.mark.parametrize(
