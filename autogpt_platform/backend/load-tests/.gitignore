@@ -1,5 +1,6 @@
-# Credentials: LOAD_TEST_ACCOUNTS is read from the environment, and
-# configs/accounts.json is the place to keep it between runs.
+# Files that hold real credentials, so they are never committed:
+# configs/accounts.json keeps LOAD_TEST_ACCOUNTS between runs, and the other
+# two hold access tokens.
 configs/accounts.json
 configs/pre-authenticated-tokens.js
 configs/k6-credentials.env

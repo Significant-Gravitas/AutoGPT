@@ -187,7 +187,7 @@ function findSetupProblems() {
   }
   if (
     environment === "PREVIEW" &&
-    !/^[1-9]\d*$/.test(process.env.PR_NUMBER || "")
+    !/^[1-9]\d{0,6}$/.test(process.env.PR_NUMBER || "")
   ) {
     problems.push("PREVIEW needs PR_NUMBER=<pull request number>");
   }

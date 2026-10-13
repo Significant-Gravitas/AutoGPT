@@ -220,9 +220,6 @@ export default function (data) {
   sleep(Math.random() * 2 + 1); // 1-3 seconds
 }
 
-// Legacy functions removed - replaced by concurrent execution in main function
-// These functions are no longer used since implementing http.batch() for true concurrency
-
 export function teardown(data) {
   // graph_creations_total and graph_executions_total are in k6's summary.
   console.log("🧹 Cleaning up graph execution load test...");
