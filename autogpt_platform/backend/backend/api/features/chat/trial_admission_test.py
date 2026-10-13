@@ -13,6 +13,8 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.dependencies import get_request_context
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot import rate_limit
@@ -74,9 +76,6 @@ class TrialAccount:
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
-    from autogpt_libs.auth.dependencies import get_request_context
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
     yield
