@@ -258,10 +258,19 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-# render_ui adds the deferred OpenUI component library (12,308 chars after the
-# catalog trim). Measured 89,285 with it; plus the same 300-char margin.
-# Bumped 89_585 -> 89_829 for render_ui's `file` argument: measured 89,529, +300.
-_CHAR_BUDGET = 89_829
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one: 77_176.
+# render_ui adds the deferred OpenUI component library and its `file` argument
+# (12,505 chars, one tool). Measured 89,729 (90 tools) after merging dev
+# b92c8bdf24; plus the same 300-char margin.
+_CHAR_BUDGET = 90_029
 
 
 @pytest.fixture(scope="module")
