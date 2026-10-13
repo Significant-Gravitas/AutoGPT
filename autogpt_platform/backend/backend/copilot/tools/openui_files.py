@@ -250,7 +250,7 @@ async def read_view_file(
         message=(
             f"Read OpenUI view {file.name}. summary is its generated text, "
             "source the program, user_edits the user's current field values "
-            "and ticks. To revise it, call render_ui with "
+            "and ticks. To revise it, call tool:render_ui with "
             f'file="workspace://{file.id}" and a complete program that keeps '
             f"its viewId.{note}"
         ),

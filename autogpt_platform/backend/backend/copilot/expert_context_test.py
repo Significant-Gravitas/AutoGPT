@@ -988,7 +988,13 @@ class TestStripInjectedContextForDisplay:
             (None, ["team_context", "standing_work", "routines"]),
             (
                 "exp-1",
-                ["expert_workflows", "routines", "expert_computer", "team_context"],
+                [
+                    "expert_workflows",
+                    "routines",
+                    "expert_computer",
+                    "expert_files",
+                    "team_context",
+                ],
             ),
         ],
     )

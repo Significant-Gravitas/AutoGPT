@@ -98,6 +98,7 @@ describe("ArtifactsPage - saved interactive views", () => {
     );
     render(<ArtifactsPage />);
 
+    fireEvent.click(await screen.findByTestId("artifacts-view-grid"));
     expect(
       (await screen.findAllByText(/Interactive view/)).length,
     ).toBeGreaterThan(0);

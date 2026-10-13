@@ -861,7 +861,7 @@ class WriteWorkspaceFileTool(BaseTool):
             "Write a file to persistent workspace (survives across sessions). "
             "Provide exactly one of: content (text), content_base64 (binary), "
             f"or source_path (copy from working dir). Max {_MAX_FILE_SIZE_MB}MB. "
-            ".openui files hold a validated render_ui view. "
+            ".openui files hold a validated tool:render_ui view. "
             "Paths scoped to current session; use /sessions/<id>/... for "
             "cross-session access (expert chats are limited to their own "
             "conversations)."

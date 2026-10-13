@@ -43,6 +43,7 @@ OWNED_BLOCK_TAGS = (
     "expert_workflows",
     "routines",
     "expert_computer",
+    "expert_files",
     "team_context",
     "standing_work",
 )

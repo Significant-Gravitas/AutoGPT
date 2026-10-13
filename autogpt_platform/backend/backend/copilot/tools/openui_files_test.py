@@ -114,7 +114,7 @@ async def test_a_new_view_file_takes_over_the_chats_edits(setup_test_data):
     )
     write = WriteWorkspaceFileTool()
     written = await write._execute(
-        user_id=user.id, session=session, filename="revenue", content=SOURCE
+        user_id=user.id, session=session, filename="revenue.openui", content=SOURCE
     )
     assert isinstance(written, WorkspaceWriteResponse), written.message
     try:
