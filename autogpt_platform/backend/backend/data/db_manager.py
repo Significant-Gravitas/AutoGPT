@@ -660,6 +660,8 @@ class DatabaseManager(AppService):
     list_recent_versions = _(skill_versions_data.list_recent_versions)
     list_open_decisions = _(skill_versions_data.list_open_decisions)
     list_versions_in_states = _(skill_versions_data.list_versions_in_states)
+    invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
+    latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
     add_suppression = _(skill_use_data.add_suppression)
     find_suppression = _(skill_use_data.find_suppression)
     list_suppressions = _(skill_use_data.list_suppressions)
@@ -1143,6 +1145,8 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_recent_versions = d.list_recent_versions
     list_open_decisions = d.list_open_decisions
     list_versions_in_states = d.list_versions_in_states
+    invalidate_source_versions = d.invalidate_source_versions
+    latest_independent_version_id = d.latest_independent_version_id
     add_suppression = d.add_suppression
     find_suppression = d.find_suppression
     list_suppressions = d.list_suppressions

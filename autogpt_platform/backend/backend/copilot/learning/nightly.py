@@ -37,7 +37,11 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .chat_source import source_revision_from_record
 from .content_checks import safe_diagnostic
-from .contract import check_approval_precondition, get_source_adapter
+from .contract import (
+    check_approval_precondition,
+    eligibility_snapshot_changed,
+    get_source_adapter,
+)
 from .dispositions import (
     POLICY_VERSION,
     SkillLearningResult,
@@ -204,6 +208,10 @@ async def _process_source(
     )
     problem = check_approval_precondition(adapter, eligibility, source)
     if problem is not None:
+        if eligibility_snapshot_changed(eligibility, source):
+            return await record(
+                user_id, source, result, "deferred", problem, advance=False
+            )
         return await settle_ineligible(
             user_id, source, result, eligibility.state, problem
         )

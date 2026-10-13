@@ -18,6 +18,12 @@ import prisma.types
 from pydantic import BaseModel, Field
 
 from backend.data.skill_learning import owner_key_for
+from backend.data.skill_revocations import (
+    invalidate_source_versions as invalidate_source_versions,
+)
+from backend.data.skill_revocations import (
+    latest_independent_version_id as latest_independent_version_id,
+)
 from backend.data.skill_version_files import (
     SkillVersionFile,
     parse_version_files,

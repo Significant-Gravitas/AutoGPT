@@ -6,6 +6,7 @@ from .contract import (
     LearningScope,
     SourceRevision,
     check_approval_precondition,
+    eligibility_snapshot_changed,
     get_source_adapter,
 )
 from .publication_models import (
@@ -72,13 +73,7 @@ def _failure_status(
         return "paused"
     if retry_changed_source and (
         eligibility.state == EligibilityState.STALE
-        or (
-            eligibility.usable
-            and (
-                eligibility.epoch != source.epoch
-                or eligibility.revision != source.revision
-            )
-        )
+        or eligibility_snapshot_changed(eligibility, source)
     ):
         return "conflict"
     return "stale_eligibility"

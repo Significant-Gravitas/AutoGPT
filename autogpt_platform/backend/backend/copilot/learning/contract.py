@@ -180,6 +180,14 @@ def list_source_kinds() -> list[str]:
     return sorted(_ADAPTERS)
 
 
+def eligibility_snapshot_changed(
+    eligibility: Eligibility, source: SourceRevision
+) -> bool:
+    return eligibility.usable and (
+        eligibility.epoch != source.epoch or eligibility.revision != source.revision
+    )
+
+
 def check_approval_precondition(
     adapter: SourceAdapter, eligibility: Eligibility, source: SourceRevision
 ) -> str | None:

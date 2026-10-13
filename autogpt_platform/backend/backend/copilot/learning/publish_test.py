@@ -258,7 +258,7 @@ async def test_owner_validation_failure_returns_a_recoverable_outcome(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status", ["conflict", "stale_eligibility", "write_failed"])
-async def test_revocation_pauses_use_if_an_independent_restore_fails(
+async def test_revocation_keeps_invalidated_head_retryable_if_restore_fails(
     fake_store, workspace, monkeypatch, status
 ):
     source = await fake_store.upsert_source_revision(
@@ -279,7 +279,13 @@ async def test_revocation_pauses_use_if_an_independent_restore_fails(
     monkeypatch.setattr(revocation, "restore_version", restore)
     await revocation.invalidate_versions_for_source(USER, source, "excluded")
     restore.assert_awaited_once()
-    assert (await fake_store.get_head(USER, EXPERT, NAME)).use_paused_at is not None
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    assert (
+        await fake_store.get_version(USER, head.current_version_id)
+    ).state == "invalidated"
+    assert head.use_paused_at is None
+    await revocation.invalidate_versions_for_source(USER, source, "excluded")
+    assert restore.await_count == 2
 
 
 @pytest.mark.asyncio

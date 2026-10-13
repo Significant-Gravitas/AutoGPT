@@ -27,6 +27,7 @@ from backend.data.skill_publication import (
     VersionDraft,
 )
 from backend.data.skill_reviews import LearningReviewRecord, LearningRunSummary
+from backend.data.skill_revocations import RevokedVersion
 from backend.data.skill_use import SkillSuppressionRecord, SkillUseEventRecord
 from backend.data.skill_version_files import SkillVersionFile
 from backend.data.skill_versions import (
@@ -735,6 +736,54 @@ class FakeLearningStore:
             v.model_copy(update={"files": None})
             for v in sorted(rows, key=lambda v: v.created_at, reverse=True)[:limit]
         ]
+
+    async def invalidate_source_versions(
+        self, user_id: str, source_id: str, reason: str
+    ) -> list[RevokedVersion]:
+        await self.require_owned_source(user_id, source_id)
+        rows = [v for v in self.versions.values() if v.user_id == user_id]
+        affected = {
+            v.id
+            for v in rows
+            if any(s.get("source_id") == source_id for s in v.sources)
+        }
+        while True:
+            expanded = affected | {
+                v.id
+                for v in rows
+                if (v.restored_from_version_id or v.base_version_id) in affected
+            }
+            if expanded == affected:
+                break
+            affected = expanded
+        result = []
+        for v in rows:
+            if v.id in affected:
+                await self.set_version_state(user_id, v.id, "invalidated", reason)
+                result.append(
+                    RevokedVersion(
+                        id=v.id,
+                        head_id=v.head_id,
+                        owner_key=v.owner_key,
+                        expert_id=v.expert_id,
+                        skill_name=v.skill_name,
+                    )
+                )
+        return result
+
+    async def latest_independent_version_id(
+        self, user_id: str, head_id: str
+    ) -> str | None:
+        rows = [
+            v
+            for v in self.versions.values()
+            if v.user_id == user_id
+            and v.head_id == head_id
+            and v.state == "ready"
+            and v.content
+        ]
+        latest = max(rows, key=lambda v: v.version, default=None)
+        return latest.id if latest else None
 
     # ---- suppressions + use events -------------------------------------
 
