@@ -442,7 +442,7 @@ describe("Out of AutoPilot budget", () => {
         name: "Usage notice",
       });
       expect(
-        await within(notice).findByRole("button", { name: "Upgrade to Pro" }),
+        await within(notice).findByRole("button", { name: /^Start Pro/ }),
       ).toBeDefined();
       expect(within(notice).queryByText(/resets|refreshes/)).toBeNull();
       expect(

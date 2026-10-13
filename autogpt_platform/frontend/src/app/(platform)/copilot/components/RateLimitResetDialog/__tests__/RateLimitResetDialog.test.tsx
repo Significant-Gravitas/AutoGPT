@@ -152,11 +152,11 @@ describe("Usage limit dialog", () => {
         onSendAtReset={vi.fn()}
       />,
     );
-    expect(screen.getByText("More room for what’s next.")).toBeDefined();
+    expect(screen.getByText("You’ve hit today’s limit")).toBeDefined();
     expect(screen.getByText(/^It resets at .+, in 1 h 40 min\./)).toBeDefined();
     expect(screen.getByRole("button", { name: "Send at reset" })).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Review Max upgrade" }),
+      screen.getByRole("button", { name: "Upgrade to Max" }),
     ).toBeDefined();
   });
   it("offers no waiting when the window allows nothing", () => {
@@ -175,9 +175,7 @@ describe("Usage limit dialog", () => {
     );
     expect(screen.queryByText(/You can continue after|resets/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Send at reset" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Upgrade to Pro" }),
-    ).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Start Pro/ })).toBeDefined();
     expect(
       screen.getByRole("button", { name: "Back to my work" }),
     ).toBeDefined();
