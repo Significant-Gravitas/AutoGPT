@@ -111,8 +111,8 @@ def test_an_opener_gets_what_the_live_checkout_sends():
 
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Mock]:
-    """The run's own PostHog client, never the shared one. `client.on_error`
-    is the callback the run gave it for failed uploads."""
+    """The run's own PostHog client (`posthog_client.send_each`), never the
+    shared one. `client.on_error` is the callback the run gave it."""
     client = Mock()
     shared = Mock()
     monkeypatch.setattr(posthog_client, "get_posthog_client", lambda: shared)
@@ -121,55 +121,49 @@ def client(monkeypatch: pytest.MonkeyPatch) -> Iterator[Mock]:
         client.on_error = options["on_error"]
         return client
 
-    monkeypatch.setattr(backfill, "new_posthog_client", new_client)
+    monkeypatch.setattr(posthog_client, "new_posthog_client", new_client)
     yield client
     shared.capture.assert_not_called()
 
 
-def _updates(count: int) -> list[AccountUpdate]:
-    return [
-        AccountUpdate(
-            user_id=str(i), update=PersonUpdate(to_set={"email_type": "business"})
-        )
-        for i in range(count)
-    ]
-
-
 @pytest.mark.asyncio
-async def test_each_account_is_one_event_flushed_as_it_goes(client: Mock, monkeypatch):
-    monkeypatch.setattr(backfill, "POSTHOG_FLUSH_EVERY", 2)
-    assert await backfill.send(_updates(5)) == 0
-    sent = [c.kwargs["distinct_id"] for c in client.capture.call_args_list]
-    assert sent == ["0", "1", "2", "3", "4"]
-    # After the second and the fourth; shutting down flushes the rest.
-    assert client.flush.call_count == 2
+async def test_each_account_is_one_update_on_the_runs_own_client(client: Mock):
+    updates = [
+        AccountUpdate(user_id="1", update=PersonUpdate(to_set={"email_type": "x"})),
+        AccountUpdate(user_id="2", update=PersonUpdate(to_set_once={"country": "y"})),
+    ]
+    assert await backfill.send(updates) == 0
+    sent = [
+        (c.kwargs["distinct_id"], c.kwargs["event"], c.kwargs["properties"])
+        for c in client.capture.call_args_list
+    ]
+    assert [(distinct_id, event) for distinct_id, event, _ in sent] == [
+        ("1", "$set"),
+        ("2", "$set"),
+    ]
+    assert sent[0][2]["$set"] == {"email_type": "x"}
+    assert sent[1][2]["$set_once"] == {"country": "y"}
     client.shutdown.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_an_account_the_client_refused_counts_as_failed(client: Mock):
-    """The client returns None for an event it dropped."""
+async def test_what_posthog_did_not_take_is_returned(client: Mock):
+    """Refused when queued, or in an upload that failed for good."""
     client.capture.side_effect = lambda **event: (
-        None if event["distinct_id"] == "1" else "event-uuid"
-    )
-    assert await backfill.send(_updates(3)) == 1
-
-
-@pytest.mark.asyncio
-async def test_accounts_in_a_failed_upload_count_as_failed_once(client: Mock):
-    """An upload that still fails after the client's retries reaches
-    `on_error` with its batch, by the time the run shuts the client down."""
-    client.capture.side_effect = lambda **event: (
-        None if event["distinct_id"] == "2" else "event-uuid"
+        None if event["distinct_id"] == "0" else "event-uuid"
     )
     client.shutdown.side_effect = lambda: client.on_error(
-        RuntimeError("503"), [{"distinct_id": "0"}, {"distinct_id": "2"}]
+        RuntimeError("503"), [{"distinct_id": "2"}]
     )
-    assert await backfill.send(_updates(4)) == 2
+    updates = [
+        AccountUpdate(user_id=str(i), update=PersonUpdate(to_set={"email_type": "x"}))
+        for i in range(3)
+    ]
+    assert await backfill.send(updates) == 2
 
 
 @pytest.mark.asyncio
 async def test_sending_without_posthog_fails_before_sending_anything(monkeypatch):
-    monkeypatch.setattr(backfill, "new_posthog_client", lambda **_: None)
+    monkeypatch.setattr(posthog_client, "new_posthog_client", lambda **_: None)
     with pytest.raises(RuntimeError, match="PostHog is not configured"):
         await backfill.send(_plan().updates)

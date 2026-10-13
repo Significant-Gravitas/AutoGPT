@@ -17,21 +17,20 @@ Nobody is left out: PostHog is analytics, not marketing. A repeated run sends
 the same values, so it is harmless.
 """
 
-import asyncio
 from collections import Counter
 from collections.abc import Mapping
 from datetime import datetime
+from functools import partial
 
+from posthog import Posthog
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
 from backend.notifications import posthog_audience
 from backend.notifications.audience_enrichment import YES, checkout_fields
 from backend.notifications.posthog_audience import CHECKOUT_OPENED_AT, PersonUpdate
-from backend.util.posthog_client import new_posthog_client
+from backend.util.posthog_client import send_each
 
-# The PostHog client drops events once its in-memory queue is full.
-POSTHOG_FLUSH_EVERY = 500
 NONE = "none"
 
 
@@ -129,26 +128,13 @@ def _tally(updates: list[AccountUpdate]) -> AudiencePlan:
 
 
 async def send(updates: list[AccountUpdate]) -> int:
-    """One `$set` event per account, on a client of the run's own, flushed as
-    it goes. Returns how many accounts PostHog didn't take: refused when
-    queued, or in a batch whose upload still failed after the client's
-    retries. The run sends the same values every time, so retrying is
-    harmless."""
-    failed: set[str] = set()
+    """One `$set` event per account. Returns how many accounts PostHog didn't
+    take (`posthog_client.send_each`). The run sends the same values every
+    time, so retrying is harmless."""
+    return await send_each(
+        (change.user_id, partial(_send_update, change)) for change in updates
+    )
 
-    def upload_failed(_error: Exception, batch: list[dict]) -> None:
-        failed.update(str(event.get("distinct_id")) for event in batch)
 
-    client = new_posthog_client(on_error=upload_failed)
-    if client is None:
-        raise RuntimeError("PostHog is not configured")
-    try:
-        for index, change in enumerate(updates, start=1):
-            if not posthog_audience.send(change.user_id, change.update, client=client):
-                failed.add(change.user_id)
-            if index % POSTHOG_FLUSH_EVERY == 0:
-                await asyncio.to_thread(client.flush)
-    finally:
-        # Flushes what is left; failed uploads reach `upload_failed` first.
-        await asyncio.to_thread(client.shutdown)
-    return len(failed)
+def _send_update(change: AccountUpdate, client: Posthog) -> bool:
+    return posthog_audience.send(change.user_id, change.update, client=client)

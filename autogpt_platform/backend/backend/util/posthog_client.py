@@ -5,12 +5,15 @@ process is both cheaper and safer than one per module. Emitters send through
 :func:`capture`, which adds the base properties every event carries
 (``environment`` and ``source``, see ``docs/engineering/tracking-plan.md``),
 treats a missing client as "analytics disabled" and never lets tracking
-raise into the request or execution that produced the event.
+raise into the request or execution that produced the event. A one-off run
+that must know what PostHog didn't take, such as a backfill, sends through
+:func:`send_each` on a client of its own instead.
 """
 
+import asyncio
 import atexit
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Iterable, Mapping
 from functools import cache
 from threading import Lock
 from typing import Any
@@ -123,6 +126,41 @@ def capture(
             exc_info=True,
         )
         return False
+
+
+# The client drops events once its in-memory queue is full.
+FLUSH_EVERY = 500
+
+# One event to send: the distinct id it is for, and the call that queues it on
+# the client it is given, saying whether the client took it.
+Send = tuple[str, Callable[[Posthog], bool]]
+
+
+async def send_each(sends: Iterable[Send]) -> int:
+    """Queue `sends` on a client of the run's own, flushing as it goes and
+    shutting it down at the end, for a one-off run such as a backfill. Returns
+    how many distinct ids PostHog didn't take: refused when queued, or in a
+    batch whose upload still failed after the client's retries.
+
+    Raises RuntimeError when analytics is off."""
+    failed: set[str] = set()
+
+    def upload_failed(_error: Exception, batch: list[dict]) -> None:
+        failed.update(str(event.get("distinct_id")) for event in batch)
+
+    client = new_posthog_client(on_error=upload_failed)
+    if client is None:
+        raise RuntimeError("PostHog is not configured")
+    try:
+        for index, (distinct_id, send) in enumerate(sends, start=1):
+            if not send(client):
+                failed.add(distinct_id)
+            if index % FLUSH_EVERY == 0:
+                await asyncio.to_thread(client.flush)
+    finally:
+        # Flushes what is left; failed uploads reach `upload_failed` first.
+        await asyncio.to_thread(client.shutdown)
+    return len(failed)
 
 
 def _shutdown() -> None:

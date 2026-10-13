@@ -43,9 +43,10 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
     opted out of marketing or whom a signal places in Iran or Russia, their
     Stripe billing country included, is left out.
 
-    Dry run by default, with counts only. Idempotent, so a repeated --apply
-    resumes an interrupted one; run the dry run again afterwards to confirm
-    nothing is left.
+    Dry run by default, with counts only. A run that PostHog or MailerLite
+    didn't take in full fails after reporting. Idempotent, so a repeated
+    --apply resumes an interrupted or failed one; run the dry run again
+    afterwards to confirm nothing is left.
     """
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
@@ -60,10 +61,10 @@ async def _run(*, apply: bool, yes: bool) -> None:
     from backend.notifications import mailerlite_field_backfill as field_backfill
     from backend.notifications import role_backfill
     from backend.notifications.mailerlite import MailerLiteNotConfigured
-    from backend.util.posthog_client import get_posthog_client
     from backend.util.settings import Settings
 
-    if not Settings().secrets.stripe_api_key:
+    settings = Settings()
+    if not settings.secrets.stripe_api_key:
         raise click.ClickException("STRIPE_API_KEY is not set.")
     try:
         current = await field_backfill.read_current()
@@ -85,7 +86,7 @@ async def _run(*, apply: bool, yes: bool) -> None:
     if not plan.posthog and not plan.mailerlite:
         click.echo("\nNothing to write.")
         return
-    if get_posthog_client() is None:
+    if not settings.secrets.posthog_api_key:
         raise click.ClickException("POSTHOG_API_KEY is not set.")
     if not yes:
         click.confirm(
@@ -93,8 +94,10 @@ async def _run(*, apply: bool, yes: bool) -> None:
             f"{len(plan.mailerlite)} MailerLite subscribers?",
             abort=True,
         )
-    await role_backfill.send_to_posthog(plan.posthog)
-    click.echo(f"PostHog: {len(plan.posthog)} sent")
+    posthog_failed = await role_backfill.send_to_posthog(plan.posthog)
+    click.echo(
+        f"PostHog: {len(plan.posthog) - posthog_failed} sent, {posthog_failed} failed"
+    )
     if plan.mailerlite:
         await mailerlite.ensure_fields()
         # Connected again for the writes: each subscriber is checked against
@@ -107,6 +110,11 @@ async def _run(*, apply: bool, yes: bool) -> None:
         finally:
             await disconnect()
         _finish(ok, failed, skipped)
+    if posthog_failed:
+        raise click.ClickException(
+            f"{posthog_failed} PostHog persons were not sent (the log says why); "
+            "run again to retry them"
+        )
 
 
 async def _records() -> "list[RoleRecord]":
