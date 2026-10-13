@@ -80,6 +80,9 @@ class DreamPassApplied(BaseModel):
     proposal_count: int = 0
     demotion_count: int = 0
     entity_invalidation_count: int = 0
+    dropped_forgotten: int = 0
+    pending_write_count: int = 0
+    failed_write_count: int = 0
     # Distinct facts an acknowledged write spared and the accounting read
     # found live (provisional when the accounting is incomplete); a row
     # written before it reads 0.
@@ -140,9 +143,8 @@ class DreamPassUpdate(BaseModel):
     not both.
 
     ``closed_row`` is the one kind of write a closed row takes: the cleanup
-    after its pass saying it has finished, or that the reaper tried it and
-    did not finish (nothing cleared, the row's write time moved). It applies
-    to a closed row only, and may only clear columns.
+    after its pass saying it has finished. It applies to a closed row only,
+    and may only clear columns.
     """
 
     status: DreamPassStatus | None = None

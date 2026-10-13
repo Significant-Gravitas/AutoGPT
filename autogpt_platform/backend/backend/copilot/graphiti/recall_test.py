@@ -11,10 +11,12 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from graphiti_core.driver.driver import GraphProvider
 from graphiti_core.edges import EntityEdge
 from graphiti_core.search.search_config import EdgeReranker, SearchResults
 from graphiti_core.search.search_config_recipes import EDGE_HYBRID_SEARCH_CROSS_ENCODER
 from graphiti_core.search.search_filters import ComparisonOperator
+from graphiti_core.search.search_utils import DEFAULT_MIN_SCORE
 
 from . import recall
 from .scope import MemoryScope
@@ -49,6 +51,24 @@ def _fact(
         invalid_at=invalid_at,
         attributes={k: v for k, v in attributes.items() if v is not None},
     )
+
+
+def _record(uuid: str) -> dict:
+    """A forgotten edge as the graph returns it to graphiti's record reader."""
+    return {
+        "uuid": uuid,
+        "source_node_uuid": "alice",
+        "target_node_uuid": "atlas",
+        "group_id": _SCOPE.group_id,
+        "created_at": _NOW.isoformat(),
+        "name": "[forgotten]",
+        "fact": "[forgotten]",
+        "episodes": [],
+        "expired_at": _NOW.isoformat(),
+        "valid_at": None,
+        "invalid_at": None,
+        "attributes": {"forgotten_at": _NOW.isoformat()},
+    }
 
 
 class TestLiveFactPredicate:
@@ -301,26 +321,30 @@ class TestSearchFacts:
 
 class TestSearchForgottenFacts:
     @pytest.mark.asyncio
-    async def test_returns_only_forgotten_facts_best_first(self) -> None:
-        """For a soft forget made permanent: live and retired facts are
-        dropped, forgotten ones kept in graphiti's order, up to ``limit``."""
+    async def test_ranks_the_forgotten_facts_alone_by_meaning(self) -> None:
+        """For a soft forget made permanent: the request is embedded and only
+        forgotten facts are ranked against it, best first, above graphiti's
+        similarity threshold, up to ``limit``, so however many live facts
+        match better, none takes a forgotten one's slot."""
         client = MagicMock()
-        found = [
-            _fact("live"),
-            _fact("first", status="retracted", forgotten_at=_NOW.isoformat()),
-            _fact("superseded", status="superseded", reason="stale_fact"),
-            _fact("pre-policy", expired_at=_NOW),
-            _fact("third", forgotten_at=_NOW.isoformat()),
-        ]
-        client.search_ = AsyncMock(return_value=SearchResults(edges=found))
+        client.embedder.create = AsyncMock(return_value=[0.25, 0.75])
+        client.driver.provider = GraphProvider.FALKORDB
+        rows = [_record("first"), _record("pre-policy")]
+        client.driver.execute_query = AsyncMock(return_value=(rows, [], None))
         get_client = AsyncMock(return_value=client)
         with patch.object(recall, "get_graphiti_client", get_client):
-            facts = await recall.search_forgotten_facts(_SCOPE, "atlas", limit=2)
+            facts = await recall.search_forgotten_facts(_SCOPE, "the\natlas", limit=2)
 
         assert [f.uuid for f in facts] == ["first", "pre-policy"]
         get_client.assert_awaited_once_with(_SCOPE.group_id)
-        kwargs = client.search_.await_args.kwargs
-        assert (kwargs["query"], kwargs["group_ids"]) == ("atlas", [_SCOPE.group_id])
-        assert "search_filter" not in kwargs, "expired facts must be searched"
-        assert kwargs["config"].limit == 2 * recall._FORGOTTEN_OVERFETCH
-        assert kwargs["config"].edge_config.reranker == EdgeReranker.rrf
+        client.embedder.create.assert_awaited_once_with(input_data=["the atlas"])
+        query = client.driver.execute_query.await_args.args[0]
+        assert f"AND {recall.forgotten_fact_predicate('e')}" in query
+        assert "vec.cosineDistance(e.fact_embedding" in query
+        assert query.endswith("ORDER BY score DESC LIMIT $limit")
+        assert client.driver.execute_query.await_args.kwargs == {
+            "group_id": _SCOPE.group_id,
+            "search_vector": [0.25, 0.75],
+            "min_score": DEFAULT_MIN_SCORE,
+            "limit": 2,
+        }

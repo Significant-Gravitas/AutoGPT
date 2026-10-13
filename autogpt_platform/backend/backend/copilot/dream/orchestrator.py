@@ -708,6 +708,8 @@ def _applied_result(
         demotion_count=_as_int("demotion_count"),
         entity_invalidation_count=_as_int("entity_invalidation_count"),
         dropped_forgotten=_as_int("dropped_forgotten"),
+        pending_write_count=_as_int("pending_write_count"),
+        failed_write_count=_as_int("failed_write_count"),
         protected_demotions=_as_int("protected_demotions"),
         indeterminate_demotion_writes=_as_int("indeterminate_demotion_writes"),
         # Only apply's own False marks the count unconfirmed.

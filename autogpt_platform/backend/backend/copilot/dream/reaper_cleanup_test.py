@@ -318,7 +318,7 @@ class TestTheListing:
     async def test_slow_calls_within_their_deadlines_leave_both_kinds_their_share(
         self, mocker, fake_dream_db, provider_cancel, batch_status
     ):
-        """Scaled to a hundredth: every listing, close, move to the back,
+        """Scaled to a hundredth: every listing, close, clear of a mark,
         provider cancel and status read takes 9 s of a 10 s deadline. Each
         run's lapsed pass spends its own half of the budget; the pending
         cleanup is still reached."""
@@ -329,7 +329,7 @@ class TestTheListing:
             "read_expired_passes",
             "read_pending_cleanups",
             "write_stop",
-            "record_cleanup_unfinished",
+            "record_cleanup_finished",
         ):
             mocker.patch.object(reaper_mod, name, _slowed(getattr(reaper_mod, name)))
 
@@ -425,9 +425,9 @@ class TestTheBudget:
         _seed(fake_dream_db, "s1", route=DreamPassRoute.SYNC)
         list_pending = reaper_mod.read_pending_cleanups
 
-        async def slow_listing(*, due_before, limit: int):
+        async def slow_listing(**kwargs):
             await asyncio.sleep(0.5)
-            return await list_pending(due_before=due_before, limit=limit)
+            return await list_pending(**kwargs)
 
         mocker.patch.object(reaper_mod, "read_pending_cleanups", slow_listing)
 

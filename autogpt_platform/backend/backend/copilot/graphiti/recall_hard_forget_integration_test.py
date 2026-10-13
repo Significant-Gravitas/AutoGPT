@@ -291,8 +291,8 @@ async def test_a_soft_forget_can_still_be_made_permanent_from_chat(
     scope_graph, stub_graphiti_client, mocker: MockerFixture
 ) -> None:
     """``memory_forget_search`` offers a softly forgotten fact again only when
-    asked for forgotten ones, by the sentence its forget kept for audit, and
-    the hard delete that follows removes the edge."""
+    asked for forgotten ones, by its uuid and dates and never its sentence,
+    and the hard delete that follows removes the edge."""
     driver, scope = scope_graph
     _, edges = await ingest_facts(driver, scope, stub_graphiti_client, [ALICE, BOB])
     alice, bob = edges[ALICE[2]], edges[BOB[2]]
@@ -312,7 +312,8 @@ async def test_a_soft_forget_can_still_be_made_permanent_from_chat(
     )
     assert isinstance(found, MemoryForgetCandidatesResponse)
     offered = [(c["uuid"], c["fact"], c.get("forgotten")) for c in found.candidates]
-    assert offered == [(bob, BOB[2], None), (alice, ALICE[2], "true")]
+    assert offered == [(bob, BOB[2], None), (alice, FORGOTTEN_FACT, "true")]
+    assert ALICE[2] not in found.model_dump_json()
 
     confirmed = await graphiti_forget.MemoryForgetConfirmTool()._execute(
         scope.owner_user_id, session, uuids=[alice], hard_delete=True

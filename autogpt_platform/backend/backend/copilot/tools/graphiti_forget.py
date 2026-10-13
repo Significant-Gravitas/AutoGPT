@@ -23,7 +23,11 @@ from backend.copilot.graphiti.memory_model import (
     MemoryForgetFailure,
     MemoryForgetFailureCode,
 )
-from backend.copilot.graphiti.recall import search_facts, search_forgotten_facts
+from backend.copilot.graphiti.recall import (
+    FORGOTTEN_FACT,
+    search_facts,
+    search_forgotten_facts,
+)
 from backend.copilot.graphiti.recall_forget import retract
 from backend.copilot.graphiti.recall_render import fact_text, fact_validity
 from backend.copilot.graphiti.scope import MemoryScope
@@ -149,12 +153,9 @@ class MemoryForgetSearchTool(BaseTool):
 
         candidates = [_candidate(edge) for edge in edges]
         candidates += [_forgotten_candidate(edge) for edge in forgotten]
-        message = f"Found {len(candidates)} candidate(s). Show these to the user and ask which to delete, then call tool:memory_forget_confirm with the UUIDs."
-        if forgotten:
-            message += " Those marked forgotten are forgotten already: only hard_delete=true removes them further."
 
         return MemoryForgetCandidatesResponse(
-            message=message,
+            message=_candidates_message(len(edges), len(forgotten)),
             session_id=session.session_id,
             candidates=candidates,
         )
@@ -314,11 +315,37 @@ def _candidate(edge: EntityEdge) -> dict[str, str]:
 
 
 def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:
-    """A forgotten fact as a candidate for a permanent delete: its sentence
-    from the audit copy the forget kept, marked forgotten."""
-    redacted = edge.attributes.get("fact_redacted")
+    """A forgotten fact as a candidate for a permanent delete: that it
+    exists and when, never what it said. Its sentence, the audit copy its
+    forget kept (``fact_redacted``), its scope and the dates it held true are
+    all left out, the forget keeping them from the model; the delete needs
+    only the uuid."""
+    forgotten_at = edge.attributes.get("forgotten_at") or edge.expired_at
     return {
-        **_candidate(edge),
-        "fact": str(redacted) if redacted else fact_text(edge),
+        "uuid": edge.uuid,
+        "fact": FORGOTTEN_FACT,
+        "stored_at": str(edge.created_at),
+        "forgotten_at": str(forgotten_at) if forgotten_at else "unknown",
         "forgotten": "true",
     }
+
+
+def _candidates_message(live: int, forgotten: int) -> str:
+    """What ``memory_forget_search`` tells the model to do with its
+    candidates: the live ones shown for the user to choose from, the
+    forgotten ones offered for a permanent delete by count and date alone."""
+    parts = []
+    if live:
+        parts.append(
+            f"Found {live} candidate(s). Show these to the user and ask which to "
+            "delete, then call tool:memory_forget_confirm with the UUIDs."
+        )
+    if forgotten:
+        parts.append(
+            f"{forgotten} memory(ies) matched that are already forgotten; what "
+            "they said stays hidden, so do not guess at it. Tell the user how "
+            "many and when they were stored and forgotten, and offer to delete "
+            "them permanently: tool:memory_forget_confirm with their UUIDs and "
+            "hard_delete=true."
+        )
+    return " ".join(parts)

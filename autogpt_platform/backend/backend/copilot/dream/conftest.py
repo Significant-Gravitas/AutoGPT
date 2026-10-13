@@ -283,20 +283,29 @@ class FakeDreamDb:
         return [self.record(pass_id) for _, pass_id in lapsed[:limit]]
 
     async def list_dream_pass_cleanups(
-        self, due_before: datetime, limit: int = 100
+        self,
+        due_before: datetime,
+        limit: int = 100,
+        marked_through: datetime | None = None,
+        after_mark: datetime | None = None,
+        after_id: str | None = None,
     ) -> list[DreamPassRecord]:
         """Closed rows marked for a cleanup that is due (marked, or holding
-        no lease or one that lapsed, before *due_before*), the ones written
-        least recently first."""
+        no lease or one that lapsed, before *due_before*), in mark order (the
+        mark, then the id), marked by *marked_through* and after *after_mark*
+        and *after_id* when given."""
         self._raise_if_down()
-        pending = [
-            (row["updated_at"], pass_id)
+        pending = sorted(
+            (row["cleanup_pending_at"], pass_id)
             for pass_id, row in self.rows.items()
             if row["status"] not in OPEN_STATUSES
             and row.get("cleanup_pending_at") is not None
             and _due(row, due_before)
-        ]
-        return [self.record(pass_id) for _, pass_id in sorted(pending)[:limit]]
+            and (marked_through is None or row["cleanup_pending_at"] <= marked_through)
+        )
+        if after_mark is not None and after_id is not None:
+            pending = [key for key in pending if key > (after_mark, after_id)]
+        return [self.record(pass_id) for _, pass_id in pending[:limit]]
 
     async def delete_old_dream_passes(
         self, created_before: datetime, limit: int = 1000

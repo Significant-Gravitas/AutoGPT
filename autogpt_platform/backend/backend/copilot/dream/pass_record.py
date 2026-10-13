@@ -279,19 +279,11 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
 
 def cleanup_finished() -> DreamPassUpdate:
     """The cleanup after a closed pass has finished: the mark and the lease
-    the row kept for it go. One of the two writes a closed row takes."""
+    the row kept for it go. The one write a closed row takes."""
     return DreamPassUpdate(
         closed_row=True,
         clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),
     )
-
-
-def cleanup_unfinished() -> DreamPassUpdate:
-    """The reaper tried the cleanup after a closed pass and did not finish
-    it: nothing changes but the row's write time, which puts the row behind
-    the cleanups the reaper has tried less recently. The other write a
-    closed row takes."""
-    return DreamPassUpdate(closed_row=True)
 
 
 def stop_error(row: DreamPassRecord) -> str | None:
@@ -322,6 +314,9 @@ def dream_pass_result_from_row(row: DreamPassRecord) -> DreamPassResult:
         proposal_count=applied.proposal_count,
         demotion_count=applied.demotion_count,
         entity_invalidation_count=applied.entity_invalidation_count,
+        dropped_forgotten=applied.dropped_forgotten,
+        pending_write_count=applied.pending_write_count,
+        failed_write_count=applied.failed_write_count,
         protected_demotions=applied.protected_demotions,
         indeterminate_demotion_writes=applied.indeterminate_demotion_writes,
         demotion_accounting_complete=applied.demotion_accounting_complete,
@@ -342,6 +337,9 @@ def _applied(result: DreamPassResult) -> DreamPassApplied:
         proposal_count=result.proposal_count,
         demotion_count=result.demotion_count,
         entity_invalidation_count=result.entity_invalidation_count,
+        dropped_forgotten=result.dropped_forgotten,
+        pending_write_count=result.pending_write_count,
+        failed_write_count=result.failed_write_count,
         protected_demotions=result.protected_demotions,
         indeterminate_demotion_writes=result.indeterminate_demotion_writes,
         demotion_accounting_complete=result.demotion_accounting_complete,
