@@ -18,6 +18,8 @@ import pytest
 
 from backend.copilot import rate_limit
 from backend.copilot.baseline import service as baseline_service
+from backend.copilot.gate import policy as gate_policy
+from backend.copilot.gate.policy import Effect
 from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.cli_openrouter_compat_test import _resolve_cli_path
@@ -202,6 +204,11 @@ def _turn_runner(
 ) -> tuple[SdkTurnsViaExecutor | BaselineTurnsViaExecutor, Executor]:
     """The scenario's engine behind the executor; with ``tool``, the model's
     tool calls run it through that engine's own tool path."""
+    if tool is not None:
+        # The approval gate classifies tools by name, and an unknown name is a
+        # platform edit it may hold or judge. This tool only reads, like the
+        # copilot's own lookups, so the gate runs it in every mode.
+        monkeypatch.setitem(gate_policy._EFFECTS, TOOL_NAME, Effect.READ)
     if scenario.engine == "baseline":
         config = _config(baseline_service.config, scenario, provider)
         executor = Executor(monkeypatch, config, session, use_sdk=False)

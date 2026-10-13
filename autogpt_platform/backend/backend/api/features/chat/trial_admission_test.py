@@ -43,7 +43,7 @@ async def _paywalled_handler(
 client = fastapi.testclient.TestClient(app)
 
 
-class TrialAccount:
+class RouteTrialAccount:
     """What the route reads for the user."""
 
     def __init__(self, user_id: str) -> None:
@@ -85,8 +85,8 @@ def setup_app_auth(mock_jwt_user):
 
 
 @pytest.fixture
-def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> TrialAccount:
-    account = TrialAccount(test_user_id)
+def account(mocker: pytest_mock.MockerFixture, test_user_id: str) -> RouteTrialAccount:
+    account = RouteTrialAccount(test_user_id)
     mocker.patch.object(rate_limit, "is_user_paywalled", _REAL_IS_USER_PAYWALLED)
     mocker.patch.object(
         rate_limit, "_fetch_user_tier", AsyncMock(side_effect=account.read_tier)
@@ -138,7 +138,7 @@ def scheduled(mocker: pytest_mock.MockerFixture, test_user_id: str) -> AsyncMock
 
 
 def test_a_trial_within_its_limits_starts_the_turn(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     response = _send_message()
 
@@ -147,7 +147,7 @@ def test_a_trial_within_its_limits_starts_the_turn(
 
 
 def test_a_trial_that_spent_its_allowance_waits_for_its_end(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     account.trial = account.trial.model_copy(
         update={"cost_microdollars": account.trial.offer.total_cost_limit}
@@ -170,7 +170,7 @@ def test_a_trial_that_spent_its_allowance_waits_for_its_end(
     ids=["just under", "at the limit"],
 )
 def test_a_trial_is_held_to_its_own_daily_limit(
-    account: TrialAccount, scheduled: AsyncMock, spent_today: int, admitted: bool
+    account: RouteTrialAccount, scheduled: AsyncMock, spent_today: int, admitted: bool
 ) -> None:
     # The platform's default daily limit is far above the trial's $0.25.
     assert account.trial.offer.daily_cost_limit == 250_000
@@ -188,7 +188,7 @@ def test_a_trial_is_held_to_its_own_daily_limit(
 
 
 def test_an_ended_trial_meets_the_paywall(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     account.end_trial()
 
@@ -199,7 +199,7 @@ def test_an_ended_trial_meets_the_paywall(
 
 
 def test_a_trial_that_ends_between_messages_stops_the_next_one(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     assert _send_message().status_code == 200
     account.end_trial()
@@ -209,7 +209,7 @@ def test_a_trial_that_ends_between_messages_stops_the_next_one(
 
 
 def test_a_failed_trial_read_refuses_the_message_and_is_not_kept(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     account.read_error = ConnectionError("database unreachable")
 
@@ -223,7 +223,7 @@ def test_a_failed_trial_read_refuses_the_message_and_is_not_kept(
 
 
 def test_a_paying_user_is_not_held_to_a_trial_that_ended(
-    account: TrialAccount, scheduled: AsyncMock
+    account: RouteTrialAccount, scheduled: AsyncMock
 ) -> None:
     account.tier = SubscriptionTier.PRO
     account.end_trial()
