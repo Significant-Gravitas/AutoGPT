@@ -6,8 +6,13 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from posthog import Posthog
 
 import backend.util.feature_flag.posthog as ph
+
+# Taken at import, before any fixture can stub it: the test below needs the
+# SDK's own capture path to show that send=False keeps events off the wire.
+_REAL_CAPTURE = Posthog.capture
 
 
 @pytest.fixture(autouse=True)
@@ -232,6 +237,8 @@ class TestASeparateFlagProjectThroughTheRealSDK:
         self, mocker, flags_key, asks_remotely
     ):
         """The remote fallback would hand the flag project a user's email."""
+        # The flag-called events are not what this test is about.
+        mocker.patch.object(Posthog, "capture")
         client, remote = _real_client(mocker, flags_key=flags_key)
         try:
             value = await ph.evaluate_flag(
@@ -245,6 +252,8 @@ class TestASeparateFlagProjectThroughTheRealSDK:
 
     @pytest.mark.asyncio
     async def test_reads_from_a_separate_project_send_it_no_events(self, mocker):
+        mocker.patch.object(Posthog, "capture", _REAL_CAPTURE)
+        captured = mocker.spy(Posthog, "capture")
         uploads = [
             mocker.patch("posthog.consumer.batch_post"),
             mocker.patch("posthog.consumer._send_v1_batch"),
@@ -260,6 +269,8 @@ class TestASeparateFlagProjectThroughTheRealSDK:
         finally:
             ph.shutdown_posthog_flags()
 
+        # The SDK still forms the $feature_flag_called events; none is uploaded.
+        assert captured.called
         assert not remote.called
         assert not any(upload.called for upload in uploads)
 
