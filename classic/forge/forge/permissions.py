@@ -180,14 +180,19 @@ class CommandPermissionManager:
             Formatted arguments string.
         """
         # For file operations, use the resolved file path for symlink handling
-        if command_name in (
+        if command_name == "list_folder":
+            path = arguments.get("folder") or ""
+        elif command_name in (
             "read_file",
             "write_file",
             "write_to_file",
             "create_file",
-            "list_folder",
         ):
             path = arguments.get("filename") or arguments.get("path") or ""
+        else:
+            path = None
+
+        if path is not None:
             if path:
                 p = Path(path)
                 if not p.is_absolute():

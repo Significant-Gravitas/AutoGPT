@@ -7,6 +7,13 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, Field
 
+_LEGACY_DEFAULT_ALLOW = (
+    "read_file({workspace}/**)",
+    "write_file({workspace}/**)",
+    "list_folder({workspace}/**)",
+    "finish(*)",
+)
+
 
 class PermissionsConfig(BaseModel):
     """Configuration for allow/deny permission patterns."""
@@ -23,8 +30,10 @@ class WorkspaceSettings(BaseModel):
             allow=[
                 "read_file({workspace}/**)",
                 "write_file({workspace}/**)",
+                "list_folder({workspace})",
                 "list_folder({workspace}/**)",
-                "finish(*)",
+                "ask_user(**)",
+                "finish(**)",
             ],
             deny=[
                 "read_file(**.env)",
@@ -55,10 +64,30 @@ class WorkspaceSettings(BaseModel):
         if settings_path.exists():
             with open(settings_path) as f:
                 data = yaml.safe_load(f)
-                return cls.model_validate(data or {})
+                settings = cls.model_validate(data or {})
+            if settings._migrate_legacy_defaults():
+                settings.save(workspace)
+            return settings
         settings = cls()
         settings.save(workspace)
         return settings
+
+    def _migrate_legacy_defaults(self) -> bool:
+        """Update generated defaults while preserving custom rules."""
+        allow = self.permissions.allow
+        if not all(pattern in allow for pattern in _LEGACY_DEFAULT_ALLOW):
+            return False
+
+        migrated = ["finish(**)" if item == "finish(*)" else item for item in allow]
+        for pattern in ("list_folder({workspace})", "ask_user(**)"):
+            if pattern not in migrated:
+                migrated.append(pattern)
+        migrated = list(dict.fromkeys(migrated))
+
+        if migrated == allow:
+            return False
+        self.permissions.allow = migrated
+        return True
 
     def save(self, workspace: Path) -> None:
         """Save settings to the workspace .autogpt/autogpt.yaml file.
