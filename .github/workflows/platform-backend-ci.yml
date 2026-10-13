@@ -215,6 +215,10 @@ jobs:
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
+        env:
+          # Pyright 1.1.414 sits at Node's default heap limit on this codebase
+          # and dies with "heap out of memory" on some runs.
+          NODE_OPTIONS: --max-old-space-size=8192
 
     env:
       CI: true
