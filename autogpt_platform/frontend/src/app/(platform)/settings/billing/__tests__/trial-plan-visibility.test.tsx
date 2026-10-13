@@ -89,7 +89,8 @@ it("offers plan choices while a trial cancellation is pending", async () => {
     await screen.findByRole("button", { name: "Subscribe to Pro" }),
   ).toBeDefined();
   expect(screen.getByRole("button", { name: "Upgrade to Max" })).toBeDefined();
-  expect(screen.queryByRole("button", { name: "Get Pro" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Start Pro" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /Start Pro now/i })).toBeNull();
 });
 
 it("offers no plan choices during a trial that will convert", async () => {
@@ -135,7 +136,7 @@ it("shows a plan bought during a cancel-pending trial the cleanup has not ended"
   mockBilling(trialResponse({ cancel_at_period_end: true }), "MAX");
   render(<SettingsBillingPage />);
   expect(await screen.findByText("Active")).toBeDefined();
-  expect(screen.getAllByText("Your plan").length).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Max" })).toBeDefined();
   expect(screen.queryByRole("button", { name: "Resume trial" })).toBeNull();
   expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
   expect(screen.queryByRole("region", { name: "Plan choices" })).toBeNull();
@@ -145,7 +146,7 @@ it("keeps a trial that will convert as the plan whatever tier is reported", asyn
   mockBilling(trialResponse({ cancel_at_period_end: false }), "MAX");
   render(<SettingsBillingPage />);
   await screen.findByRole("button", { name: "Cancel trial" });
-  expect(screen.getAllByText("Your plan").length).toBeGreaterThan(0);
+  expect(screen.getByRole("heading", { name: "Your trial" })).toBeDefined();
   expect(screen.queryByText("Active")).toBeNull();
 });
 
@@ -164,6 +165,10 @@ it.each(["PRO", "MAX"])(
     expect(await screen.findByText("Active")).toBeDefined();
     expect(screen.queryByText("Your trial has ended")).toBeNull();
     expect(screen.queryByRole("region", { name: "AutoGPT trial" })).toBeNull();
-    expect(screen.getAllByText("Your plan").length).toBeGreaterThan(0);
+    expect(
+      screen.getByRole("heading", {
+        name: tier === "PRO" ? "Pro" : "Max",
+      }),
+    ).toBeDefined();
   },
 );

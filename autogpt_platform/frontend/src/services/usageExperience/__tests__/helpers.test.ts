@@ -109,6 +109,14 @@ describe("usage experience", () => {
       });
     },
   );
+  it("does not describe automatic Pro activation for a cancel-pending trial", () => {
+    expect(
+      getUsageExperience(
+        { ...usage, tier: "TRIAL" },
+        { ...trial, offer: { tier: "PRO" }, cancel_at_period_end: true },
+      ),
+    ).toMatchObject({ isActiveTrial: true, freshProUsage: false });
+  });
   it("does not promise the Pro activation reset for a legacy non-Pro trial", () => {
     expect(
       getUsageExperience(

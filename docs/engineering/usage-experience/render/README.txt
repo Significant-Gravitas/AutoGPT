@@ -77,3 +77,6 @@ This only places the browser PNGs beside one another with comparison labels.
 It never redraws or changes the UI. Production captures use DPR 2 and the new
 captures DPR 1; both are placed at the same CSS-pixel scale before making the
 compact composite. Full component PNGs remain separately downloadable.
+
+Set USAGE_COMPARISON_FULL_OUTPUT to also export full-size comparison sheets.
+The default comparison sheets stay compact for review in GitHub and chat.

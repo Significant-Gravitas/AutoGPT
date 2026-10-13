@@ -7,11 +7,11 @@
     "sourceFiles": [
       {
         "path": "autogpt_platform/frontend/package.json",
-        "sha256": "da88f7916d7355fa0b0a30d626c22c320502bf909021dbff2f3b91683cf9102c"
+        "sha256": "fce75823fb4190b23a9365998ce5ed66ea0320ac80ce1aa5b8b6b814c0cde57e"
       },
       {
         "path": "autogpt_platform/frontend/pnpm-lock.yaml",
-        "sha256": "455969fed57d01a1605e569e8a73534f51ec50bf335b823b744285d961f90ecc"
+        "sha256": "7900b00afc6d6490bd720b0f15cabadc4dc7ccf90bfd21a1d4ddc40ed4b178ee"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/PaywallGate/PaywallModal.tsx",
@@ -35,7 +35,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/ChatInput.tsx",
-        "sha256": "f706a64d0c72034eb17fa56264700011266c5914826e58d4523f1571f4202731"
+        "sha256": "58027908fb7f3dfd5109d1d85c57e32061fd7a153b120223cbedc162fb6ec25b"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/components/AttachmentCapNotice.tsx",
@@ -66,12 +66,20 @@
         "sha256": "7bdebe6f7dfd9ddc555fe5d4c06eee9a22e091f311927a2c086735c0c53bf917"
       },
       {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/components/NoAIConnectionNotice/NoAIConnectionNotice.tsx",
+        "sha256": "d3b1a0210d7dc234ffc6fa1c15347b66633e0a0a3a7cbf7394324080fb4bd6f8"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/components/NoAIConnectionNotice/useNoAIConnectionNotice.ts",
+        "sha256": "5dffd8cb7a3210002914f45774b2971678ef0462b9f629b6f92ff11198cc281a"
+      },
+      {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/components/RecordingButton.tsx",
         "sha256": "3f091ce354929a3b3df911163b9984bbd0ee1ef804c246bf71da369d68a9e098"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/helpers.ts",
-        "sha256": "f448ca5b9128a8b6fb37e0cc53f18506823b8b417573a86b19370b34be2a0acb"
+        "sha256": "4e9025e46c75ce300ed9f1ae3c6705133964bfb9dcb5511eaba7fb51926141ec"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/useChatDraft.ts",
@@ -79,7 +87,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/ChatInput/useChatInput.ts",
-        "sha256": "88898493da90ad1cfdcc8179436b3e0803dfce4ca4ea4f8b44e916d6fcc77f1b"
+        "sha256": "0bb6844150b6861bc2c3aee3ee390378965a0c5f840bac691a9e01eef24f685f"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/CredentialMention/CredentialMentionBadge.tsx",
@@ -102,6 +110,10 @@
         "sha256": "2620cc5652af3a4745e9467e12c751ac067ea4a233b14eec516bbc733fcee5e6"
       },
       {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/PaywallToast/PaywallToast.tsx",
+        "sha256": "bf88c93efb2a2051c4d5725e574d49833da3fc62ae8d65d04afcaf42589ecdc3"
+      },
+      {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx",
         "sha256": "6e4c336100ad911b6414fb33c31af56d1aeffd0a68788aee5c5a15f51f83d282"
       },
@@ -116,6 +128,18 @@
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/usageHelpers.ts",
         "sha256": "c27bb7e5ecbad3ed1aa4a097046175558c708fdd87bbbf40c24e4ce2e9cb63a7"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/helpers/copilotLlmAuth.ts",
+        "sha256": "876348b875a803af58d82879cd17fe607a55638ef4195c8ad30dabe6664cb60f"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/helpers/reportedSendError.ts",
+        "sha256": "d9ddc805137f36a3f5aeb8a1ed4e24242346ed8f379c6f21db4a9eecbf57c860"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/copilot/helpers/sendFailureToast.tsx",
+        "sha256": "0aabfe2738922e07fe671ba383ce2bbe6c0cc89bf4debc7e7827f4a32832a52f"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/helpers/workspaceAttachments.ts",
@@ -151,11 +175,39 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/SubscriptionTab.tsx",
-        "sha256": "5dcd6e031a872fe403ebed0399433831bb35d14e4997be6503a8edd5cf00bf3d"
+        "sha256": "c3c3165873da76e334df111b3d62e1882d4f9591e004947d47e33d85113906fa"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/SupportOffer.tsx",
         "sha256": "13dac491c97efed00f58d5112a8ec8cdff847e5edf97bf69f53ddfb5724fc672"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/ConfirmTrialPlanDialog.tsx",
+        "sha256": "fa6bdaaf047c8b9d5e94ea1bb523a4de87fdb9c887fcd1ea54ed89e229701ea9"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/ConfirmWithBankDialog.tsx",
+        "sha256": "28b5813893c671c328da47ff7aec2c9479a271cea5a29edd32efe9d106ed66e6"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/PlanChoice.tsx",
+        "sha256": "fcecc1d60716a6e7dd491ee3c63f121d5d78fa21694321f8aec1b47a2f0ce798"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/TrialPlanChoices.tsx",
+        "sha256": "178687cddf82e1af765bed7846162f24cb5db123059670bc72556e1f7d7d0477"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/helpers.ts",
+        "sha256": "7270bc1a87f153322996c0c6781bbfb412d91f315c8acbb0b3abf87dcfbfd728"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/useTrialPlanChoices.ts",
+        "sha256": "9db75563074f2399b527aa73bc770ba388751a90e948ecd303ca7453c1b4ea60"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/useTrialPlanRequest.ts",
+        "sha256": "9285dfe8c8a4f5c313a9de9d16556881524dbd71caebbd33fd3a5104339b9977"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/CycleToggle.tsx",
@@ -182,12 +234,24 @@
         "sha256": "a5ad179dcf220f60dd0c30f1f930bb451c8508e0aec8ec7a881a7f77582a929e"
       },
       {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/helpers.ts",
+        "sha256": "5b984c09d2774cb066799f495141f988c4582bb5eb695f3a82a199f95090a59f"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/usePlanCheckoutReturn.ts",
+        "sha256": "f254a6070c4c29746a229965d48d7a9ce030dd0d6ac5d8c90d1d2e5d42f8794b"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/useSubscriptionTab.ts",
+        "sha256": "26efa93e4cf5d174c2afd04178573369242a1620e4a7fc18cf85750677e1610d"
+      },
+      {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/helpers.ts",
         "sha256": "2768e572d7fc7587cfe707214ab735fe6f01aeb54384548a53b44853868a50a2"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/page.tsx",
-        "sha256": "ee62402054a4a710deff036ae91e6239177cdfbdbdaf462ea71abcdb0720bb49"
+        "sha256": "bc7753e70c079944efd5736fb9ec0f076514cbe703f2c6704a0c2b928fbb5cd5"
       },
       {
         "path": "autogpt_platform/frontend/src/app/globals.css",
@@ -251,7 +315,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/contextual/IntegrationsPanel/helpers.ts",
-        "sha256": "4105213f4b955bd5348789cf494a15aa7c67af38f7612042e044289bb46f22a8"
+        "sha256": "2c71ea82fa2024984bbe5184f1656796705d8c2901fa27aa5a01454e789ac056"
       },
       {
         "path": "autogpt_platform/frontend/src/components/contextual/guidedPrompts.ts",
@@ -399,7 +463,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/SubscriptionPlans/components/PlanDetailsDialog/components/TrialDetails.tsx",
-        "sha256": "61fedf7cd81d68a8c09c9e8beb478b855969491eb67da8374432ab42f5c3419f"
+        "sha256": "3bb2cf6b89ef5866cdd0937ade4e27a7a3f02c687e8a2e09f66aed4fe34a7eba"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/SubscriptionPlans/components/PlanFooter.tsx",
@@ -423,11 +487,27 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/CancelTrialDialog.tsx",
-        "sha256": "5b8714de2ae7cd9e9caa4ed25d56579026494a40b21f80da94f1e7f6e68bd9e9"
+        "sha256": "f499ed5b9c427caafcc4c974dfc1c392c4b720e8a1ae666ff7781efbb2eac7b6"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCancelPending.tsx",
+        "sha256": "bf0fc5defe4a8953e623fe82d61b73eaa99561b05f473b36ea0793b881ba17e3"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCanceledDialog/TrialCanceledDialog.tsx",
+        "sha256": "9275eacb7e51c2127095a0173a327bee9756b80b37f84a9c60816974ccbde79d"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCanceledDialog/components/TrialTimeLeft.tsx",
+        "sha256": "39b640ead117eb0b73fa7604b0ba40ff54180402af60b03967fe5503cc91e44d"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCanceledDialog/components/WorthDoingPanel.tsx",
+        "sha256": "f3f43b1c0309400bc0cb7172d0630cf374f1bd47e8be77ab13dac6733798cbb5"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCard.tsx",
-        "sha256": "cde9c569a873789904ac32d8493d4de76bf5b7f08d919287e1d21c5d685f8fc1"
+        "sha256": "bc6270027956e341677f46535b58f30fc38165a0538364924c4fbd5fff402836"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialCheckoutConfirmation.tsx",
@@ -435,7 +515,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialOffer.tsx",
-        "sha256": "53afd1f1696a6c5442ccb5ce99d585dbcf6ae025c19dbce78475628fd90c559f"
+        "sha256": "203353a0efaa070331a9075198dbf0ad2fe8aa97de6e40797d66ed488b896cb9"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialRejection.tsx",
@@ -443,7 +523,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialStatus.tsx",
-        "sha256": "5408842d829296853b84550f9ba3da515b2dcbf20b7410247460d4ebf54e4166"
+        "sha256": "0ed2c0a27fd3bb3652f23322d9ec5f9f3442a0864faaadf04dbd7bd561902c55"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/TrialTitle/TrialTitle.tsx",
@@ -451,7 +531,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/TrialCard/helpers.ts",
-        "sha256": "956597bcfabfab7801ec534b550c5d8554b6e2959caae6e23f0c704be787e288"
+        "sha256": "b7501afdad80413513087eface7548869874935f55d905ad9c4bb703052ca20f"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/PlanOffer.tsx",
@@ -498,6 +578,10 @@
         "sha256": "27961d633698be26cc52d8753ab4929ecec29f913e982aef482c87c1a89b731b"
       },
       {
+        "path": "autogpt_platform/frontend/src/hooks/useIsBillingEnabled.ts",
+        "sha256": "b2ae50d35dbd3d55b77a4b0ac92d16d1be92ad8d40a5c41c1981887f1262e8c4"
+      },
+      {
         "path": "autogpt_platform/frontend/src/lib/hooks/useBreakpoint.ts",
         "sha256": "08586347ab960b71542dca65ccb0a434c6903332112fc488d2fbd56c3c28d6a0"
       },
@@ -508,6 +592,10 @@
       {
         "path": "autogpt_platform/frontend/src/lib/utils.ts",
         "sha256": "aea6ba4c204188ecbe7892120f6f2852db9ebf418b10601d720d885953bea555"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/services/environment/index.ts",
+        "sha256": "803d6cef8284df51a134adf7aba8b661a9c7025c676181b52d061a086f7dcfde"
       },
       {
         "path": "autogpt_platform/frontend/src/services/pro-activation/helpers.ts",
@@ -523,7 +611,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/helpers.ts",
-        "sha256": "b6e9cb8590579341db02f702e882f490399820be7110290072c3075b1a31edc6"
+        "sha256": "65dc33f3bedd51d00b40101bbe97cdc3e174eb74edabdaa9d5a6d375db61feac"
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/presentation.ts",
@@ -531,27 +619,27 @@
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/useUsageActions.ts",
-        "sha256": "68d266d8024d5af2bf9a8a594834fb2373bd708aee2a05b3b338ee9753b8e5d1"
+        "sha256": "64f5be221ba096f09e1f357c4606a270c7d684720fe2da4318614cf0ce7c0482"
       },
       {
         "path": "autogpt_platform/frontend/tailwind.config.ts",
-        "sha256": "f20d21e5f93ad5f1812a407a5357439acb04601c9a539d1355246f17c7f62fd4"
+        "sha256": "1c97098e50a1d8def8365b1131ece0b49c4f305f71cb278ad1ca669b4e28d761"
       },
       {
         "path": "docs/engineering/usage-experience/render/build.mjs",
-        "sha256": "3d301647bbfd895ba86da99b05074aaf5db28aff7555bb0769d976a62090c280"
+        "sha256": "7974f83498936ff02ec0ae649bcf98b388fb983501509bebf04ef37a52a9e6b8"
       },
       {
         "path": "docs/engineering/usage-experience/render/capture.mjs",
-        "sha256": "7350f2deb19bbf7a16d5aeea9c2ca089df8c79dd769ff1ba7d61c04a305afaf3"
+        "sha256": "53a49f4e48e3c7ad6179bd65ff83d17004fff0e7a66e79481fb29e7f2ddc8f7f"
       },
       {
         "path": "docs/engineering/usage-experience/render/cases.mjs",
-        "sha256": "f52165b3ac61c3c31617b4bce5edaf16162b54c0825f0c9b8ec1458aab7968a0"
+        "sha256": "d792d9e4510cff7593b288fa6c727cfff4461e73acea617b0e11c3cebf8887b9"
       },
       {
         "path": "docs/engineering/usage-experience/render/composer-mocks.tsx",
-        "sha256": "0db7e3f819452291f87fbf0f1772d113ca47f1a328ff2dda5d640c8d575e1f1f"
+        "sha256": "143e699bbed01d8d5c4565fc6ed1c888530fbe0f38ba192fb28aca9629ad1300"
       },
       {
         "path": "docs/engineering/usage-experience/render/composer-plugin.mjs",
@@ -559,7 +647,7 @@
       },
       {
         "path": "docs/engineering/usage-experience/render/fixtures.ts",
-        "sha256": "98fe5e14ecbffa90b3fcdc6385798886c0ac464c076c3332947a403589b269d8"
+        "sha256": "63a8029e5a551faa087cc64f8f2bac678267c78c1a93c3f74b87e5f69f006375"
       },
       {
         "path": "docs/engineering/usage-experience/render/fonts.css",
@@ -591,7 +679,7 @@
       },
       {
         "path": "docs/engineering/usage-experience/render/mocks.tsx",
-        "sha256": "f07f0398a3c650c547299d4c0358cdc99b1d936813207b1aec2a88333a5b42c4"
+        "sha256": "99badf369d5ca2de0dec8df405bb4c0da16aa17b46b83f01b7ab88285678e8f2"
       },
       {
         "path": "docs/engineering/usage-experience/render/verify.mjs",
@@ -626,7 +714,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9ee6aa56a7711615f5def2c2092c4cbd7f082e0b582f34379673af3280fac222"
+      "sha256": "ea6160c2b4fc3a2f08463e2f4ce59875d895edbd7c741f79ce9181d91ce43bbc"
     },
     {
       "id": "02-trial-chat",
@@ -676,7 +764,7 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -686,7 +774,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6cbba6341c773974e7890b0b8197b869605693ba2680f7d2e4db6bef09b5ccf9"
+      "sha256": "4051a82a0e99dfb216ca9d3841b6a89206fc544318502ac78625c73ac5b99d2b"
     },
     {
       "id": "04-trial-active",
@@ -706,7 +794,7 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -716,7 +804,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "dd6e11c1e072d65d1532ce6f8f45b2ba104c9148ce8d8f544c2409dee2edbdfa"
+      "sha256": "18563de26cacfc396ce90c0a967b2a04098d2068f9a5d0afec9502b9ac7b89bc"
     },
     {
       "id": "05-pro-popup",
@@ -744,7 +832,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c377c34daa1ccdce390aa3cf67597cd9a7ed229194734b52538440b3300052e4"
+      "sha256": "969a59a54d57d87c8b8559370ed37a7cf4468abd3b5679b5373d0e24713c517e"
     },
     {
       "id": "06-pro-chat",
@@ -806,7 +894,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3ec49df43f854b233243240e904220004bf17c9fe41be2234f15e33f440e8a00"
+      "sha256": "db12ea8b4262c6ff4afaca78f939c2b737c5b33f69ae78e5973c3cba4adad8da"
     },
     {
       "id": "08-pro-weekly",
@@ -834,7 +922,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "d6d545dfa096107e552ab3a83811388d0fcda4d34d4c162db8f1d0e2d9da4eaa"
+      "sha256": "1420706e354dc39ee5f20ecde32cf896ee2bc88ed250b73126df2e2b6b9ec12d"
     },
     {
       "id": "09-max-popup",
@@ -925,7 +1013,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a29e85b8007d60e79b9ce915ae289e929632efb65a905f6046d5b7e43c487ca2"
+      "sha256": "ee99139757e15c3a20a34fd53649f86cbc0f273d3c0eabd8bb0f187944616835"
     },
     {
       "id": "12-team-popup",
@@ -1366,7 +1454,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9de17ef3d6252d6bc92f3da2558b26d0c0069ef65b7a44dd69ba4e45088af378"
+      "sha256": "3fb58c71c9167b115d45fd382881cb5bb91ba52ff9054c71ac4de450cd706d0c"
     },
     {
       "id": "27-pro-review",
@@ -1424,7 +1512,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ed3b23d116c2c8c4c0218a7c82969ff219be8c2e48ddd8314bf9ba0510c105dd"
+      "sha256": "94dec0b39249658766489b9529eed398bee173c4d19c9d1e19bed0ae3522fb4d"
     },
     {
       "id": "29-payment-pending",
@@ -1517,6 +1605,64 @@
       "sha256": "3ea7d0e7459b52ba01d566e6454d8d2adf51bb24a1ddb4c6355d77f038721efd"
     },
     {
+      "id": "32-cancel-pending-billing",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "billing",
+      "file": "32-cancel-pending-billing-1280.png",
+      "viewport": {
+        "width": 1280,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 190,
+        "y": 28,
+        "width": 900,
+        "height": 1128
+      },
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nCancellation pending\n\nCancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends Oct 12, 2026, 12:00 PM.\n\nResume to keep the trial and start Pro on Oct 12 at $50 / month, plus applicable tax.\n\nResume trial\nPro\n\n$50\n/ month\n\nStarts today. Your trial ends and the plan takes over.\n\nSubscribe to Pro\nMax\n\n$320\n/ month\n\n8.5x the usage of Pro for people who run a lot.\n\nUpgrade to Max\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "reachableControls": [
+        "Subscription",
+        "Automation Credits",
+        "Resume trial",
+        "Subscribe to Pro",
+        "Upgrade to Max",
+        "Open portal"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "608bd48cfd7ea4e0d65abcd2c45b63f31080d826937ab22810b31194b466a945"
+    },
+    {
+      "id": "33-cancel-pending-notice",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "notice",
+      "file": "33-cancel-pending-notice-1280.png",
+      "viewport": {
+        "width": 1280,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 256,
+        "y": 436,
+        "width": 768,
+        "height": 228
+      },
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "reachableControls": [
+        "View usage",
+        "Start Pro"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "3b43e1dbb898eade6b600d94aa154fa12382c33664858016144b475821ca9320"
+    },
+    {
       "id": "01-trial-popup",
       "experience": {
         "tier": "trial",
@@ -1542,7 +1688,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "632103ca15eb179b4916d02b3e898ed4dd9be8c20253777465abaa5d67ef98e9"
+      "sha256": "6707866fdd17e5d0baae47935c475f09f7ed68005c0d0911ca5b05cfd3a031fc"
     },
     {
       "id": "02-trial-chat",
@@ -1592,7 +1738,7 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1602,7 +1748,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "0f035ba0b4102080ab75eda2fa12c645747f6b90e738558caaab0753416912d9"
+      "sha256": "95e6e5f6bf6ad1022186557e00bcd7010fb82c8c9549fd3232fa84846648d447"
     },
     {
       "id": "04-trial-active",
@@ -1622,7 +1768,7 @@
         "width": 900,
         "height": 991
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1632,7 +1778,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "90234f9037fcd0b2eaf0da29d62caf7805ec217ca18b5a909b12a97120e9f1ba"
+      "sha256": "dd1c5653384d9d927951df82423cf5c7aade5456f820669e335143d1747c9519"
     },
     {
       "id": "05-pro-popup",
@@ -1660,7 +1806,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9f4df4e501d9e71814c55eb101d6152e08f90ab71e01cdee07623da617cfcb5d"
+      "sha256": "96963175ca7e5c16adad520afbdca941a97f46f29cce52bf5a1036a02e4dbc65"
     },
     {
       "id": "06-pro-chat",
@@ -1722,7 +1868,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "781d332ae9e260fe5435fb46663534e8914082dae77b0b343b46179b1b8d6d0f"
+      "sha256": "ff2405991f50509e585169d0efa61bb7f5c8ed577f0b3496e3b6587640444911"
     },
     {
       "id": "08-pro-weekly",
@@ -2050,7 +2196,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "812fc1680d4358b972c45c5fd46e6c0955c957b63ca80602166283b690a2cab5"
+      "sha256": "6829ec803596d0639caffedf70db32bb059a7cafa58439ab0ab25d83e830b9ab"
     },
     {
       "id": "19-no-plan-billing",
@@ -2080,7 +2226,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "bf7cc6b2cc9d534e008ad938db57de814451b1ee63e4e755bd9f7a343d65e69d"
+      "sha256": "c6ddfdbe64b00693a50dca721b615abc1e75b6c93df4e66034c8744e107c3ef0"
     },
     {
       "id": "20-trial-ended",
@@ -2162,7 +2308,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "35334c30e267cbf3f6b1f8f7a1ef4c57f012ea21e62b076b60a441fc806dedc1"
+      "sha256": "9a5ff9f7dfeb417a35345f7821986d0cf105d0a171e3042c6e4a4c64cf537056"
     },
     {
       "id": "23-payment-billing",
@@ -2192,7 +2338,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4d23a5a4d69f076c4c6fd07db14c6dcf12d1cb30738bd77c6554e4281b0c6e2e"
+      "sha256": "2054d37f8a93aa7d37b18d2161c2f75389bc6d2e3970968a7d8878691c014eb2"
     },
     {
       "id": "24-usage-unavailable",
@@ -2282,7 +2428,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "08557dadc64bc1dfece8d0eb74142522a1a81059fff778e2957e0b46f1373f6f"
+      "sha256": "4be89437ea32744b556f1537cf4991573968c549ea8381ada1884159e8151a10"
     },
     {
       "id": "27-pro-review",
@@ -2340,7 +2486,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "08b13ab5dc776cb6545290afa07bc567b44c8fd7b8f902beb60330fadc16b055"
+      "sha256": "b808b4b2ab7c01a33515d047316fcca798f412c07f0b40be6b2d07eea4ee7e70"
     },
     {
       "id": "29-payment-pending",
@@ -2433,6 +2579,64 @@
       "sha256": "35d02734de7680deb81038d484cbad437e5c4fc88f6059709d241c987c3a52e3"
     },
     {
+      "id": "32-cancel-pending-billing",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "billing",
+      "file": "32-cancel-pending-billing-1000.png",
+      "viewport": {
+        "width": 1000,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 50,
+        "y": 28,
+        "width": 900,
+        "height": 1128
+      },
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nCancellation pending\n\nCancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends Oct 12, 2026, 12:00 PM.\n\nResume to keep the trial and start Pro on Oct 12 at $50 / month, plus applicable tax.\n\nResume trial\nPro\n\n$50\n/ month\n\nStarts today. Your trial ends and the plan takes over.\n\nSubscribe to Pro\nMax\n\n$320\n/ month\n\n8.5x the usage of Pro for people who run a lot.\n\nUpgrade to Max\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "reachableControls": [
+        "Subscription",
+        "Automation Credits",
+        "Resume trial",
+        "Subscribe to Pro",
+        "Upgrade to Max",
+        "Open portal"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "271c208e948421c64a44a5313b99359c3f40aa7bc6c2db541bceef64b080380d"
+    },
+    {
+      "id": "33-cancel-pending-notice",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "notice",
+      "file": "33-cancel-pending-notice-1000.png",
+      "viewport": {
+        "width": 1000,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 116,
+        "y": 436,
+        "width": 768,
+        "height": 228
+      },
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "reachableControls": [
+        "View usage",
+        "Start Pro"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "3b43e1dbb898eade6b600d94aa154fa12382c33664858016144b475821ca9320"
+    },
+    {
       "id": "01-trial-popup",
       "experience": {
         "tier": "trial",
@@ -2508,7 +2712,7 @@
         "width": 390,
         "height": 1502
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2518,7 +2722,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "58812136c8a448f2e3480c4d56d258685f7f2b5a573a2b67a4ec4c44822685e1"
+      "sha256": "dde9f2b50ea06a56a776f5ae2a49be1b26e87808ee9ef9d1cc7010e06a522f80"
     },
     {
       "id": "04-trial-active",
@@ -2538,7 +2742,7 @@
         "width": 390,
         "height": 1502
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2548,7 +2752,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "38fbd76cb47c3db16150806d0579c8c4ddda0c21fea15bf3a3cd513e9b41437c"
+      "sha256": "061d414420a4b0fb3481ce94750dc6358be5a7e37833cd8f8ee6cd473418c2ad"
     },
     {
       "id": "05-pro-popup",
@@ -3078,7 +3282,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "baae72bbf16e9e7aac4431b2d3d91367d492454c48b26164827c548b3587cc85"
+      "sha256": "6cedcd52125110582d31749071ed46bb0facab13bb4adeefa30bf99b544fef65"
     },
     {
       "id": "23-payment-billing",
@@ -3256,7 +3460,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9ad797edc58d553c1a9ecafccf8cf5dca83ec2c65965599306380223f596e15f"
+      "sha256": "95d59ed95bee8595bce8342451ac614aca8a5cca27521c38105bcfd522300d4a"
     },
     {
       "id": "29-payment-pending",
@@ -3349,6 +3553,64 @@
       "sha256": "f5c0ef3ad8dc597d2fd86219aae2cd85df19a39c9d4ffac6e1e83a36b9532bd7"
     },
     {
+      "id": "32-cancel-pending-billing",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "billing",
+      "file": "32-cancel-pending-billing-390.png",
+      "viewport": {
+        "width": 390,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": -392,
+        "width": 390,
+        "height": 1464
+      },
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nCancellation pending\n\nCancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends Oct 12, 2026, 12:00 PM.\n\nResume to keep the trial and start Pro on Oct 12 at $50 / month, plus applicable tax.\n\nResume trial\nPro\n\n$50\n/ month\n\nStarts today. Your trial ends and the plan takes over.\n\nSubscribe to Pro\nMax\n\n$320\n/ month\n\n8.5x the usage of Pro for people who run a lot.\n\nUpgrade to Max\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "reachableControls": [
+        "Subscription",
+        "Automation Credits",
+        "Resume trial",
+        "Subscribe to Pro",
+        "Upgrade to Max",
+        "Open portal"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "b8930da539d847e78e57c3b084a85131c9e448b604f0233442557cb79ab4194f"
+    },
+    {
+      "id": "33-cancel-pending-notice",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "notice",
+      "file": "33-cancel-pending-notice-390.png",
+      "viewport": {
+        "width": 390,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": 426,
+        "width": 390,
+        "height": 248
+      },
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "reachableControls": [
+        "View usage",
+        "Start Pro"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "ba4ad28b7465e955f483de26fb8df003d9f90cc241df3f08093317639e9d613b"
+    },
+    {
       "id": "01-trial-popup",
       "experience": {
         "tier": "trial",
@@ -3374,7 +3636,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6cb6da9dbd3b17844b7f3ba38922a76a236b068d78dcf248c8f1db2ecd97f44c"
+      "sha256": "c1ac714a7b1b8cb2d0696a3a5db4d03764131ee981d1e48b2bb0943b2138d6b9"
     },
     {
       "id": "02-trial-chat",
@@ -3424,7 +3686,7 @@
         "width": 320,
         "height": 1560
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3434,7 +3696,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f0bcb15e31a839e155a45720a18469dda9717c305b42836f5df4c8701e5b422c"
+      "sha256": "2e7dfa7bd298e81300fb0c10785c5a8707755224935db984b23af6f39757c4ca"
     },
     {
       "id": "04-trial-active",
@@ -3454,7 +3716,7 @@
         "width": 320,
         "height": 1560
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCanceling ends trial access immediately.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3464,7 +3726,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "647768894f8e9447a317d9cac3383d1eb1013b26091f5d5fe7bc7f499526afe2"
+      "sha256": "a62aa649c5859515687aef2bec2162b999c906866a3bf8d2b2c006ff4ce94a6a"
     },
     {
       "id": "05-pro-popup",
@@ -3492,7 +3754,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3831aff92435f9e012b6a39cef69937094674fc6f88c25cae62a486a7d7cfea4"
+      "sha256": "8a4dbf683b8334308fd3037a15823bc245715f325c11c14d6d7b2828c1e2f027"
     },
     {
       "id": "06-pro-chat",
@@ -3882,7 +4144,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "47416ef77955890c32ae2b9c83739036dcce5ddee2ad49678d3c5c3759a51ee6"
+      "sha256": "6787ec1b8c892fc34ecc6b887c3cdce47673c33aba0fcda9b15bb32d175fbfdf"
     },
     {
       "id": "19-no-plan-billing",
@@ -4144,7 +4406,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "7f1457d7099e279593f1005065026d2c22578c37d67bf2d490e6dbc03be5a406"
+      "sha256": "5751e2070a0be5b79cb7f653338876cae473f99ae6d7972b6f55d209cf1d79bc"
     },
     {
       "id": "28-max-review",
@@ -4263,6 +4525,64 @@
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
       "sha256": "391d3d645607c7d1c67ca3f12dce50ad48de74ba07084dc0a91d6159bb1cba12"
+    },
+    {
+      "id": "32-cancel-pending-billing",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "billing",
+      "file": "32-cancel-pending-billing-320.png",
+      "viewport": {
+        "width": 320,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": -470,
+        "width": 320,
+        "height": 1542
+      },
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nCancellation pending\n\nCancellation confirmed. Your trial will not convert to a paid plan and your card won't be charged. Trial access ends Oct 12, 2026, 12:00 PM.\n\nResume to keep the trial and start Pro on Oct 12 at $50 / month, plus applicable tax.\n\nResume trial\nPro\n\n$50\n/ month\n\nStarts today. Your trial ends and the plan takes over.\n\nSubscribe to Pro\nMax\n\n$320\n/ month\n\n8.5x the usage of Pro for people who run a lot.\n\nUpgrade to Max\nUsage\n\nAllowance reached\n\nTrial usage\n\n100\n%\nused\n100% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "reachableControls": [
+        "Subscription",
+        "Automation Credits",
+        "Resume trial",
+        "Subscribe to Pro",
+        "Upgrade to Max",
+        "Open portal"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "c639220d505b4e6e1f6bb4c3156b62bc2f14a5c097bd61f2e3c19c7ad4195565"
+    },
+    {
+      "id": "33-cancel-pending-notice",
+      "experience": {
+        "tier": "trial",
+        "state": "cancel_pending"
+      },
+      "screen": "notice",
+      "file": "33-cancel-pending-notice-320.png",
+      "viewport": {
+        "width": 320,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": 404,
+        "width": 320,
+        "height": 292
+      },
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "reachableControls": [
+        "View usage",
+        "Start Pro"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "e0ce9bb23c7cbd711ce64ed013dcc809c550fbf5cd9cf1deceeab878ccf3bf61"
     }
   ],
   "errors": [],

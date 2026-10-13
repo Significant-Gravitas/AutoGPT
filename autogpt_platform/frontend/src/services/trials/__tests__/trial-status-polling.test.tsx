@@ -30,6 +30,14 @@ function Consumer() {
   return <span>{status.data?.status}</span>;
 }
 
+function CheckoutReturnConsumer() {
+  useTrialStatus({
+    refetchInterval: (status) =>
+      status?.active && status.cancel_at_period_end ? 2_000 : false,
+  });
+  return null;
+}
+
 function tree(consumers = 1) {
   return (
     <QueryClientProvider client={client}>
@@ -171,5 +179,28 @@ describe("trial status synchronization", () => {
     act(() => focusManager.setFocused(true));
     await settled();
     expect(requests).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps checkout reconciliation fast, pauses hidden requests, and stops when the plan lands", async () => {
+    trial = { active: true, cancel_at_period_end: true, status: "trialing" };
+    render(
+      <QueryClientProvider client={client}>
+        <CheckoutReturnConsumer />
+        <Consumer />
+      </QueryClientProvider>,
+    );
+    await settled();
+    await advance(2_000);
+    await settled();
+    expect(requests).toHaveBeenCalledTimes(2);
+    act(() => focusManager.setFocused(false));
+    await advance(20_000);
+    expect(requests).toHaveBeenCalledTimes(2);
+    trial = { active: false, converted: true, status: "converted" };
+    act(() => focusManager.setFocused(true));
+    await settled();
+    expect(requests).toHaveBeenCalledTimes(3);
+    await advance(60_000);
+    expect(requests).toHaveBeenCalledTimes(3);
   });
 });

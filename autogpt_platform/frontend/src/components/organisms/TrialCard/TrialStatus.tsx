@@ -65,8 +65,7 @@ export function TrialStatus({
         </Text>
         {trial.active && (
           <Text variant="small" tone="secondary" className="text-xs">
-            Canceling stops the automatic charge. Trial access continues until{" "}
-            {end}.
+            Cancel before your trial ends to avoid a charge.
           </Text>
         )}
       </div>

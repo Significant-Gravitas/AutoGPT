@@ -5,7 +5,7 @@ Every After panel is a browser screenshot of the actual components in this PR.
 There are no independently designed mockups in this directory. The component
 code is the source of truth: regenerate the images whenever that code changes.
 
-comparisons/ contains all 31 compact before/after pairs. implementation/ contains
+comparisons/ contains all 33 compact before/after pairs. implementation/ contains
 the actual after screenshots, including the six original review filenames.
 The complete capture manifest records source hashes, screenshot hashes, visible
 copy, controls, viewport dimensions, fixture data, and verified browser cleanup.

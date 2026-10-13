@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { TrialCheckoutConfirmation } from "@/components/organisms/TrialCard/TrialCheckoutConfirmation";
+
 import { BillingOffer } from "./BillingOffer";
 import { AutopilotUsageCard } from "./AutopilotUsageCard/AutopilotUsageCard";
 import { InvoicesCard } from "./InvoicesCard/InvoicesCard";
@@ -22,6 +23,7 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
     planChoicesOffer,
     isConfirmingPlan,
     isLoading,
+    hasPlanChoices,
   } = useSubscriptionTab(isPlanCheckoutReturn);
   return (
     <div className="flex flex-col gap-4">
@@ -39,9 +41,15 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
       </div>
       {showPlan ? <YourPlanCard index={0} showUsage /> : null}
       {!showPlan && !isLoading ? (
-        <div className="grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]">
+        <div
+          className={
+            hasPlanChoices
+              ? "grid gap-4"
+              : "grid items-stretch gap-4 md:grid-cols-[1.15fr_1fr]"
+          }
+        >
           <AutopilotUsageCard index={1} />
-          {!planChoicesOffer ? <BillingOffer /> : null}
+          {!hasPlanChoices ? <BillingOffer /> : null}
         </div>
       ) : null}
       <PaymentMethodCard index={2} />

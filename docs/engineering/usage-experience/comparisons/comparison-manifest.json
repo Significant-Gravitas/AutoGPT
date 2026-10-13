@@ -14,7 +14,7 @@
         665
       ],
       "beforeSha256": "5b280e7c87d9ee5283f1c13e7f0a4e85292396ed995fea1e3d714834559c275c",
-      "afterSha256": "9ee6aa56a7711615f5def2c2092c4cbd7f082e0b582f34379673af3280fac222"
+      "afterSha256": "ea6160c2b4fc3a2f08463e2f4ce59875d895edbd7c741f79ce9181d91ce43bbc"
     },
     {
       "id": "02-trial-chat",
@@ -42,7 +42,7 @@
         648
       ],
       "beforeSha256": "6a5b4b9e660438be219a16d14525f5caed5f0c156e33bc4a75904c68f1dd705c",
-      "afterSha256": "6cbba6341c773974e7890b0b8197b869605693ba2680f7d2e4db6bef09b5ccf9"
+      "afterSha256": "4051a82a0e99dfb216ca9d3841b6a89206fc544318502ac78625c73ac5b99d2b"
     },
     {
       "id": "04-trial-active",
@@ -56,7 +56,7 @@
         648
       ],
       "beforeSha256": "87bc6a72e432d40185e28c28a39b4a48d09131c27a2f9431d0a0f312983dd414",
-      "afterSha256": "dd6e11c1e072d65d1532ce6f8f45b2ba104c9148ce8d8f544c2409dee2edbdfa"
+      "afterSha256": "18563de26cacfc396ce90c0a967b2a04098d2068f9a5d0afec9502b9ac7b89bc"
     },
     {
       "id": "05-pro-popup",
@@ -70,7 +70,7 @@
         713
       ],
       "beforeSha256": "5b280e7c87d9ee5283f1c13e7f0a4e85292396ed995fea1e3d714834559c275c",
-      "afterSha256": "c377c34daa1ccdce390aa3cf67597cd9a7ed229194734b52538440b3300052e4"
+      "afterSha256": "969a59a54d57d87c8b8559370ed37a7cf4468abd3b5679b5373d0e24713c517e"
     },
     {
       "id": "06-pro-chat",
@@ -98,7 +98,7 @@
         596
       ],
       "beforeSha256": "5beb2242c8fbb474624a3bb24a5eaa8d0512d29fb47db5da9db971407ac3b500",
-      "afterSha256": "3ec49df43f854b233243240e904220004bf17c9fe41be2234f15e33f440e8a00"
+      "afterSha256": "db12ea8b4262c6ff4afaca78f939c2b737c5b33f69ae78e5973c3cba4adad8da"
     },
     {
       "id": "08-pro-weekly",
@@ -112,7 +112,7 @@
         713
       ],
       "beforeSha256": "29f2ec0a523b21e93e19e5fe3b5210fa6c1d61614671023850c06b1b1dca9152",
-      "afterSha256": "d6d545dfa096107e552ab3a83811388d0fcda4d34d4c162db8f1d0e2d9da4eaa"
+      "afterSha256": "1420706e354dc39ee5f20ecde32cf896ee2bc88ed250b73126df2e2b6b9ec12d"
     },
     {
       "id": "09-max-popup",
@@ -154,7 +154,7 @@
         596
       ],
       "beforeSha256": "f294599582d4f57305085e0207af9f3fe3e2333518c001fbd0f5daba0707ccdd",
-      "afterSha256": "a29e85b8007d60e79b9ce915ae289e929632efb65a905f6046d5b7e43c487ca2"
+      "afterSha256": "ee99139757e15c3a20a34fd53649f86cbc0f273d3c0eabd8bb0f187944616835"
     },
     {
       "id": "12-team-popup",
@@ -364,7 +364,7 @@
         338
       ],
       "beforeSha256": "07f5d39dbd1f7f3cf4f6397e5cd7487d13a29af5a81a193a43aa664ed9b36e21",
-      "afterSha256": "9de17ef3d6252d6bc92f3da2558b26d0c0069ef65b7a44dd69ba4e45088af378"
+      "afterSha256": "3fb58c71c9167b115d45fd382881cb5bb91ba52ff9054c71ac4de450cd706d0c"
     },
     {
       "id": "27-pro-review",
@@ -392,7 +392,7 @@
         760
       ],
       "beforeSha256": "23c82133524a7e015712f15d8bdd3d388fac05d18be1cca412ea5743d5bb7d32",
-      "afterSha256": "ed3b23d116c2c8c4c0218a7c82969ff219be8c2e48ddd8314bf9ba0510c105dd"
+      "afterSha256": "94dec0b39249658766489b9529eed398bee173c4d19c9d1e19bed0ae3522fb4d"
     },
     {
       "id": "29-payment-pending",
@@ -435,6 +435,34 @@
       ],
       "beforeSha256": "b81ba25f4d295eca8ce9156cf2d9cc6d52cf185459687749d2b8948c7e936872",
       "afterSha256": "3ea7d0e7459b52ba01d566e6454d8d2adf51bb24a1ddb4c6355d77f038721efd"
+    },
+    {
+      "id": "32-cancel-pending-billing",
+      "title": "Trial cancellation pending \u00b7 billing",
+      "improvement": "Keep remaining trial access and the parent\u2019s explicit plan choices, without a duplicate automatic-start offer.",
+      "note": null,
+      "before": null,
+      "after": "32-cancel-pending-billing-1280.png",
+      "dimensions": [
+        1000,
+        720
+      ],
+      "beforeSha256": null,
+      "afterSha256": "608bd48cfd7ea4e0d65abcd2c45b63f31080d826937ab22810b31194b466a945"
+    },
+    {
+      "id": "33-cancel-pending-notice",
+      "title": "Trial cancellation pending \u00b7 chat notice",
+      "improvement": "Choose a plan explicitly after cancellation; never promise that Pro will start automatically.",
+      "note": null,
+      "before": null,
+      "after": "33-cancel-pending-notice-1280.png",
+      "dimensions": [
+        1000,
+        326
+      ],
+      "beforeSha256": null,
+      "afterSha256": "3b43e1dbb898eade6b600d94aa154fa12382c33664858016144b475821ca9320"
     }
   ]
 }

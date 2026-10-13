@@ -11,6 +11,7 @@ interface Trial {
   status?: string | null;
   offer?: { tier?: string } | null;
   active?: boolean;
+  cancel_at_period_end?: boolean;
   converted?: boolean;
   allowance_used_percent?: number | null;
   ends_at?: string | Date | null;
@@ -63,7 +64,10 @@ export function getUsageExperience(
     tier,
     isActiveTrial,
     isLifetimeTrial,
-    freshProUsage: isActiveTrial && trial?.offer?.tier === "PRO",
+    freshProUsage:
+      isActiveTrial &&
+      !trial?.cancel_at_period_end &&
+      trial?.offer?.tier === "PRO",
     trialPercent,
     inactiveTrialStatus,
     trialEndsAt: isActiveTrial ? (trial?.ends_at ?? null) : null,

@@ -97,26 +97,6 @@ afterEach(() => {
   flagState.billing = false;
 });
 
-function usageExhaustedAfterSending() {
-  let exhausted = false;
-  server.use(
-    http.post(
-      `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
-      () => {
-        exhausted = true;
-      },
-    ),
-    getGetV2GetCopilotUsageMockHandler200(() => ({
-      tier: "PRO",
-      daily: {
-        percent_used: exhausted ? 100 : 0,
-        resets_at: new Date("2099-10-08T00:00:00Z"),
-      },
-      weekly: { percent_used: 40, resets_at: new Date("2099-10-12T00:00:00Z") },
-    })),
-  );
-}
-
 describe.each(STREAM_PATHS)("on the %s path", (path) => {
   beforeEach(() => {
     streamPath.runtime = path === "stream runtime";
@@ -414,16 +394,34 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       },
     };
 
+    function usageLimitAdmission() {
+      let refused = false;
+      server.use(
+        getGetV2GetCopilotUsageMockHandler200(() => ({
+          tier: "PRO",
+          daily: {
+            percent_used: refused ? 100 : 0,
+            resets_at: new Date("2099-10-08T00:00:00Z"),
+          },
+          weekly: {
+            percent_used: 40,
+            resets_at: new Date("2099-10-12T00:00:00Z"),
+          },
+        })),
+      );
+      return http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        () => {
+          refused = true;
+          return HttpResponse.json(ourCap, { status: 429 });
+        },
+      );
+    }
+
     it("keeps the plan dialog for our cap and offers the linked subscription beside the upgrade", async () => {
       flagState.billing = true;
       let switchedTo: unknown = null;
       server.use(
-        copilotStreamErrorHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          status: 429,
-          body: ourCap,
-        }),
         getGetV2ListChatConnectionsMockHandler200({
           offers: [platformOffer(), chatgptOffer()],
         }),
@@ -436,11 +434,11 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       );
 
       renderHost();
-      usageExhaustedAfterSending();
+      server.use(usageLimitAdmission());
       await typeAndSend("over the cap");
-      const dialog = await screen.findByRole("dialog");
 
       // Our own cap, so our own dialog: the upgrade path survives ...
+      const dialog = await screen.findByRole("dialog");
       expect(
         await within(dialog).findByText(
           /You’ve hit today’s limit/i,
@@ -478,22 +476,16 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
     it("offers nothing to continue on when the platform is the only connection", async () => {
       flagState.billing = true;
       server.use(
-        copilotStreamErrorHandler({
-          baseUrl: TEST_BACKEND_BASE_URL,
-          sessionId: TEST_SESSION_ID,
-          status: 429,
-          body: ourCap,
-        }),
         getGetV2ListChatConnectionsMockHandler200({
           offers: [platformOffer()],
         }),
       );
 
       renderHost();
-      usageExhaustedAfterSending();
+      server.use(usageLimitAdmission());
       await typeAndSend("over the cap");
-      const dialog = await screen.findByRole("dialog");
 
+      const dialog = await screen.findByRole("dialog");
       expect(
         await within(dialog).findByText(
           /You’ve hit today’s limit/i,

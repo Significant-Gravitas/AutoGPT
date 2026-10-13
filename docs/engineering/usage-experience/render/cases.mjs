@@ -39,4 +39,6 @@ export default [
   item("29-payment-pending", "trial", "total", "pending"),
   item("30-activation-success", "pro", "fresh", "ready"),
   item("31-fresh-billing", "pro", "fresh", "billing"),
+  item("32-cancel-pending-billing", "trial", "cancel_pending", "billing"),
+  item("33-cancel-pending-notice", "trial", "cancel_pending", "notice"),
 ];
