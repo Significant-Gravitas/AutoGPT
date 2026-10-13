@@ -2,9 +2,13 @@
 
 [k6](https://grafana.com/docs/k6/latest/) tests that drive traffic at a deployed platform: a `!deploy` preview, dev, or a local stack. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) compares runs there.
 
+Run them on your own machine with Docker. Don't run them on Grafana Cloud k6: it bills every virtual-user hour (see [What it costs](#what-it-costs)), and it is only for the rare run that needs more load than one machine can generate, agreed with the team first.
+
+## Run it on your machine
+
 Docker is the only requirement. `./k6.sh` runs k6 from the pinned `grafana/k6` image with this directory mounted, and takes the same arguments as `k6`.
 
-## Quick start: a preview
+### A preview
 
 1. Comment `!deploy` on the pull request. A few minutes later its backend answers at `https://pr-<N>-server.agpt.co/health`, and its frontend is `https://autogpt-pr-<N>.vercel.app`.
 2. Run a test against it:
@@ -17,9 +21,9 @@ Docker is the only requirement. `./k6.sh` runs k6 from the pinned `grafana/k6` i
 
 Nothing else is needed: on a preview, the tests sign up their own throwaway accounts (see [Accounts](#accounts)).
 
-## Quick start: dev
+### Dev
 
-The whole team shares dev, so keep the load small and tell the team first. The tests cannot create accounts on dev; they sign in with accounts you supply (see [Accounts on dev](#dev)):
+The whole team shares dev, so keep the load small and tell the team first. The tests cannot create accounts on dev; they sign in with accounts you supply (see [Accounts on dev](#accounts-on-dev)):
 
 ```bash
 cd autogpt_platform/backend/load-tests
@@ -27,6 +31,41 @@ export K6_ENVIRONMENT=DEV
 export LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)"   # gitignored
 VUS=2 DURATION=1m RAMP_UP=10s RAMP_DOWN=10s ./k6.sh run tests/api/core-api-test.js
 ```
+
+### The variables a run needs
+
+- `K6_ENVIRONMENT`: `PREVIEW`, `DEV` or `LOCAL`.
+- `PR_NUMBER`: the pull request, for `PREVIEW`.
+- `LOAD_TEST_ACCOUNTS`: accounts to sign in with; required on `DEV` (see [`LOAD_TEST_ACCOUNTS`](#load_test_accounts)).
+- `VUS`, `DURATION`, `RAMP_UP`, `RAMP_DOWN`: the load shape. Each test has its own defaults.
+
+[Environment variables](#environment-variables) lists the rest.
+
+### The Docker command
+
+`./k6.sh` passes each setting into the container by name, so values such as `LOAD_TEST_ACCOUNTS` never appear on a command line. Without the wrapper, the two runs above are:
+
+```bash
+cd autogpt_platform/backend/load-tests
+
+# A preview
+docker run --rm -i --user "$(id -u):$(id -g)" -v "$PWD:/load-tests" -w /load-tests \
+  -e K6_ENVIRONMENT=PREVIEW -e PR_NUMBER=<N> \
+  -e VUS=2 -e DURATION=1m -e RAMP_UP=10s -e RAMP_DOWN=10s \
+  grafana/k6:2.3.0 run tests/api/core-api-test.js
+
+# Dev, with LOAD_TEST_ACCOUNTS exported in your shell
+docker run --rm -i --user "$(id -u):$(id -g)" -v "$PWD:/load-tests" -w /load-tests \
+  -e K6_ENVIRONMENT=DEV -e LOAD_TEST_ACCOUNTS \
+  -e VUS=2 -e DURATION=1m -e RAMP_UP=10s -e RAMP_DOWN=10s \
+  grafana/k6:2.3.0 run tests/api/core-api-test.js
+```
+
+### What it costs
+
+A run on your machine costs nothing beyond the load it puts on the target: the preview's or dev's own pods and database.
+
+Grafana Cloud k6 bills each test as its peak VUs times its whole duration, in virtual-user hours (VUh), whether it runs in the cloud (`k6 cloud run`) or streams results there (`--out cloud`). The Grafana Cloud org is on the Free plan, which allows 500 VUh a month; beyond that the paid plan costs about $0.15 per VUh on top of a $19 monthly platform fee. A 5-VU, 11-minute comparison run is about 1 VUh, and the orchestrator's full suite is about 175 VUh. So run locally; see [Grafana Cloud k6](#grafana-cloud-k6-rare-opt-in) for the exception.
 
 ## Tests
 
@@ -55,7 +94,7 @@ Passwords, cookies and tokens stay in memory and are never logged.
 
 ## Accounts
 
-### Previews
+### Accounts on previews
 
 With `LOAD_TEST_ACCOUNTS` unset, `setup()` signs up `LOAD_TEST_ACCOUNT_COUNT` (default 5) throwaway accounts named `loadtest-<run>-<n>@previews.agpt.co`, with random passwords that never leave the run. This works because previews allow sign-up for `@previews.agpt.co` and do not require email verification, so no email is sent and no shared secret is needed. The accounts stay in the preview's database until the preview is torn down.
 
@@ -66,7 +105,7 @@ export LOAD_TEST_ACCOUNTS="$(jq -n --arg p "$PREVIEW_ACCOUNTS_PASSWORD" \
   '[{email: "preview-existing@previews.agpt.co", password: $p}]')"
 ```
 
-### Dev
+### Accounts on dev
 
 Dev's sign-up allowlist does not include `@previews.agpt.co`, and `@agpt.co` addresses can only sign up through Google, so the tests cannot sign up on dev. Running the authenticated tests there needs:
 
@@ -103,7 +142,7 @@ The tests read it only from the environment. To keep it between runs, save it as
 | `ENDPOINT`, `CONCURRENT_REQUESTS`                            | `single-endpoint-test.js` only                                                            |
 | `THRESHOLD_*`                                                | Threshold overrides in the marketplace tests                                              |
 | `K6_ALLOW_PROD`                                              | Must be `true` for `PROD`; agree a production run with the team first                     |
-| `K6_CLOUD_TOKEN`, `K6_CLOUD_STACK_ID`, `K6_CLOUD_PROJECT_ID` | Grafana Cloud k6 runs only                                                                |
+| `K6_CLOUD_TOKEN`, `K6_CLOUD_STACK_ID`, `K6_CLOUD_PROJECT_ID` | Grafana Cloud k6 only, and passed in only with `--cloud`                                  |
 | `K6_IMAGE`                                                   | Another k6 image for `./k6.sh` (default `grafana/k6:2.3.0`)                               |
 | `K6_BIN`                                                     | A k6 binary for the orchestrator to use instead of `./k6.sh`                              |
 
@@ -129,32 +168,35 @@ perf-compare wants at least 200 samples from 30 traces per side, and recommends 
 
 ## Orchestrator
 
-`orchestrator/orchestrator.js` runs all twelve scenarios in turn, at 100 to 500 VUs each, for about an hour: a stress suite rather than a comparison run. It needs Node and, by default, Docker:
+`orchestrator/orchestrator.js` runs all twelve scenarios in turn, at 100 to 500 VUs each, for about an hour: a stress suite rather than a comparison run. It runs them on your machine, needs Node and Docker, and checks its settings before the first test:
 
 ```bash
-PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW          # local, through ./k6.sh
+PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW
 LOAD_TEST_ACCOUNTS="$(cat configs/accounts.json)" node orchestrator/orchestrator.js DEV
 ```
 
-It checks its settings before the first test, and writes a summary to `results/`.
+It writes a summary to `results/`.
 
-## Grafana Cloud k6 (optional)
+## Grafana Cloud k6 (rare, opt-in)
 
-Runs can also execute on Grafana Cloud k6 (project `4254406`) with a Grafana Cloud k6 API token and the stack's numeric ID:
+Don't run these tests on Grafana Cloud k6; it costs money (see [What it costs](#what-it-costs)). It is only for the rare run that needs more load than one machine can generate, and only after the team agrees to it.
+
+It is never a default. `./k6.sh` refuses any command that would use Grafana Cloud (`k6 cloud ...`, `--out cloud` or `K6_OUT=cloud`) unless `--cloud` is its first argument and `K6_CLOUD_TOKEN` is set. Without `--cloud`, it passes no Grafana Cloud credentials into the container. The orchestrator uses Grafana Cloud only with its explicit `cloud` argument. Both print a one-line cost reminder when they do. An agreed cloud run needs a Grafana Cloud k6 API token and the stack's numeric ID; the project is `4254406`:
 
 ```bash
 export K6_CLOUD_TOKEN=... K6_CLOUD_STACK_ID=... K6_CLOUD_PROJECT_ID=4254406
-./k6.sh cloud run --env K6_ENVIRONMENT=PREVIEW --env PR_NUMBER=<N> --env VUS=50 tests/api/core-api-test.js
+./k6.sh --cloud cloud run --env K6_ENVIRONMENT=PREVIEW --env PR_NUMBER=<N> --env VUS=50 tests/api/core-api-test.js
 PR_NUMBER=<N> node orchestrator/orchestrator.js PREVIEW cloud
 ```
 
-A remote cloud run sees only the variables passed with `--env`, and Grafana Cloud keeps those with the run. So the orchestrator refuses to send `LOAD_TEST_ACCOUNTS` there; cloud runs suit previews, where the tests sign up throwaway accounts. Results appear at <https://significantgravitas.grafana.net/a/k6-app/>.
+A remote cloud run sees only the variables passed with `--env`, and Grafana Cloud keeps those with the run, so the orchestrator refuses to send `LOAD_TEST_ACCOUNTS` there. On a preview the tests sign up throwaway accounts instead. Results appear at <https://significantgravitas.grafana.net/a/k6-app/>.
 
 ## Troubleshooting
 
-- **`DEV needs LOAD_TEST_ACCOUNTS`**: dev and prod have no throwaway sign-up; see [Accounts on dev](#dev).
+- **`DEV needs LOAD_TEST_ACCOUNTS`**: dev and prod have no throwaway sign-up; see [Accounts on dev](#accounts-on-dev).
 - **`Signing up throwaway account ... failed: HTTP 403`**: the target does not allow sign-up for `@previews.agpt.co`. Use `LOAD_TEST_ACCOUNTS`.
 - **`Getting a token ... failed: HTTP 401` right after sign-up**: the target requires email verification, so a sign-up gets no session. Use verified accounts in `LOAD_TEST_ACCOUNTS`.
 - **`... rejected the token from ...`**: the backend verifies tokens against a different frontend's JWKS than the one the test signed in at.
 - **`The first authenticated request ... failed`**: the backend is down, still starting, or not where `K6_ENVIRONMENT` and `PR_NUMBER` point.
 - **`429` during setup**: another sign-in from the same IP used up the burst. `setup()` waits and retries; it fails only after five refusals in a row.
+- **`k6.sh: this command would use Grafana Cloud k6`**: run it on your machine instead; see [Grafana Cloud k6](#grafana-cloud-k6-rare-opt-in) for the agreed exception.

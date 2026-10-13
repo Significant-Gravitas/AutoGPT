@@ -8,9 +8,11 @@
  *
  *   node orchestrator/orchestrator.js [PREVIEW|DEV|LOCAL|PROD] [local|cloud]
  *
- * local (the default) runs k6 through ../k6.sh, which uses Docker, or through
- * the binary named by K6_BIN. cloud runs each test on Grafana Cloud k6 and
- * needs K6_CLOUD_TOKEN and K6_CLOUD_STACK_ID in the environment.
+ * local (the default) runs k6 on this machine through ../k6.sh, which uses
+ * Docker, or through the binary named by K6_BIN. cloud runs each test on
+ * Grafana Cloud k6, which bills every virtual-user hour: it is only for load
+ * one machine cannot generate, agreed with the team first, and it needs the
+ * explicit `cloud` argument plus K6_CLOUD_TOKEN and K6_CLOUD_STACK_ID.
  */
 
 import { spawn } from "child_process";
@@ -225,6 +227,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function minutes(duration) {
+  const unit = { h: 60, m: 1, s: 1 / 60 };
+  let total = 0;
+  for (const [, value, suffix] of duration.matchAll(
+    /(\d+(?:\.\d+)?)(h|m|s)/g,
+  )) {
+    total += Number(value) * unit[suffix];
+  }
+  return total;
+}
+
+// Grafana Cloud k6 bills each test as its peak VUs times its whole duration.
+function suiteVirtualUserHours() {
+  const vuMinutes = unifiedTestScenarios.reduce(
+    (sum, test) =>
+      sum +
+      test.vus *
+        (minutes(test.rampUp) +
+          minutes(test.duration) +
+          minutes(test.rampDown)),
+    0,
+  );
+  return vuMinutes / 60;
+}
+
 function runTest(test, index) {
   return new Promise((resolve, reject) => {
     console.log(
@@ -266,8 +293,11 @@ function runTest(test, index) {
             test.file,
           ]
         : ["run", test.file];
+    // k6.sh refuses Grafana Cloud unless its first argument is --cloud.
+    const wrapperArgs =
+      executionMode === "cloud" && !process.env.K6_BIN ? ["--cloud"] : [];
 
-    const k6Process = spawn(K6_BIN, k6Args, {
+    const k6Process = spawn(K6_BIN, [...wrapperArgs, ...k6Args], {
       cwd: LOAD_TESTS_DIR,
       stdio: ["ignore", "pipe", "pipe"],
       env: { ...process.env, ...testEnv },
@@ -329,6 +359,11 @@ async function main() {
   if (problems.length > 0) {
     for (const problem of problems) console.error(`Error: ${problem}`);
     process.exit(2);
+  }
+  if (executionMode === "cloud") {
+    console.log(
+      `Grafana Cloud k6 bills every virtual-user hour, and this suite is about ${Math.round(suiteVirtualUserHours())} VUh a run; local mode is the default.`,
+    );
   }
 
   console.log(`\nUNIFIED TEST PLAN`);

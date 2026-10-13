@@ -85,7 +85,7 @@ Measuring the candidate preview against `app:dev-behave:cloud` at dev HEAD in th
 
 A preview's backend is `https://pr-<N>-server.agpt.co` (REST under `/api`, health at `/health`), and its frontend is `https://autogpt-pr-<N>.vercel.app`.
 
-The k6 tests are in `autogpt_platform/backend/load-tests/`; its `README.md` covers every test and setting. `./k6.sh` runs them in Docker (`grafana/k6`), so nothing else needs installing. `K6_ENVIRONMENT=PREVIEW` with `PR_NUMBER=<N>` targets a preview:
+The k6 tests are in `autogpt_platform/backend/load-tests/`; its `README.md` covers every test and setting. Run them on your own machine: `./k6.sh` runs k6 in Docker (`grafana/k6`), so nothing else needs installing, and a local run costs nothing beyond the load on the target. Do not run them on Grafana Cloud k6. It bills every virtual-user hour, so `./k6.sh` refuses cloud runs unless they are explicitly opted into, and the README reserves them for rare runs the team has agreed to. `K6_ENVIRONMENT=PREVIEW` with `PR_NUMBER=<N>` targets a preview:
 
 ```bash
 cd autogpt_platform/backend/load-tests
