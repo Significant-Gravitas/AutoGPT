@@ -337,15 +337,28 @@ def _forgotten_candidate(edge: EntityEdge) -> dict[str, str]:
     exists and when, never what it said. Its sentence, the audit copy its
     forget kept (``fact_redacted``), its scope and the dates it held true are
     all left out, the forget keeping them from the model; the delete needs
-    only the uuid."""
+    only the uuid. The two dates are read as timestamps and written out
+    anew (``_timestamp``), so no text an edge property holds goes with them."""
     forgotten_at = edge.attributes.get("forgotten_at") or edge.expired_at
     return {
         "uuid": edge.uuid,
         "fact": FORGOTTEN_FACT,
-        "stored_at": str(edge.created_at),
-        "forgotten_at": str(forgotten_at) if forgotten_at else "unknown",
+        "stored_at": _timestamp(edge.created_at),
+        "forgotten_at": _timestamp(forgotten_at),
         "forgotten": "true",
     }
+
+
+def _timestamp(value: Any) -> str:
+    """``value`` as an ISO 8601 UTC timestamp to the second, or ``"unknown"``
+    when it does not read as one (a missing value included)."""
+    try:
+        moment = datetime.fromisoformat(str(value))
+        if moment.tzinfo is None:
+            moment = moment.replace(tzinfo=timezone.utc)
+        return moment.astimezone(timezone.utc).isoformat(timespec="seconds")
+    except (ValueError, OverflowError):
+        return "unknown"
 
 
 def _candidates_message(live: int, forgotten: int) -> str:
