@@ -939,16 +939,20 @@ async def test_append_and_save_message_appends_new_message(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize("saved", [1, 2])
 async def test_a_follow_up_message_is_saved_without_rereading_the_session(
-    mocker: MockerFixture,
+    mocker: MockerFixture, saved: int
 ) -> None:
     """A chat with messages already has its row, so the follow-up's save goes
-    straight to the session update and the message insert."""
+    straight to the session update and the message insert, from its first
+    saved message on."""
     session = _make_session_with_messages(
-        ChatMessage(role="user", content="hello", sequence=0),
-        ChatMessage(role="assistant", content="hi", sequence=1),
+        *(
+            ChatMessage(role=role, content=f"message {n}", sequence=n)
+            for n, role in zip(range(saved), ["user", "assistant"])
+        )
     )
-    db = _stub_save_path(mocker, session, next_sequence=2)
+    db = _stub_save_path(mocker, session, next_sequence=saved)
 
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="second message")
@@ -959,7 +963,7 @@ async def test_a_follow_up_message_is_saved_without_rereading_the_session(
     db.create_chat_session.assert_not_awaited()
     db.update_chat_session.assert_awaited_once()
     [insert] = db.add_chat_messages_batch.await_args_list
-    assert insert.kwargs["start_sequence"] == 2
+    assert insert.kwargs["start_sequence"] == saved
     assert [m["content"] for m in insert.kwargs["messages"]] == ["second message"]
 
 
