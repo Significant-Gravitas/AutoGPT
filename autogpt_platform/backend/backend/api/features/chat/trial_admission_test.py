@@ -18,11 +18,11 @@ from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
 from backend.api.features.chat import routes as chat_routes
 from backend.copilot import rate_limit
+from backend.copilot.billing_e2e.trial_account import active_trial
 from backend.copilot.briefing import scheduling as briefing_scheduling
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import SubscriptionTier, UserPaywalledError
 from backend.data.subscription_trial import TrialState
-from backend.data.subscription_trial_config import AcceptedTrialOffer
 
 # Kept before the API suite's autouse fixture swaps in a paywall that lets
 # every user through.
@@ -49,7 +49,7 @@ class TrialAccount:
     def __init__(self, user_id: str) -> None:
         self.user_id = user_id
         self.tier = SubscriptionTier.TRIAL
-        self.trial = _active_trial(user_id)
+        self.trial = active_trial(user_id, daily_limit=250_000, weekly_limit=1_000_000)
         self.spent_today = 0
         self.read_error: Exception | None = None
 
@@ -236,40 +236,3 @@ def test_a_paying_user_is_not_held_to_a_trial_that_ended(
 
 def _send_message():
     return client.post("/sessions/sess-1/stream", json={"message": "hello"})
-
-
-def _active_trial(user_id: str) -> TrialState:
-    now = datetime.now(UTC)
-    return TrialState(
-        id="trial-1",
-        user_id=user_id,
-        customer_id="cus_1",
-        offer=AcceptedTrialOffer(
-            version="offer-v1",
-            new_users_from=now - timedelta(days=1),
-            duration_days=7,
-            tier="PRO",
-            billing_cycle="monthly",
-            daily_cost_limit=250_000,
-            weekly_cost_limit=1_000_000,
-            total_cost_limit=1_000_000,
-            onboarding_credit_amount=300,
-            price_id="price_pro",
-            unit_amount=2000,
-            currency="usd",
-        ),
-        checkout_session_id="cs_1",
-        subscription_id="sub_1",
-        checkout_attempt=0,
-        success_url="https://example.com",
-        cancel_url="https://example.com",
-        checkout_metadata={},
-        status="trialing",
-        card_verified_at=now,
-        started_at=now,
-        ends_at=now + timedelta(days=7),
-        consumed_at=now,
-        converted_at=None,
-        cancel_at_period_end=False,
-        cost_microdollars=0,
-    )
