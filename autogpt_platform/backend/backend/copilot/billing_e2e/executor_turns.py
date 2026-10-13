@@ -164,6 +164,7 @@ class BaselineTurnsViaExecutor(BaselineTurns):
         super().__init__(monkeypatch, config, base_url=base_url, model=model)
         self._executor = executor
         self.user_context = AsyncMock(return_value=None)
+        # BaselineTurns stubs it; the trial is what sizes this budget.
         monkeypatch.setattr(baseline, "build_budget_ctx", rate_limit.build_budget_ctx)
         monkeypatch.setattr(baseline, "inject_user_context", self.user_context)
 

@@ -37,7 +37,7 @@ class TrialAccount:
         self.user_id = user_id
         self.turn = 0
         self.tier = SubscriptionTier.TRIAL
-        self.trial = _trial(user_id, spent=spent_before)
+        self.trial = active_trial(user_id, spent=spent_before)
         self.charges: list[TrialCharge] = []
         self.counters = SpendCounters()
 
@@ -170,7 +170,15 @@ class _Transaction:
         self._queued.clear()
 
 
-def _trial(user_id: str, *, spent: int) -> TrialState:
+def active_trial(
+    user_id: str,
+    *,
+    spent: int = 0,
+    daily_limit: int = DAILY_LIMIT,
+    weekly_limit: int = WEEKLY_LIMIT,
+    total_limit: int = TOTAL_LIMIT,
+) -> TrialState:
+    """A card-verified trial a week from its end, with these spend limits."""
     now = datetime.now(UTC)
     return TrialState(
         id=TRIAL_ID,
@@ -182,9 +190,9 @@ def _trial(user_id: str, *, spent: int) -> TrialState:
             duration_days=7,
             tier="PRO",
             billing_cycle="monthly",
-            daily_cost_limit=DAILY_LIMIT,
-            weekly_cost_limit=WEEKLY_LIMIT,
-            total_cost_limit=TOTAL_LIMIT,
+            daily_cost_limit=daily_limit,
+            weekly_cost_limit=weekly_limit,
+            total_cost_limit=total_limit,
             onboarding_credit_amount=300,
             price_id="price_pro",
             unit_amount=2000,
