@@ -135,6 +135,8 @@ def test_unwrap_envelope_sanitizes_credential_leaks():
     text = str(exc.value)
     assert "password" not in text
     assert "api_key" not in text
+    for value in ("u1", "p2", "k3"):
+        assert value not in text
     assert "details withheld" in text
     assert "req-402" in text
 
@@ -311,17 +313,19 @@ async def test_client_sub_domains_requires_a_domain():
 @pytest.mark.asyncio
 async def test_client_catalog_non_ok_raises():
     """Both free catalog endpoints translate a non-OK HTTP status into a
-    ValueError carrying the status."""
+    ValueError carrying the status. A real >=400 never reaches the guard
+    (raise_for_status throws first), so this exercises the 3xx band - a
+    stranded redirect the response.ok check is exactly for."""
     client = AnySearchClient(None)
     resp = mock.Mock()
     resp.ok = False
-    resp.status = 502
+    resp.status = 304
     client.requests.get = mock.AsyncMock(return_value=resp)
 
-    with pytest.raises(ValueError, match="HTTP 502"):
+    with pytest.raises(ValueError, match="HTTP 304"):
         await client.domains()
 
-    with pytest.raises(ValueError, match="HTTP 502"):
+    with pytest.raises(ValueError, match="HTTP 304"):
         await client.sub_domains(["code"])
 
 
