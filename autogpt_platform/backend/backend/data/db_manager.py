@@ -151,7 +151,11 @@ from backend.data.human_review import (
     update_review_processed_status,
 )
 from backend.data.onboarding import increment_onboarding_runs
-from backend.data.openui_files import find_openui_view_file, get_openui_file_state
+from backend.data.openui_files import (
+    find_openui_view_file,
+    get_openui_file_state,
+    move_chat_edits_to_file,
+)
 from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
@@ -515,6 +519,7 @@ class DatabaseManager(AppService):
     update_workspace_file_content = _(update_workspace_file_content)
     find_openui_view_file = _(find_openui_view_file)
     get_openui_file_state = _(get_openui_file_state)
+    move_chat_edits_to_file = _(move_chat_edits_to_file)
     resolve_expert_workspace_scope = _(resolve_expert_workspace_scope)
 
     # ============ Understanding ============ #
@@ -973,6 +978,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_workspace_file_content = d.update_workspace_file_content
     find_openui_view_file = d.find_openui_view_file
     get_openui_file_state = d.get_openui_file_state
+    move_chat_edits_to_file = d.move_chat_edits_to_file
     resolve_expert_workspace_scope = d.resolve_expert_workspace_scope
 
     # ============ Credits ============ #

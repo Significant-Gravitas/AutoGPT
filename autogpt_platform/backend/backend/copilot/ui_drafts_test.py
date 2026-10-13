@@ -18,6 +18,7 @@ from backend.copilot.ui_view_files import (
     write_file_state,
 )
 from backend.data import db
+from backend.data.openui_files import move_chat_edits_to_file
 from backend.data.workspace import OPENUI_MIME_TYPE, get_or_create_workspace
 from backend.util.workspace import WorkspaceManager
 
@@ -394,6 +395,35 @@ async def test_saved_views_are_owner_scoped(draft_user):
             with pytest.raises(HTTPException) as error:
                 await operation
             assert error.value.status_code == 404
+    finally:
+        await db.prisma.chatsession.delete(where={"id": session})
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_only_the_owner_can_move_chat_edits_onto_a_file(draft_user):
+    session = await _view(draft_user)
+    try:
+        await write_draft(
+            draft_user,
+            session,
+            "trip",
+            UIDraftWrite(tool_call_id="view-one", expected_revision=0, state={}),
+        )
+        workspace = await get_or_create_workspace(draft_user)
+        file = await WorkspaceManager(draft_user, workspace.id, session).write_file(
+            content=b'root = Workspace("Trip", "", [], "trip")',
+            filename="Trip.openui",
+            mime_type=OPENUI_MIME_TYPE,
+        )
+        assert not await move_chat_edits_to_file(
+            "another-user", session, "trip", file.id
+        )
+        assert not await move_chat_edits_to_file(
+            draft_user, session, "unknown-view", file.id
+        )
+        assert await move_chat_edits_to_file(draft_user, session, "trip", file.id)
+        rows = await db.prisma.chatuidraft.find_many(where={"fileId": file.id})
+        assert len(rows) == 1 and rows[0].sessionId is None
     finally:
         await db.prisma.chatsession.delete(where={"id": session})
 

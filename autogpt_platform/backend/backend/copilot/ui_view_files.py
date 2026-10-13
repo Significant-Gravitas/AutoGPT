@@ -19,13 +19,13 @@ from backend.copilot.ui_drafts import (
     PublishedView,
     StateWrite,
     latest_published_view,
-    lock_owned_session,
 )
 from backend.data import db
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema
 from backend.data.openui_files import (
     find_openui_view_file,
     is_openui_file,
+    move_chat_edits_to_file,
     openui_filename,
     openui_metadata,
     openui_origin_session_id,
@@ -209,32 +209,20 @@ async def _move_edits_to_file(
     user_id: str, session_id: str, view_id: str, file_id: str, view: PublishedView
 ) -> None:
     """Move the chat's edits row onto the file, or start an empty one."""
-    async with db.transaction() as tx:
-        await lock_owned_session(tx, user_id, session_id)
-        moved = await execute_raw_with_schema(
-            'UPDATE {schema_prefix}"ChatUIDraft" SET "sessionId" = NULL, '
-            '"fileId" = $1, "updatedAt" = NOW() '
-            'WHERE "sessionId" = $2 AND "viewId" = $3',
-            file_id,
-            session_id,
-            view_id,
-            client=tx,
-        )
-        if moved:
-            return
-        await execute_raw_with_schema(
-            'INSERT INTO {schema_prefix}"ChatUIDraft" (id, "fileId", "viewId", "toolCallId", sequence, source, state, revision, "updatedAt") '
-            "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 0, NOW()) "
-            'ON CONFLICT ("fileId") DO NOTHING',
-            str(uuid4()),
-            file_id,
-            view_id,
-            view.tool_call_id,
-            view.sequence,
-            view.source,
-            "{}",
-            client=tx,
-        )
+    if await move_chat_edits_to_file(user_id, session_id, view_id, file_id):
+        return
+    await execute_raw_with_schema(
+        'INSERT INTO {schema_prefix}"ChatUIDraft" (id, "fileId", "viewId", "toolCallId", sequence, source, state, revision, "updatedAt") '
+        "VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 0, NOW()) "
+        'ON CONFLICT ("fileId") DO NOTHING',
+        str(uuid4()),
+        file_id,
+        view_id,
+        view.tool_call_id,
+        view.sequence,
+        view.source,
+        "{}",
+    )
 
 
 async def _owned_view_file(user_id: str, file_id: str) -> tuple[WorkspaceFile, str]:

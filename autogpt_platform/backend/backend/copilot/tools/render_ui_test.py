@@ -45,6 +45,7 @@ def saved_views(monkeypatch):
     """No view of the chat is saved yet; tests that save one say so."""
     db = MagicMock()
     db.find_openui_view_file = AsyncMock(return_value=None)
+    db.move_chat_edits_to_file = AsyncMock(return_value=True)
     monkeypatch.setattr(openui_files, "openui_files_db", MagicMock(return_value=db))
     return db
 
@@ -416,7 +417,9 @@ async def test_sdk_returns_repair_feedback_then_publishes_only_corrected_view(
 
 
 @pytest.mark.asyncio
-async def test_a_new_filename_saves_the_view_as_a_file(render_ui_tool, workspace):
+async def test_a_new_filename_saves_the_view_as_a_file(
+    render_ui_tool, workspace, saved_views
+):
     session = make_session("owner")
     result = await render_ui_tool._execute(
         "owner", session, source=SOURCE, file="Q3 revenue"
@@ -435,6 +438,9 @@ async def test_a_new_filename_saves_the_view_as_a_file(render_ui_tool, workspace
         "originSessionId": session.session_id,
     }
     workspace.replace_file_content.assert_not_awaited()
+    saved_views.move_chat_edits_to_file.assert_awaited_once_with(
+        "owner", session.session_id, "revenue", "new-file"
+    )
 
 
 @pytest.mark.asyncio
@@ -454,6 +460,7 @@ async def test_rerendering_a_saved_view_revises_the_same_file(
     assert metadata["origin"] == "agent-created"
     assert metadata["openui"]["originSessionId"] == session.session_id
     workspace.write_file.assert_not_awaited()
+    saved_views.move_chat_edits_to_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -472,6 +479,7 @@ async def test_a_file_reference_revises_that_file(
     workspace.get_file_info.assert_awaited_once_with(FILE_ID)
     assert workspace.replace_file_content.await_args.args[0] == FILE_ID
     saved_views.find_openui_view_file.assert_not_awaited()
+    saved_views.move_chat_edits_to_file.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -517,6 +525,17 @@ async def test_a_failed_file_write_does_not_publish_the_view(render_ui_tool, wor
     assert result.type == ResponseType.ERROR
     assert "already exists" in result.message
     assert "source" not in result.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_a_new_file_is_kept_when_moving_the_chats_edits_fails(
+    render_ui_tool, workspace, saved_views
+):
+    saved_views.move_chat_edits_to_file.side_effect = RuntimeError("db down")
+    result = await render_ui_tool._execute(
+        "owner", make_session("owner"), source=SOURCE, file="revenue"
+    )
+    assert json.loads(result.model_dump_json())["file_id"] == "new-file"
 
 
 @pytest.mark.asyncio

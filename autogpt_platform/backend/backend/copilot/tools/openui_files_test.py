@@ -4,8 +4,9 @@ import base64
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from prisma.models import ChatUIDraft, UserWorkspaceFile
+from prisma.models import ChatSession, ChatUIDraft, UserWorkspaceFile
 
+from backend.copilot.db import create_chat_session
 from backend.copilot.tools._test_data import make_session, setup_test_data
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.openui_files import OpenUIFileContentResponse
@@ -89,6 +90,53 @@ async def test_view_files_are_saved_revised_in_place_and_read_with_edits(
         assert base64.b64decode(ranged.content_base64).decode() == SOURCE[:10]
     finally:
         await ChatUIDraft.prisma().delete_many(where={"fileId": written.file_id})
+        await DeleteWorkspaceFileTool()._execute(
+            user_id=user.id, session=session, file_id=written.file_id
+        )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_new_view_file_takes_over_the_chats_edits(setup_test_data):
+    user = setup_test_data["user"]
+    session = make_session(user.id)
+    await create_chat_session(session.session_id, user.id)
+    edits = {"revenue": {"note": {"value": "Checked", "componentType": "Field"}}}
+    draft = await ChatUIDraft.prisma().create(
+        data={
+            "sessionId": session.session_id,
+            "viewId": "revenue",
+            "toolCallId": "view-one",
+            "sequence": 1,
+            "source": SOURCE,
+            "state": SafeJson(edits),
+            "revision": 2,
+        }
+    )
+    write = WriteWorkspaceFileTool()
+    written = await write._execute(
+        user_id=user.id, session=session, filename="revenue", content=SOURCE
+    )
+    assert isinstance(written, WorkspaceWriteResponse), written.message
+    try:
+        moved = await ChatUIDraft.prisma().find_unique(where={"id": draft.id})
+        assert moved is not None
+        assert (moved.sessionId, moved.fileId) == (None, written.file_id)
+        assert (moved.state, moved.revision) == (edits, 2)
+
+        revised = await write._execute(
+            user_id=user.id,
+            session=session,
+            filename="revenue.openui",
+            content=SOURCE.replace("$42,000", "$43,000"),
+        )
+        assert isinstance(revised, WorkspaceWriteResponse), revised.message
+        assert revised.file_id == written.file_id
+        rows = await ChatUIDraft.prisma().find_many(where={"viewId": "revenue"})
+        assert [row.id for row in rows if row.fileId == written.file_id] == [draft.id]
+        assert not [row for row in rows if row.sessionId == session.session_id]
+    finally:
+        await ChatUIDraft.prisma().delete_many(where={"fileId": written.file_id})
+        await ChatSession.prisma().delete(where={"id": session.session_id})
         await DeleteWorkspaceFileTool()._execute(
             user_id=user.id, session=session, file_id=written.file_id
         )

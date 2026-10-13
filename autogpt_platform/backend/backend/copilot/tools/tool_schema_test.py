@@ -260,7 +260,8 @@ from ._test_data import make_session
 # ceiling reds the queue's merge ref on the next reworded description.
 # render_ui adds the deferred OpenUI component library (12,308 chars after the
 # catalog trim). Measured 89,285 with it; plus the same 300-char margin.
-_CHAR_BUDGET = 89_585
+# Bumped 89_585 -> 89_829 for render_ui's `file` argument: measured 89,529, +300.
+_CHAR_BUDGET = 89_829
 
 
 @pytest.fixture(scope="module")

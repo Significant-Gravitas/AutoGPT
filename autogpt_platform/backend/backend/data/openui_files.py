@@ -1,14 +1,14 @@
 """Saved OpenUI views: workspace files whose body is an OpenUI program.
 
 The file's metadata names the view (``{"openui": {"viewId", "originSessionId"}}``)
-and the user's edits live in a ``ChatUIDraft`` row tied to the file. These reads
+and the user's edits live in a ``ChatUIDraft`` row tied to the file. These
 run in the CoPilot executor too, so they are exposed on the DatabaseManager.
 """
 
 import posixpath
 from typing import Optional
 
-from backend.data.db import query_raw_with_schema
+from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.workspace import OPENUI_EXTENSION, OPENUI_MIME_TYPE, WorkspaceFile
 from backend.data.workspace_scope import session_path_prefix
 
@@ -87,3 +87,38 @@ async def get_openui_file_state(user_id: str, file_id: str) -> Optional[dict]:
     )
     state = rows[0]["state"] if rows else None
     return state if isinstance(state, dict) else None
+
+
+async def move_chat_edits_to_file(
+    user_id: str, session_id: str, view_id: str, file_id: str
+) -> bool:
+    """Move the chat's unsaved edits to ``view_id`` onto the user's new view
+    file, so they follow the view. False when there were none to move.
+
+    Locks the chat first: an edit write holds the same lock while it checks
+    that the view has no file yet, so no edit lands in the chat after this.
+    """
+    async with transaction() as tx:
+        owned = await query_raw_with_schema(
+            'SELECT id FROM {schema_prefix}"ChatSession" '
+            'WHERE id = $1 AND "userId" = $2 FOR UPDATE',
+            session_id,
+            user_id,
+            client=tx,
+        )
+        if not owned:
+            return False
+        moved = await execute_raw_with_schema(
+            'UPDATE {schema_prefix}"ChatUIDraft" SET "sessionId" = NULL, '
+            '"fileId" = $1, "updatedAt" = NOW() '
+            'WHERE "sessionId" = $2 AND "viewId" = $3 AND EXISTS ('
+            'SELECT 1 FROM {schema_prefix}"UserWorkspaceFile" f '
+            'JOIN {schema_prefix}"UserWorkspace" w ON w.id = f."workspaceId" '
+            'WHERE f.id = $1 AND w."userId" = $4)',
+            file_id,
+            session_id,
+            view_id,
+            user_id,
+            client=tx,
+        )
+    return moved > 0

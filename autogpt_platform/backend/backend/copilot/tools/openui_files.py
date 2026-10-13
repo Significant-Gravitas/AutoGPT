@@ -150,12 +150,14 @@ async def save_view(
     if file_id is not None:
         return await revise_view_file(manager, file_id, source, view_id, session_id)
     assert file is not None
-    return await manager.write_file(
+    created = await manager.write_file(
         content=source.encode(),
         filename=openui_filename(file),
         mime_type=OPENUI_MIME_TYPE,
         metadata=openui_metadata(_AGENT_ORIGIN, view_id, session_id),
     )
+    await _move_chat_edits(user_id, session_id, view_id, created)
+    return created
 
 
 async def revise_view_file(
@@ -212,7 +214,7 @@ async def write_view_file(
         return await revise_view_file(
             manager, file_id, source, view.view_id, session_id
         )
-    return await manager.write_file(
+    created = await manager.write_file(
         content=source.encode(),
         filename=name,
         path=path,
@@ -220,6 +222,8 @@ async def write_view_file(
         overwrite=overwrite,
         metadata=openui_metadata(_AGENT_ORIGIN, view.view_id, session_id),
     )
+    await _move_chat_edits(manager.user_id, session_id, view.view_id, created)
+    return created
 
 
 async def read_view_file(
@@ -283,3 +287,16 @@ async def _chat_view_file(
             raise
         logger.warning("Saved view lookup failed", exc_info=True)
         return None
+
+
+async def _move_chat_edits(
+    user_id: str, session_id: str, view_id: str, file: WorkspaceFile
+) -> None:
+    """A new file for a view takes over the chat's unsaved edits to it. The
+    file is already written, so a failure here must not fail the call."""
+    try:
+        await openui_files_db().move_chat_edits_to_file(
+            user_id, session_id, view_id, file.id
+        )
+    except Exception:
+        logger.warning("Moving chat edits onto a new view file failed", exc_info=True)
