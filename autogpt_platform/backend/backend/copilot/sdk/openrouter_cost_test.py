@@ -723,6 +723,7 @@ class TestLangfuseTraceBackfill:
 async def test_logs_where_openrouter_routed_the_generation(caplog):
     payload = _mock_generation_response(0.02)
     payload["data"].update(
+        model="anthropic/claude-sonnet-5.5",
         provider_name="Anthropic",
         latency=812,
         generation_time=2400,
@@ -736,6 +737,26 @@ async def test_logs_where_openrouter_routed_the_generation(caplog):
 
     assert cost == 0.02
     assert (
-        "[test] OpenRouter generation gen-1: provider=Anthropic latency_ms=812 "
-        "generation_ms=2400 prompt_tokens=1000 cached_tokens=900"
+        "[test] OpenRouter generation gen-1: model=anthropic/claude-sonnet-5.5 "
+        "provider=Anthropic latency_ms=812 generation_ms=2400 prompt_tokens=1000 "
+        "cached_tokens=900 completion_tokens=50"
+    ) in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_sparse_generation_record_is_still_charged_and_logged(caplog):
+    client = MagicMock()
+    client.get = AsyncMock(
+        return_value=httpx.Response(200, json={"data": {"total_cost": 0.02}})
+    )
+
+    with caplog.at_level(logging.INFO, logger="backend.copilot.sdk.openrouter_cost"):
+        cost = await _fetch_generation_cost(client, "gen-1", "sk-or-test", "[test]")
+
+    assert cost == 0.02
+    assert client.get.await_count == 1
+    assert (
+        "[test] OpenRouter generation gen-1: model=None provider=None "
+        "latency_ms=None generation_ms=None prompt_tokens=None cached_tokens=None "
+        "completion_tokens=None"
     ) in caplog.text
