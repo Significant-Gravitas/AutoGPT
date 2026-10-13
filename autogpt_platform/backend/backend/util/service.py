@@ -37,6 +37,7 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
+from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
@@ -602,6 +603,16 @@ def _usable_adapter(annotation: Any) -> TypeAdapter | None:
         return None
 
 
+def _send_trace_headers(request: httpx.Request) -> None:
+    """Carry the caller's trace to the service, whose request transaction then
+    continues it. Runs inside the HTTP client span, which becomes the parent."""
+    request.headers.update(tracing.trace_propagation_headers())
+
+
+async def _send_trace_headers_async(request: httpx.Request) -> None:
+    _send_trace_headers(request)
+
+
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
@@ -657,6 +668,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers]},
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
@@ -668,6 +680,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers_async]},
             )
 
         @property

@@ -988,6 +988,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
+    )
+
     autopilot_bot_teams_allow_unverified: bool = Field(
         default=False,
         description="Local dev only: accept Teams activities that carry no Bot "

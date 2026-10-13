@@ -156,6 +156,8 @@ from backend.copilot.transports import (
     is_deployment_chat_available,
     save_default_chat_route,
 )
+from backend.copilot.trial_reads import sharing_trial_reads
+from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -164,6 +166,7 @@ from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util import tracing
 from backend.util.background import spawn_background_task
 from backend.util.exceptions import InsufficientBalanceError, NotFoundError
 from backend.util.feature_flag import Flag, is_feature_enabled
@@ -1724,6 +1727,9 @@ def _empty_ui_message_stream_response(
         },
     },
 )
+# The paywall and the rate-limit checks below each read a trial user's
+# subscription trial; inside this handler they share one read.
+@sharing_trial_reads
 async def stream_chat_post(
     session_id: str,
     request: StreamChatRequest,
@@ -2064,6 +2070,8 @@ async def stream_chat_post(
 
     # Per-turn stream is always fresh (unique turn_id), subscribe from beginning
     subscribe_from_id = "0-0"
+    # This request's transaction, which the relay below records its latency on.
+    stream_transaction = tracing.current_transaction()
 
     # SSE endpoint that subscribes to the task's stream
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -2077,6 +2085,7 @@ async def stream_chat_post(
         )
         subscriber_queue = None
         first_chunk_yielded = False
+        first_token_yielded = False
         chunks_yielded = 0
         try:
             # Subscribe from the position we captured before enqueuing
@@ -2115,6 +2124,20 @@ async def stream_chat_post(
                                     "elapsed_ms": elapsed * 1000,
                                 }
                             },
+                        )
+                        tracing.set_timing(
+                            "copilot.stream.first_chunk_ms",
+                            (time_module.perf_counter() - stream_start_time) * 1000,
+                            span=stream_transaction,
+                        )
+                    if not first_token_yielded and isinstance(
+                        chunk, MODEL_OUTPUT_CHUNKS
+                    ):
+                        first_token_yielded = True
+                        tracing.set_timing(
+                            "copilot.stream.ttft_ms",
+                            (time_module.perf_counter() - stream_start_time) * 1000,
+                            span=stream_transaction,
                         )
 
                     yield stream_registry.sse_frame(entry)
@@ -2186,6 +2209,9 @@ async def stream_chat_post(
                         "chunks_yielded": chunks_yielded,
                     }
                 },
+            )
+            tracing.set_data(
+                "copilot.stream.chunk_count", chunks_yielded, span=stream_transaction
             )
             yield "data: [DONE]\n\n"
 
