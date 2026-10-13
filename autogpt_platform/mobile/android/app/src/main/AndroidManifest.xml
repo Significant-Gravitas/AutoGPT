@@ -1,0 +1,22 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <application android:label="AutoGPT" android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:icon="@drawable/app_icon" android:dataExtractionRules="@xml/data_extraction_rules"
+        android:allowBackup="false" android:fullBackupContent="false"
+        android:usesCleartextTraffic="false" android:supportsRtl="true">
+        <activity android:name=".MainActivity" android:exported="true"
+            android:launchMode="singleTask" android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="autogpt" android:host="auth" android:path="/callback" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
