@@ -3,10 +3,14 @@ was (``fact_attributes.py``), through the production worker against a live
 FalkorDB. That covers the platform's stamps, the dream's envelope metadata
 and the status, whatever graphiti's model answers, on both of graphiti's
 merge branches and its exact-text path. A forgotten fact is still no merge
-target, and FalkorDB's ``+=`` behaves as the merging save relies on.
+target, a save of a copy read before the forget changes only its episode
+list, and FalkorDB runs both saves as the driver rewrites them.
 
 Reproduced first by a probe of the same shape before the fix: every stamp
-was lost on a merge, and the status was the model's answer.
+was lost on a merge, and the status was the model's answer. The stale save
+was reproduced first by an independent review of the merge: it put the
+forgotten sentence back under the marker, and a later paraphrase went into
+the forgotten fact.
 
 Run with FalkorDB reachable (see ``conftest.py``)::
 
@@ -20,6 +24,14 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from graphiti_core.driver.driver import GraphProvider
+from graphiti_core.edges import EntityEdge
+from graphiti_core.models.edges.edge_db_queries import (
+    get_entity_edge_save_bulk_query,
+    get_entity_edge_save_query,
+)
+from graphiti_core.nodes import EntityNode
+from graphiti_core.utils.bulk_utils import add_nodes_and_edges_bulk
 from pytest_mock import MockerFixture
 
 from .falkordb_driver import AutoGPTFalkorDriver
@@ -34,6 +46,7 @@ from .recall_integration_fixtures import (
     live_facts,
     model_of,
     patch_recall_boundaries,
+    rows,
     scripted_responses,
     stop_ingestion_workers,
 )
@@ -104,11 +117,12 @@ async def _restate(
     build: BuildClient,
     fact: Fact,
     *,
-    duplicate_of: str,
+    duplicate_of: set[str],
 ) -> tuple[str, list[str]]:
-    """``fact`` in a new turn, graphiti's model naming the candidate whose
-    text is ``duplicate_of`` a duplicate and answering ``_TENTATIVE`` for its
-    attributes: the new episode and the models asked."""
+    """``fact`` in a new turn, graphiti's model naming the first candidate
+    whose text is in ``duplicate_of`` a duplicate and answering
+    ``_TENTATIVE`` for its attributes: the new episode and the models
+    asked."""
     responses = _responses(fact, "MemoryFact", "2026-06-01T00:00:00Z")
     responses["MemoryFact"] = dict(_TENTATIVE)
     client = build(driver, responses)
@@ -118,7 +132,7 @@ async def _restate(
     async def resolve(messages, response_model=None, *args: Any, **kwargs: Any):
         if response_model is not None and response_model.__name__ == "EdgeDuplicate":
             listed = _existing_facts(messages[-1].content)
-            same = [c["idx"] for c in listed if c["fact"] == duplicate_of]
+            same = [c["idx"] for c in listed if c["fact"] in duplicate_of]
             return {"duplicate_facts": same[:1], "contradicted_facts": []}
         return await scripted(messages, response_model, *args, **kwargs)
 
@@ -154,7 +168,7 @@ async def test_a_merged_restatement_leaves_every_attribute_as_it_was(
     before = await edge_properties(driver, uuid)
 
     episode, asked = await _restate(
-        driver, scope, stub_graphiti_client, _PARAPHRASE, duplicate_of=ALICE[2]
+        driver, scope, stub_graphiti_client, _PARAPHRASE, duplicate_of={ALICE[2]}
     )
 
     after = await edge_properties(driver, uuid)
@@ -178,7 +192,7 @@ async def test_the_same_sentence_again_leaves_every_attribute_as_it_was(
     uuid = await _stamped_fact(driver, scope, stub_graphiti_client, "MemoryFact")
 
     episode, asked = await _restate(
-        driver, scope, stub_graphiti_client, ALICE, duplicate_of=ALICE[2]
+        driver, scope, stub_graphiti_client, ALICE, duplicate_of={ALICE[2]}
     )
 
     after = await edge_properties(driver, uuid)
@@ -200,7 +214,11 @@ async def test_a_forgotten_fact_is_no_merge_target(
     before = await edge_properties(driver, uuid)
 
     await _restate(
-        driver, scope, stub_graphiti_client, _PARAPHRASE, duplicate_of=FORGOTTEN_FACT
+        driver,
+        scope,
+        stub_graphiti_client,
+        _PARAPHRASE,
+        duplicate_of={FORGOTTEN_FACT},
     )
 
     assert await edge_properties(driver, uuid) == before
@@ -209,40 +227,150 @@ async def test_a_forgotten_fact_is_no_merge_target(
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_falkordb_merges_a_map_into_an_edge(scope_graph) -> None:
-    """What the merging save relies on, in both of graphiti's save forms: a
-    property the map does not name stays, a null in the map removes one, and
-    the rest are set; ``=`` instead removes every property the map does not
-    name."""
+@pytest.mark.parametrize("form", ["single", "bulk"])
+async def test_a_stale_save_after_a_forget_links_its_episode_and_nothing_else(
+    scope_graph, stub_graphiti_client, ingest_worker_cleanup, form: str
+) -> None:
+    """With no write lock (Redis unreachable, or a lease lost) an ingestion
+    saves the fact as it read it before a forget, with a new episode and an
+    embedding of its own, by itself or with its entities as ``add_episode``
+    does: the fact keeps the forget's scrubbed text, status, dates, audit
+    copies and embedding, and only its episode list changes. A later
+    paraphrase, which graphiti's model calls a duplicate of it, is then a
+    new live fact, not hidden under the forget."""
+    driver, scope = scope_graph
+    uuid = await _stamped_fact(driver, scope, stub_graphiti_client, "MemoryFact")
+    stale = await EntityEdge.get_by_uuid(driver, uuid)
+    entities = await EntityNode.get_by_uuids(
+        driver, [stale.source_node_uuid, stale.target_node_uuid]
+    )
+    await retract(scope, [uuid])
+    forgotten = await edge_properties(driver, uuid)
+    embedding = await _embedding(driver, uuid)
+    stale.episodes = [*stale.episodes, "stale-episode"]
+    stale.fact_embedding = [-value for value in embedding]
+
+    await _save_stale(driver, stub_graphiti_client, stale, entities, form)
+
+    assert forgotten["fact"] == FORGOTTEN_FACT and stale.fact == ALICE[2]
+    assert await edge_properties(driver, uuid) == {
+        **forgotten,
+        "episodes": stale.episodes,
+    }
+    assert await _embedding(driver, uuid) == embedding
+    await _restate(
+        driver,
+        scope,
+        stub_graphiti_client,
+        _PARAPHRASE,
+        duplicate_of={ALICE[2], FORGOTTEN_FACT},
+    )
+    assert sorted((await live_facts(driver)).values()) == [_PARAPHRASE[2]]
+    assert await edge_properties(driver, uuid) == {
+        **forgotten,
+        "episodes": stale.episodes,
+    }
+
+
+async def _save_stale(
+    driver: AutoGPTFalkorDriver,
+    build: BuildClient,
+    stale: EntityEdge,
+    entities: list[EntityNode],
+    form: str,
+) -> None:
+    """Save ``stale`` as graphiti does: by itself (``EntityEdge.save``), or
+    with its entities in ``add_episode``'s bulk save, through the driver's
+    session."""
+    if form == "single":
+        await stale.save(driver)
+        return
+    embedder = build(driver, {}).embedder
+    await add_nodes_and_edges_bulk(driver, [], [], entities, [stale], embedder)
+
+
+async def _embedding(driver: AutoGPTFalkorDriver, uuid: str) -> list[float]:
+    [row] = await rows(
+        driver,
+        "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() RETURN e.fact_embedding AS v",
+        uuid=uuid,
+    )
+    return list(row["v"])
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("form", ["single", "bulk"])
+async def test_falkordb_runs_both_saves_as_the_driver_rewrites_them(
+    scope_graph, form: str
+) -> None:
+    """graphiti's save of three facts as the driver runs it, by itself
+    (``execute_query``) or in bulk (``session()``). On a live fact a
+    property graphiti's map does not name stays, a null in the map removes
+    one, and the rest and the embedding are set; on a fact a forget marked
+    only ``episodes`` is; and a fact not stored yet is created from the
+    map."""
     driver, _ = scope_graph
     await driver.execute_query(
-        "CREATE (:Entity {uuid: 'a'})-[:RELATES_TO {uuid: 'x', kept: 1, "
-        "cleared: 2, set: 3}]->(:Entity {uuid: 'b'})"
+        "CREATE (a:Entity {uuid: 'a'})-[:RELATES_TO {uuid: 'live', kept: 1, "
+        "cleared: 2, set: 3, episodes: ['e1']}]->(b:Entity {uuid: 'b'}) "
+        "CREATE (a)-[:RELATES_TO {uuid: 'marked', forgotten_at: 't', "
+        "fact: $placeholder, kept: 1, cleared: 2, set: 3, episodes: ['e1']}]->(b)",
+        placeholder=FORGOTTEN_FACT,
     )
-    edge = "MATCH ()-[e:RELATES_TO {uuid: 'x'}]->() "
-
     await driver.execute_query(
-        edge + "SET e += $m", m={"cleared": None, "set": 30, "added": [1, 2]}
+        "MATCH ()-[e:RELATES_TO]->() SET e.fact_embedding = vecf32([0.25])"
     )
-    assert (await edge_properties(driver, "x")) == {
-        "uuid": "x",
-        "kept": 1,
+    fields = {
+        "fact": ALICE[2],
+        "cleared": None,
         "set": 30,
-        "added": [1, 2],
+        "episodes": ["e1", "e2"],
+        "fact_embedding": [0.5],
     }
 
-    await driver.execute_query(edge + "SET e.cleared = 2")
-    await driver.execute_query(
-        "UNWIND $edges AS edge MATCH ()-[r:RELATES_TO {uuid: edge.uuid}]->() "
-        "SET r += edge SET r.fact_embedding = vecf32(edge.fact_embedding)",
-        edges=[{"uuid": "x", "cleared": None, "set": 300, "fact_embedding": [0.5]}],
-    )
-    assert (await edge_properties(driver, "x")) == {
-        "uuid": "x",
+    ends = await _graphiti_saves(driver, form, ["live", "marked", "new"], fields)
+
+    saved = {"fact": ALICE[2], "set": 30, "episodes": ["e1", "e2"], **ends}
+    assert await edge_properties(driver, "live") == {"uuid": "live", "kept": 1, **saved}
+    assert await edge_properties(driver, "marked") == {
+        "uuid": "marked",
+        "forgotten_at": "t",
+        "fact": FORGOTTEN_FACT,
         "kept": 1,
-        "set": 300,
-        "added": [1, 2],
+        "cleared": 2,
+        "set": 3,
+        "episodes": ["e1", "e2"],
     }
+    assert await edge_properties(driver, "new") == {"uuid": "new", **saved}
+    assert [await _embedding(driver, u) for u in ("live", "marked", "new")] == [
+        [0.5],
+        [0.25],
+        [0.5],
+    ]
 
-    await driver.execute_query(edge + "SET e = $m", m={"uuid": "x", "set": 3000})
-    assert (await edge_properties(driver, "x")) == {"uuid": "x", "set": 3000}
+
+async def _graphiti_saves(
+    driver: AutoGPTFalkorDriver, form: str, uuids: list[str], fields: dict[str, Any]
+) -> dict[str, str]:
+    """Save ``fields`` on a fact from ``a`` to ``b`` per uuid with graphiti's
+    own save query, as graphiti runs it; the endpoint keys its map holds."""
+    falkor = GraphProvider.FALKORDB
+    if form == "single":
+        ends = {"source_uuid": "a", "target_uuid": "b"}
+        for uuid in uuids:
+            await driver.execute_query(
+                get_entity_edge_save_query(falkor),
+                edge_data={**ends, "uuid": uuid, **fields},
+            )
+        return ends
+    ends = {"source_node_uuid": "a", "target_node_uuid": "b"}
+    session = driver.session()
+    try:
+        await session.run(
+            get_entity_edge_save_bulk_query(falkor),
+            entity_edges=[{**ends, "uuid": uuid, **fields} for uuid in uuids],
+        )
+    finally:
+        await session.close()
+    return ends

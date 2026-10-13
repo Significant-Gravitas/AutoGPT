@@ -34,6 +34,21 @@ A user's own restatement still moves a tentative fact on: the worker
 promotes it once the chat turn is written (``ingest._promote_restated``).
 A fact saved with no attributes at all (before ``MemoryFact`` was wired)
 reads as new, so a statement merged into it still seeds them.
+
+A forgotten fact (one a forget stamped ``forgotten_at``) takes nothing from
+either save but its episode list: each save keeps the stored properties and
+embedding of an edge carrying the marker, in the same statement. graphiti
+saves what it read when its ``add_episode`` began, and without the write
+lock (``scope_lock.py``: Redis unreachable, or a lease lost) an ingestion
+that read the fact before a forget saves it after. A merge would put the
+sentence back under the marker, and graphiti's dedup, which knows a
+forgotten fact only by its placeholder text (``recall_ingest.py``), would
+then merge a later statement of it into the forgotten fact, where it stays
+hidden. Nothing else ever has to be saved on a forgotten fact: graphiti's
+model never merges a statement into one or invalidates one
+(``recall_ingest.ForgetAwareLLMClient``), and the exact-text match that runs
+before it only adds the episode of a statement repeating its ``[forgotten]``
+text.
 """
 
 import logging
@@ -51,17 +66,44 @@ from pydantic import TypeAdapter, ValidationError
 
 logger = logging.getLogger(__name__)
 
-# graphiti's fact saves on FalkorDB, each with the clause that replaces the
-# edge's properties with graphiti's map.
-REPLACING_CLAUSES = {
-    get_entity_edge_save_query(GraphProvider.FALKORDB): "SET e = $edge_data",
-    get_entity_edge_save_bulk_query(GraphProvider.FALKORDB): "SET r = edge",
+
+def _save_clauses(edge: str, data: str) -> dict[str, str]:
+    """The two clauses of a fact save writing map ``data`` on ``edge``, each
+    with the clause the driver runs instead: a merge of the map, taking only
+    ``episodes`` on an edge a forget marked, and the embedding, kept on one."""
+    live = f"{edge}.forgotten_at IS NULL"
+    return {
+        f"SET {edge} = {data}": (
+            f"SET {edge} += CASE WHEN {live} THEN {data}"
+            f" ELSE {{episodes: {data}.episodes}} END"
+        ),
+        f"SET {edge}.fact_embedding = vecf32({data}.fact_embedding)": (
+            f"SET {edge}.fact_embedding = CASE WHEN {live}"
+            f" THEN vecf32({data}.fact_embedding) ELSE {edge}.fact_embedding END"
+        ),
+    }
+
+
+# graphiti's fact saves on FalkorDB, each with its clauses that write the
+# edge (graphiti's map replacing its properties, then its embedding) and
+# what the driver runs in their place.
+SAVE_CLAUSES: dict[str, dict[str, str]] = {
+    get_entity_edge_save_query(GraphProvider.FALKORDB): _save_clauses(
+        "e", "$edge_data"
+    ),
+    get_entity_edge_save_bulk_query(GraphProvider.FALKORDB): _save_clauses("r", "edge"),
 }
-# Each save as the driver runs it, merging graphiti's map into the stored
-# properties.
+
+
+def _rewritten(query: str, clauses: dict[str, str]) -> str:
+    for clause, replacement in clauses.items():
+        query = query.replace(clause, replacement)
+    return query
+
+
+# Each save as the driver runs it.
 MERGING_SAVES: dict[str, str] = {
-    query: query.replace(clause, clause.replace(" = ", " += "))
-    for query, clause in REPLACING_CLAUSES.items()
+    query: _rewritten(query, clauses) for query, clauses in SAVE_CLAUSES.items()
 }
 
 _EXISTING = re.compile(
@@ -72,7 +114,8 @@ _REPORTED: set[str] = set()
 
 
 def merging_save(query: str) -> str:
-    """``query``, as a merge when it is one of graphiti's fact saves."""
+    """``query``, as a merge when it is one of graphiti's fact saves
+    (``MERGING_SAVES``)."""
     return MERGING_SAVES.get(query, query)
 
 

@@ -1,7 +1,7 @@
 """Unit tests for ``fact_attributes``: graphiti's two saves of a fact run as
-merges and nothing else is rewritten, checked against the queries graphiti
-itself generates, and an attribute prompt reads as a stored fact's unless it
-shows empty attributes.
+merges that leave a forgotten fact all but its episode list, nothing else is
+rewritten, checked against the queries graphiti itself generates, and an
+attribute prompt reads as a stored fact's unless it shows empty attributes.
 
 The live runs are ``fact_attributes_integration_test.py`` and
 ``ingest_restatement_integration_test.py``.
@@ -30,7 +30,7 @@ from graphiti_core.prompts.models import Message
 from . import fact_attributes
 from .fact_attributes import (
     MERGING_SAVES,
-    REPLACING_CLAUSES,
+    SAVE_CLAUSES,
     EdgeMergingSession,
     merging_save,
     stored_fact,
@@ -59,23 +59,40 @@ def _attribute_prompt(existing: dict[str, Any]) -> list[Message]:
     )
 
 
-def test_graphitis_fact_saves_each_replace_the_edge_with_one_clause() -> None:
+def test_graphitis_fact_saves_each_write_the_edge_with_two_clauses() -> None:
     """The shape the rewrite depends on: a graphiti upgrade that changes either
     save fails here instead of silently saving as a replace again."""
-    assert set(REPLACING_CLAUSES) == {_SAVE, _BULK_SAVE}
-    for query, clause in REPLACING_CLAUSES.items():
-        assert query.count(clause) == 1, clause
+    assert set(SAVE_CLAUSES) == {_SAVE, _BULK_SAVE}
+    for query, clauses in SAVE_CLAUSES.items():
+        assert len(clauses) == 2
+        for clause in clauses:
+            assert query.count(clause) == 1, clause
 
 
-def test_both_saves_run_as_merges() -> None:
+def test_both_saves_run_as_merges_that_keep_a_forgotten_fact() -> None:
+    """Each save merges graphiti's map into a live edge, and into an edge a
+    forget marked only its ``episodes``, keeping that edge's embedding too.
+    ``fact_attributes_integration_test.py`` runs both on FalkorDB."""
     assert merging_save(_SAVE) == _SAVE.replace(
-        "SET e = $edge_data", "SET e += $edge_data"
+        "SET e = $edge_data",
+        "SET e += CASE WHEN e.forgotten_at IS NULL THEN $edge_data"
+        " ELSE {episodes: $edge_data.episodes} END",
+    ).replace(
+        "SET e.fact_embedding = vecf32($edge_data.fact_embedding)",
+        "SET e.fact_embedding = CASE WHEN e.forgotten_at IS NULL"
+        " THEN vecf32($edge_data.fact_embedding) ELSE e.fact_embedding END",
     )
     assert merging_save(_BULK_SAVE) == _BULK_SAVE.replace(
-        "SET r = edge", "SET r += edge"
+        "SET r = edge",
+        "SET r += CASE WHEN r.forgotten_at IS NULL THEN edge"
+        " ELSE {episodes: edge.episodes} END",
+    ).replace(
+        "SET r.fact_embedding = vecf32(edge.fact_embedding)",
+        "SET r.fact_embedding = CASE WHEN r.forgotten_at IS NULL"
+        " THEN vecf32(edge.fact_embedding) ELSE r.fact_embedding END",
     )
     for save, merge in MERGING_SAVES.items():
-        assert REPLACING_CLAUSES[save] not in merge
+        assert not [clause for clause in SAVE_CLAUSES[save] if clause in merge]
 
 
 @pytest.mark.parametrize(

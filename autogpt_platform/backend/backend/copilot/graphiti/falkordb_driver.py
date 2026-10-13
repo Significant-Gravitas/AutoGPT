@@ -142,7 +142,8 @@ class AutoGPTFalkorDriver(FalkorDriver):
     4. graphiti's two saves of a fact, run through ``execute_query`` or
        ``session()`` (``add_episode``'s bulk save), merge graphiti's map
        into the stored properties instead of replacing them, so what
-       the platform wrote on a fact survives graphiti saving it again
+       the platform wrote on a fact survives graphiti saving it again,
+       and save nothing on a forgotten fact but its episode list
        (``fact_attributes.py``).
     """
 

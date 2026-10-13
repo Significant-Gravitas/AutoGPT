@@ -2,12 +2,13 @@
 earlier episodes it shows graphiti's extraction (``previous_episode_uuids``).
 
 Two things could work against a forget. An ingestion that read a fact
-before a forget landed saves its older copy after it (graphiti saves what it
-read, and the driver runs that save as a merge, ``fact_attributes.py``: the
-marker and audit copies stay, the fact's text goes back to what it read);
-the graph's write lock rules that out while Redis answers and the holder
-keeps its lease, since a forget and an ingestion then never overlap
-(``scope_lock.py``; ``graphiti/AGENTS.md`` has the windows with no bound).
+before a forget landed saves its older copy after it, since graphiti saves
+what it read (on a soft-forgotten fact the driver saves only the episode
+list, ``fact_attributes.py``, but graphiti still saves its entities whole,
+and a hard-forgotten fact again); the graph's write lock rules that out
+while Redis answers and the holder keeps its lease, since a forget and an
+ingestion then never overlap (``scope_lock.py``; ``graphiti/AGENTS.md`` has
+the windows with no bound).
 And a later ingestion resolves each new statement against the edges between
 the same entities, forgotten ones included: if its model calls the statement
 a duplicate of a forgotten edge, graphiti appends the episode to that edge,
