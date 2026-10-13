@@ -162,8 +162,17 @@ class AnySearchClient:
 
 # Substrings that mark a message as carrying credential material; on a match
 # the upstream text is replaced by a generic one (a 402 anonymous-quota reply
-# can echo back plaintext username/password/api_key - official warning).
-_SENSITIVE_MARKERS = ("password", "api_key", "apikey", "secret", "token")
+# can echo back plaintext username/password/api_key - official warning; an
+# echoed Authorization/Bearer header is credential material too).
+_SENSITIVE_MARKERS = (
+    "password",
+    "api_key",
+    "apikey",
+    "secret",
+    "token",
+    "authorization",
+    "bearer",
+)
 
 
 def sanitize_upstream_text(text: str) -> str:
@@ -185,16 +194,20 @@ def unwrap_envelope(
     """
     if not isinstance(response, dict):
         raise ValueError("malformed AnySearch response envelope")
-    rid = str(response.get("request_id") or "")
+    raw_rid = response.get("request_id")
+    if raw_rid is not None and not isinstance(raw_rid, str):
+        raise ValueError("malformed AnySearch response envelope (request_id)")
+    rid = raw_rid or ""
+    raw_message = response.get("message")
+    if raw_message is not None and not isinstance(raw_message, str):
+        raise ValueError(f"malformed AnySearch response envelope (request_id: {rid})")
     code = response.get("code")
     data = response.get("data")
-    if isinstance(code, bool):
+    if isinstance(code, bool) or not isinstance(code, int):
         # False == 0 in Python; the contract uses numeric codes only.
         raise ValueError(f"malformed AnySearch response envelope (request_id: {rid})")
     if code != 0:
-        message = sanitize_upstream_text(
-            str(response.get("message") or "unknown error")
-        )
+        message = sanitize_upstream_text(raw_message or "unknown error")
         raise ValueError(f"AnySearch API error: {message} (request_id: {rid})")
     if not isinstance(data, dict):
         # code==0 with a non-dict body is a malformed success, not an API

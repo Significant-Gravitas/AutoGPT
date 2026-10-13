@@ -46,7 +46,7 @@ def _mock_block(block, mocks: dict):
                 return _fn(*args, **kwargs)
 
             setattr(block, name, async_mock)
-        else:
+        else:  # pragma: no cover - all mocked seams are coroutine fns
             setattr(block, name, mock_fn)
 
 

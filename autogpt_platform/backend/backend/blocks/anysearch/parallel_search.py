@@ -157,7 +157,9 @@ class AnySearchParallelSearchBlock(Block):
         self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """POST /v1/search and return the raw response envelope (mockable)."""
-        return await AnySearchClient(credentials).search(payload)
+        return await AnySearchClient(credentials).search(
+            payload
+        )  # pragma: no cover - mocked seam, covered live
 
     async def _search_one(
         self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
@@ -231,8 +233,10 @@ class AnySearchParallelSearchBlock(Block):
         finally:
             # A propagated unexpected failure must not leave sibling calls
             # running detached - they would burn quota and log unretrieved
-            # exceptions.
+            # exceptions. cancel() only schedules cancellation; draining
+            # the tasks lets their cleanup finish before the block exits.
             for task in tasks:
                 task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
         yield "results", list(groups)

@@ -11,6 +11,7 @@ from backend.blocks.anysearch.test_helpers import (
     _raise,
 )
 from backend.util.exceptions import BlockExecutionError
+from backend.util.request import HTTPClientError, HTTPServerError
 
 _CATALOG = [
     {"domain": "academic", "description": "Scholarly search", "sub_domain_count": 5},
@@ -113,3 +114,84 @@ async def test_domains_runs_anonymously_without_credentials():
     outputs = await _collect(block, {"auth": "anonymous"}, credentials=None)
     assert captured["creds"] is None
     assert outputs["domains"] == _CATALOG
+
+
+@pytest.mark.asyncio
+async def test_domains_missing_key_raises_block_error():
+    """code==0 without data.domains is a response error, not an empty
+    catalog."""
+    block = AnySearchDomainsBlock()
+    _mock_block(
+        block,
+        {
+            "_catalog": lambda *a, **k: {
+                "code": 0,
+                "message": "success",
+                "request_id": "r",
+                "data": {"topology_version": 9},
+            }
+        },
+    )
+    with pytest.raises(BlockExecutionError, match="missing data.domains"):
+        await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "bad",
+    [None, "not-a-list", [{"domain": "code"}, "oops"]],
+    ids=["null", "str", "non_dict_entry"],
+)
+async def test_domains_malformed_domains_raise_block_error(bad):
+    """data.domains must be a list whose elements are entry dicts."""
+
+    def fn(creds, domains):
+        return {
+            "code": 0,
+            "message": "success",
+            "request_id": "r",
+            "data": {"domains": bad, "topology_version": 9},
+        }
+
+    block = AnySearchDomainsBlock()
+    _mock_block(block, {"_catalog": fn})
+
+    with pytest.raises(BlockExecutionError, match="malformed AnySearch catalog"):
+        await _collect(block, {"credentials": TEST_CREDENTIALS_INPUT})
+
+
+@pytest.mark.asyncio
+async def test_domains_server_error_carries_stale_catalog_hint():
+    """A 5xx from the catalog endpoint surfaces the stale-selection hint:
+    a domain our enum still lists can be retired upstream, and it fails
+    the whole call rather than returning partial results."""
+    block = AnySearchDomainsBlock()
+    _mock_block(
+        block,
+        {
+            "_catalog": _raise(
+                HTTPServerError("HTTP 502 Error: Bad Gateway, Body: upstream", 502)
+            )
+        },
+    )
+
+    with pytest.raises(BlockExecutionError, match="upstream catalog error"):
+        await _collect(
+            block,
+            {"credentials": TEST_CREDENTIALS_INPUT, "domains": ["code"]},
+        )
+
+    _mock_block(
+        block,
+        {
+            "_catalog": _raise(
+                HTTPClientError("HTTP 400 Error: Bad Request, Body: bad", 400)
+            )
+        },
+    )
+    with pytest.raises(BlockExecutionError) as exc:
+        await _collect(
+            block,
+            {"credentials": TEST_CREDENTIALS_INPUT, "domains": ["code"]},
+        )
+    assert "upstream catalog error" not in str(exc.value)

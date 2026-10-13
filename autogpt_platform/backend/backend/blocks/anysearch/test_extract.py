@@ -99,7 +99,7 @@ async def test_extract_malformed_fields_rejected_atomically():
             credentials=TEST_CREDENTIALS,
             execution_context=ExecutionContext(),
         ):
-            emitted.append(name)
+            emitted.append(name)  # pragma: no cover - unreached on raise
 
     assert emitted == []
 

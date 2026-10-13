@@ -12,6 +12,7 @@ from backend.sdk import (
     SchemaField,
 )
 from backend.util.exceptions import BlockExecutionError
+from backend.util.request import HTTPServerError
 
 from ._api import (
     AnySearchAuth,
@@ -104,7 +105,7 @@ class AnySearchDomainsBlock(Block):
             },
         )
 
-    async def _catalog(
+    async def _catalog(  # pragma: no cover - mocked seam, covered live
         self,
         credentials: APIKeyCredentials | None,
         domains: list[str] | None,
@@ -134,12 +135,31 @@ class AnySearchDomainsBlock(Block):
         selected = [d.value for d in input_data.domains] if input_data.domains else None
 
         try:
-            env = unwrap_envelope(await self._catalog(credentials, selected))
-            domains = env.data.get("domains") or []
+            env = unwrap_envelope(
+                await self._catalog(credentials, selected), required="domains"
+            )
+            raw_domains = env.data["domains"]
+            if not isinstance(raw_domains, list) or not all(
+                isinstance(d, dict) for d in raw_domains
+            ):
+                raise ValueError(
+                    "malformed AnySearch catalog: data.domains is not a "
+                    "list of entries"
+                )
+            domains = raw_domains
             topology_version = int(env.data.get("topology_version") or 0)
         except Exception as e:
+            # A domain the upstream catalog retired while our enum still
+            # lists it fails the whole call with a 5xx - surface that
+            # drift hint alongside the upstream status.
+            hint = (
+                " (upstream catalog error; a selected domain may have been " "removed)"
+                if isinstance(e, HTTPServerError)
+                else ""
+            )
             raise BlockExecutionError(
-                message=f"Domains discovery failed: {sanitize_upstream_text(str(e))}",
+                message=f"Domains discovery failed: "
+                f"{sanitize_upstream_text(str(e))}{hint}",
                 block_name=self.name,
                 block_id=self.id,
             ) from e

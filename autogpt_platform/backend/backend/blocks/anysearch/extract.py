@@ -87,7 +87,9 @@ class AnySearchExtractBlock(Block):
         self, credentials: APIKeyCredentials | None, url: str
     ) -> dict[str, Any]:
         """POST /v1/extract and return the raw response envelope (mockable)."""
-        return await AnySearchClient(credentials).extract(url)
+        return await AnySearchClient(credentials).extract(
+            url
+        )  # pragma: no cover - mocked seam, covered live
 
     async def run(
         self,

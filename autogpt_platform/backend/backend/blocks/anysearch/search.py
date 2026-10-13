@@ -152,7 +152,9 @@ class AnySearchBlock(Block):
         self, credentials: APIKeyCredentials | None, payload: dict[str, Any]
     ) -> dict[str, Any]:
         """POST /v1/search and return the raw response envelope (mockable)."""
-        return await AnySearchClient(credentials).search(payload)
+        return await AnySearchClient(credentials).search(
+            payload
+        )  # pragma: no cover - mocked seam, covered live
 
     async def run(
         self,

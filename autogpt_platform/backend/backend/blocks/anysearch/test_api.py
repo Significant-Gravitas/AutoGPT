@@ -78,6 +78,32 @@ def test_unwrap_envelope_bool_code():
         unwrap_envelope({"code": False, "data": {}})
 
 
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("code", True),
+        ("code", "0"),
+        ("code", None),
+        ("data", [1, 2]),
+        ("message", 42),
+        ("request_id", 99),
+    ],
+    ids=["code_bool", "code_str", "code_null", "data_list", "message_int", "rid_int"],
+)
+def test_unwrap_envelope_wrong_types(field, value):
+    """Envelope fields declared by the contract keep their types - a
+    wrong-typed value is malformed, not silently coerced."""
+    response: dict[str, Any] = {
+        "code": 0,
+        "message": "success",
+        "request_id": "req-t",
+        "data": {"results": []},
+    }
+    response[field] = value
+    with pytest.raises(ValueError, match="malformed"):
+        unwrap_envelope(response)
+
+
 def test_unwrap_envelope_missing_required_key():
     """A successful response missing data.results is a response error -
     not an empty result set - and the error carries the request_id."""
@@ -110,6 +136,25 @@ def test_unwrap_envelope_sanitizes_credential_leaks():
     assert "api_key" not in text
     assert "details withheld" in text
     assert "req-402" in text
+
+
+def test_unwrap_envelope_sanitizes_authorization_echo():
+    """An upstream error echoing the Authorization/Bearer header is
+    credential material - the whole message is withheld."""
+    with pytest.raises(ValueError) as exc:
+        unwrap_envelope(
+            {
+                "code": 401,
+                "message": "rejected Authorization: Bearer leaked-key-value",
+                "request_id": "req-auth",
+                "data": {},
+            }
+        )
+    text = str(exc.value)
+    assert "leaked-key-value" not in text
+    assert "Bearer" not in text
+    assert "details withheld" in text
+    assert "req-auth" in text
 
 
 def test_result_from_dict_defaults():
@@ -260,3 +305,20 @@ async def test_client_sub_domains_requires_a_domain():
     with pytest.raises(ValueError, match="at least one domain"):
         await client.sub_domains([])
     client.requests.get.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_client_catalog_non_ok_raises():
+    """Both free catalog endpoints translate a non-OK HTTP status into a
+    ValueError carrying the status."""
+    client = AnySearchClient(None)
+    resp = mock.Mock()
+    resp.ok = False
+    resp.status = 502
+    client.requests.get = mock.AsyncMock(return_value=resp)
+
+    with pytest.raises(ValueError, match="HTTP 502"):
+        await client.domains()
+
+    with pytest.raises(ValueError, match="HTTP 502"):
+        await client.sub_domains(["code"])

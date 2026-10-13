@@ -134,6 +134,38 @@ async def test_parallel_unexpected_exception_propagates():
 
 
 @pytest.mark.asyncio
+async def test_parallel_unexpected_failure_drains_sibling_cleanup():
+    """cancel() alone only schedules cancellation - the drain makes the
+    cancelled sibling's cleanup finish before the block exits."""
+    sibling_started = asyncio.Event()
+    cleaned: list[str] = []
+
+    async def fake_search_one(creds, payload):
+        if payload["query"] == "ok":
+            sibling_started.set()
+            try:
+                await asyncio.sleep(30)
+            finally:
+                cleaned.append("ok")
+        await sibling_started.wait()
+        raise RuntimeError("programmer bug")
+
+    block = AnySearchParallelSearchBlock()
+    # Async seam - patch directly; _mock_block only wraps sync functions.
+    setattr(block, "_search_one", fake_search_one)
+
+    with pytest.raises(BlockUnknownError, match="programmer bug"):
+        await _collect(
+            block,
+            {"credentials": TEST_CREDENTIALS_INPUT, "queries": ["ok", "boom"]},
+        )
+
+    # Reached only if the drain waited: without the gather-drain the
+    # sibling's finally had not run yet when the block raised.
+    assert cleaned == ["ok"]
+
+
+@pytest.mark.asyncio
 async def test_parallel_groups_carry_request_id():
     """Each AnySearchQueryResults group pins the request_id of its own
     HTTP call (per-query request ids, not one shared id)."""
