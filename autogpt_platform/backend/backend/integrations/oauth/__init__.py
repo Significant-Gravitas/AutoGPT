@@ -15,6 +15,10 @@ from .notion import NotionOAuthHandler
 from .reddit import RedditOAuthHandler
 from .rmfg import RMFGDeviceAuthHandler
 from .stripe_link import StripeLinkDeviceAuthHandler
+from .stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+    StripeLinkHostedOAuthHandler,
+)
 from .twitter import TwitterOAuthHandler
 
 if TYPE_CHECKING:
@@ -30,6 +34,11 @@ _ORIGINAL_HANDLERS = [
     RedditOAuthHandler,
     TwitterOAuthHandler,
     TodoistOAuthHandler,
+    # Only with a registered confidential client; without one Stripe Link
+    # connects through its device handler alone. When both are present, which
+    # one serves a credential is decided by how it was issued (see
+    # `is_hosted_link_credential`).
+    *([StripeLinkHostedOAuthHandler] if STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED else []),
 ]
 
 # Start with original handlers

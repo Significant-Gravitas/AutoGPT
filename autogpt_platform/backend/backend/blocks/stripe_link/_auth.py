@@ -23,6 +23,9 @@ from backend.integrations.oauth.stripe_link import (  # noqa: E402
     LINK_API_BASE_URL,
     LINK_HTTP_TIMEOUT,
 )
+from backend.integrations.oauth.stripe_link_hosted import (
+    STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED,
+)
 from backend.integrations.providers import ProviderName
 
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]
@@ -40,10 +43,16 @@ StripeLinkCredentials = OAuth2Credentials
 # token pair — so the block has to accept `oauth2` (or saved credentials stop
 # matching) while still advertising `device_code` so connect UIs offer the
 # device flow instead of an authorization-code redirect the provider has no
-# client secret for.
+# client secret for. A deployment with a registered confidential client does
+# have one, and advertises the redirect alone (device credentials connected
+# earlier are still `oauth2` and keep matching).
 StripeLinkCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.STRIPE_LINK],  # type: ignore[index]
-    Literal["oauth2", "device_code"],
+    (
+        Literal["oauth2"]
+        if STRIPE_LINK_HOSTED_OAUTH_IS_CONFIGURED
+        else Literal["oauth2", "device_code"]
+    ),
 ]
 
 
