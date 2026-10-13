@@ -7,14 +7,27 @@ from pydantic import ValidationError
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import (
+    COMPACTION_TOOL_NAME,
     is_transient_api_error,
     is_transient_assistant_error,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamCompactionProgress
+from backend.copilot.response_model import (
+    StreamCompactionProgress,
+    StreamToolInputAvailable,
+    StreamToolInputStart,
+    StreamToolOutputAvailable,
+)
 from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.openrouter_cost import TurnGenerations
 from backend.copilot.sdk.service import _EPHEMERAL_EVENT_TYPES, _TokenUsage
+from backend.copilot.sdk.transient_retry_test import _overloaded, _reply, _Turn
+
+_TOOL_ROW_EVENTS = (
+    StreamToolInputStart,
+    StreamToolInputAvailable,
+    StreamToolOutputAvailable,
+)
 
 
 def _make_config(**overrides) -> ChatConfig:
@@ -920,6 +933,10 @@ class TestEphemeralEventTypesConstant:
         attempt, so a relaunch would roll the row the user watched back out
         of the chat: the row's tool events count, its progress phases do not.
 
+        Not relaunching keeps only a row that closed. A compaction cut short
+        never closes or persists its row: see
+        ``test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished``.
+
         A pre-query compaction row never reaches this count: the retry loop
         yields it outside the attempt.
         """
@@ -940,6 +957,36 @@ class TestEphemeralEventTypesConstant:
             "StreamToolInputAvailable",
             "StreamToolOutputAvailable",
         }
+
+    async def test_a_compaction_cut_short_by_a_529_leaves_its_row_unfinished(
+        self, tmp_path, monkeypatch
+    ):
+        """The real loop: the CLI starts compacting, the row opens, then a 529.
+
+        The open row counts as streamed, so the launch is not relaunched and
+        the turn ends in the retryable error. The compaction never finished,
+        so its row is neither closed on the wire nor persisted. The frontend
+        hides a row left unfinished, so nothing the user can still see goes
+        missing on refresh.
+        """
+        turn = _Turn(tmp_path, monkeypatch)
+
+        await turn.run([[turn.precompact(), _overloaded()], _reply("gen-ok")])
+
+        assert len(turn.launched) == 1
+        assert [error.code for error in turn.errors()] == ["transient_api_error"]
+        row = {
+            type(e).__name__
+            for e in turn.events
+            if isinstance(e, _TOOL_ROW_EVENTS) and e.toolName == COMPACTION_TOOL_NAME
+        }
+        assert row == {"StreamToolInputStart", "StreamToolInputAvailable"}
+        persisted = [
+            tc["function"]["name"]
+            for message in turn.persisted_messages()
+            for tc in message.tool_calls or []
+        ]
+        assert COMPACTION_TOOL_NAME not in persisted
 
     def test_is_a_tuple(self):
         """isinstance() requires a tuple (not a list) as second argument."""

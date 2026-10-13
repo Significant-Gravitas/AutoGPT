@@ -1,10 +1,16 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { useGetSubscriptionStatus } from "@/app/api/__generated__/endpoints/credits/credits";
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { TrialOfferResponse } from "@/app/api/__generated__/models/trialOfferResponse";
+import {
+  BILLING_PATH,
+  SUBSCRIBE_NOW_PARAM,
+  SUBSCRIBE_NOW_VALUE,
+} from "@/components/organisms/TrialCard/helpers";
 import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
 import {
   trackPaywallViewed,
@@ -51,6 +57,15 @@ export function useTrialPlanChoices(offer: TrialOfferResponse) {
   useEffect(() => {
     if (isVisible) trackPaywallViewed("billing");
   }, [isVisible]);
+
+  const router = useRouter();
+  const isSubscribeNow =
+    useSearchParams().get(SUBSCRIBE_NOW_PARAM) === SUBSCRIBE_NOW_VALUE;
+  useEffect(() => {
+    if (!isSubscribeNow || !isVisible || !userID) return;
+    selectPlan(ownPlan);
+    router.replace(BILLING_PATH);
+  }, [isSubscribeNow, isVisible, userID]);
 
   function selectPlan(plan: PlanChoiceDetails) {
     trackPlanSelected({

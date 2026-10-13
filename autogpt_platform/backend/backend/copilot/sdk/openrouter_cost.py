@@ -290,7 +290,11 @@ class TurnGenerations:
 
     async def start_launch(self) -> None:
         """Mark what is billed when a CLI launch starts, so a retry can tell
-        what the launch itself ran."""
+        what the launch itself ran.
+
+        Call it once the previous launch's CLI has exited, or a generation
+        its subagents wrote on the way out would count as this launch's.
+        """
         self._launch_start = len(self.ids)
         self._subagent_ids_at_launch = await self._subagent_ids()
 

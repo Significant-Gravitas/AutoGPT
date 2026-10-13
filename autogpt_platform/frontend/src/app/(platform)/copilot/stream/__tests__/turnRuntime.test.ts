@@ -794,7 +794,7 @@ describe("refusals no retry can change", () => {
     expect(report).not.toHaveBeenCalled();
   });
 
-  it.each([401, 404, 429])(
+  it.each([401, 402, 404, 429])(
     "does not report a send refused %i, which the user's state explains",
     async (status) => {
       backend.respond(() => ({ status, body: { detail: "refused" } }));

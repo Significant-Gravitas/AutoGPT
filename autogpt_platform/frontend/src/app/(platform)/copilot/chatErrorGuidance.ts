@@ -5,7 +5,7 @@ import {
   MessageTooLongError,
 } from "./stream/turnRuntime";
 
-export type ChatErrorAction = "sign-in" | "new-chat";
+export type ChatErrorAction = "sign-in" | "new-chat" | "plans";
 
 export interface ChatErrorGuidance {
   /** What happened, and what will work next. */
@@ -42,6 +42,11 @@ export function describeChatError(error: Error): ChatErrorGuidance {
       title:
         "This conversation is too long to continue. Start a new chat to keep going.",
       action: "new-chat",
+    };
+  if (status === 402)
+    return {
+      title: "Sending needs an active plan, so this message wasn't sent.",
+      action: "plans",
     };
   if (status === 429 || /usage limit/i.test(error.message))
     return {

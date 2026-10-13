@@ -21,6 +21,7 @@ import {
   type TurnStatsMap,
 } from "./helpers/convertChatSessionToUiMessages";
 import { resolveSessionDryRun } from "./helpers";
+import { isPaywallError } from "./helpers/sendFailureToast";
 import { getSessionSentFrom } from "./sentFrom";
 import {
   getAvailableLLMTransports,
@@ -328,11 +329,6 @@ export function useChatSession({
         Sentry.captureException(error, {
           extra: { status: response.status },
         });
-        toast({
-          variant: "destructive",
-          title: "Could not start a new chat session",
-          description: "Please try again.",
-        });
         throw error;
       }
       useCopilotStreamStore
@@ -348,18 +344,17 @@ export function useChatSession({
       });
       return response.data.id;
     } catch (error) {
+      // The caller owns the one toast for this failure (see
+      // toastSendFailure); toasting here as well stacked two contradictory
+      // messages. A paywall is an account state, not a fault.
       if (
-        error instanceof Error &&
-        error.message === "Failed to create session"
+        !isPaywallError(error) &&
+        !(
+          error instanceof Error && error.message === "Failed to create session"
+        )
       ) {
-        throw error; // already handled above
+        Sentry.captureException(error);
       }
-      Sentry.captureException(error);
-      toast({
-        variant: "destructive",
-        title: "Could not start a new chat session",
-        description: "Please try again.",
-      });
       throw error;
     }
   }

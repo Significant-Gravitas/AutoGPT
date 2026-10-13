@@ -3,8 +3,6 @@ import base64
 import hashlib
 import hmac
 import logging
-import random
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
@@ -16,13 +14,7 @@ from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
-from prisma.types import (
-    JsonFilter,
-    ProfileCreateInput,
-    UserCreateInput,
-    UserUpdateInput,
-    UserWhereInput,
-)
+from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma, query_raw_with_schema, transaction
@@ -40,6 +32,7 @@ from backend.data.notifications import (
 )
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
 from backend.notifications.audience_enrichment import points_at_excluded_country
 from backend.notifications.queue import queue_audience_change
@@ -115,7 +108,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # agents). Best-effort: a failure must not block user resolution — the
         # user self-heals on their next request or via the profile settings page.
         try:
-            await _ensure_user_profile(user.id, user.email)
+            await ensure_profile(user.id, user.email)
         except Exception:
             logger.warning(
                 "Failed to ensure marketplace profile for user %s",
@@ -186,94 +179,6 @@ def _legacy_signup_method(user_data: dict) -> str | None:
         return None
     provider = app_metadata.get("provider")
     return provider if isinstance(provider, str) and provider else None
-
-
-# Word lists mirror the legacy generate_username() SQL function so that app-
-# and DB-generated handles look consistent.
-_PROFILE_USERNAME_ADJECTIVES = (
-    "happy",
-    "clever",
-    "swift",
-    "bright",
-    "wise",
-    "funny",
-    "cool",
-    "awesome",
-    "amazing",
-    "fantastic",
-    "wonderful",
-)
-_PROFILE_USERNAME_ANIMALS = (
-    "fox",
-    "wolf",
-    "bear",
-    "eagle",
-    "owl",
-    "tiger",
-    "lion",
-    "elephant",
-    "giraffe",
-    "zebra",
-)
-
-
-async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
-    """Create a default marketplace Profile for *user_id* if none exists.
-
-    Idempotent and race-safe. A UniqueViolationError has two possible sources:
-    a concurrent request that already created this user's Profile (done), or a
-    collision on the unique username with *another* user (retry with a fresh
-    handle — otherwise the user would be left without a Profile).
-    """
-    if await prisma.profile.find_unique(where={"userId": user_id}):
-        return
-
-    name = (email or "").split("@", 1)[0] or "user"
-    for _ in range(3):
-        try:
-            await prisma.profile.create(
-                data=ProfileCreateInput(
-                    userId=user_id,
-                    name=name,
-                    username=await _generate_profile_username(),
-                    description="I'm new here",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return
-        except UniqueViolationError:
-            if await prisma.profile.find_unique(where={"userId": user_id}):
-                # Another in-flight request (or the legacy auth.users trigger)
-                # created this user's Profile — nothing to do.
-                logger.debug(
-                    "Profile for user %s already created concurrently", user_id
-                )
-                return
-            # The generated username collided with another user — loop and
-            # retry with a fresh handle.
-    logger.warning(
-        "Failed to create a unique profile handle for user %s after retries",
-        user_id,
-    )
-
-
-async def _generate_profile_username() -> str:
-    """Generate a human-friendly profile handle, avoiding obvious collisions.
-
-    The unique constraint on Profile.username is the real guarantee; this
-    pre-check just avoids retrying a create in the common case. Falls back to a
-    UUID-based handle if we can't find a free friendly name.
-    """
-    for _ in range(10):
-        candidate = (
-            f"{random.choice(_PROFILE_USERNAME_ADJECTIVES)}-"
-            f"{random.choice(_PROFILE_USERNAME_ANIMALS)}-"
-            f"{random.randint(10000, 99999)}"
-        )
-        if not await prisma.profile.find_unique(where={"username": candidate}):
-            return candidate
-    return f"user-{uuid.uuid4().hex[:12]}"
 
 
 @cache_user_lookup

@@ -884,7 +884,13 @@ export async function isLoaded(page: Page): Promise<boolean> {
 }
 
 const SUCCESS_RUN_STATUS = "completed";
-const FAILURE_RUN_STATUSES = new Set(["failed", "terminated", "incomplete"]);
+// A run whose step failed still ends COMPLETED; its badge says so.
+const FAILURE_RUN_STATUSES = new Set([
+  "failed",
+  "terminated",
+  "incomplete",
+  "completed with errors",
+]);
 const RUN_ERROR_RECOVERY_GRACE_PERIOD_MS = 1500;
 const RUN_ERROR_RECOVERY_ATTEMPTS = 2;
 
@@ -1353,6 +1359,7 @@ export async function clickExportAgent(page: Page): Promise<void> {
 // elsewhere on the page (filter chips, tooltips, etc.).
 const RUN_STATUS_WORDS = [
   "completed",
+  "completed with errors",
   "failed",
   "terminated",
   "incomplete",

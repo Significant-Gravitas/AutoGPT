@@ -14,11 +14,12 @@ against a stand-in for OpenRouter's ``/generation`` endpoint.
 
 import asyncio
 import contextlib
+import inspect
 import json
 import os
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,7 @@ from backend.copilot.response_model import (
     StreamError,
     StreamStatus,
     StreamToolInputAvailable,
+    StreamToolInputStart,
     StreamToolOutputAvailable,
 )
 from backend.copilot.sdk import service as sdk_service
@@ -60,7 +62,9 @@ _MODEL = "anthropic/claude-sonnet-4-6"
 # What OpenRouter billed for each generation, by ID.
 _COSTS = {
     "gen-overflow": 0.011,
+    "gen-overflow-late": 0.007,
     "gen-failed": 0.02,
+    "gen-failed-late": 0.009,
     "gen-failed-compact": 0.004,
     "gen-ok": 0.03,
     "gen-ok-compact": 0.005,
@@ -95,6 +99,48 @@ async def test_a_relaunch_bills_nothing_the_failed_launch_ran(
     assert len(turn.launched) == len(launches)
     assert not turn.errors()
     billed = ["gen-overflow", "gen-ok"] if overflowed_first else ["gen-ok"]
+    assert turn.reconciled_cost() == pytest.approx(sum(_COSTS[g] for g in billed))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "overflowed_first",
+    [
+        pytest.param(False, id="failed-launch"),
+        pytest.param(True, id="context-launch-then-failed-launch"),
+    ],
+)
+async def test_a_subagent_writing_as_its_cli_exits_is_billed_with_its_own_launch(
+    overflowed_first, tmp_path, monkeypatch
+):
+    """A subagent can write its last generation while its CLI shuts down.
+
+    That write is still its launch's. The retry absorbs the failed launch
+    only after the failed CLI has exited, so its late write is absorbed with
+    it. The next launch marks what it inherits only after the launch before
+    it has exited, so a context launch's late write stays billed. Reorder
+    either step and one of these writes lands with the wrong launch.
+    """
+    turn = _Turn(tmp_path, monkeypatch)
+    overflow = [
+        _generation("gen-overflow"),
+        _prompt_too_long(),
+        _AtExit(run=turn.subagent("agent-overflow", "gen-overflow-late")),
+    ]
+    failed = [
+        _generation("gen-failed"),
+        _overloaded(),
+        _AtExit(run=turn.subagent("agent-failed", "gen-failed-late")),
+    ]
+    launches = [*([overflow] if overflowed_first else []), failed, _reply("gen-ok")]
+
+    await turn.run(launches)
+
+    assert len(turn.launched) == len(launches)
+    assert not turn.errors()
+    billed = ["gen-ok"]
+    if overflowed_first:
+        billed += ["gen-overflow", "gen-overflow-late"]
     assert turn.reconciled_cost() == pytest.approx(sum(_COSTS[g] for g in billed))
 
 
@@ -243,9 +289,24 @@ async def test_random_turns_relaunch_only_what_streamed_nothing(tmp_path, monkey
             reconcile.assert_not_awaited()
 
 
-# A step of a scripted launch: a message the CLI streams, or something done
-# at that point (a subagent writing its transcript, a tool doing its work).
-_Step = AssistantMessage | UserMessage | ResultMessage | Callable[[], None]
+class _AtExit(BaseModel):
+    """A step the CLI runs while it shuts down, whatever came before it in
+    the script: a subagent writing its last generation as the process exits."""
+
+    run: Callable[[], None]
+
+
+# A step of a scripted launch: a message the CLI streams, something done at
+# that point (a subagent writing its transcript, a tool doing its work, an
+# awaited hook), or something done as the CLI exits.
+_Step = (
+    AssistantMessage
+    | UserMessage
+    | ResultMessage
+    | Callable[[], None]
+    | Callable[[], Awaitable[None]]
+    | _AtExit
+)
 
 _SEEDS = 200
 # Three context attempts, each with one transient retry.
@@ -375,6 +436,18 @@ class _Turn:
         )
         self._launches: list[list[_Step]] = []
         self._mocks: dict[str, MagicMock] = {}
+        self._compaction_opened = asyncio.Event()
+
+    def precompact(self) -> Callable[[], Awaitable[None]]:
+        """A step: the CLI starts compacting. Its PreCompact hook fires, and
+        the CLI goes on once the loop has opened the compaction row."""
+
+        async def start() -> None:
+            hooks = self._mocks[f"{_SVC}.create_security_hooks"]
+            hooks.call_args.kwargs["on_compact"](str(self._subagents.parent))
+            await asyncio.wait_for(self._compaction_opened.wait(), timeout=10)
+
+        return start
 
     def subagent(self, agent: str, generation_id: str) -> Callable[[], None]:
         """A step: a subagent of the CLI's writes its transcript."""
@@ -418,12 +491,16 @@ class _Turn:
         with contextlib.ExitStack() as stack:
             for target, kwargs in patches:
                 self._mocks[target] = stack.enter_context(patch(target, **kwargs))
-            # A resumed turn diffs the user's skills, and a first turn loads
-            # the user's context, both over DB and scheduler RPCs.
+            # A resumed turn diffs the user's skills, a first turn loads the
+            # user's context, and every turn folds in answered cards and
+            # follow-ups: DB, scheduler and Redis round trips, none of them
+            # under test.
             for name, value in (
                 ("build_skills_update_notice", None),
                 ("build_session_context", ""),
                 ("inject_user_context", None),
+                ("resolve_answered", []),
+                ("drain_pending_for_persist", []),
             ):
                 stack.enter_context(
                     patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)
@@ -450,6 +527,11 @@ class _Turn:
             )
             async for event in stream:
                 self.events.append(event)
+                if (
+                    isinstance(event, StreamToolInputStart)
+                    and event.toolName == COMPACTION_TOOL_NAME
+                ):
+                    self._compaction_opened.set()
                 if leave_when is not None and leave_when(event):
                     break
             await stream.aclose()
@@ -516,22 +598,30 @@ class _Turn:
         script = self._launches[len(self.launched)]
         self.launched.append(options)
         refusal = _start_session(options)
+        at_exit = [step.run for step in script if isinstance(step, _AtExit)]
 
         async def receive():
             if refusal is not None:
                 raise refusal
             for step in script:
+                if isinstance(step, _AtExit):
+                    continue
                 if callable(step):
-                    step()
+                    if inspect.isawaitable(done := step()):
+                        await done
                 else:
                     yield step
+
+        async def shut_down(*_: Any) -> None:
+            for run in at_exit:
+                run()
 
         client = MagicMock()
         client.query = AsyncMock()
         client.receive_response = receive
         context = AsyncMock()
         context.__aenter__.return_value = client
-        context.__aexit__.return_value = None
+        context.__aexit__.side_effect = shut_down
         return context
 
 

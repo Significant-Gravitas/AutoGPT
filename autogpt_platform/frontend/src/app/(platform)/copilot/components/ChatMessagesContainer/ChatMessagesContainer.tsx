@@ -37,7 +37,6 @@ import {
   turnMessagesForRow,
 } from "./midTurnSplit";
 import {
-  getLatestAssistantStatusMessage,
   isBookkeepingPart,
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
@@ -54,7 +53,7 @@ import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { QueueBadge } from "./components/QueueBadge";
-import { ThreadHeader } from "./components/ThreadHeader";
+import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
   PendingUploadMessage,
@@ -134,9 +133,9 @@ interface Props {
    *  metadata). Shown on the row that opened the thread (DB sequence 0) when
    *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports (see ThreadHeader). */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports (see ThreadHeader). */
+  floatingControls?: FloatingControls;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -300,7 +299,7 @@ export function ChatMessagesContainer({
   expertIdentity,
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
-  hasFloatingControls = false,
+  floatingControls,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -405,11 +404,6 @@ export function ChatMessagesContainer({
     return false;
   })();
 
-  // Surface the latest `data-status` message from the live assistant when
-  // the Thinking indicator is up — but only if it wasn't invalidated by a
-  // more recent content part (in which case the model has moved on and the
-  // status is stale).
-  const latestStatusMessage = getLatestAssistantStatusMessage(messages);
   const isActivelyStreaming = status === "streaming" || status === "submitted";
 
   // A live compaction narrates itself via CompactionCard — the generic
@@ -434,11 +428,7 @@ export function ChatMessagesContainer({
     activeStreamStartedAt,
   );
   const indicator = (
-    <ThinkingIndicator
-      active={showThinking}
-      elapsedSeconds={elapsedSeconds}
-      statusMessage={latestStatusMessage}
-    />
+    <ThinkingIndicator active={showThinking} elapsedSeconds={elapsedSeconds} />
   );
   // Public viewers of a shared chat never see a live turn, so the indicator
   // stays out of the transcript for them wherever it would render.
@@ -480,7 +470,7 @@ export function ChatMessagesContainer({
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -498,6 +488,7 @@ export function ChatMessagesContainer({
           className={cn(
             "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
+            showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
           )}
           style={
@@ -807,9 +798,7 @@ export function ChatMessagesContainer({
                     <ThinkingIndicator
                       active
                       elapsedSeconds={restoreElapsedSeconds}
-                      statusMessage={
-                        restoreStatusMessage ?? "Reconnecting to live stream..."
-                      }
+                      statusMessage={restoreStatusMessage ?? "Reconnecting…"}
                     />
                     <span className="pl-6 text-xs text-slate-400">
                       Still syncing the latest progress.

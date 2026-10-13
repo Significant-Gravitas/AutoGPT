@@ -7,6 +7,7 @@ whole file to the browser:
 * raster images        -> resized WebP thumbnail (Pillow)
 * PDFs                 -> first page rasterised to WebP (pypdfium2)
 * Office openxml docs  -> embedded ``docProps/thumbnail`` re-encoded to WebP
+                         (matched by extension too, whatever the stored MIME)
 * text-like files      -> first N bytes (partial read, no full download)
 
 Image/PDF/Office thumbnails are cached in Redis keyed by file checksum so
@@ -67,6 +68,9 @@ _TEXT_HINTS = (
 # types fall back to a static illustration on the frontend and never request a
 # preview, so they don't need an extension fallback here.
 _TEXT_EXTENSIONS = frozenset({"md", "markdown", "mdx"})
+# Office files are often stored with a wrong MIME (text/plain,
+# application/octet-stream), so the extension wins over the stored MIME.
+_OFFICE_EXTENSIONS = frozenset({"pptx", "docx", "xlsx"})
 _EMBEDDED_THUMBNAILS = (
     "docprops/thumbnail.jpeg",
     "docprops/thumbnail.jpg",
@@ -90,15 +94,15 @@ async def _dispatch_preview(
 ) -> Response:
     mime = (file.mime_type or "").lower()
 
+    if mime in OFFICE_MIMES or _extension(file.name) in _OFFICE_EXTENSIONS:
+        _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
+        return _webp_response(await _office_thumbnail(file, width))
     if mime.startswith("image/") and "svg" not in mime:
         _ensure_size(file, PREVIEW_MAX_IMAGE_BYTES)
         return _webp_response(await _image_thumbnail(file, width))
     if mime == "application/pdf":
         _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
         return _webp_response(await _pdf_thumbnail(file, width))
-    if mime in OFFICE_MIMES:
-        _ensure_size(file, PREVIEW_MAX_DOC_BYTES)
-        return _webp_response(await _office_thumbnail(file, width))
     if _is_text_like(mime, file.name):
         _ensure_size(file, PREVIEW_MAX_TEXT_BYTES)
         content = await _text_preview(file, max_bytes)
@@ -116,8 +120,11 @@ async def _dispatch_preview(
 def _is_text_like(mime: str, name: str = "") -> bool:
     if mime.startswith("text/") or any(hint in mime for hint in _TEXT_HINTS):
         return True
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    return ext in _TEXT_EXTENSIONS
+    return _extension(name) in _TEXT_EXTENSIONS
+
+
+def _extension(name: str) -> str:
+    return name.rsplit(".", 1)[-1].lower() if "." in name else ""
 
 
 def _ensure_size(file: WorkspaceFile, limit: int) -> None:

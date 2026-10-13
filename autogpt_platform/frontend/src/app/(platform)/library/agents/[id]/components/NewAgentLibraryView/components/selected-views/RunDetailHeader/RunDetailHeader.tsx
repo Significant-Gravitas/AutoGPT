@@ -7,6 +7,7 @@ import { RunStatusBadge } from "../SelectedRunView/components/RunStatusBadge";
 import { FlaskConicalIcon, TimeScheduleIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
+import { isCompletedWithErrors } from "@/lib/run-health";
 
 type Props = {
   agent: LibraryAgent;
@@ -26,7 +27,10 @@ export function RunDetailHeader({ agent, run, scheduleRecurrence }: Props) {
             <div className="flex min-w-0 flex-1 flex-col items-start gap-3">
               {run?.status ? (
                 <div className="flex items-center gap-2">
-                  <RunStatusBadge status={run.status} />
+                  <RunStatusBadge
+                    status={run.status}
+                    completedWithErrors={isCompletedWithErrors(run)}
+                  />
                   {run.is_dry_run && (
                     <div className="inline-flex items-center gap-1 rounded-md bg-amber-50 p-1">
                       <Icon
