@@ -1,5 +1,6 @@
 import {
   CodeIcon,
+  DashboardSquare01Icon,
   File02Icon,
   FileEmpty02Icon,
   HtmlFile01Icon,
@@ -9,6 +10,7 @@ import {
   Video01Icon,
 } from "@hugeicons/core-free-icons";
 import type { IconSvgElement } from "@hugeicons/react";
+import { OPENUI_MIME } from "@/lib/openui/file";
 import type { ArtifactRef } from "../../store";
 
 export interface ArtifactClassification {
@@ -23,6 +25,7 @@ export interface ArtifactClassification {
     | "video"
     | "pdf"
     | "text"
+    | "openui"
     | "download-only"
     | "expert";
   icon: IconSvgElement;
@@ -106,6 +109,13 @@ const KIND: Record<string, ArtifactClassification> = {
     openable: true,
     hasSourceToggle: false,
   },
+  openui: {
+    type: "openui",
+    icon: DashboardSquare01Icon,
+    label: "Interactive view",
+    openable: true,
+    hasSourceToggle: true,
+  },
   "download-only": {
     type: "download-only",
     icon: FileEmpty02Icon,
@@ -150,6 +160,7 @@ const EXT_KIND: Record<string, string> = {
   ".md": "markdown",
   ".mdx": "markdown",
   ".json": "json",
+  ".openui": "openui",
   ".jsonl": "code",
   ".txt": "text",
   ".log": "text",
@@ -214,6 +225,7 @@ const MIME_KIND: Record<string, string> = {
   "text/markdown": "markdown",
   "text/x-markdown": "markdown",
   "application/json": "json",
+  [OPENUI_MIME]: "openui",
   "application/x-ndjson": "code",
   "application/ndjson": "code",
   "application/jsonl": "code",

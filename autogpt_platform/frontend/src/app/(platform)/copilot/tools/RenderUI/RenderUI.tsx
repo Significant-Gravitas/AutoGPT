@@ -1,16 +1,21 @@
 "use client";
 
-import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
-import { DraftStatus } from "./components/DraftStatus";
 import type { RenderUIMessagePart } from "./isRenderUIPart";
 import { OpenUI } from "@/components/organisms/OpenUI/OpenUI";
-import { SavedSummary } from "./components/SavedSummary";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Loading03Icon } from "@hugeicons/core-free-icons";
-import { ResponseFrame } from "./components/ResponseFrame";
-import { getStreamingSource, readUIError, readUIResult } from "./helpers";
+import { useAuthStore } from "@/lib/auth/hooks/useAuthStore";
+import {
+  getStreamingSource,
+  readSavedFile,
+  readUIError,
+  readUIResult,
+  type SavedFileRef,
+} from "./helpers";
 import { useRenderUI } from "./useRenderUI";
 import { RejectedUI } from "./components/RejectedUI";
+import { ChatViewCard } from "./components/ChatViewCard/ChatViewCard";
+import { SavedViewCard } from "./components/SavedViewCard";
 
 interface Props {
   part: RenderUIMessagePart;
@@ -57,9 +62,9 @@ export function RenderUI({
   return (
     <CompletedUI
       key={`${ownerId ?? "anonymous"}:${part.toolCallId}:${result?.source ?? ""}`}
-      draftID={
-        result?.session_id ? `${result.session_id}:${part.toolCallId}` : null
-      }
+      sessionId={result?.session_id ?? null}
+      toolCallId={part.toolCallId}
+      file={readSavedFile(result)}
       source={result?.source ?? ""}
       title={title}
       summary={summary}
@@ -70,7 +75,9 @@ export function RenderUI({
 }
 
 interface CompletedProps {
-  draftID: string | null;
+  sessionId: string | null;
+  toolCallId: string;
+  file: SavedFileRef | null;
   source: string;
   title: string;
   summary: string;
@@ -79,44 +86,39 @@ interface CompletedProps {
 }
 
 function CompletedUI({
-  draftID,
+  sessionId,
+  toolCallId,
+  file,
   source,
   title,
   summary,
   valid,
   readOnly,
 }: CompletedProps) {
-  const ui = useRenderUI(draftID, source, title, readOnly);
-  const fallback = (
-    <SavedSummary
-      summary={summary}
-      valid={false}
-      locked={ui.locked}
-      isSending={ui.isSending}
-      onRebuild={() =>
-        void ui.send(
-          "Please rebuild the previous interactive view using the same data and valid OpenUI components.",
-        )
-      }
-    />
-  );
+  const ui = useRenderUI({ sessionId, toolCallId, source, file, readOnly });
+  if (valid && ui.savedFile)
+    return (
+      <SavedViewCard
+        file={ui.savedFile}
+        sessionId={sessionId}
+        source={source}
+        title={title}
+      />
+    );
   return (
-    <ResponseFrame {...ui}>
-      <DraftStatus draft={ui.draft} />
-      {valid && ui.ready && (
-        <OpenUI
-          source={source}
-          isStreaming={false}
-          instanceId={ui.draft.namespace}
-          disabled={ui.locked || ui.isSending || !ui.writable}
-          revision={ui.revision + 1}
-          initialState={ui.initialState}
-          onStateUpdate={ui.onStateUpdate}
-          onAction={ui.onAction}
-          fallback={fallback}
-        />
-      )}
-      {!valid && fallback}
-    </ResponseFrame>
+    <ChatViewCard
+      ownerId={ui.ownerId}
+      sessionId={sessionId ?? ""}
+      toolCallId={toolCallId}
+      viewId={ui.viewId}
+      stable={ui.stable}
+      locked={ui.locked}
+      remote={ui.remote}
+      source={source}
+      title={title}
+      summary={summary}
+      valid={valid}
+      onSaved={ui.onSaved}
+    />
   );
 }

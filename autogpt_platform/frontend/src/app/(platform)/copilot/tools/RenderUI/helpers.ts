@@ -11,7 +11,34 @@ const resultSchema = z.object({
   source: z.string().max(MAX_SOURCE_LENGTH),
   message: z.string().max(10_000),
   session_id: z.string().nullable().optional(),
+  file_id: z.string().nullable().optional(),
+  file_name: z.string().nullable().optional(),
 });
+
+export interface SavedFileRef {
+  id: string;
+  name: string | null;
+}
+
+export function readSavedFile(
+  result: z.infer<typeof resultSchema> | null,
+): SavedFileRef | null {
+  if (!result?.file_id) return null;
+  return { id: result.file_id, name: result.file_name ?? null };
+}
+
+export function readViewMeta(source: string) {
+  try {
+    const root = parseWorkspace(source);
+    return {
+      valid: true,
+      title: String(root.props.title || "Interactive view"),
+      viewId: String(root.props.viewId ?? ""),
+    };
+  } catch {
+    return { valid: false, title: "Interactive view", viewId: "" };
+  }
+}
 
 export function readUIError(part: RenderUIMessagePart) {
   if (part.state === "output-error")

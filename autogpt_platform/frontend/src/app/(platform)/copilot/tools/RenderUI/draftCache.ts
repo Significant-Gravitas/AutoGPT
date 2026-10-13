@@ -1,6 +1,6 @@
 import { record } from "@/lib/openui/draft-fields";
 
-interface CachedDraft {
+export interface CachedDraft {
   source: string;
   state: Record<string, unknown>;
   revision: number;
@@ -27,5 +27,11 @@ export function writeDraftCache(key: string | null, draft: CachedDraft) {
   try {
     const text = JSON.stringify(draft);
     if (text.length <= 320_000) localStorage.setItem(key, text);
+  } catch {}
+}
+export function removeDraftCache(key: string | null) {
+  if (!key) return;
+  try {
+    localStorage.removeItem(key);
   } catch {}
 }

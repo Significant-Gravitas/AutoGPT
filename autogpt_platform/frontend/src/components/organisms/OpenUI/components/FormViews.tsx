@@ -12,7 +12,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { ArrowRight01Icon } from "@hugeicons/core-free-icons";
-import { useOpenUIDisabled } from "../interactionContext";
+import {
+  useOpenUIActionsDisabled,
+  useOpenUIDisabled,
+} from "../interactionContext";
 import { useFieldView } from "./useFieldView";
 import { validateForm } from "./fieldValidation";
 import { useFieldValidation } from "./useFieldValidation";
@@ -61,7 +64,7 @@ export function FormView({
 }: ComponentRenderProps<z.infer<typeof Form.props>>) {
   const triggerAction = useTriggerAction();
   const isStreaming = useIsStreaming();
-  const disabled = useOpenUIDisabled();
+  const disabled = useOpenUIActionsDisabled();
   const setFieldValue = useSetFieldValue();
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -4,6 +4,7 @@ import { Renderer, type ActionEvent } from "@openuidev/react-lang";
 import { ErrorBoundary } from "@/components/molecules/ErrorBoundary/ErrorBoundary";
 import { autoGPTLibrary } from "./library";
 import {
+  OpenUIActionsContext,
   OpenUIInteractionContext,
   OpenUIInstanceContext,
 } from "./interactionContext";
@@ -15,6 +16,7 @@ interface Props {
   onAction: (event: ActionEvent) => void;
   revision: number;
   disabled?: boolean;
+  actionsDisabled?: boolean;
   initialState?: Record<string, unknown>;
   onStateUpdate?: (state: Record<string, unknown>) => void;
   fallback?: ReactNode;
@@ -27,6 +29,7 @@ export function OpenUI({
   onAction,
   revision,
   disabled = false,
+  actionsDisabled = false,
   initialState,
   onStateUpdate,
   fallback,
@@ -34,31 +37,33 @@ export function OpenUI({
 }: Props) {
   return (
     <OpenUIInteractionContext.Provider value={disabled || isStreaming}>
-      <OpenUIInstanceContext.Provider value={instanceId}>
-        <ErrorBoundary
-          key={revision}
-          context="copilot-openui"
-          fallback={
-            fallback ?? (
-              <p
-                role="alert"
-                className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"
-              >
-                This response could not be displayed. Try another request.
-              </p>
-            )
-          }
-        >
-          <Renderer
-            response={source}
-            library={autoGPTLibrary}
-            isStreaming={isStreaming}
-            onAction={onAction}
-            initialState={initialState}
-            onStateUpdate={onStateUpdate}
-          />
-        </ErrorBoundary>
-      </OpenUIInstanceContext.Provider>
+      <OpenUIActionsContext.Provider value={actionsDisabled}>
+        <OpenUIInstanceContext.Provider value={instanceId}>
+          <ErrorBoundary
+            key={revision}
+            context="copilot-openui"
+            fallback={
+              fallback ?? (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700"
+                >
+                  This response could not be displayed. Try another request.
+                </p>
+              )
+            }
+          >
+            <Renderer
+              response={source}
+              library={autoGPTLibrary}
+              isStreaming={isStreaming}
+              onAction={onAction}
+              initialState={initialState}
+              onStateUpdate={onStateUpdate}
+            />
+          </ErrorBoundary>
+        </OpenUIInstanceContext.Provider>
+      </OpenUIActionsContext.Provider>
     </OpenUIInteractionContext.Provider>
   );
 }

@@ -6,6 +6,7 @@ interface Props {
   isSending: boolean;
   sent: boolean;
   error: string | null;
+  note?: string;
 }
 
 export function ResponseFrame(props: Props) {
@@ -29,9 +30,9 @@ export function ResponseFrame(props: Props) {
   );
 }
 
-function statusText({ locked, isSending, sent }: Props) {
+function statusText({ locked, isSending, sent, note }: Props) {
   if (locked) return "Shared view · conversation actions are disabled";
   if (isSending) return "Sending to the conversation…";
   if (sent) return "Sent to the conversation";
-  return "";
+  return note ?? "";
 }

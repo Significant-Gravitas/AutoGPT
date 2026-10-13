@@ -1,6 +1,6 @@
 import { Button } from "@/components/atoms/Button/Button";
 import type { MapLocation } from "@/lib/openui/catalog-sections";
-import { useOpenUIDisabled } from "../../interactionContext";
+import { useOpenUIActionsDisabled } from "../../interactionContext";
 
 interface Props {
   place: MapLocation;
@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function SelectedPlace({ place, onDiscuss }: Props) {
-  const disabled = useOpenUIDisabled();
+  const disabled = useOpenUIActionsDisabled();
   return (
     <div
       className="space-y-3 rounded-lg border border-purple-100 bg-purple-50/50 p-3"

@@ -3,15 +3,17 @@ import type { useUIDraft } from "../useUIDraft";
 
 interface Props {
   draft: ReturnType<typeof useUIDraft>;
+  hideSaving?: boolean;
 }
-export function DraftStatus({ draft }: Props) {
+export function DraftStatus({ draft, hideSaving = false }: Props) {
+  const saving = draft.saving && !hideSaving;
   return (
     <>
-      {(!draft.ready || draft.saving || draft.notice) && (
+      {(!draft.ready || saving || draft.notice) && (
         <p role="status" className="text-xs text-muted-foreground">
           {!draft.ready
             ? "Restoring your draft…"
-            : draft.saving
+            : saving
               ? "Saving draft…"
               : draft.notice}
         </p>

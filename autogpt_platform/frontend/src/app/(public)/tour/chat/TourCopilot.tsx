@@ -86,10 +86,10 @@ export function TourCopilot() {
     <>
       {!isMobile && (
         <div className="contents [&_[data-artifact-panel]]:!w-[500px]">
-          <ArtifactPanel />
+          <ArtifactPanel readOnly />
         </div>
       )}
-      {isMobile && <ArtifactPanel mobile />}
+      {isMobile && <ArtifactPanel mobile readOnly />}
     </>
   );
 

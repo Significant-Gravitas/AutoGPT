@@ -1,127 +1,142 @@
-import { useEffect, useRef, useState } from "react";
-import { usePutV2SaveUiDraft } from "@/app/api/__generated__/endpoints/chat/chat";
-import type { UIDraftWrite } from "@/app/api/__generated__/models/uIDraftWrite";
+import { useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useMountEffect } from "@/hooks/useMountEffect";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { writeDraftCache } from "./draftCache";
-import { useQueryClient } from "@tanstack/react-query";
+import type { DraftTarget } from "./draftTargets";
 
-interface Props {
-  sessionId: string;
-  viewId: string;
-  toolCallId: string;
+const MAX_DRAFT_BYTES = 240_000;
+
+interface Args {
+  target: DraftTarget | null;
   source: string;
-  cacheKey: string | null;
-  ready: boolean;
-  writable: boolean;
-  revision: number;
+  epoch: number;
+  baseRevision: number;
+  enabled: boolean;
 }
-export function useDraftSave(props: Props) {
+
+interface Failure {
+  epoch: number;
+  conflict: boolean;
+  message: string;
+}
+
+export function useDraftSave(args: Args) {
   const queryClient = useQueryClient();
-  const mutation = usePutV2SaveUiDraft();
-  const revision = useRef(props.revision);
+  const live = useRef(args);
+  live.current = args;
+  const written = useRef({ epoch: -1, revision: 0, serialized: "" });
+  const conflictEpoch = useRef(-1);
   const latest = useRef<Record<string, unknown> | null>(null);
-  const lastSaved = useRef("");
   const busy = useRef(false);
   const mounted = useRef(true);
   const timer = useRef<ReturnType<typeof setTimeout>>();
-  const [error, setError] = useState("");
-  const [conflict, setConflict] = useState(false);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const [saving, setSaving] = useState(false);
-  useEffect(() => {
-    revision.current = props.revision;
-    setConflict(false);
-    setError("");
-    lastSaved.current = "";
-  }, [props.revision]);
-  useEffect(() => {
+
+  useMountEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       clearTimeout(timer.current);
     };
-  }, []);
-  useEffect(() => {
-    if (!props.ready || !props.writable) clearTimeout(timer.current);
-  }, [props.ready, props.writable]);
+  });
+
+  function savedFor(epoch: number) {
+    return written.current.epoch === epoch
+      ? written.current
+      : { epoch, revision: live.current.baseRevision, serialized: "" };
+  }
 
   async function flush() {
-    if (
-      !props.ready ||
-      !props.writable ||
-      busy.current ||
-      conflict ||
-      !latest.current
-    )
-      return;
+    const { target, source, epoch, enabled } = live.current;
+    if (!target || !enabled || busy.current || !latest.current) return;
+    if (conflictEpoch.current === epoch) return;
     const state = latest.current;
     const serialized = JSON.stringify(state);
-    if (serialized === lastSaved.current) return;
-    if (new TextEncoder().encode(serialized).length > 240_000) {
-      setError(
-        "This draft is too large to sync. Download your data before leaving.",
-      );
+    const saved = savedFor(epoch);
+    if (serialized === saved.serialized) return;
+    if (new TextEncoder().encode(serialized).length > MAX_DRAFT_BYTES) {
+      setFailure({
+        epoch,
+        conflict: false,
+        message:
+          "This draft is too large to sync. Download your data before leaving.",
+      });
       return;
     }
     busy.current = true;
     setSaving(true);
-    setError("");
+    setFailure(null);
     try {
-      const result = await mutation.mutateAsync({
-        sessionId: props.sessionId,
-        viewId: props.viewId,
-        data: {
-          tool_call_id: props.toolCallId,
-          expected_revision: revision.current,
-          state: state as UIDraftWrite["state"],
-        },
-      });
-      if (result.status !== 200) throw new Error("save");
-      revision.current = result.data.revision;
-      lastSaved.current = serialized;
+      const revision = await target.write(state, saved.revision);
+      written.current = { epoch, revision, serialized };
+      const current = latest.current ?? state;
       if (mounted.current)
-        writeDraftCache(props.cacheKey, {
-          source: props.source,
-          state: latest.current ?? state,
-          revision: revision.current,
-          dirty: JSON.stringify(latest.current ?? state) !== serialized,
+        writeDraftCache(target.cacheKey, {
+          source,
+          state: current,
+          revision,
+          dirty: JSON.stringify(current) !== serialized,
         });
-      void queryClient.invalidateQueries({
-        predicate: (query) =>
-          query.queryKey[0] === "ui-draft" &&
-          query.queryKey[2] === props.sessionId &&
-          query.queryKey[3] === props.viewId,
-      });
+      void queryClient.invalidateQueries({ queryKey: target.queryKey });
     } catch (cause) {
-      if (mounted.current) {
-        setConflict(cause instanceof ApiError && cause.status === 409);
-        setError(
-          cause instanceof ApiError && cause.status === 409
+      const conflict = cause instanceof ApiError && cause.status === 409;
+      if (conflict) conflictEpoch.current = epoch;
+      if (mounted.current)
+        setFailure({
+          epoch,
+          conflict,
+          message: conflict
             ? "A newer draft exists. Your edits are still here; reload the saved draft before editing further."
             : "Draft sync failed. Your edits are still here. Retry before leaving this device.",
-        );
-      }
+        });
     } finally {
       busy.current = false;
       if (mounted.current) setSaving(false);
     }
     if (
       mounted.current &&
-      lastSaved.current === serialized &&
+      written.current.serialized === serialized &&
       latest.current &&
       JSON.stringify(latest.current) !== serialized
     )
       timer.current = setTimeout(() => void flush(), 500);
   }
+
   function save(state: Record<string, unknown>) {
+    const { target, source, epoch } = live.current;
+    const saved = savedFor(epoch);
     latest.current = state;
-    writeDraftCache(props.cacheKey, {
-      source: props.source,
+    writeDraftCache(target?.cacheKey ?? null, {
+      source,
       state,
-      revision: revision.current,
-      dirty: JSON.stringify(state) !== lastSaved.current,
+      revision: saved.revision,
+      dirty: JSON.stringify(state) !== saved.serialized,
     });
     clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), 800);
   }
-  return { save, retry: flush, error, conflict, saving, latest };
+
+  async function flushNow() {
+    clearTimeout(timer.current);
+    await flush();
+  }
+
+  function reset() {
+    clearTimeout(timer.current);
+    latest.current = null;
+  }
+
+  const current = failure?.epoch === args.epoch ? failure : null;
+  return {
+    save,
+    retry: flush,
+    flushNow,
+    reset,
+    error: current?.message ?? "",
+    conflict: current?.conflict ?? false,
+    saving,
+    latest,
+  };
 }
