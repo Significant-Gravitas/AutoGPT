@@ -51,7 +51,8 @@ def test_the_dry_run_report_counts_reliable_and_skipped(capsys):
     assert "reliable, an exact option in the understanding: 2" in out
     assert "skipped, Other's text or an AutoPilot rewrite: 1" in out
     assert "Roles: Marketing=2, Engineering=1" in out
-    assert "PostHog: 3 persons" in out
+    # PostHog can't be read, so a dry run after a full apply lists them again.
+    assert "PostHog: 3 persons ($set_once; PostHog can't be read" in out
     assert "MailerLite: 1 subscribers to fill in" in out
     assert "already have a role (kept): 1" in out
     assert "placed in Iran or Russia (skipped): 1" in out
@@ -62,7 +63,7 @@ def test_a_complete_run_reports_and_succeeds(capsys):
     cli._finish(5, 0, 2)
     out = capsys.readouterr().out
     assert "5 ok, 0 failed, 2 no longer needed" in out
-    assert "Run the dry run again" in out
+    assert "dry run again to confirm no MailerLite subscriber is left" in out
 
 
 def test_the_command_exits_non_zero_when_anyone_failed(monkeypatch):

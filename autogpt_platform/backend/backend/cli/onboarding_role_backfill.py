@@ -45,8 +45,10 @@ def onboarding_role_backfill_command(apply: bool, yes: bool):
 
     Dry run by default, with counts only. A run that PostHog or MailerLite
     didn't take in full fails after reporting. Idempotent, so a repeated
-    --apply resumes an interrupted or failed one; run the dry run again
-    afterwards to confirm nothing is left.
+    --apply resumes an interrupted or failed one. A dry run afterwards shows
+    whether any MailerLite subscribers are left to fill in. It can't read
+    PostHog, so it lists every reliable role there again; a run that finished
+    without failing sent them all.
     """
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
@@ -151,7 +153,10 @@ def _report(plan: "RolePlan") -> None:
     click.echo(f"  reliable, an exact option in the understanding: {plan.exact}")
     click.echo(f"  skipped, Other's text or an AutoPilot rewrite: {plan.skipped}")
     click.echo(f"Roles: {roles}")
-    click.echo(f"\nPostHog: {len(plan.posthog)} persons ($set_once)")
+    click.echo(
+        f"\nPostHog: {len(plan.posthog)} persons ($set_once; PostHog can't be "
+        "read, so every run sends them all)"
+    )
     click.echo(f"MailerLite: {len(plan.mailerlite)} subscribers to fill in")
     click.echo(f"  already have a role (kept): {plan.already_set}")
     click.echo(f"  not subscribers (never created): {plan.not_subscribers}")
@@ -178,4 +183,7 @@ def _finish(ok: int, failed: int, skipped: int) -> None:
             f"{failed} MailerLite subscribers were not written (the log says "
             "why); run again to retry them"
         )
-    click.echo("Run the dry run again to confirm nothing is left.")
+    click.echo(
+        "Run the dry run again to confirm no MailerLite subscriber is left to "
+        "fill in."
+    )
