@@ -169,7 +169,7 @@ The tests read it only from the environment. To keep it between runs, save it as
 | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | `K6_ENVIRONMENT`                                             | `PREVIEW` (default), `DEV`, `LOCAL` or `PROD`                                                                       |
 | `PR_NUMBER`                                                  | The pull request whose preview `PREVIEW` targets                                                                    |
-| `K6_WS_URL`                                                  | The WebSocket URL, if the target's differs from the pattern in `configs/environment.js`                             |
+| `K6_BACKEND_URL`, `K6_FRONTEND_URL`, `K6_WS_URL`             | Override the target's URLs, for a stack on other ports or behind another name                                        |
 | `LOAD_PROFILE`                                               | `smoke`, `baseline` (default) or `stress`                                                                           |
 | `SCENARIOS`                                                  | A comma-separated subset of the journeys                                                                            |
 | `RATE_SCALE`, `WARMUP`, `DURATION`, `THRESHOLD_SCALE`        | Adjust the profile                                                                                                  |

@@ -6,16 +6,19 @@
 // - FRONTEND_URL: the Next.js app. Better Auth runs under /api/auth there,
 //   and the backend verifies tokens against its /api/auth/jwks.
 // - WS_URL: the backend's WebSocket server (graph execution events).
-//   K6_WS_URL overrides it for any target.
 // - SIGNUP_ALLOWED: whether the authenticated tests may sign up throwaway
 //   accounts when LOAD_TEST_ACCOUNTS is unset (see lib/auth.js).
 // - SENTRY: where the target's backend traces land, for perf-compare.
+//
+// K6_BACKEND_URL, K6_FRONTEND_URL and K6_WS_URL override the URLs of any
+// target, for a stack on other ports or behind another name.
 function target(name, backendUrl, frontendUrl, wsUrl, signupAllowed, sentry) {
+  const backend = __ENV.K6_BACKEND_URL || backendUrl;
   return {
     NAME: name,
-    BACKEND_URL: backendUrl,
-    API_BASE_URL: `${backendUrl}/api`,
-    FRONTEND_URL: frontendUrl,
+    BACKEND_URL: backend,
+    API_BASE_URL: `${backend}/api`,
+    FRONTEND_URL: __ENV.K6_FRONTEND_URL || frontendUrl,
     WS_URL: __ENV.K6_WS_URL || wsUrl,
     SIGNUP_ALLOWED: signupAllowed,
     SENTRY: sentry,
