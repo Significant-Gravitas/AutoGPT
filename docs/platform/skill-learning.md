@@ -42,19 +42,23 @@ other memory stages. Both paths share the same lease and revision ledger.
    transaction: source eligibility, epoch and revision, the skill's own
    policy, and the head version (compare-and-swap). A concurrent human edit,
    pause, or exclusion produces a conflict or a refusal, never an overwrite.
+   Creation also checks that the target file or current version has not
+   appeared since review. Malformed existing files are preserved.
    The workspace `SKILL.md` is written afterwards, inside the registry's
    per-owner write lock and only while the head still names that version:
    a write resumed after a newer human correction is abandoned rather than
    placed on top of it. An interrupted write is finished (or abandoned) by
-   the next run without a second model call.
+   the next run without a second model call. Reading the skill also retries
+   its current pending write, even with background learning disabled;
+   an owner use-pause still prevents loading it.
 5. **Retrieval** pins the exact version a conversation loads. A load is
    recorded as a load, never as a success. An existing conversation sees an
    overnight update at its next user turn without starting a new chat.
 
-Every write to a skill — overnight, during work, an owner edit, a restore,
+Every completed write to a skill — overnight, during work, an owner edit, a restore,
 or an import — appends an immutable version with its origin and the
 contributing source revisions. A version restored from history inherits
-its base version's sources.
+the restored content's sources.
 
 Learned skills stay private to the account and Expert that did the work.
 Personal conversations teach the account's personal assistant; an Expert's
@@ -68,6 +72,12 @@ Evidence labels are concrete: **Worked once in the source**, **Requested by
 user**, **Loaded N times · Outcome unknown**, **Reported as working by you**.
 "Passed checks in N later uses" is reserved for recorded checks and is not
 produced by an owner's report.
+
+Recorded verification can be retrieved outside the newest 120 messages.
+Up to 40 retained verification references and nearby context are fetched
+within the same owner and source revision. Complete proof takes priority
+within the 24,000-character evidence budget; missing or oversized proof is
+still refused.
 
 | State                    | Meaning                                                      |
 | ------------------------ | ------------------------------------------------------------ |
@@ -158,6 +168,27 @@ content, and ownership checks. A second run with no new evidence makes no
 model calls. Runs renew their lease between sources and check it again after
 each model review; losing the lease leaves the source pending without
 publishing the proposed change.
+
+Validated paid review output can be retried without another model call,
+including when the current budget cannot fund new calls. Its checkpoint is
+limited to 512 KiB and seven days; owner, source, approval, and target state
+are checked again before applying it. Uncacheable failures and ambiguous
+crashes consume at most three model-call reservations per source revision
+and policy. After that limit the revision is skipped; new verified evidence
+can be considered in a later revision. A reservation does not prove that
+the provider completed a call.
+
+Owner-approved content-check exceptions are stored with the immutable
+version as exact match hashes, file paths, and occurrence counts. Restoring
+or improving a version preserves only retained approved occurrences.
+New, duplicated, relocated, and seeded values still require the applicable
+checks.
+
+Ordinary registry package writes use an error-and-retry contract. An
+interrupted ordinary write can leave partial unversioned file changes;
+retry the complete package until the write succeeds. Versioned pending
+writes stay unavailable until recovery completes. Repeating source exclusion
+also resumes any interrupted head repair, while preserving an owner use-pause.
 
 ## Not in the first release
 

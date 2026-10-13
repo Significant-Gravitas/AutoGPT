@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import sys
 
+import pytest
 import sentry_sdk
 from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
@@ -31,6 +32,7 @@ from backend.util.metrics import (
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
 )
+from backend.util.settings import AppEnvironment, BehaveAs, Config
 
 
 def _log_event(logger: str, message: str) -> dict:
@@ -491,3 +493,87 @@ def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) ->
     finally:
         client.close()
     assert ld_clients == []
+
+
+# ---------- release and environment tagging ----------
+
+
+def _sentry_init_options(monkeypatch) -> dict:
+    """The options sentry_init() hands the SDK once past the pytest guard."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    return calls[0]
+
+
+def test_sentry_init_reports_the_deployed_commit_as_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "0123abcd")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+def test_sentry_init_trims_the_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "  0123abcd\n")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+@pytest.mark.parametrize("sha", ["", "   ", "\n"])
+def test_sentry_init_reports_no_release_for_a_blank_sha(monkeypatch, sha) -> None:
+    """A build made without the SENTRY_RELEASE build arg bakes in an empty
+    value, which has to read as no release rather than a blank one."""
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", sha)
+
+    assert _sentry_init_options(monkeypatch)["release"] is None
+
+
+def test_sentry_init_environment_override_wins(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "pr-123")
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+def test_sentry_init_trims_the_environment_override(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "  pr-123 ")
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+@pytest.mark.parametrize("override", ["", "   "])
+def test_sentry_init_computes_the_environment_without_an_override(
+    monkeypatch, override
+) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", override)
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    environment = _sentry_init_options(monkeypatch)["environment"]
+
+    assert environment == "app:prod-behave:cloud"
+
+
+def test_sentry_settings_read_the_deployment_env_vars(monkeypatch) -> None:
+    """The names infra sets: SENTRY_RELEASE, baked into the image, and
+    SENTRY_ENVIRONMENT, set per preview."""
+    monkeypatch.setenv("SENTRY_RELEASE", "0123abcd")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "pr-123")
+
+    config = Config()
+
+    assert config.sentry_release == "0123abcd"
+    assert config.sentry_environment == "pr-123"
+
+
+def test_sentry_settings_are_empty_for_blank_deployment_env_vars(monkeypatch) -> None:
+    monkeypatch.setenv("SENTRY_RELEASE", "")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "")
+
+    config = Config()
+
+    assert (config.sentry_release, config.sentry_environment) == ("", "")
