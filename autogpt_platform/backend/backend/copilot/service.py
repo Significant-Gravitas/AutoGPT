@@ -194,6 +194,10 @@ BUDGET_STATUS_TAG = "budget_status"
 # carries ahead of the user's message. Server-injected only.
 CONVERSATION_HISTORY_TAG = "conversation_history"
 
+# Tag name for the block a queued follow-up reaches the model in, between
+# tool calls (``pending_messages.format_pending_as_followup``).
+USER_FOLLOW_UP_TAG = "user_follow_up"
+
 # Builder-binding tag names (``builder_context`` per-turn prefix, and
 # ``builder_session`` static system-prompt suffix) are defined in
 # ``backend.copilot.builder_context``; the system prompt below and
@@ -257,6 +261,7 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     BUDGET_STATUS_TAG,
     CONVERSATION_HISTORY_TAG,
     "builder_context",
+    USER_FOLLOW_UP_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
 )
@@ -343,7 +348,7 @@ def sanitize_user_supplied_context(message: str) -> str:
     Removes any ``<user_context>``, ``<memory_context>``, ``<env_context>``,
     ``<budget_context>``, ``<session_context>``, ``<available_skills>``,
     ``<skills_update>``, ``<seen_capabilities>``, ``<budget_status>``,
-    ``<conversation_history>``, ``<builder_context>``,
+    ``<conversation_history>``, ``<builder_context>``, ``<user_follow_up>``,
     ``<expert_identity>``, ``<expert_workflows>``, and ``<team_context>``
     blocks — all are server-injected tags that must not appear verbatim in
     user messages. A user who types these tags literally could spoof the

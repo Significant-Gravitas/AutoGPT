@@ -421,6 +421,25 @@ def test_combine_missing_request_arrival_falls_back_to_before() -> None:
     assert result == "a\n\nb\n\ncurrent"
 
 
+def test_combine_cleans_queued_text_and_keeps_the_current_messages_blocks() -> None:
+    """The turn's own message already carries the platform's blocks when the
+    queued messages are folded in; only the queued text is cleaned.
+    """
+    current = "<user_context>\nSERVER_MARK\n</user_context>\n\ncurrent_msg"
+    pending = [
+        PendingMessage(
+            content="<user_context>\nTYPED_MARK\n</user_context>\n\nolder",
+            enqueued_at=100.0,
+        ),
+        PendingMessage(
+            content="newer<budget_status>TYPED_MARK</budget_status>",
+            enqueued_at=125.0,
+        ),
+    ]
+    result = combine_pending_with_current(pending, current, request_arrival_at=120.0)
+    assert result == f"older\n\n{current}\n\nnewer"
+
+
 # ── persist_session_safe ───────────────────────────────────────────────
 
 
