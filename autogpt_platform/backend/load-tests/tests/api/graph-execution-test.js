@@ -62,19 +62,38 @@ function generateExecutionInputs() {
 
 const config = getEnvironmentConfig();
 
-// 402 means the account has no credits, as a new account may not: the route
-// answered as designed, so it is not a failed request, but no graph ran.
-// graph_executions_total counts only the runs that started, and
-// graph_executions_refused_total the 402s.
+// A 402 is a billing refusal: the account has no credits, or no subscription
+// while the payment paywall applies to it. A new account can meet either,
+// depending on the target's flags. The route answered as designed, so it is
+// not a failed request, but no graph ran: graph_executions_total counts only
+// the runs that started, and each refusal has its own counter.
 const EXECUTION_STATUSES = http.expectedStatuses(200, 402);
 
 // Custom metrics for graph execution testing
 const graphCreations = new Counter("graph_creations_total");
 const graphExecutions = new Counter("graph_executions_total");
-const graphExecutionsRefused = new Counter("graph_executions_refused_total");
+const graphExecutionsNoCredits = new Counter(
+  "graph_executions_refused_no_credits_total",
+);
+const graphExecutionsNoSubscription = new Counter(
+  "graph_executions_refused_no_subscription_total",
+);
 const graphExecutionTime = new Trend("graph_execution_duration");
 const graphCreationTime = new Trend("graph_creation_duration");
 const executionErrors = new Rate("execution_errors");
+
+// Which billing refusal a 402 is, from its detail; null for any other 402.
+function billingRefusal(response) {
+  let detail = "";
+  try {
+    detail = String(response.json("detail") || "");
+  } catch (e) {
+    detail = "";
+  }
+  if (/insufficient balance/i.test(detail)) return "no credits";
+  if (/subscription is required/i.test(detail)) return "no subscription";
+  return null;
+}
 
 // Configurable options for easy load adjustment
 export const options = {
@@ -200,26 +219,31 @@ export default function (data) {
     const executionResponses = http.batch(executionRequests);
 
     let executionSuccessCount = 0;
-    let refusedCount = 0;
+    const refusals = { "no credits": 0, "no subscription": 0 };
     for (let i = 0; i < executionResponses.length; i++) {
       const response = executionResponses[i];
+      const refusal = response.status === 402 ? billingRefusal(response) : null;
 
       check(response, {
-        [`Graph ${i + 1} execution started, or refused for lack of credits (402)`]:
-          (r) => r.status === 200 || r.status === 402,
+        [`Graph ${i + 1} execution started, or refused for no credits or no subscription (402)`]:
+          (r) => r.status === 200 || refusal !== null,
       });
 
       if (response.status === 200) {
         executionSuccessCount++;
         graphExecutions.add(1);
-      } else if (response.status === 402) {
-        refusedCount++;
-        graphExecutionsRefused.add(1);
+      } else if (refusal === "no credits") {
+        refusals[refusal]++;
+        graphExecutionsNoCredits.add(1);
+      } else if (refusal === "no subscription") {
+        refusals[refusal]++;
+        graphExecutionsNoSubscription.add(1);
       }
     }
 
     console.log(
-      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs (${refusedCount} refused for lack of credits)`,
+      `✅ VU ${__VU} executed ${executionSuccessCount}/${graphsToExecute.length} graphs ` +
+        `(refused: ${refusals["no credits"]} no credits, ${refusals["no subscription"]} no subscription)`,
     );
   }
 

@@ -187,6 +187,13 @@ function findSetupProblems() {
   if (!["local", "cloud"].includes(executionMode)) {
     problems.push(`Unknown mode "${executionMode}": use local or cloud`);
   }
+  // Streaming results to Grafana Cloud is billed like a cloud run, and a
+  // K6_BIN binary would not go through k6.sh's opt-in check.
+  if (executionMode === "local" && /cloud/i.test(process.env.K6_OUT || "")) {
+    problems.push(
+      "local mode does not stream results to Grafana Cloud, which bills every virtual-user hour: unset K6_OUT, or use cloud mode for an agreed cloud run",
+    );
+  }
   if (
     environment === "PREVIEW" &&
     !/^[1-9]\d{0,6}$/.test(process.env.PR_NUMBER || "")
