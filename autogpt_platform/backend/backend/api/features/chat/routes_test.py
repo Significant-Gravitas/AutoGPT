@@ -1,5 +1,6 @@
 """Tests for chat API routes: session title update, file attachment validation, usage, and rate limiting."""
 
+import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import get_args
@@ -10,6 +11,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 from pydantic import SecretStr
+from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
@@ -18,6 +20,7 @@ from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.response_model import StreamFinish, StreamStatus, StreamTextDelta
 from backend.copilot.tools.models import ExpertSoulUpdatedResponse
 from backend.data.model import OAuth2Credentials
 from backend.data.workspace_scope import WorkspaceScope
@@ -350,6 +353,52 @@ def _mock_stream_internals(
         session=mock_session,
         owns_active_expert=mock_owns_active_expert,
     )
+
+
+def test_stream_chat_records_when_the_first_chunk_and_token_reached_the_client(
+    mocker: pytest_mock.MockerFixture, sentry_transactions
+) -> None:
+    """The relay's latency lands on the request's own transaction, which the
+    ASGI middleware starts for it in production."""
+    _mock_stream_internals(mocker)
+    relayed: asyncio.Queue = asyncio.Queue()
+    for chunk in (
+        StreamStatus(message="Message received…"),
+        StreamTextDelta(id="t", delta="hi"),
+        StreamFinish(),
+    ):
+        relayed.put_nowait((None, chunk))
+    mocker.patch.object(
+        chat_routes.stream_registry,
+        "subscribe_to_session",
+        new_callable=AsyncMock,
+        return_value=relayed,
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry, "unsubscribe_from_session", new_callable=AsyncMock
+    )
+    mocker.patch.object(
+        chat_routes.stream_registry, "publish_chunk", new_callable=AsyncMock
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit", new_callable=AsyncMock
+    )
+
+    response = fastapi.testclient.TestClient(SentryAsgiMiddleware(app)).post(
+        "/sessions/sess-1/stream", json={"message": "hello"}
+    )
+
+    assert response.status_code == 200
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert request["contexts"]["trace"]["op"] == "http.server"
+    assert 0 <= data["copilot.stream.first_chunk_ms"] <= data["copilot.stream.ttft_ms"]
+    assert data["copilot.stream.chunk_count"] == 3
 
 
 def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):

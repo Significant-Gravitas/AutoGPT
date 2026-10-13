@@ -395,6 +395,28 @@ def test_muse_spark_1_3_contributor_bills_at_authored_rates():
     assert contributor_entry.supports_reasoning is True
 
 
+def test_muse_wonder_bills_at_authored_rates():
+    """Muse Wonder (OpenRouter, Meta list price $4/$20 per 1M, $0.20/1M
+    cached input) — flat tier and per-1M projections must match the
+    authored catalog entry."""
+    wonder = LLMModel("meta/muse-wonder")
+    assert wonder is LLMModel.META_MUSE_WONDER
+    assert MODEL_COST[wonder] == 11
+    assert TOKEN_COST[wonder].model_dump() == {
+        "input": 600.0,
+        "output": 3000.0,
+        "cache_read": 30.0,
+        "cache_creation": 0.0,
+    }
+    assert MODEL_METADATA[wonder].max_output_tokens == 943718
+    entry = next(m for m in CATALOG.models if m.slug == "meta/muse-wonder")
+    assert entry.price_tier == 3
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_qwen3_8_max_0902_bills_at_authored_rates():
     """Qwen 3.8 Max (0902) (OpenRouter, Alibaba list price $2.00/$6.00 per
     1M) — flat tier and per-1M projections must match the authored catalog
