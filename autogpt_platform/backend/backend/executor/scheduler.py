@@ -1122,7 +1122,7 @@ def _memory_scope_may_fire(scope: MemoryScope) -> bool:
             timeout=bridge_timeout(),
             cancel_on_timeout=True,
         )
-    except TimeoutError:
+    except concurrent.futures.TimeoutError:
         logger.warning(f"Memory cron of {scope_label(scope)} skipped: gate timed out")
         return False
 
@@ -1135,7 +1135,7 @@ def _stamp_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> None:
             timeout=bridge_timeout(),
             cancel_on_timeout=True,
         )
-    except TimeoutError:
+    except concurrent.futures.TimeoutError:
         logger.warning(f"Could not stamp the {kind} run of {scope_label(scope)}")
 
 
