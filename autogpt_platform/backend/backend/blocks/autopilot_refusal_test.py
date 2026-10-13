@@ -7,13 +7,13 @@ it the block falls through and renders an empty ``SessionResult`` as a
 successful turn, dropping the refusal.
 
 The executor can refuse a turn too, when the account is out of AutoPilot
-budget as it picks the turn up. The waiter reports that as ``refused`` with
-the not-started pause, which the block turns into an out-of-budget error that
-skips recovery.
+budget as it picks the turn up and its credit balance can't pay for the turn
+either. The waiter reports that as ``refused`` with the not-started pause,
+which the block turns into an out-of-budget error that skips recovery.
 """
 
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from backend.blocks.autopilot import (
     AutoPilotBlock,
     AutoPilotOutOfBudgetError,
     AutoPilotTransport,
+    _enqueue_for_recovery,
 )
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.turn_pause import TurnPause
@@ -96,20 +97,63 @@ def _waited(outcome: str, result: SessionResult):
     )
 
 
+_OUT_OF_TODAY_MESSAGE = (
+    "Out of AutoPilot budget: your plan's AutoPilot allowance is used up, and "
+    "your credit balance doesn't cover a run (it needs at least $0.50). Add "
+    "credits at https://platform.agpt.co/profile/credits to run it on credits. "
+    "The allowance resets 2026-10-12 00:00 UTC."
+)
+
+
+@pytest.fixture
+def frontend(mocker):
+    settings = MagicMock()
+    settings.config.frontend_base_url = "https://platform.agpt.co/"
+    mocker.patch("backend.blocks.autopilot.Settings", return_value=settings)
+
+
 @pytest.mark.asyncio
-async def test_a_turn_refused_for_budget_fails_with_its_reset():
+async def test_a_turn_refused_for_budget_says_why_how_to_top_up_and_when_it_resets(
+    frontend,
+):
+    """The executor only refuses a block turn the credit balance can't cover."""
     with _refused_for_budget(_OUT_OF_TODAY):
         with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
-    assert str(raised.value) == "Out of AutoPilot budget until 2026-10-12 00:00 UTC."
+    assert str(raised.value) == _OUT_OF_TODAY_MESSAGE
 
 
 @pytest.mark.asyncio
-async def test_a_spent_trial_says_its_allowance_is_used_up():
+async def test_a_spent_trial_says_its_allowance_is_used_up(frontend):
     pause = TurnPause(reason="trial", checkpoint_saved=False, started=False)
     with _refused_for_budget(pause):
-        with pytest.raises(AutoPilotOutOfBudgetError, match="trial allowance"):
+        with pytest.raises(AutoPilotOutOfBudgetError) as raised:
             await _execute()
+    assert str(raised.value) == (
+        "Out of AutoPilot budget: the trial's AutoPilot allowance is used up, and "
+        "your credit balance doesn't cover a run (it needs at least $0.50). Add "
+        "credits at https://platform.agpt.co/profile/credits to run it on credits."
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_recovery_run_is_still_the_blocks_turn():
+    """So it may run on the credit balance as the first run could."""
+    session = MagicMock()
+    session.metadata.llm_auth_provider = "platform"
+    session.metadata.llm_credential_id = None
+    enqueue = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.model.get_chat_session", AsyncMock(return_value=session)
+        ),
+        patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueue),
+    ):
+        await _enqueue_for_recovery("sess-1", "user-1", "do the thing", dry_run=False)
+
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args.kwargs["tool_name"] == "autopilot_block"
 
 
 @pytest.mark.asyncio
@@ -122,7 +166,7 @@ async def test_a_turn_that_paused_after_running_returns_its_checkpoint():
 
 
 @pytest.mark.asyncio
-async def test_a_budget_refusal_reaches_the_graph_without_a_recovery_run():
+async def test_a_budget_refusal_reaches_the_graph_without_a_recovery_run(frontend):
     """Re-enqueueing it for recovery would only be refused again."""
     block = AutoPilotBlock()
     recovery = AsyncMock()
@@ -149,8 +193,5 @@ async def test_a_budget_refusal_reaches_the_graph_without_a_recovery_run():
             )
         ]
 
-    assert outputs == [
-        ("session_id", "sess-1"),
-        ("error", "Out of AutoPilot budget until 2026-10-12 00:00 UTC."),
-    ]
+    assert outputs == [("session_id", "sess-1"), ("error", _OUT_OF_TODAY_MESSAGE)]
     recovery.assert_not_awaited()
