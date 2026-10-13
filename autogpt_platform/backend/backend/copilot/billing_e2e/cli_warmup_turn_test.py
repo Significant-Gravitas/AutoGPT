@@ -3,13 +3,15 @@
 The executor warms the CLI binary in a background thread when it starts
 (``cli_warmup``). A turn must never wait for it: it launches the CLI and is
 charged what the provider billed whether the warm-up is running alongside it
-or stuck reading the binary.
+or stuck reading the binary. Nor may a worker thread or a turn warm the CLI
+themselves, as each thread's first turn used to.
 
 They run the bundled Claude Code CLI, so they skip where there is none (the
 Windows wheel ships without one); CI runs them on Linux.
 """
 
 import logging
+import subprocess
 import threading
 import time
 from pathlib import Path
@@ -66,8 +68,9 @@ async def test_a_turn_runs_alongside_the_cli_warm_up(
 
     warm_up.join(60)
     assert not warm_up.is_alive()
-    [warmed] = [r.getMessage() for r in caplog.records if r.name == cli_warmup.__name__]
-    assert "ran -v (rc=0)" in warmed
+    logged = [r.getMessage() for r in caplog.records if r.name == cli_warmup.__name__]
+    assert logged[0] == "CLI warm-up started"
+    assert "ran -v (rc=0)" in logged[-1]
 
 
 @pytest.mark.asyncio(loop_scope="function")
@@ -79,13 +82,17 @@ async def test_a_turn_does_not_wait_for_a_stuck_cli_warm_up(
 ) -> None:
     reading = threading.Event()
     release = threading.Event()
+    # Every thread that warmed the CLI: read the binary through, or ran -v.
+    warmed_on: list[str] = []
 
     def stuck_read(_path: str) -> int:
+        warmed_on.append(threading.current_thread().name)
         reading.set()
         release.wait(STUCK_SECONDS)
         return 0
 
     monkeypatch.setattr(cli_warmup, "_read_through", stuck_read)
+    _record_version_runs(monkeypatch, warmed_on)
     started = time.monotonic()
     warm_up = cli_warmup.start_cli_warmup()
     try:
@@ -94,9 +101,24 @@ async def test_a_turn_does_not_wait_for_a_stuck_cli_warm_up(
         _start_a_worker_thread(monkeypatch)
         await _one_turn(provider, ledger, tmp_path, monkeypatch)
         assert warm_up.is_alive()
+        # However fast a warm binary runs, the worker and the turn left the
+        # warming to the warm-up's own thread.
+        assert warmed_on == [warm_up.name]
     finally:
         release.set()
         warm_up.join(60)
+
+
+def _record_version_runs(monkeypatch: pytest.MonkeyPatch, warmed_on: list[str]) -> None:
+    """Note the thread of every ``<cli> -v`` run, the CLI's warm-up call."""
+    run = subprocess.run
+
+    def recording_run(args, *rest, **kwargs):
+        if list(args)[1:] == ["-v"]:
+            warmed_on.append(threading.current_thread().name)
+        return run(args, *rest, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", recording_run)
 
 
 def _start_a_worker_thread(monkeypatch: pytest.MonkeyPatch) -> None:

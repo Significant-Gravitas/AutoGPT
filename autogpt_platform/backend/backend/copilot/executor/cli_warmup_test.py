@@ -1,5 +1,6 @@
 """The CLI warm-up reads the whole binary, runs it, and never fails the executor."""
 
+import logging
 import threading
 from unittest.mock import MagicMock, patch
 
@@ -13,16 +14,39 @@ def test_reads_every_byte_of_the_binary(tmp_path):
     assert cli_warmup._read_through(str(binary)) == binary.stat().st_size
 
 
-def test_reads_the_binary_then_runs_it(tmp_path):
+def test_reads_the_binary_then_runs_it(tmp_path, monkeypatch):
     binary = tmp_path / "claude"
     binary.write_bytes(b"cli")
-    run = MagicMock(return_value=MagicMock(returncode=0))
+    steps: list[tuple[str, object]] = []
+    read_through = cli_warmup._read_through
+
+    def read(path: str) -> int:
+        steps.append(("read", path))
+        return read_through(path)
+
+    def run(args: list[str], **_kwargs: object) -> MagicMock:
+        steps.append(("run", args))
+        return MagicMock(returncode=0)
+
+    monkeypatch.setattr(cli_warmup, "_read_through", read)
+    monkeypatch.setattr(cli_warmup.subprocess, "run", run)
+
+    cli_warmup.warm_cli(str(binary))
+
+    assert steps == [("read", str(binary)), ("run", [str(binary), "-v"])]
+
+
+def test_a_failing_version_run_is_a_warning(tmp_path, caplog):
+    binary = tmp_path / "claude"
+    binary.write_bytes(b"cli")
+    run = MagicMock(return_value=MagicMock(returncode=1))
+    caplog.set_level(logging.INFO, logger=cli_warmup.__name__)
 
     with patch("backend.copilot.executor.cli_warmup.subprocess.run", run):
         cli_warmup.warm_cli(str(binary))
 
-    run.assert_called_once()
-    assert run.call_args.args[0] == [str(binary), "-v"]
+    [failed] = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert "rc=1" in failed.getMessage()
 
 
 def test_a_missing_binary_is_skipped_without_raising(tmp_path):
@@ -39,6 +63,13 @@ def test_the_configured_cli_path_wins(monkeypatch):
     monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "/usr/bin/claude")
 
     assert cli_warmup._resolve_cli_path() == "/opt/claude"
+
+
+def test_the_unprefixed_cli_path_is_used_on_its_own(monkeypatch):
+    monkeypatch.delenv("CHAT_CLAUDE_AGENT_CLI_PATH", raising=False)
+    monkeypatch.setenv("CLAUDE_AGENT_CLI_PATH", "/usr/bin/claude")
+
+    assert cli_warmup._resolve_cli_path() == "/usr/bin/claude"
 
 
 def test_startup_does_not_wait_for_the_warm_up():

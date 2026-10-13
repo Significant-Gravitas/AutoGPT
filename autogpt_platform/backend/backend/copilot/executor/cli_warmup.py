@@ -34,15 +34,22 @@ def warm_cli(cli_path: str | None = None) -> None:
         path = cli_path or _resolve_cli_path()
         if not path:
             return
+        # A read that never returns logs nothing more, so this line is what
+        # tells a stuck warm-up from one that never started.
+        logger.info("CLI warm-up started")
         started = time.monotonic()
         size = _read_through(path)
         result = subprocess.run(
             [path, "-v"], capture_output=True, timeout=_VERSION_TIMEOUT_SECONDS
         )
-        logger.info(
-            f"CLI warm-up read {size / 1e6:.0f} MB and ran -v "
-            f"(rc={result.returncode}) in {time.monotonic() - started:.1f}s: {path}"
+        done = (
+            f"read {size / 1e6:.0f} MB and ran -v (rc={result.returncode}) "
+            f"in {time.monotonic() - started:.1f}s: {path}"
         )
+        if result.returncode == 0:
+            logger.info(f"CLI warm-up {done}")
+        else:
+            logger.warning(f"CLI warm-up failed: {done}")
     except Exception as e:
         # The type only: an OSError's text carries the binary's full path.
         logger.warning(f"CLI warm-up skipped: {type(e).__name__}")
