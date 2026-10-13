@@ -69,7 +69,7 @@ class TrialAccount:
         # The ledger keeps each charge, then the real recording runs: that is
         # where a turn's spend is put on the trial.
         async def charge(user_id: str, cost_microdollars: int, **kwargs: Any) -> None:
-            await ledger._record_spend(user_id, cost_microdollars, **kwargs)
+            await ledger.record_spend(user_id, cost_microdollars, **kwargs)
             await rate_limit.record_cost_usage(user_id, cost_microdollars, **kwargs)
 
         monkeypatch.setattr(token_tracking, "record_cost_usage", charge)
