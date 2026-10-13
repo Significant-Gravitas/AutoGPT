@@ -26,29 +26,25 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-async def test_initial_signup_replaces_calendar_namespace_and_preserves_history(
-    activation_case,
-):
+@pytest.mark.parametrize("tier", ["PRO", "MAX"])
+async def test_initial_signup_preserves_calendar_usage(activation_case, tier):
     case = activation_case
+    case.select_plan(tier)
     await case.add_cost(None, 900)
     assert await case.activate()
     state = await get_usage_activation_state(case.user_id)
-    assert state.ready and state.tier == "PRO" and state.generation
-    assert await case.counters(state.generation) == (0, 0)
+    assert state.ready and state.tier == tier and state.generation is None
     assert await case.counters(None) == (900, 900)
-    row = await PaidUsageActivation.prisma().find_unique_or_raise(
-        where={"userId": case.user_id}
-    )
-    assert row.stripeInvoiceId == case.invoice["id"]
-    assert row.stripeSubscriptionId == case.subscription["id"]
+    assert await PaidUsageActivation.prisma().count(where={"userId": case.user_id}) == 0
 
 
 @pytest.mark.parametrize("cost", [25, 100, 250])
+@pytest.mark.parametrize("tier", ["PRO", "MAX"])
 async def test_trial_conversion_preserves_lifetime_ledger_and_account_history(
-    activation_case, cost
+    activation_case, cost, tier
 ):
     case = activation_case
-    trial = await case.add_trial(cost)
+    trial = await case.add_trial(cost, tier)
     before = await SubscriptionTrial.prisma().find_unique_or_raise(
         where={"userId": case.user_id}
     )
@@ -90,14 +86,17 @@ async def test_trial_conversion_preserves_lifetime_ledger_and_account_history(
     ) == [history]
     assert await db.prisma.chatsession.find_unique(where={"id": chat.id}) == chat
     state = await get_usage_activation_state(case.user_id)
-    assert state.ready and state.generation and state.trial_id is None
+    assert state.ready and state.tier == tier and state.generation
+    assert state.trial_id is None
     assert await case.counters(state.generation) == (0, 0)
 
 
+@pytest.mark.parametrize("tier", ["PRO", "MAX"])
 async def test_concurrent_duplicate_activation_publishes_one_generation(
-    activation_case,
+    activation_case, tier
 ):
     case = activation_case
+    await case.add_trial(100, tier)
     assert all(await asyncio.gather(*(case.activate() for _ in range(4))))
     state = await get_usage_activation_state(case.user_id)
     assert state.ready and state.generation
@@ -108,7 +107,7 @@ async def test_concurrent_duplicate_activation_publishes_one_generation(
     assert await case.counters(state.generation) == (37, 37)
 
 
-async def test_conversion_marker_alone_cannot_skip_usage_activation(activation_case):
+async def test_legacy_conversion_marker_preserves_calendar_usage(activation_case):
     case = activation_case
     await case.add_trial(100)
     await SubscriptionTrial.prisma().update(
@@ -118,8 +117,8 @@ async def test_conversion_marker_alone_cannot_skip_usage_activation(activation_c
     await case.add_cost(None, 100)
     assert await case.activate()
     state = await get_usage_activation_state(case.user_id)
-    assert state.ready and state.generation
-    assert await case.counters(state.generation) == (0, 0)
+    assert state.ready and state.generation is None
+    assert await case.counters(None) == (100, 100)
 
 
 async def test_database_failure_rolls_back_entitlement_and_retry_keeps_paid_cost(
@@ -151,6 +150,7 @@ async def test_redis_failure_rolls_back_database_and_recovers_without_erasing_us
     activation_case,
 ):
     case = activation_case
+    await case.add_trial(100)
     generation = str(
         uuid5(
             NAMESPACE_URL,
@@ -163,7 +163,7 @@ async def test_redis_failure_rolls_back_database_and_recovers_without_erasing_us
     with pytest.raises(ResponseError, match="WRONGTYPE"):
         await case.activate()
     assert await PaidUsageActivation.prisma().count(where={"userId": case.user_id}) == 0
-    assert (await get_usage_activation_state(case.user_id)).tier == "NO_TIER"
+    assert (await get_usage_activation_state(case.user_id)).tier == "TRIAL"
     await case.redis.delete(daily)
     await case.redis.set(daily, 17)
     assert await case.activate()
@@ -174,6 +174,7 @@ async def test_incomplete_activation_is_processing_then_finishes_without_reset(
     activation_case,
 ):
     case = activation_case
+    await case.add_trial(100)
     row = await PaidUsageActivation.prisma().create(
         data={
             "userId": case.user_id,
@@ -207,7 +208,7 @@ async def test_existing_paid_history_never_resets(activation_case, tier):
     assert await case.counters(None) == (73, 73)
 
 
-async def test_admin_tier_edits_do_not_reset_but_first_paid_activation_does(
+async def test_admin_tier_edits_and_nontrial_payment_preserve_usage(
     activation_case,
 ):
     case = activation_case
@@ -218,12 +219,13 @@ async def test_admin_tier_edits_do_not_reset_but_first_paid_activation_does(
         assert await case.counters(None) == (71, 71)
     assert await case.activate()
     state = await get_usage_activation_state(case.user_id)
-    assert state.generation and state.ready
-    assert await case.counters(state.generation) == (0, 0)
+    assert state.generation is None and state.ready
+    assert await case.counters(None) == (71, 71)
 
 
 async def test_returning_subscriber_never_receives_another_generation(activation_case):
     case = activation_case
+    await case.add_trial(100)
     previous = deepcopy(case.invoice)
     previous.update(id=f"old_{case.invoice['id']}", subscription="sub_previous")
     previous["lines"]["data"][0]["subscription"] = "sub_previous"
@@ -245,6 +247,7 @@ async def test_payment_before_cutover_never_resets_on_delayed_event(activation_c
         (policy.startsAt - timedelta(seconds=1)).timestamp()
     )
     case.invoice["created"] = case.invoice["status_transitions"]["paid_at"] - 1
+    await case.add_trial(100)
     await case.add_cost(None, 83)
     assert await case.activate()
     assert (await get_usage_activation_state(case.user_id)).generation is None
@@ -255,6 +258,7 @@ async def test_renewal_replay_preserves_current_generation_and_paid_usage(
     activation_case,
 ):
     case = activation_case
+    await case.add_trial(100)
     assert await case.activate()
     state = await get_usage_activation_state(case.user_id)
     await case.add_cost(state.generation, 89)

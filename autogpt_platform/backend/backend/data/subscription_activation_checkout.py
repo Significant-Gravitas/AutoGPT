@@ -17,6 +17,7 @@ from backend.data.subscription_activation_models import (
     ActivationAttempt,
     ActivationConfirmRequest,
     ActivationNotFound,
+    ActivationPlan,
     ActivationResponse,
     ActivationUnavailable,
 )
@@ -25,21 +26,26 @@ from backend.data.subscription_activation_stripe import (
     BillingSubscription,
     conversion_trial,
     invoice_payment_intent,
+    is_paid_activation_subscription,
+    matches_trial_source,
     owned_subscription,
     quote_terms,
+    subscription_item_update,
 )
 from backend.data.subscription_checkout import subscription_checkout_lock
 
 logger = logging.getLogger(__name__)
 
 
-async def preview_activation(user_id: str, return_to: str) -> ActivationResponse:
+async def preview_activation(
+    user_id: str, return_to: str, plan: ActivationPlan | None = None
+) -> ActivationResponse:
     async with subscription_checkout_lock(user_id):
         existing = await get_attempt(user_id)
         if existing and existing.confirmed_at:
             return await activation_status(existing)
         trial, sub = await conversion_trial(user_id)
-        terms = await quote_terms(trial, sub)
+        terms = await quote_terms(trial, sub, plan)
         attempt = await save_quote(user_id, sub.id, sub.customer, terms, return_to)
         return attempt.response("confirmation_required")
 
@@ -70,7 +76,10 @@ async def current_activation(user_id: str) -> ActivationResponse:
     previous = None
     if attempt:
         previous = await activation_status(attempt)
-        if previous.status != "failed":
+        if previous.error_code == "plan_changed" or previous.status not in (
+            "failed",
+            "not_applicable",
+        ):
             return previous
     user = await User.prisma().find_unique_or_raise(where={"id": user_id})
     if not user.stripeCustomerId:
@@ -86,7 +95,11 @@ async def current_activation(user_id: str) -> ActivationResponse:
             sub = await owned_subscription(user_id, subscription.id)
             response = ActivationResponse(status="processing", retry_after_seconds=3)
             response.return_to = await activation_return_to(sub)
-            return await _payment_status(user_id, sub, response)
+            result = await _payment_status(user_id, sub, response)
+            if result.status != "not_applicable":
+                return result
+            if previous is None or previous.status == "failed":
+                previous = result
     if previous:
         return previous
     raise ActivationNotFound("No activation is available")
@@ -98,9 +111,12 @@ async def activation_status(attempt: ActivationAttempt) -> ActivationResponse:
         sub = await owned_subscription(attempt.user_id, attempt.subscription_id)
         if sub.customer != attempt.customer_id:
             raise ActivationUnavailable("Subscription ownership changed")
-        if sub.status == "trialing" and attempt.confirmed_at is None:
-            return attempt.response("confirmation_required")
-        return await _payment_status(attempt.user_id, sub, response)
+        return await _payment_status(
+            attempt.user_id,
+            sub,
+            response,
+            unconfirmed_trial=attempt.confirmed_at is None,
+        )
     except Exception:
         logger.exception(
             "Activation status is pending reconciliation for %s", attempt.id
@@ -120,7 +136,11 @@ async def _confirm_terms(attempt: ActivationAttempt) -> ActivationAttempt:
     trial, sub = await conversion_trial(attempt.user_id)
     if sub.id != attempt.subscription_id:
         raise ActivationUnavailable("The trial subscription changed")
-    if not attempt.terms.same_charge_as(await quote_terms(trial, sub)):
+    if not attempt.terms.same_charge_as(
+        await quote_terms(
+            trial, sub, attempt.terms.plan, accepted_price_id=attempt.terms.price_id
+        )
+    ):
         raise ActivationUnavailable("The charge changed. Review a fresh preview.")
     return await save_confirmation(attempt)
 
@@ -139,9 +159,24 @@ async def _submit_confirmed(attempt: ActivationAttempt) -> ActivationResponse:
                 sub.trial_end is None
                 or sub.trial_end <= datetime.now(UTC).timestamp() + 300
             ):
-                return attempt.response("processing", retry_after_seconds=3)
+                return attempt.response(
+                    "processing",
+                    retry_after_seconds=3,
+                    error_code=(
+                        "trial_ending"
+                        if sub.items.data[0].price.id != attempt.terms.price_id
+                        else None
+                    ),
+                )
             trial, sub = await conversion_trial(attempt.user_id)
-            if not attempt.terms.same_charge_as(await quote_terms(trial, sub)):
+            if not attempt.terms.same_charge_as(
+                await quote_terms(
+                    trial,
+                    sub,
+                    attempt.terms.plan,
+                    accepted_price_id=attempt.terms.price_id,
+                )
+            ):
                 return attempt.response("processing", error_code="terms_changed")
             await stripe_call(
                 stripe.Subscription.modify_async,
@@ -151,6 +186,7 @@ async def _submit_confirmed(attempt: ActivationAttempt) -> ActivationResponse:
                 payment_behavior="allow_incomplete",
                 metadata={"pro_activation_attempt_id": attempt.id},
                 idempotency_key=f"pro-activation:{attempt.id}",
+                **subscription_item_update(sub, attempt.terms.price_id),
             )
         return await activation_status(attempt)
     except Exception:
@@ -162,6 +198,8 @@ async def _payment_status(
     user_id: str,
     sub: BillingSubscription,
     response: ActivationResponse,
+    *,
+    unconfirmed_trial: bool = False,
 ) -> ActivationResponse:
     invoice = sub.latest_invoice
     if invoice:
@@ -173,10 +211,61 @@ async def _payment_status(
         response.error_code = "payment_canceled"
         response.retry_after_seconds = None
         return response
+    if (
+        sub.status == "trialing"
+        and response.terms
+        and await matches_trial_source(user_id, sub, response.terms)
+        and sub.items.data[0].price.id != response.terms.price_id
+    ):
+        response.status = "confirmation_required" if unconfirmed_trial else "processing"
+        response.retry_after_seconds = None if unconfirmed_trial else 3
+        return response
+    paid_plan = await is_paid_activation_subscription(
+        user_id, sub, response.terms.price_id if response.terms else None
+    )
+    if paid_plan is not True:
+        response.status = "not_applicable" if paid_plan is False else "processing"
+        response.error_code = (
+            "not_paid_activation_subscription"
+            if paid_plan is False
+            else "plan_unavailable"
+        )
+        response.retry_after_seconds = None if paid_plan is False else 3
+        return response
+    if (
+        sub.status != "trialing"
+        and response.terms
+        and sub.items.data[0].price.id != response.terms.price_id
+    ):
+        response.status = "not_applicable"
+        response.error_code = "plan_changed"
+        response.retry_after_seconds = None
+        return response
+    if sub.status == "trialing" and (
+        unconfirmed_trial
+        or (response.terms and sub.items.data[0].price.id != response.terms.price_id)
+    ):
+        if (
+            response.terms is None
+            or sub.items.data[0].price.id != response.terms.price_id
+        ):
+            response.error_code = "terms_changed"
+            return response
+        response.status = "confirmation_required"
+        response.retry_after_seconds = None
+        return response
     if invoice and invoice.status == "paid":
-        if await reconcile_paid_activation(user_id, sub.id):
+        result = await reconcile_paid_activation(
+            user_id,
+            sub.id,
+            expected_price_id=response.terms.price_id if response.terms else None,
+        )
+        if result is not None:
             response.status = "ready"
             response.retry_after_seconds = None
+            response.invoice_id = result.invoice_id
+            response.usage_reset = result.usage_reset
+            response.activation_id = result.activation_id
         return response
     if invoice and invoice.status == "open":
         response.hosted_invoice_url = invoice.hosted_invoice_url

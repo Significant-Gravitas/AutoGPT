@@ -3,6 +3,7 @@
 import os
 from copy import deepcopy
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 from urllib.parse import urlparse
 from uuid import uuid4
 
@@ -47,32 +48,48 @@ class ActivationCase(BaseModel):
             allowed = await publish_initial_pro_activation(
                 user,
                 self.subscription,
-                "price_pro",
+                self.subscription["items"]["data"][0]["price"]["id"],
                 tx,
                 TrialState.from_db(row) if row else None,
             )
             if allowed:
                 await tx.user.update(
-                    where={"id": user.id}, data={"subscriptionTier": "PRO"}
+                    where={"id": user.id},
+                    data={
+                        "subscriptionTier": (
+                            "MAX"
+                            if self.subscription["items"]["data"][0]["price"]["id"]
+                            == "price_max"
+                            else "PRO"
+                        )
+                    },
                 )
             if abort:
                 await tx.execute_raw("SELECT 1 / 0")
             return allowed
 
-    async def add_trial(self, cost: int) -> TrialState:
+    def select_plan(self, tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"]) -> None:
+        price = f"price_{tier.lower()}"
+        self.subscription["items"]["data"][0]["price"]["id"] = price
+        self.invoice["lines"]["data"][0]["price"]["id"] = price
+
+    async def add_trial(
+        self, cost: int, tier: Literal["BASIC", "PRO", "MAX", "BUSINESS"] = "PRO"
+    ) -> TrialState:
+        self.select_plan(tier)
         now = datetime.now(UTC)
         end = datetime.fromtimestamp(self.invoice["created"], UTC)
         offer = AcceptedTrialOffer(
             version="activation-integration-v1",
             new_users_from=now - timedelta(days=9),
             duration_days=7,
-            tier="PRO",
+            tier=tier,
             billing_cycle="monthly",
             daily_cost_limit=100,
             weekly_cost_limit=100,
             total_cost_limit=100,
             onboarding_credit_amount=300,
-            price_id="price_pro",
+            price_id=f"price_{tier.lower()}",
             unit_amount=2000,
             currency="usd",
         )
@@ -133,11 +150,11 @@ async def activation_case(mocker):
         15432,
         "/trial_test",
     )
-    ci = os.environ.get("GITHUB_ACTIONS") == "true" and (
-        target.hostname,
-        target.port,
-        target.path,
-    ) == ("localhost", 5432, "/postgres")
+    ci = (
+        os.environ.get("GITHUB_ACTIONS") == "true"
+        and (target.hostname, target.port) == ("localhost", 5432)
+        and target.path in ("/postgres", "/ci_copilot")
+    )
     assert (
         local or ci
     ), "Requires the explicitly selected disposable activation database"

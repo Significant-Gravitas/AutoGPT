@@ -14,7 +14,9 @@ export function useActivationReadiness(
 ) {
   const client = useQueryClient();
   const router = useRouter();
+  const [readyPlan, setReadyPlan] = useState<"PRO" | "MAX" | null>(null);
   const [isReady, setReady] = useState(false);
+  const [hasFreshUsage, setFreshUsage] = useState(false);
   const [isRefreshing, setRefreshing] = useState(false);
   const finishing = useRef(false);
   async function finish(response: ActivationResponse, notify: boolean) {
@@ -22,9 +24,19 @@ export function useActivationReadiness(
     finishing.current = true;
     setRefreshing(true);
     try {
-      await refreshActivation(client, userID);
+      const plan = await refreshActivation(
+        client,
+        userID,
+        response.terms?.plan,
+      );
       if (useAuthStore.getState().user?.id !== userID) return;
-      if (notify) setReady(true);
+      if (notify) {
+        setReady(true);
+        setReadyPlan(plan);
+        setFreshUsage(
+          response.usage_reset === true && !!response.activation_id,
+        );
+      }
       storeConsent(userID, null);
       if (notify) {
         setOpen(true);
@@ -50,5 +62,17 @@ export function useActivationReadiness(
       setRefreshing(false);
     }
   }
-  return { isReady, isRefreshing, finish };
+  function clearReadiness() {
+    setReady(false);
+    setReadyPlan(null);
+    setFreshUsage(false);
+  }
+  return {
+    isReady,
+    readyPlan,
+    hasFreshUsage,
+    isRefreshing,
+    finish,
+    clearReadiness,
+  };
 }

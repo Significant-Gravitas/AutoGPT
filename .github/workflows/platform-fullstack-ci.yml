@@ -409,10 +409,14 @@ jobs:
           }
 
           # Dump the platform schema for cache (includes the Better Auth
-          # user/session/account tables seeded by e2e_test_data.py)
+          # user/session/account tables seeded by e2e_test_data.py).
+          # --on-conflict-do-nothing: a migration that inserts rows (e.g. the
+          # PaidUsageActivationPolicy seed) already put them in the fresh
+          # database the dump is restored into.
           echo "Dumping database for cache..."
           docker compose -f ../docker-compose.resolved.yml exec -T db \
             pg_dump -U postgres --data-only --column-inserts \
+            --on-conflict-do-nothing \
             --schema=platform \
             --exclude-table='platform._prisma_migrations' \
             --exclude-table='platform.apscheduler_jobs' \

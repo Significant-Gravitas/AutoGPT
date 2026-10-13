@@ -1,32 +1,38 @@
 import { formatTierLabel } from "@/app/(platform)/copilot/components/usageHelpers";
-import { formatUsageDate, type UsageExperience } from "./helpers";
+import {
+  formatResumeTime,
+  formatTrialDate,
+  formatTrialStartDescription,
+  formatUsageDate,
+  type UsageExperience,
+} from "./helpers";
 
-export function usagePresentation(experience: UsageExperience) {
+export function usagePresentation(
+  experience: UsageExperience,
+  usageMultiplier?: number,
+) {
   const { tier, window, isTopTier, isActiveTrial } = experience;
   if (experience.inactiveTrialStatus) {
-    const canceled = ["canceled", "cancelled"].includes(
-      experience.inactiveTrialStatus,
-    );
+    const canceled = experience.inactiveTrialStatus === "canceled";
     const payment = experience.inactiveTrialStatus === "payment_failed";
+    const title = payment
+      ? "Your payment didn’t go through"
+      : canceled
+        ? "Your trial was canceled"
+        : "Your trial has ended";
     return {
       eyebrow: payment
         ? "Payment needs attention"
         : canceled
           ? "Free trial · Canceled"
           : "Free trial · Ended",
-      title: payment
-        ? "Let’s get you back to work."
-        : "Keep what you’ve started.",
-      noticeTitle: payment
-        ? "Your payment needs attention"
-        : canceled
-          ? "Your trial was canceled"
-          : "Your trial has ended",
+      title,
+      noticeTitle: title,
       description: payment
-        ? "Your payment couldn’t be completed. Review your billing details to continue."
+        ? "Review your billing details to continue. Your chats, agents and results are saved."
         : canceled
-          ? "Your trial won’t turn into a paid subscription. Your chats, agents, and results are saved whenever you’re ready to choose a plan."
-          : "Your trial has ended. Your chats, agents, and results are saved. Choose a plan to keep going.",
+          ? "Your trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan."
+          : "Your chats, agents and results are saved. Choose a plan to keep going.",
       resetLabel: null,
       supportLabel: "Contact support",
       secondary: "Back to my work",
@@ -35,21 +41,31 @@ export function usagePresentation(experience: UsageExperience) {
   }
   const trialSpent = isActiveTrial && window === "trial";
   const windowLabel = window === "weekly" ? "Weekly" : "Daily";
+  const trialDate = formatTrialDate(experience.trialEndsAt);
+  const resumeTime = formatResumeTime(experience.resetsAt);
+  const resume = resumeTime
+    ? `You can continue ${resumeTime}`
+    : "You can continue when your allowance refreshes";
+  const title = trialSpent
+    ? "You’ve used your trial allowance"
+    : isTopTier
+      ? resume
+      : window === "weekly"
+        ? "You’ve hit this week’s limit"
+        : "You’ve hit today’s limit";
   return {
     eyebrow: `${formatTierLabel(tier) ?? "Your plan"} · ${trialSpent ? "Trial allowance used" : `${windowLabel.toLowerCase()} usage reached`}`,
-    title: trialSpent
-      ? "Keep your momentum."
-      : isTopTier
-        ? "A little pause. Everything is saved."
-        : "More room for what’s next.",
+    title,
+    noticeTitle: title,
     description: trialSpent
       ? experience.freshProUsage
-        ? "You’ve used your trial allowance. Start Pro with fresh daily and weekly usage, and pick up right where you left off."
-        : "You’ve used your trial allowance. Choose your next plan and pick up where you left off."
-      : `You’ve reached your ${windowLabel.toLowerCase()} usage limit. Your chats, agents, and results are still here.`,
-    noticeTitle: trialSpent
-      ? "Ready for your next idea?"
-      : `${windowLabel} usage reached`,
+        ? formatTrialStartDescription(experience.trialEndsAt)
+        : "Choose your next plan to continue. Your chats, agents and results are saved."
+      : isTopTier
+        ? "Your chats, agents and results are saved."
+        : tier === "PRO"
+          ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
+          : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
     resetLabel: experience.resetsAt
       ? formatUsageDate(experience.resetsAt)
       : null,
@@ -59,8 +75,13 @@ export function usagePresentation(experience: UsageExperience) {
         : tier === "BUSINESS"
           ? "Contact support"
           : "Contact us",
-    secondary:
-      trialSpent || !experience.resetsAt ? "Back to my work" : "Wait for reset",
+    secondary: trialSpent
+      ? experience.freshProUsage && trialDate
+        ? `Wait until ${trialDate}`
+        : "Back to my work"
+      : experience.resetsAt
+        ? "Wait for reset"
+        : "Back to my work",
     trialSpent,
   };
 }

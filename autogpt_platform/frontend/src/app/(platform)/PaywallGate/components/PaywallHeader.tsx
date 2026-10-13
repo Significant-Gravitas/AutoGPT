@@ -10,10 +10,10 @@ export function PaywallHeader() {
         variant="h3"
         className="!text-[1.375rem] !leading-[1.6rem] md:!text-[1.75rem] md:!leading-[2.5rem]"
       >
-        Your next idea starts here.
+        Choose a plan to keep working
       </Text>
       <Text variant="body" className="!text-zinc-500">
-        Choose the room you need to bring it to life.
+        Your chats, agents and files are saved.
       </Text>
       <Link
         href="/tour/chat?utm_source=platform_paywall"

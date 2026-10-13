@@ -24,6 +24,8 @@ describe("Usage limit dialog", () => {
         converted: false,
         usage_policy: "lifetime",
         allowance_used_percent: 100,
+        offer: { tier: "PRO" },
+        ends_at: new Date(2026, 9, 12, 12),
       },
     );
     const onUpgrade = vi.fn();
@@ -32,15 +34,20 @@ describe("Usage limit dialog", () => {
         isOpen
         onClose={vi.fn()}
         experience={experience}
+        offer={{ tier: "PRO", price: 5000, freshUsage: true }}
         onUpgrade={onUpgrade}
       />,
     );
-    expect(screen.getByText("Keep your momentum.")).toBeDefined();
+    expect(screen.getByText("You’ve used your trial allowance")).toBeDefined();
     expect(
       screen.getByText("One allowance for your trial. It doesn’t refresh."),
     ).toBeDefined();
     expect(screen.queryByText(/Wait for reset|Max/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    const wait = screen.getByRole("button", { name: "Wait until Oct 12" });
+    expect(wait).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Start Pro now · $50" }),
+    );
     expect(onUpgrade).toHaveBeenCalledOnce();
   });
   it("uses the later weekly reset when both paid limits are reached", () => {
@@ -52,10 +59,10 @@ describe("Usage limit dialog", () => {
       />,
     );
     expect(screen.getByText("Pro · weekly usage reached")).toBeDefined();
-    expect(screen.getByText(/Oct 12/)).toBeDefined();
+    expect(screen.getAllByText(/Oct 12/)[0]).toBeDefined();
     expect(screen.queryByText(/Oct 7,/)).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Review Max upgrade" }),
+      screen.getByRole("button", { name: "Upgrade to Max" }),
     ).toBeDefined();
   });
   it.each(["MAX", "BUSINESS", "ENTERPRISE"] as const)(
@@ -92,7 +99,7 @@ describe("Usage limit dialog", () => {
     expect(onContinue).toHaveBeenCalledOnce();
     expect(onClose).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("button", { name: "Review Max upgrade" }),
+      screen.getByRole("button", { name: "Upgrade to Max" }),
     ).toBeDefined();
   });
   it("does not invent an allowance when loading usage fails", () => {
@@ -189,4 +196,41 @@ describe("Usage limit dialog", () => {
       screen.getByRole("button", { name: "Wait for reset" }),
     ).toBeDefined();
   });
+
+  it.each([true, false])(
+    "provides failed-payment recovery only when billing is enabled (%s)",
+    (isBillingEnabled) => {
+      const onUpgrade = vi.fn();
+      render(
+        <RateLimitResetDialog
+          isOpen
+          onClose={vi.fn()}
+          isBillingEnabled={isBillingEnabled}
+          experience={getUsageExperience(
+            { ...usage, tier: "NO_TIER" },
+            { active: false, converted: false, status: "past_due" },
+          )}
+          onUpgrade={onUpgrade}
+        />,
+      );
+      expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
+      const recovery = screen.queryByRole("button", {
+        name: "Review billing details",
+      });
+      if (isBillingEnabled) {
+        expect(recovery).not.toBeNull();
+        fireEvent.click(recovery!);
+        expect(onUpgrade).toHaveBeenCalledOnce();
+      } else {
+        expect(recovery).toBeNull();
+        expect(onUpgrade).not.toHaveBeenCalled();
+      }
+      expect(
+        screen.queryByRole("button", { name: /^(Start|Upgrade to)/ }),
+      ).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Back to my work" }),
+      ).toBeDefined();
+    },
+  );
 });

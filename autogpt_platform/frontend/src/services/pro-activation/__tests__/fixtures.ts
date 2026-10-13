@@ -29,5 +29,9 @@ export const quote: ActivationResponse = {
       ],
     },
     expires_at: new Date("2099-01-01T00:00:00Z"),
+    trial_ends_at: new Date("2026-10-12T12:00:00Z"),
+    period_starts_at: new Date("2026-10-07T12:00:00Z"),
+    next_payment_at: new Date("2027-10-07T12:00:00Z"),
+    tax_amount: 1021,
   },
 };

@@ -4,7 +4,10 @@ import { SparklesIcon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import type { PlanDef } from "@/components/molecules/PlanCard/plans";
+import {
+  YEARLY_PRICE_FACTOR,
+  type PlanDef,
+} from "@/components/molecules/PlanCard/plans";
 
 interface Props {
   plans: PlanDef[];
@@ -44,7 +47,12 @@ export function PaywallPlanChoices({
                 cycle === value ? "bg-white shadow-sm" : "text-zinc-500"
               }
             >
-              {value === "monthly" ? "Monthly billing" : "Yearly billing"}
+              {value === "monthly" ? "Monthly" : "Yearly"}
+              {value === "yearly" && (
+                <span className="text-xs text-emerald-600">
+                  Save {Math.round((1 - YEARLY_PRICE_FACTOR) * 100)}%
+                </span>
+              )}
             </Button>
           ))}
         </div>
@@ -106,11 +114,13 @@ function PlanChoice({
   const isPro = plan.key === "PRO";
   const features = isPro
     ? [
-        "Daily and weekly usage allowances",
-        "Keep building with your saved work",
+        "Experts for content, sales and research, with Otto coordinating",
+        "Agents that keep working in the background on a schedule",
       ]
     : [
-        "More room for demanding work",
+        plan.usage
+          ? `${plan.usage.replace(/x|×/, "")} times the usage of Pro`
+          : "More usage for demanding work",
         "More file storage and priority support",
       ];
   return (
@@ -165,7 +175,7 @@ function PlanChoice({
         loading={pending && selectedTier === plan.key}
         disabled={pending || !formatted}
       >
-        Upgrade to {plan.name}
+        Start {plan.name}
       </Button>
     </section>
   );
