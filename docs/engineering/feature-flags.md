@@ -6,6 +6,55 @@ LaunchDarkly's answer, and log every disagreement. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
+## One set of flags, separate reporting
+
+Flags are defined once, in the **prod** PostHog project. Dev (and Vercel
+previews) read those definitions, while every event and person they produce
+goes to the **dev** project, so prod's analytics never mix with dev's.
+
+| Setting | Prod | Dev |
+|---|---|---|
+| `POSTHOG_API_KEY` (backend) | prod project API key | dev project API key |
+| `POSTHOG_FLAGS_API_KEY` (backend) | blank | prod project API key |
+| `POSTHOG_SECRET_KEY` (backend) | prod Feature Flags Secure API Key | prod Feature Flags Secure API Key |
+| `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | prod project API key | dev project API key |
+| `NEXT_PUBLIC_POSTHOG_FLAGS_KEY` (Vercel) | blank | prod project API key |
+
+A blank flags key reads flags from the analytics project, which is what prod
+and every self-hosted deployment do. `POSTHOG_SECRET_KEY` always belongs to the
+project flags are read from. All projects must be in the one region
+`POSTHOG_HOST` / `NEXT_PUBLIC_POSTHOG_HOST` names.
+
+**Backend.** The flag client uses the flags key and the secret key, so it polls
+prod's definitions and evaluates in-process. When the flags key names another
+project it is built with `send=False`, so its `$feature_flag_called` events
+never leave the process, and every read is local only
+(`only_evaluate_locally`): a flag local evaluation cannot answer serves its
+default rather than asking prod's `/flags` with the user's email. That makes
+the secret key required on dev; without it every read serves its default, and
+the client logs a warning at startup. The analytics client
+(`backend/util/posthog_client.py`) keeps `POSTHOG_API_KEY`.
+
+**Frontend.** posthog-js asks `/flags` of the project its token names, so with a
+separate flags key the browser runs a second, flags-only posthog-js instance
+(`src/providers/posthog/posthog-flags-client.ts`) and `usePostHogFlag` reads
+from it. That instance is opted out of capturing, drops anything that still
+reaches `capture()` in `before_send`, keeps its state in memory (no cookie or
+storage, with or without consent), loads no scripts, and records nothing. It is
+identified and handed the flag person properties only when the analytics
+instance is, that is, with analytics consent. Its only traffic to prod is the
+`/flags` call itself; events, `$identify` and `$feature_flag_called` stay on
+the analytics instance or are dropped. PostHog bills those `/flags` calls to
+prod's flag-request quota.
+
+**Rolling out to dev only.** Every flag read carries the person property
+`environment`, the same value the analytics events carry: `local`, `dev` or
+`prod` from `APP_ENV` on the backend, and `NEXT_PUBLIC_APP_ENV` in the browser,
+where a Vercel branch preview reports `preview`. A release condition
+`environment = dev` (add `preview` for previews) turns a flag on for dev alone;
+prod never matches it. The property is only an evaluation input: it is never
+stored on a person.
+
 ## Sharing PostHog's flag definitions
 
 PostHog evaluates flags locally, in the process, from a set of flag definitions
