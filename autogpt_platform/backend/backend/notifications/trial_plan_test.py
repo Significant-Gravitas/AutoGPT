@@ -75,6 +75,27 @@ def test_a_yearly_choice_is_announced_as_yearly(converted):
     assert (plan.tier, plan.cycle) == ("MAX", "yearly")
 
 
+@pytest.mark.parametrize("interval,noun", [("month", "month"), ("year", "year")])
+@pytest.mark.parametrize(
+    "currency,unit_amount,amount",
+    [
+        ("cad", None, "Not available"),
+        ("usd", None, "Not available"),
+        ("cad", 0, "0.00 CAD"),
+    ],
+)
+def test_conversion_formats_missing_and_zero_amounts(
+    converted, interval, noun, currency, unit_amount, amount
+):
+    current = _switched(interval)
+    current["items"]["data"][0]["price"].update(
+        currency=currency, unit_amount=unit_amount
+    )
+    data = notices.trial_notice_data(converted, "converted", "Sam", current)
+
+    assert data.plan.price_display == f"{amount} / {noun}"
+
+
 @pytest.mark.parametrize("kind", ["started", "canceled", "ended", "payment_failed"])
 def test_other_notices_keep_the_accepted_terms(converted, kind):
     data = notices.trial_notice_data(converted, kind, "Sam", _switched())

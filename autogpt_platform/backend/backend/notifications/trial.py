@@ -190,6 +190,8 @@ async def trial_notice_disposition(
 def _notice_matches_current_terms(
     data: TrialUpdateData, expected: TrialUpdateData, trial: TrialState, current: dict
 ) -> bool:
+    # Transitional shim: remove once old-format queued notices drain, per the
+    # rollout plan in docs/engineering/transactional-email-design.md.
     terms = notice_plan(trial, data.kind, current)
     plan = data.plan.model_copy()
     legacy_label = f"{expected.plan.name} — {expected.plan.cycle}"
@@ -266,7 +268,7 @@ def trial_notice_data(
     title = plan.tier.title()
     cycle_noun = "month" if plan.cycle == "monthly" else "year"
     amount = format_amount(plan.unit_amount, plan.currency)
-    if not currency_symbol(plan.currency):
+    if plan.unit_amount is not None and not currency_symbol(plan.currency):
         amount = f"{amount} {plan.currency.upper()}"
     return TrialUpdateData(
         user_name=name,
