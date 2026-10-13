@@ -26,11 +26,17 @@ _SCOPE = MemoryScope.for_user("u-1234567890ab")
 _READ = {"known_fact_uuids": {"f1", "f2"}, "known_episode_uuids": {"ep1", "ep2"}}
 
 
+async def _worker_wrote_them(completion: IngestionCompletion, _: float) -> bool:
+    completion.written = completion.registered
+    return True
+
+
 @pytest.fixture(autouse=True)
 def enqueue(mocker) -> AsyncMock:
+    """The queue, and a worker that writes every episode queued."""
     queued = AsyncMock(return_value=True)
     mocker.patch.object(apply_mod, "enqueue_episode", queued)
-    mocker.patch.object(apply_mod, "wait_for_ingestion", AsyncMock(return_value=True))
+    mocker.patch.object(apply_mod, "wait_for_ingestion", _worker_wrote_them)
     mocker.patch.object(apply_mod, "_create_dream_session", AsyncMock(return_value="s"))
     mocker.patch.object(apply_mod, "_write_dream_summary_message", AsyncMock())
     return queued

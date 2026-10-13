@@ -700,18 +700,20 @@ async def test_counts_only_what_the_worker_wrote_of_each_kind(mocker):
 
     mocker.patch.object(apply_mod, "wait_for_ingestion", worker)
     ops = DreamOperations(
-        writes=[
-            ConsolidatedFact(content="A likes B", confidence=0.8),
-            ConsolidatedFact(content="B likes C", confidence=0.8),
-        ],
+        writes=[_WRITE, _WRITE.model_copy(update={"content": "B likes C"})],
         proposals=[
-            ProposedFinding(content="A may like C", confidence=0.5, rationale="r")
+            ProposedFinding(
+                content="A may like C",
+                confidence=0.5,
+                rationale="r",
+                source_episode_uuids=[_READ_EPISODE],
+            )
         ],
         summary_for_user="ok",
     )
 
     stats = await apply_mod.apply_operations(
-        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops
+        scope=MemoryScope.for_user("u-kinds"), pass_id="p-kinds", ops=ops, **_READ
     )
 
     assert stats["ingestion_drain_status"] is IngestionDrainStatus.timed_out
@@ -832,10 +834,7 @@ async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
 
     lock_handle = mocker.MagicMock()
     lock_handle.extend = never_answers
-    ops = DreamOperations(
-        writes=[ConsolidatedFact(content="A likes B", confidence=0.8)],
-        summary_for_user="ok",
-    )
+    ops = DreamOperations(writes=[_WRITE], summary_for_user="ok")
 
     with pytest.raises(DreamLockLostError):
         await asyncio.wait_for(
@@ -844,6 +843,7 @@ async def test_a_lock_renewal_redis_does_not_answer_aborts_before_drain(mocker):
                 pass_id="p-slow",
                 ops=ops,
                 lock_handle=lock_handle,
+                **_READ,
             ),
             5,
         )

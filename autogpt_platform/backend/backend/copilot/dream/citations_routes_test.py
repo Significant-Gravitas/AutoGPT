@@ -10,9 +10,9 @@ write for resting on a forget, fails
 another and makes a third whose record fails: ``dropped_forgotten``,
 ``failed_writes`` and ``provenance_pending`` report them in the same places
 on the sync route, which waits for the worker, and not on the batch route,
-which does not. Only the LLM, the ingestion queue and worker, and the chat
-store are stubbed; the rest runs on ``conftest.py``'s in-memory Redis and
-store."""
+which does not: there the queued write is counted pending, not written.
+Only the LLM, the ingestion queue and worker, and the chat store are
+stubbed; the rest runs on ``conftest.py``'s in-memory Redis and store."""
 
 import asyncio
 import json
@@ -107,9 +107,10 @@ def _bundle(user_id: str) -> DreamInput:
 async def _worker_reports(completion: IngestionCompletion, _: float) -> bool:
     """The worker's outcomes, one of each, as its counters carry them: a
     write dropped for resting on a forget, one it failed to make, one made
-    whose record is pending."""
+    (written) whose record is pending."""
     completion.dropped_forgotten += 1
     completion.failed += 1
+    completion.written += 1
     completion.provenance_pending += 1
     return True
 
@@ -126,8 +127,10 @@ def queued(mocker) -> AsyncMock:
     database.add_chat_message = AsyncMock()
     mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
     mocker.patch(
-        "backend.api.features.orgs.db.get_user_default_team",
-        AsyncMock(return_value=(None, None)),
+        "backend.data.db_accessors.orgs_db",
+        return_value=MagicMock(
+            get_user_default_team=AsyncMock(return_value=(None, None))
+        ),
     )
     return enqueue
 
@@ -159,7 +162,8 @@ async def _job_result(job_id: str) -> DreamPassResult:
 
 def _reported(result: DreamPassResult | DreamPassApplied) -> tuple[int, ...]:
     """Written, proposed, uncited, cross-scope citations, and the worker's
-    three outcomes: dropped as forgotten, failed, provenance pending."""
+    outcomes: dropped as forgotten, failed, provenance pending, and those not
+    written yet."""
     return (
         result.consolidated_count,
         result.proposal_count,
@@ -168,6 +172,7 @@ def _reported(result: DreamPassResult | DreamPassApplied) -> tuple[int, ...]:
         result.dropped_forgotten,
         result.failed_writes,
         result.provenance_pending,
+        result.pending_writes,
     )
 
 
@@ -231,11 +236,11 @@ def test_the_sync_route_reports_the_dropped_writes_everywhere(
 
     job = scheduler_loop.run_until_complete(_job_result("j-sync"))
     assert job.error is None
-    assert _reported(job) == (1, 0, 3, 1, 1, 1, 1)
+    assert _reported(job) == (1, 0, 3, 1, 1, 1, 1, 0)
     applied = fake_dream_db.rows[job.pass_id]["operations"]["applied"]
-    assert _reported(applied) == (1, 0, 3, 1, 1, 1, 1)
+    assert _reported(applied) == (1, 0, 3, 1, 1, 1, 1, 0)
     record = dream_pass_result_from_row(fake_dream_db.record(job.pass_id))
-    assert _reported(record) == (1, 0, 3, 1, 1, 1, 1)
+    assert _reported(record) == (1, 0, 3, 1, 1, 1, 1, 0)
     _only_the_cited_write_was_queued(queued)
 
 
@@ -314,8 +319,8 @@ async def test_the_batch_route_reports_the_dropped_writes_everywhere(
 
     row = fake_dream_db.rows["p-batch"]
     assert row["status"] is DreamPassStatus.COMPLETE
-    assert _reported(row["operations"]["applied"]) == (1, 0, 3, 1, 0, 0, 0)
+    assert _reported(row["operations"]["applied"]) == (0, 0, 3, 1, 0, 0, 0, 1)
     record = dream_pass_result_from_row(fake_dream_db.record("p-batch"))
-    assert _reported(record) == (1, 0, 3, 1, 0, 0, 0)
-    assert _reported(await _job_result("j-batch")) == (1, 0, 3, 1, 0, 0, 0)
+    assert _reported(record) == (0, 0, 3, 1, 0, 0, 0, 1)
+    assert _reported(await _job_result("j-batch")) == (0, 0, 3, 1, 0, 0, 0, 1)
     _only_the_cited_write_was_queued(queued)
