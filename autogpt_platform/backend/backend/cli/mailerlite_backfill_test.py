@@ -230,3 +230,13 @@ async def test_sessions_already_listed_are_not_listed_again(monkeypatch):
     monkeypatch.setattr("backend.data.stripe_client.stripe_call", call)
     monkeypatch.setattr("backend.data.stripe_client.stripe_list_items", listed)
     assert await cli.stripe_billing_countries(sessions) == {"cus_a": "IR"}
+
+
+def test_each_customers_first_open_is_its_earliest_session():
+    sessions = [
+        {"customer": "cus_a", "created": 300},
+        {"customer": "cus_a", "created": 100},
+        {"customer": "cus_b", "created": 200},
+        {"customer": None, "created": 50},
+    ]
+    assert cli.first_opens(sessions) == {"cus_a": 100, "cus_b": 200}
