@@ -5,7 +5,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { UIDataTypes, UIMessage, UITools } from "ai";
 import { LayoutGroup, motion } from "framer-motion";
@@ -14,15 +13,16 @@ import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages"
 import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import type { PendingUploadSend } from "../../copilotStreamStore";
 import { ChatMessagesContainer } from "../ChatMessagesContainer/ChatMessagesContainer";
+import type { FloatingControls } from "../ChatMessagesContainer/components/ThreadHeader";
 import { CopilotChatActionsProvider } from "../CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { NewChatOnboarding } from "../ExpertOnboardingCard/NewChatOnboarding";
 import { EmptySession } from "../EmptySession/EmptySession";
-import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { UsageLimitReachedCard } from "../UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard";
 import { useIsUsageLimitReached } from "../UsageLimits/useIsUsageLimitReached";
 import { TaskProgressBar } from "../TaskProgressBar/TaskProgressBar";
 import { getLatestTaskList } from "../TaskProgressBar/helpers";
 import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
+import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
 import { SharedChatNotice } from "./components/SharedChatNotice";
@@ -43,7 +43,7 @@ import { breakdownCacheKey } from "../../tokenDevtool/tokenMath";
 import type { SentFrom } from "../../sentFrom";
 import type { AutopilotMode } from "../../autopilotModeStore";
 import { AutopilotModeSelector } from "../ChatInput/components/AutopilotModeSelector/AutopilotModeSelector";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 import {
   getKickoffAttemptToken,
@@ -118,9 +118,9 @@ export interface ChatContainerProps {
   isKickoffStarting?: boolean;
   /** Follow a turn the server started, e.g. after an approval card is answered. */
   onBackendTurn?: () => void;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports; the thread header clears them. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports; the thread header lines up with them. */
+  floatingControls?: FloatingControls;
 }
 
 const NO_OP_SEND = () => undefined;
@@ -162,7 +162,7 @@ export const ChatContainer = ({
   isAdoptingExpertSession,
   isKickoffStarting,
   onBackendTurn,
-  hasFloatingControls,
+  floatingControls,
 }: ChatContainerProps) => {
   const isTaskBarEnabled = useGetFlag(Flag.TASK_PROGRESS_BAR);
   useAutoOpenArtifacts({
@@ -186,7 +186,14 @@ export const ChatContainer = ({
   const isSessionUnavailable =
     !!isReconnecting || isLoadingSession || !!isSessionError;
   const isLimitReached = useIsUsageLimitReached();
+  // Only a hover made while the limit is reached may open the usage tooltip.
+  // Radix reports hovers while `open` holds it shut, and a lifted limit hides
+  // it without a close event; either would pop it open, unhovered, the next
+  // time the limit is reached.
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
+  useEffect(() => {
+    if (!isLimitReached) setIsUsageTooltipOpen(false);
+  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable ||
     isLimitReached ||
@@ -198,6 +205,11 @@ export const ChatContainer = ({
     ? expertIdentity
     : null;
   const isExpertArchived = archivedExpertIdentity !== null;
+  const chatExpert =
+    !isResolvingExpertIdentity && expertIdentity && !expertIdentity.isArchived
+      ? { id: expertIdentity.id, name: expertIdentity.name }
+      : null;
+  useShareChatExpert(chatExpert);
   const isSendLocked = isExpertArchived || !!isResolvingExpertIdentity;
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
@@ -266,8 +278,13 @@ export const ChatContainer = ({
     requestVoiceStart();
     try {
       await onCreateSession();
-    } catch {
+    } catch (error) {
       takeVoiceStart();
+      toastSendFailure({
+        title: "Could not start a new chat session",
+        error,
+        recovery: "voice mode did not start",
+      });
     }
   }
 
@@ -314,13 +331,10 @@ export const ChatContainer = ({
         );
       }
     } catch (error) {
-      toast({
+      toastSendFailure({
         title: "Couldn't retry message",
-        description: describeSendFailure(
-          error,
-          "your previous message is still in the chat",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your previous message is still in the chat",
       });
     } finally {
       isRetryingRef.current = false;
@@ -332,193 +346,185 @@ export const ChatContainer = ({
       onSend={guardedOnSend}
       onBackendTurn={onBackendTurn}
     >
-      <PendingAnswerContexts messages={messages}>
-        <LayoutGroup id="copilot-2-chat-layout">
-          <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
-            {/* The chat column runs full width: the max-w-3xl cap lives on the
+      <LayoutGroup id="copilot-2-chat-layout">
+        <div className="flex h-full min-h-0 w-full flex-col px-2 lg:px-0">
+          {/* The chat column runs full width: the max-w-3xl cap lives on the
                 message list and the input instead, so the expert thread header
                 can span edge to edge while staying aligned with the messages. */}
-            {sessionId && isSessionNotFound ? (
-              <SessionNotFound />
-            ) : sessionId ? (
-              <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
-                <div className="absolute right-0 top-0 z-30">
-                  <ContextPanelToggle
-                    sessionId={sessionId}
-                    expert={
-                      expertIdentity && !expertIdentity.isArchived
-                        ? { id: expertIdentity.id, name: expertIdentity.name }
-                        : null
-                    }
-                  />
-                </div>
-                <NewChatOnboarding
-                  expertId={expertIdentity?.id ?? null}
-                  enabled={
-                    messages.length === 0 &&
-                    !isInputDisabled &&
-                    !isStreaming &&
-                    !isCreatingSession &&
-                    !isExpertArchived
-                  }
+          {sessionId && isSessionNotFound ? (
+            <SessionNotFound />
+          ) : sessionId ? (
+            <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
+              <div className="absolute right-0 top-0 z-30">
+                <ContextPanelToggle sessionId={sessionId} expert={chatExpert} />
+              </div>
+              <NewChatOnboarding
+                expertId={expertIdentity?.id ?? null}
+                enabled={
+                  messages.length === 0 &&
+                  !isInputDisabled &&
+                  !isStreaming &&
+                  !isCreatingSession &&
+                  !isExpertArchived
+                }
+              >
+                <ChatMessagesContainer
+                  messages={messages}
+                  status={status}
+                  error={error}
+                  isLoading={isLoadingSession}
+                  isRestoringActiveSession={isRestoringActiveSession}
+                  restoreStatusMessage={restoreStatusMessage}
+                  activeStreamStartedAt={activeStreamStartedAt}
+                  sessionID={sessionId}
+                  sessionChatStatus={sessionChatStatus}
+                  sessionSentFrom={sessionSentFrom}
+                  hasMoreMessages={hasMoreMessages}
+                  isLoadingMore={isLoadingMore}
+                  onLoadMore={onLoadMore}
+                  onRetry={handleRetry}
+                  turnStats={turnStats}
+                  queuedMessages={queuedMessages}
+                  pendingSend={pendingSend}
+                  bottomContentPadding={usageCardHeight}
+                  expertIdentity={expertIdentity}
+                  isResolvingExpertIdentity={isResolvingExpertIdentity}
+                  floatingControls={floatingControls}
+                />
+              </NewChatOnboarding>
+              {archivedExpertIdentity ? (
+                <ArchivedExpertNotice
+                  expertName={archivedExpertIdentity.name}
+                  reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
+                />
+              ) : (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: 0.3 }}
+                  className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
                 >
-                  <ChatMessagesContainer
-                    messages={messages}
-                    status={status}
-                    error={error}
-                    isLoading={isLoadingSession}
-                    isRestoringActiveSession={isRestoringActiveSession}
-                    restoreStatusMessage={restoreStatusMessage}
-                    activeStreamStartedAt={activeStreamStartedAt}
-                    sessionID={sessionId}
-                    sessionChatStatus={sessionChatStatus}
-                    sessionSentFrom={sessionSentFrom}
-                    hasMoreMessages={hasMoreMessages}
-                    isLoadingMore={isLoadingMore}
-                    onLoadMore={onLoadMore}
-                    onRetry={handleRetry}
-                    turnStats={turnStats}
-                    queuedMessages={queuedMessages}
-                    pendingSend={pendingSend}
-                    bottomContentPadding={usageCardHeight}
-                    expertIdentity={expertIdentity}
-                    isResolvingExpertIdentity={isResolvingExpertIdentity}
-                    hasFloatingControls={hasFloatingControls}
-                  />
-                </NewChatOnboarding>
-                {archivedExpertIdentity ? (
-                  <ArchivedExpertNotice
-                    expertName={archivedExpertIdentity.name}
-                    reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
-                  />
-                ) : (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ duration: 0.3 }}
-                    className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
-                  >
-                    {isLimitReached && (
+                  {isLimitReached && (
+                    <div
+                      ref={usageCardRef}
+                      className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+                    >
                       <div
-                        ref={usageCardRef}
-                        className="pointer-events-none absolute bottom-full left-0 right-0 z-20 mb-2.5 pb-2"
+                        aria-hidden="true"
+                        data-testid="usage-limit-backdrop"
+                        className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
                       >
-                        <div
-                          aria-hidden="true"
-                          data-testid="usage-limit-backdrop"
-                          className="absolute -inset-x-14 -top-20 bottom-[-18px] overflow-hidden rounded-[2rem] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.9)_42%,rgba(255,255,255,0.58)_68%,rgba(255,255,255,0)_100%)] backdrop-blur-lg [mask-image:linear-gradient(to_bottom,transparent_0%,black_26%,black_100%)]"
-                        >
-                          <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
-                          <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
-                        </div>
-                        <div className="pointer-events-auto relative px-3">
-                          <UsageLimitReachedCard />
-                        </div>
+                        <div className="absolute inset-x-10 bottom-0 h-28 rounded-full bg-white/80 blur-2xl" />
+                        <div className="absolute inset-x-16 bottom-8 h-16 rounded-full bg-white/55 blur-xl" />
                       </div>
-                    )}
-                    <SharedChatNotice sessionId={sessionId} />
-                    {isTaskBarEnabled && (
-                      <div className="relative z-10">
-                        <TaskProgressBar
-                          todos={getLatestTaskList(messages) ?? []}
+                      <div className="pointer-events-auto relative px-3">
+                        <UsageLimitReachedCard />
+                      </div>
+                    </div>
+                  )}
+                  <SharedChatNotice sessionId={sessionId} />
+                  {isTaskBarEnabled && (
+                    <div className="relative z-10">
+                      <TaskProgressBar
+                        todos={getLatestTaskList(messages) ?? []}
+                        isStreaming={isStreaming}
+                      />
+                    </div>
+                  )}
+                  <Tooltip
+                    open={Boolean(isLimitReached && isUsageTooltipOpen)}
+                    onOpenChange={(open) =>
+                      setIsUsageTooltipOpen(open && isLimitReached)
+                    }
+                  >
+                    <TooltipTrigger asChild>
+                      <div>
+                        <ChatInput
+                          inputId="chat-input-session"
+                          onSend={guardedOnSend}
+                          disabled={isInputDisabled}
                           isStreaming={isStreaming}
+                          isUploadingFiles={isUploadingFiles}
+                          onStop={onStop}
+                          onEnqueue={onEnqueue}
+                          placeholder="What else can I help with?"
+                          droppedFiles={droppedFiles}
+                          onDroppedFilesConsumed={onDroppedFilesConsumed}
+                          hasSession={!!sessionId}
+                          sessionId={sessionId}
+                          expertId={expertIdentity?.id ?? null}
+                          modeSelector={modeSelector}
+                          expertName={expertIdentity?.name ?? null}
+                          voiceToggle={
+                            isVoiceModeEnabled ? (
+                              <VoiceModeButton
+                                isActive={voice.isActive}
+                                disabled={
+                                  isInputDisabled ||
+                                  isSendLocked ||
+                                  voice.isStarting
+                                }
+                                onClick={voice.toggle}
+                              />
+                            ) : undefined
+                          }
+                          voiceBar={
+                            voice.isActive ? (
+                              <VoiceModeBar
+                                state={voice.state}
+                                statusLabel={voice.statusLabel}
+                                failure={voice.failure}
+                                onRetry={voice.retryFailedUtterance}
+                                onDownload={voice.downloadFailedUtterance}
+                                leaveButton={
+                                  <VoiceModeButton
+                                    isActive
+                                    speaking={voice.state === "speaking"}
+                                    onClick={voice.toggle}
+                                  />
+                                }
+                              />
+                            ) : undefined
+                          }
                         />
                       </div>
-                    )}
-                    <Tooltip
-                      open={Boolean(isLimitReached && isUsageTooltipOpen)}
-                      onOpenChange={setIsUsageTooltipOpen}
-                    >
-                      <TooltipTrigger asChild>
-                        <div>
-                          <ChatInput
-                            inputId="chat-input-session"
-                            onSend={guardedOnSend}
-                            disabled={isInputDisabled}
-                            isStreaming={isStreaming}
-                            isUploadingFiles={isUploadingFiles}
-                            onStop={onStop}
-                            onEnqueue={onEnqueue}
-                            placeholder="What else can I help with?"
-                            droppedFiles={droppedFiles}
-                            onDroppedFilesConsumed={onDroppedFilesConsumed}
-                            hasSession={!!sessionId}
-                            sessionId={sessionId}
-                            expertId={expertIdentity?.id ?? null}
-                            modeSelector={modeSelector}
-                            expertName={expertIdentity?.name ?? null}
-                            voiceToggle={
-                              isVoiceModeEnabled ? (
-                                <VoiceModeButton
-                                  isActive={voice.isActive}
-                                  disabled={
-                                    isInputDisabled ||
-                                    isSendLocked ||
-                                    voice.isStarting
-                                  }
-                                  onClick={voice.toggle}
-                                />
-                              ) : undefined
-                            }
-                            voiceBar={
-                              voice.isActive ? (
-                                <VoiceModeBar
-                                  state={voice.state}
-                                  statusLabel={voice.statusLabel}
-                                  failure={voice.failure}
-                                  onRetry={voice.retryFailedUtterance}
-                                  onDownload={voice.downloadFailedUtterance}
-                                  leaveButton={
-                                    <VoiceModeButton
-                                      isActive
-                                      speaking={voice.state === "speaking"}
-                                      onClick={voice.toggle}
-                                    />
-                                  }
-                                />
-                              ) : undefined
-                            }
-                          />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-sm">
-                        You&apos;ve reached your usage limit. Wait for it to
-                        refresh or upgrade your plan to continue sending
-                        messages.
-                      </TooltipContent>
-                    </Tooltip>
-                  </motion.div>
-                )}
-              </div>
-            ) : (
-              <EmptySession
-                isCreatingSession={isCreatingSession}
-                onCreateSession={onCreateSession}
-                onSend={guardedOnSend}
-                modeSelector={modeSelector}
-                voiceToggle={
-                  isVoiceModeEnabled ? (
-                    <VoiceModeButton
-                      isActive={false}
-                      disabled={
-                        isInputDisabled || isSendLocked || isCreatingSession
-                      }
-                      onClick={handleStartVoiceInNewChat}
-                    />
-                  ) : undefined
-                }
-                isUploadingFiles={isUploadingFiles}
-                droppedFiles={droppedFiles}
-                onDroppedFilesConsumed={onDroppedFilesConsumed}
-                isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
-                isKickoffStarting={isKickoffStarting}
-                expertName={expertIdentity?.name}
-                expertId={expertIdentity?.id ?? null}
-              />
-            )}
-          </div>
-        </LayoutGroup>
-      </PendingAnswerContexts>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-sm">
+                      You&apos;ve reached your usage limit. Wait for it to
+                      refresh or upgrade your plan to continue sending messages.
+                    </TooltipContent>
+                  </Tooltip>
+                </motion.div>
+              )}
+            </div>
+          ) : (
+            <EmptySession
+              isCreatingSession={isCreatingSession}
+              onCreateSession={onCreateSession}
+              onSend={guardedOnSend}
+              modeSelector={modeSelector}
+              voiceToggle={
+                isVoiceModeEnabled ? (
+                  <VoiceModeButton
+                    isActive={false}
+                    disabled={
+                      isInputDisabled || isSendLocked || isCreatingSession
+                    }
+                    onClick={handleStartVoiceInNewChat}
+                  />
+                ) : undefined
+              }
+              isUploadingFiles={isUploadingFiles}
+              droppedFiles={droppedFiles}
+              onDroppedFilesConsumed={onDroppedFilesConsumed}
+              isInteractionLocked={isSendLocked || !!isAdoptingExpertSession}
+              isKickoffStarting={isKickoffStarting}
+              expertName={expertIdentity?.name}
+              expertId={expertIdentity?.id ?? null}
+            />
+          )}
+        </div>
+      </LayoutGroup>
     </CopilotChatActionsProvider>
   );
 };

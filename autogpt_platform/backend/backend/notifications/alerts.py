@@ -122,7 +122,7 @@ async def build_alert_email(user_id: str, alerts_enabled: bool) -> BuiltAlert | 
         primary=AlertPrimary(
             headline=primary.headline,
             subject=primary.subject_line,
-            preheader=primary.body,
+            preheader=primary.preheader,
             body=primary.body,
             cta_label=primary.cta_label,
             cta_url=f"{base_url}{primary.cta_path}",
@@ -157,6 +157,4 @@ def _timestamp_label() -> str:
     """Absolute, never a duration: the email is read hours later, and a stale
     relative time is a wrong time."""
     now = datetime.now(tz=timezone.utc)
-    return (
-        f"{now.strftime('%a')} {now.day} {now.strftime('%b')}, {now.strftime('%H:%M')}"
-    )
+    return f"{now.day} {now.strftime('%b %Y')}, {now.strftime('%H:%M')} UTC"

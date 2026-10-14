@@ -93,11 +93,17 @@ export function SearchResults({ items, answer }: SearchResultsProps) {
         const url = str(item, "url", "link");
         const domain = url ? safeHostname(url) : null;
         const title = str(item, "title", "snippet") ?? inline(item);
+        const citation = typeof item.n === "number" ? item.n : null;
         return (
           <div
-            key={resultItemKey(item, i)}
+            key={citation === null ? resultItemKey(item, i) : `n:${citation}`}
             className="flex items-center gap-2.5 px-3 py-2"
           >
+            {citation !== null && (
+              <span className="shrink-0 text-xs tabular-nums text-zinc-600">
+                [{citation}]
+              </span>
+            )}
             <ResultFavicon domain={domain} />
             {url ? (
               <a

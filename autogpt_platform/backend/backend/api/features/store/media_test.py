@@ -219,6 +219,23 @@ async def test_upload_media_missing_credentials(local_storage_settings, tmp_path
     assert files[0].read_bytes() == test_data
 
 
+async def test_local_storage_keeps_general_limit_with_only_public_bucket(
+    local_storage_settings,
+):
+    local_storage_settings.config.public_site_media_bucket = "public-media"
+    test_file = fastapi.UploadFile(
+        filename="large.jpeg",
+        file=io.BytesIO(
+            b"\xff\xd8\xff" + b"x" * (store_media.MAX_PRIVATE_IMAGE_FILE_SIZE + 1)
+        ),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    result = await store_media.upload_media("test-user", test_file)
+
+    assert result.startswith("/api/store/media/test-user/images/")
+
+
 @pytest.mark.parametrize("filename", ["agent_graph-1.jpeg", "agent_graph-1.jpg"])
 async def test_check_media_exists_without_gcs(
     local_storage_settings, tmp_path, filename
@@ -280,6 +297,53 @@ async def test_upload_media_file_too_large(mock_settings, mock_storage_client):
 
     with pytest.raises(store_exceptions.FileSizeTooLargeError):
         await store_media.upload_media("test-user", test_file)
+
+
+@pytest.mark.parametrize(
+    "size, rejected",
+    [
+        (store_media.MAX_PRIVATE_IMAGE_FILE_SIZE, False),
+        (store_media.MAX_PRIVATE_IMAGE_FILE_SIZE + 1, True),
+    ],
+)
+async def test_split_storage_caps_private_images_at_proxy_buffer_limit(
+    mock_settings, mock_storage_client, size, rejected
+):
+    mock_settings.config.public_site_media_bucket = "public-media"
+    mock_settings.config.private_user_data_bucket = "private-media"
+    image = b"\xff\xd8\xff" + b"x" * (size - 3)
+    test_file = fastapi.UploadFile(
+        filename="private.jpeg",
+        file=io.BytesIO(image),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    if rejected:
+        with pytest.raises(
+            store_exceptions.FileSizeTooLargeError,
+            match="Maximum size is 4MB",
+        ):
+            await store_media.upload_media("test-user", test_file)
+        mock_storage_client.upload.assert_not_awaited()
+    else:
+        await store_media.upload_media("test-user", test_file)
+        mock_storage_client.upload.assert_awaited_once()
+
+
+async def test_legacy_single_bucket_keeps_general_image_limit(
+    mock_settings, mock_storage_client
+):
+    size = store_media.MAX_PRIVATE_IMAGE_FILE_SIZE + 1
+    image = b"\xff\xd8\xff" + b"x" * (size - 3)
+    test_file = fastapi.UploadFile(
+        filename="legacy.jpeg",
+        file=io.BytesIO(image),
+        headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
+    )
+
+    await store_media.upload_media("test-user", test_file)
+
+    mock_storage_client.upload.assert_awaited_once()
 
 
 async def test_upload_media_file_read_error(mock_settings, mock_storage_client):

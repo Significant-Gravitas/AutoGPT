@@ -273,7 +273,7 @@ class SlackAdapter(WebhookAdapter):
             # Keyed as the context keys it: a DM ("D…") bills to the user.
             None if channel_id.startswith("D") else team_id,
         )
-        if answer.reply is None:
+        if not answer.answered:
             if client and channel_id:
                 await client.chat_postEphemeral(
                     channel=channel_id, user=clicker_id, text=answer.text
@@ -302,8 +302,9 @@ class SlackAdapter(WebhookAdapter):
                 )
         if self._on_message_callback is None:
             return
-        ctx = await self._context_from_block_action(payload, answer.reply)
+        ctx = await self._context_from_block_action(payload, answer.reply or "")
         if ctx is not None:
+            ctx.follow = answer.follow
             await self._on_message_callback(ctx, self)
 
     async def _context_from_block_action(

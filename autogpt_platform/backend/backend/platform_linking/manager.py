@@ -51,10 +51,10 @@ class PlatformLinkingManager(AppService):
 
     @expose
     async def resolve_user_link(
-        self, platform: Platform, platform_user_id: str
+        self, platform: Platform, platform_user_id: str, include_account: bool = False
     ) -> ResolveResponse:
         return await platform_linking_db().resolve_user_link(
-            platform.value, platform_user_id
+            platform.value, platform_user_id, include_account
         )
 
     @expose

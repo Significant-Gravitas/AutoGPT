@@ -18,7 +18,6 @@ vi.mock("@/services/environment", () => ({
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
 import { GET, POST } from "../route";
-import { PRIVATE_MEDIA_RANGE_CHUNK_BYTES } from "../route.helpers";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
   "accept",
@@ -463,14 +462,15 @@ describe("proxy route — handler pass-through", () => {
     expect(sentHeaders.get("authorization")).not.toBe("Bearer client-supplied");
   });
 
-  it("streams private media too large to buffer", async () => {
-    const size = PRIVATE_MEDIA_RANGE_CHUNK_BYTES + 1;
+  it("forwards the backend signed redirect for oversized private media", async () => {
+    const signedUrl =
+      "https://storage.googleapis.com/private/object?signature=test";
     vi.mocked(fetch).mockResolvedValue(
-      new Response("large image", {
-        status: 200,
+      new Response(null, {
+        status: 307,
         headers: {
-          "Content-Type": "image/png",
-          "Content-Length": String(size),
+          Location: signedUrl,
+          "Cache-Control": "private, no-store",
         },
       }),
     );
@@ -488,9 +488,10 @@ describe("proxy route — handler pass-through", () => {
       makeParams(path),
     );
 
-    expect(res.headers.get("content-length")).toBeNull();
+    expect(res.status).toBe(307);
+    expect(res.headers.get("location")).toBe(signedUrl);
     expect(res.headers.get("cache-control")).toBe("private, no-store");
-    expect(await res.text()).toBe("large image");
+    expect(await res.text()).toBe("");
   });
 
   it("does not expose private-media proxy exception details", async () => {

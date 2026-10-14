@@ -32,9 +32,11 @@ def test_kill_switched_model_hidden_from_picker_metadata(monkeypatch):
     assert LLMModel(victim.value) is victim
 
 
-def test_all_models_visible_when_none_disabled():
+def test_picker_shows_every_model_not_hidden():
     metadata = _schema_metadata()
-    assert len(metadata) == len(list(LLMModel))
+    assert (
+        set(metadata) == {m.value for m in LLMModel} - llm_models._PICKER_HIDDEN_SLUGS
+    )
 
 
 def test_opus_5_is_selectable_in_blocks():

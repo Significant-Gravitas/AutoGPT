@@ -72,7 +72,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       },
       {
         icon: IconType.UploadCloud,
-        text: "Publish an agent",
+        text: "Publish a workflow",
       },
     ],
   },
@@ -98,10 +98,16 @@ export const accountMenuItems: MenuItemGroup[] = [
 export function getAccountMenuItems(
   userRole?: string,
   newLayout = false,
+  isBillingEnabled = true,
 ): MenuItemGroup[] {
-  return newLayout
+  const groups = newLayout
     ? getNewLayoutAccountMenuItems(userRole)
     : getClassicAccountMenuItems(userRole);
+  if (isBillingEnabled) return groups;
+  return groups.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => item.href !== "/settings/billing"),
+  }));
 }
 
 // New sidebar layout grouping — gated behind the AUTOGPT_NEW_LAYOUT flag.

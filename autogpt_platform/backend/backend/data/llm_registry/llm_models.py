@@ -206,12 +206,19 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     GEMINI_2_0_FLASH = "google/gemini-2.0-flash-001"
     GEMINI_3_1_FLASH_LITE_PREVIEW = "google/gemini-3.1-flash-lite-preview"
     GEMINI_3_8_FLASH = "google/gemini-3.8-flash"
+    GEMINI_4_ARGON = "google/gemini-4-argon"
     GEMINI_2_5_FLASH_LITE = "google/gemini-2.5-flash-lite"
     GEMINI_2_0_FLASH_LITE = "google/gemini-2.0-flash-lite-001"
     GEMMA_4_31B_IT = "google/gemma-4-31b-it"
     MISTRAL_LARGE_3 = "mistralai/mistral-large-2512"
+    MISTRAL_LARGE_4 = "mistralai/mistral-large-4-0"
     MISTRAL_MEDIUM_3_1 = "mistralai/mistral-medium-3.1"
+    MISTRAL_MEDIUM_3_5 = "mistralai/mistral-medium-3-5"
     MISTRAL_SMALL_3_2 = "mistralai/mistral-small-3.2-24b-instruct"
+    MISTRAL_SMALL_4 = "mistralai/mistral-small-2603"
+    MINISTRAL_3_14B = "mistralai/ministral-14b-2512"
+    MINISTRAL_3_8B = "mistralai/ministral-8b-2512"
+    MINISTRAL_3_3B = "mistralai/ministral-3b-2512"
     CODESTRAL = "mistralai/codestral-2508"
     COHERE_COMMAND_A_03_2025 = "cohere/command-a-03-2025"
     COHERE_COMMAND_A_TRANSLATE_08_2025 = "cohere/command-a-translate-08-2025"
@@ -236,6 +243,7 @@ class LLMModel(str, Enum, metaclass=LLMModelMeta):
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
     META_MUSE_SPARK_1_3 = "meta/muse-spark-1.3"
     META_MUSE_SPARK_1_3_CONTRIBUTOR = "meta/muse-spark-1.3-contributor"
+    META_MUSE_WONDER = "meta/muse-wonder"
     GROK_3 = "x-ai/grok-3"
     GROK_4 = "x-ai/grok-4"
     GROK_4_FAST = "x-ai/grok-4-fast"
@@ -462,7 +470,8 @@ LEGACY_MODEL_MAPPINGS: dict[str, LLMModel] = {
     "google/gemini-2.5-flash-lite-preview-06-17": LLMModel.GEMINI_2_5_FLASH,
     "cohere/command-r-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
     "cohere/command-r-plus-08-2024": LLMModel.COHERE_COMMAND_A_03_2025,
-    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_3_2,
+    # nemo's prior target Small 3.2 is also retired; route to its successor.
+    "mistralai/mistral-nemo": LLMModel.MISTRAL_SMALL_4,
     "microsoft/wizardlm-2-8x22b": LLMModel.MICROSOFT_PHI_4,
     "moonshotai/kimi-k2": LLMModel.KIMI_K2_6,
     "moonshotai/kimi-k2-0905": LLMModel.KIMI_K2_6,
