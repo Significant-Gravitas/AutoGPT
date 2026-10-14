@@ -31,11 +31,11 @@ scheduling.
 
 These paths act on events, so two of them can interleave and leave a scope's
 crons out of step with its row: a takedown that lands after a later resume,
-a re-read that fails, or a registration that lands after a timezone change.
-The scheduler's reconcile pass (``scope_reconcile.py``) puts that right on
-its next pass that reaches the scope: every cron an ACTIVE row records that
-the scheduler lacks, or runs in another timezone, is registered again in the
-row's timezone. What a row records is decided here, on the owner's flags.
+or a registration that lands after a timezone change. The scheduler's
+reconcile pass (``scope_reconcile.py``) puts that right when its walk next
+reaches the scope: every cron an ACTIVE row records that the scheduler lacks,
+or runs in another timezone, is registered again in the row's timezone. What
+a row records is decided here, on the owner's flags.
 """
 
 import logging
@@ -106,36 +106,6 @@ async def ensure_scope_scheduled(
     )
 
 
-async def restore_if_resumed(scope: MemoryScope) -> bool:
-    """After the scope's crons were taken down for a row that left ACTIVE:
-    when the row says ACTIVE again, a resume landed in between, and its
-    crons, which have the same job ids, may have gone with the takedown, so
-    they are registered again. False when the row could not be read: the
-    reconcile pass (``scope_reconcile.py``) then restores them if they went.
-    Fails soft, like the rest of the registry."""
-    try:
-        row = await within_deadline(
-            memory_schedule_db().get_scope_schedule(
-                scope.owner_user_id, scope.scope_key
-            )
-        )
-    except Exception:
-        logger.warning(
-            f"Could not read {scope_label(scope)} after taking its crons down; "
-            "the reconcile pass restores them if a resume landed",
-            exc_info=True,
-        )
-        return False
-    if row is None or row.state != MemoryScopeScheduleState.ACTIVE:
-        return True
-    logger.info(
-        f"{scope_label(scope)} was resumed while its crons were taken down; "
-        "registering them again"
-    )
-    await ensure_scope_scheduled(scope, force_refresh=True)
-    return True
-
-
 async def ensure_dream_system_scheduled(
     user_id: str, *, force_refresh: bool = False
 ) -> dict[str, Any]:
@@ -191,7 +161,8 @@ async def pause_scope(scope: MemoryScope) -> bool:
     The row goes PAUSED (created that way if the scope had none, so a later
     registration cannot activate it) and the jobs are removed. A WIPED row
     stays WIPED, and its jobs are removed again in case any straggled. True
-    only if both happened and the row could be read again afterwards.
+    only if both happened. A resume landing between the two gets its crons
+    back from the reconcile pass's next visit to the scope.
     """
     return await _leave_active(scope, MemoryScopeScheduleState.PAUSED)
 
@@ -253,17 +224,18 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
 
 async def _leave_active(scope: MemoryScope, state: MemoryScopeScheduleState) -> bool:
     """Make the row say ``state`` (a pause leaves a WIPED row WIPED), then
-    remove the crons; True only if both happened and the row could be read
-    again afterwards. When the state write fails the crons stay: removing
-    them under a row that still says ACTIVE would hide them from the next
-    ensure, and their bodies check the expert's lifecycle themselves. A
-    resume that lands between the write and the removal gets its crons back
-    (:func:`restore_if_resumed`, else the reconcile pass)."""
+    remove the crons; True only if both happened. When the state write fails
+    the crons stay: removing them under a row that still says ACTIVE would
+    hide them from the next ensure, and their bodies check the expert's
+    lifecycle themselves. A resume that lands between the write and the
+    removal gets its crons back from the reconcile pass
+    (``scope_reconcile.py``), which restores an ACTIVE row's recorded crons
+    the scheduler lacks."""
     reached = await _establish_state(scope, state)
     if reached is None or not await remove_scope_jobs(scope):
         return False
     logger.info(f"Dream-system: {scope_label(scope)} is now {reached.value}")
-    return await restore_if_resumed(scope)
+    return True
 
 
 async def _establish_state(

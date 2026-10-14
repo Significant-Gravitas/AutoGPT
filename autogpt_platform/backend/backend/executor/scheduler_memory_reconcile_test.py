@@ -153,6 +153,21 @@ def test_the_listing_names_each_crons_scope_and_timezone() -> None:
         (community.job_id(EXPERT), EXPERT, "Asia/Tokyo"),
         (nightly.job_id(account), account, "UTC"),
     ]
+    assert not any(cron.reconciled for cron in listed)
+
+
+def test_a_cron_the_reconcile_registers_lists_as_its():
+    """Its tag is on the job's name, which the jobstore keeps; registering
+    the same job again as the registry does takes the tag off."""
+    nightly = dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
+    with _sqlite_file() as url, _scheduler_on(url) as scheduler:
+        scheduler._add_memory_job(noop, "0 3 * * *", nightly, EXPERT, "UTC", True)
+        [tagged] = scheduler._memory_crons()
+        scheduler._add_memory_job(noop, "0 3 * * *", nightly, EXPERT, "UTC")
+        [untagged] = scheduler._memory_crons()
+
+    assert (tagged.job_id, tagged.reconciled) == (nightly.job_id(EXPERT), True)
+    assert untagged.reconciled is False
 
 
 @pytest.mark.parametrize(
@@ -173,6 +188,7 @@ def test_a_listed_cron_names_the_scope_its_kwargs_do(
         kwargs=kwargs,
         trigger=CronTrigger.from_crontab("0 3 * * *", timezone="Europe/Paris"),
     )
+    job.name = "Dream nightly batch for user user-1"
 
     cron = listed_cron(job)
 
@@ -248,8 +264,8 @@ def test_postgresql_stops_a_listing_that_runs_past_its_statement_timeout() -> No
 @pytest.mark.asyncio
 async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None:
     """The pass lists through ``_memory_crons``, registers through the same
-    body and crontab as the scope RPCs, and removes through
-    ``remove_scope_memory_jobs``."""
+    body and crontab as the scope RPCs, tagged as the reconcile's, and
+    removes through ``remove_scope_memory_jobs``."""
     scheduler = Scheduler(register_system_tasks=False)
     crons: CronStore = _SchedulerCrons(scheduler)
     listed = [ListedCron(job_id="x", scope=EXPERT, timezone="UTC")]
@@ -272,7 +288,7 @@ async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None
         (scheduler_module.execute_community_rebuild, "0 4 * * 0"),
         (scheduler_module.execute_nightly_batch_sync, "0 3 * * *"),
     ]
-    assert [call.args[3:] for call in add.call_args_list] == [(EXPERT, "UTC")] * 2
+    assert [call.args[3:] for call in add.call_args_list] == [(EXPERT, "UTC", True)] * 2
     remove.assert_called_once_with(EXPERT)
 
 

@@ -169,11 +169,13 @@ class FakeRegistryDB:
 
 
 class FakeScheduler:
-    """The three memory-cron RPCs of ``SchedulerClient``, in memory."""
+    """The three memory-cron RPCs of ``SchedulerClient``, in memory, and which
+    crons carry the reconcile's tag (the registry's RPCs register untagged)."""
 
     def __init__(self) -> None:
         self.jobs: dict[str, str] = {}  # job id -> timezone it runs in
         self.scopes: dict[str, MemoryScope] = {}  # job id -> the scope it is for
+        self.tagged: set[str] = set()  # job ids the reconcile registered
         self.add_scope_community_rebuild_schedule = AsyncMock(
             side_effect=self._adder("community_rebuild")
         )
@@ -187,6 +189,7 @@ class FakeScheduler:
             job_id = f"{prefix}_{scope.scope_key}"
             self.jobs[job_id] = user_timezone
             self.scopes[job_id] = scope
+            self.tagged.discard(job_id)
             return {"id": job_id, "scope_key": scope.scope_key, "next_run_time": None}
 
         return add
@@ -196,12 +199,13 @@ class FakeScheduler:
         for job_id in removed:
             del self.jobs[job_id]
             self.scopes.pop(job_id, None)
+            self.tagged.discard(job_id)
         return removed
 
 
 class FakeCronStore:
     """``scope_reconcile.CronStore`` over the fake scheduler, through the
-    same registration calls the registry makes."""
+    same registration calls the registry makes, the reconcile's tagged."""
 
     def __init__(self, scheduler: FakeScheduler) -> None:
         self.scheduler = scheduler
@@ -209,7 +213,10 @@ class FakeCronStore:
     async def listing(self) -> list[scope_reconcile.ListedCron]:
         return [
             scope_reconcile.ListedCron(
-                job_id=job_id, scope=scope, timezone=self.scheduler.jobs[job_id]
+                job_id=job_id,
+                scope=scope,
+                timezone=self.scheduler.jobs[job_id],
+                reconciled=job_id in self.scheduler.tagged,
             )
             for job_id, scope in self.scheduler.scopes.items()
         ]
@@ -218,10 +225,12 @@ class FakeCronStore:
         self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
     ) -> None:
         await job.register(self.scheduler, scope, user_timezone)
+        self.scheduler.tagged.add(job.job_id(scope))
 
     async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None:
         self.scheduler.jobs.pop(job.job_id(scope), None)
         self.scheduler.scopes.pop(job.job_id(scope), None)
+        self.scheduler.tagged.discard(job.job_id(scope))
 
     async def remove(self, scope: MemoryScope) -> None:
         await self.scheduler.remove_scope_memory_jobs(scope=scope)
@@ -264,7 +273,8 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
     monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)
     monkeypatch.setattr(registry, "resolve_user_timezone", owner_timezone)
-    monkeypatch.setattr(scope_reconcile._Place, "local", None)
+    # Every walk starts at the first scope, so a test sees key order.
+    monkeypatch.setattr(scope_reconcile._Place, "last", "")
     return env
 
 

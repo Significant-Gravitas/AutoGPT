@@ -59,6 +59,7 @@ from backend.copilot.dream.scope_crons import (
 from backend.copilot.dream.scope_jobs import scope_label
 from backend.copilot.dream.scope_reconcile import (
     RECONCILE_INTERVAL_MINUTES,
+    RECONCILED_SUFFIX,
     ListedCron,
     reconcile,
 )
@@ -1650,7 +1651,12 @@ def listed_cron(job: JobObj) -> ListedCron | None:
     except (KeyError, ValueError):
         logger.warning("Memory cron %s names no memory scope; left alone", job.id)
         return None
-    return ListedCron(job_id=job.id, scope=scope, timezone=_job_timezone_name(job))
+    return ListedCron(
+        job_id=job.id,
+        scope=scope,
+        timezone=_job_timezone_name(job),
+        reconciled=job.name.endswith(RECONCILED_SUFFIX),
+    )
 
 
 class _SchedulerCrons:
@@ -1669,12 +1675,14 @@ class _SchedulerCrons:
     async def add(
         self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
     ) -> None:
+        """Register ``job`` of ``scope``, tagged as the reconcile's."""
         await _bounded_write(
             self._scheduler._add_memory_job,
             *_MEMORY_CRONS[job.job_id_prefix],
             job,
             scope,
             user_timezone,
+            True,
         )
 
     async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None:
@@ -3508,14 +3516,15 @@ class Scheduler(AppService):
         except concurrent.futures.TimeoutError:
             logger.warning(
                 "Memory cron reconcile cut off; the next pass carries on after "
-                "the last scope it settled"
+                "the last scope it took"
             )
             return
-        if report.restored or report.removed or report.failed:
+        if report.restored or report.dropped or report.removed or report.failed:
             logger.info(
-                "Memory cron reconcile: restored %d, removed the crons of %d "
-                "scopes, %d failed",
+                "Memory cron reconcile: restored %d, took back %d, removed the "
+                "crons of %d scopes, %d failed",
                 len(report.restored),
+                len(report.dropped),
                 len(report.removed),
                 len(report.failed),
             )
@@ -3550,14 +3559,17 @@ class Scheduler(AppService):
         job: DreamSystemJob,
         scope: MemoryScope,
         user_timezone: str,
+        reconciled: bool = False,
     ) -> JobObj:
-        """Add, or replace, one dream-system cron of ``scope``."""
+        """Add, or replace, one dream-system cron of ``scope``; tagged as the
+        reconcile's when it registers it (``RECONCILED_SUFFIX``)."""
+        tag = RECONCILED_SUFFIX if reconciled else ""
         added = self.scheduler.add_job(
             func,
             kwargs=memory_job_kwargs(scope),
             trigger=CronTrigger.from_crontab(crontab, timezone=user_timezone),
             id=job.job_id(scope),
-            name=f"{job.name} for {scope_label(scope)}",
+            name=f"{job.name} for {scope_label(scope)}{tag}",
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
             max_instances=1,
@@ -3574,9 +3586,9 @@ class Scheduler(AppService):
     def _delete_account_memory_job(self, user_id: str, job: DreamSystemJob) -> bool:
         """Remove one of the account's crons, the registry forgetting it
         first: the reconcile restores a cron a row records, and takes back
-        one it restored that the row stopped recording, so the record goes
-        before the job. A forget that fails keeps the job, and says so. The
-        next ``ensure_scope_scheduled`` registers it again."""
+        only one it registered itself once the row stops recording it, so the
+        record goes before the job. A forget that fails keeps the job, and
+        says so. The next ``ensure_scope_scheduled`` registers it again."""
         scope = MemoryScope.for_user(user_id)
         existing = self.scheduler.get_job(
             job.job_id(scope), jobstore=Jobstores.EXECUTION.value

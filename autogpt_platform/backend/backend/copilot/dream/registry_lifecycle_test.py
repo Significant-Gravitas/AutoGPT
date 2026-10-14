@@ -166,12 +166,14 @@ async def test_wipe_removes_the_jobs_and_resume_does_not_undo_it(env):
 
 
 @pytest.mark.asyncio
-async def test_a_resume_landing_inside_a_pause_keeps_its_crons(env, monkeypatch):
+async def test_a_resume_landing_inside_a_pause_gets_its_crons_back_next_pass(
+    env, monkeypatch
+):
     """The pause writes PAUSED; before its removal lands, a resume writes
     ACTIVE and registers the crons, whose job ids are the scope's own. The
-    removal takes them, and the pause, finding the row ACTIVE again,
-    registers them once more: the scope does not sit ACTIVE without
-    crons."""
+    removal takes them, leaving the row ACTIVE with its ids recorded and no
+    crons; the pause reports what it did, and the reconcile pass registers
+    them again."""
     await registry.ensure_scope_scheduled(EXPERT)
     remove = registry.remove_scope_jobs
 
@@ -184,8 +186,11 @@ async def test_a_resume_landing_inside_a_pause_keeps_its_crons(env, monkeypatch)
     monkeypatch.setattr(registry, "remove_scope_jobs", resumed_first)
 
     assert await registry.pause_scope(EXPERT)
-
     assert env.db.rows[EXPERT.scope_key].state == ACTIVE
+    assert env.scheduler.jobs == {}
+
+    await env.reconcile()
+
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 

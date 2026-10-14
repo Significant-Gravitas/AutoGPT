@@ -205,14 +205,6 @@ async def test_a_scheduler_side_flag_skip_is_not_recorded(env, caplog):
 
 
 @pytest.mark.asyncio
-async def test_registration_writes_the_redis_marker(env, fake_dream_redis):
-    await registry.ensure_scope_scheduled(EXPERT)
-
-    marker = f"dream_nightly_batch_registered:{EXPERT.scope_key}"
-    assert fake_dream_redis.store[marker] == PARIS
-
-
-@pytest.mark.asyncio
 async def test_a_pause_that_lands_mid_registration_takes_the_new_jobs_down(env):
     add = env.scheduler.add_scope_nightly_batch_schedule
     adder = add.side_effect

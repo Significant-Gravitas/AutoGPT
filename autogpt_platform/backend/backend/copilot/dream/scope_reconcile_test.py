@@ -6,9 +6,11 @@ The race probes are an independent review's. Round 1's left an ACTIVE row
 with its job ids recorded and no crons; each now ends with the crons back
 after one pass. Round 2's: a restore that lands after a timezone change,
 set right by the next pass, and passes cut off at their ceiling, each now
-carrying on where the last one stopped. Round 3's: a pass cut off inside a
-scope's work, and a place Redis would not keep, each now moving on; and a
-restore whose cron the row stopped recording meanwhile, taken back.
+walking on round the ring. Round 3's: a pass cut off inside a scope's work,
+now moving on, and a restore whose cron the row stopped recording
+meanwhile. Round 4's: that restore cut short by a failure or a
+cancellation, and a stale place. A stale restore leaves a cron tagged as
+the reconcile's, which the next pass takes back.
 """
 
 from __future__ import annotations
@@ -19,10 +21,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.data import redis_client
-
 from . import registry, scope_crons, scope_jobs, scope_reconcile
-from .conftest import FakeAsyncRedis
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -112,39 +111,6 @@ async def test_every_pause_resume_interleaving_is_restored_by_one_pass(
 
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
     assert sorted(report.restored) == sorted(job_ids(EXPERT))
-
-
-@pytest.mark.asyncio
-async def test_a_pause_whose_re_read_fails_reports_false_and_is_restored(
-    env, monkeypatch
-):
-    """The review's probe through the pause: a resume registers its crons just
-    before the pause's removal takes them, and the pause's one re-read
-    fails. The pause no longer reports success, and one pass restores the
-    crons."""
-    await registry.ensure_scope_scheduled(EXPERT)
-    remove = env.scheduler._remove
-    get = env.db.get_scope_schedule
-
-    async def resume_before_remove(*, scope):
-        await registry.resume_scope(scope)
-        removed = await remove(scope=scope)
-        monkeypatch.setattr(
-            env.db, "get_scope_schedule", AsyncMock(side_effect=ConnectionError)
-        )
-        return removed
-
-    env.scheduler.remove_scope_memory_jobs.side_effect = resume_before_remove
-
-    assert not await registry.pause_scope(EXPERT), "the re-read failed"
-    assert env.db.rows[EXPERT.scope_key].state == ACTIVE
-    assert env.scheduler.jobs == {}
-
-    monkeypatch.setattr(env.db, "get_scope_schedule", get)
-    env.scheduler.remove_scope_memory_jobs.side_effect = remove
-    await env.reconcile()
-
-    assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 
 @pytest.mark.asyncio
@@ -464,18 +430,15 @@ async def test_a_pass_settles_each_scope_in_key_order(env, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_passes_cut_off_at_their_ceiling_carry_on_where_the_last_stopped(
-    env, monkeypatch, fake_dream_redis: FakeAsyncRedis
-):
-    """The review's starvation probe. Eight scopes lost their crons, the
-    first three of them on a jobstore that stalls every registration until
-    it fails, and the last scope's row was paused with its crons left
-    behind; every pass is cut off at its third registration attempt.
-    Starting over each time, every pass would spend itself on the same three
-    scopes. Each keeps its place before it works a scope and the next
-    carries on after it, so every pass gets further, a scope a pass was cut
-    in is retried the next cycle, and the passes get through every scope,
-    the straggler's removal included."""
+async def test_passes_cut_off_at_their_ceiling_walk_on_round_the_ring(env, monkeypatch):
+    """The review's starvation probe, in one process. Eight scopes lost their
+    crons, the first three of them on a jobstore that fails every
+    registration, and the last scope's row was paused with its crons left
+    behind; every pass is cut off at its third registration attempt. Each
+    pass takes a scope as its place before it works it and the next walks on
+    after it, round the ring, so the passes get through every scope, the
+    straggler's removal included, however often the failing ones come
+    round."""
     scopes = sorted(
         (registry.MemoryScope.for_expert(USER, f"e-{i}") for i in range(9)),
         key=lambda scope: scope.scope_key,
@@ -502,35 +465,61 @@ async def test_passes_cut_off_at_their_ceiling_carry_on_where_the_last_stopped(
 
     monkeypatch.setattr(env.crons, "add", ceiling_add)
     healthy = set().union(*(job_ids(s) for s in scopes[3:-1]))
-    cycle: list[str | None] = []
-    removed: list[str] = []
-    for _ in range(20):
+    for _ in range(12):
         budget["left"] = 2
         try:
-            removed += (await env.reconcile()).removed
+            await env.reconcile()
         except asyncio.CancelledError:
-            cycle.append(fake_dream_redis.store.get(scope_reconcile.CURSOR_KEY))
-            continue
+            pass
         if set(env.scheduler.jobs) == healthy:
             break
-        assert cycle == sorted(cycle) and len(set(cycle)) == len(cycle), cycle
-        cycle = []
     else:
         pytest.fail(f"the passes never got through; jobs {sorted(env.scheduler.jobs)}")
 
-    assert removed == [straggler.scope_key]
-    assert scope_reconcile.CURSOR_KEY not in fake_dream_redis.store
-    assert scope_reconcile._Place.local is None
+    assert not job_ids(straggler) & env.scheduler.jobs.keys()
 
 
 @pytest.mark.asyncio
-async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(
-    env, monkeypatch, fake_dream_redis: FakeAsyncRedis
-):
+async def test_no_scope_starves_whatever_place_a_pass_starts_from(env, monkeypatch):
+    """The review's stale-place probe without Redis: a place left near the
+    start, every scope failing, and every pass cut off at its third attempt
+    (the scope it was cut in taken, its work not done). Started over, six
+    passes visited the same two scopes; each pass walks on from the last
+    scope taken, so the six reach the last scope and come round again."""
+    scopes = sorted(
+        (registry.MemoryScope.for_user(f"stale-{i}") for i in range(7)),
+        key=lambda scope: scope.scope_key,
+    )
+    for scope in scopes:
+        await registry.ensure_scope_scheduled(scope)
+    _lose_every_cron(env)
+    monkeypatch.setattr(scope_reconcile._Place, "last", scopes[0].scope_key)
+    tried: list[str] = []
+    budget = {"left": 0}
+
+    async def failing_add(job, scope, user_timezone):
+        if budget["left"] == 0:
+            raise asyncio.CancelledError("the pass's ceiling")
+        budget["left"] -= 1
+        tried.append(scope.scope_key)
+        raise ConnectionError("this scope fails")
+
+    monkeypatch.setattr(env.crons, "add", failing_add)
+    for _ in range(6):
+        budget["left"] = 2
+        with pytest.raises(asyncio.CancelledError):
+            await env.reconcile()
+
+    assert scopes[-1].scope_key in tried, tried
+    assert scopes[0].scope_key in tried, "and round again"
+
+
+@pytest.mark.asyncio
+async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(env, monkeypatch):
     """The review's hung write: a registration that never returns until the
-    ceiling cuts its pass. The pass kept its place before it began that
-    scope, so the next one carries on after it and repairs the rest; the
-    scope it was cut in is tried again the next cycle."""
+    ceiling cuts its pass. The pass took the scope as its place before it
+    began it, so the next one walks on after it and repairs the rest; the
+    scope it was cut in comes round again at the end of the ring."""
     scopes = [registry.MemoryScope.for_user(f"cut-{i}") for i in range(3)]
     for scope in scopes:
         await registry.ensure_scope_scheduled(scope)
@@ -541,7 +530,7 @@ async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(
 
     async def hung_add(job, scope, user_timezone):
         tried.append(scope.scope_key)
-        if scope == scopes[0]:
+        if scope == scopes[0] and not entered.is_set():
             entered.set()
             await asyncio.Event().wait()
         await add(job, scope, user_timezone)
@@ -555,142 +544,130 @@ async def test_a_pass_cut_off_in_a_scope_still_moves_the_next_one_on(
 
     await asyncio.wait_for(env.reconcile(), TIMEOUT)
 
-    assert set(env.scheduler.jobs) == job_ids(scopes[1]) | job_ids(scopes[2])
-    assert tried.count(scopes[0].scope_key) == 1, "not tried again this cycle"
-    entered.clear()
-    again = asyncio.create_task(env.reconcile())
-    await asyncio.wait_for(entered.wait(), TIMEOUT)
-    again.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await again
+    assert set(env.scheduler.jobs) == set().union(*(job_ids(s) for s in scopes))
+    assert tried.index(scopes[1].scope_key) < len(tried) - 2, "the rest went first"
+    assert tried[-2:] == [scopes[0].scope_key] * 2, "the cut scope last"
 
 
 @pytest.mark.asyncio
-async def test_a_place_redis_would_not_keep_is_kept_in_the_process(
-    env, monkeypatch, fake_dream_redis: FakeAsyncRedis
-):
-    """The review's flapping Redis: every pass's first write of its place
-    fails, Redis answering again by the next pass but holding no place, and
-    each pass is cut off after three registration attempts, the first three
-    scopes failing. The place this process kept carries each pass on, so
-    they reach the last scope."""
-    scopes = [registry.MemoryScope.for_user(f"flap-{i}") for i in range(5)]
+async def test_a_process_starts_its_walk_at_a_random_scope(env, monkeypatch):
+    """So a scheduler that restarts often can't keep repairing the same
+    first scopes."""
+    scopes = sorted(
+        (registry.MemoryScope.for_user(f"start-{i}") for i in range(4)),
+        key=lambda scope: scope.scope_key,
+    )
     for scope in scopes:
         await registry.ensure_scope_scheduled(scope)
     _lose_every_cron(env)
-    tried: list[str] = []
-    budget = {"left": 0}
+    monkeypatch.setattr(scope_reconcile._Place, "last", None)
+    monkeypatch.setattr(scope_reconcile.random, "randrange", lambda n: 2)
+    order: list[str] = []
     add = env.crons.add
 
-    async def flap(key, value, **kwargs):
-        raise ConnectionError("redis flapped")
-
-    async def bounded_add(job, scope, user_timezone):
-        if budget["left"] == 0:
-            raise asyncio.CancelledError("the pass's ceiling")
-        budget["left"] -= 1
-        tried.append(scope.scope_key)
-        if scope in scopes[:3]:
-            raise ConnectionError("this scope's jobstore write failed")
+    async def noted_add(job, scope, user_timezone):
+        if scope.scope_key not in order:
+            order.append(scope.scope_key)
         await add(job, scope, user_timezone)
 
-    monkeypatch.setattr(fake_dream_redis, "set", flap)
-    monkeypatch.setattr(env.crons, "add", bounded_add)
-    for _ in range(3):
-        budget["left"] = 3
-        try:
-            await env.reconcile()
-        except asyncio.CancelledError:
-            pass
+    monkeypatch.setattr(env.crons, "add", noted_add)
 
-    assert scopes[-1].scope_key in tried, tried
-    assert job_ids(scopes[-1]) <= set(env.scheduler.jobs)
+    await env.reconcile()
+
+    keys = [scope.scope_key for scope in scopes]
+    assert order == keys[2:] + keys[:2]
+    assert scope_reconcile._Place.last == keys[1], "the last scope it took"
 
 
 @pytest.mark.asyncio
-async def test_a_place_a_finished_cycle_cleared_starts_the_next_from_the_first(
-    env, fake_dream_redis: FakeAsyncRedis
-):
-    """A pass that settles the last scope clears both places, Redis's and
-    the process's, so the next pass looks at every scope again."""
-    await registry.ensure_scope_scheduled(EXPERT)
-    scope_reconcile._Place.local = EXPERT.scope_key
-    _lose_every_cron(env)
-
-    await env.reconcile()
-    assert env.scheduler.jobs == {}, "after the place, nothing to do"
-    await env.reconcile()
-
-    assert set(env.scheduler.jobs) == job_ids(EXPERT)
-    assert scope_reconcile._Place.local is None
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize("change", ["delete", "pause", "unreadable"])
-async def test_a_restore_the_row_stopped_recording_meanwhile_is_taken_back(
+@pytest.mark.parametrize("change", ["delete", "pause"])
+async def test_a_restore_the_row_stopped_recording_meanwhile_is_taken_back_next_pass(
     env, monkeypatch, change: str
 ):
     """The review's stale restore: a cron is deleted (its record forgotten
     first, then the job), or the scope paused, between the restore's read
-    and its write, which puts the cron back. A second read takes back what
-    the row no longer records; when that read fails the restore takes back
-    all it added, and the next pass restores what the row still records."""
+    and its write, which puts the cron back, tagged as the reconcile's. The
+    next pass takes back the tagged cron the row no longer records (the
+    pause's: every cron of the scope)."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     _lose_every_cron(env)
     add = env.crons.add
-    get = env.db.get_scope_schedule
     nightly = f"dream_nightly_batch_{ACCOUNT.scope_key}"
+    community = f"community_rebuild_{ACCOUNT.scope_key}"
 
     async def interleaved_add(job, scope, user_timezone):
         if job.job_id(scope) == nightly:
             if change == "delete":
                 await env.db.forget_scope_job(USER, ACCOUNT.scope_key, nightly)
                 env.scheduler.jobs.pop(nightly, None)
-            elif change == "pause":
-                await env.db.set_scope_state(USER, ACCOUNT.scope_key, PAUSED)
             else:
-                monkeypatch.setattr(
-                    env.db, "get_scope_schedule", AsyncMock(side_effect=ConnectionError)
-                )
+                await env.db.set_scope_state(USER, ACCOUNT.scope_key, PAUSED)
         await add(job, scope, user_timezone)
 
     monkeypatch.setattr(env.crons, "add", interleaved_add)
+    await env.reconcile()
+    assert nightly in env.scheduler.tagged, "the stale restore landed"
+    monkeypatch.setattr(env.crons, "add", add)
 
     report = await env.reconcile()
 
-    community = f"community_rebuild_{ACCOUNT.scope_key}"
     if change == "delete":
         assert set(env.scheduler.jobs) == {community}
-        assert report.restored == [community]
-    elif change == "pause":
-        assert env.scheduler.jobs == {}
+        assert report.dropped == [nightly]
     else:
-        assert env.scheduler.jobs == {} and report.restored == []
-        monkeypatch.setattr(env.db, "get_scope_schedule", get)
-        monkeypatch.setattr(env.crons, "add", add)
-        await env.reconcile()
-        assert set(env.scheduler.jobs) == job_ids(ACCOUNT)
+        assert env.scheduler.jobs == {}
+        assert report.removed == [ACCOUNT.scope_key]
 
 
 @pytest.mark.asyncio
-async def test_a_pass_that_cannot_keep_its_place_starts_from_the_first_scope(
-    env, monkeypatch, fake_dream_redis: FakeAsyncRedis
+@pytest.mark.parametrize("ending", ["error", "cancel"])
+async def test_a_restore_cut_short_after_a_stale_add_leaves_nothing_next_pass(
+    env, monkeypatch, ending: str
 ):
-    """With Redis out of reach and no place kept in the process a pass
-    starts from the first scope, still settles every one, and stops calling
-    Redis after the first failure, so an outage costs it one timeout, not
-    one per scope it settles."""
-    await registry.ensure_scope_scheduled(EXPERT)
-    await registry.ensure_scope_scheduled(OTHER_EXPERT)
-    fake_dream_redis.store[scope_reconcile.CURSOR_KEY] = max(
-        EXPERT.scope_key, OTHER_EXPERT.scope_key
-    )
-    down = AsyncMock(side_effect=ConnectionError)
-    monkeypatch.setattr(redis_client, "get_redis_async", down)
+    """The round-4 review's partial restore: the community cron is deleted
+    between the restore's read and its add, which puts it back, then the
+    nightly add fails or the pass is cancelled. The tagged community cron
+    the row no longer records goes on the next pass."""
+    await registry.ensure_scope_scheduled(ACCOUNT)
     _lose_every_cron(env)
+    add = env.crons.add
+    community = f"community_rebuild_{ACCOUNT.scope_key}"
+
+    async def partial_add(job, scope, user_timezone):
+        if job.job_id(scope) == community:
+            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community)
+            await add(job, scope, user_timezone)
+            return
+        if ending == "cancel":
+            raise asyncio.CancelledError("the pass's ceiling")
+        raise ConnectionError("the second add failed")
+
+    monkeypatch.setattr(env.crons, "add", partial_add)
+    if ending == "cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await env.reconcile()
+    else:
+        assert (await env.reconcile()).failed == [ACCOUNT.scope_key]
+    assert community in env.scheduler.jobs, "the stale add landed"
+    monkeypatch.setattr(env.crons, "add", add)
 
     await env.reconcile()
 
-    assert set(env.scheduler.jobs) == job_ids(EXPERT) | job_ids(OTHER_EXPERT)
-    assert down.await_count == 1
-    assert scope_reconcile._Place.local is None, "the cycle finished"
+    assert set(env.scheduler.jobs) == {f"dream_nightly_batch_{ACCOUNT.scope_key}"}
+    assert env.db.rows[ACCOUNT.scope_key].community_job_id is None
+
+
+@pytest.mark.asyncio
+async def test_a_tagged_cron_with_no_row_goes_and_an_untagged_one_stays(env):
+    """An account's crons with no row predate the registry and stay; one the
+    reconcile tagged had a row once, and goes with it."""
+    legacy = registry.MemoryScope.for_user("legacy")
+    gone = registry.MemoryScope.for_user("gone")
+    for job in scope_reconcile.DREAM_SYSTEM_JOBS:
+        await job.register(env.scheduler, legacy, PARIS)
+        await env.crons.add(job, gone, PARIS)
+
+    report = await env.reconcile()
+
+    assert set(env.scheduler.jobs) == job_ids(legacy)
+    assert sorted(report.dropped) == sorted(job_ids(gone))

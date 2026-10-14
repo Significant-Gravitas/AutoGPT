@@ -20,7 +20,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import is_feature_enabled
 
 from .deadline import within_deadline
-from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, write_registration_marker
+from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,6 @@ async def _register_job(
             f"(reason={result.get('reason')}) despite the local flag check"
         )
         return result
-    await write_registration_marker(scope, job.registration_key_prefix, user_timezone)
     logger.info(
         f"Dream-system: registered {job.name} for {scope_label(scope)} "
         f"(tz={user_timezone})"

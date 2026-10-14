@@ -1,4 +1,4 @@
-"""The dream-system cron table, the owner-timezone lookup and the Redis markers.
+"""The dream-system cron table and the owner-timezone lookup.
 
 Two APScheduler cron jobs serve every memory scope (the account, or one
 hired expert):
@@ -25,24 +25,16 @@ Three layers of flag gating, all on the scope owner's flags:
      callers (admin endpoint, ad-hoc scripts) that bypass the registry.
   3. **Job body** — if the flag flips off after registration, the job
      still fires but short-circuits before the work runs.
-
-**Redis markers.** ``{prefix}:{scope_key}`` holds the timezone a cron was
-last registered in, for seven days. The registry used to decide on them; it
-now reads the ``MemoryScopeSchedule`` table instead, and nothing reads the
-markers any more. They are still written on registration (and cleared on an
-in-band delete) as a diagnostic, bounded so Redis can never hold up a caller.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any, Awaitable, Callable, Literal
 
 from pydantic.dataclasses import dataclass
 
 from backend.copilot.graphiti.scope import MemoryScope
-from backend.data import redis_client
 from backend.data.db_accessors import user_db
 from backend.data.model import USER_TIMEZONE_NOT_SET
 from backend.util.feature_flag import Flag
@@ -51,16 +43,6 @@ from .deadline import within_deadline
 
 logger = logging.getLogger(__name__)
 
-
-# Matches the longest cron cadence in the table (weekly community rebuild).
-REGISTRATION_TTL_SECONDS = 7 * 24 * 3600
-# A marker is diagnostic: never wait longer than this on Redis for one.
-MARKER_TIMEOUT_SECONDS = 5
-
-# Redis marker prefixes, one per cron. Must stay in sync with the table rows
-# below — pinned by a test.
-COMMUNITY_REBUILD_REGISTRATION_PREFIX = "community_rebuild_registered"
-NIGHTLY_BATCH_REGISTRATION_PREFIX = "dream_nightly_batch_registered"
 
 # Job-id prefixes, shared with the scheduler's ``@expose`` methods so the two
 # can never disagree on a job id.
@@ -84,9 +66,6 @@ class DreamSystemJob:
 
     job_id_prefix: str
     """Job ids are ``f"{job_id_prefix}_{scope_key}"``."""
-
-    registration_key_prefix: str
-    """Redis marker prefix. Each cron has its own marker."""
 
     flag: Flag
     """LD feature flag gate, evaluated for the scope's owner."""
@@ -130,7 +109,6 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
         job_id_prefix=COMMUNITY_REBUILD_JOB_PREFIX,
-        registration_key_prefix=COMMUNITY_REBUILD_REGISTRATION_PREFIX,
         flag=Flag.GRAPHITI_COMMUNITIES_ENABLED,
         skip_reason="graphiti_communities_disabled",
         row_field="community_job_id",
@@ -139,7 +117,6 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Dream nightly batch",
         job_id_prefix=NIGHTLY_BATCH_JOB_PREFIX,
-        registration_key_prefix=NIGHTLY_BATCH_REGISTRATION_PREFIX,
         # One master gate for the dream pass, the ratification sweep and
         # the future P2/P3/P4/P11 stages; finer flags inside individual
         # submitters decide whether each stage runs within the cron.
@@ -191,55 +168,3 @@ async def resolve_user_timezone(user_id: str) -> str | None:
             exc_info=True,
         )
         return None
-
-
-async def write_registration_marker(
-    scope: MemoryScope, key_prefix: str, user_timezone: str
-) -> None:
-    """Record the timezone a cron was just registered in, for diagnostics
-    only: nothing reads it back. Best-effort, and bounded: a hire must not
-    wait on the Redis client's connect retries.
-
-    ``asyncio.timeout``, not ``wait_for``: this runs inside the registry
-    deadline, and on Python 3.11 a ``wait_for`` that completes just as that
-    deadline expires swallows its cancellation, so the change it bounds
-    would run on past it.
-    """
-    try:
-        async with asyncio.timeout(MARKER_TIMEOUT_SECONDS):
-            await _set_marker(_registration_key(scope, key_prefix), user_timezone)
-    except Exception:
-        logger.debug("Redis write failed for %s:%s", key_prefix, scope.scope_key[:12])
-
-
-async def clear_registration_marker(scope: MemoryScope, key_prefix: str) -> None:
-    """Delete one cron's Redis marker after the cron was removed in-band.
-
-    Single-key DEL so it routes on Redis Cluster. Best-effort and bounded
-    (by ``asyncio.timeout``, as in :func:`write_registration_marker`) — on
-    Redis failure the marker simply expires via its TTL.
-    """
-    try:
-        async with asyncio.timeout(MARKER_TIMEOUT_SECONDS):
-            await _delete_marker(_registration_key(scope, key_prefix))
-    except Exception:
-        logger.warning(
-            "Redis delete failed for %s:%s; marker will expire via TTL",
-            key_prefix,
-            scope.scope_key[:12],
-            exc_info=True,
-        )
-
-
-def _registration_key(scope: MemoryScope, key_prefix: str) -> str:
-    return scope.redis_key("registration", registration_prefix=key_prefix)
-
-
-async def _set_marker(key: str, value: str) -> None:
-    redis = await redis_client.get_redis_async()
-    await redis.set(key, value, ex=REGISTRATION_TTL_SECONDS)
-
-
-async def _delete_marker(key: str) -> None:
-    redis = await redis_client.get_redis_async()
-    await redis.delete(key)

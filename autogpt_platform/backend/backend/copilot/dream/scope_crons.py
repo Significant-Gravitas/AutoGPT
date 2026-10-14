@@ -20,7 +20,7 @@ from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import ScopeRunKind
 
 from .deadline import within_deadline
-from .scheduling import DreamSystemJob, clear_registration_marker
+from .scheduling import DreamSystemJob
 from .scope_jobs import scope_label
 
 if TYPE_CHECKING:
@@ -75,9 +75,8 @@ async def record_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> bool:
 
 async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> bool:
     """Before ``job`` is deleted outside the registry, drop its id from the
-    row and its Redis marker, so the reconcile does not restore it and the
-    next ensure registers it again; whether the row's write went through."""
-    await clear_registration_marker(scope, job.registration_key_prefix)
+    row, so the reconcile does not restore it and the next ensure registers
+    it again; whether the row's write went through."""
     try:
         await within_deadline(
             memory_schedule_db().forget_scope_job(

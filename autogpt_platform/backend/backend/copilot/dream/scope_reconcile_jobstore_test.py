@@ -1,12 +1,14 @@
 """The memory cron reconcile against the real scheduler and a real jobstore
 (SQLite, or PostgreSQL when ``DIRECT_URL`` names one), with the registry's
-fakes: an account cron's delete racing a restore, and a write that finds
-its row locked.
+fakes: an account cron's delete racing a restore, whole or cut short, and a
+write that finds its row locked.
 
-The probes are an independent review's (PR 9 round 3): a restore that read
-the row before a successful delete re-created the deleted cron for good,
-and a write blocked on a locked row held its pass, and every pass after it,
-at the same scope.
+The probes are an independent review's. Round 3's: a restore that read the
+row before a successful delete re-created the deleted cron for good, and a
+write blocked on a locked row held its pass, and every pass after it, at
+the same scope. Round 4's: that restore cut short after its stale add, by
+a failed or locked write or a cancellation. A stale add is tagged as the
+reconcile's, and the next pass takes it back.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -101,8 +104,9 @@ async def _set(event: threading.Event) -> None:
 async def test_a_delete_after_a_restores_read_is_not_undone(env, monkeypatch, tmp_path):
     """The review's probe: a restore re-timing the account's crons parks
     after its read, just before writing the nightly cron; the delete RPC
-    forgets the cron and removes it; the restore then writes it back. Its
-    second read takes it back, and later passes leave it deleted."""
+    forgets the cron and removes it; the restore then writes it back,
+    tagged as the reconcile's. The next pass takes it back, and later
+    passes leave it deleted."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
     with _scheduler(_sqlite(tmp_path)) as service:
@@ -189,17 +193,22 @@ async def test_a_delete_whose_forget_fails_keeps_its_cron(env, monkeypatch, tmp_
         assert env.db.rows[ACCOUNT.scope_key].nightly_job_id == _NIGHTLY
 
 
+# The flow a step belongs to: set where each flow starts, carried into its
+# threads and tasks with the context.
+_FLOW: ContextVar[str] = ContextVar("reconcile_test_flow")
+
+
 class _Turns:
     """Runs flows one step at a time: each wrapped call waits its turn, and
     once every running flow is waiting, one of them, picked at random
-    (seeded), takes its step. Every order of the flows' steps can come up,
-    whatever the timing."""
+    (seeded) by the flow's name, takes its step. A seed fixes the order of
+    the flows' steps, whatever their timing."""
 
-    def __init__(self, rng: random.Random, flows: int) -> None:
+    def __init__(self, rng: random.Random, flows: list[str]) -> None:
         self._rng = rng
         self._lock = threading.Lock()
-        self._waiting: list[threading.Event] = []
-        self._running = flows
+        self._waiting: dict[str, threading.Event] = {}
+        self._running = set(flows)
         self._on = True
 
     def step(self, call):
@@ -216,15 +225,15 @@ class _Turns:
 
         return run
 
-    def finished(self) -> None:
+    def finished(self, flow: str) -> None:
         with self._lock:
-            self._running -= 1
+            self._running.discard(flow)
             self._next()
 
     def off(self) -> None:
         with self._lock:
             self._on = False
-            for turn in self._waiting:
+            for turn in self._waiting.values():
                 turn.set()
             self._waiting.clear()
 
@@ -234,28 +243,31 @@ class _Turns:
             if not self._on:
                 turn.set()
                 return turn
-            self._waiting.append(turn)
+            self._waiting[_FLOW.get()] = turn
             self._next()
         return turn
 
     def _next(self) -> None:
-        if self._waiting and len(self._waiting) >= self._running:
-            self._waiting.pop(self._rng.randrange(len(self._waiting))).set()
+        if self._waiting and self._waiting.keys() >= self._running:
+            flow = self._rng.choice(sorted(self._waiting))
+            self._waiting.pop(flow).set()
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("seed", range(40))
+@pytest.mark.parametrize("ending", ["healthy", "add_fails", "cancelled"])
+@pytest.mark.parametrize("seed", range(20))
 async def test_no_interleaving_of_a_restore_and_a_delete_leaves_a_cron_unrecorded(
-    env, monkeypatch, tmp_path, seed: int
+    env, monkeypatch, tmp_path, seed: int, ending: str
 ):
     """A restore re-timing the account's crons races the nightly cron's
     delete, their registry reads and writes and jobstore writes taken one at
-    a time in a seeded random order: once both are done, and two more
-    passes, the cron runs exactly when the row records it, which after a
-    delete is never."""
+    a time in a seeded order. The restore runs to its end, its second add
+    fails, or it is cancelled there. Once both are done, and two more
+    passes, the scheduler holds exactly the crons the row records: after the
+    delete, never the nightly one."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
-    turns = _Turns(random.Random(seed), flows=2)
+    turns = _Turns(random.Random(seed), ["restore", "delete"])
     monkeypatch.setattr(
         env.db, "get_scope_schedule", turns.astep(env.db.get_scope_schedule)
     )
@@ -264,34 +276,51 @@ async def test_no_interleaving_of_a_restore_and_a_delete_leaves_a_cron_unrecorde
     )
     with _scheduler(_sqlite(tmp_path)) as service:
         _add_crons(service, ACCOUNT, TOKYO)
-        monkeypatch.setattr(
-            service, "_add_memory_job", turns.step(service._add_memory_job)
-        )
+        add = turns.step(service._add_memory_job)
+        adds = {"made": 0}
+
+        def ending_add(*args):
+            if adds["made"] == 1 and ending == "add_fails":
+                raise ConnectionError("the second add failed")
+            if adds["made"] == 1 and ending == "cancelled":
+                raise asyncio.CancelledError("the pass's ceiling")
+            adds["made"] += 1
+            return add(*args)
+
+        monkeypatch.setattr(service, "_add_memory_job", ending_add)
         monkeypatch.setattr(
             service.scheduler, "remove_job", turns.step(service.scheduler.remove_job)
         )
 
         async def restoring() -> None:
+            _FLOW.set("restore")
             try:
                 await _pass(service)
+            except asyncio.CancelledError:
+                pass
             finally:
-                turns.finished()
+                turns.finished("restore")
 
         def deleting() -> bool:
+            _FLOW.set("delete")
             try:
                 return service.delete_nightly_batch_schedule(USER)
             finally:
-                turns.finished()
+                turns.finished("delete")
 
         await asyncio.wait_for(
             asyncio.gather(restoring(), asyncio.to_thread(deleting)), 4 * TIMEOUT
         )
         turns.off()
+        monkeypatch.setattr(service, "_add_memory_job", add)
         for _ in range(2):
             await _pass(service)
 
-        assert env.db.rows[ACCOUNT.scope_key].nightly_job_id is None
+        row = env.db.rows[ACCOUNT.scope_key]
+        assert row.nightly_job_id is None, "the delete forgot it"
         assert _job(service, _NIGHTLY) is None
+        assert _job(service, _COMMUNITY) is not None
+        assert str(_job(service, _COMMUNITY).trigger.timezone) == PARIS
 
 
 def _postgres_url() -> str | None:
@@ -373,3 +402,87 @@ async def test_a_write_held_by_a_locked_row_fails_its_scope_and_the_pass_goes_on
     finally:
         locker.close()
         locker.engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ending", ["error", "cancel", "pg_timeout"])
+async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
+    env, monkeypatch, tmp_path, ending: str
+):
+    """The round-4 review's partial restore, with the production delete and
+    jobstore: the restore re-timing the account's crons parks before its
+    community add, the delete RPC forgets that cron and removes it, and the
+    add then puts it back. The nightly add after it fails, is cancelled, or
+    waits on a row another transaction holds (on PostgreSQL) until the write
+    timeout. The community cron came back tagged as the reconcile's, so the
+    next pass takes it back, and three more leave it gone."""
+    if ending == "pg_timeout" and _postgres_url() is None:
+        pytest.skip("needs the PostgreSQL test DB")
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
+    name = f"memcore_partial_{uuid.uuid4().hex[:8]}"
+    if ending == "pg_timeout":
+        monkeypatch.setattr(sm, "MEMORY_CRON_WRITE_TIMEOUT_SECONDS", 0.2)
+        url = _postgres_url()
+        assert url is not None
+        store = ResilientSQLAlchemyJobStore(url=url, tablename=name)
+    else:
+        store = _sqlite(tmp_path)
+    locker = store.engine.connect() if ending == "pg_timeout" else None
+    try:
+        with _scheduler(store) as service:
+            _add_crons(service, ACCOUNT, TOKYO)
+            reached, release = threading.Event(), threading.Event()
+            add = service._add_memory_job
+
+            def parked_community(*args):
+                if args[2].job_id_prefix == "community_rebuild":
+                    reached.set()
+                    assert release.wait(TIMEOUT)
+                elif ending == "error":
+                    raise ConnectionError("the nightly add failed")
+                elif ending == "cancel":
+                    raise asyncio.CancelledError("the pass's ceiling")
+                return add(*args)
+
+            monkeypatch.setattr(service, "_add_memory_job", parked_community)
+            hold = locker.begin() if locker is not None else None
+            try:
+                if locker is not None:
+                    locker.execute(
+                        text(f"SELECT id FROM {name} WHERE id = :id FOR UPDATE"),
+                        {"id": _NIGHTLY},
+                    ).all()
+                restore = asyncio.create_task(_pass(service))
+                await asyncio.wait_for(_set(reached), TIMEOUT)
+                assert await asyncio.to_thread(
+                    service.delete_community_rebuild_schedule, USER
+                )
+                release.set()
+                if ending == "cancel":
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.wait_for(restore, 10)
+                else:
+                    report = await asyncio.wait_for(restore, 10)
+                    assert report.failed == [ACCOUNT.scope_key]
+            finally:
+                release.set()
+                if hold is not None:
+                    hold.rollback()
+            assert _job(service, _COMMUNITY) is not None, "the stale add landed"
+            monkeypatch.setattr(service, "_add_memory_job", add)
+
+            report = await _pass(service)
+            assert report.dropped == [_COMMUNITY]
+            for _ in range(3):
+                await _pass(service)
+
+            assert env.db.rows[ACCOUNT.scope_key].community_job_id is None
+            assert _job(service, _COMMUNITY) is None
+            assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
+            if ending == "pg_timeout":
+                with store.engine.begin() as connection:
+                    connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
+    finally:
+        if locker is not None:
+            locker.close()

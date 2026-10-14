@@ -3,11 +3,6 @@
 import pytest
 from pydantic import ValidationError
 
-from backend.copilot.dream.scheduling import (
-    COMMUNITY_REBUILD_REGISTRATION_PREFIX,
-    NIGHTLY_BATCH_REGISTRATION_PREFIX,
-)
-
 from .client import derive_group_id, derive_memory_group_id, derive_memory_scope_key
 from .scope import (
     DREAM_LOCK_KEY_PREFIX,
@@ -100,33 +95,9 @@ class TestRedisKeys:
         legacy = f"{REBUILD_LOCK_KEY_PREFIX}{group_id}"
         assert scope.redis_key("rebuild_lock") == legacy
 
-    @BOTH_SCOPES
-    @pytest.mark.parametrize(
-        "prefix",
-        [COMMUNITY_REBUILD_REGISTRATION_PREFIX, NIGHTLY_BATCH_REGISTRATION_PREFIX],
-    )
-    def test_registration_keys_on_scope_key(
-        self, expert_id: str | None, prefix: str
-    ) -> None:
-        """The crons are registered per scope, so each scope has its own
-        marker; the account's is the legacy per-user key."""
-        scope = MemoryScope.build(USER_ID, expert_id)
-        expected = f"{prefix}:{derive_memory_scope_key(USER_ID, expert_id)}"
-        assert scope.redis_key("registration", registration_prefix=prefix) == expected
-
-    def test_account_registration_key_is_unchanged(self) -> None:
-        scope = MemoryScope.for_user(USER_ID)
-        prefix = NIGHTLY_BATCH_REGISTRATION_PREFIX
-        legacy = f"{prefix}:{USER_ID}"
-        assert scope.redis_key("registration", registration_prefix=prefix) == legacy
-
     def test_hits_key_requires_edge_uuid(self) -> None:
         with pytest.raises(ValueError, match="edge_uuid"):
             MemoryScope.for_user(USER_ID).redis_key("hits")
-
-    def test_registration_key_requires_prefix(self) -> None:
-        with pytest.raises(ValueError, match="prefix"):
-            MemoryScope.for_user(USER_ID).redis_key("registration")
 
 
 class TestValidation:
