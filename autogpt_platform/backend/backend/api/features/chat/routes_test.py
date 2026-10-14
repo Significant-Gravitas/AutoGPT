@@ -91,6 +91,11 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
         new=AsyncMock(),
     )
     mocker.patch.object(
+        chat_routes,
+        "get_board_session_extras",
+        new=AsyncMock(return_value={}),
+    )
+    mocker.patch.object(
         chat_transports,
         "user_db",
         return_value=MagicMock(
@@ -3954,6 +3959,21 @@ def test_get_session_returns_backward_paginated(
     assert data["oldest_sequence"] == 0
     assert "forward_paginated" not in data
     assert "newest_sequence" not in data
+
+
+def test_get_session_returns_title(mocker: pytest_mock.MockerFixture) -> None:
+    page, _ = _make_paginated_messages(mocker)
+    page.session.title = "Write PRD"
+    mocker.patch(
+        "backend.api.features.chat.routes.stream_registry.get_active_session",
+        new_callable=AsyncMock,
+        return_value=(None, None),
+    )
+
+    response = client.get("/sessions/sess-1")
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Write PRD"
 
 
 def test_get_session_serves_history_for_an_archived_expert_session(

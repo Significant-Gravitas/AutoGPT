@@ -161,6 +161,7 @@ model User {
   CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
+  Boards               Board[]
   ChatMessageFeedback  ChatMessageFeedback[]
   UserBriefings        UserBriefing[]
   ActivityEvents       ActivityEvent[]
@@ -673,6 +674,14 @@ model ChatSession {
   // Mirrors the LibraryAgent.isFavorite pattern.
   isPinned Boolean @default(false)
 
+  // Task board placement. Null column = not placed yet; the board shows
+  // recent unplaced sessions in In progress. Position is a fractional sort key.
+  boardColumn   String?
+  boardPosition Float?
+  // Null = the user's default board (Home).
+  boardId       String?
+  Board         Board?  @relation(fields: [boardId], references: [id], onDelete: SetNull)
+
   // Sharing fields — mirrors AgentGraphExecution sharing
   isShared   Boolean   @default(false)
   shareToken String?   @unique
@@ -697,6 +706,22 @@ model ChatSession {
   @@index([organizationId])
   @@index([shareToken])
   @@index([expertId])
+  @@index([userId, boardId, boardColumn, boardPosition])
+}
+
+model Board {
+  id        String        @id @default(uuid())
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  userId    String
+  User      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  isDefault Boolean       @default(false)
+  position  Float         @default(0)
+  columns   Json
+  Sessions  ChatSession[]
+
+  @@index([userId, position])
 }
 
 // Tracks which workspace files are exposed via a shared chat session.

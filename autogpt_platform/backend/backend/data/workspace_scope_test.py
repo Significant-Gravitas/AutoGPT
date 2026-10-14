@@ -1,6 +1,10 @@
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from backend.data import workspace as workspace_module
+from backend.data import workspace_scope
 from backend.data.workspace_scope import WorkspaceScope, resolve_expert_workspace_scope
 
 SCOPE = WorkspaceScope(
@@ -141,3 +145,42 @@ def test_the_user_files_grant_survives_the_rpc_round_trip():
         assert rebuilt.allows_path("/root-file.txt") == scope.allows_path(
             "/root-file.txt"
         )
+
+
+@pytest.mark.asyncio
+async def test_a_reassigned_task_reads_but_never_writes_where_it_came_from():
+    own = [
+        SimpleNamespace(
+            id="new-1",
+            expertId="expert-a",
+            metadata={"reassigned_from_session_id": "old-1"},
+        ),
+        SimpleNamespace(
+            id="new-2",
+            expertId="expert-a",
+            metadata={"reassigned_from_session_id": "old-1"},
+        ),
+        SimpleNamespace(
+            id="new-3",
+            expertId="expert-a",
+            metadata={"reassigned_from_session_id": "new-1"},
+        ),
+        SimpleNamespace(id="plain", expertId="expert-a", metadata={}),
+    ]
+    sessions = AsyncMock()
+    sessions.find_many.side_effect = [own, []]
+    experts = AsyncMock()
+    experts.find_first.return_value = SimpleNamespace(id="expert-a")
+
+    with (
+        patch.object(workspace_scope.PrismaExpert, "prisma", return_value=experts),
+        patch.object(
+            workspace_scope.PrismaChatSession, "prisma", return_value=sessions
+        ),
+    ):
+        scope = await resolve_expert_workspace_scope("user-1", "expert-a")
+
+    assert scope.delegated_session_ids == ["old-1"]
+    assert scope.allows_path("/sessions/old-1/a.txt")
+    assert not scope.allows_path("/sessions/old-1/a.txt", write=True)
+    assert scope.allows_path("/sessions/new-1/a.txt", write=True)

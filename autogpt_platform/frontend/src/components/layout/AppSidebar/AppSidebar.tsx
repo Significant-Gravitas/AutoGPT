@@ -22,6 +22,7 @@ import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
 import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
 import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
+import { ProjectsNavSection } from "./components/ProjectsNavSection/ProjectsNavSection";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
@@ -177,6 +178,7 @@ export function AppSidebar(props: Props) {
       ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
       : WORKSPACE_LINKS
   ).filter((link) => link.href !== "/artifacts" || filesEnabled);
+  const isTaskBoardEnabled = useGetFlag(Flag.TASK_BOARD);
 
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
@@ -220,7 +222,13 @@ export function AppSidebar(props: Props) {
             </motion.div>
           ) : null}
 
-          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
+          {isLoggedIn && isTaskBoardEnabled ? (
+            <ProjectsNavSection itemVariants={itemVariants} />
+          ) : null}
+
+          {isLoggedIn && !isTaskBoardEnabled ? (
+            <ChatsNavSection itemVariants={itemVariants} />
+          ) : null}
         </motion.div>
 
         <SidebarUserActions />

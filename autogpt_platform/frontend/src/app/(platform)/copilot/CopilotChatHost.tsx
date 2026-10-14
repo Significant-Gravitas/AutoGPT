@@ -14,6 +14,9 @@ interface Props {
   /** Which layout floats its controls over the chat's top-left corner on
    *  small viewports. */
   floatingControls?: FloatingControls;
+  /** Hosted inside another surface (the board's card panel) that draws the
+   *  assignee and the chat's top-right controls in its own header. */
+  embedded?: boolean;
 }
 
 /**
@@ -37,6 +40,7 @@ function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
   floatingControls,
+  embedded,
   isStreamRuntime,
 }: Props & { isStreamRuntime: boolean }) {
   const {
@@ -130,6 +134,7 @@ function ChatHostBody({
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
           floatingControls={floatingControls}
+          embedded={embedded}
         />
       </div>
       <RateLimitGate

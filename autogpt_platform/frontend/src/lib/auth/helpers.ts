@@ -4,6 +4,8 @@ import { Key, storage } from "@/services/storage/local-storage";
 export const PROTECTED_PAGES = [
   "/auth/authorize",
   "/auth/integrations",
+  "/boards",
+  "/chat",
   "/copilot",
   "/home",
   "/monitor",

@@ -12,6 +12,10 @@ from fastapi import APIRouter, HTTPException, Query, Response, Security
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from backend.api.features.chat.server_turn import (
+    check_platform_rate_limit,
+    start_board_card,
+)
 from backend.api.features.experts import experts_db
 from backend.blocks.desktop._api import DesktopStream
 from backend.copilot import active_turns
@@ -22,6 +26,16 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.board import BACKLOG, DONE
+from backend.copilot.board_db import (
+    DEFAULT_BOARD_REF,
+    BoardExtras,
+    BoardNotFoundError,
+    get_board_session_extras,
+    resolve_board,
+    set_session_board,
+    top_position,
+)
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -30,6 +44,7 @@ from backend.copilot.computer import (
     open_desktop,
 )
 from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider, CopilotLLMModel
+from backend.copilot.constants import AUTOPILOT_NAME
 from backend.copilot.credential_selection import remember_selection
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
@@ -390,6 +405,13 @@ class CreateSessionRequest(BaseModel):
     mode keyed by the authenticated user and expert. It is invalid without
     ``expert_id``.
 
+    ``title`` and ``board_column`` create a task board card in one call, on
+    ``board_id`` (``"default"`` or a board id; omitted = the default board,
+    unknown = 404). ``board_id`` needs ``board_column`` (422). A card outside
+    Backlog and Done starts at once with its title as the first message; if
+    that start is refused the card is not kept. None of these combines with
+    ``builder_graph_id`` or ``expert_kickoff`` (422).
+
     Extra/unknown fields are rejected (422) to prevent silent mis-use.
     """
 
@@ -401,6 +423,9 @@ class CreateSessionRequest(BaseModel):
     llm_credential_id: str | None = Field(default=None, max_length=128)
     expert_id: str | None = Field(default=None, max_length=128)
     expert_kickoff: bool = False
+    title: str | None = Field(default=None, max_length=500)
+    board_column: str | None = Field(default=None, max_length=64)
+    board_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
 class CreateSessionResponse(BaseModel):
@@ -434,6 +459,7 @@ class SessionDetailResponse(BaseModel):
     created_at: str
     updated_at: str
     user_id: str | None
+    title: str | None = None
     chat_status: str = "idle"
     messages: list[dict]
     active_stream: ActiveStreamInfo | None = None  # Present if stream is still active
@@ -443,6 +469,8 @@ class SessionDetailResponse(BaseModel):
     total_completion_tokens: int = 0
     metadata: ChatSessionMetadata = ChatSessionMetadata()
     expert_id: str | None = None
+    # None = the default board.
+    board_id: str | None = None
 
 
 class SessionSummaryResponse(BaseModel):
@@ -457,6 +485,16 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    # None = the default board.
+    board_id: str | None = None
+    board_column: str | None = None
+    board_position: float | None = None
+    started: bool = False
+    has_messages: bool = False
+    needs_you: bool = False
+    last_line: str | None = None
+    file_count: int = 0
+    reassigned_to_session_id: str | None = None
 
 
 class ListSessionsResponse(BaseModel):
@@ -493,6 +531,108 @@ class UpdateSessionPinnedRequest(BaseModel):
     is_pinned: bool
 
 
+async def session_summaries(
+    user_id: str,
+    sessions: list[ChatSessionInfo],
+    extras: dict[str, BoardExtras] | None,
+) -> list[SessionSummaryResponse]:
+    """Summaries of *sessions*. With *extras* they carry the board's card
+    facts, and a reassigned card's last line says who took it over."""
+    processing = await processing_session_ids([s.session_id for s in sessions])
+    expert_names = (
+        await _reassigned_expert_names(user_id, sessions) if extras is not None else {}
+    )
+    return [
+        _session_summary(
+            session,
+            is_processing=session.session_id in processing,
+            extras=None if extras is None else extras.get(session.session_id),
+            expert_names=expert_names,
+        )
+        for session in sessions
+    ]
+
+
+async def _reassigned_expert_names(
+    user_id: str, sessions: list[ChatSessionInfo]
+) -> dict[str, str]:
+    if not any(
+        s.metadata.reassigned_to_session_id and s.metadata.reassigned_to_expert_id
+        for s in sessions
+    ):
+        return {}
+    experts = await experts_db.list_experts(user_id, with_metrics=False)
+    return {expert.id: expert.name for expert in experts}
+
+
+def _board_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="Project not found")
+
+
+def _session_summary(
+    session: ChatSessionInfo,
+    *,
+    is_processing: bool,
+    extras: BoardExtras | None,
+    expert_names: dict[str, str],
+) -> SessionSummaryResponse:
+    last_line = extras.last_line if extras else None
+    if extras is not None and session.metadata.reassigned_to_session_id:
+        expert_id = session.metadata.reassigned_to_expert_id
+        name = AUTOPILOT_NAME if expert_id is None else expert_names.get(expert_id)
+        # An expert fired since then has no name to show.
+        last_line = f"Reassigned to {name}" if name else "Reassigned"
+    extras = extras or BoardExtras()
+    return SessionSummaryResponse(
+        id=session.session_id,
+        created_at=session.started_at.isoformat(),
+        updated_at=session.updated_at.isoformat(),
+        title=session.title,
+        chat_status=session.chat_status,
+        is_processing=is_processing,
+        source_platform=session.metadata.source_platform,
+        is_pinned=session.is_pinned,
+        expert_id=session.expert_id,
+        board_id=session.board_id,
+        board_column=extras.board_column,
+        board_position=extras.board_position,
+        started=extras.started,
+        has_messages=extras.has_messages,
+        needs_you=extras.needs_you,
+        last_line=last_line,
+        file_count=extras.file_count,
+        reassigned_to_session_id=session.metadata.reassigned_to_session_id,
+    )
+
+
+async def processing_session_ids(session_ids: list[str]) -> set[str]:
+    """The sessions among *session_ids* with a running turn, read from Redis.
+
+    Empty when Redis fails: a missing spinner beats a failed listing.
+    """
+    if not session_ids:
+        return set()
+    try:
+        redis = await get_redis_async()
+        pipe = redis.pipeline(transaction=False)
+        for session_id in session_ids:
+            # Use the canonical helper so the hash-tag braces match every
+            # other writer; building the key inline drops the braces and
+            # silently misses every running session on cluster mode.
+            pipe.hget(stream_registry.get_session_meta_key(session_id), "status")
+        statuses = await pipe.execute()
+    except Exception:
+        logger.warning(
+            "Failed to fetch processing status from Redis; defaulting to empty"
+        )
+        return set()
+    return {
+        session_id
+        for session_id, status in zip(session_ids, statuses)
+        if status == "running"
+    }
+
+
 # ========== Routes ==========
 
 
@@ -513,6 +653,10 @@ async def list_sessions(
             "strict recency when adopting the latest expert thread."
         ),
     ),
+    include_board: bool = Query(
+        default=False,
+        description="Add each session's task board facts.",
+    ),
 ) -> ListSessionsResponse:
     """
     List chat sessions for the authenticated user.
@@ -526,6 +670,7 @@ async def list_sessions(
         offset: Number of sessions to skip for pagination.
         expert_id: Restrict the listing to sessions scoped to this expert.
         pinned_first: Whether pinned sessions precede strict recency ordering.
+        include_board: Whether to add each session's task board facts.
 
     Returns:
         ListSessionsResponse: List of session summaries and total count.
@@ -539,46 +684,22 @@ async def list_sessions(
         pinned_first=pinned_first,
     )
 
-    # Batch-check Redis for active stream status on each session
-    processing_set: set[str] = set()
-    if sessions:
+    extras: dict[str, BoardExtras] | None = None
+    if include_board:
         try:
-            redis = await get_redis_async()
-            pipe = redis.pipeline(transaction=False)
-            for session in sessions:
-                # Use the canonical helper so the hash-tag braces match every
-                # other writer; building the key inline drops the braces and
-                # silently misses every running session on cluster mode.
-                pipe.hget(
-                    stream_registry.get_session_meta_key(session.session_id),
-                    "status",
-                )
-            statuses = await pipe.execute()
-            processing_set = {
-                session.session_id
-                for session, st in zip(sessions, statuses)
-                if st == "running"
-            }
-        except Exception:
-            logger.warning(
-                "Failed to fetch processing status from Redis; defaulting to empty"
+            extras = await get_board_session_extras(
+                user_id, [session.session_id for session in sessions]
             )
+        except Exception:
+            # Default card facts beat a failed listing.
+            logger.warning(
+                "Failed to fetch board facts for sessions; defaulting to empty",
+                exc_info=True,
+            )
+            extras = {}
 
     return ListSessionsResponse(
-        sessions=[
-            SessionSummaryResponse(
-                id=session.session_id,
-                created_at=session.started_at.isoformat(),
-                updated_at=session.updated_at.isoformat(),
-                title=session.title,
-                chat_status=session.chat_status,
-                is_processing=session.session_id in processing_set,
-                source_platform=session.metadata.source_platform,
-                is_pinned=session.is_pinned,
-                expert_id=session.expert_id,
-            )
-            for session in sessions
-        ],
+        sessions=await session_summaries(user_id, sessions, extras),
         total=total_count,
     )
 
@@ -800,11 +921,37 @@ async def create_session(
     expert_id = request.expert_id if request else None
     expert_kickoff = request.expert_kickoff if request else False
 
+    title = (request.title or "").strip() if request else ""
+    board_column = request.board_column if request else None
+    board_ref = request.board_id if request else None
+
+    if board_ref is not None and board_column is None:
+        raise HTTPException(status_code=422, detail="board_id requires board_column")
+
     if expert_kickoff and expert_id is None:
         raise HTTPException(
             status_code=422,
             detail="expert_kickoff requires expert_id",
         )
+
+    # Both modes may hand back an existing session; a card's title and place
+    # must not land on it.
+    if (title or board_column is not None) and (builder_graph_id or expert_kickoff):
+        raise HTTPException(
+            status_code=422,
+            detail="title and board_column cannot be combined with "
+            "builder_graph_id or expert_kickoff",
+        )
+
+    board_id: str | None = None
+    if board_column is not None:
+        try:
+            board = await resolve_board(user_id, board_ref or DEFAULT_BOARD_REF)
+        except BoardNotFoundError as e:
+            raise _board_not_found() from e
+        if board_column not in {column.key for column in board.columns}:
+            raise HTTPException(status_code=422, detail="Unknown board column")
+        board_id = None if board.is_default else board.id
 
     # The builder branch below ignores expert_id, so accepting both would
     # validate the expert and then silently drop the scoping. Reject upfront.
@@ -823,8 +970,13 @@ async def create_session(
         user_id, request
     )
 
+    # A card outside Backlog and Done starts as soon as it exists.
+    starts = board_column not in (None, BACKLOG, DONE) and bool(title)
+
     if llm_auth_provider == "platform":
         await enforce_payment_paywall(user_id)
+        if starts:
+            await check_platform_rate_limit(user_id)
 
     logger.info(
         f"Creating session with user_id: "
@@ -875,6 +1027,43 @@ async def create_session(
                 status_code=503,
                 detail="Your expert workspace is still being set up. Try again shortly.",
             ) from e
+
+    if board_column is not None:
+        try:
+            if title:
+                await update_session_title(session.session_id, user_id, title)
+            try:
+                placed = await set_session_board(
+                    session.session_id,
+                    user_id,
+                    column=board_column,
+                    position=await top_position(user_id, board_id, board_column),
+                    board_id=board_id,
+                )
+            except BoardNotFoundError:
+                placed = False
+            if not placed:
+                # The board was deleted after the check above.
+                raise _board_not_found()
+            if starts:
+                await start_board_card(
+                    session,
+                    user_id,
+                    org_id=ctx.org_id,
+                    team_id=ctx.team_id,
+                    message=title,
+                )
+        except Exception:
+            # A refused start (paywall, limits) must not leave a half-made card.
+            try:
+                await delete_chat_session(session.session_id, user_id)
+            except Exception:
+                logger.exception(
+                    f"Failed to delete half-made board session {session.session_id}"
+                )
+            raise
+    elif title:
+        await update_session_title(session.session_id, user_id, title)
 
     return CreateSessionResponse(
         id=session.session_id,
@@ -1307,6 +1496,7 @@ async def get_session(
         created_at=page.session.started_at.isoformat(),
         updated_at=page.session.updated_at.isoformat(),
         user_id=page.session.user_id or None,
+        title=page.session.title,
         chat_status=page.session.chat_status,
         messages=messages,
         active_stream=active_stream_info,
@@ -1316,6 +1506,7 @@ async def get_session(
         total_completion_tokens=total_completion,
         metadata=page.session.metadata,
         expert_id=page.session.expert_id,
+        board_id=page.session.board_id,
     )
 
 
@@ -1907,7 +2098,7 @@ async def stream_chat_post(
     # Subscription-backed Codex turns do not spend platform model dollars, so
     # neither the platform paywall nor its USD usage windows apply. Admission,
     # pending-message frequency, and concurrent-turn caps remain enforced by
-    # the shared scheduling path below.
+    # the shared scheduling path below. Twin: server_turn.check_platform_rate_limit.
     if user_id and is_platform_route:
         try:
             daily_limit, weekly_limit, _ = await get_global_rate_limits(

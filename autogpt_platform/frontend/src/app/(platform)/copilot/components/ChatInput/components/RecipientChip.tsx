@@ -27,6 +27,12 @@ interface Props {
    * link — showing the Otto fallback there would name the wrong
    * recipient. */
   isLoading?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onCloseAutoFocus?: (event: Event) => void;
+  className?: string;
+  ariaLabel?: string;
+  hideName?: boolean;
 }
 
 const CHIP_CLASSNAME =
@@ -37,13 +43,19 @@ export function RecipientChip({
   options,
   onSelect,
   isLoading,
+  open,
+  onOpenChange,
+  onCloseAutoFocus,
+  className,
+  ariaLabel,
+  hideName,
 }: Props) {
   if (isLoading) {
     return (
       <div
         role="status"
         aria-label="Loading recipient"
-        className={CHIP_CLASSNAME}
+        className={cn(CHIP_CLASSNAME, className)}
       >
         <Skeleton className="h-6 w-6 rounded-full" />
         <Skeleton className="h-3 w-16" />
@@ -52,25 +64,28 @@ export function RecipientChip({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label={`Sending to ${recipient.name} — change recipient`}
+          aria-label={
+            ariaLabel ?? `Sending to ${recipient.name} — change recipient`
+          }
           className={cn(
             CHIP_CLASSNAME,
             "group transition-colors hover:bg-neutral-50",
+            className,
           )}
         >
           <RecipientAvatar option={recipient} />
-          {recipient.name}
+          {!hideName && recipient.name}
           <Icon
             icon={ArrowDown01Icon}
             className="size-3.5 text-zinc-600 transition-transform duration-150 group-data-[state=open]:rotate-180"
           />
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="start" onCloseAutoFocus={onCloseAutoFocus}>
         {options.map((option) => (
           <DropdownMenuItem
             key={option.id ?? "autopilot"}

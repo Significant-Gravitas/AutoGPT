@@ -1,14 +1,20 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { useSidebar } from "@/components/ui/sidebar";
 import { matchesRoute } from "@/lib/utils";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 export function useArtifactsPanelNavCollapse() {
   const pathname = usePathname();
   const { open, setOpen } = useSidebar();
+  // With the task board on, /home is the board: its card panel opens
+  // artifacts over the board, so the nav stays as it is.
+  const isTaskBoardEnabled = Boolean(useGetFlag(Flag.TASK_BOARD));
   const isCopilotRoute =
-    matchesRoute(pathname, "/home") || matchesRoute(pathname, "/copilot");
+    (matchesRoute(pathname, "/home") && !isTaskBoardEnabled) ||
+    matchesRoute(pathname, "/chat") ||
+    matchesRoute(pathname, "/copilot");
   // The docked right panel: an open artifact preview or the artifacts tab.
   // The floating files card doesn't count — it overlays the chat column
   // without narrowing it. Leaving /copilot counts as closing, so the nav
