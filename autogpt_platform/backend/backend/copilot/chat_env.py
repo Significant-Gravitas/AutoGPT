@@ -235,6 +235,25 @@ def check_chat_environment(
     return warnings
 
 
+def parse_platform_route(value: object) -> str | None:
+    """The platform route *value* names, ignoring surrounding whitespace,
+    else None. The startup check and ``ChatConfig`` both read the selector
+    through this, so the route the check accepts is the route that runs."""
+    return _choice(value, PLATFORM_ROUTES)
+
+
+def parse_local_adapter(value: object) -> str | None:
+    """The local adapter *value* names, read like the route."""
+    return _choice(value, LOCAL_ADAPTERS)
+
+
+def _choice(value: object, choices: tuple[str, ...]) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if text in choices else None
+
+
 def chat_environment_problems(
     environ: Mapping[str, str],
     dotenv_paths: Iterable[Path] = (),
@@ -255,15 +274,16 @@ def chat_environment_problems(
         and name not in CHAT_SETTINGS_READ_ELSEWHERE
     ]
 
-    route = settings.get("CHAT_PLATFORM_ROUTE", "").strip()
-    if not route:
+    selector = settings.get("CHAT_PLATFORM_ROUTE", "")
+    if not selector.strip():
         problems.append(
             "CHAT_PLATFORM_ROUTE is not set: choose "
             + ", ".join(PLATFORM_ROUTES)
             + " (disabled runs without the platform's own chat model)"
         )
         return problems, warnings
-    if route not in PLATFORM_ROUTES:
+    route = parse_platform_route(selector)
+    if route is None:
         problems.append(
             "CHAT_PLATFORM_ROUTE is not a route: choose " + ", ".join(PLATFORM_ROUTES)
         )
@@ -328,10 +348,10 @@ def _route_problems(route: str, settings: Mapping[str, str]) -> list[str]:
 
 def _local_shape(settings: Mapping[str, str]) -> list[str]:
     problems: list[str] = []
-    adapter = settings.get("CHAT_LOCAL_ADAPTER", "").strip()
-    if not adapter:
+    adapter = settings.get("CHAT_LOCAL_ADAPTER", "")
+    if not adapter.strip():
         problems.append("CHAT_PLATFORM_ROUTE=local needs CHAT_LOCAL_ADAPTER")
-    elif adapter not in LOCAL_ADAPTERS:
+    elif parse_local_adapter(adapter) is None:
         problems.append(
             "CHAT_LOCAL_ADAPTER is not an adapter: choose "
             + " or ".join(LOCAL_ADAPTERS)

@@ -3,6 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
+from .chat_env import chat_environment_problems
 from .config import ChatConfig
 
 # Env vars ChatConfig or its validators read, cleared so they don't override the
@@ -59,6 +60,46 @@ class TestPlatformRoute:
         """The startup check reports it; construction never fails on it."""
         monkeypatch.setenv("CHAT_PLATFORM_ROUTE", "open_router")
         assert ChatConfig().platform_route == "disabled"
+
+    @pytest.mark.parametrize(
+        "selector",
+        ["openrouter", " openrouter ", "openrouter\n", "\tdisabled", "OpenRouter"],
+    )
+    def test_the_startup_check_and_the_settings_read_the_route_alike(
+        self, monkeypatch, selector
+    ):
+        """The route the check accepts is the route that runs; one it refuses
+        never runs."""
+        env = {"CHAT_PLATFORM_ROUTE": selector, "CHAT_OPENROUTER_API_KEY": "sk-or"}
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        problems, _ = chat_environment_problems(env)
+        accepted = not any(p.startswith("CHAT_PLATFORM_ROUTE ") for p in problems)
+        assert accepted == (selector.strip() in ("openrouter", "disabled"))
+        expected = selector.strip() if accepted else "disabled"
+        assert ChatConfig().platform_route == expected
+
+    @pytest.mark.parametrize(
+        "selector", ["openai_chat", " anthropic_passthrough\n", "Ollama"]
+    )
+    def test_the_startup_check_and_the_settings_read_the_adapter_alike(
+        self, monkeypatch, selector
+    ):
+        env = {
+            "CHAT_PLATFORM_ROUTE": "local",
+            "CHAT_LOCAL_BASE_URL": "http://127.0.0.1:8080",
+            "CHAT_LOCAL_ADAPTER": selector,
+            "CHAT_LOCAL_CONTEXT_TOKENS": "65536",
+            "CHAT_STANDARD_MODEL": "qwen",
+            "CHAT_ADVANCED_MODEL": "qwen",
+        }
+        for name, value in env.items():
+            monkeypatch.setenv(name, value)
+        problems, _ = chat_environment_problems(env)
+        accepted = problems == []
+        assert accepted == (selector != "Ollama")
+        expected = selector.strip() if accepted else None
+        assert ChatConfig().local_adapter == expected
 
     def test_an_unknown_adapter_and_unreadable_window_read_as_unset(self, monkeypatch):
         monkeypatch.setenv("CHAT_LOCAL_ADAPTER", "ollama")

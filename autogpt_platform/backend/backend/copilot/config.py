@@ -9,11 +9,12 @@ here, and the startup check is the one place that reports it.
 
 import logging
 import os
-from typing import Any, Literal, get_args
+from typing import Any, Literal
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.copilot.chat_env import parse_local_adapter, parse_platform_route
 from backend.copilot.route_table import (
     DEFAULT_ADVANCED_MODEL,
     DEFAULT_STANDARD_MODEL,
@@ -422,12 +423,12 @@ class ChatConfig(BaseSettings):
     @field_validator("platform_route", mode="before")
     @classmethod
     def _unknown_route_reads_as_disabled(cls, v: Any) -> Any:
-        return v if v in get_args(PlatformRoute) else "disabled"
+        return parse_platform_route(v) or "disabled"
 
     @field_validator("local_adapter", mode="before")
     @classmethod
     def _unknown_adapter_reads_as_unset(cls, v: Any) -> Any:
-        return v if v in get_args(LocalAdapter) else None
+        return parse_local_adapter(v)
 
     @field_validator("local_context_tokens", mode="before")
     @classmethod
