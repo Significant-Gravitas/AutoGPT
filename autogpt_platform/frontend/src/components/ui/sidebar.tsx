@@ -217,13 +217,20 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
-            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+            className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [&>button]:hidden"
             style={
               {
                 "--sidebar-width": SIDEBAR_WIDTH_MOBILE,
               } as React.CSSProperties
             }
             side={side}
+            // Radix focuses the first control on open, which is the search
+            // button: it shows its focus ring and tooltip. Focus the panel
+            // itself so the focus trap still holds.
+            onOpenAutoFocus={(event) => {
+              event.preventDefault();
+              (event.currentTarget as HTMLElement).focus();
+            }}
           >
             <SheetHeader className="sr-only">
               <SheetTitle>Sidebar</SheetTitle>

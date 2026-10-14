@@ -25,6 +25,7 @@ import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
+import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
 import { VoiceModeBar } from "../../voice/components/VoiceModeBar";
@@ -356,7 +357,11 @@ export const ChatContainer = ({
           ) : sessionId ? (
             <div className="relative flex h-full min-h-0 w-full flex-col bg-white">
               <div className="absolute right-0 top-0 z-30">
-                <ContextPanelToggle sessionId={sessionId} expert={chatExpert} />
+                <ContextPanelToggle
+                  sessionId={sessionId}
+                  expert={chatExpert}
+                  hideIntegrationsOnMobile={floatingControls === "newLayout"}
+                />
               </div>
               <NewChatOnboarding
                 expertId={expertIdentity?.id ?? null}
@@ -423,6 +428,9 @@ export const ChatContainer = ({
                     </div>
                   )}
                   <SharedChatNotice sessionId={sessionId} />
+                  {floatingControls === "newLayout" && (
+                    <ComposerPanelTab expert={chatExpert} />
+                  )}
                   {isTaskBarEnabled && (
                     <div className="relative z-10">
                       <TaskProgressBar

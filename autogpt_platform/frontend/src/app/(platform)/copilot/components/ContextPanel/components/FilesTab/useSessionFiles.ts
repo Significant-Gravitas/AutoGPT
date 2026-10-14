@@ -6,6 +6,7 @@ import {
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { ListFilesResponse } from "@/app/api/__generated__/models/listFilesResponse";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 import { useMemo } from "react";
 import { useCopilotStreamStore } from "../../../../copilotStreamStore";
 import { getMessageArtifacts } from "../../../ChatMessagesContainer/helpers";
@@ -49,10 +50,12 @@ export function useSessionFiles(sessionId: string | null) {
   // so without memoising, scanning every message part (and compiling a
   // RegExp per matched workspace URI) would run at token cadence.
   const { uploaded, generated, deliverables, files } = useMemo(() => {
-    const files: SessionFile[] = (query.data?.files ?? []).map((item) => ({
-      item,
-      messageID: fileIdToMessageId.get(item.id) ?? null,
-    }));
+    const files: SessionFile[] = (query.data?.files ?? [])
+      .filter((item) => !isHiddenWorkspaceFile(item))
+      .map((item) => ({
+        item,
+        messageID: fileIdToMessageId.get(item.id) ?? null,
+      }));
 
     return {
       files,
