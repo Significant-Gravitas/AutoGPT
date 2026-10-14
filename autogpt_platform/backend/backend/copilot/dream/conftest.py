@@ -22,6 +22,8 @@ with, and a batch's status reads ended, unless a test sets its own.
 from __future__ import annotations
 
 import asyncio
+import json
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -29,8 +31,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from prisma.enums import DreamPassStatus
 
 from backend.data.dream_pass_models import (
+    DREAM_TEXT_FIELDS,
+    ERASED_TEXT,
     OPEN_STATUSES,
     DreamPassDraft,
     DreamPassOperations,
@@ -211,7 +216,9 @@ class FakeDreamDb:
     stop bumps the cancel generation, ``clear`` empties its columns, and a
     terminal row, another user's row (for an update naming the owner) or a
     row written after the update's instant is not written; an update marked
-    ``closed_row`` writes a terminal row only. ``writes`` holds
+    ``closed_row`` writes a terminal row only. An update that closes a row
+    a hard forget marked (``erased_at``) blanks its text, as
+    ``erase_dream_passes`` does to a closed one. ``writes`` holds
     every draft and update that was written, in order, as sent. ``fail``
     makes every call raise, as an unreachable database would.
     """
@@ -254,6 +261,11 @@ class FakeDreamDb:
         row.update({column: None for column in update.clear})
         row["cancel_generation"] += int(update.bump_cancel_generation)
         row["updated_at"] = datetime.now(timezone.utc)
+        closes = update.closed_row or (
+            update.status is not None and update.status not in OPEN_STATUSES
+        )
+        if row.get("erased_at") is not None and closes:
+            _blank_row(row, errored=update.status == DreamPassStatus.ERRORED)
         return True
 
     async def get_dream_pass(self, pass_id: str) -> DreamPassRecord | None:
@@ -277,40 +289,32 @@ class FakeDreamDb:
             if row["scope_key"] == scope_key and row["status"] in OPEN_STATUSES
         ][:limit]
 
-    async def list_dream_passes(
-        self,
-        user_id: str,
-        limit: int = 20,
-        open_only: bool = False,
-        scope_key: str | None = None,
-    ) -> list[DreamPassRecord]:
-        """The user's rows, of every scope or only *scope_key*'s, the last
-        inserted first, at most *limit*."""
+    async def erase_dream_passes(
+        self, user_id: str, scope_key: str, *, reached: list[str], named: list[str]
+    ) -> list[str]:
+        """Mark the user's passes of the scope a hard forget may have reached
+        (named, naming a reached uuid, open, or closed with a cleanup
+        pending), blank those closed, keep only the code of every ERRORED
+        pass's error; the ids marked. ``data/dream_pass.ERASE_SQL``."""
         self._raise_if_down()
-        return [
-            self.record(pass_id)
-            for pass_id, row in reversed(self.rows.items())
-            if row["user_id"] == user_id
-            and scope_key in (None, row["scope_key"])
-            and (not open_only or row["status"] in OPEN_STATUSES)
-        ][:limit]
-
-    async def blank_dream_pass_text(
-        self,
-        pass_id: str,
-        user_id: str,
-        phase_outputs: DreamPhaseOutputs,
-        operations: DreamPassOperations,
-    ) -> bool:
-        """Replace a closed row's JSON columns whole, as its owner's hard
-        forget does; False for an open row or another user's."""
-        self._raise_if_down()
-        row = self.rows.get(pass_id)
-        if row is None or row["user_id"] != user_id or row["status"] in OPEN_STATUSES:
-            return False
-        row["phase_outputs"] = phase_outputs.model_dump(mode="json")
-        row["operations"] = operations.model_dump(mode="json")
-        return True
+        marked: list[str] = []
+        for pass_id, row in self.rows.items():
+            if (row["user_id"], row["scope_key"]) != (user_id, scope_key):
+                continue
+            text = json.dumps(_json_columns(row))
+            if (
+                pass_id in named
+                or row["status"] in OPEN_STATUSES
+                or row.get("cleanup_pending_at") is not None
+                or any(uuid in text for uuid in reached)
+            ):
+                row["erased_at"] = row.get("erased_at") or datetime.now(timezone.utc)
+                marked.append(pass_id)
+                if row["status"] not in OPEN_STATUSES:
+                    _blank_row(row, errored=False)
+            if row["status"] == DreamPassStatus.ERRORED:
+                row["error"] = blank_error(row.get("error"))
+        return marked
 
     async def list_expired_dream_passes(
         self,
@@ -442,6 +446,48 @@ def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
             or row["updated_at"] <= update.not_updated_since
         )
     )
+
+
+def _blank_row(row: dict[str, Any], *, errored: bool) -> None:
+    """Blank the dream's text in *row*'s JSON columns, and its error when
+    *errored*."""
+    row["phase_outputs"], row["operations"] = blank_text(_json_columns(row))
+    if errored:
+        row["error"] = blank_error(row.get("error"))
+
+
+def _json_columns(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """*row*'s phase outputs and operations as the database keeps them."""
+    return [
+        DreamPhaseOutputs(**row["phase_outputs"]).model_dump(mode="json"),
+        DreamPassOperations(**row["operations"]).model_dump(mode="json"),
+    ]
+
+
+def blank_text(value: Any) -> Any:
+    """*value* with every string under one of ``DREAM_TEXT_FIELDS`` reading
+    ``ERASED_TEXT``, as the migration's ``dream_text_blanked`` does."""
+    if isinstance(value, dict):
+        return {
+            key: (
+                ERASED_TEXT
+                if key in DREAM_TEXT_FIELDS and isinstance(item, str)
+                else blank_text(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [blank_text(item) for item in value]
+    return value
+
+
+def blank_error(error: str | None) -> str | None:
+    """*error* with whatever follows its code blanked, as the migration's
+    ``dream_error_blanked`` does."""
+    if error is None or re.fullmatch(r"[a-z_]+: [A-Za-z0-9_]+", error):
+        return error
+    phase = re.match(r"[a-z_]+: ", error)
+    return (phase.group(0) if phase else "") + ERASED_TEXT
 
 
 def _due(row: dict[str, Any], due_before: datetime) -> bool:

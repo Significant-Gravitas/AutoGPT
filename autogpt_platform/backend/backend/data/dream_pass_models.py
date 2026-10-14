@@ -63,6 +63,18 @@ CLOSED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset(
 # pass's lock with, and the expiry that says whether the pass may still run.
 MARKED_ROW_CLEARS: frozenset[ClearableColumn] = frozenset({"input_bundle"})
 
+# The fields holding the dream's own words in a pass's phase outputs and
+# operations, at any depth, and what a hard forget leaves in each and in a
+# narrative: the placeholder a forgotten fact reads
+# (``copilot/graphiti/recall.FORGOTTEN_FACT``).
+DREAM_TEXT_FIELDS: tuple[str, ...] = (
+    "content",
+    "rationale",
+    "reason",
+    "summary_for_user",
+)
+ERASED_TEXT = "[forgotten]"
+
 
 class DreamPhaseOutputs(BaseModel):
     """Each phase's validated output, as the next phase and apply read it."""
@@ -242,6 +254,8 @@ class DreamPassRecord(BaseModel):
     window_start: datetime | None
     window_end: datetime | None
     error: str | None
+    # Set by a hard forget that may have reached the pass, never cleared.
+    erased_at: datetime | None = None
     created_at: datetime
     started_at: datetime | None
     submitted_at: datetime | None
@@ -281,6 +295,7 @@ class DreamPassRecord(BaseModel):
             window_start=row.windowStart,
             window_end=row.windowEnd,
             error=row.error,
+            erased_at=row.erasedAt,
             created_at=row.createdAt,
             started_at=row.startedAt,
             submitted_at=row.submittedAt,

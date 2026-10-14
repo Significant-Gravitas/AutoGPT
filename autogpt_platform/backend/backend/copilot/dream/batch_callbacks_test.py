@@ -861,7 +861,7 @@ class TestErrorPaths:
                 ],
             )
         mark_errored.assert_awaited_once()
-        assert "content moderation" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: provider_error"
         # The errored phase itself is not billed.
         record_cost.assert_not_awaited()
 
@@ -892,7 +892,7 @@ class TestErrorPaths:
             )
         submit_phase.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: schema_mismatch"
 
     @pytest.mark.asyncio
     async def test_a_row_that_did_not_parse_is_still_billed(self, fake_redis):
@@ -913,7 +913,7 @@ class TestErrorPaths:
                 [_row(custom_id="p1:consolidate", content="this is not JSON at all")],
             )
         submit_phase.assert_not_awaited()
-        assert "invalid output shape" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: schema_mismatch"
         persist.assert_awaited_once()
         row = persist.await_args.kwargs
         assert (row["prompt_tokens"], row["completion_tokens"]) == (10, 20)
@@ -1437,7 +1437,7 @@ class TestDreamPassRecord:
 
         assert fake_dream_db.statuses("p1") == [DreamPassStatus.ERRORED]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "recombine: provider down"
+        assert row["error"] == "recombine: provider_error"
         # The errored phase used nothing billable; consolidate did.
         assert [p.phase for p in row["usage"].phases] == ["consolidate"]
         assert row["completed_at"] is not None

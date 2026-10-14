@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from .memory_model import MemoryForgetFailure, MemoryForgetFailureCode
+from .memory_model import MemoryForgetFailureCode
 from .recall_forget_fake import CLEANUP, NOTHING_DERIVED, SCOPE, SOFT, forget, scripted
 
 _DREAM_WRITE = "dream_p1_consolidate_001"
@@ -84,12 +84,11 @@ async def test_failing_to_blank_them_is_a_cleanup_error_on_each_fact(
 
 
 @pytest.mark.asyncio
-async def test_a_pass_still_running_is_a_cleanup_error_on_each_fact(
-    dream_copies: AsyncMock,
-) -> None:
+async def test_a_pass_still_running_is_no_failure(dream_copies: AsyncMock) -> None:
+    """The pass is marked, and blanked in the statement that closes it
+    (``dream/forget_copies.py``): nothing is left for the user to repeat."""
     dream_copies.return_value = ["p-running"]
 
     result = await forget(_hard_forget_driver(), ["u1"], hard=True)
 
-    assert result.deleted == ["u1"]
-    assert result.failures == [MemoryForgetFailure.dream_running("u1")]
+    assert (result.deleted, result.failures) == (["u1"], [])

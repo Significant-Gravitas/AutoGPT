@@ -21994,6 +21994,13 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Error"
           },
+          "erased_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Erased At"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",

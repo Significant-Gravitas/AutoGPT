@@ -159,22 +159,6 @@ class MemoryForgetFailure(BaseModel):
             ),
         )
 
-    @classmethod
-    def dream_running(cls, uuid: str) -> "MemoryForgetFailure":
-        """The fact is permanently deleted, but a dream pass that may have
-        read it is still running, so the dream's copies of what it read are
-        not blanked yet (``dream/forget_copies.py``); forgetting it again once
-        the pass has finished blanks them."""
-        return cls(
-            uuid=uuid,
-            code=MemoryForgetFailureCode.CLEANUP_ERROR,
-            reason=(
-                "Deleted and no longer recalled, but a memory consolidation "
-                "that may have read it is still running. Forget it again once "
-                "it has finished."
-            ),
-        )
-
 
 def _describe(exc: Exception) -> str:
     detail = exc.args[0] if exc.args else type(exc).__name__

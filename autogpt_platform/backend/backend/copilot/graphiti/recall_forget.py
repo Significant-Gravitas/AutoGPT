@@ -91,9 +91,9 @@ async def retract(
     (``recall_orphans.purge``), so forgetting again after any failure
     finishes the job, a purged fact's cascade included (below). Last, out of
     the lock, it blanks the dream's copies of that text in Postgres
-    (``dream/forget_copies.py``): a failure there, or a dream pass of the
-    scope still running, which may have read the fact, is a
-    ``cleanup_error`` too. A failed
+    (``dream/forget_copies.py``), marking each dream pass of the scope it may
+    have reached so that one still running is blanked as it ends: a failure
+    there is a ``cleanup_error`` too. A failed
     step after the edge write is a ``cleanup_error`` on each edge it
     concerned, one failure per uuid however many steps failed; recall hides
     the fact and its text regardless.
@@ -128,8 +128,8 @@ async def _blank_copies(
     scope: MemoryScope, requested: list[str], result: ForgetResult
 ) -> None:
     """Blank the dream's copies in Postgres of what a hard forget reached
-    (``dream/forget_copies.py``); a failure, or a pass of the scope still
-    running, is a ``cleanup_error`` on each uuid forgotten."""
+    (``dream/forget_copies.py``); a failure is a ``cleanup_error`` on each
+    uuid forgotten."""
     unreached = {f.uuid for f in result.failures if f.code in _NOTHING_DONE}
     forgotten = [uuid for uuid in requested if uuid not in unreached]
     if not forgotten:
@@ -142,7 +142,7 @@ async def _blank_copies(
         *result.tombstoned_episodes,
     }
     try:
-        running = await blank_dream_copies(
+        await blank_dream_copies(
             scope, reached=reached, dream_writes=result.dream_writes
         )
     except Exception as exc:
@@ -154,11 +154,6 @@ async def _blank_copies(
         result.failures.extend(
             MemoryForgetFailure.cleanup_error(uuid, exc) for uuid in forgotten
         )
-    else:
-        if running:
-            result.failures.extend(
-                MemoryForgetFailure.dream_running(uuid) for uuid in forgotten
-            )
     result.failures = _first_per_uuid(result.failures)
 
 

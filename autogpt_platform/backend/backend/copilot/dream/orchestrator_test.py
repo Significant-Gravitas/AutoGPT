@@ -1152,7 +1152,11 @@ async def test_a_phase_whose_answer_did_not_parse_is_still_billed(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_complete",
-        AsyncMock(side_effect=InferenceError("LLM JSON did not match", billed)),
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM JSON did not match", billed, code="schema_mismatch"
+            )
+        ),
     )
     mocker.patch.object(
         orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
@@ -1166,8 +1170,7 @@ async def test_a_phase_whose_answer_did_not_parse_is_still_billed(mocker):
 
     result = await orchestrator_mod.execute_dream_pass("u", expert_id="expert-1")
 
-    assert result.error is not None
-    assert result.error.startswith("consolidate: LLM JSON did not match")
+    assert result.error == "consolidate: schema_mismatch", "a code, never the answer"
     apply_mock.assert_not_awaited()
     persist.assert_awaited_once()
     row = persist.await_args.kwargs
@@ -1198,7 +1201,11 @@ async def test_a_phase_that_got_no_answer_records_nothing(mocker):
     mocker.patch.object(
         orchestrator_mod,
         "structured_complete",
-        AsyncMock(side_effect=InferenceError("LLM call failed: TimeoutError: ")),
+        AsyncMock(
+            side_effect=InferenceError(
+                "LLM call failed: TimeoutError: ", code="call_failed"
+            )
+        ),
     )
     mocker.patch.object(
         orchestrator_mod, "record_phase_cost", billing_mod.record_phase_cost
@@ -1209,8 +1216,7 @@ async def test_a_phase_that_got_no_answer_records_nothing(mocker):
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error is not None
-    assert result.error.startswith("consolidate: LLM call failed")
+    assert result.error == "consolidate: call_failed"
     persist.assert_not_awaited()
     assert result.usage is not None and result.usage.phases == []
 
@@ -2265,7 +2271,7 @@ async def test_a_phase_failure_closes_the_row_errored_at_that_phase(
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    assert result.error == "recombine: provider down"
+    assert result.error == "recombine: inference_failed"
     apply_mock.assert_not_awaited()
     assert fake_dream_db.statuses(result.pass_id) == [
         DreamPassStatus.RUNNING,

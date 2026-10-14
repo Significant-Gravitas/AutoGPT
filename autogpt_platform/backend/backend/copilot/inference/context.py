@@ -130,8 +130,18 @@ class InferenceError(RuntimeError):
     (empty content, unparseable JSON, a schema mismatch): those tokens were
     billed, so a caller keeping a cost ledger records them. ``None`` means no
     call completed and nothing was charged.
+
+    ``code`` names the failure without quoting the model, for a record that
+    outlives the call (a dream pass's error); the message may say more.
     """
 
-    def __init__(self, message: str, usage: InferenceUsage | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        usage: InferenceUsage | None = None,
+        *,
+        code: str = "inference_failed",
+    ) -> None:
         super().__init__(message)
         self.usage = usage
+        self.code = code

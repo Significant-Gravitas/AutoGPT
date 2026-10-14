@@ -22,6 +22,17 @@ statement against the row as it stands when the statement runs:
     it for a cleanup, whose end then clears the lease with the mark);
   * every other column takes the new value when the update gives one.
 
+A row a hard forget marked (``erasedAt``, ``copilot/dream/forget_copies.py``)
+has the dream's text blanked by the update that closes it, in the same
+statement, whichever way it closes: the pass's own end, a cancel, an expiry,
+the reaper's close, and again by the cleanup's end. Every string under one of
+``DREAM_TEXT_FIELDS`` in its phase outputs and operations, the update's own
+included, reads ``ERASED_TEXT`` (``dream_text_blanked``, a function of the
+migration that added the mark), and an ERRORED row's error keeps its code
+alone (``dream_error_blanked``). The mark itself is the forget's to write
+and nothing clears it, so a pass that was still running when it landed is
+blanked however late it ends.
+
 Nothing is written to a row that has reached a terminal status, nor to one
 that fails the update's own conditions: another user's row when it names the
 owner, a row written since the instant it names. The one exception is the
@@ -37,6 +48,8 @@ from pydantic import BaseModel
 from backend.copilot.dream.input_bundle import input_bundle_to_dict
 from backend.data.dream_pass_models import (
     CLOSED_STATUSES,
+    DREAM_TEXT_FIELDS,
+    ERASED_TEXT,
     OPEN_STATUSES,
     ClearableColumn,
     DreamPassUpdate,
@@ -63,7 +76,12 @@ UPDATE {schema_prefix}"DreamPass" SET
         AND "phase" <= $3::{schema_prefix}"DreamPassPhase"
         THEN $4::text ELSE "providerBatchId" END,
     "skipReason" = COALESCE($5::text, "skipReason"),
-    "error" = COALESCE($6::text, "error"),
+    "error" = CASE
+        WHEN "erasedAt" IS NOT NULL AND $24::boolean
+            AND $2::text = 'ERRORED'
+        THEN {schema_prefix}"dream_error_blanked"(
+            COALESCE($6::text, "error"), $26::text)
+        ELSE COALESCE($6::text, "error") END,
     "leaseToken" = CASE WHEN 'leaseToken' = ANY($22::text[]) THEN NULL
         ELSE COALESCE($7::text, "leaseToken") END,
     "leaseExpiresAt" = CASE WHEN 'leaseExpiresAt' = ANY($22::text[]) THEN NULL
@@ -76,9 +94,21 @@ UPDATE {schema_prefix}"DreamPass" SET
     "inputBundle" = CASE WHEN 'inputBundle' = ANY($22::text[]) THEN NULL
         ELSE COALESCE($14::jsonb, "inputBundle") END,
     "usage" = COALESCE($15::jsonb, "usage"),
-    "phaseOutputs" = CASE WHEN $16::jsonb IS NULL THEN "phaseOutputs"
+    "phaseOutputs" = CASE
+        WHEN "erasedAt" IS NOT NULL AND $24::boolean
+        THEN {schema_prefix}"dream_text_blanked"(
+            CASE WHEN $16::jsonb IS NULL THEN "phaseOutputs"
+            ELSE COALESCE("phaseOutputs", '{{}}'::jsonb) || $16::jsonb END,
+            $25::text[], $26::text)
+        WHEN $16::jsonb IS NULL THEN "phaseOutputs"
         ELSE COALESCE("phaseOutputs", '{{}}'::jsonb) || $16::jsonb END,
-    "operations" = CASE WHEN $17::jsonb IS NULL THEN "operations"
+    "operations" = CASE
+        WHEN "erasedAt" IS NOT NULL AND $24::boolean
+        THEN {schema_prefix}"dream_text_blanked"(
+            CASE WHEN $17::jsonb IS NULL THEN "operations"
+            ELSE COALESCE("operations", '{{}}'::jsonb) || $17::jsonb END,
+            $25::text[], $26::text)
+        WHEN $17::jsonb IS NULL THEN "operations"
         ELSE COALESCE("operations", '{{}}'::jsonb) || $17::jsonb END,
     "cancelGeneration" = "cancelGeneration"
         + CASE WHEN $19::boolean THEN 1 ELSE 0 END,
@@ -127,6 +157,9 @@ def transition_args(pass_id: str, update: DreamPassUpdate) -> list[Any]:
         update.not_updated_since,
         sorted(_CLEARABLE_COLUMNS[column] for column in update.clear),
         update.cleanup_pending_at,
+        update.closed_row or update.status in CLOSED_STATUSES,
+        list(DREAM_TEXT_FIELDS),
+        ERASED_TEXT,
     ]
 
 

@@ -14,19 +14,27 @@ JSON:
 
 Every failure is an ``InferenceError`` carrying the call's usage: the
 provider already billed those tokens, so a caller keeping a cost ledger
-still records them.
+still records them. Its message and code never quote the model's answer,
+which a dream pass's record would otherwise keep (``forget_copies.py``): a
+debug log shows the start of it.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.inference.context import InferenceError, InferenceUsage
 
+logger = logging.getLogger(__name__)
+
 T = TypeVar("T", bound=BaseModel)
+
+# How much of an answer that cannot be parsed a debug log shows.
+_EXCERPT_CHARS = 200
 
 
 def parse_structured_output(
@@ -39,15 +47,19 @@ def parse_structured_output(
     schema.
     """
     if not content:
-        raise InferenceError("LLM returned empty content", usage)
+        raise InferenceError("LLM returned empty content", usage, code="empty_content")
     try:
         return response_model.model_validate(parse_json_with_prose_fallback(content))
     except InferenceError as exc:
         exc.usage = usage
         raise
     except ValidationError as exc:
+        logger.debug("LLM JSON did not match %s: %s", response_model.__name__, exc)
         raise InferenceError(
-            f"LLM JSON did not match {response_model.__name__}: {exc}", usage
+            f"LLM JSON did not match {response_model.__name__} "
+            f"({exc.error_count()} errors)",
+            usage,
+            code="schema_mismatch",
         ) from exc
 
 
@@ -63,8 +75,7 @@ def parse_json_with_prose_fallback(content: str) -> object:
        "Looking at the inputs, I need to..." prose-prefix case.
 
     Raises ``InferenceError`` if neither layer recovers a parseable
-    document, surfacing the first 200 chars of the offending content so
-    the caller can log enough to debug what the model emitted.
+    document; a debug log shows the start of the offending content.
     """
     cleaned = _strip_json_code_fence(content)
     try:
@@ -74,15 +85,19 @@ def parse_json_with_prose_fallback(content: str) -> object:
 
     extracted = _extract_first_json_object(cleaned)
     if extracted is None:
-        raise InferenceError(
-            f"LLM returned non-JSON content — first 200 chars: {content[:200]}"
-        )
+        logger.debug("LLM returned non-JSON content: %s", content[:_EXCERPT_CHARS])
+        raise InferenceError("LLM returned non-JSON content", code="non_json_content")
     try:
         return json.loads(extracted)
     except json.JSONDecodeError as exc:
+        logger.debug(
+            "LLM returned non-JSON content even after extraction (%s): %s",
+            exc,
+            content[:_EXCERPT_CHARS],
+        )
         raise InferenceError(
-            f"LLM returned non-JSON content even after extraction: {exc} — "
-            f"first 200 chars: {content[:200]}"
+            "LLM returned non-JSON content even after extraction",
+            code="non_json_content",
         ) from exc
 
 

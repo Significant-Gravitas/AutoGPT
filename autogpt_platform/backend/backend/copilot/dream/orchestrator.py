@@ -646,8 +646,9 @@ async def _phase(
     try:
         output, usage = await call()
     except InferenceError as exc:
+        logger.warning("Dream pass %s: %s failed: %s", run.pass_id, phase, exc)
         run.bill_failed_phase(phase, exc)
-        raise PassEnded(run.failure(f"{phase}: {exc}")) from exc
+        raise PassEnded(run.failure(f"{phase}: {exc.code}")) from exc
     except PhaseChargeError as exc:
         run.phases.append(phase_usage(phase, exc.usage))
         raise

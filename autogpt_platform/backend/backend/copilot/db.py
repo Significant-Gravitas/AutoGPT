@@ -1257,6 +1257,47 @@ async def update_message_content_by_sequence(
         return False
 
 
+# A dream's narrative, the message its session opens with, or *erased*
+# when a hard forget has marked the pass (``DreamPass.erasedAt``). The pass's
+# row is held FOR SHARE while the message goes in: a forget's mark that
+# lands first is read here, and one that comes after waits for the insert,
+# which its blank of the pass's narratives (``blank_dream_narratives``) then
+# finds. A pass with no row writes the narrative as given.
+_DREAM_NARRATIVE_SQL = """
+WITH pass AS (
+    SELECT "erasedAt" FROM {schema_prefix}"DreamPass" WHERE "id" = $3 FOR SHARE
+)
+INSERT INTO {schema_prefix}"ChatMessage"
+    ("id", "sessionId", "role", "sequence", "content", "metadata")
+SELECT $1, $2, 'assistant', 0,
+    CASE WHEN EXISTS (SELECT 1 FROM pass WHERE "erasedAt" IS NOT NULL)
+        THEN $5 ELSE $4 END,
+    $6::jsonb
+"""
+
+
+async def add_dream_narrative(
+    session_id: str, pass_id: str, content: str, erased: str
+) -> None:
+    """Open the dream session *session_id* with pass *pass_id*'s narrative
+    *content*, or *erased* once a hard forget has marked the pass
+    (``_DREAM_NARRATIVE_SQL``, ``dream/apply._write_dream_summary_message``)."""
+    await asyncio.gather(
+        PrismaChatSession.prisma().update(
+            where={"id": session_id}, data={"updatedAt": datetime.now(UTC)}
+        ),
+        db.execute_raw_with_schema(
+            _DREAM_NARRATIVE_SQL,
+            str(uuid.uuid4()),
+            session_id,
+            pass_id,
+            sanitize_string(content),
+            sanitize_string(erased),
+            dumps({"dream_pass_id": pass_id}),
+        ),
+    )
+
+
 async def blank_dream_narratives(
     user_id: str, pass_ids: list[str], placeholder: str
 ) -> int:

@@ -31,6 +31,9 @@ async def _worker_wrote_them(completion: IngestionCompletion, _: float) -> bool:
     return True
 
 
+_real_summary_writer = apply_mod._write_dream_summary_message
+
+
 @pytest.fixture(autouse=True)
 def enqueue(mocker) -> AsyncMock:
     """The queue, and a worker that writes every episode queued."""
@@ -266,6 +269,42 @@ async def test_the_writes_the_worker_dropped_are_reported(mocker) -> None:
     assert stats["consolidated_count"] == 1
     assert stats["dropped_forgotten"] == 1
     assert stats["pending_writes"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dropped", [0, 1])
+async def test_a_write_dropped_for_a_forget_keeps_the_narrative_out(
+    mocker, dropped: int
+) -> None:
+    """The narrative may restate a dropped write anywhere, in the model's
+    own words: once one was dropped for resting on a forget, the session
+    opens with the placeholder instead."""
+
+    async def worker(completion: IngestionCompletion, _: float) -> bool:
+        completion.dropped_forgotten += dropped
+        completion.written = completion.registered - dropped
+        return True
+
+    narrative = AsyncMock()
+    mocker.patch.object(apply_mod, "wait_for_ingestion", worker)
+    mocker.patch(
+        "backend.data.db_accessors.chat_db",
+        return_value=mocker.MagicMock(add_dream_narrative=narrative),
+    )
+    mocker.patch.object(apply_mod, "_write_dream_summary_message", _real_summary_writer)
+    said = "Alice works on Atlas, I noticed."
+    ops = DreamOperations(
+        writes=[
+            ConsolidatedFact(content=said, confidence=0.9, source_fact_uuids=["f1"])
+        ],
+        summary_for_user=said,
+    )
+
+    await apply_mod.apply_operations(_SCOPE, "p1", ops, **_READ)
+
+    session_id, pass_id, content, erased = narrative.await_args.args
+    assert (session_id, pass_id, erased) == ("s", "p1", "[forgotten]")
+    assert content == ("[forgotten]" if dropped else said)
 
 
 @pytest.mark.asyncio

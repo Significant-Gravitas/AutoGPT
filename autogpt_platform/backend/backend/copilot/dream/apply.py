@@ -16,7 +16,10 @@ A ``ChatSession`` shell (``metadata.kind='dream'`` +
 ``metadata.dream_pass_id``) is created up front so the MemoryEnvelope
 provenance can reference its id; the assistant message holding
 ``summary_for_user`` is appended LAST, after the ops above, so a partway
-failure leaves an empty dream rather than a narrative with no memory.
+failure leaves an empty dream rather than a narrative with no memory. It is
+written as the forgotten placeholder when a write or proposal was dropped
+for resting on a forget, or a hard forget has marked the pass
+(``forget_copies.py``): the summary may restate what was forgotten anywhere.
 A pass with no operations left at all creates neither — see the empty-pass
 guard at the top of ``apply_operations``.
 """
@@ -44,6 +47,7 @@ from backend.copilot.graphiti.memory_model import (
     MemoryStatus,
     SourceKind,
 )
+from backend.copilot.graphiti.recall import FORGOTTEN_FACT
 from backend.copilot.graphiti.recall_citations import Citations
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.transports import resolve_default_chat_route
@@ -409,22 +413,21 @@ async def _create_dream_session(scope: MemoryScope, pass_id: str) -> str:
 
 
 async def _write_dream_summary_message(
-    session_id: str, pass_id: str, summary_for_user: str
+    session_id: str, pass_id: str, summary_for_user: str, *, dropped: bool = False
 ) -> None:
     """Append the assistant narrative to an already-created dream session.
 
     Called at the END of ``apply_operations`` so the user-visible summary
-    only appears once the memory ops above have been attempted.
+    only appears once the memory ops above have been attempted. ``dropped``
+    (a write or proposal of the pass was dropped for resting on a forget)
+    writes the placeholder instead, as the database does for a pass a hard
+    forget has marked (``db.add_dream_narrative``).
     """
     from backend.data.db_accessors import chat_db
 
     body = summary_for_user.strip() or "Dream pass completed with no narrative output."
-    await chat_db().add_chat_message(
-        session_id=session_id,
-        role="assistant",
-        sequence=0,
-        content=body,
-        metadata={"dream_pass_id": pass_id},
+    await chat_db().add_dream_narrative(
+        session_id, pass_id, FORGOTTEN_FACT if dropped else body, FORGOTTEN_FACT
     )
 
 
@@ -698,11 +701,15 @@ async def apply_operations(
     destroyed = await apply_demotions(scope, pass_id, ops, known_fact_uuids)
 
     # Narrative summary last — only surface the user-facing dream story
-    # once the memory ops above have been attempted.
-    await _write_dream_summary_message(session_id, pass_id, ops.summary_for_user)
-
+    # once the memory ops above have been attempted, and none of it once a
+    # write it may restate was dropped for resting on a forget. A drop the
+    # drain did not wait for (the batch path's, a timed-out drain's) is not
+    # known here: a hard forget's mark covers that pass instead.
     trackers = (writes_done, proposals_done)
     dropped = sum(tracker.dropped_forgotten for tracker in trackers)
+    await _write_dream_summary_message(
+        session_id, pass_id, ops.summary_for_user, dropped=dropped > 0
+    )
     pending = sum(tracker.pending for tracker in trackers)
     failed = sum(tracker.failed for tracker in trackers)
     provenance_pending = sum(tracker.provenance_pending for tracker in trackers)

@@ -154,8 +154,8 @@ def lock_redis(mocker: MockerFixture) -> FakeRedis:
 @pytest.fixture(autouse=True)
 def dream_copies(mocker: MockerFixture) -> AsyncMock:
     """No forget here reaches Postgres: a hard forget's blanking of the
-    dream's copies (``dream/forget_copies.py``) does nothing and finds no
-    pass running. Tests of that step read or set this mock."""
+    dream's copies (``dream/forget_copies.py``) does nothing and marks no
+    pass. Tests of that step read or set this mock."""
     blank = mocker.AsyncMock(return_value=[])
     mocker.patch.object(recall_forget, "blank_dream_copies", blank)
     return blank

@@ -3,7 +3,7 @@ calls are produced for each operation type.
 
 These tests do NOT touch FalkorDB or Prisma. apply.py is a pure
 fan-out: it builds MemoryEnvelopes for writes/proposals and delegates
-to ``enqueue_episode`` / ``create_chat_session`` / ``add_chat_message``
+to ``enqueue_episode`` / ``create_chat_session`` / ``add_dream_narrative``
 and, through its destructive stage (``demotions.py``), to
 ``supersede_unless_recalled`` / ``invalidate_entity_direct_neighbors``.
 Each of those is mocked here.
@@ -114,14 +114,14 @@ def _stub_boundaries(mocker):
         return_value=mocker.MagicMock(session_id="s1")
     )
     database.update_chat_session_title = AsyncMock(return_value=True)
-    database.add_chat_message = AsyncMock(return_value=None)
+    database.add_dream_narrative = AsyncMock(return_value=None)
     mocker.patch("backend.data.db_accessors.chat_db", return_value=database)
     mocker.patch("backend.copilot.db.create_chat_session", database.create_chat_session)
     mocker.patch(
         "backend.copilot.db.update_chat_session_title",
         database.update_chat_session_title,
     )
-    mocker.patch("backend.copilot.db.add_chat_message", database.add_chat_message)
+    mocker.patch("backend.copilot.db.add_dream_narrative", database.add_dream_narrative)
     # _create_dream_session's tenant lookup. Unmocked it runs REAL Prisma
     # queries on this test's function-scoped event loop whenever an earlier
     # test already connected Prisma (its except swallows the failure when
@@ -446,7 +446,7 @@ async def test_empty_pass_creates_no_session_and_no_message():
     )
 
     copilot_db.create_chat_session.assert_not_awaited()
-    copilot_db.add_chat_message.assert_not_awaited()
+    copilot_db.add_dream_narrative.assert_not_awaited()
     apply_mod.enqueue_episode.assert_not_awaited()
     assert stats.get("session_id") is None
     assert stats["consolidated_count"] == 0
@@ -473,10 +473,13 @@ async def test_ops_with_empty_summary_still_create_session_with_placeholder():
     )
 
     copilot_db.create_chat_session.assert_awaited_once()
-    copilot_db.add_chat_message.assert_awaited_once()
-    msg_kwargs = copilot_db.add_chat_message.await_args.kwargs
-    assert msg_kwargs["role"] == "assistant"
-    assert msg_kwargs["content"] == "Dream pass completed with no narrative output."
+    copilot_db.add_dream_narrative.assert_awaited_once()
+    session_id, pass_id, content, erased = (
+        copilot_db.add_dream_narrative.await_args.args
+    )
+    assert (session_id, pass_id) == (stats["session_id"], "p-ph")
+    assert content == "Dream pass completed with no narrative output."
+    assert erased == "[forgotten]"
     assert isinstance(stats["session_id"], str) and stats["session_id"]
 
 
@@ -524,7 +527,7 @@ async def test_title_failure_does_not_abort_apply(mocker):
     )
 
     assert stats["consolidated_count"] == 1
-    copilot_db.add_chat_message.assert_awaited_once()
+    copilot_db.add_dream_narrative.assert_awaited_once()
 
 
 @pytest.mark.asyncio

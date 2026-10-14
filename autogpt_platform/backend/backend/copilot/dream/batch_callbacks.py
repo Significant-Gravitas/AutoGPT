@@ -206,7 +206,10 @@ async def _landed_output(
         await write_phase_to_state(
             pass_id=bp.pass_id, phase=phase, row=row, model=bp.phase_models.get(phase)
         )
-        await fail_pass(bp, f"{phase}: {row.error}")
+        logger.warning(
+            "Dream batch pass=%s phase=%s errored: %s", bp.pass_id, phase, row.error
+        )
+        await fail_pass(bp, f"{phase}: provider_error")
         return None
     # Validate the row's content matches the phase's Pydantic schema
     # BEFORE persisting — corrupted content shouldn't pollute the
@@ -221,7 +224,13 @@ async def _landed_output(
         await write_phase_to_state(
             pass_id=bp.pass_id, phase=phase, row=row, model=bp.phase_models.get(phase)
         )
-        await fail_pass(bp, f"{phase}: invalid output shape — {type(exc).__name__}")
+        logger.warning(
+            "Dream batch pass=%s phase=%s answered off its schema: %s",
+            bp.pass_id,
+            phase,
+            type(exc).__name__,
+        )
+        await fail_pass(bp, f"{phase}: schema_mismatch")
         return None
     await write_phase_to_state(
         pass_id=bp.pass_id,
