@@ -431,6 +431,19 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     assert response.status_code == 200
 
 
+def _mock_rate_limits_for_an_unseeded_user(mocker: pytest_mock.MockerFixture) -> None:
+    """The impersonated user has no row in the test database, so the tier
+    lookup behind the rate limit would fail before the turn is scheduled."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit", new_callable=AsyncMock
+    )
+
+
 def test_stream_chat_turn_is_not_impersonated_by_default(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
@@ -451,6 +464,7 @@ def test_stream_chat_marks_a_turn_an_impersonating_admin_starts(
     analytics say an admin sent it."""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
     mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
 
     response = client.post(
         "/sessions/sess-1/stream",
@@ -473,6 +487,7 @@ def test_stream_chat_queues_an_impersonated_turn_as_impersonated(
     row, so the row has to say an admin sent it."""
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
     mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
     mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
     queue = mocker.patch.object(
         chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock

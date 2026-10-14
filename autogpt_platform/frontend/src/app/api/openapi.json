@@ -4428,7 +4428,7 @@
       "post": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Submit message feedback",
-        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. Langfuse being down does not fail the request; the response\nsays where the score went.",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. It also goes to PostHog LLM analytics as an ``$ai_metric``\nevent. Langfuse or PostHog being down does not fail the request; the\nresponse says where the Langfuse score went.",
         "operationId": "postV2Submit message feedback",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
