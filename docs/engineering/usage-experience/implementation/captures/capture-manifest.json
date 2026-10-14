@@ -15,7 +15,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/PaywallGate/PaywallModal.tsx",
-        "sha256": "56c8a77d07168c9802ae5e7fb9a2ecc1ad6a798614053fa02df51bf0e5ec2876"
+        "sha256": "b7107c0e363534272a36a4fd7e0bf66cce156a0079a5fa3ddc997e25cc13d80d"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/PaywallGate/components/PaywallHeader.tsx",
@@ -115,11 +115,11 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/RateLimitResetDialog/RateLimitResetDialog.tsx",
-        "sha256": "6e4c336100ad911b6414fb33c31af56d1aeffd0a68788aee5c5a15f51f83d282"
+        "sha256": "7f1041034d6cd20b128ff2d696858b22de98343f691a6c8c85ce5f368db0c413"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/UsageLimitReachedCard.tsx",
-        "sha256": "9c9c25a367d4dcc0c70a4f0249e1ec788d3b99758f6b0f195f10ece511b7dcef"
+        "sha256": "b9f43b7c95f14bddc2bf504ff2b92e6eea95b413f8e69a8e52c76b0d2e2811e5"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/copilot/components/UsageLimits/UsageLimitReachedCard/useUsageLimitReachedCard.ts",
@@ -151,19 +151,23 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/AutopilotUsageCard/AutopilotUsageCard.tsx",
-        "sha256": "11a36d1d5d992a8e1722ecc93c702adadb72e55db978cb007e450b7a4b02e917"
+        "sha256": "c9abb533275d2d46d9cb1d6f7a72a48d79a3f181a17b5d8faac40062876570bc"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/AutopilotUsageCard/UsageUnavailable.tsx",
+        "sha256": "89157597945ad7c9920756329c3c0de09ba939e9ff7565e55811437621c652fd"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/AutopilotUsageCard/useAutopilotUsageCard.ts",
-        "sha256": "69998fb9b8d02c230dee322926aea90d12948d13bfd9ccaef98405110620006a"
+        "sha256": "f9718c72c3d9ed29ed2fa06a0b44ec11626d8714b0177b434971b0de4a433a0b"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/BillingOffer.tsx",
-        "sha256": "a8a1fe75dcad2c1d608ff0f24916dd3c60c948a5111408a35e98490fb798b3ba"
+        "sha256": "ad63291793ddccb8f920e5ecaa1f680d005f6e1c7fd3a27d61109e7ae78c434c"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/BillingPlanOffer.tsx",
-        "sha256": "2d89b54522bd6faf37672ecd7a379dfbd2c51dba232245c6753e6f7a610c5d4a"
+        "sha256": "81361ca8144cb7d29a2ddf5996accd8824fd72ebb5c19bcc3001ad08327d0684"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/InvoicesCard/InvoicesCard.tsx",
@@ -175,11 +179,11 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/SubscriptionTab.tsx",
-        "sha256": "c3c3165873da76e334df111b3d62e1882d4f9591e004947d47e33d85113906fa"
+        "sha256": "4054f994876442307c3a01495a7d66a571657088b216905605b18a283dc8804e"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/SupportOffer.tsx",
-        "sha256": "13dac491c97efed00f58d5112a8ec8cdff847e5edf97bf69f53ddfb5724fc672"
+        "sha256": "f0b34d615387754f9fed40de96a1c6f10ad220eec5df708e6ca01e39cc3dc3e2"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/TrialPlanChoices/ConfirmTrialPlanDialog.tsx",
@@ -227,7 +231,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog.tsx",
-        "sha256": "4b3cd1e05d08a11c4b8d9f5711cec6bdb074562de6d7276e59d80436788c6097"
+        "sha256": "24522a71873bec2a3df091ec3c7ca493b44e040c78e6d14b66cf73506624fe39"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/YourPlanCard/YourPlanCard.tsx",
@@ -243,7 +247,7 @@
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/components/SubscriptionTab/useSubscriptionTab.ts",
-        "sha256": "26efa93e4cf5d174c2afd04178573369242a1620e4a7fc18cf85750677e1610d"
+        "sha256": "ed11b45e13c9d292bc652701580aaad1e9e9d59eca2e64a47edc32f0cc910503"
       },
       {
         "path": "autogpt_platform/frontend/src/app/(platform)/settings/billing/helpers.ts",
@@ -534,8 +538,16 @@
         "sha256": "b7501afdad80413513087eface7548869874935f55d905ad9c4bb703052ca20f"
       },
       {
+        "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/PaymentDueAction.tsx",
+        "sha256": "55d53ee0764068af8b162c6c7de8a1dd2a73336b6f10b8ba42114e0fc02e0ed6"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/PaymentRecoveryCard.tsx",
+        "sha256": "9d79d0a17a47eec49cb5b381192f015185c2706e19bfb6b645af709e9b2b73fc"
+      },
+      {
         "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/PlanOffer.tsx",
-        "sha256": "65910fb1ee9e4659062b365f2583dfed60e143076c26a9c20fb242235b858c0f"
+        "sha256": "171e9a6be50246b6df0e47a478075fa032462ac71495973e02d8020e504458c9"
       },
       {
         "path": "autogpt_platform/frontend/src/components/organisms/UsageExperience/ProviderContinuation.tsx",
@@ -611,11 +623,19 @@
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/helpers.ts",
-        "sha256": "65dc33f3bedd51d00b40101bbe97cdc3e174eb74edabdaa9d5a6d375db61feac"
+        "sha256": "97b96a3e177f22805f1bfcd04d0e4d2962f99ad789862740573d53cc70900cb3"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/services/usageExperience/payment.ts",
+        "sha256": "c5c81a614309731ff7ed10de04c74ded9e869c953a2abe58a5c9c34b22b7bfab"
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/presentation.ts",
-        "sha256": "3a9ca2474e02c512adad2c6b93efb2df28c3dc2c98abb302542e8f1d8cbc9dbe"
+        "sha256": "c6d43d11824aedc0c1999d590adf936a7d8e71936adb6a203dd8b641218dfcc4"
+      },
+      {
+        "path": "autogpt_platform/frontend/src/services/usageExperience/usePaymentRecovery.ts",
+        "sha256": "deaa8262a531f211c0e454671bfc28bbfea460c8959c174d9318e8f639181ec2"
       },
       {
         "path": "autogpt_platform/frontend/src/services/usageExperience/useUsageActions.ts",
@@ -627,7 +647,7 @@
       },
       {
         "path": "docs/engineering/usage-experience/render/build.mjs",
-        "sha256": "7974f83498936ff02ec0ae649bcf98b388fb983501509bebf04ef37a52a9e6b8"
+        "sha256": "52baf335475e47b2e347e4a24ad8ecea928964a271bd6eada9648a290f3a5259"
       },
       {
         "path": "docs/engineering/usage-experience/render/capture.mjs",
@@ -635,7 +655,7 @@
       },
       {
         "path": "docs/engineering/usage-experience/render/cases.mjs",
-        "sha256": "d792d9e4510cff7593b288fa6c727cfff4461e73acea617b0e11c3cebf8887b9"
+        "sha256": "7daf55825c78f36eb2b49877b8b45babff18fa467132a2cab3b29eff1615d05f"
       },
       {
         "path": "docs/engineering/usage-experience/render/composer-mocks.tsx",
@@ -647,7 +667,7 @@
       },
       {
         "path": "docs/engineering/usage-experience/render/fixtures.ts",
-        "sha256": "63a8029e5a551faa087cc64f8f2bac678267c78c1a93c3f74b87e5f69f006375"
+        "sha256": "7d6f9f69b6bd3face78103ec667c7bd0d7a514f9e09b401d3fbe4ccb59ade320"
       },
       {
         "path": "docs/engineering/usage-experience/render/fonts.css",
@@ -714,7 +734,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ea6160c2b4fc3a2f08463e2f4ce59875d895edbd7c741f79ce9181d91ce43bbc"
+      "sha256": "fb400343c0dd3ea0e1289aa2b5cf1beb68ff880a08067263525dfc53c2ebcdf7"
     },
     {
       "id": "02-trial-chat",
@@ -744,7 +764,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4a32aa3c7fcc18ef3b89aa7e666ecf6c49bd630e0fce60d8edb0954f26223d6d"
+      "sha256": "416ee4dfe80f1a8113ba588234ba0b1e94d5aa401aea46a09b36234a33445df3"
     },
     {
       "id": "03-trial-billing",
@@ -774,7 +794,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4051a82a0e99dfb216ca9d3841b6a89206fc544318502ac78625c73ac5b99d2b"
+      "sha256": "8f475a273cbd5c9d38da9030faa6cb02cd4b1475ff150817f8afa812164533db"
     },
     {
       "id": "04-trial-active",
@@ -790,21 +810,21 @@
       },
       "componentBounds": {
         "x": 190,
-        "y": 54.5,
+        "y": 66.5,
         "width": 900,
-        "height": 991
+        "height": 967
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro starts on Oct 12\n\nYour trial keeps going until then. You can also start today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now · $50",
+        "Start Pro now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "18563de26cacfc396ce90c0a967b2a04098d2068f9a5d0afec9502b9ac7b89bc"
+      "sha256": "2f80942c5a9fce63ad1e2363e7480ae4b3d4c0d4ef6256ca48a453f09b99da6a"
     },
     {
       "id": "05-pro-popup",
@@ -820,11 +840,11 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 235,
+        "y": 284,
         "width": 560,
-        "height": 630
+        "height": 532
       },
-      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -832,7 +852,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "969a59a54d57d87c8b8559370ed37a7cf4468abd3b5679b5373d0e24713c517e"
+      "sha256": "60de54ff0c61ceab1034496edc5ee2586276be241e285c41d120b00cf7c63648"
     },
     {
       "id": "06-pro-chat",
@@ -862,7 +882,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a55029444de16df66b25de3a408984ad3ac5399aa5ed66a522c78d9410a13463"
+      "sha256": "0a57d95c83fc8aee73f4d1f90258f610cb7ad8e987fbbee7a4a271351b3dd154"
     },
     {
       "id": "07-pro-billing",
@@ -882,7 +902,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -894,7 +914,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "db12ea8b4262c6ff4afaca78f939c2b737c5b33f69ae78e5973c3cba4adad8da"
+      "sha256": "fcef65467cec4680701a1285fd3bfead08a88c863a3a40bcd98b99bfce30052a"
     },
     {
       "id": "08-pro-weekly",
@@ -910,11 +930,11 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 235,
+        "y": 284,
         "width": 560,
-        "height": 630
+        "height": 532
       },
-      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -922,7 +942,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1420706e354dc39ee5f20ecde32cf896ee2bc88ed250b73126df2e2b6b9ec12d"
+      "sha256": "cad87582a7889e00103035dc29b33ae54f51983ced3db3500ae1939de53737cc"
     },
     {
       "id": "09-max-popup",
@@ -938,11 +958,11 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 357,
+        "y": 406,
         "width": 560,
-        "height": 386
+        "height": 288
       },
-      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -950,7 +970,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "48a342885f93c81fe7123b0f94476712c2847e2f89675b9db2ba296b50eb0b1f"
+      "sha256": "887c833cb70979bca26a0441de4d02dbe99541e41f04036a9a9097dc3cfa1421"
     },
     {
       "id": "10-max-chat",
@@ -980,7 +1000,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "7bcd7ed39b3248c702c470c1533ff3e963cea3cb502c2043c0d6678b320a01b2"
+      "sha256": "7028f8197f9b538606d87f70857084e50dd51d7e0b0eb75008361319f82879d9"
     },
     {
       "id": "11-max-billing",
@@ -1013,7 +1033,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ee99139757e15c3a20a34fd53649f86cbc0f273d3c0eabd8bb0f187944616835"
+      "sha256": "c635cca338e874bbf17170d6a753d8814218d1bddae941b841caa528554063cb"
     },
     {
       "id": "12-team-popup",
@@ -1029,11 +1049,11 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 357,
+        "y": 406,
         "width": 560,
-        "height": 386
+        "height": 288
       },
-      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -1041,7 +1061,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "8df01910ff98bb174050ae28ce8c6871f0f955a3f5dfa47d03e1adde714e9f99"
+      "sha256": "e23c7f36dac9815172a28644ed89420c2e180a63554af308a41c0ffd16adf297"
     },
     {
       "id": "13-team-billing",
@@ -1074,7 +1094,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e2cd8c659406dd34f25728570643f3a0cf1265756486cdd9a847a240dc5502e1"
+      "sha256": "850f48cb96e2b4ceeb2551bb10f4826be11fe4ca0cd32eaafad54b166c8cab55"
     },
     {
       "id": "14-enterprise-popup",
@@ -1090,11 +1110,11 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 357,
+        "y": 406,
         "width": 560,
-        "height": 386
+        "height": 288
       },
-      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -1102,7 +1122,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "efc40b9cb5621a45e4095b8c5cfdda3e3941ab8020c60b0b5f27d5cef669bb30"
+      "sha256": "971840d60ff4c3b49ff5ff1bf63f1f873bb6b9f764ee0ae9ec37ffe24eb13130"
     },
     {
       "id": "15-enterprise-billing",
@@ -1132,7 +1152,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2676ac04bc3adb6d2dcdeb955b3c0738d1b525354a384dfa29865bc83be14f9d"
+      "sha256": "0c889f9b53694de5dccbbd26bf566cd6558f31aafbc858dc739778850e294fee"
     },
     {
       "id": "16-basic-chat",
@@ -1159,7 +1179,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1ddbf8f12ddb6a1f862aec1614373c26b2b6bef17390201ef2f59dbb5c8095ea"
+      "sha256": "1435316043f0b6e33d2ca3c85b5486ebdeb5c091847d794b8b80c867f1626f2d"
     },
     {
       "id": "17-basic-billing",
@@ -1189,7 +1209,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9a50c6a6eceb7d89d26d0a11086dfb077314d22b67a05bcf5d0633c7417d1658"
+      "sha256": "b1aa875867d2bd2a8b446a533e89e6df4f567a2f081dc3bdad7c3d0516692673"
     },
     {
       "id": "18-choose-plan",
@@ -1222,7 +1242,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "b1100af369e0155e1849d9676f53b4b6ca7b10cbd2e88fe483dd003f051d2a9b"
+      "sha256": "c92f5938493f5ac14e1614202a673f1ae09ed6a8321c0daca7e98278a13c9f8b"
     },
     {
       "id": "19-no-plan-billing",
@@ -1252,7 +1272,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9b6e5b4f07b76b1e379010e4037c1be2746fefa298c38b1a1e66536bc81f18d5"
+      "sha256": "42bf6fae10e09046bd5f9af486c5b1584ee65a670ae95a334810841976f83df6"
     },
     {
       "id": "20-trial-ended",
@@ -1279,7 +1299,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1349af8ec025972bfb515f5c1bbc40781b7965c1aff4e7faeeea30dc0d69e2ee"
+      "sha256": "50b7366d5ab9f382f138d5fe763c92a7c2e8c4defdf644196bb1e04a515ee496"
     },
     {
       "id": "21-trial-canceled",
@@ -1306,7 +1326,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1096eb8e7fdd104404834485cf72f6f4a9b8fa6a8e2292bb18ac83568d0f9069"
+      "sha256": "628b5c7a495f7135e5998d56dc34cf715b80dc48aab86f6c46381ee3f357289d"
     },
     {
       "id": "22-payment-failed",
@@ -1322,19 +1342,19 @@
       },
       "componentBounds": {
         "x": 360,
-        "y": 408,
+        "y": 395,
         "width": 560,
-        "height": 284
+        "height": 310
       },
-      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to my work",
       "reachableControls": [
         "Close",
-        "Review billing details",
+        "Pay $50 now",
         "Back to my work"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e3d814bf99c088bd73911e021de91a55658b797a7c9b72fb17723060551ec6d8"
+      "sha256": "cca6e57237bfba0aef36194f8135879fe7daa5d71840a2a6ab9b54a57175ffae"
     },
     {
       "id": "23-payment-billing",
@@ -1350,21 +1370,20 @@
       },
       "componentBounds": {
         "x": 190,
-        "y": 84.5,
+        "y": 222.5,
         "width": 900,
-        "height": 931
+        "height": 655
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
-        "Start Pro",
-        "Update payment method",
+        "Pay $50 now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "622820a03d9f2c545fc719f77c96da4c37a13aa5a939f40944834d1e32c210d4"
+      "sha256": "feb5ff34f9d31f1ca62bc3f54900013c9b6079e8586a42cbb73b9ee830b142f9"
     },
     {
       "id": "24-usage-unavailable",
@@ -1390,7 +1409,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ba39d2205940cb080cdedb3c6a57ea27ac9155f98fcf9cc119f22cff53cd0bdc"
+      "sha256": "f1df2e88ade62d8dc7856fc735b920444f793581a341c0f78977c87bc98fe74e"
     },
     {
       "id": "25-unavailable-billing",
@@ -1406,26 +1425,25 @@
       },
       "componentBounds": {
         "x": 190,
-        "y": 147.5,
+        "y": 123.5,
         "width": 900,
-        "height": 805
+        "height": 853
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nWe couldn’t load your usage\n\nYour plan and your work aren’t affected. Try again in a moment.\n\nTry again\nContact support\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Monthly",
         "Yearly Save 15%",
         "Manage subscription",
-        "Try Again",
-        "Report Error",
-        "Get Help",
+        "Try again",
         "Contact support",
+        "Upgrade to Max",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e86ea73c2e261ba14dd2c37fc7cff6b569a5597e3884fb1d4a8996f7cbc77528"
+      "sha256": "f4bae0106e3962b816c49134350b31f4622aa470d68d6ec2740e1de610e64a57"
     },
     {
       "id": "26-linked-provider",
@@ -1454,7 +1472,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3fb58c71c9167b115d45fd382881cb5bb91ba52ff9054c71ac4de450cd706d0c"
+      "sha256": "100b75f1331d193b3ad9cc7678bc81903dbd0a16cdb3435cce3b5920cc7c1301"
     },
     {
       "id": "27-pro-review",
@@ -1484,7 +1502,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2ff5ce900f4904f2b562d7ddbf0987e7a30db5c21b43ab21ac3c5691ed6ed2cc"
+      "sha256": "196cd2b3ecaa842b602464b823d7d464b0fa4c8b25f75cf9f6a36a9e044f6a54"
     },
     {
       "id": "28-max-review",
@@ -1504,7 +1522,7 @@
         "width": 520,
         "height": 672
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve already used counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -1512,7 +1530,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "94dec0b39249658766489b9529eed398bee173c4d19c9d1e19bed0ae3522fb4d"
+      "sha256": "d45ca16bc0abdcd17e12b30109db087e7e4ba6b96f9e4451a9667fbb9a54813d"
     },
     {
       "id": "29-payment-pending",
@@ -1539,7 +1557,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "71ef024ba75b15c1de65b038d863bdda7a23d8089ded7048cb5170d14b477ca5"
+      "sha256": "1938946db2cd002db163c9699c2ec01fd1350331fbce8e0dacaa634daeec264b"
     },
     {
       "id": "30-activation-success",
@@ -1566,7 +1584,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "48e7bd613f39e33a8898b84e67abc3fd7c93e0db592de910e190e31981f49f8c",
+      "sha256": "89fb0a46572a9207d5f9073da96891c7c57eeca6b51827134517a2f31f93950b",
       "afterDismissal": {
         "draftEditable": true,
         "sendEnabled": true
@@ -1602,7 +1620,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3ea7d0e7459b52ba01d566e6454d8d2adf51bb24a1ddb4c6355d77f038721efd"
+      "sha256": "0b9e08518e51f4b4ac9a1e852ef2903e336ddad55a6a5ea5e5854869990a4250"
     },
     {
       "id": "32-cancel-pending-billing",
@@ -1633,7 +1651,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "608bd48cfd7ea4e0d65abcd2c45b63f31080d826937ab22810b31194b466a945"
+      "sha256": "a442ae9ab635f0a166ba4a55ab06741652d18a1b269ad76d02e94d5b951448ee"
     },
     {
       "id": "33-cancel-pending-notice",
@@ -1653,14 +1671,43 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nSubscribe now\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro"
+        "Subscribe now"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3b43e1dbb898eade6b600d94aa154fa12382c33664858016144b475821ca9320"
+      "sha256": "711a415e2d87b1a1e8acd8529126d62630812282f7bf4bad54b4ef8f9434a703"
+    },
+    {
+      "id": "34-payment-paywall",
+      "experience": {
+        "tier": "pro",
+        "state": "payment_failed"
+      },
+      "screen": "paywall",
+      "file": "34-payment-paywall-1280.png",
+      "viewport": {
+        "width": 1280,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 290,
+        "y": 321,
+        "width": 700,
+        "height": 458
+      },
+      "content": "Your plan\n\nDialog\n\nLog out\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to billing",
+      "reachableControls": [
+        "Close",
+        "Log out",
+        "Pay $50 now",
+        "Back to billing"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "5bfc366ca87a0805b096f88d3b797c4862e6939defb9268ff9c39d703b49e92f"
     },
     {
       "id": "01-trial-popup",
@@ -1688,7 +1735,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6707866fdd17e5d0baae47935c475f09f7ed68005c0d0911ca5b05cfd3a031fc"
+      "sha256": "5054797f09c74fc12f845c79ea6c32f6d66e50d73a43dfdcaee65dbe3473163c"
     },
     {
       "id": "02-trial-chat",
@@ -1718,7 +1765,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "7bcfd9a888b9a26181bea1cc643a8f2dfa9b785d5f19ba43501c91f44a584724"
+      "sha256": "5812780c1b592ebe773d7730fad8f4322fc7537ccf2c02b18eaa31a211d4ee2a"
     },
     {
       "id": "03-trial-billing",
@@ -1748,7 +1795,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "95e6e5f6bf6ad1022186557e00bcd7010fb82c8c9549fd3232fa84846648d447"
+      "sha256": "c81d60da0af6c34fd03d02cc5a66b8764534167b0862ecdd71340079af2bbf78"
     },
     {
       "id": "04-trial-active",
@@ -1764,21 +1811,21 @@
       },
       "componentBounds": {
         "x": 50,
-        "y": 54.5,
+        "y": 66.5,
         "width": 900,
-        "height": 991
+        "height": 967
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro starts on Oct 12\n\nYour trial keeps going until then. You can also start today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now · $50",
+        "Start Pro now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "dd1c5653384d9d927951df82423cf5c7aade5456f820669e335143d1747c9519"
+      "sha256": "14e972c27663bf729b81eb1739b55d3da0bee50429870ef47b70a18f1aa6447b"
     },
     {
       "id": "05-pro-popup",
@@ -1794,11 +1841,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 494,
+        "y": 592,
         "width": 1000,
-        "height": 606
+        "height": 508
       },
-      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -1806,7 +1853,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "96963175ca7e5c16adad520afbdca941a97f46f29cce52bf5a1036a02e4dbc65"
+      "sha256": "5f9af6d76fbebcbfa02e8ad10e568ead3f1f881ca576e8c7d01d646fff54859d"
     },
     {
       "id": "06-pro-chat",
@@ -1836,7 +1883,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "58281e4e186dad8779bf094383ded5183184491b5e4d734b3105159ab5c7f75f"
+      "sha256": "7bb022e30bec8b8bbf31eb285de6b5f5dc32989e28352a9668d60166e673b99c"
     },
     {
       "id": "07-pro-billing",
@@ -1856,7 +1903,7 @@
         "width": 900,
         "height": 894
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -1868,7 +1915,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ff2405991f50509e585169d0efa61bb7f5c8ed577f0b3496e3b6587640444911"
+      "sha256": "29cc81d402d0badeba1989743b86c92009745a43f4b71a3383e4175d34787f0e"
     },
     {
       "id": "08-pro-weekly",
@@ -1884,11 +1931,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 494,
+        "y": 592,
         "width": 1000,
-        "height": 606
+        "height": 508
       },
-      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -1896,7 +1943,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "69a1127861112ad1ac37ed503e8b2a2e7821b43bbd4315809dff2186001ea348"
+      "sha256": "be38d5378ff9a8dd26452d968d33c62f5e559166a9abe41d3c799ee4f5d81e31"
     },
     {
       "id": "09-max-popup",
@@ -1912,11 +1959,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 714,
+        "y": 812,
         "width": 1000,
-        "height": 386
+        "height": 288
       },
-      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -1924,7 +1971,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e0042f8b434d3f89bab32b4a3f362e10ec10c1d2999aa88d6395050a32d82d0d"
+      "sha256": "6a3bfa5e23aed72448d3f3174cacd35d19de9a28caf06ad40adeb0a0e5f07514"
     },
     {
       "id": "10-max-chat",
@@ -1954,7 +2001,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "347313a8e507b1aec14c6ae80546e843af452ab38184a0f00be15409d609617a"
+      "sha256": "25d7f7185441750308b0770c43d780af2aba85a55da145bf1b20042e841ae113"
     },
     {
       "id": "11-max-billing",
@@ -1987,7 +2034,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "820a1423584cba25054674962a8e91d0899f5a6c5b4c46f4985d0c461ff53cf0"
+      "sha256": "875744bcda5abad7f785f4049b451834b5c08f05a2de422b6c7871a59e0ab13e"
     },
     {
       "id": "12-team-popup",
@@ -2003,11 +2050,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 714,
+        "y": 812,
         "width": 1000,
-        "height": 386
+        "height": 288
       },
-      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -2015,7 +2062,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e21fcaaa0af6e448ddf4b6ba723ef49c64c1c397bbc34ae3b751ff6cf7515c96"
+      "sha256": "9e3cc52daa69511571e77cfbb4bf919dac2a6b1e6e5ca57345d89c18269fdac9"
     },
     {
       "id": "13-team-billing",
@@ -2048,7 +2095,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f66301691dd93f61a4b1bf3ee26acf2139c4667d5b1715301eead80e0cc919f4"
+      "sha256": "05e19eda2342c879fb1e736eb159d15b1ceea4c22bee15592dd0cc8904c163a8"
     },
     {
       "id": "14-enterprise-popup",
@@ -2064,11 +2111,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 714,
+        "y": 812,
         "width": 1000,
-        "height": 386
+        "height": 288
       },
-      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -2076,7 +2123,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3dea23fc3c721bef42ceb3eaa1c108d13e154216641ab48704b41b804932f24f"
+      "sha256": "d6801d6e08504ac33784072581243509cc81e1f141f3584bb4a511a86e86984b"
     },
     {
       "id": "15-enterprise-billing",
@@ -2106,7 +2153,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "b1a96a58ed7511bd315aadc9ff1b5f244cb5ac390239eb711b2862e835e2e7b0"
+      "sha256": "43bd105432e48067b3f3c4bfd792ec3c993c88b1a3fdf123bb86731f69ea7073"
     },
     {
       "id": "16-basic-chat",
@@ -2133,7 +2180,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "8cbc3047b5bc6ed9dd9ddd97943a74a29225f1f40415655b98c334ba3ff18198"
+      "sha256": "6e82ed85365959bbc14e0d834928dde5071c7259a97211c3a7ba9c3607bbd3a8"
     },
     {
       "id": "17-basic-billing",
@@ -2163,7 +2210,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "cf0551b6811b879d1543ceffeca9f629cb4db7df248292d7e0f8b2bcfae4eea7"
+      "sha256": "044c23d99a42bdd9e3a94c24ae3cc760c962ed399d353f47b39780f3431fbf17"
     },
     {
       "id": "18-choose-plan",
@@ -2196,7 +2243,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6829ec803596d0639caffedf70db32bb059a7cafa58439ab0ab25d83e830b9ab"
+      "sha256": "465ed15635d1f15095fa4f8773dacbe7984661555634314fc8ac4a96527a1cfd"
     },
     {
       "id": "19-no-plan-billing",
@@ -2226,7 +2273,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c6ddfdbe64b00693a50dca721b615abc1e75b6c93df4e66034c8744e107c3ef0"
+      "sha256": "3b5a4863f98a3d79df5940bdd9383769f71c1724d63651c888ea7087085d6756"
     },
     {
       "id": "20-trial-ended",
@@ -2253,7 +2300,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1349af8ec025972bfb515f5c1bbc40781b7965c1aff4e7faeeea30dc0d69e2ee"
+      "sha256": "50b7366d5ab9f382f138d5fe763c92a7c2e8c4defdf644196bb1e04a515ee496"
     },
     {
       "id": "21-trial-canceled",
@@ -2280,7 +2327,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1096eb8e7fdd104404834485cf72f6f4a9b8fa6a8e2292bb18ac83568d0f9069"
+      "sha256": "800e3399abe6e121d1aa64af001e2a418fbf104943d86e5fe664a3950cb752ce"
     },
     {
       "id": "22-payment-failed",
@@ -2296,19 +2343,19 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 840,
+        "y": 814,
         "width": 1000,
-        "height": 260
+        "height": 286
       },
-      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to my work",
       "reachableControls": [
         "Close",
-        "Review billing details",
+        "Pay $50 now",
         "Back to my work"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9a5ff9f7dfeb417a35345f7821986d0cf105d0a171e3042c6e4a4c64cf537056"
+      "sha256": "31c04275a9a2f1bafed63da3d865f74bac493ef00edff16cdfb76d3956bd001d"
     },
     {
       "id": "23-payment-billing",
@@ -2324,21 +2371,20 @@
       },
       "componentBounds": {
         "x": 50,
-        "y": 84.5,
+        "y": 222.5,
         "width": 900,
-        "height": 931
+        "height": 655
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
-        "Start Pro",
-        "Update payment method",
+        "Pay $50 now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2054d37f8a93aa7d37b18d2161c2f75389bc6d2e3970968a7d8878691c014eb2"
+      "sha256": "ec6c15496dd24d187cf19f3d4d22bf02adb2603734b0cb71bac366340e6f05dc"
     },
     {
       "id": "24-usage-unavailable",
@@ -2364,7 +2410,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ba39d2205940cb080cdedb3c6a57ea27ac9155f98fcf9cc119f22cff53cd0bdc"
+      "sha256": "f1df2e88ade62d8dc7856fc735b920444f793581a341c0f78977c87bc98fe74e"
     },
     {
       "id": "25-unavailable-billing",
@@ -2380,26 +2426,25 @@
       },
       "componentBounds": {
         "x": 50,
-        "y": 147.5,
+        "y": 123.5,
         "width": 900,
-        "height": 805
+        "height": 853
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nWe couldn’t load your usage\n\nYour plan and your work aren’t affected. Try again in a moment.\n\nTry again\nContact support\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Monthly",
         "Yearly Save 15%",
         "Manage subscription",
-        "Try Again",
-        "Report Error",
-        "Get Help",
+        "Try again",
         "Contact support",
+        "Upgrade to Max",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "92d5cd35fe9e99f09684b5be56defc7fdb80a051c8940c5aa95b650f5fa5b8da"
+      "sha256": "363fe30ad5a5081311467be2a42e4f6a2da79a1aaa2c73b94dbf3c90d0162655"
     },
     {
       "id": "26-linked-provider",
@@ -2428,7 +2473,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4be89437ea32744b556f1537cf4991573968c549ea8381ada1884159e8151a10"
+      "sha256": "7bfb13ea90000eef1b7af7343e0bd1bdf8c1b6415c5220ec055437b35a9609bc"
     },
     {
       "id": "27-pro-review",
@@ -2458,7 +2503,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "82d04c049ca3638d55fe3b53af9bf0db34166fdebba03670b2440e96e6dd3fe2"
+      "sha256": "223e5d6c2ebf101cdc0099ceb869f210ca2c5f210dd8e2445bf46ef9da6ec32f"
     },
     {
       "id": "28-max-review",
@@ -2478,7 +2523,7 @@
         "width": 1000,
         "height": 628
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve already used counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -2486,7 +2531,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "b808b4b2ab7c01a33515d047316fcca798f412c07f0b40be6b2d07eea4ee7e70"
+      "sha256": "4d9ce82bea8fac56d3ba5fe6f8025d83ffd0398d4660dcc7654a73f6b8be6ff5"
     },
     {
       "id": "29-payment-pending",
@@ -2513,7 +2558,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "409b713a6a44e11b57e3b44a80e594d71b6c99fa6e08bb41029828b72b72fcb2"
+      "sha256": "f3f2b32a6766c84171877a6a8cd83f3c6a4043b4a128207eea258d1e466c079f"
     },
     {
       "id": "30-activation-success",
@@ -2540,7 +2585,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "bbdf4eabfcc9b6e1bf21db617f1f7ffec3afff49c530533bdb60acf549005112",
+      "sha256": "605efa4e1a7ef0d4427d1de6299c96ac3801c6b9d25bba994ba149be378bf389",
       "afterDismissal": {
         "draftEditable": true,
         "sendEnabled": true
@@ -2576,7 +2621,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "35d02734de7680deb81038d484cbad437e5c4fc88f6059709d241c987c3a52e3"
+      "sha256": "137ae549cd0b147806267fc63eb239f8558bfc0d1db9cfc80d4130e41b91ad63"
     },
     {
       "id": "32-cancel-pending-billing",
@@ -2607,7 +2652,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "271c208e948421c64a44a5313b99359c3f40aa7bc6c2db541bceef64b080380d"
+      "sha256": "a8c2ce64abd19dbc9bb9b240e893f211ee4228e7d6a0e08e81af110fe527787c"
     },
     {
       "id": "33-cancel-pending-notice",
@@ -2627,14 +2672,43 @@
         "width": 768,
         "height": 228
       },
-      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nSubscribe now\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro"
+        "Subscribe now"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3b43e1dbb898eade6b600d94aa154fa12382c33664858016144b475821ca9320"
+      "sha256": "21d47a2a59890c5848edae13e27e502746bd1f0827e2ec746b920fad5a1c8575"
+    },
+    {
+      "id": "34-payment-paywall",
+      "experience": {
+        "tier": "pro",
+        "state": "payment_failed"
+      },
+      "screen": "paywall",
+      "file": "34-payment-paywall-1000.png",
+      "viewport": {
+        "width": 1000,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": 630,
+        "width": 1000,
+        "height": 470
+      },
+      "content": "Your plan\n\nDialog\n\nLog out\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to billing",
+      "reachableControls": [
+        "Close",
+        "Log out",
+        "Pay $50 now",
+        "Back to billing"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "170394d2f53386820bd70bf5cc3036b25eeb128f219eab87969fa6384f2328e9"
     },
     {
       "id": "01-trial-popup",
@@ -2662,7 +2736,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a62d71ea04ec7f436b148c3d7bccbd9df4783496c91e9cace918122766dd43aa"
+      "sha256": "1012f38968cffee6f0cf82551473b115372a59745ef17fce93c2dad47b5b0205"
     },
     {
       "id": "02-trial-chat",
@@ -2692,7 +2766,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "845ac8f8760016fef4968e2cabfef9cd9cddab0cf557df944986a1aae6ef9c29"
+      "sha256": "5b13a4af99aa910dbd8ce1aaf5d7b1cd017c0b23d5daf44765145ec05f34a9cd"
     },
     {
       "id": "03-trial-billing",
@@ -2722,7 +2796,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "dde9f2b50ea06a56a776f5ae2a49be1b26e87808ee9ef9d1cc7010e06a522f80"
+      "sha256": "b04e1a0274ddabb959eb12e90c71b7b81193b9e4b6cadde812d5ef7b0d18b676"
     },
     {
       "id": "04-trial-active",
@@ -2742,17 +2816,17 @@
         "width": 390,
         "height": 1502
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro starts on Oct 12\n\nYour trial keeps going until then. You can also start today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now · $50",
+        "Start Pro now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "061d414420a4b0fb3481ce94750dc6358be5a7e37833cd8f8ee6cd473418c2ad"
+      "sha256": "8b889e5bcb1b4dd74a5baf734eab5e67da60a2176355ea5ec1aab4b06cbd87e5"
     },
     {
       "id": "05-pro-popup",
@@ -2768,11 +2842,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 462,
+        "y": 560,
         "width": 390,
-        "height": 638
+        "height": 540
       },
-      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -2780,7 +2854,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "9f4c8dda8c07207ea13c48f8afe56bb7bfaa79a59ccfc60d2e6667e4b6dc34a9"
+      "sha256": "f93faf6e7e9122197639648230356cf41289fe60ad842eadaa564d746a1a8b79"
     },
     {
       "id": "06-pro-chat",
@@ -2810,7 +2884,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "60ba22f59714021fede7eff2f4b3d8883a3594ade75f0e01070975b54b3ea4cf"
+      "sha256": "7b71a6c70ee3308291e2e63af7e38fd6d4bbbaeb93799723405e132dd49b5ac2"
     },
     {
       "id": "07-pro-billing",
@@ -2830,7 +2904,7 @@
         "width": 390,
         "height": 1388
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -2842,7 +2916,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "13237bfaa62e13561af03df50ba1d36fad484ef7cd86883ad1ad20bb78cc16bd"
+      "sha256": "3caee2cc79ea19bd63b20575beb03b4385851dacabff3cbadbee76d6ac505808"
     },
     {
       "id": "08-pro-weekly",
@@ -2858,11 +2932,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 430,
+        "y": 528,
         "width": 390,
-        "height": 670
+        "height": 572
       },
-      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -2870,7 +2944,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "74e34566afd0248761e36dab94aefa9f77d4958990e11c40b010ec0e147ef2ea"
+      "sha256": "ef5a9283505733e594e89fd2f36694128f57b3f3cfc931cff16e782cd11d63f7"
     },
     {
       "id": "09-max-popup",
@@ -2886,11 +2960,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 682,
+        "y": 780,
         "width": 390,
-        "height": 418
+        "height": 320
       },
-      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -2898,7 +2972,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "843a83d6035f5fda12159e82607a35fd6ae7b86bdb936c5865a2b6c1c92c39b5"
+      "sha256": "f2dddf2ef2c24fd876956d6772fd1eacb8b9484a72ad709c923abce26cfe8584"
     },
     {
       "id": "10-max-chat",
@@ -2928,7 +3002,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2cb464435c6b3b50120a9cac97035cbc2a1496bbf362a72da722b374a24e202a"
+      "sha256": "e0e6bb575ee2563fcb5165167b3ddf9f45763e8fe423a4b5b9f345f7f07ca557"
     },
     {
       "id": "11-max-billing",
@@ -2961,7 +3035,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4493b954be82c4189b278664f32018a3cfe5a1280c6a66829300b29e6018f9d7"
+      "sha256": "72ed0fc98ea33adf1bf7c3799dc8f798fa0260a9571b7f51cc2b96cf7ddedba4"
     },
     {
       "id": "12-team-popup",
@@ -2977,11 +3051,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 682,
+        "y": 780,
         "width": 390,
-        "height": 418
+        "height": 320
       },
-      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -2989,7 +3063,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2cea95c4e61c8ad519b31ae8586701d989af634e5d62f779e8b00020d4d4bc83"
+      "sha256": "a928a7c722f5d76cd6be5bddf8eae5eb3d5bff2b14263d1da655fc278a6f3262"
     },
     {
       "id": "13-team-billing",
@@ -3022,7 +3096,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "03fc474e3ae379af41ef7f7ac7393e72361204001f28c087ddad77c239972410"
+      "sha256": "da88b7912bfd7af58239411873adf92f35a6676e37841d0ffdb26da123bebfd2"
     },
     {
       "id": "14-enterprise-popup",
@@ -3038,11 +3112,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 634,
+        "y": 732,
         "width": 390,
-        "height": 466
+        "height": 368
       },
-      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -3050,7 +3124,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6fe779d4481825999f6774efeac55df6425a8e984bfd04151146e523c36560f1"
+      "sha256": "c305b0640ac0215bf73697637c24d51ae7e23f931b2be691fae7e14346c87f37"
     },
     {
       "id": "15-enterprise-billing",
@@ -3080,7 +3154,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "84aa7572041467d6cc8e9282b28fef2732ec8078dfb566f5af9997fafce54912"
+      "sha256": "39ba7d464a2d4decb4860e968e6c2d7fa94b965d6593b2cba675ce59ed664609"
     },
     {
       "id": "16-basic-chat",
@@ -3107,7 +3181,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "8bdc55dbadf71db7600c3896b17b59e3b1e3739656c9622394fb5c9a02f6cade"
+      "sha256": "e046ec09bb65a133123d3bab5888dbb8630f0145f18e590dfaf8ee37e1a044a4"
     },
     {
       "id": "17-basic-billing",
@@ -3137,7 +3211,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "1f41339d9e736432cb64ff1a66c25ff05b31a27bea79a4982a775805ea02539f"
+      "sha256": "8e0f2c8af7d189ab4910c56476ee387506e68c3da345ad866004aed80d771522"
     },
     {
       "id": "18-choose-plan",
@@ -3170,7 +3244,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3ea41ccc248d18ef8b7e9c6afeabe1e21d434f1ea7d8bf53d54b43d75607c13a"
+      "sha256": "5a0b09070b4ce802ccf06fc3f76460d2f81c34680cef35263d96405c0a55484b"
     },
     {
       "id": "19-no-plan-billing",
@@ -3200,7 +3274,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "cad48afe124a4c62393b7e2cdde66b95fc0e9e60eb33438540d1f9357192ca9e"
+      "sha256": "f0de406879d505a0c3e3c2ed4bbe5efc3d6cfd2226ade9fc88890cce3b80648f"
     },
     {
       "id": "20-trial-ended",
@@ -3227,7 +3301,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f5b47b99b529b70e9300cef347434d505a82751ad973d9670133953e85617d66"
+      "sha256": "3ef6f5ee34680955d5e81808283fc263813445533573fd27ef28afa738b5d663"
     },
     {
       "id": "21-trial-canceled",
@@ -3254,7 +3328,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f0d97d5e07dfc623a8b50e8a351164afc25888a5d75e141e9c95ae0306cd63db"
+      "sha256": "4dd4072b3e8283057621c9198c9aa1cbea02504c3cc09c641de2abe502f72c0a"
     },
     {
       "id": "22-payment-failed",
@@ -3270,19 +3344,19 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 784,
+        "y": 734,
         "width": 390,
-        "height": 316
+        "height": 366
       },
-      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to my work",
       "reachableControls": [
         "Close",
-        "Review billing details",
+        "Pay $50 now",
         "Back to my work"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6cedcd52125110582d31749071ed46bb0facab13bb4adeefa30bf99b544fef65"
+      "sha256": "50aa40a73234f02fb246117f15f82f260fa38780890e0d45ffe74c20810943c5"
     },
     {
       "id": "23-payment-billing",
@@ -3298,21 +3372,20 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": -285,
+        "y": 139.5,
         "width": 390,
-        "height": 1357
+        "height": 821
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
-        "Start Pro",
-        "Update payment method",
+        "Pay $50 now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2a8ffda4d02312730ab418c488de52f105d1c88760bd25279dc894e1a7f4723a"
+      "sha256": "aa3fec48758e187fa98f1386f04d913ca5e45b6d04fdad69dfb19c2cab2320ea"
     },
     {
       "id": "24-usage-unavailable",
@@ -3338,7 +3411,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f6044672bf45ab65148be4e181335e41438ee7a22fe97185c3729fcff4460ea0"
+      "sha256": "882843e51a3cb6b9a35d7210f7085f6b2a01dedcee8d6ebf021b1be49a05e4fa"
     },
     {
       "id": "25-unavailable-billing",
@@ -3354,26 +3427,25 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": -267,
+        "y": -265,
         "width": 390,
-        "height": 1339
+        "height": 1337
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nWe couldn’t load your usage\n\nYour plan and your work aren’t affected. Try again in a moment.\n\nTry again\nContact support\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Monthly",
         "Yearly Save 15%",
         "Manage subscription",
-        "Try Again",
-        "Report Error",
-        "Get Help",
+        "Try again",
         "Contact support",
+        "Upgrade to Max",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "dc00b355a998e4e5065b964936414b282d6239f3edb554c7f05d3cd203600ee0"
+      "sha256": "d49915c9aa1b9fa8c385d16a6d9acc523503aa192a234251ce0f8526b5bc4cf0"
     },
     {
       "id": "26-linked-provider",
@@ -3402,7 +3474,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ff11fc069d716bd2727f0eb58a1b16c2185cb24ffd65a22083a799b0fcfc7dc0"
+      "sha256": "32ff7a9e95dbb043ec14a735256316086abca32e8ba857bd16296c8c1e1f3482"
     },
     {
       "id": "27-pro-review",
@@ -3432,7 +3504,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "aaa336b0ee9fd573c36de04e2d31b056bd01c9d43ebbdb64107cf5284503280a"
+      "sha256": "6f9221e1c4efde8d7b7fa0c2236a2a333350dd26ed2a3a956b65f466b3759c2f"
     },
     {
       "id": "28-max-review",
@@ -3452,7 +3524,7 @@
         "width": 390,
         "height": 716
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve already used counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -3460,7 +3532,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "95d59ed95bee8595bce8342451ac614aca8a5cca27521c38105bcfd522300d4a"
+      "sha256": "a9735f04103e0688dfcb4d49f00fb5e8e6989ee00ff0bb86d7916e367da72fe7"
     },
     {
       "id": "29-payment-pending",
@@ -3487,7 +3559,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "85edcab15f2e5ed2416a6da1d8be5936402f8f9386f12c00acd4aa7cc0d9f2a7"
+      "sha256": "5ffb701596e4f9c37f61fdc7a4493f748bf2390a0915cbfa9a05dbb411a37068"
     },
     {
       "id": "30-activation-success",
@@ -3514,7 +3586,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c55e9792cc5f87b041724ce644ba0dbb51b35b5959b59cec8605c85323f3ee19",
+      "sha256": "a1e3fd2e44245a823a324a0826226d30a6c2b0f0a1c82d7b5d3c70d9041da6ae",
       "afterDismissal": {
         "draftEditable": true,
         "sendEnabled": true
@@ -3550,7 +3622,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f5c0ef3ad8dc597d2fd86219aae2cd85df19a39c9d4ffac6e1e83a36b9532bd7"
+      "sha256": "a4f73a3ecd6fbdcdd597f8ff64439928ef654924d4154ddf1167240b89f402b2"
     },
     {
       "id": "32-cancel-pending-billing",
@@ -3581,7 +3653,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "b8930da539d847e78e57c3b084a85131c9e448b604f0233442557cb79ab4194f"
+      "sha256": "cd0041763c84fd6681f3c304999b806e9b50b1d491f6e796f497d9a487f4b5fb"
     },
     {
       "id": "33-cancel-pending-notice",
@@ -3601,14 +3673,43 @@
         "width": 390,
         "height": 248
       },
-      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nSubscribe now\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro"
+        "Subscribe now"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ba4ad28b7465e955f483de26fb8df003d9f90cc241df3f08093317639e9d613b"
+      "sha256": "eecfe7155c102890f4cc6eefe8c902fb6923d5200298989de4624752fa1e7b55"
+    },
+    {
+      "id": "34-payment-paywall",
+      "experience": {
+        "tier": "pro",
+        "state": "payment_failed"
+      },
+      "screen": "paywall",
+      "file": "34-payment-paywall-390.png",
+      "viewport": {
+        "width": 390,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": 534,
+        "width": 390,
+        "height": 566
+      },
+      "content": "Your plan\n\nDialog\n\nLog out\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to billing",
+      "reachableControls": [
+        "Close",
+        "Log out",
+        "Pay $50 now",
+        "Back to billing"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "a0b4387b85a2d90f097dd65d20578632476ec0293db7329b2dbe56bdfd049168"
     },
     {
       "id": "01-trial-popup",
@@ -3636,7 +3737,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c1ac714a7b1b8cb2d0696a3a5db4d03764131ee981d1e48b2bb0943b2138d6b9"
+      "sha256": "46cdb596fa4994b5637c1df395ecc2e7a4a034bb78884e313bfe1fb338ed014a"
     },
     {
       "id": "02-trial-chat",
@@ -3666,7 +3767,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "884199a654ca9fa801f9a518f8683cc2cd14317986eab80c6432777c3127a40f"
+      "sha256": "6b3302d649c7247b8c65e950e2810fb8a4eddfc4ee00a11f155ba83ff07f8d61"
     },
     {
       "id": "03-trial-billing",
@@ -3696,7 +3797,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2e7dfa7bd298e81300fb0c10785c5a8707755224935db984b23af6f39757c4ca"
+      "sha256": "3654aa635819224dec8850757d4bacc39dd1f282eca51910dc2bf77c393b25b9"
     },
     {
       "id": "04-trial-active",
@@ -3716,17 +3817,17 @@
         "width": 320,
         "height": 1560
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nStart Pro now\n\nPro starts on its own on Oct 12. Start it now to keep working today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now · $50\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial\nFree trial\n\nYour trial ends Oct 12, 2026, 12:00 PM. Your saved card will then be charged $50.00 / month, plus applicable tax.\n\nCancel before your trial ends to avoid a charge.\n\nCancel trial\nUsage\n\nPlenty left\n\nTrial usage\n\n64\n%\nused\n64% used\n\nTrial ends Oct 12, 2026\n\nOne allowance for your whole trial\n\nThis allowance lasts for your whole trial. It doesn’t refresh each day or week.\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Pro\n\nPro starts on Oct 12\n\nYour trial keeps going until then. You can also start today.\n\n$50\n/ month\n\nA full daily and weekly allowance once payment goes through\n\nYour chats, agents and files stay where they are\n\nStart Pro now\n\nStarting now ends your trial early. You’ll review the charge first.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Cancel trial",
-        "Start Pro now · $50",
+        "Start Pro now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a62aa649c5859515687aef2bec2162b999c906866a3bf8d2b2c006ff4ce94a6a"
+      "sha256": "4b55e15a0155cdecebc14dca299aa9a8f33bdb687b19f23b9594ba6077c56765"
     },
     {
       "id": "05-pro-popup",
@@ -3742,11 +3843,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 430,
+        "y": 528,
         "width": 320,
-        "height": 670
+        "height": 572
       },
-      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · daily usage reached\n\nYou’ve hit today’s limit\n\nDialog\n\nYou can continue today at 9:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -3754,7 +3855,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "8a4dbf683b8334308fd3037a15823bc245715f325c11c14d6d7b2828c1e2f027"
+      "sha256": "6450821255db252cfa8be151f3354f85e58e166231b17b0c9af4a2d2bb197ef9"
     },
     {
       "id": "06-pro-chat",
@@ -3784,7 +3885,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f803719c3f904fa214d3304751c549ab8a1273cc6f18f3e649f4c9e6b98116fa"
+      "sha256": "0669727bbe3a014e618526c1ee52fccee97fcfd405abd61546efca0411993929"
     },
     {
       "id": "07-pro-billing",
@@ -3804,7 +3905,7 @@
         "width": 320,
         "height": 1426
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nAllowance reached\n\nThis week\n\n100\n%\nused\n100% used\n\nResets Mon, 1:00 PM UTC\n\nToday\n\n100% used\n\nResets in 9h 0m\n\nBigger requests use more of your allowance. Hitting the limit never adds a charge.\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
@@ -3816,7 +3917,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a1bb26e0b87e8ce4b97877c584f3760e7ad8c098593f278772f5377ed7966266"
+      "sha256": "b9dbba585ee32e3c72482fa0e81ab9da1b0ad903ed50bb0ffaf35d9a222ca4e2"
     },
     {
       "id": "08-pro-weekly",
@@ -3832,11 +3933,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 430,
+        "y": 528,
         "width": 320,
-        "height": 670
+        "height": 572
       },
-      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve used today counts toward Max’s higher limit.\n\nWait for reset",
+      "content": "Pro · weekly usage reached\n\nYou’ve hit this week’s limit\n\nDialog\n\nYou can continue Monday at 1:00 PM, or upgrade to Max for 8.5 times the usage.\n\nMax\n\nBilled monthly\n\n$320\n\nper month + tax\n\n8.5× the usage of Pro\nMore workspace storage\nPriority support\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nWait for reset",
       "reachableControls": [
         "Close",
         "Upgrade to Max",
@@ -3844,7 +3945,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "ce1dbeb8e1c545588829bd8771a49affcdeb354aee1c09f513d3ed3dfdd2b3e7"
+      "sha256": "e4f911d924d58df8f968244be4358dc4eba0d30200dc3c6ae14fcf9555f284d1"
     },
     {
       "id": "09-max-popup",
@@ -3860,11 +3961,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 634,
+        "y": 732,
         "width": 320,
-        "height": 466
+        "height": 368
       },
-      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 7, 9:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
+      "content": "Max · daily usage reached\n\nYou can continue today at 9:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact us\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact us",
@@ -3872,7 +3973,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "4f25292ca863465803cbe63be4de2ce39e4392bde005db2d0f9c08ffe90eae5c"
+      "sha256": "14f80d7d7168c91eaaffaf3d65302a5590ba7cd014b1adac914d2c7afe9f2029"
     },
     {
       "id": "10-max-chat",
@@ -3902,7 +4003,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "03e752e8b914be7e0607c576315b73c328bce89b672abe57b1a16d0ceb4a08e5"
+      "sha256": "e7efeeae2028d7e2b3e44a2b649e823024684243bff2e35ff5f45534688ca48d"
     },
     {
       "id": "11-max-billing",
@@ -3935,7 +4036,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f229c6140f0e7937abc8e86e68078dd0a92554634b5d5bb9a73a7fa4c22fc804"
+      "sha256": "c578506b6571c9e70d288afc6b139374d855239b7455c52bba6a5a828c6d6031"
     },
     {
       "id": "12-team-popup",
@@ -3951,11 +4052,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 602,
+        "y": 700,
         "width": 320,
-        "height": 498
+        "height": 400
       },
-      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
+      "content": "Team · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact support\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact support",
@@ -3963,7 +4064,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "8a3ddef72146559254988bb8c16081d7dd859479beeadd066fd9b801bcec6a66"
+      "sha256": "279bfbe14b8d5543c19b85879421c1ce6e52de5fc7cf3ade01dd16c59882fe1f"
     },
     {
       "id": "13-team-billing",
@@ -3996,7 +4097,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "bf375d5067f0ba8b997598a571e4f8a14bce10c6f2fddb99365ac7d9e2488001"
+      "sha256": "a065d5a6789dca96fa9ca81da0224d316eceeea1826bbf514799588399dfa1d1"
     },
     {
       "id": "14-enterprise-popup",
@@ -4012,11 +4113,11 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 602,
+        "y": 700,
         "width": 320,
-        "height": 498
+        "height": 400
       },
-      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nYou can continue after\n\nOct 12, 1:00 PM UTC\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
+      "content": "Enterprise · weekly usage reached\n\nYou can continue Monday at 1:00 PM\n\nDialog\n\nYour chats, agents and results are saved.\n\nNeed more capacity?\n\nWe’ll help find the right fit.\n\nContact your account team\nWait for reset",
       "reachableControls": [
         "Close",
         "Contact your account team",
@@ -4024,7 +4125,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "51dc844d1e8c118415fd03ea574dc12631b1f9b7ac55381f94b3017b5e9936ae"
+      "sha256": "5ed8134f70fc422361f635365e842425a02db9dc4f421801d1f80c7c5c4a0c53"
     },
     {
       "id": "15-enterprise-billing",
@@ -4054,7 +4155,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c7a679d3da1dc543347e0537d987dac64dee8cf7c531c1afa7ffe74dcd7e7ad6"
+      "sha256": "0ba1c70d06c8b75674830d4583f0b58b03311a4fe8d40d1da95f0e8daf7a8761"
     },
     {
       "id": "16-basic-chat",
@@ -4081,7 +4182,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "59cebeb63b4bdb7508df44babd1fe726ef302fcf865be2ae7d6a5e887692f871"
+      "sha256": "e870bc903c20be8bb0dd47769f4bad956aa645cead476c2756f87cea5a8281ee"
     },
     {
       "id": "17-basic-billing",
@@ -4111,7 +4212,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "94a2d83ad9ec92f8241c6b74bef38c8f3108b7db71f14f43843460b6710398c9"
+      "sha256": "417969eb7cec74bdc76544a88a80a7ef05f82ef98b4e7d0188f352bc9e9e68c9"
     },
     {
       "id": "18-choose-plan",
@@ -4144,7 +4245,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "6787ec1b8c892fc34ecc6b887c3cdce47673c33aba0fcda9b15bb32d175fbfdf"
+      "sha256": "1cf69bf9e65627a1a520252e866ab607919c36f61e4e9ec5ae6940583c85f121"
     },
     {
       "id": "19-no-plan-billing",
@@ -4174,7 +4275,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "296ad704205d1415523ef565c7824a345b27106009f3fa66f220546536698cb8"
+      "sha256": "9daa1256a91435f745242688c398519e568b6258f9363e7240317de07fe6fff4"
     },
     {
       "id": "20-trial-ended",
@@ -4201,7 +4302,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "3d490c2e1c542085e2cac56ab0e05d2a789ccbc13a1e66a129d74a00e779516d"
+      "sha256": "a844682ba30a0e9bca6cac8f5cef041e500ccb5dcd179e3b4eb6bb3e14028d7a"
     },
     {
       "id": "21-trial-canceled",
@@ -4228,7 +4329,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e21ecfa6f0c88c3dcd2981a1d27bb06942f6330256697cb644e4c9491074c36b"
+      "sha256": "d4ebf0d406e6774be9a9e2273858cc8eb6deeae95a67d5aadb9afab00f7e1942"
     },
     {
       "id": "22-payment-failed",
@@ -4244,19 +4345,19 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": 784,
+        "y": 694,
         "width": 320,
-        "height": 316
+        "height": 406
       },
-      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nReview your billing details to continue. Your chats, agents and results are saved.\n\nReview billing detailsBack to my work",
+      "content": "Payment needs attention\n\nYour payment didn’t go through\n\nDialog\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to my work",
       "reachableControls": [
         "Close",
-        "Review billing details",
+        "Pay $50 now",
         "Back to my work"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "322532ad21852fa18e260a429a59bc11ea2c66d022528b1ef34777c91c5f3658"
+      "sha256": "488f8f18028f514d68fc9e5442dfbe202915244a07626189657e8e4345709052"
     },
     {
       "id": "23-payment-billing",
@@ -4272,21 +4373,20 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": -357,
+        "y": 127.5,
         "width": 320,
-        "height": 1429
+        "height": 845
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nYour trial has ended\nEnded\n\nPaid access requires a successful payment. Review your payment method and plan below.\n\nYour plan\nNo active subscription\nInactive\nPick a plan to continue using AutoGPT.\nStart Pro\nUsage\n\nYour payment needs attention.\n\nReview your payment details to continue. Your conversations and agents stay saved.\n\nYour work stays saved.\n\nPayment\n\nYour payment didn’t go through\n\nYour trial payment needs attention. Review your payment details to continue with your saved work.\n\nUpdate payment method\n\nYour conversations and agents stay saved.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
-        "Start Pro",
-        "Update payment method",
+        "Pay $50 now",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e46ded80273481a409c8e75a637f5fae6428560ea5ac9e97aad9a8eb9ba1e166"
+      "sha256": "ed00db263c2f0583587ba778aa72b280bfccb22fbe24885184e6490ee241c963"
     },
     {
       "id": "24-usage-unavailable",
@@ -4312,7 +4412,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a1fd4ca0bddea86084ce62cf53f1261cd38a01253f195d9e45d59c0b8ebbb28c"
+      "sha256": "5331b203bc349b939ae1f82f28f2f7c28b4958963bdf3bca9f25f9b187042f9f"
     },
     {
       "id": "25-unavailable-billing",
@@ -4328,26 +4428,25 @@
       },
       "componentBounds": {
         "x": 0,
-        "y": -299,
+        "y": -331,
         "width": 320,
-        "height": 1371
+        "height": 1403
       },
-      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\n\nSomething went wrong\n\nWe had the following error when retrieving usage:\n\nYour usage couldn’t be loaded. Try again in a moment.\n\nTry Again\nReport Error\nGet Help\n\nUsage\n\nWe couldn’t load your usage\n\nWe’re having trouble loading your usage. If it keeps happening, our team can help.\n\nContact support\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
+      "content": "Billing & usage\n\nEverything you need to manage your plan.\n\nSubscription\nAutomation Credits\nYour plan\nPro\nActive\nMonthly\nYearly Save 15%\n$50.00 / month · Renews on Nov 5, 2026\nManage subscription\nUsage\n\nWe couldn’t load your usage\n\nYour plan and your work aren’t affected. Try again in a moment.\n\nTry again\nContact support\n\nAutoGPT Max\n\nUpgrade to Max\n$320.00\n/ month\n\n8.5× the usage of Pro\n\nMore workspace storage and priority support\n\nUpgrade to Max\n\nWhat you’ve already used counts toward Max’s higher limit.\n\nPayment method\nManage payment method\nOpen the Stripe portal to update your card or download invoices.\nOpen portal\nInvoices\nNo invoices yet.",
       "reachableControls": [
         "Subscription",
         "Automation Credits",
         "Monthly",
         "Yearly Save 15%",
         "Manage subscription",
-        "Try Again",
-        "Report Error",
-        "Get Help",
+        "Try again",
         "Contact support",
+        "Upgrade to Max",
         "Open portal"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "f22c3a4dc1701131f5fc904f5562e46c2f1e0049eb38ab3a91dba96b662a21fe"
+      "sha256": "3e1ea16824d09e4c795239a42055085a1d6a39ae909ff30e826f47da77d47623"
     },
     {
       "id": "26-linked-provider",
@@ -4376,7 +4475,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "a56774095fddcbaca1801aa32ef573880514a6d9c665245759cb9d6cf96d636e"
+      "sha256": "e26a24fb519506ff34642ca1d9ff73affac6aaddea66a5ffdae60be17a2de7db"
     },
     {
       "id": "27-pro-review",
@@ -4406,7 +4505,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "5751e2070a0be5b79cb7f653338876cae473f99ae6d7972b6f55d209cf1d79bc"
+      "sha256": "f52c7d7070ace0f49369e834c152fe9160cd9171b28c1892e19ba8bc491eeadc"
     },
     {
       "id": "28-max-review",
@@ -4426,7 +4525,7 @@
         "width": 320,
         "height": 784
       },
-      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve used today counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
+      "content": "Upgrade to Max\n\nUpgrade to Max\n\nDialog\n\n8.5 times the usage of Pro and priority support.\n\nMax · Monthly\n\n$320.00 / month\n\nMax, Oct 7 to Nov 5\n\n$299.35\n\nUnused Pro time\n\n-$46.77\n\nTax\n\n$20.20\n\nDue today\n\n$272.78\n\nNext renewal: Nov 5. Max’s regular price is $320.00 plus applicable tax per month, before any applicable discounts or account credits.\n\nYou can keep going once payment goes through. What you’ve already used counts toward Max’s limit, which is 8.5 times as high as Pro’s.\n\nPay $272.78 and upgrade\nKeep Pro",
       "reachableControls": [
         "Close",
         "Pay $272.78 and upgrade",
@@ -4434,7 +4533,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "2f70303c2ef0568f3db28dc24db04994081c47a4663b6778b524cce62c8a20ef"
+      "sha256": "bbe7eb9158dd966839ab50529ff0b5173ca2ddeec6b5097ff5de845ae5c59308"
     },
     {
       "id": "29-payment-pending",
@@ -4461,7 +4560,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "69140b0aeb638a886c4f0f0c4469f61dcb0ae3a09e7779d6dda0ae9f6fc941c6"
+      "sha256": "9d02eb67eb64c6afce0566a237cb4edd90f12532eadadc74a18a70b9ad78df01"
     },
     {
       "id": "30-activation-success",
@@ -4488,7 +4587,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "38fe540ad51cc5f32527b990a550e91fe6ff34df7bf1cddcc5cc2d360a278aec",
+      "sha256": "105304b0f43a8f335e69cd5122e434fd2e47793226b21c8faee5dd351fdb9363",
       "afterDismissal": {
         "draftEditable": true,
         "sendEnabled": true
@@ -4524,7 +4623,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "391d3d645607c7d1c67ca3f12dce50ad48de74ba07084dc0a91d6159bb1cba12"
+      "sha256": "529846859bd9c0a5f111c0472004b7dc5dc68abafa999a51dae9a18df10146b1"
     },
     {
       "id": "32-cancel-pending-billing",
@@ -4555,7 +4654,7 @@
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "c639220d505b4e6e1f6bb4c3156b62bc2f14a5c097bd61f2e3c19c7ad4195565"
+      "sha256": "7b6a62e212e4163a42e6804a4a40c28a7b33fde21222d5fa86764892520fc5ec"
     },
     {
       "id": "33-cancel-pending-notice",
@@ -4575,14 +4674,43 @@
         "width": 320,
         "height": 292
       },
-      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nStart Pro\n\nYou can keep editing your draft.",
+      "content": "Free trial · Trial allowance used\n\nView usage\nYou’ve used your trial allowance\n\nChoose your next plan to continue. Your chats, agents and results are saved.\n\nSubscribe now\n\nYou can keep editing your draft.",
       "reachableControls": [
         "View usage",
-        "Start Pro"
+        "Subscribe now"
       ],
       "horizontalOverflow": false,
       "hiddenScrollableContent": false,
-      "sha256": "e0ce9bb23c7cbd711ce64ed013dcc809c550fbf5cd9cf1deceeab878ccf3bf61"
+      "sha256": "1df424366e7999e35d515db64931cb53531ab517b70953a66342dce8da7c8be5"
+    },
+    {
+      "id": "34-payment-paywall",
+      "experience": {
+        "tier": "pro",
+        "state": "payment_failed"
+      },
+      "screen": "paywall",
+      "file": "34-payment-paywall-320.png",
+      "viewport": {
+        "width": 320,
+        "height": 1100
+      },
+      "componentBounds": {
+        "x": 0,
+        "y": 510,
+        "width": 320,
+        "height": 590
+      },
+      "content": "Your plan\n\nDialog\n\nLog out\n\nPayment\n\nYour payment didn’t go through\n\nPro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.\n\nPay $50 now\n\nOpens a secure Stripe page. You can use a different card there.\n\nBack to billing",
+      "reachableControls": [
+        "Close",
+        "Log out",
+        "Pay $50 now",
+        "Back to billing"
+      ],
+      "horizontalOverflow": false,
+      "hiddenScrollableContent": false,
+      "sha256": "9d24223fd4b9d533da93f4d04908ed3b946d029153737beaed178a889ebc4873"
     }
   ],
   "errors": [],
@@ -4590,5 +4718,5 @@
     "browserClosed": true,
     "serverClosed": true
   },
-  "browserVersion": "149.0.7827.114"
+  "browserVersion": "141.0.7390.37"
 }

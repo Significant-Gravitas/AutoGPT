@@ -41,4 +41,5 @@ export default [
   item("31-fresh-billing", "pro", "fresh", "billing"),
   item("32-cancel-pending-billing", "trial", "cancel_pending", "billing"),
   item("33-cancel-pending-notice", "trial", "cancel_pending", "notice"),
+  item("34-payment-paywall", "pro", "payment_failed", "paywall"),
 ];

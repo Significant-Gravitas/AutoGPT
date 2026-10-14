@@ -43,7 +43,7 @@
       "state": "active"
     },
     "screen": "billing",
-    "improvement": "One percentage for the whole trial, with an end date instead of a reset timer."
+    "improvement": "One trial meter with its end date. The Pro card keeps the price and start date, and only suggests starting early once usage runs low."
   },
   {
     "id": "05-pro-popup",
@@ -232,9 +232,9 @@
       "state": "payment_failed"
     },
     "screen": "dialog",
-    "improvement": "A dedicated action to recover the existing subscription.",
+    "improvement": "State the amount owed and pay the open trial invoice on Stripe in one step, instead of a plan checkout that is refused while the invoice is open.",
     "beforeScreen": "payment-method",
-    "note": "Before: existing payment-method management card; production has no equivalent recovery popup."
+    "note": "Before: existing payment-method management card; production has no equivalent recovery popup. After: the button opens the open trial invoice on Stripe\u2019s hosted page."
   },
   {
     "id": "23-payment-billing",
@@ -244,7 +244,7 @@
       "state": "payment_failed"
     },
     "screen": "billing",
-    "improvement": "Bring payment recovery into the plan and usage summary.",
+    "improvement": "One message with the amount and one button that pays the open invoice. No refused Start Pro checkout and no duplicate payment cards.",
     "note": "Before: generic Pro billing; no dedicated payment-failure state. After: recovery only when billing confirms suspended access."
   },
   {
@@ -267,7 +267,7 @@
       "state": "unavailable"
     },
     "screen": "billing",
-    "improvement": "Keep a visible usage error and retry action instead of silently removing the section."
+    "improvement": "One usage error with a retry in the Usage slot, while the plan card beside it stays as usual."
   },
   {
     "id": "26-linked-provider",
@@ -365,8 +365,20 @@
       "state": "cancel_pending"
     },
     "screen": "notice",
-    "improvement": "Choose a plan explicitly after cancellation; never promise that Pro will start automatically.",
+    "improvement": "Choose a plan explicitly after cancellation with Subscribe now, the label of the plan cards it opens; never promise that Pro will start automatically.",
     "absence": "No cancel-pending chat notice in this production snapshot.",
     "absenceDetail": "The new parent keeps trial access until its scheduled end. This notice links to plan selection rather than starting activation directly."
+  },
+  {
+    "id": "34-payment-paywall",
+    "title": "Payment failure \u00b7 paywall",
+    "experience": {
+      "tier": "pro",
+      "state": "payment_failed"
+    },
+    "screen": "paywall",
+    "improvement": "Past-due trials see the same message and pay button in the paywall instead of plan choices whose checkout is refused.",
+    "absence": "No payment-failure paywall capture in this production snapshot.",
+    "absenceDetail": "Production shows the plan choices from pair 18 here. While the trial invoice is open, their Start Pro checkout is refused, so this state pays that invoice instead."
   }
 ]

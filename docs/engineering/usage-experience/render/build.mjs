@@ -112,7 +112,10 @@ const inputs = [
         ...Object.keys(result.metafile.inputs),
         ...Object.keys(tailwindResult.metafile.inputs),
       ].filter(
-        (file) => !file.startsWith("<") && path.resolve(file).startsWith(repo),
+        (file) =>
+          !file.startsWith("<") &&
+          path.resolve(file).startsWith(repo) &&
+          !path.resolve(file).split(path.sep).includes("node_modules"),
       ),
       path.join(frontend, "src/app/globals.css"),
       path.join(frontend, "tailwind.config.ts"),

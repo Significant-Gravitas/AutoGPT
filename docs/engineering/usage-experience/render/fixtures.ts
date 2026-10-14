@@ -98,6 +98,14 @@ export function trial() {
     ends_at: "2026-10-12T12:00:00Z",
     allowance_used_percent: fixture.state === "active" ? 64 : 100,
     cancel_at_period_end: fixture.state === "cancel_pending",
+    payment_due:
+      fixture.state === "payment_failed"
+        ? {
+            amount_due: 5000,
+            currency: "usd",
+            payment_url: "https://invoice.stripe.com/i/fixture",
+          }
+        : null,
     offer: {
       token: "fixture",
       version: "fixture",
