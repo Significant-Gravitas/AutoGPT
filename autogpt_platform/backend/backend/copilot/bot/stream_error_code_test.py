@@ -85,7 +85,6 @@ async def _run_turn(session_id: str, turn_id: str, code: str) -> None:
         )
 
 
-@pytest.mark.xfail(reason="the executor drops StreamError.code before Redis")
 async def test_the_bot_names_the_failure_the_engine_reported(turn):
     session_id, turn_id = turn
     await _run_turn(session_id, turn_id, "usage_limit")

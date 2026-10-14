@@ -981,6 +981,7 @@ async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
     *,
+    error_code: str | None = None,
     skip_error_publish: bool = False,
     turn_id: str = "",
 ) -> bool:
@@ -998,6 +999,8 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
+        error_code: The machine-readable code of that StreamError, e.g. the
+            engine's ``usage_limit``. Subscribers name the failure from it.
         skip_error_publish: If True, still marks the session as "failed" but
             does NOT publish a StreamError event. Use this for a user-initiated
             cancel, which the frontend would otherwise render as "the assistant
@@ -1086,7 +1089,9 @@ async def mark_session_completed(
 
     if error_message and not skip_error_publish:
         try:
-            await publish_chunk(turn_id, StreamError(errorText=error_message))
+            await publish_chunk(
+                turn_id, StreamError(errorText=error_message, code=error_code)
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to publish error event for session {session_id}: {e}"
