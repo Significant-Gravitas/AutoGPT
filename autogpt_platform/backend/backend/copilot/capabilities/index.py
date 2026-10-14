@@ -259,7 +259,11 @@ class CapabilityIndex:
         than anything the filter kept, or as much and it runs as it is (the
         user has connected it, or it is a platform tool, which needs no
         connection): those are what the filter hid.  ``kind="block"`` must
-        not hide post_to_chat_platform behind the Discord blocks it ties.  A connected entry that matched
+        not hide a first-party tool behind the blocks it ties.  The rerun
+        keeps the service-query restriction, so a tool appears here for a
+        query naming a service only once that restriction lets platform
+        tools naming the service through (#15011): until then "send a
+        discord message" with ``kind="block"`` still lists only blocks.  A connected entry that matched
         less than the filter's best is not, or "fetch a url" fully answered
         by web_fetch would still send the model off to search again.  Among
         equal coverage a connected one is listed first.  A lookup by name (an
