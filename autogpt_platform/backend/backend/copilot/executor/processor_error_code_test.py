@@ -1,15 +1,24 @@
-"""The executor hands a streamed error's code to the turn's completion.
+"""The executor hands a turn's error code to the turn's completion.
 
 Subscribers such as the chat bots name the failure from that code, and
 ``mark_session_completed`` is what publishes it; the end-to-end path over
 Redis is covered in ``bot/stream_error_code_test.py``.
 """
 
+import asyncio
 import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.bot.bot_backend import BotStreamError
+from backend.copilot.bot.failures import (
+    INTERNAL,
+    PROVIDER_LIMIT,
+    STOPPED,
+    FailureCategory,
+    categorize,
+)
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamError
@@ -26,12 +35,22 @@ def no_trial_attribution(mocker):
     )
 
 
-@pytest.mark.asyncio
-async def test_a_streamed_errors_code_reaches_the_turns_completion() -> None:
-    published = _TrackedStream(
-        events=[StreamError(errorText="Usage limit reached.", code="usage_limit")]
-    )
-    mark_completed = AsyncMock()
+class _FailingClose(_TrackedStream):
+    """The stream ends on a StreamError, then closing it fails."""
+
+    def __init__(self, events: list, close_error: BaseException):
+        super().__init__(events)
+        self._close_error = close_error
+
+    async def aclose(self) -> None:
+        raise self._close_error
+
+
+def _limit_error() -> StreamError:
+    return StreamError(errorText="Usage limit reached.", code="usage_limit")
+
+
+async def _run(published: _TrackedStream, mark_completed: AsyncMock) -> None:
     with (
         patch(
             "backend.copilot.executor.processor.ChatConfig",
@@ -58,9 +77,47 @@ async def test_a_streamed_errors_code_reaches_the_turns_completion() -> None:
             _make_entry(), threading.Event(), MagicMock(), _make_log()
         )
 
+
+def _what_a_bot_user_is_told(mark_completed: AsyncMock) -> FailureCategory:
+    published = mark_completed.await_args.kwargs
+    return categorize(
+        BotStreamError(
+            "backend_stream_error",
+            published["error_message"],
+            code=published["error_code"],
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_streamed_errors_code_reaches_the_turns_completion() -> None:
+    mark_completed = AsyncMock()
+    await _run(_TrackedStream(events=[_limit_error()]), mark_completed)
+
     mark_completed.assert_awaited_once_with(
         "sess-1",
         error_message="Usage limit reached.",
         error_code="usage_limit",
         turn_id="turn-1",
     )
+    assert _what_a_bot_user_is_told(mark_completed) is PROVIDER_LIMIT
+
+
+@pytest.mark.xfail(reason="a later failure keeps the earlier StreamError's code")
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "close_error, told",
+    [
+        (asyncio.CancelledError(), STOPPED),
+        (RuntimeError("stream close broke"), INTERNAL),
+    ],
+)
+async def test_a_later_failure_does_not_inherit_the_earlier_code(
+    close_error: BaseException, told: FailureCategory
+) -> None:
+    mark_completed = AsyncMock()
+    with pytest.raises(type(close_error)):
+        await _run(_FailingClose([_limit_error()], close_error), mark_completed)
+
+    assert mark_completed.await_args.kwargs["error_code"] is None
+    assert _what_a_bot_user_is_told(mark_completed) is told
