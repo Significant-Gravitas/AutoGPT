@@ -399,9 +399,9 @@ async def test_find_capability_kind_tool_surfaces_the_connected_gmail_blocks(
 
 
 async def test_find_capability_by_name_kind_lookup_gets_no_hint(full_index):
-    result = await _find(full_index, GOOGLE_STATE, query="web_search", kind="tool")
+    result = await _find(full_index, GOOGLE_STATE, query="web_fetch", kind="tool")
     assert isinstance(result, CapabilityListResponse)
-    assert result.capabilities[0]["name"] == "web_search"
+    assert result.capabilities[0]["name"] == "web_fetch"
     assert result.other_kinds == []
     assert "without kind" not in result.message
 
