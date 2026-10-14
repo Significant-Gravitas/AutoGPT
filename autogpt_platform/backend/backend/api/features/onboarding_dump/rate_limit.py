@@ -10,8 +10,8 @@ from typing import cast
 from fastapi import HTTPException
 from prisma.enums import SubscriptionTier
 
+from backend.data.db_accessors import user_db
 from backend.data.redis_client import get_redis_async
-from backend.data.user import get_user_subscription_tier
 from backend.monitoring.instrumentation import record_rate_limit_hit
 from backend.util.feature_flag import Flag, evaluate_feature_flag
 from backend.util.settings import BehaveAs, Settings
@@ -72,7 +72,7 @@ async def _requires_budget(user_id: str) -> bool:
     if settings.config.behave_as == BehaveAs.LOCAL:
         return False
     try:
-        tier = await get_user_subscription_tier(user_id)
+        tier = await user_db().get_user_subscription_tier(user_id)
     except ValueError:
         tier = SubscriptionTier.NO_TIER
     if tier != SubscriptionTier.NO_TIER:

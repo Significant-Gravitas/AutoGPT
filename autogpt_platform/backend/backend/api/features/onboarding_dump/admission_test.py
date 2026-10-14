@@ -1,11 +1,13 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import BackgroundTasks, HTTPException
 from prisma.enums import BrainDumpInputMode, BrainDumpStatus
+from prisma.errors import ClientNotConnectedError
 
 from backend.api.features.onboarding_dump import service
 from backend.api.features.onboarding_dump.service_test import DumpStore
+from backend.data.db_manager import DatabaseManagerAsyncClient
 
 
 @pytest.fixture
@@ -18,6 +20,7 @@ def pipeline(mocker):
         ("mark_failed", store.mark_failed),
     ):
         mocker.patch.object(service.db, name, new=method)
+    mocker.patch("backend.data.db.is_connected", return_value=True)
     admission = mocker.patch.object(
         service, "enforce_personalization_budget", new=AsyncMock()
     )
@@ -94,6 +97,28 @@ async def test_existing_processing_and_results_bypass_budget(pipeline, status, m
             "user", "recording", "My bakery", BackgroundTasks()
         )
     admission.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disconnected_rejection_is_marked_through_database_manager(mocker):
+    rpc = MagicMock(spec_set=DatabaseManagerAsyncClient)
+    rpc.mark_failed = AsyncMock()
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client", return_value=rpc
+    )
+    local = mocker.patch.object(
+        service.db, "mark_failed", new=AsyncMock(side_effect=ClientNotConnectedError())
+    )
+    mocker.patch.object(
+        service,
+        "enforce_personalization_budget",
+        new=AsyncMock(side_effect=HTTPException(429, "Try again")),
+    )
+    with pytest.raises(HTTPException):
+        await service._admit_processing("user", "recording")
+    rpc.mark_failed.assert_awaited_once_with("user", "recording", "rate_limited")
+    local.assert_not_awaited()
 
 
 @pytest.mark.asyncio
