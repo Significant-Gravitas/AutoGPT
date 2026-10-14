@@ -14,6 +14,7 @@ from backend.copilot.completion_notify import (
     publish_copilot_completion,
 )
 from backend.copilot.model import ChatSessionInfo, ChatSessionMetadata, PendingQuestion
+from backend.data import push_sender
 
 _CN = "backend.copilot.completion_notify"
 
@@ -325,6 +326,28 @@ class TestBuildPayload:
                 "sess-1", "user-1", "failed"
             )
         assert payload.body == "Couldn't finish: Q3 revenue report"
+
+    async def test_oversized_session_title_stays_within_push_limit(self):
+        """A user-set title has no length cap, but Web Push rejects payloads
+        past ~4 KB — and repeated push failures get the subscription deleted.
+        The structured fields are truncated so even a pathological title
+        keeps the push payload small."""
+        chat_db, experts_db = _mock_dbs(
+            session=_session(title="t" * 5000),
+            expert=SimpleNamespace(name="n" * 500, avatar_url=None),
+        )
+        with (
+            patch(f"{_CN}.chat_db", MagicMock(return_value=chat_db)),
+            patch(f"{_CN}.experts_db", MagicMock(return_value=experts_db)),
+        ):
+            payload = await build_copilot_completion_payload(
+                "sess-1", "user-1", "completed"
+            )
+        assert payload.session_title is not None
+        assert len(payload.session_title) <= completion_notify.MAX_BODY_LEN
+        assert payload.expert_name is not None
+        assert len(payload.expert_name) <= completion_notify.MAX_TITLE_LEN
+        assert len(push_sender._build_push_payload(payload).encode()) < 4096
 
 
 class TestPublishCopilotCompletion:

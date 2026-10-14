@@ -153,6 +153,11 @@ async def build_copilot_completion_payload(
         expert_name=expert_name,
         pending_question=pending_question if status == "completed" else None,
     )
+    # The structured fields are truncated like the display ones: the push
+    # path forwards them verbatim and Web Push rejects payloads past ~4 KB,
+    # while a user-set session title has no length cap. An oversized title
+    # would fail every push for the user until the failure janitor deleted
+    # their subscription.
     return CopilotCompletionPayload(
         type="copilot_completion",
         event="session_completed",
@@ -162,8 +167,8 @@ async def build_copilot_completion_payload(
         body=body,
         icon=avatar_url,
         url=f"/copilot?sessionId={session_id}",
-        expert_name=expert_name,
-        session_title=session_title,
+        expert_name=_truncate(expert_name, MAX_TITLE_LEN) if expert_name else None,
+        session_title=_truncate(session_title, MAX_BODY_LEN) if session_title else None,
     )
 
 
