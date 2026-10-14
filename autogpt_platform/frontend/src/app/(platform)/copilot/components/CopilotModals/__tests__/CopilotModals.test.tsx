@@ -7,13 +7,17 @@ import {
   getListCopilotFollowupSchedulesMockHandler,
 } from "@/app/api/__generated__/endpoints/schedules/schedules.msw";
 import { getListCopilotSkillsMockHandler } from "@/app/api/__generated__/endpoints/skills/skills.msw";
+import { ConnectServiceDialog } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/ConnectServiceDialog";
 import { server } from "@/mocks/mock-server";
 import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { useCopilotUIStore } from "../../../store";
@@ -50,9 +54,96 @@ function Harness() {
   );
 }
 
+const linearBlockAndSignIn = getGetV1ListProvidersMockHandler([
+  {
+    name: "linear",
+    description: "Issues and projects",
+    supported_auth_types: ["api_key"],
+    service: "linear",
+    service_name: null,
+    service_icon: "linear",
+  },
+  {
+    name: "mcp_linear",
+    display_name: "Linear",
+    supported_auth_types: [],
+    service: "linear",
+    service_name: "Linear",
+    service_icon: "linear",
+    mcp_server: {
+      server_url: "https://mcp.linear.app/mcp",
+      documentation_url: "https://linear.app/docs",
+      setup_instructions: "Sign in to Linear.",
+      connection_mode: "hosted",
+      auth_methods: ["oauth"],
+    },
+  },
+]);
+
+async function openLinear(dialog: HTMLElement) {
+  await userEvent.click(
+    await within(dialog).findByRole("button", { name: /Linear/ }),
+  );
+}
+
+function arrangeSentryGrantForMaria() {
+  const grants = { granted: [] as string[] };
+  useCopilotUIStore.setState({
+    contextPanelExpert: { id: "expert-maria", name: "Maria" },
+  });
+  server.use(
+    getGetV1ListProvidersMockHandler([
+      {
+        name: "mcp_sentry",
+        display_name: "Sentry",
+        description: "Errors",
+        supported_auth_types: [],
+        service: "sentry",
+        service_name: "Sentry",
+        service_icon: "sentry",
+        mcp_server: {
+          server_url: "https://mcp.sentry.dev/mcp",
+          documentation_url: "https://docs.sentry.io",
+          setup_instructions: "Paste your Sentry token.",
+          connection_mode: "hosted",
+          auth_methods: ["bearer"],
+          oauth_write_scopes: [],
+          server_url_options: [],
+          allow_custom_url: false,
+        },
+      },
+    ]),
+    http.post("*/api/mcp/discover-tools", () =>
+      HttpResponse.json({
+        tools: [],
+        server_url: "https://mcp.sentry.dev/mcp",
+      }),
+    ),
+    http.post("*/api/mcp/token", () =>
+      HttpResponse.json({
+        id: "cred-sentry",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.sentry.dev",
+        service: "sentry",
+      }),
+    ),
+    http.post("*/api/experts/expert-maria/credentials", async ({ request }) => {
+      grants.granted = (
+        (await request.json()) as { credential_ids: string[] }
+      ).credential_ids;
+      return HttpResponse.json([]);
+    }),
+  );
+  return grants;
+}
+
 describe("CopilotModals", () => {
   beforeEach(() => {
-    useCopilotUIStore.setState({ initialPrompt: null });
+    useCopilotUIStore.setState({
+      initialPrompt: null,
+      contextPanelExpert: null,
+    });
     server.use(
       getListCopilotSkillsMockHandler([]),
       getListCopilotFollowupSchedulesMockHandler([]),
@@ -140,6 +231,73 @@ describe("CopilotModals", () => {
     expect(screen.queryByText("No integration connected")).toBeNull();
   });
 
+  test("the connect dialog opens a service on its sign-in, with the API key one click away", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-connect"));
+
+    const dialog = await screen.findByRole("dialog");
+    await openLinear(dialog);
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(within(dialog).queryByPlaceholderText("My Linear key")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "More ways to connect",
+      }),
+    );
+    expect(
+      await within(dialog).findByPlaceholderText("My Linear key"),
+    ).toBeDefined();
+    expect(within(dialog).queryByText("Sign in to Linear.")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Use the Linear sign-in instead",
+      }),
+    );
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+  });
+
+  test("the integrations modal's connect dialog also opens on the sign-in", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-integrations"));
+
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Connect Service/ }))[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect a service",
+    });
+    await openLinear(dialog);
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+  });
+
+  test("without the sign-in preference a service opens on its API key, with the sign-in one click away", async () => {
+    server.use(linearBlockAndSignIn);
+    render(<ConnectServiceDialog open onOpenChange={vi.fn()} />);
+
+    const dialog = await screen.findByRole("dialog");
+    await openLinear(dialog);
+    expect(
+      await within(dialog).findByPlaceholderText("My Linear key"),
+    ).toBeDefined();
+    expect(within(dialog).queryByText("Sign in to Linear.")).toBeNull();
+
+    await userEvent.click(
+      within(dialog).getByRole("button", {
+        name: "Use the Linear sign-in instead",
+      }),
+    );
+    expect(await within(dialog).findByText("Sign in to Linear.")).toBeDefined();
+    expect(
+      within(dialog).getByRole("button", {
+        name: "More ways to connect",
+      }),
+    ).toBeDefined();
+  });
+
   test("renders the connect dialog from a ?modal=connect deep link", async () => {
     render(
       <NuqsTestingAdapter searchParams="?modal=connect">
@@ -174,5 +332,42 @@ describe("CopilotModals", () => {
       ).toBeNull();
       expect(onUrlUpdate).toHaveBeenCalled();
     });
+  });
+
+  test("connecting from an expert chat grants the new credential to that expert", async () => {
+    const grants = arrangeSentryGrantForMaria();
+
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-connect"));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Sentry/ }),
+    );
+    const input = await within(dialog).findByLabelText("API token");
+    fireEvent.change(input, { target: { value: "sntrys_token" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
+
+    await waitFor(() => expect(grants.granted).toEqual(["cred-sentry"]));
+  });
+
+  test("connecting from the integrations modal in an expert chat grants the new credential to that expert", async () => {
+    const grants = arrangeSentryGrantForMaria();
+
+    render(<Harness />);
+    fireEvent.click(screen.getByText("open-integrations"));
+    await userEvent.click(
+      (await screen.findAllByRole("button", { name: /Connect Service/ }))[0],
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect a service",
+    });
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /Sentry/ }),
+    );
+    const input = await within(dialog).findByLabelText("API token");
+    fireEvent.change(input, { target: { value: "sntrys_token" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save token" }));
+
+    await waitFor(() => expect(grants.granted).toEqual(["cred-sentry"]));
   });
 });

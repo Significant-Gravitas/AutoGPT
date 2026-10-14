@@ -349,6 +349,7 @@ def _template_where(
         where["OR"] = [
             {"name": {"contains": needle, "mode": "insensitive"}},
             {"role": {"contains": needle, "mode": "insensitive"}},
+            {"jobTitle": {"contains": needle, "mode": "insensitive"}},
             {"tagline": {"contains": needle, "mode": "insensitive"}},
             {"bio": {"contains": needle, "mode": "insensitive"}},
         ]

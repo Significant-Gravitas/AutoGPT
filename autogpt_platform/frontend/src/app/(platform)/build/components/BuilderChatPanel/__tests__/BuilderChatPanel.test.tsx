@@ -32,12 +32,15 @@ function makeMockHook(
     onSend: vi.fn(),
     queuedMessages: [],
     isBootstrapping: false,
+    hasNoModel: false,
     revertTargetVersion: null,
     handleRevert: vi.fn(),
     bindError: null,
     bootstrapError: null,
     retryBind: vi.fn(),
     retryBootstrap: vi.fn(),
+    transportCheckError: null,
+    retryTransportCheck: vi.fn(),
     ...overrides,
   } as ReturnType<typeof useBuilderChatPanel>;
 }

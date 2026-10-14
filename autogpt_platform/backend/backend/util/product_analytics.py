@@ -54,10 +54,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
 from backend.data.experiments import list_assignments
+from backend.data.onboarding_role import OnboardingRole
 from backend.util import posthog_client
 from backend.util.posthog_events import PostHogEvent
 
 if TYPE_CHECKING:
+    from posthog import Posthog
+
     from backend.data.execution import GraphExecutionEntry, GraphExecutionMeta
     from backend.data.model import GraphExecutionStats
 
@@ -347,6 +350,27 @@ def track_signup_completed(*, user_id: str, signup_method: str | None) -> None:
 
 def track_onboarding_completed(*, user_id: str) -> None:
     track(user_id, PostHogEvent.ONBOARDING_COMPLETED)
+
+
+def set_onboarding_role(
+    *,
+    user_id: str,
+    role: OnboardingRole,
+    keep_existing: bool = False,
+    client: "Posthog | None" = None,
+) -> bool:
+    """The role picked in onboarding as person properties, so funnels and
+    retention can be split by it. Other's text is cleared for any other pick.
+    `keep_existing` and `client` are for the backfill: a role PostHog already
+    holds is the newer pick, so it is left alone, and the run sends on a client
+    of its own (`posthog_client.send_each`). False when it wasn't queued."""
+    person = {"onboarding_role": role.label, "onboarding_role_other": role.other}
+    return posthog_client.capture(
+        user_id,
+        PostHogEvent.SET_PERSON_PROPERTIES,
+        {"$set_once" if keep_existing else "$set": person},
+        client=client,
+    )
 
 
 async def track_checkout_started(

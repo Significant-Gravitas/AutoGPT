@@ -7,7 +7,7 @@
     ============================================================ -#}
 {%- import "_email_ui.j2" as ui with context -%}
 <!doctype html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 {{ ui.head_block(subject) }}
 </head>
@@ -18,7 +18,7 @@
 {%- set TOUR_HEROES = {1: 'tour_firstwin', 2: 'tour_fiveways', 3: 'tour_workspace',
                        4: 'tour_listening', 5: 'tour_shipping', 6: 'tour_directline'} -%}
 {{ ui.hero(TOUR_HEROES[part]) }}
-    <tr><td bgcolor="#ffffff" style="border-radius:0 0 16px 16px;">
+    <tr><td bgcolor="#ffffff" class="corner" style="border-radius:0 0 16px 16px;">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF">
 {%- if part == 1 %}
 {% call ui.eyebrow(tone='brand') %}PART 1 OF {{ of }} · GETTING STARTED{% endcall %}

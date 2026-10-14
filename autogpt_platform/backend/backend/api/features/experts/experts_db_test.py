@@ -6035,12 +6035,15 @@ async def test_list_templates_without_a_category_keeps_uncategorised_experts(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_list_templates_searches_name_role_tagline_and_bio(
+async def test_list_templates_searches_name_role_job_title_tagline_and_bio(
     server: SpinTestServer,
 ):
     suffix = uuid.uuid4().hex[:8]
     by_name = await _template(f"Marigold {suffix}")
     by_role = await _template(f"Roleful {suffix}", role=f"Podcaster {suffix}")
+    by_job_title = await _template(
+        f"Titled {suffix}", jobTitle=f"Social Media Manager {suffix}"
+    )
     by_tagline = await _template(f"Tagged {suffix}", tagline=f"Books {suffix} tours")
     by_bio = await _template(f"Biod {suffix}", bio=f"Fifteen years of {suffix} work")
 
@@ -6049,13 +6052,16 @@ async def test_list_templates_searches_name_role_tagline_and_bio(
 
     assert by_name.id in await ids_for("marigold")
     assert by_role.id in await ids_for(f"podcaster {suffix}")
+    # The title line the card shows ("Jules · Social Media Manager").
+    assert by_job_title.id in await ids_for("social media")
     assert by_tagline.id in await ids_for(f"books {suffix}")
     assert by_bio.id in await ids_for(f"fifteen years of {suffix}")
 
-    # One term, four templates: the OR spans the four searchable columns.
+    # One term, five templates: the OR spans the five searchable columns.
     assert await ids_for(suffix) >= {
         by_name.id,
         by_role.id,
+        by_job_title.id,
         by_tagline.id,
         by_bio.id,
     }

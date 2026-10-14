@@ -270,6 +270,10 @@ function rowDifferences(a: LogRow | undefined, b: LogRow | undefined) {
   } else if (a.content !== b.content) {
     fields.push("content");
   }
+  // A drained row's metadata decides how it renders (a held call's result is hidden).
+  if (a.role === "user" && !jsonEqual(a.metadata, b.metadata)) {
+    fields.push("metadata");
+  }
   const sameCalls =
     a.toolCalls.length === b.toolCalls.length &&
     a.toolCalls.every((call, i) => {
@@ -297,7 +301,7 @@ function reportDrift(
 }
 
 // `crypto.subtle` exists only in secure contexts; a plain-HTTP LAN origin skips the check.
-async function sha256Hex(text: string): Promise<string | null> {
+export async function sha256Hex(text: string): Promise<string | null> {
   const subtle = globalThis.crypto?.subtle;
   if (!subtle) return null;
   const hash = await subtle.digest("SHA-256", new TextEncoder().encode(text));

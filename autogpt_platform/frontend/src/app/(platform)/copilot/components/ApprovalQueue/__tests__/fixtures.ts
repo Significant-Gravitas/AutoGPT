@@ -207,7 +207,7 @@ export function workflow(id = "wf") {
     },
     args: { library_agent_id: "lib-1", inputs: { topic: "Q3 invoices" } },
     fields: [
-      { key: "library_agent_id", label: "Library agent" },
+      { key: "library_agent_id", label: "Library workflow" },
       { key: "inputs", label: "Inputs" },
     ],
     headline: { ask: "Run", object: "Morning digest" },

@@ -23,6 +23,10 @@ import {
   getTempFlowId,
 } from "@/services/builder-draft/draft-service";
 import { retryUnlessClientError } from "../helpers/graphLoadError";
+import {
+  describeSaveError,
+  markInvalidFields,
+} from "../helpers/saveGraphError";
 
 export type SaveGraphOptions = {
   showToast?: boolean;
@@ -83,15 +87,6 @@ export const useSaveGraph = ({
             });
           }
         },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving workflow",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
       },
     });
 
@@ -119,19 +114,10 @@ export const useSaveGraph = ({
             });
           }
         },
-        onError: (error) => {
-          onError?.(error);
-          toast({
-            title: "Error saving workflow",
-            description:
-              (error as any).message ?? "An unexpected error occurred.",
-            variant: "destructive",
-          });
-        },
       },
     });
 
-  const saveGraph = useCallback(
+  const persistGraph = useCallback(
     async (values?: { name?: string; description?: string }) => {
       const graphNodes = useNodeStore.getState().getBackendNodes();
       const graphLinks = useEdgeStore.getState().getBackendLinks();
@@ -190,6 +176,24 @@ export const useSaveGraph = ({
       }
     },
     [graph, toast, createNewGraph, updateGraph],
+  );
+
+  // Resolves to null when the save fails; the user has been told why.
+  const saveGraph = useCallback(
+    async (values?: { name?: string; description?: string }) => {
+      let saved: GraphModel;
+      try {
+        saved = await persistGraph(values);
+      } catch (error) {
+        onError?.(error);
+        markInvalidFields(error);
+        toast(describeSaveError(error));
+        return null;
+      }
+      useNodeStore.getState().clearAllNodeErrors();
+      return saved;
+    },
+    [persistGraph, onError, toast],
   );
 
   return {

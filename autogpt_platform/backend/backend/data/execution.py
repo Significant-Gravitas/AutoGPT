@@ -1549,6 +1549,15 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # When the node was queued and by what: ``graph_start`` for a node queued
+    # before this executor picked the run up (an entry node, or one left
+    # queued by an interrupted run), ``node_output`` for one queued by an
+    # upstream node's output during the run. In-memory only, for the node's
+    # queue wait on its Sentry transaction.
+    queued_at: Optional[datetime] = Field(default=None, exclude=True)
+    queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
+        default=None, exclude=True
+    )
 
 
 class ExecutionQueue(Generic[T]):
