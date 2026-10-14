@@ -110,7 +110,7 @@ def test_messages_follow_the_script_through_a_tool_round(scripted_model):
 
     first_entry, second_entry = scripted_model.journal(nonce="sdk-run")
     assert first_entry["cost_usd"] == pytest.approx(
-        (3000 * 2 + 40 * 10 + 20000 * 0.2 + 1000 * 4.0) / 1_000_000
+        (3000 * 2 + 40 * 10 + 20000 * 0.1 + 1000 * 4.0) / 1_000_000
     )
     assert second_entry["checks"] == [
         {"what": "find_library_agent result", "ok": True, "detail": "matched"}
@@ -135,7 +135,7 @@ def test_chat_completions_follow_the_script_and_bill_like_openrouter(
     assert (usage.prompt_tokens, usage.completion_tokens) == (24000, 40)
     # No cache marker asked for an hour, so the write is a five-minute one.
     assert usage.model_extra["cost"] == pytest.approx(
-        (3000 * 2 + 40 * 10 + 20000 * 0.2 + 1000 * 2.5) / 1_000_000
+        (3000 * 2 + 40 * 10 + 20000 * 0.1 + 1000 * 2.5) / 1_000_000
     )
 
     messages += [

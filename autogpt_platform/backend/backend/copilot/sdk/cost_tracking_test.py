@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from backend.copilot.sdk.cost_tracking import CLISessionUsage, TokenUsage
+from backend.copilot.sdk.cost_tracking import CLISessionUsage, TokenUsage, rate_card_usd
 
 from .turn_cost_test import (
     _CALL_COST,
@@ -14,6 +14,18 @@ from .turn_cost_test import (
     _KIMI,
     _kimi_rate_card_cost,
 )
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["claude-sonnet-5-5", "anthropic/claude-sonnet-5-5", "anthropic/claude-sonnet-5.5"],
+)
+def test_sonnet_5_5_cache_reads_cost_ten_cents_per_million(model):
+    """What a direct turn, or an OpenRouter turn without its bill, is charged
+    for a million Sonnet 5.5 cache reads: Anthropic's $0.10, not the bundled
+    CLI's $0.20."""
+    cost = rate_card_usd(model, {"cache_read_input_tokens": 1_000_000})
+    assert cost == pytest.approx(0.10)
 
 
 @pytest.mark.parametrize("model", ["claude-sonnet-4-6", _KIMI])

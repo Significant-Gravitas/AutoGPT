@@ -1,10 +1,11 @@
 """What each model call costs: the fake provider's own invoice.
 
 The baseline engine is charged the ``usage.cost`` an OpenRouter-style
-response carries, so the fake reports one. The SDK engine is charged the
-CLI's estimate from its own copy of Anthropic's list prices, which these
-match (backend/copilot/anthropic_rates.json). A journey checks what the
-platform recorded against the sum of these, read from the journal.
+response carries, so the fake reports one. The SDK engine serves no
+OpenRouter generation lookup here, so the platform charges it from its own
+rate card (backend/copilot/anthropic_rates.json), which these match. A
+journey checks what the platform recorded against the sum of these, read
+from the journal.
 """
 
 from dataclasses import dataclass
@@ -24,9 +25,10 @@ class Price:
     cache_write_1h: float
 
 
-# Keyed by model name without the vendor prefix (``anthropic/``).
+# Keyed by model name without the vendor prefix (``anthropic/``). Sonnet 5.5
+# and Opus 5.5 cache reads cost 0.05x input, not the usual 0.1x.
 PRICES: dict[str, Price] = {
-    "claude-sonnet-5-5": Price(2.0, 10.0, 0.2, 2.5, 4.0),
+    "claude-sonnet-5-5": Price(2.0, 10.0, 0.1, 2.5, 4.0),
     "claude-opus-5-5": Price(4.0, 20.0, 0.2, 5.0, 8.0),
     "claude-haiku-4-5": Price(1.0, 5.0, 0.1, 1.25, 2.0),
 }

@@ -206,7 +206,18 @@ class TestSonnet5_5Rates:
         assert cost == 12.0
         assert "falling back" not in caplog.text
 
-    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.7), ("1h", 4.2)])
+    def test_sonnet_5_5_cache_reads_cost_ten_cents_per_million(self):
+        """Anthropic prices Sonnet 5.5 cache hits at 0.05x input, not the
+        usual 0.1x. The bundled CLI's own copy says $0.20."""
+        cost = compute_anthropic_cost_usd(
+            model="claude-sonnet-5-5",
+            prompt_tokens=1_000_000,
+            completion_tokens=0,
+            cache_read_tokens=1_000_000,
+        )
+        assert cost == pytest.approx(0.10)
+
+    @pytest.mark.parametrize("cache_ttl, expected_cost", [("5m", 2.6), ("1h", 4.1)])
     def test_sonnet_5_5_cache_rates(self, cache_ttl, expected_cost):
         cost = compute_anthropic_cost_usd(
             model="claude-sonnet-5-5",
