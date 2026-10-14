@@ -418,14 +418,12 @@ async def test_the_fingerprint_survives_a_change_of_transport(
     """We run through OpenRouter and CI ran direct-Anthropic, which spell the
     same model differently. A fingerprint that moved with the transport would
     report a change nobody made."""
-    # Set both credentials so the transport is decided by the flag alone;
-    # CI has neither, and without them both arms resolve direct-Anthropic
-    # and the test passes without comparing anything.
-    monkeypatch.setenv("CHAT_API_KEY", "style-eval-test-key")
-    monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
+    # Each route gets its own key, so each arm runs on its route.
+    monkeypatch.setenv("CHAT_OPENROUTER_API_KEY", "style-eval-test-key")
+    monkeypatch.setenv("CHAT_ANTHROPIC_API_KEY", "style-eval-test-key")
     fingerprints = []
-    for openrouter in ("true", "false"):
-        monkeypatch.setenv("CHAT_USE_OPENROUTER", openrouter)
+    for route in ("openrouter", "direct_anthropic"):
+        monkeypatch.setenv("CHAT_PLATFORM_ROUTE", route)
         result = await run(RunOptions(experts=["Max"], out=tmp_path / "r.json"))
         assert result is not None
         fingerprints.append((result.chat_model, result.fingerprint))

@@ -225,7 +225,7 @@ def test_sdk_exports_hook_event_type(hook_event: str):
 # features incompatible with OpenRouter (``tool_reference`` content
 # blocks, ``context-management-2025-06-27`` beta).  We neutralise these
 # at runtime by injecting ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1``
-# into the CLI subprocess env (see ``build_sdk_env()`` in ``env.py``).
+# into the CLI subprocess env (see ``route_launch_env()`` in ``env.py``).
 #
 # This test is the cheapest possible regression guard: it pins the
 # bundled CLI to a known-good version.  If anyone bumps
@@ -237,7 +237,7 @@ def test_sdk_exports_hook_event_type(hook_event: str):
 # CLI versions bisect-verified as OpenRouter-safe.  2.1.63 and 2.1.70 pre-date
 # the context-management beta regression and work without any env var.  2.1.97+
 # requires ``CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1`` (injected by
-# ``build_sdk_env()`` in ``env.py``) to strip the beta header.
+# ``route_launch_env()`` in ``env.py``) to strip the beta header.
 _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
     {
         "2.1.63",  # claude-agent-sdk 0.1.45 -- original pin from PR #12294.
@@ -246,7 +246,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #          OpenRouter-safe in #12742.
         "2.1.97",  # claude-agent-sdk 0.1.58 -- OpenRouter-safe only with
         #          CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 (injected by
-        #          build_sdk_env() in env.py).
+        #          route_launch_env() in env.py).
         "2.1.116",  # claude-agent-sdk 0.1.64 -- first bundled version that
         #           fixes the --resume + excludeDynamicSections=True crash
         #           (introduced in 2.1.98), unlocking cross-user prompt
@@ -257,7 +257,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           an experimental beta here, still stripped by
         #           CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1.
         "2.1.259",  # claude-agent-sdk 0.2.152 -- wire shape measured identical
-        #           to 2.1.248 on both the bare and the build_sdk_env-pinned
+        #           to 2.1.248 on both the bare and the route_launch_env-pinned
         #           path: same anthropic-beta list, same message roles, same
         #           body keys.  Verified via cli_openrouter_compat_test.py.
         "2.1.281",  # claude-agent-sdk 0.2.159 -- 2.1.280+ is required for
@@ -268,7 +268,7 @@ _KNOWN_GOOD_BUNDLED_CLI_VERSIONS: frozenset[str] = frozenset(
         #           CLI rejects the slug the same way 2.1.279 rejected
         #           claude-opus-5-5.  Still ships the
         #           context-management-2025-06-27 beta string, so the
-        #           build_sdk_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
+        #           route_launch_env() CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS
         #           guard remains required -- see
         #           cli_openrouter_compat_test.py, which CI runs.
     }

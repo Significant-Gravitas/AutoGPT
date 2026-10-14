@@ -50,7 +50,7 @@ def baseline_io(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[ChatSession]]:
         service,
         "config",
         service.config.model_copy(
-            update={"use_e2b_sandbox": False, "use_local": False}
+            update={"use_e2b_sandbox": False, "platform_route": "openrouter"}
         ),
     )
     for name, value in {

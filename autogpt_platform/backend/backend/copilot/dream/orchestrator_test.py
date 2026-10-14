@@ -1799,7 +1799,7 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     handle.token = "tok"
 
     config = mocker.MagicMock()
-    config.direct_anthropic_api_key = "key"
+    config.batch_anthropic_api_key = "key"
 
     result = await orchestrator_mod._submit_dream_pass_batch(
         user_id="u-lock-lost",

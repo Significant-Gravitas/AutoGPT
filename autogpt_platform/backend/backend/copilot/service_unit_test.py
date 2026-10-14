@@ -240,7 +240,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_provider_label="openai",
-                    title_model="gpt-4o-mini",
+                    aux_model="gpt-4o-mini",
                 ),
             ),
         ):
@@ -261,7 +261,7 @@ class TestRecordTitleGenerationCost:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(aux_provider_label="openai", title_model="gpt-4o-mini"),
+                MagicMock(aux_provider_label="openai", aux_model="gpt-4o-mini"),
             ),
         ):
             await _record_title_generation_cost(
@@ -286,7 +286,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     base_url="https://openrouter.ai/api/v1",
-                    title_model="x",
+                    aux_model="x",
                 ),
             ),
         ):
@@ -310,7 +310,7 @@ class TestRecordTitleGenerationCost:
                 "backend.copilot.service.config",
                 MagicMock(
                     base_url="https://openrouter.ai/api/v1",
-                    title_model="x",
+                    aux_model="x",
                 ),
             ),
         ):
@@ -334,7 +334,7 @@ class TestRecordTitleGenerationCost:
             ),
             patch(
                 "backend.copilot.service.config",
-                MagicMock(base_url=None, title_model="m"),
+                MagicMock(aux_model="m"),
             ),
         ):
             await _record_title_generation_cost(
@@ -749,7 +749,7 @@ class TestGenerateSessionTitle:
                 "backend.copilot.service.config",
                 MagicMock(
                     aux_uses_openrouter=False,
-                    title_model="anthropic/claude-haiku",
+                    aux_model="anthropic/claude-haiku",
                 ),
             ),
         ):

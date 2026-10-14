@@ -466,17 +466,6 @@ class TestIterSdkMessages:
 
 
 # ---------------------------------------------------------------------------
-# ChatConfig.effective_transport — single source of truth for "which
-# transport will the SDK CLI actually use?"
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
-# _resolve_sdk_model_for_request — transport-aware LD-override normalisation
-# ---------------------------------------------------------------------------
-
-
-# ---------------------------------------------------------------------------
 # _TokenUsage — null-safe accumulation (OpenRouter initial-stream-event bug)
 # ---------------------------------------------------------------------------
 

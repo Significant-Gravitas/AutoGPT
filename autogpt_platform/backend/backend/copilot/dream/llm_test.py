@@ -289,8 +289,8 @@ class TestStructuredCompletionDelegation:
 
     @pytest.mark.asyncio
     async def test_routes_to_ollama_under_local_transport(self):
-        """Local transport: dispatch becomes ``provider="ollama"`` with
-        ``ollama_host`` derived from ``CHAT_BASE_URL`` (sans the
+        """The local route: dispatch becomes ``provider="ollama"`` with
+        ``ollama_host`` derived from ``CHAT_LOCAL_BASE_URL`` (sans the
         OpenAI-compat ``/v1`` suffix). Closes the dream-pass-on-local
         hole identified in the local-AI memory integration."""
         fake_response = ProviderResponse(
