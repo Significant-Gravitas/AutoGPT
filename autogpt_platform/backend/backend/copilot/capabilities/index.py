@@ -34,6 +34,8 @@ _NAME_WEIGHT = 2  # repeat name tokens so the name outweighs the purpose text
 
 DEFAULT_LIMIT = 8
 DEFAULT_FALLBACK_LIMIT = 3
+# Entries of other kinds a ``kind`` filter hid that are listed beside it.
+OTHER_KINDS_LIMIT = 3
 
 
 class SearchHit(BaseModel):
@@ -54,6 +56,11 @@ class SearchResult(BaseModel):
     hits: list[SearchHit]
     fallback: list[SearchHit] = []
     service: str | None = None
+    # Set only when ``kind`` filtered the search: entries of other kinds it
+    # hid that cover more of the query than ``hits`` do, or as much and are
+    # connected, and how many there were before the cap.
+    other_kinds: list[SearchHit] = []
+    hidden_by_kind: int = 0
 
     @property
     def ids(self) -> list[str]:
@@ -134,6 +141,47 @@ class CapabilityIndex:
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
         prefer_mcp: bool = False,
     ) -> SearchResult:
+        """Ranked entries for *query*.
+
+        Integrations such as Gmail, Slack and Sheets are blocks, so
+        ``kind="tool"`` hides every one of them and the model got unrelated
+        tools, or nothing, and went looking for an MCP server off the
+        catalog (SECRT-2820).  A filtered search therefore also runs without
+        the filter and returns what it hid in ``other_kinds``.
+        """
+        result = self._search(
+            query,
+            context=context,
+            kind=kind,
+            connections=connections,
+            permissions=permissions,
+            limit=limit,
+            fallback_limit=fallback_limit,
+            prefer_mcp=prefer_mcp,
+        )
+        if kind is not None and result.query:
+            self._add_other_kinds(
+                result,
+                context=context,
+                kind=kind,
+                connections=connections,
+                permissions=permissions,
+                prefer_mcp=prefer_mcp,
+            )
+        return result
+
+    def _search(
+        self,
+        query: str,
+        *,
+        context: CapabilityContext,
+        kind: CapabilityKindName | None,
+        connections: ConnectionState | None,
+        permissions: "CopilotPermissions | None",
+        limit: int,
+        fallback_limit: int,
+        prefer_mcp: bool = False,
+    ) -> SearchResult:
         query = " ".join((query or "").split())
         if not query:
             return SearchResult(query=query, hits=[])
@@ -194,6 +242,57 @@ class CapabilityIndex:
         return SearchResult(
             query=query, hits=hits[:limit], fallback=fallback, service=service
         )
+
+    def _add_other_kinds(
+        self,
+        result: SearchResult,
+        *,
+        context: CapabilityContext,
+        kind: CapabilityKindName,
+        connections: ConnectionState | None,
+        permissions: "CopilotPermissions | None",
+        prefer_mcp: bool,
+    ) -> None:
+        """Fill ``result.other_kinds`` from the same search without *kind*.
+
+        An entry of another kind counts when it covers more of the query
+        than anything the filter kept, or as much and it runs as it is (the
+        user has connected it, or it is a platform tool, which needs no
+        connection): those are what the filter hid.  ``kind="block"`` must
+        not hide post_to_chat_platform behind the Discord blocks it ties.  A connected entry that matched
+        less than the filter's best is not, or "fetch a url" fully answered
+        by web_fetch would still send the model off to search again.  Among
+        equal coverage a connected one is listed first.  A lookup by name (an
+        exact hit) found what it asked for and gets nothing: most ``kind``
+        calls are those, and they must not be told to search again.  The
+        second search is uncapped: entries of *kind* fill its top slots and
+        are then dropped, so a capped one would lose a connected entry ranked
+        just below them and undercount ``hidden_by_kind``.
+        """
+        if any(hit.reason != "search" for hit in result.hits):
+            return
+        best = max((hit.coverage for hit in result.hits), default=0.0)
+        unfiltered = self._search(
+            result.query,
+            context=context,
+            kind=None,
+            connections=connections,
+            permissions=permissions,
+            limit=len(self.entries),
+            fallback_limit=0,
+            prefer_mcp=prefer_mcp,
+        )
+        hidden = sorted(
+            (
+                hit
+                for hit in unfiltered.hits
+                if hit.entry.kind != kind
+                and (hit.coverage > best or (hit.coverage >= best and _ready(hit)))
+            ),
+            key=lambda hit: (-hit.coverage, not hit.connected),
+        )
+        result.other_kinds = hidden[:OTHER_KINDS_LIMIT]
+        result.hidden_by_kind = len(hidden)
 
     # ------------------------------------------------------------------
 
@@ -317,6 +416,11 @@ class CapabilityIndex:
         if not named:
             return None, None
         return " ".join(named), indices
+
+
+def _ready(hit: SearchHit) -> bool:
+    """Whether *hit* runs without the user connecting anything first."""
+    return bool(hit.connected) or hit.entry.kind == "tool"
 
 
 def _coverage(groups: list[list[str]], doc: frozenset[str]) -> float:
