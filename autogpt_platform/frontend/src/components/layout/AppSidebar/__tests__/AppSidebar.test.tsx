@@ -120,19 +120,19 @@ describe("AppSidebar", () => {
 
   it("renders the primary navigation links", () => {
     renderSidebar();
-    expect(screen.getByText("Agents")).toBeDefined();
+    expect(screen.getByText("Workflows")).toBeDefined();
     expect(screen.getByText("Marketplace")).toBeDefined();
     expect(screen.getByText("Build")).toBeDefined();
     expect(screen.queryByText("Files")).toBeNull();
     expect(screen.getByText("Home")).toBeDefined();
   });
 
-  it("shows Team instead of Agents when the hire-experts flag is on", () => {
+  it("shows Team instead of Workflows when the hire-experts flag is on", () => {
     useGetFlagMock.mockReturnValue(true);
     renderSidebar();
     const teamLink = screen.getByRole("link", { name: /team/i });
     expect(teamLink.getAttribute("href")).toBe("/team");
-    expect(screen.queryByText("Agents")).toBeNull();
+    expect(screen.queryByText("Workflows")).toBeNull();
   });
 
   it("keeps a Home link when the hire-experts flag is on", () => {

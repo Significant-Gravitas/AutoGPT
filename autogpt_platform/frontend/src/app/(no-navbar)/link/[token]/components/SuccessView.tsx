@@ -50,8 +50,8 @@ export function SuccessView({
           </Text>
           {returnUrl && forUser ? (
             <Text variant="small" className="mt-3 block text-muted-foreground">
-              Try it now — &ldquo;research a topic&rdquo;, &ldquo;build me an
-              agent&rdquo;, or &ldquo;draft a doc&rdquo;.
+              Try it now — &ldquo;research a topic&rdquo;, &ldquo;build me a
+              workflow&rdquo;, or &ldquo;draft a doc&rdquo;.
             </Text>
           ) : null}
         </div>

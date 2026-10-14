@@ -83,13 +83,13 @@ export function EditAgentTool({ part }: Props) {
       {isError && output && isErrorOutput(output) && (
         <ToolErrorCard
           message={output.message}
-          fallbackMessage="Failed to edit the agent. Please try again."
+          fallbackMessage="Failed to edit the workflow. Please try again."
           error={output.error ? formatMaybeJson(output.error) : undefined}
           details={output.details ? formatMaybeJson(output.details) : undefined}
           actions={[
             {
               label: "Try again",
-              onClick: () => onSend("Please try editing the agent again."),
+              onClick: () => onSend("Please try editing the workflow again."),
             },
           ]}
         />

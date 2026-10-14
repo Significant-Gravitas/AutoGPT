@@ -162,7 +162,7 @@ export function NewAgentLibraryView() {
             <ErrorCard
               responseError={{
                 message:
-                  "Could not load this agent's triggers. Check your connection and try again.",
+                  "Could not load this workflow's triggers. Check your connection and try again.",
               }}
               context="triggers"
               onRetry={retryTriggerLists}
@@ -187,7 +187,7 @@ export function NewAgentLibraryView() {
       <ErrorCard
         isSuccess={false}
         responseError={error || undefined}
-        context="agent"
+        context="workflow"
         onRetry={() => window.location.reload()}
       />
     );
@@ -268,7 +268,7 @@ export function NewAgentLibraryView() {
                     activeTab,
                   })}
                 >
-                  <Icon icon={PlusSignIcon} size={16} /> New agent task
+                  <Icon icon={PlusSignIcon} size={16} /> New workflow task
                 </Button>
               }
               agent={agent}
@@ -328,7 +328,7 @@ export function NewAgentLibraryView() {
             banner={renderMarketplaceUpdateBanner()}
           >
             <ErrorCard
-              context="agent tasks"
+              context="workflow tasks"
               hint="Use Try Again in the sidebar to reload your tasks."
             />
           </SelectedViewLayout>

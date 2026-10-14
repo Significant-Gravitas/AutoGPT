@@ -26,6 +26,12 @@ import {
   yearlyOffer,
 } from "./trial-plan-fixtures";
 
+// These cover the hosted billing UI, which self-hosted builds hide.
+vi.mock("@/hooks/useIsBillingEnabled", () => ({
+  useIsBillingEnabled: () => true,
+  useBillingStatus: () => ({ isBillingEnabled: true, isResolved: true }),
+}));
+
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
   ...(await importOriginal<

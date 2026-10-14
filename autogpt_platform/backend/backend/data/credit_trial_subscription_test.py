@@ -8,18 +8,13 @@ import pytest
 import stripe
 from prisma.enums import SubscriptionTier
 
-from backend.data import credit_subscription_test
 from backend.data.credit import (
     _get_active_subscription_cached,
     get_pending_subscription_change,
     invalidate_active_subscription_cache,
     sync_subscription_from_stripe,
 )
-from backend.data.credit_subscription_test import _clear_cache, _make_user
-
-_clear_active_subscription_cache = (
-    credit_subscription_test._clear_active_subscription_cache
-)
+from backend.data.credit_subscription_test import _make_user
 
 
 @pytest.mark.asyncio
@@ -101,7 +96,6 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
 
 
 async def _pending_change_for(subscription: dict):
-    _clear_cache(get_pending_subscription_change)
     mock_list = MagicMock()
     mock_list.data = [stripe.Subscription.construct_from(subscription, "k")]
     with (
@@ -177,19 +171,24 @@ async def test_get_pending_subscription_change_reports_paid_cancel(metadata):
 async def test_invalidating_the_subscription_lookup_refetches_only_that_customer():
     """A subscription changed in place is read fresh on the next status call;
     other customers keep their cached lookup."""
-    trialing = {"id": "sub_trial", "status": "trialing"}
-    converted = {"id": "sub_trial", "status": "active"}
-    other = {"id": "sub_other", "status": "active"}
+    trialing = {"id": "sub_trial", "status": "trialing", "current_period_end": 1}
+    converted = {"id": "sub_trial", "status": "active", "current_period_end": 2}
+    other = {"id": "sub_other", "status": "active", "current_period_end": 3}
+
+    async def period_end(customer_id: str) -> int | None:
+        sub = await _get_active_subscription_cached(customer_id)
+        return sub.current_period_end if sub else None
+
     with patch(
         "backend.data.credit._get_active_subscription",
         new_callable=AsyncMock,
         side_effect=[trialing, other, converted],
     ) as lookup:
-        assert await _get_active_subscription_cached("cus_trial") is trialing
-        assert await _get_active_subscription_cached("cus_other") is other
+        assert await period_end("cus_trial") == 1
+        assert await period_end("cus_other") == 3
 
-        invalidate_active_subscription_cache("cus_trial")
+        await invalidate_active_subscription_cache("cus_trial")
 
-        assert await _get_active_subscription_cached("cus_trial") is converted
-        assert await _get_active_subscription_cached("cus_other") is other
+        assert await period_end("cus_trial") == 2
+        assert await period_end("cus_other") == 3
     assert lookup.await_count == 3

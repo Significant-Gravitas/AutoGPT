@@ -1,4 +1,5 @@
-"""The audit on its own: a relaunched turn owes only the attempt that succeeded."""
+"""The audit on its own: a relaunched turn owes only the attempt that
+succeeded, and a turn the failure ended owes nothing."""
 
 from backend.copilot.model import Usage
 from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
@@ -6,9 +7,16 @@ from backend.data.platform_cost import PlatformCostEntry, usd_to_microdollars
 from .audit import _audit_turn
 from .invoice import ANTHROPIC_PRICES, SONNET, Call, scripted_usage
 from .ledger import CostLogRow, PlatformLedger, SpendCharge, TreeCharge
-from .scenarios import SCENARIOS
+from .provider import PlannedFault
+from .scenarios import SCENARIOS, _sdk_anthropic_failing
 
-_RELAUNCHED = next(s for s in SCENARIOS if s.id == "sdk-anthropic-dropped-after-tool")
+# A turn relaunched after the provider billed a call that streamed nothing.
+_RELAUNCHED = _sdk_anthropic_failing(
+    "relaunched-after-a-billed-call",
+    PlannedFault(kind="dropped", turn=1, request=2),
+    calls_per_turn=(1, 2, 1),
+)
+_ENDED = next(s for s in SCENARIOS if s.id == "sdk-anthropic-dropped-after-tool")
 
 
 def _call(index: int, request: int) -> Call:
@@ -24,7 +32,7 @@ def _call(index: int, request: int) -> Call:
     )
 
 
-# The tool round's first call, then the dropped request 2, then the retry's call.
+# Turn 1's first call, then the dropped request 2, then a relaunch's call.
 _FAILED_ATTEMPT = _call(1, request=1)
 _RETRY = _call(2, request=3)
 
@@ -48,6 +56,21 @@ def test_charging_the_failed_attempt_is_reported():
         "tokens",
     ]
     assert all("the turn owes" in finding.message for finding in findings)
+
+
+def test_a_turn_the_failure_ended_charged_nothing_passes():
+    findings = _audit_turn(_ENDED, 1, [_FAILED_ATTEMPT], PlatformLedger(), [])
+
+    assert findings == []
+
+
+def test_charging_a_turn_the_failure_ended_is_reported():
+    ledger, usage = _turn_charged_for(_FAILED_ATTEMPT)
+
+    findings = _audit_turn(_ENDED, 1, [_FAILED_ATTEMPT], ledger, usage)
+
+    assert [finding.check for finding in findings] == ["charge"]
+    assert "owes nothing" in findings[0].message
 
 
 def _turn_charged_for(*calls: Call) -> tuple[PlatformLedger, list[Usage]]:
