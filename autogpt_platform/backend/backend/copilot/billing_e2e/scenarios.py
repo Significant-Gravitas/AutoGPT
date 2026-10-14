@@ -4,10 +4,10 @@ A row names the engine, how the deployment is configured, and the basis its
 charge is expected to rest on:
 
 - ``invoice``: what the provider billed for the call.
-- ``cli_estimate``: the CLI's own price for the tokens, which the platform
-  falls back to when it has no invoice to read.
-- ``moonshot_estimate``: the platform's Kimi rate card, the fallback where
-  the CLI's price (Anthropic rates) would be far off.
+- ``rate_card``: Anthropic's list price for the tokens, which the platform
+  charges where it has no invoice to read. Never the CLI's own estimate.
+- ``moonshot_estimate``: the platform's Kimi rate card, the fallback for a
+  Kimi call with no invoice.
 - ``none``: the user's own subscription pays, or nobody does; the platform
   must not charge the user's spend budgets at all.
 
@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from .invoice import ANTHROPIC_PRICES, KIMI, MOONSHOT_FALLBACK, SONNET, Call
 from .provider import PlannedFault
 
-ChargeBasis = Literal["invoice", "cli_estimate", "moonshot_estimate", "none"]
+ChargeBasis = Literal["invoice", "rate_card", "moonshot_estimate", "none"]
 # What a finding is about: whether the thread took its planned path, what the
 # turn was charged, or the tokens recorded against it.
 Check = Literal["path", "charge", "tokens"]
@@ -92,16 +92,15 @@ class Scenario(BaseModel):
 
 
 _OPENROUTER = {
-    "use_openrouter": True,
-    "api_key": "sk-or-billing-e2e",
-    "base_url": "{provider}/openrouter/api/v1",
+    "platform_route": "openrouter",
+    "openrouter_api_key": "sk-or-billing-e2e",
+    "openrouter_base_url": "{provider}/openrouter/api",
 }
-# The direct route hands the CLI ``direct_anthropic_api_key``; the fake
-# provider never checks it.
+# The fake provider never checks the key.
 _DIRECT = {
-    "use_openrouter": False,
-    "api_key": "sk-ant-billing-e2e",
-    "direct_anthropic_api_key": "sk-ant-billing-e2e",
+    "platform_route": "direct_anthropic",
+    "anthropic_api_key": "sk-ant-billing-e2e",
+    "anthropic_base_url": "{provider}/anthropic",
 }
 
 _SDK_ANTHROPIC = Scenario(
@@ -110,7 +109,7 @@ _SDK_ANTHROPIC = Scenario(
     model=SONNET,
     charge="invoice",
     cost_log_provider="anthropic",
-    config={**_DIRECT, "claude_agent_model": SONNET},
+    config={**_DIRECT, "standard_model": SONNET},
 )
 
 
@@ -176,28 +175,18 @@ SCENARIOS = [
         model=f"anthropic/{SONNET}",
         charge="invoice",
         cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
+        config={**_OPENROUTER, "standard_model": f"anthropic/{SONNET}"},
     ),
+    # OpenRouter refuses the bill lookups: the turn is charged the
+    # platform's rate card, not the CLI's estimate.
     Scenario(
         id="sdk-openrouter-lookups-refused",
         engine="sdk",
         model=f"anthropic/{SONNET}",
-        charge="cli_estimate",
+        charge="rate_card",
         cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": f"anthropic/{SONNET}"},
+        config={**_OPENROUTER, "standard_model": f"anthropic/{SONNET}"},
         generation_lookups_fail=True,
-    ),
-    Scenario(
-        id="sdk-openrouter-no-reconcile",
-        engine="sdk",
-        model=f"anthropic/{SONNET}",
-        charge="cli_estimate",
-        cost_log_provider="open_router",
-        config={
-            **_OPENROUTER,
-            "claude_agent_model": f"anthropic/{SONNET}",
-            "sdk_reconcile_openrouter_cost": False,
-        },
     ),
     Scenario(
         id="sdk-openrouter-kimi",
@@ -205,19 +194,16 @@ SCENARIOS = [
         model=KIMI,
         charge="invoice",
         cost_log_provider="open_router",
-        config={**_OPENROUTER, "claude_agent_model": KIMI},
+        config={**_OPENROUTER, "standard_model": KIMI},
     ),
     Scenario(
-        id="sdk-openrouter-kimi-no-reconcile",
+        id="sdk-openrouter-kimi-lookups-refused",
         engine="sdk",
         model=KIMI,
         charge="moonshot_estimate",
         cost_log_provider="open_router",
-        config={
-            **_OPENROUTER,
-            "claude_agent_model": KIMI,
-            "sdk_reconcile_openrouter_cost": False,
-        },
+        config={**_OPENROUTER, "standard_model": KIMI},
+        generation_lookups_fail=True,
     ),
     Scenario(
         id="sdk-codex",
@@ -263,11 +249,14 @@ SCENARIOS = [
         engine="baseline",
         model="llama3.1:8b",
         charge="none",
-        cost_log_provider="ollama",
+        cost_log_provider="local",
         config={
-            "use_local": True,
-            "api_key": "ollama",
-            "base_url": "{provider}/ollama/v1",
+            "platform_route": "local",
+            "local_base_url": "{provider}/ollama/v1",
+            "local_adapter": "openai_chat",
+            "local_context_tokens": 131_072,
+            "standard_model": "llama3.1:8b",
+            "advanced_model": "llama3.1:8b",
         },
         client_path="/ollama/v1",
     ),
@@ -286,7 +275,7 @@ SCENARIOS = [
 def expected_charge_usd(basis: ChargeBasis, call: Call) -> float:
     if basis == "invoice":
         return call.invoice_usd
-    if basis == "cli_estimate":
+    if basis == "rate_card":
         list_price = ANTHROPIC_PRICES[call.model.removeprefix("anthropic/")]
         return list_price.of(call.usage, call.cache_ttl)
     if basis == "moonshot_estimate":

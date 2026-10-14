@@ -25,8 +25,10 @@ import pytest
 from aiohttp import web
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, ResultMessage
 
-from .cli_openrouter_compat_test import _resolve_cli_path
-from .env import build_sdk_env
+from backend.copilot.route_profile import codex_profile
+
+from .cli_openrouter_compat_test import _resolve_cli_path, assert_pinned_cli
+from .env import GatewayEndpoint, route_launch_env
 from .service import _build_system_prompt_value
 
 _PROMPT_V1 = "You are a test assistant. PROMPT_MARK_V1"
@@ -86,6 +88,7 @@ async def test_resumed_session_sends_the_relaunched_prompt(
     assert (
         "PROMPT_MARK_V1" not in system
     ), "the resumed turn sent the prompt recorded on the session's first request"
+    assert_pinned_cli(stub.user_agents, cli_path)
 
 
 def _prompt_value(text: str):
@@ -104,10 +107,15 @@ async def _run_turn(
     """Run one turn in a fresh CLI process; return the session id."""
     sdk_cwd = tmp_path / "copilot-session"
     sdk_cwd.mkdir(exist_ok=True)
-    env = build_sdk_env(
+    # The stub stands where the Codex route's loopback gateway would.
+    env = route_launch_env(
+        codex_profile(
+            "claude-sonnet-4-5", effort=None, routing_source="env", codex_engine=None
+        ),
         sdk_cwd=str(sdk_cwd),
-        codex_gateway_url=f"http://127.0.0.1:{port}",
-        codex_gateway_token="stub-token",
+        gateway=GatewayEndpoint(
+            base_url=f"http://127.0.0.1:{port}", auth_token="stub-token"
+        ),
     )
     env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "config")
     env["HOME"] = str(tmp_path)
@@ -139,6 +147,7 @@ class _StubAnthropic:
 
     def __init__(self) -> None:
         self.bodies: list[dict] = []
+        self.user_agents: list[str] = []
         self._runner: web.AppRunner | None = None
 
     async def start(self) -> int:
@@ -163,6 +172,7 @@ class _StubAnthropic:
         return matches[0]
 
     async def _messages(self, request: web.Request) -> web.StreamResponse:
+        self.user_agents.append(request.headers.get("User-Agent", ""))
         body = await _read_json(request)
         self.bodies.append(body)
         model = body.get("model", "claude-sonnet-4-5")

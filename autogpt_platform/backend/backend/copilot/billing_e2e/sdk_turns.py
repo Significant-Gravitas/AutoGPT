@@ -54,7 +54,6 @@ class SdkTurns:
         self._config_dir = tmp_path / "home" / ".claude"
         self._cwd = tmp_path / "copilot-cwd"
         self._cwd.mkdir()
-        self._anthropic_url = f"{provider.url}/anthropic"
         self._config = config
         self._transcripts: dict[str, TranscriptDownload] = {}
         self._lease = _codex_lease(provider) if codex else None
@@ -136,10 +135,6 @@ class SdkTurns:
         self, *args: Any, options: ClaudeAgentOptions, **kwargs: Any
     ) -> ClaudeSDKClient:
         self.resumed.append((self._turn, options.resume))
-        # The direct-Anthropic route sends no base URL, so its CLI would call
-        # api.anthropic.com; this one calls the fake provider instead.
-        if options.env.get("ANTHROPIC_BASE_URL") == "":
-            options.env["ANTHROPIC_BASE_URL"] = self._anthropic_url
         # The copilot's own tools and hooks are not what is under test; the
         # CLI answers the provider's tool call with "no such tool" instead.
         options.mcp_servers = {}

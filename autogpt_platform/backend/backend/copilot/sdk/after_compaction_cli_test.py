@@ -24,7 +24,7 @@ from aiohttp import web
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from .after_compaction import fit_after_compaction, utf16_len
-from .cli_openrouter_compat_test import _resolve_cli_path
+from .cli_openrouter_compat_test import _resolve_cli_path, assert_pinned_cli
 from .compaction import CompactionTracker
 from .security_hooks import create_security_hooks
 
@@ -121,7 +121,8 @@ async def _requests_around_a_compaction(
     turns: int = 3,
 ) -> list[dict]:
     requests: list[dict] = []
-    runner, port = await _start_stub_api(requests)
+    user_agents: list[str] = []
+    runner, port = await _start_stub_api(requests, user_agents)
     work = tmp_path / "work"
     work.mkdir()
     env = {
@@ -158,14 +159,18 @@ async def _requests_around_a_compaction(
                     pass
     finally:
         await runner.cleanup()
+    assert_pinned_cli(user_agents, cli)
     return requests
 
 
-async def _start_stub_api(requests: list[dict]) -> tuple[web.AppRunner, int]:
+async def _start_stub_api(
+    requests: list[dict], user_agents: list[str]
+) -> tuple[web.AppRunner, int]:
     """An Anthropic API that answers every call with a short streamed reply,
     reporting usage that grows with the conversation."""
 
     async def messages(request: web.Request) -> web.StreamResponse:
+        user_agents.append(request.headers.get("User-Agent", ""))
         payload = await request.json()
         requests.append(payload)
         compacting = _is_summary_request(payload)

@@ -23,19 +23,26 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.route_profile import (
+    codex_profile,
+    platform_profile,
+    user_key_profile,
+)
 
 from .cli_openrouter_compat_test import (
     _CapturedRequest,
     _resolve_cli_path,
     _start_fake_anthropic_server,
+    assert_pinned_cli,
 )
-from .env import build_sdk_env, build_user_key_sdk_env
+from .env import GatewayEndpoint, route_launch_env
 
 _FAKE_OAUTH = "sk-ant-oat01-FAKE-not-a-real-credential-0000000000000000"
 _PARENT_KEY = "sk-ant-FAKE-parent-environment-key"
 _PARENT_TOKEN = "FAKE-parent-environment-token"
 _ROUTE_KEY = "sk-FAKE-the-key-this-route-was-given"
 _BILLING_HEADER = "x-anthropic-billing-header"
+_MODEL = "claude-sonnet-4-6"
 _TURN_TIMEOUT_SECONDS = 120
 
 EnvBuilder = Callable[[str, Path], dict[str, str]]
@@ -89,88 +96,56 @@ def host_with_claude_login(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> P
     return work
 
 
-def _config(**overrides) -> ChatConfig:
-    defaults = {
-        "use_claude_code_subscription": False,
-        "use_openrouter": False,
-        "api_key": None,
-        "base_url": None,
-        "thinking_standard_model": "anthropic/claude-sonnet-4-6",
-        "thinking_advanced_model": "anthropic/claude-opus-4-7",
-        "aux_api_key": "FAKE-aux-key",
-        "direct_anthropic_api_key": None,
-        "claude_agent_omit_attribution_header": False,
-    }
-    return ChatConfig(**{**defaults, **overrides})
+def _openrouter_env(stub_url: str, work: Path) -> dict[str, str]:
+    cfg = ChatConfig(
+        platform_route="openrouter",
+        openrouter_api_key=_ROUTE_KEY,
+        openrouter_base_url=stub_url,
+    )
+    return route_launch_env(platform_profile(cfg, _MODEL, "env"), sdk_cwd=str(work))
 
 
-def _use(monkeypatch: pytest.MonkeyPatch, cfg: ChatConfig) -> None:
-    monkeypatch.setattr("backend.copilot.sdk.env.config", cfg)
+def _direct_env(stub_url: str, work: Path) -> dict[str, str]:
+    cfg = ChatConfig(
+        platform_route="direct_anthropic",
+        anthropic_api_key=_ROUTE_KEY,
+        anthropic_base_url=stub_url,
+    )
+    return route_launch_env(platform_profile(cfg, _MODEL, "env"), sdk_cwd=str(work))
 
 
-def _openrouter_env(monkeypatch: pytest.MonkeyPatch, **switches) -> EnvBuilder:
+def _codex_env(stub_url: str, work: Path) -> dict[str, str]:
+    profile = codex_profile(
+        _MODEL, effort=None, routing_source="env", codex_engine=None
+    )
+    return route_launch_env(
+        profile,
+        sdk_cwd=str(work),
+        gateway=GatewayEndpoint(base_url=stub_url, auth_token=_ROUTE_KEY),
+    )
+
+
+def _user_key_env(provider: str) -> EnvBuilder:
     def build(stub_url: str, work: Path) -> dict[str, str]:
-        _use(
-            monkeypatch,
-            _config(
-                use_openrouter=True,
-                api_key=_ROUTE_KEY,
-                base_url=f"{stub_url}/v1",
-                **switches,
-            ),
+        env = route_launch_env(
+            user_key_profile(provider, _ROUTE_KEY, _MODEL), sdk_cwd=str(work)
         )
-        return build_sdk_env(sdk_cwd=str(work))
-
-    return build
-
-
-def _direct_env(monkeypatch: pytest.MonkeyPatch) -> EnvBuilder:
-    def build(stub_url: str, work: Path) -> dict[str, str]:
-        _use(monkeypatch, _config(direct_anthropic_api_key=_ROUTE_KEY))
-        # The route's own base URL is api.anthropic.com; only the test
+        # A user's key goes to OpenRouter or Anthropic itself; only the test
         # points it at the stub.
-        return {**build_sdk_env(sdk_cwd=str(work)), "ANTHROPIC_BASE_URL": stub_url}
+        return {**env, "ANTHROPIC_BASE_URL": stub_url}
 
     return build
 
 
-def _codex_env(monkeypatch: pytest.MonkeyPatch) -> EnvBuilder:
-    def build(stub_url: str, work: Path) -> dict[str, str]:
-        _use(monkeypatch, _config(direct_anthropic_api_key="FAKE-unused"))
-        return build_sdk_env(
-            sdk_cwd=str(work),
-            codex_gateway_url=stub_url,
-            codex_gateway_token=_ROUTE_KEY,
-        )
-
-    return build
-
-
-def _user_openrouter_env(monkeypatch: pytest.MonkeyPatch) -> EnvBuilder:
-    def build(stub_url: str, work: Path) -> dict[str, str]:
-        _use(monkeypatch, _config(base_url=f"{stub_url}/v1"))
-        return build_user_key_sdk_env("open_router", _ROUTE_KEY)
-
-    return build
-
-
-def _user_anthropic_env(monkeypatch: pytest.MonkeyPatch) -> EnvBuilder:
-    def build(stub_url: str, work: Path) -> dict[str, str]:
-        _use(monkeypatch, _config())
-        return {
-            **build_user_key_sdk_env("anthropic", _ROUTE_KEY),
-            "ANTHROPIC_BASE_URL": stub_url,
-        }
-
-    return build
-
-
-_KEY_BASED_LAUNCHES = {
-    "openrouter": (_openrouter_env, "bearer"),
-    "direct_anthropic": (_direct_env, "x-api-key"),
-    "codex_gateway": (_codex_env, "bearer"),
-    "orchestrator_openrouter_key": (_user_openrouter_env, "bearer"),
-    "orchestrator_anthropic_key": (_user_anthropic_env, "x-api-key"),
+# Each launch's builder, the header its key travels in, and whether the
+# CLI's billing-header system block stays (only where the CLI talks to
+# Anthropic first-party).
+_KEY_BASED_LAUNCHES: dict[str, tuple[EnvBuilder, str, bool]] = {
+    "openrouter": (_openrouter_env, "bearer", False),
+    "direct_anthropic": (_direct_env, "x-api-key", True),
+    "codex_gateway": (_codex_env, "bearer", False),
+    "orchestrator_openrouter_key": (_user_key_env("open_router"), "bearer", False),
+    "orchestrator_anthropic_key": (_user_key_env("anthropic"), "x-api-key", True),
 }
 
 
@@ -180,12 +155,9 @@ async def test_key_based_launch_authenticates_with_its_own_key(
     launch: str,
     cli_path: Path,
     host_with_claude_login: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ):
-    make_builder, carrier = _KEY_BASED_LAUNCHES[launch]
-    requests = await _run_turn(
-        cli_path, host_with_claude_login, make_builder(monkeypatch)
-    )
+    builder, carrier, _ = _KEY_BASED_LAUNCHES[launch]
+    requests = await _run_turn(cli_path, host_with_claude_login, builder)
 
     for request in requests:
         sent = _credentials(request)
@@ -215,19 +187,16 @@ async def test_without_an_explicit_key_the_cli_sends_the_oauth_token(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("omit", [False, True])
-async def test_switch_removes_the_billing_header_block(
-    omit: bool,
-    cli_path: Path,
-    host_with_claude_login: Path,
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("launch", sorted(_KEY_BASED_LAUNCHES))
+async def test_the_route_decides_the_billing_header_block(
+    launch: str, cli_path: Path, host_with_claude_login: Path
 ):
-    builder = _openrouter_env(monkeypatch, claude_agent_omit_attribution_header=omit)
+    builder, _, keeps_block = _KEY_BASED_LAUNCHES[launch]
     requests = await _run_turn(cli_path, host_with_claude_login, builder)
 
     for request in requests:
         has_block = any(_BILLING_HEADER in text for text in _system_texts(request))
-        assert has_block is not omit
+        assert has_block is keeps_block, launch
 
 
 async def _run_turn(
@@ -249,6 +218,7 @@ async def _run_turn(
     finally:
         await runner.cleanup()
     assert captured, "The CLI made no request to the stub"
+    assert_pinned_cli([r.headers.get("User-Agent", "") for r in captured], cli_path)
     return captured
 
 

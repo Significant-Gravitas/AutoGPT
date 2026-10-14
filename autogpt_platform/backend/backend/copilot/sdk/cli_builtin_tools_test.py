@@ -13,9 +13,10 @@ import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient, SystemMessage
 
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.route_profile import codex_profile
 
-from .cli_openrouter_compat_test import _resolve_cli_path
-from .env import build_sdk_env
+from .cli_openrouter_compat_test import _resolve_cli_path, cli_version
+from .env import GatewayEndpoint, route_launch_env
 from .service import _build_sdk_tool_options
 from .tool_adapter import (
     SDK_SUBAGENT_TOOLS,
@@ -114,14 +115,19 @@ async def _cli_offered_tools(
     tools: list[str] | None,
     tmp_path: Path,
 ) -> list[str]:
-    """The tool list in the CLI's ``init`` message, which precedes any API call."""
+    """The tool list in the CLI's ``init`` message, which precedes any API call.
+
+    The message also names the CLI's version: the pinned binary's own.
+    """
     sdk_cwd = tmp_path / "copilot-session"
     sdk_cwd.mkdir()
     # A closed loopback port: the CLI only ever retries, so no network or key is needed.
-    env = build_sdk_env(
+    env = route_launch_env(
+        codex_profile(
+            "gpt-5.6-terra", effort=None, routing_source="env", codex_engine=None
+        ),
         sdk_cwd=str(sdk_cwd),
-        codex_gateway_url="http://127.0.0.1:9",
-        codex_gateway_token="unused",
+        gateway=GatewayEndpoint(base_url="http://127.0.0.1:9", auth_token="unused"),
     )
     env["HOME"] = str(tmp_path)
     env["CLAUDE_CONFIG_DIR"] = str(tmp_path / "claude-config")
@@ -139,5 +145,7 @@ async def _cli_offered_tools(
         await client.query("hi")
         async for message in client.receive_messages():
             if isinstance(message, SystemMessage) and message.subtype == "init":
+                assert _CLI_PATH is not None
+                assert message.data["claude_code_version"] == cli_version(_CLI_PATH)
                 return message.data["tools"]
     raise AssertionError("The CLI ended without an init message")
