@@ -593,7 +593,12 @@ model DreamPass {
   // the dream's text in the row is blanked, by the forget if the pass is
   // closed, else by the transition that closes it, and its narrative is
   // written blanked (backend/copilot/dream/forget_copies.py).
-  erasedAt DateTime?
+  erasedAt  DateTime?
+  // Every fact and episode the pass gathered, recorded before its first
+  // model call and never cleared: a hard forget marks a pass that read what
+  // it reached however long ago the pass closed, and its narrative's session
+  // keeps a copy for once the row has aged out.
+  readUuids String[]  @default([])
 
   createdAt   DateTime  @default(now())
   startedAt   DateTime?

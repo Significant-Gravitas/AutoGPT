@@ -186,6 +186,8 @@ class DreamPassUpdate(BaseModel):
     usage: DreamPassUsage | None = None
     window_start: datetime | None = None
     window_end: datetime | None = None
+    # Every fact and episode the pass gathered, added to what the row holds.
+    read_uuids: list[str] | None = None
     error: str | None = None
     submitted_at: datetime | None = None
     applied_at: datetime | None = None
@@ -254,8 +256,10 @@ class DreamPassRecord(BaseModel):
     window_start: datetime | None
     window_end: datetime | None
     error: str | None
-    # Set by a hard forget that may have reached the pass, never cleared.
+    # Set by a hard forget that reached the pass, never cleared.
     erased_at: datetime | None = None
+    # Every fact and episode the pass gathered, never cleared.
+    read_uuids: list[str] = Field(default_factory=list)
     created_at: datetime
     started_at: datetime | None
     submitted_at: datetime | None
@@ -296,6 +300,7 @@ class DreamPassRecord(BaseModel):
             window_end=row.windowEnd,
             error=row.error,
             erased_at=row.erasedAt,
+            read_uuids=list(row.readUuids or []),
             created_at=row.createdAt,
             started_at=row.startedAt,
             submitted_at=row.submittedAt,

@@ -11,7 +11,8 @@ A pass that has reached a terminal status (complete, errored, cancelled,
 expired, skipped) is final: no update writes it, the way
 ``job_status.mark_complete`` never rewrites a finished job, but for the
 cleanup after it marking itself finished, and a hard forget marking it and
-blanking the dream's text in it (``erase_dream_passes``).
+blanking the dream's text in it (``erase_dream_passes``). Its read set
+(``readUuids``) only ever grows, and outlives its input bundle.
 
 Three queries work across users: the reaper lists open passes whose lease
 lapsed (``list_expired_dream_passes``, on the status and lease expiry index)
@@ -26,7 +27,12 @@ from datetime import datetime
 import prisma.models
 from prisma.types import DreamPassWhereInput
 
-from backend.data.db import execute_raw_with_schema, query_raw_with_schema
+from backend.copilot.dream.pass_errors import PASS_ERROR_CODES, PASS_ERROR_STAGES
+from backend.data.db import (
+    bounded_transaction,
+    execute_raw_with_schema,
+    query_raw_with_schema,
+)
 from backend.data.dream_pass_models import (
     CLOSED_STATUSES,
     DREAM_TEXT_FIELDS,
@@ -52,49 +58,76 @@ DELETE FROM {schema_prefix}"DreamPass" WHERE "id" IN (
 """
 
 # A hard forget's marks, for one user's scope ($1, $2), in one statement
-# over every pass of the scope: no page or limit can leave one out. A pass
-# is marked when it may have reached what the forget reached: it is named
-# ($3, the passes whose dream writes the forget erased), its JSON names one
-# of the uuids the forget reached ($4, as LIKE patterns), it is still open,
-# or it closed with its cleanup still pending (a stop from outside closes the
-# row while the pass may still be applying). A marked pass that is closed as
-# this statement writes it (its status read from the row being written, so
-# one closing meanwhile is not missed) is blanked now; an open one when it
-# closes (``dream_pass_update.py``). Every ERRORED pass of the scope, marked
-# or not, keeps only the code of its error: one written before errors were
-# codes may quote the model. Returns the ids it marked.
+# over every pass of the scope: no page or limit can leave one out. A pass is
+# marked when it read what the forget reached (its read set, matched against
+# the reached uuids, $4, by a hash join), may still be writing (it is open,
+# $5, or closed with its cleanup pending: a stop from outside closes the row
+# while the pass may still be applying), or wrote what the forget erased
+# ($3, the passes its erased dream writes name: a pass's own write is not in
+# its read set). A pass marked by an earlier forget is returned again, so a
+# forget repeated after its narratives' blank failed finishes it, but not
+# written again: it was blanked when marked closed, or as it closed. One
+# marked now that is closed as this statement writes it (its status read from
+# the row being written, so one closing meanwhile is not missed) is blanked
+# now; an open one when it closes (``dream_pass_update.py``). Every pass of
+# the scope keeps its error only when it is one of the fixed codes ($8, $9),
+# marked or not. Returns the ids marked, now or before.
 ERASE_SQL = """
-WITH target AS (
+WITH reached AS (
+    SELECT DISTINCT uuid FROM unnest($4::text[]) AS reached(uuid)
+),
+read_reached AS (
+    SELECT DISTINCT pass."id"
+    FROM {schema_prefix}"DreamPass" AS pass,
+        unnest(pass."readUuids") AS read(uuid)
+    WHERE pass."userId" = $1 AND pass."scopeKey" = $2
+        AND read.uuid IN (SELECT uuid FROM reached)
+),
+target AS (
     SELECT "id",
-        ("id" = ANY($3::text[])
+        ("erasedAt" IS NOT NULL
             OR "status"::text = ANY($5::text[])
             OR "cleanupPendingAt" IS NOT NULL
-            OR COALESCE("phaseOutputs"::text, '') LIKE ANY($4::text[])
-            OR COALESCE("operations"::text, '') LIKE ANY($4::text[])) AS reached
+            OR "id" IN (SELECT unnest($3::text[]))
+            OR "id" IN (SELECT "id" FROM read_reached)) AS reached
     FROM {schema_prefix}"DreamPass"
     WHERE "userId" = $1 AND "scopeKey" = $2
+),
+written AS (
+    UPDATE {schema_prefix}"DreamPass" AS pass SET
+        "erasedAt" = CASE WHEN target.reached
+            THEN COALESCE(pass."erasedAt", CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+            ELSE pass."erasedAt" END,
+        "phaseOutputs" = CASE
+            WHEN target.reached AND pass."erasedAt" IS NULL
+                AND NOT (pass."status"::text = ANY($5::text[]))
+            THEN {schema_prefix}"dream_text_blanked"(
+                pass."phaseOutputs", $6::text[], $7::text)
+            ELSE pass."phaseOutputs" END,
+        "operations" = CASE
+            WHEN target.reached AND pass."erasedAt" IS NULL
+                AND NOT (pass."status"::text = ANY($5::text[]))
+            THEN {schema_prefix}"dream_text_blanked"(
+                pass."operations", $6::text[], $7::text)
+            ELSE pass."operations" END,
+        "error" = {schema_prefix}"dream_error_blanked"(
+            pass."error", $8::text[], $9::text[], $7::text),
+        "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+    FROM target
+    WHERE pass."id" = target."id"
+        AND ((target.reached AND pass."erasedAt" IS NULL)
+            OR pass."error" IS DISTINCT FROM {schema_prefix}"dream_error_blanked"(
+                pass."error", $8::text[], $9::text[], $7::text))
+    RETURNING pass."id"
 )
-UPDATE {schema_prefix}"DreamPass" AS pass SET
-    "erasedAt" = CASE WHEN target.reached
-        THEN COALESCE(pass."erasedAt", CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
-        ELSE pass."erasedAt" END,
-    "phaseOutputs" = CASE
-        WHEN target.reached AND NOT (pass."status"::text = ANY($5::text[]))
-        THEN {schema_prefix}"dream_text_blanked"(pass."phaseOutputs", $6::text[], $7::text)
-        ELSE pass."phaseOutputs" END,
-    "operations" = CASE
-        WHEN target.reached AND NOT (pass."status"::text = ANY($5::text[]))
-        THEN {schema_prefix}"dream_text_blanked"(pass."operations", $6::text[], $7::text)
-        ELSE pass."operations" END,
-    "error" = CASE WHEN pass."status"::text = 'ERRORED'
-        THEN {schema_prefix}"dream_error_blanked"(pass."error", $7::text)
-        ELSE pass."error" END,
-    "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-FROM target
-WHERE pass."id" = target."id"
-    AND (target.reached OR pass."status"::text = 'ERRORED')
-RETURNING pass."id" AS id, target.reached AS reached
+SELECT "id" FROM target WHERE reached
 """
+
+# The erase's own deadline in the database, just under the store's for the
+# call (``copilot/dream/store.RECORD_WRITE_TIMEOUT_SECONDS``): the statement
+# is cancelled there before the caller stops waiting for it, and the forget
+# reports a cleanup error to repeat.
+ERASE_STATEMENT_TIMEOUT_MS = 9_000
 
 
 async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
@@ -252,23 +285,29 @@ async def list_dream_pass_cleanups(
 async def erase_dream_passes(
     user_id: str, scope_key: str, *, reached: list[str], named: list[str]
 ) -> list[str]:
-    """Mark, for *user_id*'s hard forget, every pass of the scope that may
-    have reached what it reached (*reached*, uuids) or wrote what it erased
-    (*named*, pass ids), blanking those already closed, and keep only the
-    code of every ERRORED pass's error (``ERASE_SQL``,
-    ``copilot/dream/forget_copies.py``). The ids of the passes marked, the
-    open ones included; repeating it changes nothing more."""
-    rows = await query_raw_with_schema(
-        ERASE_SQL,
-        user_id,
-        scope_key,
-        named,
-        [f"%{uuid}%" for uuid in reached],
-        [status.value for status in OPEN_STATUSES],
-        list(DREAM_TEXT_FIELDS),
-        ERASED_TEXT,
-    )
-    return [row["id"] for row in rows if row["reached"]]
+    """Mark, for *user_id*'s hard forget, every pass of the scope that read
+    what it reached (*reached*, uuids), may still be writing, or wrote what it
+    erased (*named*, pass ids), blanking those already closed, and keep every
+    error of the scope only as a fixed code (``ERASE_SQL``,
+    ``copilot/dream/forget_copies.py``). The ids of the passes marked, now or
+    by an earlier forget, the open ones included; repeating it writes nothing
+    more. Raises when the statement runs past ``ERASE_STATEMENT_TIMEOUT_MS``
+    or a lock it waits on outlasts it."""
+    async with bounded_transaction(ERASE_STATEMENT_TIMEOUT_MS) as tx:
+        rows = await query_raw_with_schema(
+            ERASE_SQL,
+            user_id,
+            scope_key,
+            named,
+            reached,
+            [status.value for status in OPEN_STATUSES],
+            list(DREAM_TEXT_FIELDS),
+            ERASED_TEXT,
+            list(PASS_ERROR_STAGES),
+            list(PASS_ERROR_CODES),
+            client=tx,
+        )
+    return [row["id"] for row in rows]
 
 
 async def delete_old_dream_passes(created_before: datetime, limit: int = 1000) -> int:

@@ -166,9 +166,7 @@ class TestTheSyncRoute:
             assert 1.9 < loop.time() - started < 4
         assert newer.error is None and not newer.skipped
         assert graph.writes == [newer.pass_id]
-        assert result.error == (
-            f"expired: forced by an admin-triggered dream pass {newer.pass_id}"
-        )
+        assert result.error == "expired: forced"
         assert fake_dream_db.rows[result.pass_id]["status"] is DreamPassStatus.EXPIRED
 
     async def test_a_lock_that_lapses_while_apply_starts_stops_its_writes(
@@ -191,7 +189,7 @@ class TestTheSyncRoute:
 
         assert newer.error is None
         assert graph.writes == [newer.pass_id]
-        assert result.error is not None and result.error.startswith("Dream lock lost")
+        assert result.error == "apply: lock_lost"
 
 
 class TestTheBatchRoute:
@@ -218,7 +216,7 @@ class TestTheBatchRoute:
         assert graph.writes == [newer.pass_id]
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None and status.state == "errored"
-        assert (status.error or "").startswith("apply: DreamLockLostError")
+        assert status.error == "apply: lock_lost"
 
     async def test_a_fence_answer_held_past_the_lease_still_writes_nothing(
         self, mocker, fake_dream_db, fake_dream_redis, graph

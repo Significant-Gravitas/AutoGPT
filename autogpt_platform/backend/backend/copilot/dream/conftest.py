@@ -22,8 +22,6 @@ with, and a batch's status reads ended, unless a test sets its own.
 from __future__ import annotations
 
 import asyncio
-import json
-import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
@@ -31,7 +29,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from prisma.enums import DreamPassStatus
 
 from backend.data.dream_pass_models import (
     DREAM_TEXT_FIELDS,
@@ -43,6 +40,8 @@ from backend.data.dream_pass_models import (
     DreamPassUpdate,
     DreamPhaseOutputs,
 )
+
+from .pass_errors import PASS_ERROR_STAGES, UNRECORDED, is_pass_error
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -216,11 +215,12 @@ class FakeDreamDb:
     stop bumps the cancel generation, ``clear`` empties its columns, and a
     terminal row, another user's row (for an update naming the owner) or a
     row written after the update's instant is not written; an update marked
-    ``closed_row`` writes a terminal row only. An update that closes a row
-    a hard forget marked (``erased_at``) blanks its text, as
-    ``erase_dream_passes`` does to a closed one. ``writes`` holds
-    every draft and update that was written, in order, as sent. ``fail``
-    makes every call raise, as an unreachable database would.
+    ``closed_row`` writes a terminal row only. The read set only grows, and an
+    error that is not one of the fixed codes is recorded as ``UNRECORDED``.
+    An update that closes a row a hard forget marked (``erased_at``) blanks
+    its text and error, as ``erase_dream_passes`` does to a closed one.
+    ``writes`` holds every draft and update that was written, in order, as
+    sent. ``fail`` makes every call raise, as an unreachable database would.
     """
 
     def __init__(self) -> None:
@@ -249,10 +249,14 @@ class FakeDreamDb:
             row["status"] = update.status
         if update.phase is not None and _order(update.phase) > _order(row["phase"]):
             row["phase"] = update.phase
+        if update.read_uuids is not None:
+            row["read_uuids"] = sorted({*row["read_uuids"], *update.read_uuids})
         for field, value in dict(update).items():
             if value is None or field in _NOT_WRITTEN_AS_IS:
                 continue
-            if field in ("phase_outputs", "operations"):
+            if field == "error":
+                row["error"] = recorded_error(value)
+            elif field in ("phase_outputs", "operations"):
                 row[field].update(
                     {k: v for k, v in dict(value).items() if v is not None}
                 )
@@ -265,7 +269,7 @@ class FakeDreamDb:
             update.status is not None and update.status not in OPEN_STATUSES
         )
         if row.get("erased_at") is not None and closes:
-            _blank_row(row, errored=update.status == DreamPassStatus.ERRORED)
+            _blank_row(row)
         return True
 
     async def get_dream_pass(self, pass_id: str) -> DreamPassRecord | None:
@@ -292,28 +296,30 @@ class FakeDreamDb:
     async def erase_dream_passes(
         self, user_id: str, scope_key: str, *, reached: list[str], named: list[str]
     ) -> list[str]:
-        """Mark the user's passes of the scope a hard forget may have reached
-        (named, naming a reached uuid, open, or closed with a cleanup
-        pending), blank those closed, keep only the code of every ERRORED
-        pass's error; the ids marked. ``data/dream_pass.ERASE_SQL``."""
+        """Mark the user's passes of the scope a hard forget reached (one
+        that read a reached uuid, open, closed with a cleanup pending, named,
+        or marked before), blank those marked now and closed, and keep every
+        error of the scope only as a fixed code; the ids marked, now or
+        before. ``data/dream_pass.ERASE_SQL``."""
         self._raise_if_down()
         marked: list[str] = []
         for pass_id, row in self.rows.items():
             if (row["user_id"], row["scope_key"]) != (user_id, scope_key):
                 continue
-            text = json.dumps(_json_columns(row))
-            if (
-                pass_id in named
+            row["error"] = blank_error(row.get("error"))
+            if not (
+                row.get("erased_at") is not None
                 or row["status"] in OPEN_STATUSES
                 or row.get("cleanup_pending_at") is not None
-                or any(uuid in text for uuid in reached)
+                or pass_id in named
+                or set(row["read_uuids"]) & set(reached)
             ):
-                row["erased_at"] = row.get("erased_at") or datetime.now(timezone.utc)
-                marked.append(pass_id)
+                continue
+            marked.append(pass_id)
+            if row.get("erased_at") is None:
+                row["erased_at"] = datetime.now(timezone.utc)
                 if row["status"] not in OPEN_STATUSES:
-                    _blank_row(row, errored=False)
-            if row["status"] == DreamPassStatus.ERRORED:
-                row["error"] = blank_error(row.get("error"))
+                    _blank_row(row)
         return marked
 
     async def list_expired_dream_passes(
@@ -388,6 +394,7 @@ class FakeDreamDb:
             **dict(draft),
             "phase_outputs": {},
             "operations": {},
+            "read_uuids": [],
             "cancel_generation": 0,
             "created_at": now,
             "updated_at": now,
@@ -430,6 +437,7 @@ _NOT_WRITTEN_AS_IS = frozenset(
         "not_updated_since",
         "clear",
         "closed_row",
+        "read_uuids",
     }
 )
 
@@ -448,12 +456,11 @@ def _writable(row: dict[str, Any], update: DreamPassUpdate) -> bool:
     )
 
 
-def _blank_row(row: dict[str, Any], *, errored: bool) -> None:
-    """Blank the dream's text in *row*'s JSON columns, and its error when
-    *errored*."""
+def _blank_row(row: dict[str, Any]) -> None:
+    """Blank the dream's text in *row*'s JSON columns, and its error unless
+    it is a fixed code."""
     row["phase_outputs"], row["operations"] = blank_text(_json_columns(row))
-    if errored:
-        row["error"] = blank_error(row.get("error"))
+    row["error"] = blank_error(row.get("error"))
 
 
 def _json_columns(row: dict[str, Any]) -> list[dict[str, Any]]:
@@ -482,12 +489,20 @@ def blank_text(value: Any) -> Any:
 
 
 def blank_error(error: str | None) -> str | None:
-    """*error* with whatever follows its code blanked, as the migration's
+    """*error* when it is one of the fixed codes, else ``ERASED_TEXT`` after
+    its stage when that is one of the fixed stages, as the migration's
     ``dream_error_blanked`` does."""
-    if error is None or re.fullmatch(r"[a-z_]+: [A-Za-z0-9_]+", error):
+    if error is None or is_pass_error(error):
         return error
-    phase = re.match(r"[a-z_]+: ", error)
-    return (phase.group(0) if phase else "") + ERASED_TEXT
+    stage, separator, _ = error.partition(": ")
+    if separator and stage in PASS_ERROR_STAGES:
+        return f"{stage}: {ERASED_TEXT}"
+    return ERASED_TEXT
+
+
+def recorded_error(error: str) -> str:
+    """*error* as the store records it: a fixed code, else ``UNRECORDED``."""
+    return error if is_pass_error(error) else UNRECORDED
 
 
 def _due(row: dict[str, Any], due_before: datetime) -> bool:

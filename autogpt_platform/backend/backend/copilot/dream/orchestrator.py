@@ -51,6 +51,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 from .apply import apply_operations, drain_status_from_stats
 from .batch_handoff import submit_dream_pass_batch
 from .billing import PhaseChargeError, check_dream_budget, record_phase_cost
+from .cancel import stopped_error
 from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .fetch import (
@@ -66,8 +67,10 @@ from .locks import (
     LOCK_CHECK_TIMEOUT_SECONDS,
     DreamLockHandle,
     DreamLockHeld,
+    DreamLockLostError,
     dream_lock,
 )
+from .pass_errors import pass_error
 from .pass_record import DreamTrigger
 from .pass_run import DreamPassRun, PassEnded
 from .phase_jobs import phase_job
@@ -442,7 +445,12 @@ async def _execute_dream_pass_async(
     run = DreamPassRun.begin(user_id, await _route_for(user_id, config), force=force)
     try:
         scope = MemoryScope.build(user_id, expert_id)
-        await start_pass(run, scope, trigger=trigger)
+        if not await start_pass(run, scope, trigger=trigger):
+            # A hard forget finds only passes whose rows it can read: one
+            # whose row may not be there must not read the graph.
+            result = run.failure(pass_error("pass", "record_unconfirmed"))
+            await record_sync_outcome(result)
+            return result
         async with dream_lock(scope, token=run.lease_token) as handle:
             run.hold(handle)
             return await _run_locked(
@@ -452,7 +460,7 @@ async def _execute_dream_pass_async(
         result = run.skipped("lock_held")
     except Exception as exc:  # pragma: no cover — last-resort guard
         logger.exception("Dream pass crashed for user %s: %s", user_id[:12], exc)
-        result = run.failure(str(exc))
+        result = run.failure(pass_error("pass", "crashed"))
     await record_sync_outcome(result)
     return result
 
@@ -504,9 +512,17 @@ async def _run_locked(
         result = await _dream(
             run, scope, lock_handle, config=config, status_id=status_id
         )
+    except DreamLockLostError:
+        logger.exception("Dream pass lost its lock for user %s", run.user_id[:12])
+        result = run.failure(pass_error("apply", "lock_lost"))
+    except PhaseChargeError:
+        logger.exception(
+            "Dream pass could not be charged for user %s", run.user_id[:12]
+        )
+        result = run.failure(pass_error("billing", "charge_failed"))
     except Exception as exc:
         logger.exception("Dream pass crashed for user %s: %s", run.user_id[:12], exc)
-        result = run.failure(str(exc))
+        result = run.failure(pass_error("pass", "crashed"))
     await record_sync_outcome(result)
     return result
 
@@ -566,7 +582,9 @@ async def _gather(
     budget_ok, budget_skip = await check_dream_budget(run.user_id, config=config)
     if not budget_ok:
         if budget_skip == "rate_limit_unavailable":
-            raise PassEnded(run.failure(f"billing: {budget_skip}"))
+            raise PassEnded(
+                run.failure(pass_error("billing", "rate_limit_unavailable"))
+            )
         raise PassEnded(run.skipped(budget_skip or "insufficient_credits"))
     input_bundle = await gather_dream_input(scope)
     if not input_bundle.episodes and not input_bundle.facts:
@@ -575,7 +593,12 @@ async def _gather(
         raise PassEnded(run.skipped("no_input"))
     if await _nothing_new_since_last_pass(run, scope, input_bundle, status_id):
         raise PassEnded(run.skipped("no_new_activity"))
-    await record_gathered(run.pass_id, input_bundle)
+    if not await record_gathered(run.pass_id, input_bundle):
+        # What the pass read must be on its row before any model call: a
+        # hard forget marks a closed pass by it. A row that refused it was
+        # closed by a stop, whose error the pass ends with.
+        stopped = await stopped_error(run.pass_id)
+        raise PassEnded(run.failure(stopped or pass_error("gather", "record_failed")))
     return input_bundle
 
 
@@ -648,7 +671,7 @@ async def _phase(
     except InferenceError as exc:
         logger.warning("Dream pass %s: %s failed: %s", run.pass_id, phase, exc)
         run.bill_failed_phase(phase, exc)
-        raise PassEnded(run.failure(f"{phase}: {exc.code}")) from exc
+        raise PassEnded(run.failure(pass_error(phase, exc.code))) from exc
     except PhaseChargeError as exc:
         run.phases.append(phase_usage(phase, exc.usage))
         raise

@@ -107,7 +107,7 @@ from collections.abc import Awaitable
 from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, cast
 
-from prisma.enums import DreamPassRoute, DreamPassStatus
+from prisma.enums import DreamPassPhase, DreamPassRoute, DreamPassStatus
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig
@@ -123,6 +123,7 @@ from .locks import (
     LOCK_CHECK_TIMEOUT_SECONDS,
     release_dream_lock,
 )
+from .pass_errors import PassErrorStage, pass_error
 from .pass_record import reaped
 from .provider_batch import PROVIDER_BATCH_WINDOW_SECONDS
 from .schemas import DreamPhase
@@ -435,7 +436,7 @@ async def _close(
     cleanup = await _clean_up(row, scope, release=not took_scope)
     lock = "held by the reaper" if took_scope else "released if the dead pass's"
     return _logged(
-        row, cleanup, "expired", f"expired ({_error(row)})", f"; scope lock {lock}"
+        row, cleanup, "expired", f"expired ({_lapse(row)})", f"; scope lock {lock}"
     )
 
 
@@ -587,16 +588,30 @@ def _batch_to_stop(row: DreamPassRecord) -> str | None:
     return row.provider_batch_id
 
 
+# The step a row's phase names, as its error records it.
+_PHASE_STAGES: dict[DreamPassPhase, PassErrorStage] = {
+    DreamPassPhase.GATHER: "gather",
+    DreamPassPhase.CONSOLIDATE: "consolidate",
+    DreamPassPhase.RECOMBINE: "recombine",
+    DreamPassPhase.SANITIZE: "sanitize",
+    DreamPassPhase.APPLY: "apply",
+    DreamPassPhase.DONE: "done",
+}
+
+
 def _error(row: DreamPassRecord) -> str:
-    """The closed row's error, naming the phase its pass died at."""
-    phase = row.phase.value.lower()
+    """The closed row's error, naming the step its pass died at."""
+    return pass_error(_PHASE_STAGES[row.phase], "reaped")
+
+
+def _lapse(row: DreamPassRecord) -> str:
+    """How the pass died, for the log: when its lease lapsed, and whether
+    it was applying (closed without applying again; what it wrote may have
+    landed)."""
     lapsed = row.lease_expires_at.isoformat() if row.lease_expires_at else "unknown"
     if row.status == DreamPassStatus.APPLYING:
-        return (
-            f"{phase}: the lease lapsed at {lapsed} while applying; closed by the "
-            "reaper without applying again, and what it wrote may have landed"
-        )
-    return f"{phase}: the lease lapsed at {lapsed}; closed by the reaper"
+        return f"lease lapsed at {lapsed} while applying"
+    return f"lease lapsed at {lapsed}"
 
 
 def _counts(run: ReaperRun) -> str:

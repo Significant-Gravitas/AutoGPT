@@ -212,10 +212,7 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch DreamInput missing; memory scope unavailable"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: input_missing"
         # No token anywhere (no bundle, no row): the pass's ownership of the
         # lock is unknown, so nothing is released; its TTL, or the reaper,
         # settles it.
@@ -266,10 +263,7 @@ class TestPhaseChaining:
             )
 
         apply.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -326,10 +320,7 @@ class TestPhaseChaining:
             )
 
         submit_phase.assert_not_awaited()
-        assert (
-            mark_errored.await_args.kwargs["error"]
-            == "batch payload memory scope mismatch"
-        )
+        assert mark_errored.await_args.kwargs["error"] == "batch: scope_mismatch"
         release_lock.assert_awaited_once_with(
             MemoryScope.for_expert("u1", "expert-1"), "tok-expert"
         )
@@ -798,7 +789,7 @@ class TestPhaseChaining:
         apply.assert_not_awaited()
         mark_complete.assert_not_awaited()
         mark_errored.assert_awaited_once()
-        assert "gate unavailable" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "apply: gate_unavailable"
 
 
 class TestErrorPaths:
@@ -819,7 +810,7 @@ class TestErrorPaths:
         final = await read_status(kind="dream_pass", job_id="j-dead")
         assert final is not None
         assert final.state == "errored"
-        assert "missing" in (final.error or "")
+        assert final.error == "batch: payload_incomplete"
 
     @pytest.mark.asyncio
     async def test_unknown_phase_marks_job_errored_not_stuck(self, fake_redis):
@@ -840,7 +831,7 @@ class TestErrorPaths:
         final = await read_status(kind="dream_pass", job_id="j-odd")
         assert final is not None
         assert final.state == "errored"
-        assert "unknown batch phase" in (final.error or "")
+        assert final.error == "batch: unknown_phase"
 
     @pytest.mark.asyncio
     async def test_errored_row_short_circuits_to_mark_errored(self, fake_redis):
@@ -1036,7 +1027,7 @@ class TestErrorPaths:
             )
 
         mark_errored.assert_awaited_once()
-        assert "handler crashed" in mark_errored.call_args.kwargs["error"]
+        assert mark_errored.call_args.kwargs["error"] == "consolidate: crashed"
         # Released with the ownership token the input bundle carried.
         release_lock.assert_awaited_once_with(MemoryScope.for_user("u1"), "tok-u1")
 
@@ -1468,15 +1459,15 @@ class TestDreamPassRecord:
             DreamPassStatus.ERRORED,
         ]
         row = fake_dream_db.rows["p1"]
-        assert row["error"] == "apply: RuntimeError: FalkorDB unreachable"
+        assert row["error"] == "apply: crashed", "no exception text is recorded"
         assert row["operations"]["planned"] == DreamOperations(summary_for_user="ok")
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "payload_fix, error",
         [
-            ({"phase": "daydream"}, "unknown batch phase 'daydream'"),
-            ({"phase": None}, "batch payload missing user_id/pass_id/phase"),
+            ({"phase": "daydream"}, "batch: unknown_phase"),
+            ({"phase": None}, "batch: payload_incomplete"),
         ],
         ids=["unknown_phase", "missing_phase"],
     )
@@ -1673,7 +1664,7 @@ class TestDreamPassRecord:
         submit_phase.assert_not_awaited()
         row = fake_dream_db.rows["p1"]
         assert row["status"] is DreamPassStatus.ERRORED
-        assert row["error"] == "consolidate: handler crashed"
+        assert row["error"] == "consolidate: crashed"
         assert row.get("usage") is None
         status = await job_status.read_status(kind="dream_pass", job_id="j1")
         assert status is not None and status.state == "errored"
@@ -1834,12 +1825,14 @@ class TestDreamPassRecord:
 
 async def _cancel_p1() -> str:
     assert (await cancel_dream_pass("p1", user_id="u1", reason="testing")).cancelled
-    return "cancelled: testing"
+    return "cancelled: by_admin"
 
 
 async def _expire_p1() -> str:
-    assert await write_stop("p1", expired("lease lapsed", not_updated_since=None))
-    return "expired: lease lapsed"
+    assert await write_stop(
+        "p1", expired("expired: lease_lapsed", not_updated_since=None)
+    )
+    return "expired: lease_lapsed"
 
 
 class TestAStoppedPass:
@@ -2058,7 +2051,7 @@ class TestAStoppedPass:
             DreamPassStatus.CANCELLED,
         ]
         await self._assert_ended(
-            fake_dream_db, fake_dream_redis, lock_key, "cancelled: testing"
+            fake_dream_db, fake_dream_redis, lock_key, "cancelled: by_admin"
         )
 
     @pytest.mark.asyncio

@@ -75,8 +75,10 @@ def _seed(
     scope: MemoryScope = _SCOPE,
     **columns: Any,
 ) -> None:
-    """A pass whose every phase consolidated ``_SENTENCE`` citing ``cites``,
-    proposed a finding on it and demoted another fact."""
+    """A pass that read ``cites`` and whose every phase consolidated
+    ``_SENTENCE`` citing it, proposed a finding on it and demoted another
+    fact."""
+    columns.setdefault("read_uuids", [cites])
     write = ConsolidatedFact(
         content=_SENTENCE, confidence=0.8, source_fact_uuids=[cites]
     )
@@ -144,7 +146,7 @@ def _row_text(fake: FakeDreamDb, pass_id: str) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_a_closed_pass_citing_what_was_forgotten_is_blanked(
+async def test_a_closed_pass_that_read_what_was_forgotten_is_blanked(
     fake_dream_db: FakeDreamDb, chat: MagicMock
 ) -> None:
     """Every sentence goes, in every phase's output, the plan and apply's
@@ -167,7 +169,23 @@ async def test_a_closed_pass_citing_what_was_forgotten_is_blanked(
     assert snapshot is not None
     [demoted] = snapshot.demotions
     assert (demoted.edge_uuid, demoted.new_status) == ("fact-other", "superseded")
-    chat.blank_dream_narratives.assert_awaited_once_with("u1", ["p1"], FORGOTTEN_FACT)
+    chat.blank_dream_narratives.assert_awaited_once_with(
+        "u1", ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_summary_citing_nothing_is_blanked_by_what_its_pass_read(
+    fake_dream_db: FakeDreamDb, chat: MagicMock
+) -> None:
+    """The round-2 review's uncited summary: no write of the pass cites the
+    forgotten fact, but the pass read it, and that is what marks it."""
+    _seed(fake_dream_db, "p1", cites="fact-unrelated", read_uuids=[_FORGOTTEN])
+
+    assert await blank_dream_copies(_SCOPE, reached={_FORGOTTEN}, dream_writes=[]) == [
+        "p1"
+    ]
+    assert not any(_SENTENCE in text for text in _row_text(fake_dream_db, "p1"))
 
 
 @pytest.mark.asyncio
@@ -185,13 +203,17 @@ async def test_a_pass_whose_write_was_erased_is_blanked_by_its_name(
     )
 
     assert not any(_SENTENCE in text for text in _row_text(fake_dream_db, "p1"))
-    chat.blank_dream_narratives.assert_awaited_once_with("u1", ["p1"], FORGOTTEN_FACT)
+    chat.blank_dream_narratives.assert_awaited_once_with(
+        "u1", ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
+    )
 
 
 @pytest.mark.asyncio
 async def test_a_pass_the_forget_did_not_reach_is_left_alone(
     fake_dream_db: FakeDreamDb, chat: MagicMock
 ) -> None:
+    """A pass that read none of it, and another scope's that did; the
+    narratives' blank still looks for sessions whose pass read it."""
     _seed(fake_dream_db, "p1", cites="fact-unrelated")
     _seed(fake_dream_db, "p2", scope=MemoryScope.for_expert("u1", "e1"))
     before = {pass_id: _row_text(fake_dream_db, pass_id) for pass_id in ("p1", "p2")}
@@ -201,7 +223,38 @@ async def test_a_pass_the_forget_did_not_reach_is_left_alone(
     assert marked == []
     assert {p: _row_text(fake_dream_db, p) for p in ("p1", "p2")} == before
     assert all(fake_dream_db.record(p).erased_at is None for p in ("p1", "p2"))
-    chat.blank_dream_narratives.assert_not_awaited()
+    chat.blank_dream_narratives.assert_awaited_once_with(
+        "u1", [], [_FORGOTTEN], FORGOTTEN_FACT
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_pass_marked_before_is_returned_to_every_later_forget(
+    fake_dream_db: FakeDreamDb, chat: MagicMock
+) -> None:
+    """The round-2 review's retry: a forget whose narrative blank failed is
+    repeated after the pass closed. The pass is found by its mark, whatever
+    the repeat reached, and its row is not written again."""
+    _seed(fake_dream_db, "p1", status=DreamPassStatus.APPLYING)
+    chat.blank_dream_narratives.side_effect = [OSError("down"), 1]
+    with pytest.raises(OSError):
+        await blank_dream_copies(_SCOPE, reached={_FORGOTTEN}, dream_writes=[])
+    await record_sync_outcome(_result("p1", summary_for_user=f"I noticed {_SENTENCE}."))
+    written = len(fake_dream_db.writes)
+    closed = fake_dream_db.record("p1")
+
+    assert await blank_dream_copies(
+        _SCOPE, reached={"fact-other"}, dream_writes=[]
+    ) == ["p1"]
+
+    assert fake_dream_db.record("p1") == closed
+    assert len(fake_dream_db.writes) == written
+    assert chat.blank_dream_narratives.await_args.args == (
+        "u1",
+        ["p1"],
+        ["fact-other"],
+        FORGOTTEN_FACT,
+    )
 
 
 @pytest.mark.asyncio
@@ -237,7 +290,7 @@ async def test_every_running_pass_of_the_scope_is_marked_and_blanked_as_it_ends(
     assert _row_text(fake_dream_db, "p-cites") == before
     assert not any(_SENTENCE in t for t in _row_text(fake_dream_db, "p-closed"))
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p-cites", "p-closed", "p-names-nothing"], FORGOTTEN_FACT
+        "u1", ["p-cites", "p-closed", "p-names-nothing"], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
     await record_sync_outcome(
@@ -268,7 +321,8 @@ async def test_every_way_a_marked_pass_closes_blanks_it(
     fake_dream_db: FakeDreamDb, chat: MagicMock, close: str
 ) -> None:
     """Whichever transition closes a marked pass blanks its text, what it
-    writes as it closes included, and keeps only the code of its error."""
+    writes as it closes included; an error that is not a fixed code is never
+    recorded."""
     _seed(fake_dream_db, "p1", status=DreamPassStatus.APPLYING)
     await blank_dream_copies(_SCOPE, reached={_FORGOTTEN}, dream_writes=[])
     said = f"I noticed {_SENTENCE}."
@@ -285,10 +339,12 @@ async def test_every_way_a_marked_pass_closes_blanks_it(
             assert await write_stop("p1", failed(error, None, _NOW, marked=True))
         case "cancel":
             assert await write_stop(
-                "p1", cancelled("owner cancelled", owner_user_id="u1")
+                "p1", cancelled("cancelled: by_admin", owner_user_id="u1")
             )
         case "expiry":
-            assert await write_stop("p1", expired("superseded", not_updated_since=None))
+            assert await write_stop(
+                "p1", expired("expired: forced", not_updated_since=None)
+            )
 
     row = fake_dream_db.record("p1")
     assert row.status not in (DreamPassStatus.APPLYING,)
@@ -346,28 +402,33 @@ async def test_a_closed_pass_with_its_cleanup_pending_is_marked_and_blanked(
 
 
 @pytest.mark.asyncio
-async def test_every_failed_pass_of_the_scope_keeps_only_its_errors_code(
-    fake_dream_db: FakeDreamDb, chat: MagicMock
+@pytest.mark.parametrize(
+    "error, kept",
+    [
+        (
+            f"recombine: LLM returned non-JSON content — first 200 chars: {_SENTENCE}",
+            f"recombine: {ERASED_TEXT}",
+        ),
+        ("consolidate: schema_mismatch", "consolidate: schema_mismatch"),
+        ("apply: SecretToken123", f"apply: {ERASED_TEXT}"),
+        (f"cancelled by an admin: {_SENTENCE}", ERASED_TEXT),
+    ],
+    ids=["quoted", "code", "not_a_code", "no_stage"],
+)
+async def test_every_error_of_the_scope_is_kept_only_as_a_fixed_code(
+    fake_dream_db: FakeDreamDb, chat: MagicMock, error: str, kept: str
 ) -> None:
-    """An error written before errors were codes may quote the model, and no
-    uuid finds it: every failed pass of the scope loses all but its code,
-    reached or not. An error that is a code alone stays."""
-    _seed(
-        fake_dream_db, "p-old", cites="fact-unrelated", status=DreamPassStatus.ERRORED
-    )
-    fake_dream_db.rows["p-old"][
-        "error"
-    ] = f"recombine: LLM returned non-JSON content — first 200 chars: {_SENTENCE}"
-    _seed(
-        fake_dream_db, "p-new", cites="fact-unrelated", status=DreamPassStatus.ERRORED
-    )
-    fake_dream_db.rows["p-new"]["error"] = "consolidate: schema_mismatch"
+    """An error the store did not write (it records codes only) may quote
+    anything, and no uuid finds it: every pass of the scope keeps its error
+    only when it is one of the fixed codes, its stage when that is one,
+    reached or not."""
+    _seed(fake_dream_db, "p1", cites="fact-unrelated", status=DreamPassStatus.CANCELLED)
+    fake_dream_db.rows["p1"]["error"] = error
 
     await blank_dream_copies(_SCOPE, reached={_FORGOTTEN}, dream_writes=[])
 
-    assert fake_dream_db.record("p-old").error == f"recombine: {ERASED_TEXT}"
-    assert fake_dream_db.record("p-new").error == "consolidate: schema_mismatch"
-    assert fake_dream_db.record("p-old").erased_at is None, "not reached"
+    assert fake_dream_db.record("p1").error == kept
+    assert fake_dream_db.record("p1").erased_at is None, "not reached"
 
 
 @pytest.mark.asyncio
@@ -397,7 +458,7 @@ async def test_a_pass_whose_row_aged_out_keeps_only_its_narrative_to_blank(
     )
 
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p-gone"], FORGOTTEN_FACT
+        "u1", ["p-gone"], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
 

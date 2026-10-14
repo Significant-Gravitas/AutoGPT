@@ -62,6 +62,8 @@ from .citations import fact_scopes
 from .clamp import clamp_pass_operations
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
+from .locks import DreamLockLostError
+from .pass_errors import pass_error
 from .provider_batch import anthropic_api_key
 from .schemas import DreamOperations, DreamPhase, IngestionDrainStatus
 from .store import record_applying, record_next_batch, record_phase_output
@@ -100,11 +102,11 @@ async def handle_dream_batch_result(
             "Dream batch handler missing user_id/pass_id/phase — payload=%s",
             payload,
         )
-        await end_dead_end(bp, "batch payload missing user_id/pass_id/phase")
+        await end_dead_end(bp, pass_error("batch", "payload_incomplete"))
         return
     if phase not in NEXT_PHASE:
         logger.warning("Dream batch handler unknown phase=%r", phase)
-        await end_dead_end(bp, f"unknown batch phase {phase!r}")
+        await end_dead_end(bp, pass_error("batch", "unknown_phase"))
         return
     await _handle_guarded(bp, phase, rows)
 
@@ -134,7 +136,7 @@ async def _handle_guarded(
                 "Dream batch input missing; refusing payload-only scope for pass=%s",
                 bp.pass_id,
             )
-            await fail_pass(bp, "batch DreamInput missing; memory scope unavailable")
+            await fail_pass(bp, pass_error("batch", "input_missing"))
             return
         scoped = bp.model_copy(
             update={
@@ -146,14 +148,14 @@ async def _handle_guarded(
             logger.error(
                 "Dream batch payload memory scope mismatch for pass=%s", bp.pass_id
             )
-            await fail_pass(scoped, "batch payload memory scope mismatch")
+            await fail_pass(scoped, pass_error("batch", "scope_mismatch"))
             return
         await _handle_phase_result(bp, input_bundle, phase, rows)
     except Exception:
         logger.exception(
             "Dream batch handler crashed for pass=%s phase=%s", bp.pass_id, phase
         )
-        await _fail_after_crash(scoped, f"{phase}: handler crashed")
+        await _fail_after_crash(scoped, pass_error(phase, "crashed"))
 
 
 async def _fail_after_crash(bp: BatchPass, error: str) -> None:
@@ -180,7 +182,7 @@ async def _handle_phase_result(
     unexpected raise (Redis blip, apply bug) is the crash guard's."""
     if not rows:
         logger.warning("Dream batch handler got empty rows for pass=%s", bp.pass_id)
-        await fail_pass(bp, f"{phase}: provider returned no rows")
+        await fail_pass(bp, pass_error(phase, "no_rows"))
         return
     # Single-request-per-batch today; the first (and only) row is the
     # phase result. When we group batches in the future the BatchExecutor
@@ -209,7 +211,7 @@ async def _landed_output(
         logger.warning(
             "Dream batch pass=%s phase=%s errored: %s", bp.pass_id, phase, row.error
         )
-        await fail_pass(bp, f"{phase}: provider_error")
+        await fail_pass(bp, pass_error(phase, "provider_error"))
         return None
     # Validate the row's content matches the phase's Pydantic schema
     # BEFORE persisting — corrupted content shouldn't pollute the
@@ -230,7 +232,7 @@ async def _landed_output(
             phase,
             type(exc).__name__,
         )
-        await fail_pass(bp, f"{phase}: schema_mismatch")
+        await fail_pass(bp, pass_error(phase, "schema_mismatch"))
         return None
     await write_phase_to_state(
         pass_id=bp.pass_id,
@@ -257,7 +259,7 @@ async def _chain_next_phase(
     state = await read_state(bp.pass_id)
     api_key = anthropic_api_key()
     if api_key is None:
-        await fail_pass(bp, f"{next_phase}: no Anthropic API key configured")
+        await fail_pass(bp, pass_error(next_phase, "no_api_key"))
         return
     try:
         submission = await submit_phase(
@@ -271,13 +273,13 @@ async def _chain_next_phase(
             consolidated_json=content_for(state, "consolidate"),
             recombined_json=content_for(state, "recombine"),
         )
-    except Exception as exc:
+    except Exception:
         logger.exception(
             "Failed to submit %s phase for pass=%s — marking errored",
             next_phase,
             bp.pass_id,
         )
-        await fail_pass(bp, f"{next_phase}: submit failed: {type(exc).__name__}: {exc}")
+        await fail_pass(bp, pass_error(next_phase, "submit_failed"))
         return
     await _advance_job(bp, next_phase, submission.provider_batch_id)
     await record_next_batch(bp.pass_id, next_phase, submission.provider_batch_id)
@@ -317,7 +319,7 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
         )
     except Exception:
         logger.exception("Failed to import dream apply for pass=%s", bp.pass_id)
-        await fail_pass(bp, "apply: import failed")
+        await fail_pass(bp, pass_error("apply", "import_failed"))
         return
     state = await read_state(bp.pass_id)
     ops = await _terminal_ops(bp, state, input_bundle)
@@ -340,12 +342,19 @@ async def _finalize_complete(bp: BatchPass, input_bundle: DreamInput) -> None:
             ingestion_drain_timeout=BATCH_INGESTION_DRAIN_TIMEOUT_SECONDS,
             lease=lease,
         )
-    except Exception as exc:
+    except DreamLockLostError:
+        logger.exception(
+            "apply_operations lost the dream lock for batch pass=%s — marking errored",
+            bp.pass_id,
+        )
+        await fail_pass(bp, pass_error("apply", "lock_lost"))
+        return
+    except Exception:
         logger.exception(
             "apply_operations crashed for batch pass=%s — marking errored",
             bp.pass_id,
         )
-        await fail_pass(bp, f"apply: {type(exc).__name__}: {exc}")
+        await fail_pass(bp, pass_error("apply", "crashed"))
         return
     await _finish_applied(
         bp, state, apply_stats, ops, drain_status_from_stats(apply_stats)
@@ -368,9 +377,7 @@ async def _claim_apply(bp: BatchPass, ops: DreamOperations) -> ApplyLease | None
     if gate == "error":
         # We cannot tell first-vs-duplicate apart, and "complete with no
         # writes" would silently drop the dream.
-        await fail_pass(
-            bp, "apply: gate unavailable (redis) — cannot guarantee at-most-once"
-        )
+        await fail_pass(bp, pass_error("apply", "gate_unavailable"))
         return None
     if gate == "duplicate":
         await finish_duplicate(bp, ops)
@@ -385,12 +392,17 @@ async def _terminal_ops(
     malformed result has failed the pass."""
     sanitize_row = state.get("sanitize")
     if sanitize_row is None or not sanitize_row.get("content"):
-        await fail_pass(bp, "sanitize: missing terminal phase content")
+        await fail_pass(bp, pass_error("sanitize", "missing_content"))
         return None
     try:
         ops = DreamOperations.model_validate(json.loads(sanitize_row["content"]))
     except (json.JSONDecodeError, ValidationError) as exc:
-        await fail_pass(bp, f"sanitize: shape validation failed: {type(exc).__name__}")
+        logger.warning(
+            "Dream batch pass=%s sanitize answered off its schema: %s",
+            bp.pass_id,
+            type(exc).__name__,
+        )
+        await fail_pass(bp, pass_error("sanitize", "schema_mismatch"))
         return None
     # Enforce the same per-pass operation caps the sync path applies
     # before writing — the model can over-emit past the prompt's limits.

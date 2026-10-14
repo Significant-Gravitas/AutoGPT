@@ -8,27 +8,32 @@ apply was handed and what apply reported, an error quoting the model) and in
 the narrative its dream session opens with.
 
 ``blank_dream_copies`` marks with ``erasedAt``, never cleared, every pass of
-the scope the forget may have reached, in one statement over all of the
-scope's passes (``data/dream_pass.erase_dream_passes``): one whose dream
+the scope the forget reached, in one statement over all of the scope's
+passes (``data/dream_pass.erase_dream_passes``): one that read a fact or
+episode the forget reached (its read set, every one it gathered, recorded
+before its first model call, ``DreamPass.readUuids``), one that may still be
+writing (open, or closed with its cleanup pending: a stop from outside
+closes the row while the pass may still be applying), and one whose dream
 writes the forget erased (a dream write's episode is named after its pass,
-``apply._episode_name``), one whose row names a fact or episode the forget
-reached, one still open (it may have read the fact without naming it yet),
-and one closed with its cleanup pending (a stop from outside closes the row
-while the pass may still be applying). A marked pass that is closed has its
-text blanked in that statement; an open one in the statement that closes it,
-however it closes (``data/dream_pass_update.py``), the reaper's expiry being
-the backstop for one that never ends. Then the narrative of every pass
-marked or named is blanked, and one written after the mark is written blank
-(``copilot/db.add_dream_narrative``). Every failed pass of the scope keeps
-only the code of its error: one written before errors were codes may quote
-the model.
+``apply._episode_name``; a pass did not read its own writes). A marked pass
+that is closed has its text blanked in that statement; an open one in the
+statement that closes it, however it closes
+(``data/dream_pass_update.py``), the reaper's expiry being the backstop for
+one that never ends. Then the narrative of every pass marked (now or by an
+earlier forget, so repeating a forget whose narrative blank failed finishes
+it) or named is blanked, and so is every narrative whose session's copy of
+its pass's read set holds a reached uuid, its pass's row aged out or not; one
+written after the mark is written blank (``copilot/db.add_dream_narrative``).
+Every pass of the scope keeps its error only when it is one of the fixed
+codes (``pass_errors.py``).
 
 Every sentence of a marked pass goes, each ``content``, ``rationale``,
 ``reason`` and ``summary_for_user`` reading ``recall.FORGOTTEN_FACT``, not
-only those derived from the forgotten fact: the dream may restate it
-anywhere, in its own words. The uuids, scopes, counts and usage stay. A
-pass whose row has aged out (``retention.py``) keeps only its narrative,
-which is blanked through its pass id. Entity names and name embeddings are
+only those derived from the forgotten fact: the dream may restate anything
+it read anywhere, in its own words, a summary citing nothing. The uuids,
+scopes, counts and usage stay. A pass whose row has aged out
+(``retention.py``) keeps only its narrative, which is blanked through its
+pass id or its session's read set. Entity names and name embeddings are
 kept.
 """
 
@@ -51,19 +56,19 @@ _DREAM_WRITE = re.compile(r"^dream_(?P<pass_id>.+)_(?:consolidate|recombine)_\d{
 async def blank_dream_copies(
     scope: MemoryScope, *, reached: Collection[str], dream_writes: Collection[str]
 ) -> list[str]:
-    """Mark the passes of ``scope`` a hard forget may have reached (the uuids
-    it ``reached``, the episode names of the ``dream_writes`` it erased),
+    """Mark the passes of ``scope`` a hard forget reached (the uuids it
+    ``reached``, the episode names of the ``dream_writes`` it erased),
     blanking what they keep now or as they close, and blank their
-    narratives. Returns the ids marked. Raises when a write fails or runs
-    out of time; repeating it is harmless."""
+    narratives and those of passes that read what it reached. Returns the
+    ids marked, now or before. Raises when a write fails or runs out of
+    time; repeating it finishes what a failed one left."""
     named = sorted({pass_id for name in dream_writes if (pass_id := pass_of(name))})
-    marked = await erase_passes(scope, reached=sorted(reached), named=named)
-    narratives = sorted({*marked, *named})
-    if narratives:
-        async with asyncio.timeout(NARRATIVE_TIMEOUT_SECONDS):
-            await chat_db().blank_dream_narratives(
-                scope.owner_user_id, narratives, FORGOTTEN_FACT
-            )
+    read = sorted(reached)
+    marked = await erase_passes(scope, reached=read, named=named)
+    async with asyncio.timeout(NARRATIVE_TIMEOUT_SECONDS):
+        await chat_db().blank_dream_narratives(
+            scope.owner_user_id, sorted({*marked, *named}), read, FORGOTTEN_FACT
+        )
     return marked
 
 

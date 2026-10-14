@@ -33,6 +33,7 @@ from .batch_submit import (
 from .cancel import stopped_error
 from .fetch import DreamInput
 from .locks import BATCH_LOCK_TTL_SECONDS, DreamLockHandle
+from .pass_errors import pass_error
 from .pass_run import DreamPassRun
 from .provider_batch import cancel_provider_batch
 from .schemas import DreamPassResult
@@ -41,7 +42,7 @@ from .store import record_submitted
 logger = logging.getLogger(__name__)
 
 # How a pass ends whose row refused its submit and cannot say why.
-REFUSED_SUBMIT_ERROR = "stopped: row refused the submitted write"
+REFUSED_SUBMIT_ERROR = pass_error("submit", "row_refused")
 
 
 async def submit_dream_pass_batch(
@@ -57,7 +58,7 @@ async def submit_dream_pass_batch(
     if not api_key:
         # Shouldn't happen — routing.py only picks anthropic_batch when
         # the key is present. Guard for type-narrowing + future safety.
-        return run.failure("anthropic_batch: no Anthropic API key (routing bug)")
+        return run.failure(pass_error("submit", "no_api_key"))
     stopped = await stopped_error(run.pass_id)
     if stopped is not None:
         return run.failure(stopped)
@@ -68,8 +69,12 @@ async def submit_dream_pass_batch(
         await persist_input_bundle(
             run.pass_id, input_bundle, lock_token=lock_handle.token
         )
-    except Exception as exc:
-        return run.failure(f"anthropic_batch: input persist failed: {exc}")
+    except Exception:
+        logger.warning(
+            f"Dream pass {run.pass_id}: could not persist its input bundle",
+            exc_info=True,
+        )
+        return run.failure(pass_error("submit", "input_persist_failed"))
 
     # An empty job id tells the callbacks there is no JobStatus row to update.
     try:
@@ -82,8 +87,12 @@ async def submit_dream_pass_batch(
             api_key=api_key,
             input_bundle=input_bundle,
         )
-    except Exception as exc:
-        return run.failure(f"anthropic_batch: phase 1 submit failed: {exc}")
+    except Exception:
+        logger.warning(
+            f"Dream pass {run.pass_id}: could not submit its first batch",
+            exc_info=True,
+        )
+        return run.failure(pass_error("consolidate", "submit_failed"))
     return await _hand_off(run, lock_handle, submission.provider_batch_id, input_bundle)
 
 
@@ -117,9 +126,11 @@ async def _hand_off(
     if not await lock_handle.extend(BATCH_LOCK_TTL_SECONDS):
         await remove_pending(provider_batch_id)
         await delete_input_bundle(run.pass_id)
-        return run.failure(
-            "anthropic_batch: dream lock lost before handoff — batch revoked"
+        logger.warning(
+            f"Dream pass {run.pass_id}: lost its dream lock before the handoff; "
+            f"batch {provider_batch_id} revoked"
         )
+        return run.failure(pass_error("submit", "lock_lost"))
     stopped = await _record_submit(run, lock_handle, provider_batch_id, input_bundle)
     if stopped is not None:
         await _revoke_stopped(run.pass_id, provider_batch_id)

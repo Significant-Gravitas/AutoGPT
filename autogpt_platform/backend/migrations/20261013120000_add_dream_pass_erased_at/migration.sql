@@ -1,14 +1,22 @@
--- A hard forget marks with erasedAt every dream pass it may have reached
+-- A hard forget marks with erasedAt every dream pass it reached
 -- (backend/copilot/dream/forget_copies.py); the mark is never cleared. A pass
--- already closed has the dream's text in its row blanked by the forget itself,
--- and one still open has it blanked in the statement that closes it, whichever
--- way it closes (backend/data/dream_pass_update.py). A narrative written after
--- the mark is written blanked (backend/copilot/db.py, add_dream_narrative).
--- A nullable column with no default on an existing table: no row is rewritten.
+-- is reached when it read a fact or episode the forget reached (readUuids:
+-- every one it gathered, recorded before its first model call and never
+-- cleared), may still be writing (open, or closed with its cleanup pending),
+-- or wrote what the forget erased. A pass already closed has the dream's text
+-- in its row blanked by the forget itself, and one still open has it blanked
+-- in the statement that closes it, whichever way it closes
+-- (backend/data/dream_pass_update.py). A narrative written after the mark is
+-- written blanked, and carries its pass's readUuids into its session's
+-- metadata, where a forget finds it once the pass's row has aged out
+-- (backend/copilot/db.py, add_dream_narrative).
+-- A nullable column and an array with a constant default on an existing
+-- table: no row is rewritten.
 -- Prisma does not track functions, so the two below cause no drift.
 
 -- AlterTable
-ALTER TABLE "DreamPass" ADD COLUMN "erasedAt" TIMESTAMP(3);
+ALTER TABLE "DreamPass" ADD COLUMN     "erasedAt" TIMESTAMP(3),
+ADD COLUMN     "readUuids" TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- CreateFunction
 -- value, with every string held under one of fields, at any depth, replaced
@@ -40,14 +48,19 @@ END;
 $$;
 
 -- CreateFunction
--- A pass's error with any text after its code replaced by placeholder. An
--- error that is a code alone ("<phase>: <code>", the form errors take since
--- this migration) stays; another keeps its leading "<phase>: " if it has one.
-CREATE OR REPLACE FUNCTION dream_error_blanked(error text, placeholder text)
+-- A pass's error when it is "<stage>: <code>" with the stage one of stages
+-- and the code one of codes (backend/copilot/dream/pass_errors.py, the only
+-- errors a pass records). Any other is placeholder, after its "<stage>: "
+-- when that stage is one of stages.
+CREATE OR REPLACE FUNCTION dream_error_blanked(
+    error text, stages text[], codes text[], placeholder text)
 RETURNS text LANGUAGE sql IMMUTABLE AS $$
     SELECT CASE
-        WHEN error IS NULL OR error ~ '^[a-z_]+: [A-Za-z0-9_]+$' THEN error
-        WHEN error ~ '^[a-z_]+: ' THEN substring(error FROM '^[a-z_]+: ') || placeholder
-        ELSE placeholder
+        WHEN error IS NULL THEN NULL
+        WHEN position(': ' IN error) = 0
+            OR NOT (split_part(error, ': ', 1) = ANY(stages))
+        THEN placeholder
+        WHEN substr(error, position(': ' IN error) + 2) = ANY(codes) THEN error
+        ELSE split_part(error, ': ', 1) || ': ' || placeholder
     END
 $$;

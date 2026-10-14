@@ -1257,68 +1257,130 @@ async def update_message_content_by_sequence(
         return False
 
 
-# A dream's narrative, the message its session opens with, or *erased*
-# when a hard forget has marked the pass (``DreamPass.erasedAt``). The pass's
-# row is held FOR SHARE while the message goes in: a forget's mark that
-# lands first is read here, and one that comes after waits for the insert,
-# which its blank of the pass's narratives (``blank_dream_narratives``) then
-# finds. A pass with no row writes the narrative as given.
+# A dream's narrative, the message its session opens with, or *erased* when
+# a hard forget has marked the pass (``DreamPass.erasedAt``), in one statement
+# that holds the pass's row FOR SHARE: a forget's mark that lands first is
+# read here, and one that comes after waits for the insert, which its blank
+# of the pass's narratives (``blank_dream_narratives``) then finds. It goes
+# only into the pass's own dream session (the pass's owner's, of kind dream,
+# naming the pass), which takes a copy of the pass's read set
+# (``DREAM_READ_UUIDS``), so a forget finds the narrative once the pass's row
+# has aged out. With no row for the pass, or a session that is not its own,
+# nothing is written.
 _DREAM_NARRATIVE_SQL = """
 WITH pass AS (
-    SELECT "erasedAt" FROM {schema_prefix}"DreamPass" WHERE "id" = $3 FOR SHARE
+    SELECT "id", "userId", "erasedAt", "readUuids"
+    FROM {schema_prefix}"DreamPass" WHERE "id" = $3 FOR SHARE
+),
+session AS (
+    UPDATE {schema_prefix}"ChatSession" AS s SET
+        "metadata" = COALESCE(s."metadata", '{{}}'::jsonb) || jsonb_build_object(
+            $7::text, to_jsonb(COALESCE(pass."readUuids", ARRAY[]::text[]))),
+        "updatedAt" = CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+    FROM pass
+    WHERE s."id" = $2 AND s."userId" = pass."userId"
+        AND s."metadata"->>'kind' = 'dream'
+        AND s."metadata"->>'dream_pass_id' = pass."id"
+    RETURNING s."id", pass."erasedAt"
 )
 INSERT INTO {schema_prefix}"ChatMessage"
     ("id", "sessionId", "role", "sequence", "content", "metadata")
-SELECT $1, $2, 'assistant', 0,
-    CASE WHEN EXISTS (SELECT 1 FROM pass WHERE "erasedAt" IS NOT NULL)
-        THEN $5 ELSE $4 END,
+SELECT $1, session."id", 'assistant', 0,
+    CASE WHEN session."erasedAt" IS NOT NULL THEN $5 ELSE $4 END,
     $6::jsonb
+FROM session
+"""
+
+# The key of a dream session's metadata holding its pass's read set, which
+# ``ChatSessionMetadata`` leaves out: only the forget's SQL reads it, and
+# every write to session metadata after its creation merges keys in SQL.
+DREAM_READ_UUIDS = "dream_read_uuids"
+
+# The narratives' blank's own deadline in the database, just under the
+# forget's for it (``dream/forget_copies.NARRATIVE_TIMEOUT_SECONDS``).
+NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS = 9_000
+
+# The narrative of each of the user's dream sessions a hard forget reached
+# ($1): the session of a pass it marked or named ($2), or one whose pass read
+# what it reached ($3, matched against the session's copy of the read set by
+# a hash join, which outlives the pass's row). A narrative already blank is
+# not written again.
+_BLANK_NARRATIVES_SQL = """
+WITH reached AS (
+    SELECT DISTINCT uuid FROM unnest($3::text[]) AS reached(uuid)
+),
+dream AS (
+    SELECT s."id", s."metadata"
+    FROM {schema_prefix}"ChatSession" AS s
+    WHERE s."userId" = $1 AND s."metadata"->>'kind' = 'dream'
+),
+hit AS (
+    SELECT "id" FROM dream
+    WHERE "metadata"->>'dream_pass_id' IN (SELECT unnest($2::text[]))
+    UNION
+    SELECT dream."id"
+    FROM dream,
+        jsonb_array_elements_text(CASE
+            WHEN jsonb_typeof(dream."metadata"->$5::text) = 'array'
+            THEN dream."metadata"->$5::text ELSE '[]'::jsonb END) AS read(uuid)
+    WHERE read.uuid IN (SELECT uuid FROM reached)
+)
+UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $4
+WHERE m."sessionId" IN (SELECT "id" FROM hit)
+    AND m."sequence" = 0 AND m."role" = 'assistant'
+    AND m."content" IS DISTINCT FROM $4
 """
 
 
 async def add_dream_narrative(
     session_id: str, pass_id: str, content: str, erased: str
-) -> None:
-    """Open the dream session *session_id* with pass *pass_id*'s narrative
+) -> bool:
+    """Open pass *pass_id*'s dream session *session_id* with its narrative
     *content*, or *erased* once a hard forget has marked the pass
-    (``_DREAM_NARRATIVE_SQL``, ``dream/apply._write_dream_summary_message``)."""
-    await asyncio.gather(
-        PrismaChatSession.prisma().update(
-            where={"id": session_id}, data={"updatedAt": datetime.now(UTC)}
-        ),
-        db.execute_raw_with_schema(
-            _DREAM_NARRATIVE_SQL,
-            str(uuid.uuid4()),
-            session_id,
-            pass_id,
-            sanitize_string(content),
-            sanitize_string(erased),
-            dumps({"dream_pass_id": pass_id}),
-        ),
+    (``_DREAM_NARRATIVE_SQL``, ``dream/apply._write_dream_summary_message``).
+    ``False``, logged, when nothing was written: the pass has no row, or the
+    session is not its own."""
+    written = await db.execute_raw_with_schema(
+        _DREAM_NARRATIVE_SQL,
+        str(uuid.uuid4()),
+        session_id,
+        pass_id,
+        sanitize_string(content),
+        sanitize_string(erased),
+        dumps({"dream_pass_id": pass_id}),
+        DREAM_READ_UUIDS,
     )
+    if not written:
+        logger.warning(
+            f"Dream pass {pass_id}: no record of it, or session {session_id} is "
+            "not its dream session; its narrative is not written"
+        )
+    return written > 0
 
 
 async def blank_dream_narratives(
-    user_id: str, pass_ids: list[str], placeholder: str
+    user_id: str, pass_ids: list[str], reached: list[str], placeholder: str
 ) -> int:
-    """Replace the narrative of each of *user_id*'s dream sessions for
-    *pass_ids* (the assistant message a dream opens its session with,
-    ``dream/apply._write_dream_summary_message``) with *placeholder*, for a
-    hard forget (``dream/forget_copies.py``); how many were. The rest of the
-    session is the user's chat with it, which no forget reaches."""
-    if not pass_ids:
+    """Replace with *placeholder*, for a hard forget
+    (``dream/forget_copies.py``), the narrative of each of *user_id*'s dream
+    sessions for *pass_ids* or whose pass read one of the *reached* uuids
+    (the assistant message a dream opens its session with,
+    ``dream/apply._write_dream_summary_message``); how many changed. The rest
+    of the session is the user's chat with it, which no forget reaches.
+    Raises when the statement runs past
+    ``NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS``."""
+    if not pass_ids and not reached:
         return 0
-    return await db.execute_raw_with_schema(
-        'UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $3 '
-        'FROM {schema_prefix}"ChatSession" AS s '
-        'WHERE m."sessionId" = s."id" AND s."userId" = $1 '
-        "AND s.\"metadata\"->>'kind' = 'dream' "
-        "AND s.\"metadata\"->>'dream_pass_id' = ANY($2::text[]) "
-        'AND m."sequence" = 0 AND m."role" = \'assistant\'',
-        user_id,
-        pass_ids,
-        sanitize_string(placeholder),
-    )
+    async with db.bounded_transaction(NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS) as tx:
+        return await db.execute_raw_with_schema(
+            _BLANK_NARRATIVES_SQL,
+            user_id,
+            pass_ids,
+            reached,
+            sanitize_string(placeholder),
+            DREAM_READ_UUIDS,
+            client=tx,
+        )
 
 
 async def update_chat_message_stamps(

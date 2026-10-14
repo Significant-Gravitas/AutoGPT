@@ -1,12 +1,16 @@
 """The narrative a dream opens its session with, against a real database.
 ``blank_dream_narratives``: a hard forget blanks it (``dream/forget_copies.py``)
-for the user's passes it names and nothing else: not the user's chat with
-the narrative, another pass's, another user's or an ordinary chat.
-``add_dream_narrative``: written blank once the pass is marked, in one
-statement holding the pass's row, so a mark landing on either side of the
-write leaves no narrative behind (the review's cancelled-apply race)."""
+for the user's passes it names, or whose pass read a uuid it reached (the
+session's copy of the read set, which outlives the pass's row), and nothing
+else: not the user's chat with the narrative, another pass's, another user's
+or an ordinary chat. ``add_dream_narrative``: written only into the pass's
+own session and only while its row is there, blank once the pass is marked,
+in one statement holding the pass's row, so a mark landing on either side of
+the write leaves no narrative behind (the review's cancelled-apply race)."""
 
 import asyncio
+import logging
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
@@ -18,7 +22,16 @@ from prisma.models import ChatMessage, ChatSession, DreamPass, User
 from backend.data import db
 from backend.util.json import SafeJson
 
-from .db import add_dream_narrative, blank_dream_narratives
+from . import db as chat
+from .db import (
+    DREAM_READ_UUIDS,
+    NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS,
+    add_dream_narrative,
+    blank_dream_narratives,
+    clear_session_pending_question,
+    get_chat_session_metadata,
+    set_session_pending_question,
+)
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -46,7 +59,7 @@ async def make_user() -> AsyncIterator[Callable[[], Awaitable[str]]]:
     await User.prisma().delete_many(where={"id": {"in": created}})
 
 
-async def _session(user_id: str, metadata: dict[str, str]) -> str:
+async def _session(user_id: str, metadata: dict[str, object]) -> str:
     """A session that opens with ``_NARRATIVE``, then the user's reply and the
     assistant's answer, which repeats it."""
     session = await ChatSession.prisma().create(
@@ -84,7 +97,7 @@ async def test_only_the_named_passes_narratives_are_blanked(make_user):
     ordinary = await _session(owner, {"kind": "normal", "dream_pass_id": "p1"})
     theirs = await _session(stranger, {"kind": "dream", "dream_pass_id": "p1"})
 
-    blanked = await blank_dream_narratives(owner, ["p1", "p-gone"], "[forgotten]")
+    blanked = await blank_dream_narratives(owner, ["p1", "p-gone"], [], "[forgotten]")
 
     assert blanked == 1
     assert await _contents(named) == ["[forgotten]", "Does she?", _NARRATIVE]
@@ -92,16 +105,42 @@ async def test_only_the_named_passes_narratives_are_blanked(make_user):
         assert await _contents(session_id) == [_NARRATIVE, "Does she?", _NARRATIVE]
 
 
-async def test_no_passes_writes_nothing(make_user):
+async def test_no_passes_and_nothing_reached_writes_nothing(make_user):
     owner = await make_user()
     await _session(owner, {"kind": "dream", "dream_pass_id": "p1"})
 
-    assert await blank_dream_narratives(owner, [], "[forgotten]") == 0
+    assert await blank_dream_narratives(owner, [], [], "[forgotten]") == 0
 
 
-async def _dream_session(user_id: str, *, erased: bool) -> tuple[str, str]:
-    """A pass of the user's, marked by a hard forget when ``erased``, and its
-    empty dream session: the pass id and the session id."""
+async def test_a_narrative_whose_pass_read_a_reached_uuid_is_blanked_once(make_user):
+    """Found by the session's copy of the read set, its pass's row gone or
+    not; a session whose pass read none of it, or another user's, is left.
+    A narrative already blank is not written again."""
+    owner, stranger = await make_user(), await make_user()
+    read = await _session(
+        owner, {"kind": "dream", "dream_pass_id": "p1", DREAM_READ_UUIDS: ["u1", "u2"]}
+    )
+    unread = await _session(
+        owner, {"kind": "dream", "dream_pass_id": "p2", DREAM_READ_UUIDS: ["u3"]}
+    )
+    theirs = await _session(
+        stranger, {"kind": "dream", "dream_pass_id": "p3", DREAM_READ_UUIDS: ["u2"]}
+    )
+
+    assert await blank_dream_narratives(owner, [], ["u2"], "[forgotten]") == 1
+    assert await blank_dream_narratives(owner, [], ["u2"], "[forgotten]") == 0
+
+    assert await _contents(read) == ["[forgotten]", "Does she?", _NARRATIVE]
+    for session_id in (unread, theirs):
+        assert await _contents(session_id) == [_NARRATIVE, "Does she?", _NARRATIVE]
+
+
+async def _dream_session(
+    user_id: str, *, erased: bool, reads: tuple[str, ...] = ("fact-1", "episode-1")
+) -> tuple[str, str]:
+    """A pass of the user's that read *reads*, marked by a hard forget when
+    ``erased``, and its empty dream session: the pass id and the session
+    id."""
     pass_id = str(uuid.uuid4())
     await DreamPass.prisma().create(
         data={
@@ -110,6 +149,7 @@ async def _dream_session(user_id: str, *, erased: bool) -> tuple[str, str]:
             "scopeKey": user_id,
             "route": DreamPassRoute.SYNC,
             "trigger": DreamPassTrigger.CRON,
+            "readUuids": list(reads),
             **({"erasedAt": datetime_now()} if erased else {}),
         }
     )
@@ -133,23 +173,82 @@ async def test_a_narrative_is_written_blank_once_its_pass_is_marked(
     owner = await make_user()
     pass_id, session_id = await _dream_session(owner, erased=erased)
 
-    await add_dream_narrative(session_id, pass_id, _NARRATIVE, "[forgotten]")
+    assert await add_dream_narrative(session_id, pass_id, _NARRATIVE, "[forgotten]")
 
     [message] = await ChatMessage.prisma().find_many(where={"sessionId": session_id})
     assert (message.role, message.sequence) == ("assistant", 0)
     assert message.content == ("[forgotten]" if erased else _NARRATIVE)
+    session = await ChatSession.prisma().find_unique(where={"id": session_id})
+    assert session is not None
+    assert dict(session.metadata)[DREAM_READ_UUIDS] == ["fact-1", "episode-1"]
 
 
-async def test_a_narrative_with_no_pass_row_is_written_as_given(make_user):
-    """A pass whose row was never inserted (the insert is best-effort)."""
+async def test_a_narrative_with_no_pass_row_is_not_written(make_user, caplog):
+    """A pass whose row is not there (its insert failed, so it should never
+    have run) has nothing a forget could find it by."""
     owner = await make_user()
     session = await ChatSession.prisma().create(
-        data={"userId": owner, "metadata": SafeJson({"kind": "dream"})}
+        data={
+            "userId": owner,
+            "metadata": SafeJson({"kind": "dream", "dream_pass_id": "p-no-row"}),
+        }
     )
 
-    await add_dream_narrative(session.id, "p-no-row", _NARRATIVE, "[forgotten]")
+    with caplog.at_level(logging.WARNING, logger=chat.logger.name):
+        written = await add_dream_narrative(
+            session.id, "p-no-row", _NARRATIVE, "[forgotten]"
+        )
 
-    assert await _contents(session.id) == [_NARRATIVE]
+    assert written is False
+    assert await _contents(session.id) == []
+    assert "its narrative is not written" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "owner_is, metadata",
+    [
+        ("stranger", {"kind": "dream"}),
+        ("owner", {"kind": "normal"}),
+        ("owner", {"kind": "dream", "dream_pass_id": "another-pass"}),
+    ],
+    ids=["another_users", "not_a_dream", "another_passes"],
+)
+async def test_a_narrative_goes_only_into_its_passes_own_session(
+    make_user, owner_is: str, metadata: dict[str, str]
+):
+    owner, stranger = await make_user(), await make_user()
+    pass_id, _ = await _dream_session(owner, erased=False)
+    session = await ChatSession.prisma().create(
+        data={
+            "userId": stranger if owner_is == "stranger" else owner,
+            "metadata": SafeJson({"dream_pass_id": pass_id, **metadata}),
+        }
+    )
+
+    assert not await add_dream_narrative(session.id, pass_id, _NARRATIVE, "[forgotten]")
+
+    assert await _contents(session.id) == []
+    stored = await ChatSession.prisma().find_unique(where={"id": session.id})
+    assert stored is not None and DREAM_READ_UUIDS not in dict(stored.metadata)
+
+
+async def test_the_read_set_outlives_the_sessions_reads_and_merges(make_user):
+    """``ChatSessionMetadata`` leaves the key out (only the forget's SQL
+    reads it), and every write to a session's metadata after its creation
+    merges keys, so the copy stays for the forget."""
+    owner = await make_user()
+    pass_id, session_id = await _dream_session(owner, erased=False)
+    assert await add_dream_narrative(session_id, pass_id, _NARRATIVE, "[forgotten]")
+
+    await set_session_pending_question(
+        session_id, owner, "Does she?", datetime.now(timezone.utc)
+    )
+    await clear_session_pending_question(session_id, owner)
+    loaded = await get_chat_session_metadata(session_id)
+
+    assert loaded is not None and loaded.metadata.kind == "dream"
+    assert await blank_dream_narratives(owner, [], ["fact-1"], "[forgotten]") == 1
+    assert await _contents(session_id) == ["[forgotten]"]
 
 
 async def test_a_mark_that_lands_first_holds_the_write_back_until_it_commits(
@@ -205,6 +304,51 @@ async def test_a_write_that_lands_first_is_found_by_the_forgets_blank(make_user)
             }
         )
     await asyncio.wait_for(mark, 10)
-    await blank_dream_narratives(owner, [pass_id], "[forgotten]")
+    await blank_dream_narratives(owner, [pass_id], [], "[forgotten]")
 
     assert await _contents(session_id) == ["[forgotten]"]
+
+
+async def test_the_blank_over_3000_dream_sessions_is_in_time(make_user):
+    """The cost check's other half: 3,000 dream sessions each holding a
+    550-uuid read set and a narrative, against 1,000 reached uuids read by
+    none, then one read by every pass, well inside the statement's
+    timeout."""
+    owner = await make_user()
+    shared = "fact-read-by-every-pass"
+    await db.execute_raw_with_schema(
+        'INSERT INTO {schema_prefix}"ChatSession" ("id", "userId", "updatedAt", '
+        '"metadata", "credentials", "successfulAgentRuns", '
+        '"successfulAgentSchedules") '
+        "SELECT gen_random_uuid()::text, $1, now(), jsonb_build_object("
+        "'kind', 'dream', 'dream_pass_id', gen_random_uuid()::text, $2::text, "
+        "to_jsonb(ARRAY(SELECT gen_random_uuid()::text "
+        "FROM generate_series(1, 549) WHERE session.n > 0) || $3::text)), "
+        "'{{}}'::jsonb, '{{}}'::jsonb, '{{}}'::jsonb "
+        "FROM generate_series(1, 3000) AS session(n)",
+        owner,
+        DREAM_READ_UUIDS,
+        shared,
+    )
+    await db.execute_raw_with_schema(
+        'INSERT INTO {schema_prefix}"ChatMessage" ("id", "sessionId", "role", '
+        '"sequence", "content") SELECT gen_random_uuid()::text, "id", '
+        "'assistant', 0, $2 FROM {schema_prefix}\"ChatSession\" "
+        'WHERE "userId" = $1',
+        owner,
+        _NARRATIVE,
+    )
+    budget = NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS / 1000 / 2
+    unread = [str(uuid.uuid4()) for _ in range(1000)]
+
+    started = time.monotonic()
+    assert await blank_dream_narratives(owner, [], unread, "[forgotten]") == 0
+    selection = time.monotonic() - started
+    started = time.monotonic()
+    blanked = await blank_dream_narratives(
+        owner, [], [*unread[1:], shared], "[forgotten]"
+    )
+    every = time.monotonic() - started
+
+    assert blanked == 3000
+    assert selection < budget and every < budget, (selection, every)

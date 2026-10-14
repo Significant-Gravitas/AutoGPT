@@ -109,7 +109,7 @@ async def test_a_stalled_insert_costs_the_deadline(deadline, rpc_over, caplog):
 
     started = loop.time()
     with caplog.at_level(logging.WARNING, logger=store.logger.name):
-        await store.start_pass(
+        confirmed = await store.start_pass(
             DreamPassRun.begin("u1", "sync_baseline"),
             MemoryScope.for_user("u1"),
             trigger="cron",
@@ -117,6 +117,7 @@ async def test_a_stalled_insert_costs_the_deadline(deadline, rpc_over, caplog):
 
     assert loop.time() - started < _BOUND
     assert hanging.cancelled == 1
+    assert confirmed is False, "an insert that may land later is not confirmed"
     assert "could not insert its record" in caplog.text
 
 

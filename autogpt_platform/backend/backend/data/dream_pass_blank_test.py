@@ -1,11 +1,15 @@
 """A hard forget's writes to the DreamPass table against a real database
 (``copilot/dream/forget_copies.py``): which of a scope's passes
-``erase_dream_passes`` marks and blanks, never another user's or scope's;
-every failed pass's error kept to its code; and every transition that
+``erase_dream_passes`` marks and blanks, never another user's or scope's,
+and returns again once marked; every error kept only as a fixed code; its
+statement timeout; its cost over 3,000 passes; and every transition that
 closes a marked pass blanking it in the same statement
 (``dream_pass_update.py``), one that leaves it open or an unmarked pass
-untouched."""
+untouched, the read set only growing."""
 
+import asyncio
+import json
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
@@ -19,6 +23,7 @@ from prisma.enums import (
 )
 from prisma.models import DreamPass, User
 
+from backend.copilot.dream.pass_errors import UNRECORDED
 from backend.copilot.dream.pass_record import (
     cancelled,
     cleanup_finished,
@@ -31,9 +36,11 @@ from backend.copilot.dream.schemas import (
     ConsolidationOutput,
     DreamOperations,
 )
+from backend.data import db, dream_pass
 from backend.util.json import SafeJson
 
 from .dream_pass import (
+    ERASE_STATEMENT_TIMEOUT_MS,
     create_dream_pass,
     erase_dream_passes,
     get_dream_pass,
@@ -98,8 +105,9 @@ async def _pass(
     status: DreamPassStatus = DreamPassStatus.RUNNING,
     cites: str = _FORGOTTEN,
 ) -> str:
-    """A pass that consolidated ``_SENTENCE`` citing ``cites``, then moved
-    to ``status`` (closed with no cleanup pending, for a closed status)."""
+    """A pass that read ``cites`` and consolidated ``_SENTENCE`` citing it,
+    then moved to ``status`` (closed with no cleanup pending, for a closed
+    status)."""
     draft = DreamPassDraft(
         id=str(uuid.uuid4()),
         user_id=owner,
@@ -112,6 +120,7 @@ async def _pass(
     assert await update_dream_pass(
         draft.id,
         DreamPassUpdate(
+            read_uuids=[cites],
             phase_outputs=_outputs(_SENTENCE, cites),
             operations=_operations(_SENTENCE),
         ),
@@ -130,7 +139,9 @@ async def _text(pass_id: str) -> str:
     return row.phase_outputs.model_dump_json() + row.operations.model_dump_json()
 
 
-async def test_a_reached_closed_pass_is_marked_and_blanked(make_user):
+async def test_a_closed_pass_that_read_a_reached_uuid_is_marked_and_blanked(
+    make_user,
+):
     owner = await make_user()
     pass_id = await _pass(owner, owner, status=DreamPassStatus.COMPLETE)
 
@@ -202,22 +213,27 @@ async def test_a_pass_not_reached_another_scopes_or_another_users_is_left(
         assert _SENTENCE in await _text(pass_id)
 
 
-async def test_every_failed_pass_of_the_scope_keeps_only_its_errors_code(make_user):
-    """An error from before errors were codes may quote the model and names
-    no uuid: every ERRORED pass of the scope loses what follows its code,
-    reached or not; a code alone, and another scope's error, stay."""
+async def test_every_error_of_the_scope_is_kept_only_as_a_fixed_code(make_user):
+    """An error the store did not write (it records codes only) may quote
+    anything and names no uuid: every pass of the scope, reached or not and
+    whatever its status, keeps its error only when it is one of the fixed
+    codes, its stage when that is one; another scope's error stays. The
+    review's probe, ``apply: SecretToken123``, looks like a code and is not."""
     owner = await make_user()
-    old = await _pass(owner, owner, status=DreamPassStatus.ERRORED, cites="x")
-    coded = await _pass(owner, owner, status=DreamPassStatus.ERRORED, cites="x")
-    bare = await _pass(owner, owner, status=DreamPassStatus.ERRORED, cites="x")
-    elsewhere = await _pass(
-        owner, f"{owner}:expert", status=DreamPassStatus.ERRORED, cites="x"
-    )
+    errored = DreamPassStatus.ERRORED
+    old = await _pass(owner, owner, status=errored, cites="x")
+    coded = await _pass(owner, owner, status=errored, cites="x")
+    lookalike = await _pass(owner, owner, status=errored, cites="x")
+    bare = await _pass(owner, owner, status=errored, cites="x")
+    stopped = await _pass(owner, owner, status=DreamPassStatus.CANCELLED, cites="x")
+    elsewhere = await _pass(owner, f"{owner}:expert", status=errored, cites="x")
     quoted = f"recombine: LLM returned non-JSON content — first 200 chars: {_SENTENCE}"
     for pass_id, error in (
         (old, quoted),
         (coded, "consolidate: schema_mismatch"),
+        (lookalike, "apply: SecretToken123"),
         (bare, f"1 validation error: input_value='{_SENTENCE}'"),
+        (stopped, f"cancelled by an admin: {_SENTENCE}"),
         (elsewhere, quoted),
     ):
         await DreamPass.prisma().update(where={"id": pass_id}, data={"error": error})
@@ -226,14 +242,28 @@ async def test_every_failed_pass_of_the_scope_keeps_only_its_errors_code(make_us
 
     errors = {
         pass_id: (row.error if (row := await get_dream_pass(pass_id)) else None)
-        for pass_id in (old, coded, bare, elsewhere)
+        for pass_id in (old, coded, lookalike, bare, stopped, elsewhere)
     }
     assert errors == {
         old: f"recombine: {ERASED_TEXT}",
         coded: "consolidate: schema_mismatch",
+        lookalike: f"apply: {ERASED_TEXT}",
         bare: ERASED_TEXT,
+        stopped: ERASED_TEXT,
         elsewhere: quoted,
     }
+
+
+async def test_an_error_that_is_not_a_fixed_code_is_never_recorded(make_user):
+    owner = await make_user()
+    pass_id = await _pass(owner, owner)
+
+    assert await update_dream_pass(
+        pass_id, failed(f"recombine: the model said {_SENTENCE}", None, _NOW)
+    )
+
+    row = await get_dream_pass(pass_id)
+    assert row is not None and row.error == UNRECORDED
 
 
 async def test_every_pass_of_the_scope_is_reached_however_many(make_user):
@@ -262,21 +292,112 @@ async def test_every_pass_of_the_scope_is_reached_however_many(make_user):
     assert _SENTENCE not in await _text(oldest)
 
 
-async def test_erasing_again_changes_nothing_more(make_user):
+async def test_a_pass_marked_before_is_returned_and_not_written_again(make_user):
+    """The round-2 review's retry: a later forget, whatever it reached,
+    returns every pass marked before so its narrative is blanked again, and
+    leaves the row as it was (it was blanked as it closed or was marked)."""
     owner = await make_user()
     pass_id = await _pass(owner, owner, status=DreamPassStatus.COMPLETE)
-    await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[])
+    assert await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[]) == [
+        pass_id
+    ]
     first = await get_dream_pass(pass_id)
 
-    await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[])
+    again = await erase_dream_passes(owner, owner, reached=["fact-other"], named=[])
 
-    again = await get_dream_pass(pass_id)
-    assert first is not None and again is not None
-    assert again.erased_at == first.erased_at
-    assert (again.phase_outputs, again.operations) == (
-        first.phase_outputs,
-        first.operations,
+    row = await get_dream_pass(pass_id)
+    assert again == [pass_id]
+    assert first is not None and row is not None
+    assert row == first, "not even updatedAt moves"
+
+
+async def test_the_read_set_only_grows_and_outlives_the_bundle(make_user):
+    owner = await make_user()
+    pass_id = await _pass(owner, owner, cites="fact-a")
+
+    assert await update_dream_pass(
+        pass_id, DreamPassUpdate(read_uuids=["fact-c", "fact-a", "episode-b"])
     )
+    assert await update_dream_pass(pass_id, _CLOSES["applied"])
+
+    row = await get_dream_pass(pass_id)
+    assert row is not None and row.read_uuids == ["episode-b", "fact-a", "fact-c"]
+
+
+async def test_an_erase_waiting_on_a_locked_row_gives_up_at_its_timeout(
+    make_user, monkeypatch
+):
+    """The database cancels the statement itself, just under the store's
+    deadline, rather than leaving it running after the caller gave up; the
+    forget reports a cleanup error to repeat."""
+    monkeypatch.setattr(dream_pass, "ERASE_STATEMENT_TIMEOUT_MS", 300)
+    owner = await make_user()
+    pass_id = await _pass(owner, owner, status=DreamPassStatus.COMPLETE)
+
+    async with db.transaction() as tx:
+        await db.query_raw_with_schema(
+            'SELECT 1 FROM {schema_prefix}"DreamPass" WHERE "id" = $1 FOR UPDATE',
+            pass_id,
+            client=tx,
+        )
+        started = time.monotonic()
+        with pytest.raises(Exception, match="statement timeout"):
+            await asyncio.wait_for(
+                erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[]), 10
+            )
+        assert time.monotonic() - started < 5
+
+    row = await get_dream_pass(pass_id)
+    assert row is not None and row.erased_at is None, "nothing was written"
+
+
+async def test_the_erase_over_3000_passes_and_1000_reached_uuids_is_in_time(
+    make_user,
+):
+    """The round-2 review's cost check, by the gather's caps: 3,000 closed
+    passes of a scope, each with ~10 KB of phase output and 550 uuids read,
+    against 1,000 reached uuids, first read by none of them (the selection's
+    cost), then one read by every pass (all 3,000 marked and blanked in one
+    statement), well inside the statement's timeout."""
+    owner = await make_user()
+    shared = "fact-read-by-every-pass"
+    facts = [
+        {
+            "content": "A sample retained dream sentence. " * 12,
+            "confidence": 0.9,
+            "source_fact_uuids": [str(uuid.uuid4())],
+        }
+        for _ in range(20)
+    ]
+    await db.execute_raw_with_schema(
+        'INSERT INTO {schema_prefix}"DreamPass" ("id", "userId", "scopeKey", '
+        '"route", "trigger", "status", "phase", "phaseOutputs", "readUuids") '
+        "SELECT gen_random_uuid()::text, $1, $1, 'SYNC', 'CRON', 'COMPLETE', "
+        "'DONE', $2::jsonb, ARRAY(SELECT gen_random_uuid()::text "
+        "FROM generate_series(1, 549) WHERE pass.n > 0) || $3::text "
+        "FROM generate_series(1, 3000) AS pass(n)",
+        owner,
+        json.dumps({"consolidate": {"facts": facts}}),
+        shared,
+    )
+    budget = ERASE_STATEMENT_TIMEOUT_MS / 1000 / 2
+    unread = [str(uuid.uuid4()) for _ in range(1000)]
+
+    started = time.monotonic()
+    assert await erase_dream_passes(owner, owner, reached=unread, named=[]) == []
+    selection = time.monotonic() - started
+    started = time.monotonic()
+    marked = await erase_dream_passes(
+        owner, owner, reached=[*unread[1:], shared], named=[]
+    )
+    all_marked = time.monotonic() - started
+
+    assert len(marked) == 3000
+    assert selection < budget and all_marked < budget, (selection, all_marked)
+    blanked = await DreamPass.prisma().count(
+        where={"userId": owner, "erasedAt": {"not": None}}
+    )
+    assert blanked == 3000
 
 
 _CLOSES: dict[str, DreamPassUpdate] = {
@@ -288,9 +409,9 @@ _CLOSES: dict[str, DreamPassUpdate] = {
         ),
         completed_at=_NOW,
     ),
-    "failed": failed(f"recombine: non-JSON — {_SENTENCE}", None, _NOW, marked=True),
-    "expired": expired("superseded", not_updated_since=None),
-    "reaped": reaped("lease lapsed", not_updated_since=_NOW.replace(year=2100)),
+    "failed": failed("recombine: non_json_content", None, _NOW, marked=True),
+    "expired": expired("expired: forced", not_updated_since=None),
+    "reaped": reaped("recombine: reaped", not_updated_since=_NOW.replace(year=2100)),
 }
 
 
@@ -302,7 +423,10 @@ async def test_every_transition_that_closes_a_marked_pass_blanks_it(make_user, c
     owner = await make_user()
     pass_id = await _pass(owner, owner, cites="fact-unrelated")
     await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[])
-    update = _CLOSES.get(close) or cancelled("owner cancelled", owner_user_id=owner)
+    await DreamPass.prisma().update(
+        where={"id": pass_id}, data={"error": f"consolidate: said {_SENTENCE}"}
+    )
+    update = _CLOSES.get(close) or cancelled("cancelled: by_admin", owner_user_id=owner)
 
     assert await update_dream_pass(pass_id, update)
 

@@ -3,12 +3,16 @@ Postgres (``dream/forget_copies.py``), end to end: production ingestion,
 apply and forget against a live FalkorDB and a real Postgres, with canned
 model answers.
 
-These are the reproductions of an independent review of PR 13 (round 1),
-which found the forgotten sentence kept by a pass still open when the forget
+These are the reproductions of independent reviews of PR 13. Round 1
+found the forgotten sentence kept by a pass still open when the forget
 landed, by a narrative a cancelled apply wrote after it, by a failed pass's
-error, and by a pass behind a thousand newer ones. Each now ends with the
-sentence gone. A soft forget blanks nothing in Postgres, but a write it
-dropped still keeps the narrative out (``dream/apply.py``).
+error, and by a pass behind a thousand newer ones; round 2 by a pass whose
+insert failed, by a summary restating a fact no write cited, and by a
+narrative a failed blank left for a repeat that found no pass. Each now
+ends with the sentence gone, as does a narrative whose pass's row aged out
+and the pass of a dream write forgotten itself. A soft forget blanks
+nothing in Postgres, but a write it dropped still keeps the narrative out
+(``dream/apply.py``).
 
 Run with FalkorDB reachable (see ``conftest.py``) and ``DATABASE_URL`` on a
 migrated database::
@@ -34,7 +38,10 @@ from pytest_mock import MockerFixture
 
 from backend.copilot import db as chat
 from backend.copilot.dream import apply, forget_copies, store
+from backend.copilot.dream.fetch import DreamInput
+from backend.copilot.dream.pass_errors import UNRECORDED, pass_error
 from backend.copilot.dream.pass_record import cancelled
+from backend.copilot.dream.pass_run import DreamPassRun
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -48,7 +55,7 @@ from backend.util.json import SafeJson
 
 from . import recall_forget
 from .recall import FORGOTTEN_FACT
-from .recall_cascade_fixtures import FLOUR, SUPPLIES, dream, gather
+from .recall_cascade_fixtures import CAFE, FLOUR, SUPPLIES, dream, fact_uuid, gather
 from .recall_integration_fixtures import (
     edge_row,
     ingest_facts,
@@ -262,7 +269,11 @@ async def test_a_cancelled_apply_writes_no_narrative_after_the_forget(
     async def close_then_forget(*args, **kwargs):
         status = await drain(*args, **kwargs)
         assert await store.write_stop(
-            pass_id, cancelled("owner cancelled", owner_user_id=scope.owner_user_id)
+            pass_id,
+            cancelled(
+                pass_error("cancelled", "by_admin"),
+                owner_user_id=scope.owner_user_id,
+            ),
         )
         forgot.append(await recall_forget.retract(scope, [root], hard=True))
         assert (
@@ -289,15 +300,15 @@ async def test_a_cancelled_apply_writes_no_narrative_after_the_forget(
     assert await _kept(pass_id, stats["session_id"]) == []
 
 
-async def test_a_failed_passes_error_keeps_only_its_code(
+async def test_a_failed_passes_error_never_quotes_the_model(
     scope_graph, stub_graphiti_client
 ):
-    """The review's error column: a pass failed with an error from before
-    errors were codes, quoting the model's answer, and names no uuid in it.
-    The hard forget keeps the phase and blanks the rest."""
+    """The review's error column: a pass fails with an error quoting the
+    model's answer. Only a fixed code is recorded, and the hard forget finds
+    the closed pass by what it read and blanks the rest."""
     _, scope = scope_graph
     root = await _source(scope_graph, stub_graphiti_client)
-    pass_id = await _open_pass(scope)
+    pass_id, _ = await _gathered_pass(scope)
     write = ConsolidatedFact(content=_DERIVED, confidence=0.9, source_fact_uuids=[root])
     await store.record_phase_output(
         pass_id, "consolidate", ConsolidationOutput(facts=[write])
@@ -306,12 +317,12 @@ async def test_a_failed_passes_error_keeps_only_its_code(
     await store.record_sync_outcome(
         DreamPassResult(user_id=scope.owner_user_id, pass_id=pass_id, error=quoted)
     )
+    row = await dream_pass.get_dream_pass(pass_id)
+    assert row is not None and row.error == UNRECORDED
 
     forgot = await recall_forget.retract(scope, [root], hard=True)
 
     assert (forgot.deleted, forgot.failures) == ([root], [])
-    row = await dream_pass.get_dream_pass(pass_id)
-    assert row is not None and row.error == f"recombine: {FORGOTTEN_FACT}"
     assert await _kept(pass_id, None) == []
 
 
@@ -322,7 +333,7 @@ async def test_an_affected_pass_behind_a_thousand_newer_ones_is_blanked(
     scope, its narrative named by no erased write."""
     _, scope = scope_graph
     root = await _source(scope_graph, stub_graphiti_client)
-    old = await _open_pass(scope)
+    old, _ = await _gathered_pass(scope)
     write = ConsolidatedFact(content=_DERIVED, confidence=0.9, source_fact_uuids=[root])
     await store.record_phase_output(
         old, "consolidate", ConsolidationOutput(facts=[write])
@@ -351,3 +362,179 @@ async def test_an_affected_pass_behind_a_thousand_newer_ones_is_blanked(
 
     assert forgot.failures == []
     assert await _kept(old, session_id) == []
+
+
+async def _gathered_pass(scope: MemoryScope) -> tuple[str, DreamInput]:
+    """An open pass that gathered the scope and recorded what it read, as
+    every pass does before its first model call."""
+    pass_id = await _open_pass(scope)
+    read = await gather(scope)
+    assert await store.record_gathered(pass_id, read)
+    return pass_id, read
+
+
+async def _cafe_pass(
+    scope_graph, build
+) -> tuple[str, str, DreamOperations, DreamInput]:
+    """The source, an unrelated cafe fact, and an open pass that read both
+    and is about to write a consolidation of the cafe (citing it) with a
+    summary restating the source, citing nothing: the source's uuid, the
+    pass id, its operations and what it read."""
+    driver, scope = scope_graph
+    root = await _source(scope_graph, build)
+    _, other = await ingest_facts(
+        driver, scope, build, [CAFE], session_id="other-source"
+    )
+    pass_id, read = await _gathered_pass(scope)
+    assert {root, other[CAFE[2]]} <= read.known_fact_uuids
+    write = ConsolidatedFact(
+        content=CAFE[2], confidence=0.9, source_fact_uuids=[other[CAFE[2]]]
+    )
+    await store.record_phase_output(
+        pass_id, "consolidate", ConsolidationOutput(facts=[write])
+    )
+    return (
+        root,
+        pass_id,
+        DreamOperations(writes=[write], summary_for_user=_DERIVED),
+        read,
+    )
+
+
+async def _complete(scope: MemoryScope, pass_id: str, stats: dict, ops) -> None:
+    await store.record_batch_complete(_completed(scope, pass_id, stats, ops), None)
+    assert await store.record_cleanup_finished(pass_id)
+
+
+async def test_a_pass_whose_record_did_not_go_in_writes_no_narrative(
+    scope_graph, stub_graphiti_client, mocker: MockerFixture
+):
+    """The round-2 review's first reproduction: the pass's insert fails. The
+    pass stops before it gathers (``orchestrator``); should its apply run
+    anyway, as the reproduction makes it, after a hard forget erased its
+    write, the narrative has no row to go by and is not written."""
+    driver, scope = scope_graph
+    root = await _source(scope_graph, stub_graphiti_client)
+    run = DreamPassRun.begin(scope.owner_user_id, "sync_baseline")
+    mocker.patch.object(
+        dream_pass, "create_dream_pass", AsyncMock(side_effect=OSError("insert"))
+    )
+    assert not await store.start_pass(run, scope, trigger="cron")
+    assert await dream_pass.get_dream_pass(run.pass_id) is None
+    read = await gather(scope)
+    ops, _ = _derived_ops(root, "consolidate")
+    drain = apply._drain_ingestion
+    forgot = []
+
+    async def forget_after_the_write(*args, **kwargs):
+        status = await drain(*args, **kwargs)
+        forgot.append(await recall_forget.retract(scope, [root], hard=True))
+        return status
+
+    mocker.patch.object(apply, "_drain_ingestion", forget_after_the_write)
+    stats = await dream(
+        driver, scope, stub_graphiti_client, ops, read, SUPPLIES, run.pass_id
+    )
+
+    assert forgot[0].failures == [] and forgot[0].dream_writes
+    assert await live_facts(driver) == {}
+    assert (
+        await ChatMessage.prisma().count(where={"sessionId": stats["session_id"]}) == 0
+    )
+
+
+async def test_a_summary_restating_a_fact_it_did_not_cite_is_blanked(
+    scope_graph, stub_graphiti_client
+):
+    """The round-2 review's second reproduction: the pass's summary restates
+    the source, which no write cites. Completed and cleaned up, the pass is
+    found by what it read, and the forget blanks its operations and its
+    narrative."""
+    driver, scope = scope_graph
+    root, pass_id, ops, read = await _cafe_pass(scope_graph, stub_graphiti_client)
+    await store.record_applying(pass_id, ops)
+    stats = await dream(driver, scope, stub_graphiti_client, ops, read, CAFE, pass_id)
+    await _complete(scope, pass_id, stats, ops)
+    assert await _kept(pass_id, stats["session_id"]) == ["operations", "narrative"]
+
+    forgot = await recall_forget.retract(scope, [root], hard=True)
+
+    assert forgot.failures == []
+    row = await dream_pass.get_dream_pass(pass_id)
+    assert row is not None and row.erased_at is not None
+    assert await _kept(pass_id, stats["session_id"]) == []
+
+
+async def test_a_forget_repeated_after_its_narrative_blank_failed_finishes_it(
+    scope_graph, stub_graphiti_client, mocker: MockerFixture
+):
+    """The round-2 review's third reproduction: the forget marks the open
+    pass but cannot blank its narrative (a cleanup error, to repeat); the
+    pass then completes, its row blanked as it closes. Repeated, the forget
+    finds the pass by its mark and blanks the narrative."""
+    driver, scope = scope_graph
+    root, pass_id, ops, read = await _cafe_pass(scope_graph, stub_graphiti_client)
+    await store.record_applying(pass_id, ops)
+    stats = await dream(driver, scope, stub_graphiti_client, ops, read, CAFE, pass_id)
+    blank = chat.blank_dream_narratives
+    mocker.patch.object(
+        chat, "blank_dream_narratives", AsyncMock(side_effect=OSError("down"))
+    )
+    first = await recall_forget.retract(scope, [root], hard=True)
+    assert [failure.code for failure in first.failures] == ["cleanup_error"]
+    mocker.patch.object(chat, "blank_dream_narratives", blank)
+    await _complete(scope, pass_id, stats, ops)
+    assert await _kept(pass_id, stats["session_id"]) == ["narrative"]
+
+    again = await recall_forget.retract(scope, [root], hard=True)
+
+    assert again.failures == []
+    assert await _kept(pass_id, stats["session_id"]) == []
+
+
+async def test_a_narrative_whose_pass_row_aged_out_is_found_by_what_it_read(
+    scope_graph, stub_graphiti_client
+):
+    """The pass's row is deleted by retention after it completed; its
+    narrative's session kept what the pass read, so a hard forget of the
+    source, which names no write of the pass, still blanks it."""
+    driver, scope = scope_graph
+    root, pass_id, ops, read = await _cafe_pass(scope_graph, stub_graphiti_client)
+    stats = await dream(driver, scope, stub_graphiti_client, ops, read, CAFE, pass_id)
+    await _complete(scope, pass_id, stats, ops)
+    await DreamPass.prisma().delete(where={"id": pass_id})
+
+    forgot = await recall_forget.retract(scope, [root], hard=True)
+
+    assert forgot.failures == []
+    message = await ChatMessage.prisma().find_first(
+        where={"sessionId": stats["session_id"], "sequence": 0}
+    )
+    assert message is not None and message.content == FORGOTTEN_FACT
+
+
+async def test_forgetting_a_dream_write_blanks_the_pass_that_wrote_it(
+    scope_graph, stub_graphiti_client
+):
+    """A pass does not read what it writes: forgetting the dream's own write
+    reaches the pass through the write's episode, which names it."""
+    driver, scope = scope_graph
+    root = await _source(scope_graph, stub_graphiti_client)
+    pass_id, read = await _gathered_pass(scope)
+    ops, write = _derived_ops(root, "consolidate")
+    await store.record_phase_output(
+        pass_id, "consolidate", ConsolidationOutput(facts=[write])
+    )
+    await store.record_applying(pass_id, ops)
+    stats = await dream(
+        driver, scope, stub_graphiti_client, ops, read, SUPPLIES, pass_id
+    )
+    await _complete(scope, pass_id, stats, ops)
+    derived = await fact_uuid(driver, _DERIVED)
+    row = await dream_pass.get_dream_pass(pass_id)
+    assert row is not None and derived not in row.read_uuids
+
+    forgot = await recall_forget.retract(scope, [derived], hard=True)
+
+    assert forgot.failures == []
+    assert await _kept(pass_id, stats["session_id"]) == []

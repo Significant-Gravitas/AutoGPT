@@ -3,7 +3,7 @@
 Both routes write here, through ``db_accessors.dream_db()``: the Prisma module
 where it is connected, the DatabaseManager RPC in the scheduler and the batch
 executor. The sync orchestrator records the start with its lease, the
-gathered window, each phase's output, each renewal of the lease, the
+gathered window and what it read, each phase's output, each renewal of the lease, the
 operations it is about to apply and how the pass ended. The batch path
 records the submit, each phase that lands and the lease it renewed, each next
 batch, the apply and the end, with what the landed phases used; its end
@@ -15,7 +15,10 @@ the database) is ``backend/data/dream_pass_update.py``.
 A record write is best-effort and bounded. Each one gets
 ``RECORD_WRITE_TIMEOUT_SECONDS``, whatever the client does inside it
 (connecting, retrying): a write that fails or runs out of time is logged at
-warning and dropped, and the pass goes on. So a stalled DatabaseManager costs
+warning and dropped, and the pass goes on, but for the two a hard forget
+depends on: the insert, and the gather with what the pass read
+(``start_pass``, ``record_gathered``), without which the pass stops before
+its first model call. So a stalled DatabaseManager costs
 a pass at most that deadline per write, and the nightly fan-out and the batch
 walker keep moving.
 
@@ -73,9 +76,11 @@ RECORD_WRITE_TIMEOUT_SECONDS = 10.0
 
 async def start_pass(
     run: DreamPassRun, scope: MemoryScope, *, trigger: DreamTrigger
-) -> None:
+) -> bool:
     """Insert the run's row: running, gathering its input, holding the lease
-    of the lock it is about to take."""
+    of the lock it is about to take. Whether the insert is confirmed: one
+    that failed or ran out of time may never land, or land later, so the
+    pass must not gather (a hard forget marks only passes it can find)."""
     try:
         draft = new_pass(
             run.pass_id,
@@ -88,9 +93,12 @@ async def start_pass(
         await _bounded(dream_db().create_dream_pass(draft))
     except Exception:
         logger.warning(
-            f"Dream pass {run.pass_id}: could not insert its record; the pass goes on",
+            f"Dream pass {run.pass_id}: could not insert its record; the pass "
+            "stops before it gathers",
             exc_info=True,
         )
+        return False
+    return True
 
 
 async def record_lease(pass_id: str, lease_token: str, ttl_seconds: int) -> bool | None:
@@ -98,8 +106,11 @@ async def record_lease(pass_id: str, lease_token: str, ttl_seconds: int) -> bool
     return await _write(pass_id, "the lease", lambda: lease(lease_token, ttl_seconds))
 
 
-async def record_gathered(pass_id: str, input_bundle: DreamInput) -> None:
-    await _write(pass_id, "the gathered window", lambda: gathered(input_bundle))
+async def record_gathered(pass_id: str, input_bundle: DreamInput) -> bool | None:
+    """The gathered window and every fact and episode read, before any model
+    call; whether it landed (see ``_write``): a pass whose read set is not on
+    its row must not go on, or a hard forget could miss it once closed."""
+    return await _write(pass_id, "the gathered window", lambda: gathered(input_bundle))
 
 
 async def record_phase_output(
@@ -308,7 +319,7 @@ async def _write(
         written = await _bounded(dream_db().update_dream_pass(pass_id, build()))
     except Exception:
         logger.warning(
-            f"Dream pass {pass_id}: could not record {step}; the pass goes on",
+            f"Dream pass {pass_id}: could not record {step}",
             exc_info=True,
         )
         return None

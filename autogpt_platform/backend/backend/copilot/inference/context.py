@@ -123,6 +123,16 @@ class InferenceContext(BaseModel):
     trace_id: str | None = None
 
 
+# How a background call failed, naming it without quoting the model.
+InferenceErrorCode = Literal[
+    "empty_content",
+    "non_json_content",
+    "schema_mismatch",
+    "call_failed",
+    "inference_failed",
+]
+
+
 class InferenceError(RuntimeError):
     """A background call produced no usable answer.
 
@@ -140,8 +150,8 @@ class InferenceError(RuntimeError):
         message: str,
         usage: InferenceUsage | None = None,
         *,
-        code: str = "inference_failed",
+        code: InferenceErrorCode = "inference_failed",
     ) -> None:
         super().__init__(message)
         self.usage = usage
-        self.code = code
+        self.code: InferenceErrorCode = code
