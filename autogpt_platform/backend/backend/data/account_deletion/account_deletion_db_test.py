@@ -66,6 +66,8 @@ async def _listing(owner_id: str) -> str:
             "name": "Deletion test agent",
             "subHeading": "Test",
             "description": "Test",
+            "imageUrls": [],
+            "categories": [],
             "storeListingId": listing.id,
             "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
         }
