@@ -64,7 +64,9 @@ Every backend event goes through `capture()` in
 `backend/util/posthog_client.py`, which applies both last, so a caller cannot
 overwrite them. The browser registers them once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
-at logout; a Vercel preview reports `environment: preview`.
+at logout; a Vercel preview reports `environment: preview`, while the dev
+deployment, which is Vercel's `staging` custom environment rather than a
+preview, reports `environment: dev`.
 
 `source` is reserved for the emitter. The three events that used it for
 something else now use `hire_started.surface`,
@@ -246,18 +248,21 @@ differently.
 | `checkout_started` | backend | live | `checkout_kind` (`subscription`, `top_up`, `trial`), `subscription_tier`, `billing_cycle`, `surface` (sent by the client; unset for the low-credit top-up dialog and the legacy `/profile/credits` page), `$feature/<experiment>` for every recorded experiment arm | A Stripe Checkout session is created and its URL returned (subscription, credit top-up or trial card setup). A paid plan changed in place opens no Checkout and sends nothing. |
 | `checkout_abandoned` | browser | live | `checkout_kind`, `surface` | The user returns from Stripe Checkout without paying (the cancel URL: `subscription=cancelled`, `topup=cancel`, `trial=cancelled`, or the paywall modal's `paywall_checkout=cancelled` marker). Browser-sent: Stripe only reports the expiry a day later. A trial abandonment is sent once per tab per surface until the next trial checkout starts, so a refresh on the cancel URL does not count twice but a second real abandonment does. |
 | `trial_offer_viewed` | browser | live | `trial_offer_version`, `subscription_tier`, `trial_duration_days`, `surface` | A trial offer card is shown. |
+| `trial_cancel_popup_viewed` | browser | live | `days_left` (whole days of trial access left, rounded up; `1` under a day) | The "Cancellation confirmed" popup opens, once, right after a cancel that sets the trial to cancel at its end, so trial access continues until then. A reload never reopens it. |
+| `trial_resume_clicked` | browser | live | `days_left` | Resume trial is clicked on a trial set to cancel at its end, in the popup or on the trial card. Sent on the click; `trial_resumed` (backend) confirms it took effect. |
+| `trial_subscribe_now_clicked` | browser | live | `days_left` | Subscribe now is clicked in the cancellation popup. It opens Billing. There, the trial's own plan converts the trial at once on the saved card (`trial_converted`, no `checkout_started`); any other plan, or a card that asks for authentication, goes through Stripe Checkout (`checkout_started`), which ends the trial without a `trial_ended`. |
 | `trial_started` | backend | live | `trial_id`, `trial_offer_version`, `subscription_tier`, `billing_cycle`, `trial_duration_days` | The trial starts. Like every trial lifecycle event, it is sent only when its notification email is queued. |
 | `trial_ending` | backend | live | as above | The reminder window opens. |
-| `trial_canceled` | backend | live | as above | The trial is set to cancel. |
-| `trial_resumed` | backend | live | as above | A cancelled trial is resumed. |
+| `trial_canceled` | backend | live | as above | The trial is set to cancel at its end: the cancellation is scheduled, trial access continues until the end date, and the card is not charged. |
+| `trial_resumed` | backend | live | as above | A trial set to cancel is resumed before its end date, so it converts to paid at its end as first agreed. |
 | `payment_failed` | backend | live | as above | The conversion charge fails. |
 | `trial_converted` | backend | live | as above | The trial converts to paid. |
-| `trial_ended` | backend | live | as above | The trial ends without converting. |
+| `trial_ended` | backend | live | as above | The trial ends without converting. Not sent when the trial subscription ends because another plan was bought while the trial was set to cancel; that plan's `checkout_started` and `payment_succeeded` cover it. |
 | `subscription_changed` | backend | live | `change_type: upgrade`, `previous_subscription_tier`, `subscription_tier`, `billing_cycle` | A paid tier upgrade takes effect. Downgrades and cancellations are not sent here yet. |
 | `payment_succeeded` | backend | live | `subscription_tier`, `billing_cycle`, `amount_cents` (the invoice's `amount_paid`), `currency` | A subscription invoice is paid. Deduplicated on the invoice id: Stripe delivers both `invoice.payment_succeeded` and `invoice_payment.paid` for one invoice, and redelivers either, so revenue is counted once. |
 | `topup_completed` | backend | live | `amount_credits`, `top_up_type`, `amount_cents` (the Checkout total or the auto top-up charge), `currency` | Credits are bought. |
 | `subscription_cancellation_scheduled` | backend | live | `subscription_tier` | A paid plan is set to cancel at period end. |
-| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`; `payment_failed` too when our own payment-failure handler cancelled the subscription because the balance could not cover a failed renewal, which Stripe would stamp `cancellation_requested`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead. |
+| `subscription_ended` | backend | live | `subscription_tier`, `billing_cycle`, `reason` (Stripe `cancellation_details.reason`: `cancellation_requested`, `payment_failed`, `payment_disputed`; `payment_failed` too when our own payment-failure handler cancelled the subscription because the balance could not cover a failed renewal, which Stripe would stamp `cancellation_requested`) | A paid subscription ends (Stripe `customer.subscription.deleted`), once per subscription, alongside the ended email. A trial that ends unconverted is `trial_ended` instead; a trial ended by buying another plan sends neither. |
 | `subscription_tier_reconciled` | backend | live | `direction`, `previous_subscription_tier`, `subscription_tier`, `via` | Ops signal: Stripe and the stored tier disagreed. Not a user action; keep out of funnels. |
 
 The paywall funnel in PostHog is `paywall_viewed` → `plan_selected` →
@@ -293,6 +298,45 @@ sent or dropped this way, not while it is held.
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
 
+## LLM analytics
+
+AutoPilot's LLM calls and the ratings of its replies, in PostHog's LLM
+analytics (SECRT-2730). Both are sent server-side for every user, whatever
+their cookie consent, like every backend event. The event names are
+PostHog's own, not the analytics plan's.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+
+What joins them:
+
+- **Person.** A generation's `distinct_id` and a rating's are both the
+  platform user id, the id every other event and `posthog.identify` use, so
+  both land on the person with their product events and replays.
+- **Chat.** `$ai_session_id` is the chat session id on both, so a chat's
+  generations and its ratings group in the Sessions tab and join on it.
+  `message_id` says which reply was rated; a rating carries no
+  `$ai_trace_id`, since Broadcast assigns the generations' trace ids.
+- **Environment.** OpenRouter forwards our `trace` keys as `metadata_<key>`,
+  so a generation's environment is `metadata_environment`, not the
+  `environment` base property; `$ai_metric` has both base properties as usual.
+- **Impersonation.** A turn or rating an admin made while impersonating the
+  user (`X-Act-As-User-Id`) is still sent, as the user, with
+  `metadata_impersonated` / `impersonated` true, so it can be filtered out.
+  The mark is kept for a turn queued behind the running-turn cap and for
+  sub-sessions such a turn starts. A follow-up sent while a turn runs takes
+  that turn's mark, and an engine-switch continuation or an approval wake
+  starts unmarked.
+
+Calls that skip OpenRouter never reach Broadcast and have no
+`$ai_generation`: direct Anthropic and Claude Code subscription deployments,
+a user's connected Codex account and the local transport. Auxiliary calls
+that are not attributed yet (the baseline path's context compaction, the
+action gate's classifiers, web search, Graphiti memory) arrive without the
+user or chat when their client goes through OpenRouter.
+
 ## Experiments
 
 | Event | Sender | Status | Required properties | Fires when |
@@ -315,7 +359,7 @@ replaying events.
 
 | Property | Value |
 | --- | --- |
-| `subscription_status` | `signed`, `in_trial`, `trial_canceled`, `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
+| `subscription_status` | `signed`, `in_trial`, `trial_canceled` (a trial set to cancel, which keeps access until its end and goes back to `in_trial` on resume, or a trial that ended unconverted), `subscribed`, `subscription_canceled` (set to cancel, active until the period ends), `payment_failed` (a renewal or the first charge after a trial failed; Stripe is retrying), `subscription_ended`. Worked out from the current user, trial and Stripe state, never from the last event received. |
 | `signup_at` | When the user row was created. |
 | `trial_started_at` | When the trial started. |
 | `subscription_started_at` | Start of the current or last paid subscription; for a converted trial, the conversion. |
@@ -325,6 +369,55 @@ replaying events.
 Dates are ISO-8601 UTC strings of the lifecycle moment, not of the sync. A
 date that doesn't apply to the current status is `$unset`, never sent as
 null.
+
+The role picked in the onboarding wizard is set with a `$set` of its own when
+the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,
+`product_analytics.set_onboarding_role`), so funnels and retention can be split
+by role. Someone who left the wizard before Preparing has neither property.
+
+| Property | Value |
+| --- | --- |
+| `onboarding_role` | The pick, as labelled in the wizard: `Founder / CEO`, `Operations`, `Sales / BD`, `Marketing`, `Product / PM`, `Engineering`, `HR / People` or `Other`. |
+| `onboarding_role_other` | What was typed after picking `Other` (trimmed, at most 100 characters); null for any other pick. |
+
+The pick is kept on `UserOnboarding`, not read back from the AutoPilot
+business understanding, whose copy AutoPilot rewrites. `poetry run cli
+onboarding-role-backfill` sets both for earlier accounts with `$set_once`, from
+exact picks only: any other stored value may be `Other`'s text or a rewrite,
+so it is left unset. MailerLite gets the same values as `role` and
+`role_other`.
+
+The fields GTM segments checkout openers on in MailerLite are on the person
+too (SECRT-2895, `backend/notifications/posthog_audience.py`). They are worked
+out by the same code (`audience_enrichment.checkout_fields`) and named as in
+MailerLite, except the checkout open, which is a moment here and a day there.
+Every account gets the first two at signup. Every checkout opener gets all of
+them from the checkout routes and the completed-checkout webhook. Unlike
+MailerLite, PostHog also gets accounts that opted out of marketing or that a
+signal places in Iran or Russia: it is analytics, not marketing.
+
+| Property | Value |
+| --- | --- |
+| `email_type` | `business`, `personal` (a webmail provider) or `education`. |
+| `signin_method` | `google` or `email`; `google` wins for an account that has both. |
+| `checkout_opened_at` | When the account first opened Stripe checkout. |
+| `country` | The country's English name, from the strongest source seen (see `country_source`). |
+| `country_code` | The same country as an ISO 3166-1 alpha-2 code. |
+| `country_source` | `stripe` (the billing address), `ip` (the visitor's IP country at checkout) or `timezone` (the browser's). |
+| `exclude_de_at` | `yes` when any signal points at Germany or Austria, else `no`. |
+
+MailerLite reads the subscriber before each write so it never makes a value
+worse; PostHog can't be read on the way, so `$set_once`, which only fills in
+what the person doesn't hold yet, keeps the same rules. The first open stays.
+`exclude_de_at` `yes` is set and `no` only filled in, so it never goes back to
+`no`. A billing country is set, so it always wins, and an IP or timezone
+country is only filled in, so it never replaces one. The one difference:
+PostHog keeps the first IP or timezone country it gets, where MailerLite moves
+on to a later IP country. `poetry run cli
+posthog-audience-backfill` sends them for earlier accounts, by the same rules,
+from Stripe's first Checkout Session (set outright, since Stripe holds every
+open) and its billing country or else the browser's timezone. An IP country is
+never backfilled, since it was never stored.
 
 ## Removed
 
@@ -429,5 +522,5 @@ so nobody adds a duplicate:
 
 - `$pageleave`, `$autocapture`, `$identify` and `$feature_flag_called`:
   posthog-js (`capture_pageleave` and `autocapture` are on).
-- `$ai_generation`: OpenRouter's PostHog integration, for copilot title
-  generation (`posthogDistinctId` in `copilot/service.py`).
+- `$ai_generation`: OpenRouter Broadcast, for every AutoPilot LLM call that
+  goes through OpenRouter (see [LLM analytics](#llm-analytics)).
