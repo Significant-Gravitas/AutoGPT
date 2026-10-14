@@ -1268,7 +1268,7 @@
         "fields": [
           {
             "key": "library_agent_id",
-            "label": "Library agent",
+            "label": "Library workflow",
             "format": null
           },
           {

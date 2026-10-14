@@ -373,7 +373,8 @@ class TestCodex:
 
 class TestOrchestratorLaunchMatchesChat:
     """The orchestrator block launches through the same builder: its env for a
-    route is the chat's for that route, minus the chat's session headers."""
+    route is the chat's for that route, minus what attributes the chat's
+    session (its headers, and on OpenRouter its Broadcast body)."""
 
     @pytest.mark.parametrize(
         ("provider", "chat_profile", "key"),
@@ -382,7 +383,7 @@ class TestOrchestratorLaunchMatchesChat:
             ("anthropic", lambda: _direct(_SONNET), "sk-ant-test"),
         ],
     )
-    def test_same_env_as_the_chat_minus_session_headers(
+    def test_same_env_as_the_chat_minus_its_session_attribution(
         self, provider, chat_profile, key
     ):
         chat = route_launch_env(
@@ -391,6 +392,9 @@ class TestOrchestratorLaunchMatchesChat:
         block = route_launch_env(
             user_key_profile(provider, key, _SONNET), sdk_cwd="/tmp/w"
         )
+        chat_body = chat.pop("CLAUDE_CODE_EXTRA_BODY", None)
+        assert (chat_body is not None) == (provider == "open_router")
+        assert "CLAUDE_CODE_EXTRA_BODY" not in block
         chat_headers = chat.pop("ANTHROPIC_CUSTOM_HEADERS").split("\n")
         block_headers = block.pop("ANTHROPIC_CUSTOM_HEADERS").split("\n")
         assert chat == block

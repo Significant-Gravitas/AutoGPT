@@ -653,15 +653,15 @@ function getAgentAccordionData(
     const status = getStringField(output, "retrieval_status");
     const task = output.task;
     return {
-      title: status === "timeout" ? "Agent still running" : "Agent result",
+      title: status === "timeout" ? "Subtask still running" : "Subtask result",
       description:
-        typeof inp.agentId === "string" ? `Agent: ${inp.agentId}` : undefined,
+        typeof inp.agentId === "string" ? `Subtask: ${inp.agentId}` : undefined,
       content: task ? (
         <ContentCodeBlock>{JSON.stringify(task, null, 2)}</ContentCodeBlock>
       ) : (
         <ContentMessage>
           {status === "timeout"
-            ? "The agent hasn't finished yet. Results will appear automatically when it's done."
+            ? "The subtask hasn't finished yet. Results will appear automatically when it's done."
             : "No result available."}
         </ContentMessage>
       ),
@@ -673,7 +673,7 @@ function getAgentAccordionData(
   const agentId = getStringField(output, "agentId");
 
   return {
-    title: isAsync ? "Agent started (background)" : "Agent completed",
+    title: isAsync ? "Subtask started (background)" : "Subtask completed",
     description: description ?? agentId ?? undefined,
     content: isAsync ? (
       <ContentMessage>

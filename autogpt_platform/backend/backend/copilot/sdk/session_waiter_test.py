@@ -295,3 +295,77 @@ def _status_db(status: str) -> MagicMock:
     db = MagicMock()
     db.get_chat_session_status = AsyncMock(return_value=status)
     return db
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("impersonated", [False, True])
+async def test_a_child_turn_carries_its_parents_impersonation(impersonated: bool):
+    """A sub-session started inside an impersonated turn is the admin's work
+    too, so its LLM analytics are marked the same way."""
+    scheduled = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_impersonated",
+            return_value=impersonated,
+        ),
+        patch("backend.copilot.sdk.session_waiter.schedule_turn", new=scheduled),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_session_result",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert scheduled.await_args.kwargs["impersonated"] is impersonated
+
+
+@pytest.mark.asyncio
+async def test_a_queued_child_turn_carries_its_parents_impersonation(
+    mock_session_lookup,
+):
+    """A delegated child the running cap sends to the queue keeps the flag
+    for when it is promoted."""
+    mock_session_lookup.return_value.metadata.delegated_by_session_id = "parent"
+    queued = AsyncMock()
+
+    with (
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_in_flight",
+            new=AsyncMock(return_value=False),
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.is_turn_impersonated",
+            return_value=True,
+        ),
+        patch(
+            "backend.copilot.sdk.session_waiter.schedule_turn",
+            new=AsyncMock(side_effect=active_turns.ConcurrentTurnLimitError()),
+        ),
+        patch("backend.copilot.sdk.session_waiter.queue_spawned_turn", new=queued),
+        patch(
+            "backend.copilot.sdk.session_waiter.wait_for_queued_session",
+            new=AsyncMock(return_value=("completed", SessionResult())),
+        ),
+    ):
+        await run_copilot_turn_via_queue(
+            session_id="sess-sub",
+            user_id="u1",
+            message="spawn",
+            timeout=5,
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+        )
+
+    assert queued.await_args.kwargs["impersonated"] is True

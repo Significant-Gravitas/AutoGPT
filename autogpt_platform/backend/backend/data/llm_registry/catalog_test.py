@@ -330,6 +330,28 @@ def test_claude_fable_5_1_bills_at_authored_rates():
     assert fable_entry.context_window == 200000
 
 
+def test_gemini_4_argon_bills_at_authored_rates():
+    """Gemini 4 Argon (OpenRouter, $2/$10 per 1M, $0.10/1M cached read,
+    $0.1875/1M cache write) — flat tier and per-1M projections must match
+    the authored catalog entry."""
+    argon = LLMModel("google/gemini-4-argon")
+    assert argon is LLMModel.GEMINI_4_ARGON
+    assert MODEL_COST[argon] == 5
+    assert TOKEN_COST[argon].model_dump() == {
+        "input": 300.0,
+        "output": 1500.0,
+        "cache_read": 15.0,
+        "cache_creation": 28.125,
+    }
+    assert MODEL_METADATA[argon].max_output_tokens == 65536
+    entry = next(m for m in CATALOG.models if m.slug == "google/gemini-4-argon")
+    assert entry.price_tier == 2
+    assert entry.context_window == 1048576
+    assert entry.supports_tools is True
+    assert entry.supports_json_output is True
+    assert entry.supports_reasoning is True
+
+
 def test_gemini_3_8_flash_bills_at_authored_rates():
     """Gemini 3.8 Flash (OpenRouter, Google intro list price $0.75/$3.75
     per 1M through 2026-12-31) — flat tier and per-1M projections must

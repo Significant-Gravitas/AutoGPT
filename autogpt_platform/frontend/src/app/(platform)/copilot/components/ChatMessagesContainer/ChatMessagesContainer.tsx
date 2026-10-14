@@ -24,7 +24,11 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
+import {
+  answeredLabel,
+  countHeldCalls,
+  getHeldCallRowKind,
+} from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -52,6 +56,7 @@ import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { QueueBadge } from "./components/QueueBadge";
 import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
@@ -464,7 +469,7 @@ export function ChatMessagesContainer({
     wasStreamingRef.current = isActivelyStreaming;
   });
 
-  return (
+  const thread = (
     <>
       {showThreadHeader && (
         <ThreadHeader
@@ -551,7 +556,7 @@ export function ChatMessagesContainer({
                   variant="small"
                   className="py-1 text-center text-zinc-500"
                 >
-                  Approval answered
+                  {answeredLabel(renderRows, rowIndex)}
                 </Text>
               );
             }
@@ -859,5 +864,15 @@ export function ChatMessagesContainer({
         <ConversationScrollButton />
       </Conversation>
     </>
+  );
+
+  // Every chat surface renders through here, so the pending-answer state
+  // (clarifying questions, a hire's onboarding, held calls) lives here too
+  // instead of in each host. A read-only viewer answers nothing.
+  if (readOnly) return thread;
+  return (
+    <PendingAnswerContexts messages={allMessages}>
+      {thread}
+    </PendingAnswerContexts>
   );
 }

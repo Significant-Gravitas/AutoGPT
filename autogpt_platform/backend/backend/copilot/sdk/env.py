@@ -8,6 +8,7 @@ through the same function without pulling in the full copilot service module
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
@@ -15,6 +16,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.route_profile import RouteProfile
 from backend.copilot.sdk.route_credentials import (
     CLAUDE_OAUTH_BLANK,
@@ -82,7 +84,8 @@ def route_launch_env(
 
     The chat and the orchestrator block both launch through here, so a launch
     on the same route gets the same environment; only the chat passes the
-    session and user, which OpenRouter forwards to tracing.
+    session and user, which OpenRouter forwards to tracing and to Broadcast's
+    attribution.
 
     Every launch states its credential and base URL explicitly (see
     ``sdk/route_credentials.py``), gets the same workspace isolation and
@@ -93,6 +96,10 @@ def route_launch_env(
         headers = _trace_headers(session_id, user_id)
         if headers:
             env["ANTHROPIC_CUSTOM_HEADERS"] = headers
+        if session_id or user_id:
+            # The chat's launches only: the fields OpenRouter Broadcast
+            # attributes a generation by, merged into every request body.
+            env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
     if not profile.row.attribution_header:
         # The CLI's billing-header system block carries per-session values;
         # without it the system prefix is the same in every session.
@@ -253,3 +260,20 @@ def describe_sdk_context(
         f"route={route} model={model} window={window}{source} "
         f"trigger_pct={pct} disable_1m_context={kill}"
     )
+
+
+def _broadcast_extra_body(session_id: str | None, user_id: str | None) -> str:
+    """``CLAUDE_CODE_EXTRA_BODY``: JSON the CLI merges into every request body
+    (main turn, sub-agents, compaction), carrying the fields OpenRouter
+    Broadcast attributes a generation by.
+
+    ``metadata.user_id`` replaces the CLI's own (a JSON blob of its device and
+    session ids) so that every user field on the request names the same
+    platform user.
+    """
+    body = openrouter_attribution(
+        user_id=user_id, session_id=session_id, generation_name="copilot-sdk"
+    )
+    if user_id:
+        body["metadata"] = {"user_id": body["user"]}
+    return json.dumps(body)
