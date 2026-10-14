@@ -434,17 +434,17 @@ async def record_turn_cost_from_openrouter(
     if fetched and len(fetched) == len(generation_ids):
         real_cost: float | None = sum(fetched)
         cost_source = "openrouter"
-        # Log real (OpenRouter billed) vs CLI rate-card estimate so an
+        # Log real (OpenRouter billed) vs the platform rate card so an
         # operator can spot divergence without querying OpenRouter by
         # hand.  Under-count typically means a gen-ID source we don't
         # capture live (e.g. title model, background LLM calls running
-        # outside the main stream); over-count means the CLI's rate
-        # table is stale vs. OpenRouter's current pricing.
+        # outside the main stream); over-count means the rate card is
+        # stale vs. OpenRouter's current pricing.
         delta_pct: float | None = None
         if fallback_cost_usd and fallback_cost_usd > 0:
             delta_pct = (real_cost - fallback_cost_usd) / fallback_cost_usd * 100
         logger.info(
-            "%s[cost-record] OpenRouter real=$%.6f cli_estimate=$%s "
+            "%s[cost-record] OpenRouter real=$%.6f rate_card=$%s "
             "delta=%s (gen_ids=%d)",
             log_prefix,
             real_cost,

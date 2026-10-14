@@ -551,7 +551,11 @@ async def _consume_sdk_until_done(
             # by the Moonshot cost-override decision and the turn's
             # model stamps.
             observed = getattr(sdk_msg, "model", None)
-            if isinstance(observed, str) and observed:
+            if (
+                isinstance(observed, str)
+                and observed
+                and observed != _CLI_SYNTHETIC_MODEL
+            ):
                 state.observed_model = observed
             if ctx.turn_summary is not None:
                 ctx.turn_summary.observe_assistant(sdk_msg)
@@ -1300,6 +1304,24 @@ def _friendly_error_text(raw: str) -> str:
             return friendly
     # Fallback: sanitize but keep the original text for debugging
     return f"SDK stream error: {raw}"
+
+
+async def _record_unreported_usage(
+    state: "_RetryState", sdk_cwd: str, session_id: str | None, log_prefix: str
+) -> None:
+    """Charge what the launch's CLI spent but never reported in a result,
+    read back from its session file once the CLI has exited."""
+    snapshot = await asyncio.to_thread(
+        read_cli_session_usage,
+        sdk_cwd,
+        state.options.resume or state.options.session_id or session_id,
+        log_prefix,
+    )
+    state.usage.record_unreported(
+        snapshot,
+        state.observed_model or getattr(state.options, "model", None),
+        log_prefix,
+    )
 
 
 def _record_result_usage(
@@ -2253,6 +2275,11 @@ def _cli_project_dir(sdk_cwd: str) -> str | None:
 
 
 _MAX_TRANSIENT_BACKOFF_SECONDS = 30
+
+# The model the CLI names on messages it writes itself (an API error, a
+# refusal). No model served them, so they never price a turn's tokens or
+# stand for the model it ran on.
+_CLI_SYNTHETIC_MODEL = "<synthetic>"
 
 
 def _compute_transient_backoff(attempt: int) -> int:
@@ -4106,11 +4133,12 @@ async def _run_stream_attempt(
     # CLI subprocess spawn + MCP init can take seconds on cold starts —
     # narrate it so the status doesn't sit on the context-prep message.
     yield StreamStatus(message="Starting the assistant…")
-    # An interruption can precede ResultMessage. A building-mode relaunch keeps
-    # the baseline, so its next result includes that unreported spend; a
-    # transient retry clears it first (see ``_do_transient_backoff``). The
-    # baseline is the total the CLI restores, and only ``--resume`` restores
-    # one: a launch with ``session_id`` starts at zero, so don't read its file.
+    # An interruption can precede ResultMessage. A building-mode relaunch
+    # charges the interrupted run's unreported tokens first and keeps the
+    # baseline; a transient retry clears it (see ``_do_transient_backoff``).
+    # The baseline is the total the CLI restores, and only ``--resume``
+    # restores one: a launch with ``session_id`` starts at zero, so don't
+    # read its file.
     if state.usage.cli_session_total_usd is None:
         baseline = await asyncio.to_thread(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
@@ -4262,16 +4290,8 @@ async def _run_stream_attempt(
             yield response
 
     if not acc.stream_completed and not loop_state.ended_with_stream_error:
-        snapshot = await asyncio.to_thread(
-            read_cli_session_usage,
-            ctx.sdk_cwd,
-            state.options.resume or state.options.session_id or ctx.session_id,
-            ctx.log_prefix,
-        )
-        state.usage.record_unreported(
-            snapshot,
-            state.observed_model or getattr(state.options, "model", None),
-            ctx.log_prefix,
+        await _record_unreported_usage(
+            state, ctx.sdk_cwd, ctx.session_id, ctx.log_prefix
         )
         # User cancels raise ``asyncio.CancelledError`` upstream; reaching this
         # branch means the CLI hung up — per-query budget exhausted, max_turns,
@@ -5800,6 +5820,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # interrupted.capture / snapshot restore here. Detection
                 # cannot re-fire: guide_in_system_prompt flips True on
                 # success, building_mode_requested flips False either way.
+                # The interrupted run never reported a result, and the
+                # relaunch's reports only its own query: charge what the
+                # run wrote to its session file now that its CLI has exited.
+                await _record_unreported_usage(state, sdk_cwd, session_id, log_prefix)
                 expert_identity_validated = False
                 restart_status = await _apply_building_mode_restart(
                     session=session,

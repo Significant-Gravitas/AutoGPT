@@ -14,7 +14,8 @@ cache-control gating don't handle on their own:
   pricing table only knows Anthropic) isn't left wildly wrong before the
   reconcile fires AND so the reconcile's lookup-fail fallback records a
   plausible Moonshot estimate rather than a Sonnet-rate overcharge.
-  Signal authority: reconcile >> this module's rate card >> CLI.
+  Signal authority: reconcile >> this module's rate card; the CLI's
+  number is never charged.
 
 * **Cache-control** — Anthropic and Moonshot both accept the
   ``cache_control: {type: ephemeral}`` breakpoint on message blocks, but
@@ -107,42 +108,29 @@ def rate_card_usd(model: str | None) -> tuple[float, float] | None:
     return _RATE_OVERRIDES_USD_PER_MTOK.get(model, _DEFAULT_MOONSHOT_RATE_USD_PER_MTOK)
 
 
-def override_cost_usd(
+def moonshot_cost_usd(
     *,
     model: str | None,
-    sdk_reported_usd: float,
     prompt_tokens: int,
     completion_tokens: int,
     cache_read_tokens: int,
     cache_creation_tokens: int,
-) -> float:
-    """Recompute SDK turn cost from the Moonshot rate card.
+) -> float | None:
+    """The platform's Moonshot rate card for this usage; None if not Moonshot.
 
-    Not the canonical cost source — the OpenRouter ``/generation``
-    reconcile (:mod:`openrouter_cost`) lands the authoritative billed
-    amount post-turn.  This helper exists only to improve the CLI's
-    in-turn ``ResultMessage.total_cost_usd``:
+    Not the canonical cost source — the OpenRouter ``/generation`` reconcile
+    (:mod:`openrouter_cost`) lands the billed amount post-turn. This prices
+    the turn before the reconcile and when its lookup fails, instead of the
+    CLI's estimate, which prices Kimi at Sonnet rates (~5x the real bill).
 
-    1. So the ``cost_usd`` the client sees before the reconcile completes
-       isn't wildly wrong (the CLI would otherwise ship a Sonnet-rate
-       estimate, ~5x the real Moonshot bill).
-    2. So the reconcile's own lookup-fail fallback records a plausible
-       Moonshot estimate rather than the CLI's Sonnet number.
-
-    For Moonshot slugs we compute cost from the reported token counts;
-    for anything else (including Anthropic) we return the SDK number
-    unchanged — Anthropic slugs are priced accurately by the CLI.
-
-    Cache read / creation tokens are folded into ``prompt_tokens`` at
-    the full input rate because Moonshot's rate card doesn't distinguish
-    them at the OpenRouter surface; the reconcile has the authoritative
-    discount accounting for turns where Moonshot's cache engaged.
+    Cache read / creation tokens are folded into ``prompt_tokens`` at the
+    full input rate because Moonshot's rate card doesn't distinguish them at
+    the OpenRouter surface; the reconcile has the authoritative discount
+    accounting for turns where Moonshot's cache engaged.
     """
-    if model is None:
-        return sdk_reported_usd
     rates = rate_card_usd(model)
     if rates is None:
-        return sdk_reported_usd
+        return None
     input_rate, output_rate = rates
     total_prompt = prompt_tokens + cache_read_tokens + cache_creation_tokens
     return (total_prompt * input_rate + completion_tokens * output_rate) / 1_000_000

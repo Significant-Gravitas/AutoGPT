@@ -231,7 +231,7 @@ class TestCollector:
         assert (s.tools_allowed, s.tools_builtin) == (3, 1)
         assert s.tools_sha == short_hash("Read\nmcp__copilot__a\nmcp__copilot__b")
         assert s.cli_compactions == 1
-        assert (s.cost_usd, s.cost_source) == (0.5, "cli_reported")
+        assert (s.cost_usd, s.cost_source) == (0.5, "rate_card")
         assert (s.outcome, s.error_class) == ("ok", None)
 
     def test_finish_records_the_declared_built_ins_beside_the_allowed_count(self):
@@ -366,6 +366,7 @@ class TestCollector:
                 ),
                 "moonshot_rate_card_estimate",
             ),
+            (dict(usage=TurnUsage(cost_usd=1.0)), "rate_card"),
             (dict(), "none"),
         ],
     )

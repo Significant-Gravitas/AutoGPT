@@ -194,8 +194,11 @@ def cost_source(
 ) -> str:
     """Where ``cost_usd`` came from.
 
-    ``openrouter_reconcile_pending``: the provider's bill replaces the CLI's
-    figure later, in the ``openrouter-cost-reconcile`` event and log line.
+    ``rate_card``: the platform's rate card priced the tokens the provider
+    reported; the CLI's own figure is never the cost.
+    ``openrouter_reconcile_pending``: the provider's bill replaces the rate
+    card's figure later, in the ``openrouter-cost-reconcile`` event and log
+    line.
     """
     if codex:
         return "codex_subscription"
@@ -205,7 +208,7 @@ def cost_source(
         return "none"
     if is_moonshot_model(model):
         return "moonshot_rate_card_estimate"
-    return "cli_reported"
+    return "rate_card"
 
 
 def record_options(s: TurnSummary, options: ClaudeAgentOptions) -> None:

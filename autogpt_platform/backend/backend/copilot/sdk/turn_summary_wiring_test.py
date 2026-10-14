@@ -22,6 +22,7 @@ from claude_agent_sdk import (
 )
 
 from backend.copilot import service as copilot_service
+from backend.copilot.anthropic_rate_card import anthropic_usage_cost_usd
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.conftest import build_test_transcript
@@ -122,8 +123,6 @@ async def _run_turn(
     with contextlib.ExitStack() as stack:
         for target, kwargs in patches + (extra_patches or []):
             stack.enter_context(patch(target, **kwargs))
-        sdk_service.config.effective_transport = "direct_anthropic"
-        sdk_service.config.openrouter_active = False
         for name, value in (config_overrides or {}).items():
             setattr(sdk_service.config, name, value)
         with contextlib.suppress(Exception, asyncio.CancelledError):
@@ -190,7 +189,17 @@ async def test_a_successful_turn_logs_one_summary(tmp_path, caplog):
     assert summary["model_answered"] == "claude-sonnet-4-6"
     assert (summary["input_tokens"], summary["cache_read_tokens"]) == (12, 300)
     assert (summary["cache_write_tokens"], summary["output_tokens"]) == (40, 7)
-    assert (summary["cost_usd"], summary["cost_source"]) == (0.0123, "cli_reported")
+    # Priced on the rate card from the answer's tokens, not the CLI's $0.0123.
+    assert summary["cost_source"] == "rate_card"
+    assert summary["cost_usd"] == pytest.approx(
+        anthropic_usage_cost_usd(
+            model="claude-sonnet-4-6",
+            input_tokens=12,
+            output_tokens=7,
+            cache_read_tokens=300,
+            cache_write_5m_tokens=40,
+        )
+    )
     assert summary["transcript_download_bytes"] > 0
     assert summary["transcript_covered_rows"] == 2
     assert summary["session_rows"] == 3
@@ -276,7 +285,7 @@ def langfuse_prompt_v38(monkeypatch):
 
 def _launch_patches() -> list:
     return [
-        (f"{_SVC}.build_sdk_env", dict(return_value=dict(_ROUTE_ENV))),
+        (f"{_SVC}.route_launch_env", dict(return_value=dict(_ROUTE_ENV))),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=list(_ALLOWED))),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=list(_DISALLOWED))),
     ]
