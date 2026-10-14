@@ -19,9 +19,11 @@ interface Props {
   mobile?: boolean;
   /** Enables the Computer face: the chat whose sandboxes the panel can show. */
   sessionId?: string | null;
+  /** Public viewers: interactive views show their saved source only. */
+  readOnly?: boolean;
 }
 
-export function ArtifactPanel({ mobile, sessionId }: Props) {
+export function ArtifactPanel({ mobile, sessionId, readOnly = false }: Props) {
   const {
     activeArtifact,
     history,
@@ -140,6 +142,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
               artifact={shown.artifact}
               isSourceView={isSourceView}
               classification={shown.classification}
+              readOnly={readOnly}
             />
           </Drawer.Content>
         </Drawer.Portal>
@@ -261,6 +264,7 @@ export function ArtifactPanel({ mobile, sessionId }: Props) {
                   artifact={shown.artifact}
                   isSourceView={isSourceView}
                   classification={shown.classification}
+                  readOnly={readOnly}
                 />
               ) : null}
             </div>

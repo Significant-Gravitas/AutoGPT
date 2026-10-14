@@ -6,6 +6,11 @@ export default defineConfig({
   plugins: [tsconfigPaths(), react()],
   test: {
     environment: "happy-dom",
+    environmentOptions: {
+      happyDOM: {
+        settings: { disableIframePageLoading: true },
+      },
+    },
     include: ["src/**/*.test.tsx", "src/**/*.test.ts", "scripts/**/*.test.ts"],
     setupFiles: ["./src/tests/integrations/vitest.setup.tsx"],
     coverage: {

@@ -544,11 +544,14 @@ model UserWorkspaceFile {
 
   SharedExecutionFiles SharedExecutionFile[]
   SharedChatFiles      SharedChatFile[]
+  UIDraft              ChatUIDraft?
 
   // Paths are unique among LIVE files, which Prisma cannot express: the rule is
   // a partial unique index created in migrations
   // ("UserWorkspaceFile_workspaceId_path_live_key"). A soft-deleted row keeps
-  // the path it was deleted at.
+  // the path it was deleted at. Saved OpenUI views are found through a partial
+  // expression index on metadata.openui.viewId
+  // ("UserWorkspaceFile_openui_viewId_idx"), also created in migrations.
   @@index([workspaceId, isDeleted])
   @@index([folderId])
 }
@@ -656,6 +659,7 @@ model ChatSession {
   chatStatus ChatSessionStatus @default(idle)
 
   Messages ChatMessage[]
+  UIDrafts ChatUIDraft[]
 
   // Expert this session is scoped to; null = plain Autopilot session.
   // Sessions keep expertId for history when the expert is archived (soft delete).
@@ -736,6 +740,27 @@ model ChatLinkedShare {
   @@unique([sessionId, executionId])
   @@index([sessionId])
   @@index([executionId])
+}
+
+// User edits to an OpenUI view. An unsaved view's row belongs to its chat
+// (sessionId); saving the view as a file moves the row onto the file (fileId),
+// so the edits outlive the chat. A CHECK constraint in the migration requires
+// exactly one of sessionId / fileId.
+model ChatUIDraft {
+  id         String             @id @default(uuid())
+  sessionId  String?
+  Session    ChatSession?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  viewId     String
+  fileId     String?            @unique
+  File       UserWorkspaceFile? @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  toolCallId String?
+  sequence   Int
+  source     String
+  state      Json
+  revision   Int                @default(1)
+  updatedAt  DateTime           @default(now()) @updatedAt
+
+  @@unique([sessionId, viewId])
 }
 
 model ChatMessage {

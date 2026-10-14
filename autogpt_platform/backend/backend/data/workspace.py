@@ -5,6 +5,7 @@ This module provides functions for managing user workspaces and workspace files.
 """
 
 import logging
+import mimetypes
 import posixpath
 import re
 from datetime import datetime, timezone
@@ -12,9 +13,10 @@ from typing import TYPE_CHECKING, Optional
 
 import pydantic
 from prisma.errors import UniqueViolationError
-from prisma.models import UserWorkspace, UserWorkspaceFile
+from prisma.models import ChatUIDraft, UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data.db import transaction
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -32,6 +34,12 @@ _UUID_RE = re.compile(
 )
 
 logger = logging.getLogger(__name__)
+
+# Saved OpenUI views: the body is the OpenUI program. Registered so a filename
+# alone resolves to this type wherever the workspace guesses a MIME type.
+OPENUI_MIME_TYPE = "application/vnd.autogpt.openui"
+OPENUI_EXTENSION = ".openui"
+mimetypes.add_type(OPENUI_MIME_TYPE, OPENUI_EXTENSION)
 
 
 class Workspace(pydantic.BaseModel):
@@ -482,6 +490,36 @@ async def rename_workspace_file(
     return WorkspaceFile.from_db(updated)
 
 
+async def update_workspace_file_content(
+    file_id: str,
+    workspace_id: str,
+    *,
+    storage_path: str,
+    mime_type: str,
+    size_bytes: int,
+    checksum: str,
+    metadata: dict,
+) -> Optional[WorkspaceFile]:
+    """Point a live file at new content, keeping its ID, name and path.
+
+    Returns the updated file, or None when it is not a live file of the
+    workspace.
+    """
+    updated = await UserWorkspaceFile.prisma().update_many(
+        where={"id": file_id, "workspaceId": workspace_id, "isDeleted": False},
+        data={
+            "storagePath": storage_path,
+            "mimeType": mime_type,
+            "sizeBytes": size_bytes,
+            "checksum": checksum,
+            "metadata": SafeJson(metadata),
+        },
+    )
+    if not updated:
+        return None
+    return await get_workspace_file(file_id, workspace_id)
+
+
 async def soft_delete_workspace_file(
     file_id: str,
     workspace_id: str,
@@ -505,13 +543,18 @@ async def soft_delete_workspace_file(
     if file is None:
         return None
 
-    updated = await UserWorkspaceFile.prisma().update(
-        where={"id": file_id},
-        data={
-            "isDeleted": True,
-            "deletedAt": datetime.now(timezone.utc),
-        },
-    )
+    # The file row is updated first, so an edit write that locks it waits
+    # and then finds the file gone instead of re-creating the edits row.
+    async with transaction() as tx:
+        updated = await UserWorkspaceFile.prisma(tx).update(
+            where={"id": file_id},
+            data={
+                "isDeleted": True,
+                "deletedAt": datetime.now(timezone.utc),
+            },
+        )
+        # A saved OpenUI view's edits die with the file, as on a hard delete.
+        await ChatUIDraft.prisma(tx).delete_many(where={"fileId": file_id})
 
     logger.info(f"Soft-deleted workspace file {file_id}")
     return WorkspaceFile.from_db(updated) if updated else None

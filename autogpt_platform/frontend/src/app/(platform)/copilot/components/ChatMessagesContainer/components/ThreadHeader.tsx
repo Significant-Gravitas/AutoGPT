@@ -37,9 +37,9 @@ interface Props {
   floatingControls?: FloatingControls;
 }
 
-/** Floats as a translucent chip pinned to the pane's top-left gutter — the
- *  zero-height wrapper keeps it out of the flex flow so messages scroll
- *  underneath. An expert session wears the expert's identity and every other
+/** Floats on desktop; small screens reserve a row above the scroll area so
+ *  the identity and sidebar controls cannot obscure chat content.
+ *  An expert session wears the expert's identity and every other
  *  session is Otto's, so the thread is never anonymous. The chip is a passive
  *  label; the expert's integrations live in the top-right controls. */
 export function ThreadHeader({
@@ -56,7 +56,10 @@ export function ThreadHeader({
   const roleLabel = jobTitle || getExpertRoleLabel(role);
 
   return (
-    <div data-testid="expert-thread-header" className="relative z-20 h-0">
+    <div
+      data-testid="expert-thread-header"
+      className="relative z-20 h-20 shrink-0 bg-background lg:h-0 lg:bg-transparent"
+    >
       <div
         className={cn(
           "pointer-events-none absolute inset-x-0 top-3 flex justify-start px-4",

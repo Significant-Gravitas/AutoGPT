@@ -1,6 +1,7 @@
 import {
   BracesIcon,
   CodeIcon,
+  DashboardSquare01Icon,
   File02Icon,
   FileEmpty02Icon,
   Image01Icon,
@@ -15,6 +16,7 @@ import {
   getListWorkspaceFoldersQueryKey,
 } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { QueryClient } from "@tanstack/react-query";
+import { isOpenUIFile } from "@/lib/openui/file";
 import { ARTIFACTS_LIST_QUERY_KEY } from "../../useArtifactsPage";
 
 export type FileOrigin =
@@ -195,6 +197,7 @@ export function getFileTypeLabel(
   mimeType: string | undefined,
   fileName?: string,
 ): string {
+  if (isOpenUIFile(mimeType, fileName)) return "Interactive view";
   if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
   const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
@@ -216,6 +219,7 @@ export function getFileTypeIcon(
   mimeType: string | undefined,
   fileName?: string,
 ): IconSvgElement {
+  if (isOpenUIFile(mimeType, fileName)) return DashboardSquare01Icon;
   if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
   const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());

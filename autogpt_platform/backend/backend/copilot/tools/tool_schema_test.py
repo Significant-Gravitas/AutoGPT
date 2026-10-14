@@ -266,8 +266,11 @@ from ._test_data import make_session
 # Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
 #     dev 583fc0bb4e                              76,975 (89 tools)
 #     + this PR's connect_integration  +200       77,175 (89 tools)
-# Plus one.
-_CHAR_BUDGET = 77_176
+# Plus one: 77_176.
+# render_ui adds the deferred OpenUI component library and its `file` argument
+# (12,505 chars, one tool). Measured 89,729 (90 tools) after merging dev
+# b92c8bdf24; plus the same 300-char margin.
+_CHAR_BUDGET = 90_029
 
 
 @pytest.fixture(scope="module")
@@ -462,7 +465,8 @@ def test_total_schema_char_budget() -> None:
 # 69,461, 22 under the line above; find_capability's expert kind adds 27.
 #     merged tree                                 69,488
 #     + headroom                       +300       69,788
-_SESSION_WIRE_BUDGET = 69_788
+# Count only the eager tools actually registered by tool_adapter.
+_SESSION_WIRE_BUDGET = 18_948
 
 
 def test_largest_declared_session_wire_budget() -> None:
@@ -492,6 +496,7 @@ def _largest_session_wire_chars() -> int:
         _build_input_schema,
     )
     from backend.copilot.tools import (
+        DEFERRED_TOOL_NAMES,
         expert_tool_disabled_groups,
         origin_disabled_tools,
         tool_names_in_groups,
@@ -510,7 +515,8 @@ def _largest_session_wire_chars() -> int:
             expert_tool_disabled_groups(experts_enabled=True, expert_id=None)
         )
     )
-    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | {"get_agent_building_guide"}
+    hidden |= set(BASELINE_ONLY_MCP_TOOLS) | set(DEFERRED_TOOL_NAMES)
+    hidden.add("get_agent_building_guide")
     hidden |= origin_disabled_tools("interactive")
 
     total = sum(
