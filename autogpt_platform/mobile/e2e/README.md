@@ -7,7 +7,7 @@ maestro --device <simulator-udid> test --format junit --output e2e/artifacts/lau
 python3 scripts/check-junit.py e2e/artifacts/launch.xml
 ```
 
-`launch.yaml` verifies the native server selector, a clean first launch without storage errors, and rejection of nonlocal plain HTTP addresses. This is the current macOS CI gate. It does not certify the chat journey below.
+`launch.yaml` verifies the native server selector, a clean first launch without storage errors, and rejection of nonlocal plain HTTP addresses. The macOS CI lane runs it against the optimized SwiftUI Release build, then installs Debug and runs `apple/e2e/ui-protocol-fixtures.yaml`. The latter covers a real Keychain round trip and deterministic stream/card/editor/artifact interactions; Debug-only fixtures are excluded from Release. Neither journey certifies the server chat integration below.
 
 ## Production-server chat journey
 

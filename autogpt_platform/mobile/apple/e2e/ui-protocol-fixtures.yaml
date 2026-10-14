@@ -1,0 +1,108 @@
+# UI-protocol fixture coverage for the SwiftUI client:
+# needs a Debug build (UI_PROTOCOL_FIXTURES). Nothing here contacts a server,
+# so passing it is not integration or provider evidence.
+appId: com.agpt.mobile.experimental
+name: SwiftUI interaction fixtures
+---
+- launchApp:
+    clearState: true
+    arguments:
+      AutoGPTUIProtocolFixtures: "YES"
+- assertVisible: "UI Protocol Fixtures"
+- tapOn:
+    id: fixture-secure-storage
+- assertVisible: "Secure storage round trip passed"
+- stopApp
+- launchApp:
+    arguments:
+      AutoGPTUIProtocolFixtures: "YES"
+- tapOn:
+    id: fixture-long-conversation
+- assertVisible:
+    id: fixture-banner
+- extendedWaitUntil:
+    visible:
+      id: composer-input
+    timeout: 15000
+- tapOn:
+    id: composer-input
+- inputText: "Plan the spring campaign."
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible:
+      id: composer-stop
+    timeout: 10000
+- extendedWaitUntil:
+    visible: "Benchmarks agree with the plan above.*"
+    timeout: 90000
+- extendedWaitUntil:
+    visible:
+      id: composer-send
+    timeout: 15000
+- swipe:
+    direction: DOWN
+- assertVisible:
+    id: latest-messages
+- tapOn:
+    id: latest-messages
+- assertVisible: "Benchmarks agree with the plan above.*"
+- takeScreenshot: fixture-long-stream
+- stopApp
+- launchApp:
+    arguments:
+      AutoGPTUIProtocolFixtures: "YES"
+- tapOn:
+    id: fixture-question
+- extendedWaitUntil:
+    visible:
+      id: question-card-fixture-question
+    timeout: 15000
+- tapOn:
+    id: question-option-records-0
+- tapOn:
+    id: question-option-records-2
+- tapOn:
+    id: question-option-frequency-1
+- tapOn:
+    id: question-custom-destination
+- inputText: "#sales in Slack"
+- tapOn:
+    id: question-dismiss-keyboard
+- tapOn:
+    id: question-submit-fixture-question
+- extendedWaitUntil:
+    visible: "Thanks. This fixture received your answers:.*"
+    timeout: 60000
+- takeScreenshot: fixture-question-answered
+- stopApp
+- launchApp:
+    arguments:
+      AutoGPTUIProtocolFixtures: "YES"
+- tapOn:
+    id: fixture-connections
+- tapOn:
+    id: connection-row-fixture-hubspot
+- tapOn:
+    id: connection-replace-secret
+    point: "90%,50%"
+- tapOn:
+    id: connection-secret
+- inputText: "rejected-key"
+- tapOn:
+    id: connection-save
+- extendedWaitUntil:
+    visible: "HubSpot rejected this key. Check it and try again."
+    timeout: 10000
+- takeScreenshot: fixture-connection-rejected
+- stopApp
+- launchApp:
+    arguments:
+      AutoGPTUIProtocolFixtures: "YES"
+- tapOn:
+    id: fixture-artifact-html
+- extendedWaitUntil:
+    visible: ".*Network: requests are blocked.*"
+    timeout: 15000
+- assertVisible: ".*Native bridge: no script message handlers are installed.*"
+- takeScreenshot: fixture-artifact-isolation

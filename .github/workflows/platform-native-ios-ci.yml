@@ -15,7 +15,7 @@ on:
       cold_cache:
         type: boolean
         default: false
-        description: Measure without restoring dependency caches
+        description: Force a cold run (the SwiftUI lane always builds without restored caches)
   merge_group:
 
 permissions:
@@ -53,8 +53,6 @@ jobs:
     timeout-minutes: 10
     env:
       CI: "1"
-      EXPO_NO_TELEMETRY: "1"
-      COCOAPODS_DISABLE_STATS: "true"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
       MAESTRO_VERSION: "2.11.0"
       MAESTRO_CLI_NO_ANALYTICS: "true"
@@ -64,22 +62,14 @@ jobs:
         working-directory: autogpt_platform/mobile
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
-        with:
-          package_json_file: autogpt_platform/mobile/package.json
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "24.18.0"
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: Record environment and cache paths
-        id: environment
+      - name: Record toolchain
         run: |
           mkdir -p e2e/artifacts
-          echo "pnpm-store=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
           {
             xcodebuild -version
             uname -m
@@ -87,36 +77,10 @@ jobs:
           } | tee e2e/artifacts/toolchain.txt
           df -h . | tee e2e/artifacts/disk-before.txt
 
-      - name: Restore JavaScript dependencies
-        id: javascript-cache
-        if: ${{ !inputs.cold_cache }}
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.environment.outputs.pnpm-store }}
-          key: native-ios-pnpm-macos-26-${{ runner.arch }}-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml') }}
+      - name: Check Swift formatting
+        run: xcrun swift-format lint --strict --recursive apple/Sources
 
-      - name: Install dependencies and generate iOS project
-        run: |
-          pnpm install --frozen-lockfile --prefer-offline
-          pnpm prebuild:ios
-
-      - name: Restore CocoaPods after generating the native project
-        id: pods-cache
-        if: ${{ !inputs.cold_cache }}
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/Library/Caches/CocoaPods
-            ~/Library/Caches/ReactNative
-            autogpt_platform/mobile/ios/Pods
-            autogpt_platform/mobile/ios/Podfile.lock
-          key: native-ios-pods-v3-macos-26-${{ runner.arch }}-xcode-26.6-${{ hashFiles('autogpt_platform/mobile/pnpm-lock.yaml', 'autogpt_platform/mobile/app.config.ts') }}
-
-      - name: Install CocoaPods
-        run: |
-          (cd ios && pod install) > e2e/artifacts/pods.log 2>&1 || { tail -100 e2e/artifacts/pods.log; exit 1; }
-
-      - name: Build functional-test simulator app
+      - name: Build native simulator apps
         run: bash scripts/build-simulator.sh
 
       - name: Prepare simulator after compilation
@@ -130,27 +94,33 @@ jobs:
           NATIVE_SIMULATOR_ID: ${{ steps.simulator.outputs.simulator-id }}
           MAESTRO_BIN: ${{ steps.simulator.outputs.maestro }}
         run: |
-          xcrun simctl install "$NATIVE_SIMULATOR_ID" .build/SimulatorChecks/Build/Products/Release-iphonesimulator/AutoGPT.app
+          xcrun simctl install "$NATIVE_SIMULATOR_ID" apple/.build/SimulatorChecks/Build/Products/Release-iphonesimulator/AutoGPT.app
           "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
             --output e2e/artifacts/launch.xml --test-output-dir e2e/artifacts/maestro e2e/launch.yaml
           python3 scripts/check-junit.py e2e/artifacts/launch.xml
 
+      - name: Run native interaction fixtures
+        env:
+          NATIVE_SIMULATOR_ID: ${{ steps.simulator.outputs.simulator-id }}
+          MAESTRO_BIN: ${{ steps.simulator.outputs.maestro }}
+        run: |
+          xcrun simctl install "$NATIVE_SIMULATOR_ID" apple/.build/SimulatorChecks/Build/Products/Debug-iphonesimulator/AutoGPT.app
+          "$MAESTRO_BIN" --device "$NATIVE_SIMULATOR_ID" test --format junit \
+            --output e2e/artifacts/interactions.xml --test-output-dir e2e/artifacts/interactions apple/e2e/ui-protocol-fixtures.yaml
+          python3 scripts/check-junit.py e2e/artifacts/interactions.xml
+
       - name: Record measurement scope
         if: always()
-        env:
-          JAVASCRIPT_CACHE_HIT: ${{ steps.javascript-cache.outputs.cache-hit }}
-          PODS_CACHE_HIT: ${{ steps.pods-cache.outputs.cache-hit }}
         run: |
           df -h . | tee e2e/artifacts/disk-after.txt
           ps -axo pid,ppid,state,pcpu,rss,comm > e2e/artifacts/processes-after.txt
           {
             echo 'Standard free macos-26 runner; Xcode 26.6; arm64 simulator.'
-            echo 'Controlled measurement: compile before booting the simulator; select the runtime matching the SDK.'
-            echo 'Release runtime and bundled JS; native optimization and debug symbol generation disabled for functional tests.'
-            echo "JavaScript cache hit: ${JAVASCRIPT_CACHE_HIT:-false}"
-            echo "CocoaPods cache hit: ${PODS_CACHE_HIT:-false}"
+            echo 'SwiftUI and system frameworks; no dependency or DerivedData caches are restored.'
+            echo 'Optimized Release launch journey; Debug-only interaction fixtures, excluded from Release.'
+            echo 'Compilation finishes before simulator boot; selected runtime matches the SDK.'
             echo 'Use full job timestamps, including setup and upload, for the ten-minute budget.'
-            echo 'This launch journey is the first build gate, not the complete native/server integration gate.'
+            echo 'Fixtures are native UI/protocol coverage, not production-server or provider integration evidence.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
