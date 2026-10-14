@@ -1001,6 +1001,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="What environment to behave as: local or cloud",
     )
 
+    sentry_release: str = Field(
+        default="",
+        description="Git sha of the deployed build, reported to Sentry as the "
+        "release. Blank reports no release.",
+    )
+
+    sentry_environment: str = Field(
+        default="",
+        description="Environment name Sentry events are tagged with, replacing "
+        "the one computed from app_env and behave_as (a PR preview names itself "
+        "pr-<n>). Blank keeps the computed one.",
+    )
+
     autopilot_bot_teams_allow_unverified: bool = Field(
         default=False,
         description="Local dev only: accept Teams activities that carry no Bot "
@@ -1354,6 +1367,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
     slack_mcp_client_secret: str = Field(
         default="", description="Client secret of the Slack MCP sign-in app"
+    )
+    hubspot_mcp_client_id: str = Field(
+        default="",
+        description="Client ID of the HubSpot MCP auth app used to sign in to "
+        "HubSpot's MCP server (mcp.hubspot.com). HubSpot does not support "
+        "dynamic client registration, so MCP sign-in to HubSpot is unavailable "
+        "until this is set.",
+    )
+    hubspot_mcp_client_secret: str = Field(
+        default="", description="Client secret of the HubSpot MCP auth app"
     )
 
     todoist_client_id: str = Field(default="", description="Todoist client ID")

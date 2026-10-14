@@ -1145,7 +1145,7 @@ describe("TransactionHistoryCard", () => {
 
     expect(await screen.findByText("Credits added")).toBeDefined();
     expect(screen.getByText("Morning briefing")).toBeDefined();
-    expect(screen.getByText("Agent run")).toBeDefined();
+    expect(screen.getByText("Workflow run")).toBeDefined();
     expect(screen.getByText("+$50.00")).toBeDefined();
     expect(screen.getByText("−$2.50")).toBeDefined();
     expect(screen.queryByText(/^Balance$/)).toBeNull();

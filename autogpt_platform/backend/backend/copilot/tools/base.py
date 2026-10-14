@@ -11,8 +11,10 @@ from prisma.enums import APIKeyPermission
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
+from backend.util import tracing
 from backend.util.truncate import truncate
 from backend.util.workspace import WorkspaceManager
 
@@ -425,6 +427,9 @@ class BaseTool:
     ) -> StreamToolOutputAvailable:
         """Execute the tool with authentication check.
 
+        Each call is its own Sentry ``copilot.tool`` transaction, named after
+        the tool, in the trace of the turn that made it.
+
         Args:
             user_id: User ID (None for anonymous users)
             session_id: Chat session ID
@@ -434,6 +439,20 @@ class BaseTool:
             Pydantic response object
 
         """
+        with tool_transaction(self.name, tool_call_id, session.session_id) as span:
+            output = await self._execute_checked(
+                user_id, session, tool_call_id, **kwargs
+            )
+            span.set_tag("copilot.tool.success", "true" if output.success else "false")
+            return output
+
+    async def _execute_checked(
+        self,
+        user_id: str | None,
+        session: ChatSession,
+        tool_call_id: str,
+        **kwargs,
+    ) -> StreamToolOutputAvailable:
         kwargs.pop(GATE_APPROVED, None)
         if self.requires_auth and not user_id:
             logger.warning(
@@ -533,6 +552,7 @@ class BaseTool:
             )
         except Exception as e:
             logger.warning("Error in %s", self.name, exc_info=True)
+            tracing.set_status("internal_error")
             return StreamToolOutputAvailable(
                 toolCallId=tool_call_id,
                 toolName=self.name,

@@ -301,7 +301,7 @@ function attentionItem(
     priority: "high",
     title,
     description: "Scheduled work is paused.",
-    why_it_matters: "Upcoming tasks will not run while this agent is paused.",
+    why_it_matters: "Upcoming tasks will not run while this expert is paused.",
     expert: {
       id: expertId,
       name: expertId === "expert-maria" ? "Maria" : "Other",
@@ -439,7 +439,7 @@ describe("ExpertDetailPage", () => {
     const [calendar, seo] = screen.getAllByTestId("expert-workflow-row");
     const chain = within(calendar).getByTestId("workflow-chain");
     expect(
-      within(chain).getByRole("img", { name: "Agent input" }),
+      within(chain).getByRole("img", { name: "Workflow input" }),
     ).toBeDefined();
     expect(within(chain).getByRole("img", { name: "google" })).toBeDefined();
     expect(within(chain).getByRole("img", { name: "AI model" })).toBeDefined();

@@ -19,7 +19,7 @@ const dsn = environment.getSentryDSN();
 Sentry.init({
   dsn,
 
-  environment: environment.getEnvironmentStr(),
+  environment: environment.getSentryEnvironment(),
 
   enabled: Boolean(dsn),
 
