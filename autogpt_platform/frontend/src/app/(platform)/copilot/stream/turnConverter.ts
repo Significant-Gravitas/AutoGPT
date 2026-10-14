@@ -286,10 +286,15 @@ function protocolError(
 
 function drainedMessages(data: unknown) {
   const messages = record(data).messages;
-  return (Array.isArray(messages) ? messages : []).map((m) => ({
-    id: str(record(m).id),
-    content: str(record(m).content),
-  }));
+  return (Array.isArray(messages) ? messages : []).map((m) => {
+    const metadata = record(m).metadata;
+    return {
+      id: str(record(m).id),
+      content: str(record(m).content),
+      metadata:
+        metadata && typeof metadata === "object" ? record(metadata) : null,
+    };
+  });
 }
 
 export function jsonEqual(a: unknown, b: unknown): boolean {
