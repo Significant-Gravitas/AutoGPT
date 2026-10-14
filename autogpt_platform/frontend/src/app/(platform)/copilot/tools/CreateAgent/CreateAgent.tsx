@@ -74,7 +74,7 @@ export function CreateAgentTool({ part }: Props) {
   const isOperating = !output;
 
   function handleUseSuggestedGoal(goal: string) {
-    onSend(`Please create an agent with this goal: ${goal}`);
+    onSend(`Please create a workflow with this goal: ${goal}`);
   }
 
   return (
@@ -92,13 +92,13 @@ export function CreateAgentTool({ part }: Props) {
       {isError && output && isErrorOutput(output) && (
         <ToolErrorCard
           message={output.message}
-          fallbackMessage="Failed to generate the agent. Please try again."
+          fallbackMessage="Failed to generate the workflow. Please try again."
           error={output.error ? formatMaybeJson(output.error) : undefined}
           details={output.details ? formatMaybeJson(output.details) : undefined}
           actions={[
             {
               label: "Try again",
-              onClick: () => onSend("Please try creating the agent again."),
+              onClick: () => onSend("Please try creating the workflow again."),
             },
             {
               label: "Simplify goal",

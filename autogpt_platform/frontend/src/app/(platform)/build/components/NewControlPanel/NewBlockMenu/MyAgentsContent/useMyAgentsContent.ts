@@ -44,7 +44,7 @@ export const useMyAgentsContent = () => {
       await addLibraryAgentToBuilder(agent);
     } catch (error) {
       toast({
-        title: "Failed to add agent to builder",
+        title: "Failed to add workflow to builder",
         description:
           ((error as any).message as string) || "An unexpected error occurred.",
         variant: "destructive",

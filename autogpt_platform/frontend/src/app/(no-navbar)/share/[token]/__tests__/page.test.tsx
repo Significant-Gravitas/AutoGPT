@@ -61,7 +61,7 @@ describe("SharePage (execution share viewer)", () => {
     expect(logos.length).toBeGreaterThan(0);
     // Public-share affordance alert.
     expect(
-      await screen.findByText(/publicly shared agent run result/i),
+      await screen.findByText(/publicly shared workflow run result/i),
     ).toBeDefined();
     // Run name surfaces from the structured payload (in both header
     // and card-title slots; we just need it to be present).

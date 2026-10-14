@@ -183,7 +183,7 @@ describe("Builder chat with no AI model connected", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(
       await screen.findByPlaceholderText(
-        "Ask the builder to edit or run this agent…",
+        "Ask the builder to edit or run this workflow…",
       ),
     ).toBeDefined();
     expect(createdGraphs).toBeGreaterThanOrEqual(1);
@@ -243,7 +243,7 @@ describe("Builder chat with no AI model connected", () => {
     renderPanel({ queryClient });
     fireEvent.click(screen.getByLabelText("Chat with builder"));
     expect(
-      await screen.findByText("Could not create a blank agent"),
+      await screen.findByText("Could not create a blank workflow"),
     ).toBeDefined();
 
     // A window focus refetches the transports; that alone must not retry.
@@ -252,12 +252,12 @@ describe("Builder chat with no AI model connected", () => {
     });
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(attempts).toBe(1);
-    expect(screen.getByText("Could not create a blank agent")).toBeDefined();
+    expect(screen.getByText("Could not create a blank workflow")).toBeDefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(
       await screen.findByPlaceholderText(
-        "Ask the builder to edit or run this agent…",
+        "Ask the builder to edit or run this workflow…",
       ),
     ).toBeDefined();
     expect(attempts).toBeGreaterThanOrEqual(2);
@@ -292,7 +292,7 @@ describe("Builder chat with no AI model connected", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open graph-b" }));
     expect(
       await screen.findByPlaceholderText(
-        "Ask the builder to edit or run this agent…",
+        "Ask the builder to edit or run this workflow…",
       ),
     ).toBeDefined();
     expect(screen.queryByText("Could not start the builder chat")).toBeNull();
@@ -310,7 +310,7 @@ describe("Builder chat with no AI model connected", () => {
 
     expect(
       await screen.findByPlaceholderText(
-        "Ask the builder to edit or run this agent…",
+        "Ask the builder to edit or run this workflow…",
       ),
     ).toBeDefined();
     expect(createdGraphs).toBeGreaterThanOrEqual(1);
