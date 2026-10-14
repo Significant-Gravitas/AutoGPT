@@ -11,6 +11,8 @@ step was skipped outright although the bot could have posted.
 import asyncio
 import logging
 
+from pydantic import BaseModel
+
 from backend.copilot.context import get_current_permissions
 from backend.data.db_accessors import platform_linking_db
 
@@ -22,10 +24,10 @@ logger = logging.getLogger(__name__)
 POST_TOOL = "post_to_chat_platform"
 
 # Blocks whose whole job post_to_chat_platform does, by the platform it posts
-# to. Embeds, files, reads and lookups are not posts the tool can make.
+# to. Embeds, files, reads and lookups are not posts the tool can make, and
+# neither is SendDiscordDMBlock: it DMs any user, the bot only the user.
 BOT_TOKEN_SEND_BLOCKS: dict[str, str] = {
     "SendDiscordMessageBlock": "discord",
-    "SendDiscordDMBlock": "discord",
     "CreateDiscordThreadBlock": "discord",
     "SendSlackMessageBlock": "slack",
     "SendTelegramMessageBlock": "telegram",
@@ -35,10 +37,14 @@ BOT_TOKEN_SEND_BLOCKS: dict[str, str] = {
 async def bot_post_redirect(
     user_id: str, block_name: str, session_id: str
 ) -> ErrorResponse | None:
-    """The answer instead of a setup card, when the user linked the block's
-    platform to the bot; ``None`` when the card stays."""
+    """The answer instead of a setup card, when the user linked a server on
+    the block's platform to the bot; ``None`` when the card stays.  Every
+    block here posts into a channel, which the bot does only on a linked
+    server: a DM link alone lets it DM the user and nothing more."""
     platform = _bot_platform(block_name)
-    if platform is None or platform not in await linked_chat_platforms(user_id):
+    if platform is None:
+        return None
+    if platform not in (await chat_platform_links(user_id)).servers:
         return None
     name = platform.title()
     return ErrorResponse(
@@ -80,8 +86,15 @@ def _bot_platform(block_name: str) -> str | None:
     return platform
 
 
-async def linked_chat_platforms(user_id: str) -> frozenset[str]:
-    """Platforms the user linked to the bot, by a server or by their DMs."""
+class ChatPlatformLinks(BaseModel):
+    """Platforms the user linked to the bot: a server, where it can post into
+    channels, or their own DMs, where it can DM them."""
+
+    servers: frozenset[str] = frozenset()
+    dms: frozenset[str] = frozenset()
+
+
+async def chat_platform_links(user_id: str) -> ChatPlatformLinks:
     try:
         db = platform_linking_db()
         servers, users = await asyncio.gather(
@@ -89,5 +102,8 @@ async def linked_chat_platforms(user_id: str) -> frozenset[str]:
         )
     except Exception:
         logger.warning("Could not read chat platform links", exc_info=True)
-        return frozenset()
-    return frozenset(link.platform.lower() for link in [*servers, *users])
+        return ChatPlatformLinks()
+    return ChatPlatformLinks(
+        servers=frozenset(link.platform.lower() for link in servers),
+        dms=frozenset(link.platform.lower() for link in users),
+    )

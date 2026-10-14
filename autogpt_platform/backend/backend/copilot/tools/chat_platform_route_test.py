@@ -119,11 +119,23 @@ async def test_a_linked_platform_sends_the_turn_to_post_to_chat_platform():
 
 
 @pytest.mark.asyncio
-async def test_a_dm_link_counts_for_the_dm_block():
-    result = await _prepare("SendDiscordDMBlock", _links(dm=("DISCORD",)))
+async def test_a_dm_link_alone_does_not_send_a_channel_post_to_the_bot():
+    """The bot posts into a channel only on a server the user linked; a DM
+    link lets it DM the user, nothing more."""
+    result = await _prepare("SendDiscordMessageBlock", _links(dm=("DISCORD",)))
 
-    assert isinstance(result, ErrorResponse)
-    assert result.error == "use_post_to_chat_platform"
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_the_dm_block_keeps_its_card_whatever_is_linked():
+    """SendDiscordDMBlock DMs any user id; the bot can DM only the user."""
+    links = _links("DISCORD", dm=("DISCORD",))
+    result = await _prepare("SendDiscordDMBlock", links)
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+    links.list_server_links.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -226,7 +238,8 @@ async def test_the_listing_says_which_platforms_the_bot_can_post_to():
 
     assert isinstance(result, CapabilityListResponse)
     tool = next(c for c in result.capabilities if c["name"] == POST_TOOL)
-    assert tool["linked"] == ["discord", "slack"]
+    assert tool["linked"] == ["discord"]
+    assert tool["dm_linked"] == ["slack"]
     assert all("linked" not in c for c in result.capabilities if c is not tool)
 
 
@@ -236,7 +249,7 @@ async def test_the_listing_says_nothing_is_linked():
 
     assert isinstance(result, CapabilityListResponse)
     tool = next(c for c in result.capabilities if c["name"] == POST_TOOL)
-    assert tool["linked"] == []
+    assert tool["linked"] == [] and tool["dm_linked"] == []
 
 
 @pytest.mark.asyncio
