@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict
 
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.util.exceptions import NotFoundError
+from backend.util.llm.provider_billing import PROVIDER_UNAVAILABLE_CODE
 
 from .bot_backend import BotStreamError
 
@@ -105,6 +106,7 @@ _BY_CODE: dict[str, FailureCategory] = {
     "invalid_credential": SERVICE_REJECTED,
     "policy_denied": REQUEST_DECLINED,
     "model_unavailable": MODEL_UNAVAILABLE,
+    PROVIDER_UNAVAILABLE_CODE: MODEL_UNAVAILABLE,
     "entitlement_required": NOT_IN_PLAN,
     "idle_timeout": TOO_LONG,
     "max_turns_exhausted": STEP_LIMIT,

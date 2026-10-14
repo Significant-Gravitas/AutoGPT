@@ -49,7 +49,6 @@ from .bot_backend import BotStreamError
         pytest.param(
             BotStreamError("backend_stream_error", "x", code=PROVIDER_UNAVAILABLE_CODE),
             failures.MODEL_UNAVAILABLE,
-            marks=pytest.mark.xfail(reason="provider_unavailable is not mapped yet"),
         ),
         (BotStreamError("stream_timeout", "response timed out"), failures.TOO_LONG),
         (BotStreamError("subscribe_failed", "no stream"), failures.START_FAILED),
