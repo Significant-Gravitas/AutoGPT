@@ -812,7 +812,9 @@ class CoPilotProcessor:
                 log.info("Stream cancelled by user")
 
         except BaseException as e:
-            # Handle all exceptions (including CancelledError) with appropriate logging
+            # Handle all exceptions (including CancelledError) with appropriate logging.
+            # This failure replaces any StreamError the stream ended on, code too.
+            error_code = None
             if isinstance(e, asyncio.CancelledError):
                 log.info("Turn cancelled")
                 error_msg = stream_registry.CANCELLED_MESSAGE

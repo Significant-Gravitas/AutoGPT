@@ -103,7 +103,6 @@ async def test_a_streamed_errors_code_reaches_the_turns_completion() -> None:
     assert _what_a_bot_user_is_told(mark_completed) is PROVIDER_LIMIT
 
 
-@pytest.mark.xfail(reason="a later failure keeps the earlier StreamError's code")
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "close_error, told",
