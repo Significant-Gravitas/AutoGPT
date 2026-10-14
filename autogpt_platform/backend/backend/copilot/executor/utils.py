@@ -336,6 +336,11 @@ class CoPilotExecutionEntry(BaseModel):
     is the user's own. Tools then never hand a question back to the user
     (SECRT-2804); see ``set_turn_unattended``."""
 
+    impersonated: bool = False
+    """An admin impersonating the user sent the message that started this
+    turn. Marks the turn's LLM analytics rather than dropping them; see
+    ``llm_attribution.set_turn_impersonated``."""
+
     credential_pins: CredentialPins = Field(default_factory=dict)
     """``{provider: pin}``: the accounts the schedule that fired this turn was
     set up to run on. They win over the chat's own picks, and a pinned account
@@ -393,6 +398,7 @@ async def enqueue_copilot_turn(
     *,
     envelope: TurnEnvelope,
     unattended: bool = False,
+    impersonated: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     trace_headers: Mapping[str, str] | None = None,
@@ -443,6 +449,7 @@ async def enqueue_copilot_turn(
         message_metadata=message_metadata,
         envelope=envelope,
         unattended=unattended,
+        impersonated=impersonated,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
         trace_headers=(
@@ -585,6 +592,7 @@ async def dispatch_turn(
     scheduled: ScheduledTurnOrigin | None = None,
     root: bool = False,
     envelope: TurnEnvelope | None = None,
+    impersonated: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -674,6 +682,7 @@ async def dispatch_turn(
             message_metadata=message_metadata,
             envelope=envelope,
             unattended=unattended,
+            impersonated=impersonated,
             credential_pins=credential_pins,
             scheduled=scheduled,
             trace_headers=trace_headers,
@@ -832,6 +841,7 @@ async def schedule_chat_turn(
     llm_credential_id: str | None = None,
     permissions: CopilotPermissions | None = None,
     request_arrival_at: float = 0.0,
+    impersonated: bool = False,
 ) -> str | None:
     """HTTP-chat-flavoured :func:`schedule_turn`: acquires the user's
     concurrency slot, persists the user message *inside* the slot, then
@@ -915,6 +925,7 @@ async def schedule_chat_turn(
             llm_credential_id=llm_credential_id,
             permissions=permissions,
             request_arrival_at=request_arrival_at,
+            impersonated=impersonated,
         )
         return turn_id
 

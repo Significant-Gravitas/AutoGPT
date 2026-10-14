@@ -427,6 +427,41 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     assert response.status_code == 200
 
 
+def test_stream_chat_turn_is_not_impersonated_by_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["impersonated"] is False
+
+
+def test_stream_chat_marks_a_turn_an_impersonating_admin_starts(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+) -> None:
+    """The turn still runs and is still tracked, as the user, but its LLM
+    analytics say an admin sent it."""
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert response.status_code == 200
+    kwargs = mocks.enqueue.await_args.kwargs
+    assert kwargs["user_id"] == target_user_id
+    assert kwargs["impersonated"] is True
+
+
 def test_stream_chat_allows_an_active_expert_session(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,
