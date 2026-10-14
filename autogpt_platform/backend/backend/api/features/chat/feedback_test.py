@@ -46,6 +46,13 @@ def langfuse_settings(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(secrets, "langfuse_tracing_environment", "dev")
 
 
+@pytest.fixture(autouse=True)
+def posthog_capture(mocker: pytest_mock.MockerFixture) -> MagicMock:
+    """PostHog is covered in ``backend/copilot/feedback_test.py``; here it
+    only must not reach a real client."""
+    return mocker.patch.object(feedback_service, "capture")
+
+
 @pytest.fixture
 def score_create(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     """The Langfuse score API call, with the client it hangs off mocked."""
@@ -353,6 +360,50 @@ def test_invalid_ratings_are_rejected(
     assert response.status_code == 422
     lookup.assert_not_awaited()
     upsert.assert_not_awaited()
+
+
+def test_rating_is_sent_to_posthog_as_the_user(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+    upsert: AsyncMock,
+    score_create: AsyncMock,
+    posthog_capture: MagicMock,
+) -> None:
+    _mock_message(mocker, _reply(trace_id=TRACE_ID))
+
+    response = _post(_thumbs_down())
+
+    assert response.status_code == 200
+    distinct_id, event, properties = posthog_capture.call_args.args
+    assert distinct_id == test_user_id
+    assert event == "$ai_metric"
+    assert properties["impersonated"] is False
+    score_create.assert_awaited_once()
+
+
+def test_rating_by_an_impersonating_admin_is_marked(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+    upsert: AsyncMock,
+    score_create: AsyncMock,
+    posthog_capture: MagicMock,
+) -> None:
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    _mock_message(mocker, _reply(trace_id=TRACE_ID))
+
+    response = client.post(
+        f"/sessions/{SESSION_ID}/feedback",
+        json=_thumbs_down(),
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert response.status_code == 200
+    distinct_id, _, properties = posthog_capture.call_args.args
+    assert distinct_id == target_user_id
+    assert properties["impersonated"] is True
 
 
 def test_blank_comment_is_saved_as_none(

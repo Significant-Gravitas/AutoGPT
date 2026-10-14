@@ -298,6 +298,42 @@ sent or dropped this way, not while it is held.
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
 
+## LLM analytics
+
+AutoPilot's LLM calls and the ratings of its replies, in PostHog's LLM
+analytics (SECRT-2730). Both are sent server-side for every user, whatever
+their cookie consent, like every backend event. The event names are
+PostHog's own, not the analytics plan's.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `$ai_generation` | OpenRouter Broadcast | live | set by OpenRouter from the request (`backend/copilot/llm_attribution.py`): `distinct_id` = the request's `user` (the platform user id), `$ai_session_id` = its `session_id` (the chat session id), `$ai_span_name` = `trace.generation_name` (`copilot-title`, `copilot-sdk`, `copilot-baseline`), `metadata_environment` (`local`, `dev`, `prod`), `metadata_impersonated`; model, tokens, cost and latency from OpenRouter | An AutoPilot LLM call goes through OpenRouter: a session title, an SDK turn (main agent, sub-agents and the CLI's compaction, via `CLAUDE_CODE_EXTRA_BODY`) or a baseline turn. |
+| `$ai_metric` | backend | live | `$ai_metric_name` (`user-feedback`, `copy`), `$ai_metric_value` (`1` thumbs up or copy, `0` thumbs down), `$ai_session_id` and `chat_session_id` (the chat session id), `message_id` (the reply's row id), `message_sequence`, `feedback_id` (the stored rating, shared with its Langfuse score), `impersonated`; `$ai_feedback_text` when a thumbs-down has a comment | A reply is rated (`POST /api/chat/sessions/{id}/feedback`, `copilot/feedback.py`). Rating a reply again sends another event; the latest per `feedback_id` stands. |
+
+What joins them:
+
+- **Person.** A generation's `distinct_id` and a rating's are both the
+  platform user id, the id every other event and `posthog.identify` use, so
+  both land on the person with their product events and replays.
+- **Chat.** `$ai_session_id` is the chat session id on both, so a chat's
+  generations and its ratings group in the Sessions tab and join on it.
+  `message_id` says which reply was rated; a rating carries no
+  `$ai_trace_id`, since Broadcast assigns the generations' trace ids.
+- **Environment.** OpenRouter forwards our `trace` keys as `metadata_<key>`,
+  so a generation's environment is `metadata_environment`, not the
+  `environment` base property; `$ai_metric` has both base properties as usual.
+- **Impersonation.** A turn or rating an admin made while impersonating the
+  user (`X-Act-As-User-Id`) is still sent, as the user, with
+  `metadata_impersonated` / `impersonated` true, so it can be filtered out.
+  A turn queued behind the running-turn cap and promoted later loses the mark.
+
+Calls that skip OpenRouter never reach Broadcast and have no
+`$ai_generation`: direct Anthropic and Claude Code subscription deployments,
+a user's connected Codex account and the local transport. Auxiliary calls
+that are not attributed yet (the baseline path's context compaction, the
+action gate's classifiers, web search, Graphiti memory) arrive without the
+user or chat when their client goes through OpenRouter.
+
 ## Experiments
 
 | Event | Sender | Status | Required properties | Fires when |
@@ -483,5 +519,5 @@ so nobody adds a duplicate:
 
 - `$pageleave`, `$autocapture`, `$identify` and `$feature_flag_called`:
   posthog-js (`capture_pageleave` and `autocapture` are on).
-- `$ai_generation`: OpenRouter's PostHog integration, for copilot title
-  generation (`posthogDistinctId` in `copilot/service.py`).
+- `$ai_generation`: OpenRouter Broadcast, for every AutoPilot LLM call that
+  goes through OpenRouter (see [LLM analytics](#llm-analytics)).
