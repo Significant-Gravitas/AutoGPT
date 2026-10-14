@@ -7,6 +7,14 @@ const HEARTBEAT_MS = 10_000;
 // The route's listener checks the meta after each empty read of this length.
 const LISTENER_READ_MS = 5_000;
 const encoder = new TextEncoder();
+// What the route answers a send it queued: framing, no ids, no turn.
+const QUEUED_STREAM = emptyStream();
+// What it answers a send it queued behind the turn already running.
+const FOLLOW_UP_STREAM = emptyStream({
+  type: "data-follow-up-queued",
+  data: {},
+  transient: true,
+});
 
 export interface FakeConnection {
   method: string;
@@ -24,10 +32,14 @@ export interface FakeConnection {
   silence(): void;
 }
 
-type Responder = (request: {
-  method: string;
-  url: URL;
-}) => "stream" | "network-error" | { status: number; body: unknown };
+type Responder = (request: { method: string; url: URL }) =>
+  | "stream"
+  | "network-error"
+  // An open response that never yields a byte: a page frozen before it read any.
+  | "silent"
+  // The backend queued the send behind a turn already running.
+  | "follow-up-queued"
+  | { status: number; body: unknown };
 
 /**
  * The backend as the runtime sees it, for one recorded turn: the turn's
@@ -41,6 +53,9 @@ export function fakeBackend(turn: RecordedTurn) {
   let running = false;
   let started = false;
   let stoppedWithoutFinish = false;
+  // "queued" until a running turn ends; "claimed" between the backend marking
+  // it running and its stream existing.
+  let queue: "none" | "queued" | "claimed" | "left" = "none";
   const connections: FakeConnection[] = [];
   // Every request, refused ones included.
   const requests: { method: string; url: URL }[] = [];
@@ -64,10 +79,26 @@ export function fakeBackend(turn: RecordedTurn) {
     requests.push({ method, url });
     const answer = responder({ method, url });
     if (answer === "network-error") throw new TypeError("Failed to fetch");
+    if (answer === "follow-up-queued")
+      return new Response(FOLLOW_UP_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    if (answer === "silent")
+      return new Response(new ReadableStream<Uint8Array>(), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
     if (answer !== "stream") {
       return new Response(JSON.stringify(answer.body), {
         status: answer.status,
         headers: { "content-type": "application/json" },
+      });
+    }
+    if (method === "POST" && queue === "queued") {
+      return new Response(QUEUED_STREAM, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
       });
     }
     if (method === "POST") {
@@ -175,10 +206,23 @@ export function fakeBackend(turn: RecordedTurn) {
       stoppedWithoutFinish = true;
       pumps.forEach((pump) => pump());
     },
-    /** The turn is already running when the page loads. */
+    /** The turn is already running when the page loads, or leaves the queue for a slot. */
     beginRunning() {
+      if (queue === "queued" || queue === "claimed") queue = "left";
       started = true;
       running = true;
+    },
+    /** The user is at the running cap: the next send is persisted and queued. */
+    queueNextTurn() {
+      queue = "queued";
+    },
+    /** The backend marks the queued turn running before its stream exists. */
+    claimQueued() {
+      queue = "claimed";
+    },
+    /** The user cancels the queued turn; its prompt row stays. */
+    cancelQueued() {
+      queue = "left";
     },
     respond(next: Responder) {
       responder = next;
@@ -200,13 +244,21 @@ export function fakeBackend(turn: RecordedTurn) {
     view(rows?: PersistedRow[]): SessionView {
       const shown = started
         ? (rows ?? turn.rows.slice(0, persistedCount()))
-        : [];
+        : queue !== "none"
+          ? turn.rows.slice(0, 1)
+          : [];
       return {
         messages: shown.map((row, sequence) => ({ ...row, sequence })),
         has_more_messages: false,
         active_stream: running
           ? { turn_id: turnId, checkpoint: this.lastCheckpoint() }
           : null,
+        chat_status:
+          queue === "queued"
+            ? "queued"
+            : running || queue === "claimed"
+              ? "running"
+              : "idle",
       };
     },
     open() {
@@ -235,4 +287,17 @@ function dataOf(sse: string) {
         data: Record<string, unknown>;
       })
     : null;
+}
+
+function emptyStream(...parts: object[]) {
+  return [
+    { type: "start", messageId: "queued" },
+    { type: "start-step" },
+    ...parts,
+    { type: "finish-step" },
+    { type: "finish" },
+  ]
+    .map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
+    .concat("data: [DONE]\n\n")
+    .join("");
 }
