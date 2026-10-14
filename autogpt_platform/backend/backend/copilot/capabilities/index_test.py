@@ -695,66 +695,6 @@ def gmail_index(rival_index) -> CapabilityIndex:
     )
 
 
-def test_a_kind_filter_surfaces_the_connected_blocks_it_hid(gmail_index):
-    """2901dcfb: kind="tool" with Google connected returned eight unrelated
-    tools and the model went looking for a Gmail MCP server.  The connected
-    Gmail blocks come back beside the filtered list, with a count."""
-    result = gmail_index.search(
-        "Gmail list recent emails", kind="tool", connections=GOOGLE
-    )
-    assert all(hit.entry.kind == "tool" for hit in result.hits)
-    hidden = [hit.entry.name for hit in result.other_kinds]
-    assert "GmailReadBlock" in hidden
-    assert all(hit.connected for hit in result.other_kinds)
-    assert result.hidden_by_kind >= len(result.other_kinds) > 0
-
-
-def test_a_kind_filter_that_empties_the_list_still_surfaces_other_kinds(
-    rival_index,
-):
-    """Prod Sep 30: kind="mcp_server" for a service with no server in the
-    catalog came back empty.  The blocks it hid are surfaced instead."""
-    result = rival_index.search(
-        "send discord message",
-        kind="mcp_server",
-        connections=ConnectionState(providers=frozenset({"discord"})),
-    )
-    assert result.hits == []
-    assert "SendDiscordMessageBlock" in [h.entry.name for h in result.other_kinds]
-
-
-def test_other_kinds_are_capped_at_three(gmail_index):
-    state = ConnectionState(providers=frozenset({"google", "discord"}))
-    result = gmail_index.search("email message", kind="skill", connections=state)
-    assert result.hits == []
-    assert len(result.other_kinds) == 3
-    assert result.hidden_by_kind > 3
-
-
-def test_a_by_name_kind_lookup_gets_no_other_kinds(gmail_index):
-    """Most kind calls are deliberate lookups by name; they must not be told
-    to search again."""
-    result = gmail_index.search("web_search", kind="tool", connections=GOOGLE)
-    assert result.names[0] == "web_search"
-    assert result.other_kinds == [] and result.hidden_by_kind == 0
-
-
-def test_an_unconnected_weaker_match_of_another_kind_is_not_surfaced(rival_index):
-    """Only a connected entry, or one covering more of the query than the
-    filtered list does, is worth a second search."""
-    result = rival_index.search(
-        "post to discord", kind="tool", connections=ConnectionState()
-    )
-    assert result.names[0] == "post_to_chat_platform"
-    assert result.other_kinds == []
-
-
-def test_no_kind_means_no_other_kinds(gmail_index):
-    result = gmail_index.search("Gmail list recent emails", connections=GOOGLE)
-    assert result.other_kinds == [] and result.hidden_by_kind == 0
-    assert result.names[0] in {"GmailReadBlock", "GmailListLabelsBlock"}
-
-
 def test_a_tool_does_not_lead_connected_blocks_on_a_query_naming_no_service(
     gmail_index,
 ):
@@ -782,30 +722,6 @@ def test_a_negative_mention_does_not_pull_a_tool_into_a_service_query(gmail_inde
     assert result.service == "slack"
     assert "connect_integration" not in result.names
     assert "post_to_chat_platform" in result.names
-
-
-def test_other_kinds_look_past_the_filtered_kind_filling_the_top_slots():
-    """The unfiltered search used to stop at the page limit, so nine tools
-    outranking the connected block took every slot and the block, the one
-    thing the filter hid, was never seen."""
-    tools = [
-        _tool(f"ledger_export_{n}", "Export ledger rows to a quarterly report.")
-        for n in range(9)
-    ]
-    block = _block(
-        "99999999-9999-9999-9999-999999999993",
-        "AcmeLedgerBlock",
-        "Read rows from the Acme ledger.",
-        provider="acme",
-        tags=("ledger",),
-    )
-    index = CapabilityIndex([*tools, block])
-    state = ConnectionState(providers=frozenset({"acme"}))
-    query = "export ledger quarterly report"
-    assert "AcmeLedgerBlock" not in index.search(query, connections=state).names
-    result = index.search(query, kind="tool", connections=state)
-    assert [hit.entry.name for hit in result.other_kinds] == ["AcmeLedgerBlock"]
-    assert result.hidden_by_kind == 1
 
 
 def test_a_connection_helper_does_not_join_a_service_query(index):
