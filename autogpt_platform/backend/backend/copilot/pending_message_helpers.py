@@ -7,7 +7,9 @@ Also provides the call-rate-limit check for the queue endpoint so
 routes.py stays free of Redis/Lua details.
 """
 
+import asyncio
 import logging
+import uuid
 from typing import TYPE_CHECKING, Any, Callable
 
 from fastapi import HTTPException
@@ -24,10 +26,15 @@ from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
     PendingMessageContext,
+    accept_client_message,
+    claim_client_message,
     drain_pending_messages,
+    finish_despite_cancellation,
     format_pending_as_user_message,
+    peek_pending_count,
     push_pending_message,
     push_pending_message_if_session_running,
+    release_client_message,
 )
 from backend.copilot.response_model import (
     StreamPendingDrained,
@@ -211,6 +218,7 @@ async def queue_pending_for_http(
     file_ids: list[str] | None,
     folder_ids: list[str] | None,
     expert_id: str | None,
+    client_message_id: str | None = None,
 ) -> QueuePendingMessageResponse:
     """HTTP-facing wrapper around :func:`queue_user_message`.
 
@@ -225,6 +233,13 @@ async def queue_pending_for_http(
     Attached folders are appended to the message text here rather than carried
     as a field: a pending message is rendered from ``content`` when the turn
     drains it, and entries written by older workers are still in Redis.
+
+    ``client_message_id`` is the send's scoped idempotency key.  A send
+    whose key was already accepted is answered without pushing again (see
+    :func:`already_accepted_response`), and a push that does not land gives
+    the key back so a genuine retry can.  A copy that arrives while another
+    is still being pushed waits for its outcome, and gets a 503 if that
+    outlasts the wait.
 
     Raises :class:`HTTPException` with status 429 if the rate cap is hit or
     400 if an expert session attaches a file outside its scope; otherwise
@@ -256,18 +271,56 @@ async def queue_pending_for_http(
     # the FE's is_turn_in_flight check and our gate), which both this
     # endpoint and the POST /stream queue-fall-through can hit.  Pushing
     # first lets the gate own the no-op short-circuit.
-    response = await queue_user_message(
-        session_id=session_id,
-        message=message,
-        context=queue_context,
-        file_ids=sanitized_file_ids,
-        require_turn_in_flight=True,
+    claim_owner = uuid.uuid4().hex
+    if client_message_id is not None:
+        claim = await claim_client_message(session_id, client_message_id, claim_owner)
+        if claim == "accepted":
+            logger.info(
+                "pending_messages: skipped retransmit of an accepted message "
+                "for session=%s",
+                session_id,
+            )
+            return await already_accepted_response(session_id)
+        if claim == "reserved":
+            raise client_message_in_progress_error()
+
+    push = asyncio.ensure_future(
+        queue_user_message(
+            session_id=session_id,
+            message=message,
+            context=queue_context,
+            file_ids=sanitized_file_ids,
+            require_turn_in_flight=True,
+        )
     )
+    try:
+        response = await asyncio.shield(push)
+    except asyncio.CancelledError:
+        # The append may already have landed (the push still awaits its
+        # SPUBLISH), so settle the claim by what the push did, not by the
+        # cancellation: releasing it would let a retry queue a second copy.
+        if client_message_id is not None:
+            await finish_despite_cancellation(
+                asyncio.ensure_future(
+                    _settle_claim_of_cancelled_push(
+                        push, session_id, client_message_id, claim_owner
+                    )
+                )
+            )
+        raise
+    except BaseException:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
+        raise
     if not response.turn_in_flight:
+        if client_message_id is not None:
+            await release_client_message(session_id, client_message_id, claim_owner)
         raise HTTPException(
             status_code=409,
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
+    if client_message_id is not None:
+        await accept_client_message(session_id, client_message_id, claim_owner)
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -284,6 +337,60 @@ async def queue_pending_for_http(
         )
 
     return response
+
+
+async def _settle_claim_of_cancelled_push(
+    push: "asyncio.Future[QueuePendingMessageResponse]",
+    session_id: str,
+    client_message_id: str,
+    owner: str,
+) -> None:
+    try:
+        response = await push
+    except Exception:
+        await release_client_message(session_id, client_message_id, owner)
+        return
+    if response.turn_in_flight:
+        await accept_client_message(session_id, client_message_id, owner)
+    else:
+        await release_client_message(session_id, client_message_id, owner)
+
+
+def client_message_in_progress_error() -> HTTPException:
+    """For a copy that arrived while the first copy was still being scheduled
+    and outlasted the wait for its outcome.  It is neither accepted nor
+    refused yet, so the client is told to retry, as for a degraded registry.
+    """
+    return HTTPException(
+        status_code=503,
+        detail="Your message is still being sent, retry shortly",
+        headers={"Retry-After": "5"},
+    )
+
+
+async def already_accepted_response(session_id: str) -> QueuePendingMessageResponse:
+    """Answer a retransmit of a send the server already accepted.
+
+    ``turn_in_flight`` is ``True`` whatever the turn is doing now: it tells the
+    client its message was taken, and ``False`` would make it fall back to
+    ``POST /stream`` and send the message all over again.
+    """
+    try:
+        buffer_length = await peek_pending_count(session_id)
+    except Exception as e:
+        # The count is informational. A Redis blip must not turn an accepted
+        # send into an error, which the client would answer by resending it.
+        logger.warning(
+            "pending_messages: buffer length lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        buffer_length = 0
+    return QueuePendingMessageResponse(
+        buffer_length=buffer_length,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
 
 
 async def check_pending_call_rate(user_id: str) -> int:
