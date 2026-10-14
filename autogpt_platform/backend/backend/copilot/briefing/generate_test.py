@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +11,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from backend.util import posthog_client
 from backend.util.feature_flag import Flag
 
-NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
 
 
 @pytest.fixture(autouse=True)
@@ -332,7 +332,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
 
     from backend.copilot.briefing import generate
 
-    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
@@ -435,7 +435,7 @@ async def test_generate_delivers_and_composes_briefing(monkeypatch):
 def _patch_generate_env(monkeypatch, generate, client):
     """Shared plumbing for the delivery-retry tests: fixed clock, flag on,
     UTC user, and the given database-manager client."""
-    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
@@ -563,7 +563,7 @@ async def test_generate_keeps_library_link_when_workflow_has_no_library_agent_id
     from backend.api.features.experts.models import ExpertWorkflowRef
     from backend.copilot.briefing import generate
 
-    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
+    fixed_now = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
     fake_datetime = MagicMock(wraps=datetime)
     fake_datetime.now.return_value = fixed_now
     monkeypatch.setattr(generate, "datetime", fake_datetime)
@@ -1191,7 +1191,7 @@ async def test_generate_emits_events_on_delivery(monkeypatch, funnel):
     _patch_generate_env(monkeypatch, generate_module, client)
 
     content = BriefingContent(
-        generated_at=datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc),
+        generated_at=datetime(2026, 8, 7, 9, 0, tzinfo=UTC),
         timezone="UTC",
         zero_expert_fallback=False,
         run_items=[],

@@ -4,7 +4,7 @@ Used by both the dedicated HumanInTheLoopBlock and blocks that require human rev
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel
@@ -27,12 +27,12 @@ class HITLReviewHelper:
     """Helper class for Human-In-The-Loop review operations."""
 
     @staticmethod
-    async def check_approval(**kwargs) -> Optional[ReviewResult]:
+    async def check_approval(**kwargs) -> ReviewResult | None:
         """Check if there's an existing approval for this node execution."""
         return await get_database_manager_async_client().check_approval(**kwargs)
 
     @staticmethod
-    async def get_or_create_human_review(**kwargs) -> Optional[ReviewResult]:
+    async def get_or_create_human_review(**kwargs) -> ReviewResult | None:
         """Create or retrieve a human review from the database."""
         return await get_database_manager_async_client().get_or_create_human_review(
             **kwargs
@@ -62,16 +62,16 @@ class HITLReviewHelper:
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: Optional[str],
-        graph_id: Optional[str],
-        graph_version: Optional[int],
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        chat_session_id: Optional[str] = None,
-    ) -> Optional[ReviewResult]:
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        chat_session_id: str | None = None,
+    ) -> ReviewResult | None:
         """
         Handle a review request for a block that requires human review.
 
@@ -173,16 +173,16 @@ class HITLReviewHelper:
         user_id: str,
         node_id: str,
         node_exec_id: str,
-        graph_exec_id: Optional[str],
-        graph_id: Optional[str],
-        graph_version: Optional[int],
+        graph_exec_id: str | None,
+        graph_id: str | None,
+        graph_version: int | None,
         block_name: str = "Block",
         editable: bool = False,
         is_graph_execution: bool = True,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        chat_session_id: Optional[str] = None,
-    ) -> Optional[ReviewDecision]:
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        chat_session_id: str | None = None,
+    ) -> ReviewDecision | None:
         """
         Handle a review request and return the decision in a single call.
 

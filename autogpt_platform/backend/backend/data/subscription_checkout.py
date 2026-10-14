@@ -1,8 +1,8 @@
 """Coordinate paid and trial Checkout creation for the same account."""
 
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from datetime import timedelta
-from typing import Callable
 
 import stripe
 from pydantic import BaseModel

@@ -86,8 +86,7 @@ def _cache_get(key: _CacheKey) -> int | None:
 def _server_root(base_url: str) -> str:
     """Strip a trailing ``/v1`` (or ``/v1/``) from the OpenAI-compat base URL."""
     url = base_url.rstrip("/")
-    if url.endswith("/v1"):
-        url = url[:-3]
+    url = url.removesuffix("/v1")
     return url.rstrip("/")
 
 

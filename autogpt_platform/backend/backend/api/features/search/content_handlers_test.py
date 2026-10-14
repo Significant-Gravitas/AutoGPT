@@ -184,23 +184,22 @@ async def test_block_handler_get_missing_items():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 1
-            assert items[0].content_id == "block-uuid-1"
-            assert items[0].content_type == ContentType.BLOCK
-            # CamelCase should be split in searchable text and metadata name
-            assert "Calculator Block" in items[0].searchable_text
-            assert "Performs calculations" in items[0].searchable_text
-            assert "MATH" in items[0].searchable_text
-            assert "expression: Math expression" in items[0].searchable_text
-            assert items[0].metadata["name"] == "Calculator Block"
-            assert items[0].user_id is None
+        assert len(items) == 1
+        assert items[0].content_id == "block-uuid-1"
+        assert items[0].content_type == ContentType.BLOCK
+        # CamelCase should be split in searchable text and metadata name
+        assert "Calculator Block" in items[0].searchable_text
+        assert "Performs calculations" in items[0].searchable_text
+        assert "MATH" in items[0].searchable_text
+        assert "expression: Math expression" in items[0].searchable_text
+        assert items[0].metadata["name"] == "Calculator Block"
+        assert items[0].user_id is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -214,15 +213,14 @@ async def test_block_handler_get_missing_items_splits_camelcase():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 1
-            assert "AI Text Generator Block" in items[0].searchable_text
+        assert len(items) == 1
+        assert "AI Text Generator Block" in items[0].searchable_text
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -281,16 +279,15 @@ async def test_block_handler_get_missing_items_batch_size_zero():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
-    ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ) as mock_query:
-            items = await handler.get_missing_items(batch_size=0)
-            assert items == []
-            # DB query is still issued to learn which blocks lack embeddings;
-            # the empty result comes from itertools.islice limiting to 0 items.
-            mock_query.assert_called_once()
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
+    ) as mock_query:
+        items = await handler.get_missing_items(batch_size=0)
+        assert items == []
+        # DB query is still issued to learn which blocks lack embeddings;
+        # the empty result comes from itertools.islice limiting to 0 items.
+        mock_query.assert_called_once()
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -308,15 +305,14 @@ async def test_block_handler_disabled_dont_exhaust_batch():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=2)
+        items = await handler.get_missing_items(batch_size=2)
 
-            assert len(items) == 2
-            assert all(item.content_id.startswith("en-") for item in items)
+        assert len(items) == 2
+        assert all(item.content_id.startswith("en-") for item in items)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -334,16 +330,15 @@ async def test_block_handler_get_stats():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=mock_embedded,
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=mock_embedded,
-        ):
-            stats = await handler.get_stats()
+        stats = await handler.get_stats()
 
-            assert stats["total"] == 3
-            assert stats["with_embeddings"] == 2
-            assert stats["without_embeddings"] == 1
+        assert stats["total"] == 3
+        assert stats["with_embeddings"] == 2
+        assert stats["without_embeddings"] == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -360,15 +355,14 @@ async def test_block_handler_get_stats_skips_broken():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=mock_embedded,
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=mock_embedded,
-        ):
-            stats = await handler.get_stats()
+        stats = await handler.get_stats()
 
-            assert stats["total"] == 1  # only the good block
-            assert stats["with_embeddings"] == 1
+        assert stats["total"] == 1  # only the good block
+        assert stats["with_embeddings"] == 1
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -388,20 +382,19 @@ async def test_block_handler_handles_none_name():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 1
-            # display_name should be "" because block.name is None
-            # searchable_text should still contain the description
-            assert "A block with no name" in items[0].searchable_text
-            # metadata["name"] falls back to block_id when both display_name
-            # and block.name are falsy, ensuring it is always a non-empty string.
-            assert items[0].metadata["name"] == "none-name-block"
+        assert len(items) == 1
+        # display_name should be "" because block.name is None
+        # searchable_text should still contain the description
+        assert "A block with no name" in items[0].searchable_text
+        # metadata["name"] falls back to block_id when both display_name
+        # and block.name are falsy, ensuring it is always a non-empty string.
+        assert items[0].metadata["name"] == "none-name-block"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -413,15 +406,14 @@ async def test_block_handler_handles_empty_attributes():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 1
-            assert items[0].searchable_text == "Minimal Block"
+        assert len(items) == 1
+        assert items[0].searchable_text == "Minimal Block"
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -436,15 +428,14 @@ async def test_block_handler_skips_failed_blocks():
 
     with patch(
         "backend.api.features.search.content_handlers.get_blocks", return_value=blocks
+    ), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
     ):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 1
-            assert items[0].content_id == "good-block"
+        assert len(items) == 1
+        assert items[0].content_id == "good-block"
 
 
 # ---------------------------------------------------------------------------
@@ -462,30 +453,29 @@ async def test_documentation_handler_get_missing_items(tmp_path, mocker):
     (docs_root / "guide.md").write_text("# Getting Started\n\nThis is a guide.")
     (docs_root / "api.mdx").write_text("# API Reference\n\nAPI documentation.")
 
-    with patch.object(handler, "_get_docs_root", return_value=docs_root):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=[],
-        ):
-            items = await handler.get_missing_items(batch_size=10)
+    with patch.object(handler, "_get_docs_root", return_value=docs_root), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=[],
+    ):
+        items = await handler.get_missing_items(batch_size=10)
 
-            assert len(items) == 2
+        assert len(items) == 2
 
-            guide_item = next(
-                (item for item in items if item.content_id == "guide.md::0"), None
-            )
-            assert guide_item is not None
-            assert guide_item.content_type == ContentType.DOCUMENTATION
-            assert "Getting Started" in guide_item.searchable_text
-            assert "This is a guide" in guide_item.searchable_text
-            assert guide_item.metadata["doc_title"] == "Getting Started"
-            assert guide_item.user_id is None
+        guide_item = next(
+            (item for item in items if item.content_id == "guide.md::0"), None
+        )
+        assert guide_item is not None
+        assert guide_item.content_type == ContentType.DOCUMENTATION
+        assert "Getting Started" in guide_item.searchable_text
+        assert "This is a guide" in guide_item.searchable_text
+        assert guide_item.metadata["doc_title"] == "Getting Started"
+        assert guide_item.user_id is None
 
-            api_item = next(
-                (item for item in items if item.content_id == "api.mdx::0"), None
-            )
-            assert api_item is not None
-            assert "API Reference" in api_item.searchable_text
+        api_item = next(
+            (item for item in items if item.content_id == "api.mdx::0"), None
+        )
+        assert api_item is not None
+        assert "API Reference" in api_item.searchable_text
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -501,16 +491,15 @@ async def test_documentation_handler_get_stats(tmp_path, mocker):
 
     mock_embedded = [{"count": 1}]
 
-    with patch.object(handler, "_get_docs_root", return_value=docs_root):
-        with patch(
-            "backend.api.features.search.content_handlers.query_raw_with_schema",
-            return_value=mock_embedded,
-        ):
-            stats = await handler.get_stats()
+    with patch.object(handler, "_get_docs_root", return_value=docs_root), patch(
+        "backend.api.features.search.content_handlers.query_raw_with_schema",
+        return_value=mock_embedded,
+    ):
+        stats = await handler.get_stats()
 
-            assert stats["total"] == 3
-            assert stats["with_embeddings"] == 1
-            assert stats["without_embeddings"] == 2
+        assert stats["total"] == 3
+        assert stats["with_embeddings"] == 1
+        assert stats["without_embeddings"] == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")

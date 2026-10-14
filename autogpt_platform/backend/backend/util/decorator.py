@@ -2,17 +2,8 @@ import functools
 import logging
 import os
 import time
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Coroutine,
-    Literal,
-    ParamSpec,
-    Tuple,
-    TypeVar,
-    overload,
-)
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, Literal, ParamSpec, TypeVar, overload
 
 from pydantic import BaseModel
 
@@ -24,13 +15,13 @@ class TimingInfo(BaseModel):
     wall_time: float
 
 
-def _start_measurement() -> Tuple[float, float]:
+def _start_measurement() -> tuple[float, float]:
     return time.time(), os.times()[0] + os.times()[1]
 
 
 def _end_measurement(
     start_wall_time: float, start_cpu_time: float
-) -> Tuple[float, float]:
+) -> tuple[float, float]:
     end_wall_time = time.time()
     end_cpu_time = os.times()[0] + os.times()[1]
     return end_wall_time - start_wall_time, end_cpu_time - start_cpu_time
@@ -44,7 +35,7 @@ logger = TruncatedLogger(logging.getLogger(__name__))
 
 def time_measured(
     func: Callable[P, T],
-) -> Callable[P, Tuple[TimingInfo, T | BaseException]]:
+) -> Callable[P, tuple[TimingInfo, T | BaseException]]:
     """
     Decorator to measure the time taken by a synchronous function to execute.
     """
@@ -52,7 +43,7 @@ def time_measured(
     @functools.wraps(func)
     def wrapper(
         *args: P.args, **kwargs: P.kwargs
-    ) -> Tuple[TimingInfo, T | BaseException]:
+    ) -> tuple[TimingInfo, T | BaseException]:
         start_wall_time, start_cpu_time = _start_measurement()
         try:
             result = func(*args, **kwargs)
@@ -70,7 +61,7 @@ def time_measured(
 
 def async_time_measured(
     func: Callable[P, Awaitable[T]],
-) -> Callable[P, Awaitable[Tuple[TimingInfo, T | BaseException]]]:
+) -> Callable[P, Awaitable[tuple[TimingInfo, T | BaseException]]]:
     """
     Decorator to measure the time taken by an async function to execute.
     """
@@ -78,7 +69,7 @@ def async_time_measured(
     @functools.wraps(func)
     async def async_wrapper(
         *args: P.args, **kwargs: P.kwargs
-    ) -> Tuple[TimingInfo, T | BaseException]:
+    ) -> tuple[TimingInfo, T | BaseException]:
         start_wall_time, start_cpu_time = _start_measurement()
         try:
             result = await func(*args, **kwargs)

@@ -7,7 +7,7 @@ All balance mutations use atomic SQL to prevent race conditions.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import stripe
 from prisma.enums import CreditTransactionType
@@ -464,7 +464,7 @@ class OrgCreditModel(UserCreditBase):
                 number=invoice.number,
                 created_at=datetime.fromtimestamp(
                     invoice.created or 0,
-                    tz=timezone.utc,
+                    tz=UTC,
                 ),
                 total_cents=invoice.total or 0,
                 amount_paid_cents=invoice.amount_paid or 0,

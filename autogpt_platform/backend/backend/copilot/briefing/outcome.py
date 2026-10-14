@@ -6,7 +6,7 @@ overnight". Composing that description in two places let the copilot thread and
 the home card disagree about the same run, so both now come through here.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import quote
 
 from backend.api.features.experts.models import Expert
@@ -116,7 +116,7 @@ def as_utc(value: datetime) -> datetime:
     """Stored timestamps can come back naive; comparing those to an aware `now`
     raises, so pin anything naive to UTC before it reaches arithmetic or sorting.
     """
-    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def as_utc_or_none(value: datetime | None) -> datetime | None:

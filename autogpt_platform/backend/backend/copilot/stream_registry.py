@@ -17,9 +17,9 @@ Subscribers:
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, Iterable, Mapping
+from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import orjson
@@ -36,6 +36,7 @@ from backend.data.notification_bus import (
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.redis_helpers import as_str, hash_compare_and_set
+from backend.util import tracing
 
 from .config import ChatConfig
 from .constants import STREAM_LOCK_PREFIX
@@ -49,6 +50,7 @@ from .response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
+    StreamFollowUpQueued,
     StreamHeartbeat,
     StreamModeChanged,
     StreamPendingDrained,
@@ -156,7 +158,7 @@ class ActiveSession:
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
 
@@ -198,7 +200,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
     pre-dates the turn_id field (backward compat for in-flight sessions).
     """
-    created_at = datetime.now(timezone.utc)
+    created_at = datetime.now(UTC)
     created_at_raw = meta.get("created_at")
     if created_at_raw:
         try:
@@ -350,6 +352,10 @@ async def publish_chunk(
 
     All delivery is via Redis Streams - no in-memory state.
 
+    A turn publishes every chunk it streams, so these Redis calls are kept
+    off the turn's Sentry transaction, which would otherwise outgrow the
+    SDK's span limit.
+
     Args:
         turn_id: Turn ID (per-turn UUID) identifying the stream
         chunk: The stream response chunk to publish
@@ -360,6 +366,16 @@ async def publish_chunk(
     Returns:
         The Redis Stream message ID
     """
+    with tracing.suppress_child_spans():
+        return await _publish_chunk(turn_id, chunk, session_id=session_id)
+
+
+async def _publish_chunk(
+    turn_id: str,
+    chunk: StreamBaseResponse,
+    *,
+    session_id: str | None,
+) -> str:
     start_time = time.perf_counter()
     chunk_type = type(chunk).__name__
     chunk_json = chunk.model_dump_json()
@@ -685,9 +701,19 @@ def _start_listener(
     turn_id: str,
 ) -> None:
     listener_task = asyncio.create_task(
-        _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+        _without_child_spans(
+            _stream_listener(session_id, queue, last_id, log_meta, turn_id)
+        )
     )
     _listener_sessions[id(queue)] = (session_id, listener_task)
+
+
+async def _without_child_spans(listener: Coroutine[Any, Any, None]) -> None:
+    """Run a listener off its subscriber's Sentry transaction. It polls Redis
+    for as long as the turn streams, which would outgrow the SDK's span limit
+    on the ``/stream`` request relaying a long turn."""
+    with tracing.suppress_child_spans():
+        await listener
 
 
 def _chunk_from_fields(fields: dict[str, str]) -> StreamBaseResponse | None:
@@ -805,7 +831,7 @@ async def _stream_listener(
                             subscriber_queue.put((None, StreamFinish())),
                             timeout=QUEUE_PUT_TIMEOUT,
                         )
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         logger.warning(
                             f"Timeout delivering finish event for session {session_id}"
                         )
@@ -817,7 +843,7 @@ async def _stream_listener(
                         subscriber_queue.put((None, StreamHeartbeat())),
                         timeout=QUEUE_PUT_TIMEOUT,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         f"Timeout delivering heartbeat for session {session_id}"
                     )
@@ -853,7 +879,7 @@ async def _stream_listener(
                                             }
                                         },
                                     )
-                            except asyncio.TimeoutError:
+                            except TimeoutError:
                                 logger.warning(
                                     f"[TIMING] Subscriber queue full, delivery timed out after {QUEUE_PUT_TIMEOUT}s",
                                     extra={
@@ -928,7 +954,7 @@ async def _stream_listener(
                 subscriber_queue.put((None, StreamFinish())),
                 timeout=QUEUE_PUT_TIMEOUT,
             )
-        except (asyncio.TimeoutError, asyncio.QueueFull):
+        except (TimeoutError, asyncio.QueueFull):
             logger.warning(
                 "Could not deliver finish event after error",
                 extra={"json_fields": log_meta},
@@ -1076,8 +1102,8 @@ async def mark_session_completed(
             try:
                 created_at = datetime.fromisoformat(str(created_at_raw))
                 if created_at.tzinfo is None:
-                    created_at = created_at.replace(tzinfo=timezone.utc)
-                elapsed = datetime.now(timezone.utc) - created_at
+                    created_at = created_at.replace(tzinfo=UTC)
+                elapsed = datetime.now(UTC) - created_at
                 duration_ms = max(0, int(elapsed.total_seconds() * 1000))
             except (ValueError, TypeError):
                 logger.warning(
@@ -1259,7 +1285,7 @@ async def get_active_session(
     if created_at_str:
         try:
             created_at = datetime.fromisoformat(created_at_str)
-            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+            age_seconds = (datetime.now(UTC) - created_at).total_seconds()
             stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
             if age_seconds > stale_threshold:
                 logger.warning(
@@ -1320,6 +1346,7 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.STATUS.value: StreamStatus,
     ResponseType.DREAM_OPERATIONS.value: StreamDreamOperations,
     ResponseType.PENDING_DRAINED.value: StreamPendingDrained,
+    ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
@@ -1406,7 +1433,7 @@ async def unsubscribe_from_session(
     except asyncio.CancelledError:
         # Expected - the task was successfully cancelled
         pass
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             f"Timeout waiting for listener task cancellation for session {session_id}"
         )
@@ -1455,7 +1482,7 @@ async def disconnect_all_listeners(session_id: str) -> int:
             await asyncio.wait_for(task, timeout=5.0)
         except asyncio.CancelledError:
             cancelled += 1
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
         except Exception as e:
             logger.error(f"Error cancelling listener for session {session_id}: {e}")

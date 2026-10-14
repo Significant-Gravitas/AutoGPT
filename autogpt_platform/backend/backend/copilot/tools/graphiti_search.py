@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.copilot.graphiti._format import (
@@ -118,7 +118,7 @@ class MemorySearchTool(BaseTool):
                     num_results=limit,
                 ),
                 client.retrieve_episodes(
-                    reference_time=datetime.now(timezone.utc),
+                    reference_time=datetime.now(UTC),
                     group_ids=[group_id],
                     last_n=5,
                 ),

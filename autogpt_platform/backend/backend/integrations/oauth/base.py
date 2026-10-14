@@ -2,7 +2,7 @@ import logging
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import ClassVar, Optional
+from typing import ClassVar
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
@@ -25,7 +25,7 @@ class BaseOAuthHandler(ABC):
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler3]
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: Optional[str]
+        self, scopes: list[str], state: str, code_challenge: str | None
     ) -> str:
         # --8<-- [end:BaseOAuthHandler3]
         """Constructs a login URL that the user can be redirected to"""
@@ -34,7 +34,7 @@ class BaseOAuthHandler(ABC):
     @abstractmethod
     # --8<-- [start:BaseOAuthHandler4]
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: Optional[str]
+        self, code: str, scopes: list[str], code_verifier: str | None
     ) -> OAuth2Credentials:
         # --8<-- [end:BaseOAuthHandler4]
         """Exchanges the acquired authorization code from login for a set of tokens"""
@@ -82,7 +82,7 @@ class BaseOAuthHandler(ABC):
         """Handles the default scopes for the provider"""
         # If scopes are empty, use the default scopes for the provider
         if not scopes:
-            logger.debug(f"Using default scopes for provider {str(self.PROVIDER_NAME)}")
+            logger.debug(f"Using default scopes for provider {self.PROVIDER_NAME!s}")
             scopes = self.DEFAULT_SCOPES
         return scopes
 

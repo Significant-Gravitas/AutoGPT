@@ -1,6 +1,6 @@
 import datetime
+from collections.abc import AsyncGenerator
 from types import SimpleNamespace
-from typing import AsyncGenerator
 
 import httpx
 import pytest
@@ -21,7 +21,7 @@ from backend.data.graph import GraphSettings
 from .model import PendingHumanReviewModel
 
 # Using a fixed timestamp for reproducible tests
-FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0, tzinfo=datetime.UTC)
 
 
 @pytest_asyncio.fixture(loop_scope="session")

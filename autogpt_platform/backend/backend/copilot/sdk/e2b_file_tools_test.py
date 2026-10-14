@@ -839,8 +839,7 @@ class TestReadOffsetLimit:
     async def test_read_with_offset(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "lines.txt")
         with open(path, "w") as f:
-            for i in range(10):
-                f.write(f"line{i}\n")
+            f.writelines(f"line{i}\n" for i in range(10))
         result = await _handle_read_file(
             {"file_path": "lines.txt", "offset": 5, "limit": 3}
         )
@@ -855,8 +854,7 @@ class TestReadOffsetLimit:
     async def test_read_with_limit(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "many.txt")
         with open(path, "w") as f:
-            for i in range(100):
-                f.write(f"line{i}\n")
+            f.writelines(f"line{i}\n" for i in range(100))
         result = await _handle_read_file({"file_path": "many.txt", "limit": 2})
         text = result["content"][0]["text"]
         assert "line0" in text
@@ -867,8 +865,7 @@ class TestReadOffsetLimit:
     async def test_offset_line_numbers_are_correct(self, sdk_cwd):
         path = os.path.join(sdk_cwd, "offset_nums.txt")
         with open(path, "w") as f:
-            for i in range(10):
-                f.write(f"line{i}\n")
+            f.writelines(f"line{i}\n" for i in range(10))
         result = await _handle_read_file(
             {"file_path": "offset_nums.txt", "offset": 3, "limit": 2}
         )

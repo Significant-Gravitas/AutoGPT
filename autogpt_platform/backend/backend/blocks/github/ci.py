@@ -1,7 +1,6 @@
 import logging
 import re
 from enum import Enum
-from typing import Optional
 
 from typing_extensions import TypedDict
 
@@ -54,13 +53,13 @@ class GithubGetCIResultsBlock(Block):
             description="Commit SHA or PR number to get CI results for",
             placeholder="abc123def or 123",
         )
-        search_pattern: Optional[str] = SchemaField(
+        search_pattern: str | None = SchemaField(
             description="Optional regex pattern to search for in CI logs (e.g., error messages, file names)",
             placeholder=".*error.*|.*warning.*",
             default=None,
             advanced=True,
         )
-        check_name_filter: Optional[str] = SchemaField(
+        check_name_filter: str | None = SchemaField(
             description="Optional filter for specific check names (supports wildcards)",
             placeholder="*lint* or build-*",
             default=None,
@@ -72,14 +71,14 @@ class GithubGetCIResultsBlock(Block):
             id: int
             name: str
             status: str
-            conclusion: Optional[str]
-            started_at: Optional[str]
-            completed_at: Optional[str]
+            conclusion: str | None
+            started_at: str | None
+            completed_at: str | None
             html_url: str
-            details_url: Optional[str]
-            output_title: Optional[str]
-            output_summary: Optional[str]
-            output_text: Optional[str]
+            details_url: str | None
+            output_title: str | None
+            output_summary: str | None
+            output_text: str | None
             annotations: list[dict]
 
         class MatchedLine(TypedDict):
@@ -234,8 +233,8 @@ class GithubGetCIResultsBlock(Block):
         credentials: GithubCredentials,
         repo: str,
         target: str | int,
-        search_pattern: Optional[str] = None,
-        check_name_filter: Optional[str] = None,
+        search_pattern: str | None = None,
+        check_name_filter: str | None = None,
     ) -> dict:
         api = get_api(credentials, convert_urls=False)
 

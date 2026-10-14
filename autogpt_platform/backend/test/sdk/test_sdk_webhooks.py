@@ -79,7 +79,6 @@ class TestWebhooksManager(BaseWebhooksManager):
     async def _deregister_webhook(self, webhook, credentials) -> None:
         """Deregister webhook from external service."""
         # Mock implementation
-        pass
 
 
 class TestWebhookBlock(Block):

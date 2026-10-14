@@ -25,6 +25,10 @@ import { getSiteUrl } from "@/lib/metadata";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
+const isCloud = environment.isCloud();
+// Agentation annotates the UI for whoever is building AutoGPT itself, so it
+// stays out of production builds; self-hosted installs are production builds.
+const showAgentation = environment.isDevelopmentBuild() || isDev;
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -117,7 +121,7 @@ export default async function RootLayout({
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
-              <TallyPopupSimple />
+              {isCloud && <TallyPopupSimple />}
               <VercelAnalyticsWrapper />
 
               {/* React Query DevTools is only available in development */}
@@ -130,7 +134,7 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ConsentWithdrawalReload />
-            {(isLocal || isDev) && <AgentationDevtool />}
+            {showAgentation && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

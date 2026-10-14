@@ -196,21 +196,19 @@ async def test_backfill_missing_embeddings_success(mock_store):
     with patch(
         "backend.api.features.search.embeddings.CONTENT_HANDLERS",
         {ContentType.STORE_AGENT: mock_handler},
+    ), patch(
+        "backend.api.features.search.embeddings.get_content_embedding",
+        AsyncMock(return_value=None),
+    ), patch(
+        "backend.api.features.search.embeddings.generate_embedding",
+        return_value=[0.1] * search_embeddings.EMBEDDING_DIM,
     ):
-        with patch(
-            "backend.api.features.search.embeddings.get_content_embedding",
-            AsyncMock(return_value=None),
-        ):
-            with patch(
-                "backend.api.features.search.embeddings.generate_embedding",
-                return_value=[0.1] * search_embeddings.EMBEDDING_DIM,
-            ):
-                result = await embeddings.backfill_missing_embeddings(batch_size=5)
+        result = await embeddings.backfill_missing_embeddings(batch_size=5)
 
-                assert result["processed"] == 2
-                assert result["success"] == 1
-                assert result["failed"] == 1
-                assert mock_store.call_count == 2
+        assert result["processed"] == 2
+        assert result["success"] == 1
+        assert result["failed"] == 1
+        assert mock_store.call_count == 2
 
 
 @pytest.mark.asyncio(loop_scope="session")

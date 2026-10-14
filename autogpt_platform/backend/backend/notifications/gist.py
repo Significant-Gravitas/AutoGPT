@@ -21,7 +21,9 @@ GIST_MAX_CHARS = 150
 # and count instead of being quoted.
 # Whole words only: "profile" contains "file" and "document" contains "doc",
 # and either would route a text output into the file-describing branch.
-_FILE_HINT = re.compile(r"\b(file|image|video|audio|clip|pdf|doc|csv|sheet)s?\b", re.I)
+_FILE_HINT = re.compile(
+    r"\b(file|image|video|audio|clip|pdf|doc|csv|sheet)s?\b", re.IGNORECASE
+)
 _DATA_URI = re.compile(r"^data:([\w.+-]+)/")
 _URL = re.compile(r"^https?://")
 

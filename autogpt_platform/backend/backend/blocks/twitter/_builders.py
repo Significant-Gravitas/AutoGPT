@@ -1,5 +1,5 @@
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from backend.blocks.twitter._mappers import (
     get_backend_expansion,
@@ -35,8 +35,8 @@ from backend.blocks.twitter._types import (  # DMEventFieldFilter,
 
 # Common Builder
 class TweetExpansionsBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_expansions(self, expansions: ExpansionFilter | None):
         if expansions:
@@ -111,8 +111,8 @@ class TweetExpansionsBuilder:
 
 
 class UserExpansionsBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_expansions(self, expansions: UserExpansionsFilter | None):
         if expansions:
@@ -150,8 +150,8 @@ class UserExpansionsBuilder:
 
 
 class ListExpansionsBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_expansions(self, expansions: ListExpansionsFilter | None):
         if expansions:
@@ -191,8 +191,8 @@ class ListExpansionsBuilder:
 
 
 class SpaceExpansionsBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_expansions(self, expansions: SpaceExpansionsFilter | None):
         if expansions:
@@ -232,17 +232,16 @@ class SpaceExpansionsBuilder:
 
 
 class TweetDurationBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_start_time(self, start_time: datetime | None):
         if start_time:
             # Twitter API requires start_time to be at least 10 seconds before now
-            max_start_time = datetime.now(timezone.utc) - timedelta(seconds=10)
+            max_start_time = datetime.now(UTC) - timedelta(seconds=10)
             if start_time.tzinfo is None:
-                start_time = start_time.replace(tzinfo=timezone.utc)
-            if start_time > max_start_time:
-                start_time = max_start_time
+                start_time = start_time.replace(tzinfo=UTC)
+            start_time = min(start_time, max_start_time)
             self.params["start_time"] = start_time
         return self
 
@@ -271,8 +270,8 @@ class TweetDurationBuilder:
 
 
 class DMExpansionsBuilder:
-    def __init__(self, param: Dict[str, Any]):
-        self.params: Dict[str, Any] = param
+    def __init__(self, param: dict[str, Any]):
+        self.params: dict[str, Any] = param
 
     def add_expansions(self, expansions: DMEventExpansionFilter):
         if expansions:
@@ -326,7 +325,7 @@ class DMExpansionsBuilder:
 # Specific Builders
 class TweetSearchBuilder:
     def __init__(self):
-        self.params: Dict[str, Any] = {"user_auth": False}
+        self.params: dict[str, Any] = {"user_auth": False}
 
     def add_query(self, query: str):
         if query:
@@ -346,7 +345,7 @@ class TweetSearchBuilder:
 
 class TweetPostBuilder:
     def __init__(self):
-        self.params: Dict[str, Any] = {"user_auth": False}
+        self.params: dict[str, Any] = {"user_auth": False}
 
     def add_text(self, text: str | None):
         if text:
@@ -414,7 +413,7 @@ class TweetPostBuilder:
 
 class TweetGetsBuilder:
     def __init__(self):
-        self.params: Dict[str, Any] = {"user_auth": False}
+        self.params: dict[str, Any] = {"user_auth": False}
 
     def add_id(self, tweet_id: list[str]):
         self.params["id"] = tweet_id

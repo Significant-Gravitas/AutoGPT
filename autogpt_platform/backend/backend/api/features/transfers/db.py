@@ -1,7 +1,7 @@
 """Database operations for resource transfer management."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.data.db import prisma
 from backend.util.exceptions import NotFoundError
@@ -181,7 +181,7 @@ async def execute_transfer(
         target_org_id=tr.targetOrganizationId,
     )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = await prisma.transferrequest.update(
         where={"id": transfer_id},
         data={"status": "COMPLETED", "completedAt": now},

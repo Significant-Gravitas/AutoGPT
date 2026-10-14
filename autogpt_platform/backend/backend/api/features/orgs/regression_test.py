@@ -9,7 +9,7 @@ Tests mock at the Prisma model boundary (``ModelName.prisma()``) so the
 real Python logic is exercised while no database connection is needed.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -56,7 +56,7 @@ def _make_graph_row(
     m.recommendedScheduleCron = recommendedScheduleCron
     m.forkedFromId = forkedFromId
     m.forkedFromVersion = forkedFromVersion
-    m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
     m.Nodes = []
     m.organizationId = None
     m.teamId = None
@@ -77,8 +77,8 @@ def _make_execution_row(
     m.agentGraphId = agentGraphId
     m.agentGraphVersion = agentGraphVersion
     m.executionStatus = executionStatus
-    m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    m.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
+    m.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
     m.startedAt = None
     m.endedAt = None
     m.stats = None
@@ -127,7 +127,7 @@ def _make_api_key_row(
     m.status = status
     m.permissions = permissions or []
     m.description = description
-    m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
     m.organizationId = organizationId
     m.ownerType = ownerType
     m.teamIdRestriction = teamIdRestriction
@@ -152,8 +152,8 @@ def _make_chat_session_row(
     m.totalPromptTokens = 0
     m.totalCompletionTokens = 0
     m.chatStatus = "idle"
-    m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    m.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
+    m.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
     m.Messages = []
     m.organizationId = None
     m.teamId = None
@@ -513,7 +513,7 @@ class TestCreditsUserIdIsolation:
         returning the per-user balance."""
         mock_balance = MagicMock()
         mock_balance.balance = 5000
-        mock_balance.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_balance.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
 
         mock_actions = AsyncMock()
         mock_actions.find_unique = AsyncMock(return_value=mock_balance)
@@ -849,7 +849,7 @@ class TestExecutionUserIdIsolationExtended:
         exec_row = _make_execution_row()
         exec_row.isShared = True
         exec_row.shareToken = "tok-public-1234"
-        exec_row.sharedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        exec_row.sharedAt = datetime(2025, 6, 1, tzinfo=UTC)
         # AgentGraph must have real string fields for Pydantic validation
         mock_graph = MagicMock()
         mock_graph.name = "Test Agent"
@@ -905,8 +905,8 @@ def _make_library_agent_row(
     m.isFavorite = isFavorite
     m.isCreatedByUser = isCreatedByUser
     m.useGraphIsActiveVersion = True
-    m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    m.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+    m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
+    m.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
     m.imageUrl = None
     m.folderId = None
     m.settings = "{}"
@@ -1236,7 +1236,7 @@ class TestRegressionStore:
         mock_submission.agentOutputDemoUrl = None
         mock_submission.categories = []
         mock_submission.submissionStatus = "PENDING"
-        mock_submission.submittedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_submission.submittedAt = datetime(2025, 6, 1, tzinfo=UTC)
         mock_submission.changesSummary = "Initial"
         mock_submission.agentGraphId = GRAPH_ID
         mock_submission.agentGraphVersion = GRAPH_VERSION
@@ -1249,7 +1249,7 @@ class TestRegressionStore:
         mock_submission.storeListingId = "listing-1"
         mock_submission.instructions = None
         mock_submission.recommendedScheduleCron = None
-        mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
         with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
@@ -1356,7 +1356,7 @@ class TestRegressionSchedules:
             cron="*/5 * * * *",
             input_data={},
         ).model_dump()
-        owned_job.next_run_time = datetime(2025, 7, 1, tzinfo=timezone.utc)
+        owned_job.next_run_time = datetime(2025, 7, 1, tzinfo=UTC)
         owned_job.trigger = MagicMock()
         owned_job.trigger.timezone = "UTC"
         owned_job.name = "test-job"
@@ -1370,7 +1370,7 @@ class TestRegressionSchedules:
             cron="*/10 * * * *",
             input_data={},
         ).model_dump()
-        other_job.next_run_time = datetime(2025, 7, 1, tzinfo=timezone.utc)
+        other_job.next_run_time = datetime(2025, 7, 1, tzinfo=UTC)
         other_job.trigger = MagicMock()
         other_job.trigger.timezone = "UTC"
         other_job.name = "other-job"
@@ -1399,19 +1399,21 @@ class TestRegressionSchedules:
         scheduler.scheduler = MagicMock()
 
         # Mock the validation to raise (simulating non-ownership)
-        with patch(
-            "backend.executor.scheduler.run_async",
-            side_effect=Exception("Graph not found for user"),
+        with (
+            patch(
+                "backend.executor.scheduler.run_async",
+                side_effect=Exception("Graph not found for user"),
+            ),
+            pytest.raises(Exception, match="Graph not found"),
         ):
-            with pytest.raises(Exception, match="Graph not found"):
-                scheduler.add_graph_execution_schedule(
-                    user_id=USER_ID,
-                    graph_id=GRAPH_ID,
-                    graph_version=1,
-                    cron="*/5 * * * *",
-                    input_data={},
-                    input_credentials={},
-                )
+            scheduler.add_graph_execution_schedule(
+                user_id=USER_ID,
+                graph_id=GRAPH_ID,
+                graph_version=1,
+                cron="*/5 * * * *",
+                input_data={},
+                input_credentials={},
+            )
 
     @pytest.mark.asyncio
     async def test_regression_delete_schedule_requires_ownership(self):
@@ -1432,7 +1434,7 @@ class TestRegressionSchedules:
             input_data={},
         ).model_dump()
         mock_job.id = "sched-123"
-        mock_job.next_run_time = datetime(2025, 7, 1, tzinfo=timezone.utc)
+        mock_job.next_run_time = datetime(2025, 7, 1, tzinfo=UTC)
         mock_job.trigger = MagicMock()
         mock_job.trigger.timezone = "UTC"
         mock_job.name = "test-job"
@@ -1494,7 +1496,7 @@ class TestRegressionShared:
         mock_agent.versions = ["1"]
         mock_agent.graph_id = GRAPH_ID
         mock_agent.graph_versions = ["1"]
-        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=UTC)
         mock_agent.recommended_schedule_cron = None
 
         mock_actions = AsyncMock()
@@ -1572,8 +1574,8 @@ class TestRegressionUserSettings:
         mock_user.emailVerified = True
         mock_user.name = "Test"
         mock_user.metadata = "{}"
-        mock_user.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
-        mock_user.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_user.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
+        mock_user.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
         mock_user.isEnabled = True
         mock_user.timezone = "US/Eastern"
         mock_user.integrations = ""
@@ -1795,8 +1797,8 @@ class TestPR10WebhookTenancy:
         mock_review = MagicMock()
         mock_review.nodeExecId = "node-1"
         mock_review.status = "WAITING"
-        mock_review.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
-        mock_review.updatedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_review.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
+        mock_review.updatedAt = datetime(2025, 6, 1, tzinfo=UTC)
         mock_review.payload = "{}"
         mock_review.instructions = "Review this"
         mock_review.editable = True
@@ -2157,7 +2159,7 @@ class TestPR15MarketplaceOrg:
         mock_submission.agentOutputDemoUrl = None
         mock_submission.categories = []
         mock_submission.submissionStatus = "PENDING"
-        mock_submission.submittedAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_submission.submittedAt = datetime(2025, 6, 1, tzinfo=UTC)
         mock_submission.changesSummary = "Initial"
         mock_submission.agentGraphId = GRAPH_ID
         mock_submission.agentGraphVersion = GRAPH_VERSION
@@ -2170,7 +2172,7 @@ class TestPR15MarketplaceOrg:
         mock_submission.storeListingId = "listing-1"
         mock_submission.instructions = None
         mock_submission.recommendedScheduleCron = None
-        mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_submission.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
         self.mock_slv_actions.create = AsyncMock(return_value=mock_submission)
 
         with patch("backend.api.features.store.db.transaction") as mock_tx_ctx:
@@ -2292,7 +2294,7 @@ class TestPR15MarketplaceOrg:
         mock_agent.versions = ["1"]
         mock_agent.graph_id = GRAPH_ID
         mock_agent.graph_versions = ["1"]
-        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=UTC)
         mock_agent.recommended_schedule_cron = None
         mock_agent.owning_org_id = "org-1"
 
@@ -2327,7 +2329,7 @@ class TestPR15MarketplaceOrg:
         mock_agent.versions = ["1"]
         mock_agent.graph_id = GRAPH_ID
         mock_agent.graph_versions = ["1"]
-        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        mock_agent.updated_at = datetime(2025, 6, 1, tzinfo=UTC)
         mock_agent.recommended_schedule_cron = None
 
         mock_actions = AsyncMock()
@@ -2545,7 +2547,7 @@ class TestPR16Transfers:
         m.targetApprovedByUserId = target_approved_by
         m.completedAt = completed_at
         m.reason = reason
-        m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
         return m
 
     @pytest.mark.asyncio
@@ -2663,7 +2665,7 @@ class TestPR16Transfers:
             status="COMPLETED",
             source_approved_by=USER_ID,
             target_approved_by="user-target",
-            completed_at=datetime(2025, 7, 1, tzinfo=timezone.utc),
+            completed_at=datetime(2025, 7, 1, tzinfo=UTC),
         )
         self.mock_prisma.transferrequest.update = AsyncMock(return_value=completed)
         self.mock_prisma.agentgraph.update_many = AsyncMock(return_value=1)
@@ -3227,7 +3229,7 @@ class TestReviewFindings:
         m.avatarUrl = overrides.get("avatarUrl", None)
         m.description = overrides.get("description", None)
         m.isPersonal = overrides.get("isPersonal", False)
-        m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
         m.deletedAt = None
         m.Members = []
         return m
@@ -3255,12 +3257,8 @@ class TestReviewFindings:
         m.isAdmin = overrides.get("isAdmin", False)
         m.isBillingManager = overrides.get("isBillingManager", False)
         m.token = overrides.get("token", "secret-token-abc")
-        m.expiresAt = overrides.get(
-            "expiresAt", datetime(2099, 1, 1, tzinfo=timezone.utc)
-        )
-        m.createdAt = overrides.get(
-            "createdAt", datetime(2025, 6, 1, tzinfo=timezone.utc)
-        )
+        m.expiresAt = overrides.get("expiresAt", datetime(2099, 1, 1, tzinfo=UTC))
+        m.createdAt = overrides.get("createdAt", datetime(2025, 6, 1, tzinfo=UTC))
         m.acceptedAt = overrides.get("acceptedAt", None)
         m.revokedAt = overrides.get("revokedAt", None)
         m.teamIds = overrides.get("teamIds", [])
@@ -3281,7 +3279,7 @@ class TestReviewFindings:
         m.targetApprovedByUserId = overrides.get("targetApprovedByUserId", None)
         m.completedAt = overrides.get("completedAt", None)
         m.reason = overrides.get("reason", None)
-        m.createdAt = datetime(2025, 6, 1, tzinfo=timezone.utc)
+        m.createdAt = datetime(2025, 6, 1, tzinfo=UTC)
         return m
 
     # ------------------------------------------------------------------
@@ -3316,7 +3314,7 @@ class TestReviewFindings:
     async def test_decline_already_accepted_invitation_blocked(self):
         """Cannot decline an invitation that was already accepted."""
         accepted_inv = self._make_invitation(
-            acceptedAt=datetime(2025, 6, 15, tzinfo=timezone.utc),
+            acceptedAt=datetime(2025, 6, 15, tzinfo=UTC),
         )
 
         declining_user = MagicMock()
@@ -3342,7 +3340,7 @@ class TestReviewFindings:
     async def test_decline_already_revoked_invitation_blocked(self):
         """Cannot decline an invitation that was already revoked."""
         revoked_inv = self._make_invitation(
-            revokedAt=datetime(2025, 6, 15, tzinfo=timezone.utc),
+            revokedAt=datetime(2025, 6, 15, tzinfo=UTC),
         )
 
         declining_user = MagicMock()

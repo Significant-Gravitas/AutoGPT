@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -32,6 +32,7 @@ from backend.data.execution_cost_summary import (
 from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.settings import Settings
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 from .briefing import without_summaries
@@ -39,6 +40,7 @@ from .compose import compose_home_dashboard
 from .models import HomeDashboardResponse
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 _EXECUTION_LIMIT = 300
 _REVIEW_LIMIT = 100
@@ -65,7 +67,7 @@ async def build_home_dashboard(
     user_id: str,
     ctx: RequestContext | None = None,
 ) -> HomeDashboardResponse:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
     data = await _load_home_source_data(
         user_id=user_id,
@@ -225,8 +227,13 @@ async def _get_schedules(
     # Deliberately owner-scoped: executions, reviews and cost totals on this page
     # are all personal, so org/team schedules would surface upcoming runs whose
     # outcomes and approvals could never appear anywhere else on the dashboard.
+    # Bounded like the library's schedule badges: a slow scheduler costs the
+    # upcoming-runs rows, not the whole dashboard.
     try:
-        return await get_scheduler_client().get_execution_schedules(user_id=user_id)
+        return await asyncio.wait_for(
+            get_scheduler_client().get_execution_schedules(user_id=user_id),
+            timeout=settings.config.schedule_read_timeout_seconds,
+        )
     except Exception:
         logger.warning(
             "Home could not load schedules for user %s", user_id[:_LOG_ID_CHARS]

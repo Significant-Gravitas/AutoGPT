@@ -1,5 +1,4 @@
 import re
-from typing import Set
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -10,7 +9,7 @@ class SecurityHeadersMiddleware:
     disabled by default for all endpoints except those explicitly allowed.
     """
 
-    CACHEABLE_PATHS: Set[str] = {
+    CACHEABLE_PATHS: set[str] = {
         # Static assets
         "/static",
         "/_next/static",

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated, Literal, cast
 from urllib.parse import urlparse
 
@@ -18,7 +18,6 @@ from fastapi import (
 )
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
-from typing_extensions import Optional
 
 from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
@@ -48,6 +47,7 @@ from backend.data.credit import (
 )
 from backend.data.notifications import PassWorkEvent, PassWorkKind
 from backend.data.redis_client import get_redis_async
+from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import AnotherPlanLive
 from backend.data.subscription_trial import TrialState
@@ -74,19 +74,6 @@ from backend.util.settings import Settings
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-# The card is fine but the bank wants 3DS. Stripe documents
-# ``authentication_required`` (also a ``card_declined`` decline code) and
-# ``invoice_payment_intent_requires_action`` for an invoice payment that needs
-# action; ``subscription_payment_intent_requires_action`` is kept because it has
-# been reported for Subscription.modify under ``error_if_incomplete``.
-_SCA_CARD_ERROR_CODES = frozenset(
-    {
-        "authentication_required",
-        "invoice_payment_intent_requires_action",
-        "subscription_payment_intent_requires_action",
-    }
-)
-
 # No router-level auth: /credits/stripe_webhook is authenticated by Stripe's
 # signature, not by a user, so each route keeps its own dependency.
 router = APIRouter()
@@ -97,7 +84,7 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
-    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
+    surface: Literal["onboarding", "paywall_gate", "billing"] | None = Field(
         default=None,
         description="Where the plan was picked; analytics only.",
     )
@@ -142,7 +129,7 @@ class SubscriptionStatusResponse(BaseModel):
             " auto-charge when True, redirect to Stripe Checkout when False."
         ),
     )
-    current_period_end: Optional[int] = Field(
+    current_period_end: int | None = Field(
         default=None,
         description=(
             "Unix timestamp of the active subscription's current_period_end. Used"
@@ -150,9 +137,9 @@ class SubscriptionStatusResponse(BaseModel):
             " upgrade charges, if any). None when no active sub."
         ),
     )
-    pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
-    pending_tier_effective_at: Optional[datetime] = None
-    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
+    pending_tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"] | None = None
+    pending_tier_effective_at: datetime | None = None
+    pending_billing_cycle: Literal["monthly", "yearly"] | None = Field(
         default=None,
         description=(
             "Billing cycle of the queued change, when resolvable. Set alongside"
@@ -167,8 +154,10 @@ class SubscriptionStatusResponse(BaseModel):
         default="",
         description=(
             "Populated only when POST /credits/subscription starts a Stripe Checkout"
-            " Session (BASIC → paid upgrade). Empty string in all other branches —"
-            " the client redirects to this URL when non-empty."
+            " Session (BASIC → paid upgrade), or when a trial ending early needs"
+            " the customer's bank to confirm its payment, on Stripe's invoice page."
+            " Empty string in all other branches — the client sends the customer"
+            " to this URL when non-empty."
         ),
     )
 
@@ -509,19 +498,17 @@ async def update_subscription_tier(
 
     # Modify in place if there's a sub; else fall through to Checkout below.
     try:
-        modified = await _change_plan_in_place(
-            user_id, tier, request.billing_cycle, pending_trial
-        )
-        if modified:
-            status = await get_subscription_status(user_id)
-            if converts_trial and status.tier != tier.value:
-                # Stripe charged the card but the reconcile did not see a
-                # conversion; the person needs the paid plan they bought.
-                logger.error(
-                    f"Trial conversion for user {user_id} left tier"
-                    f" {status.tier}, not {tier.value}"
-                )
-            return status
+        if pending_trial is not None:
+            return await _convert_trial(
+                user_id,
+                pending_trial,
+                tier,
+                None if converts_trial else target_price_id,
+            )
+        if await modify_stripe_subscription_for_tier(
+            user_id, tier, request.billing_cycle
+        ):
+            return await get_subscription_status(user_id)
     except TrialConversionRefused as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
@@ -531,7 +518,7 @@ async def update_subscription_tier(
         # modify was rolled back, so 402 lets the UI prompt for a new card or
         # surface SCA. SCA codes mean the card is fine but the bank wants 3DS —
         # different message so the user doesn't try a new card.
-        if _requires_authentication(e):
+        if requires_authentication(e):
             logger.warning(
                 "SCA required on subscription upgrade for user %s: %s", user_id, e
             )
@@ -700,44 +687,30 @@ async def update_subscription_tier(
     return status
 
 
-async def _change_plan_in_place(
+async def _convert_trial(
     user_id: str,
+    trial: TrialState,
     tier: SubscriptionTier,
-    billing_cycle: Literal["monthly", "yearly"],
-    pending_trial: TrialState | None,
-) -> bool:
-    """Change the plan without Checkout; False means Checkout is needed.
+    price_id: str | None,
+) -> SubscriptionStatusResponse:
+    """Start the chosen plan on the cancel-pending trial's own subscription.
 
-    A cancel-pending trial choosing the plan it accepted converts in place.
-    Any other plan is a new subscription through Checkout, and the
-    stale-subscription cleanup ends the trial once that plan is active.
+    Stripe limits a customer to one subscription, so Checkout would refuse a
+    plan beside the trial. A bank that wants to confirm the payment gets
+    Stripe's invoice page as ``url``; nothing changes until it is paid.
     """
-    if pending_trial is None:
-        return await modify_stripe_subscription_for_tier(user_id, tier, billing_cycle)
-    if not is_trial_plan(pending_trial, tier, billing_cycle):
-        return False
-    try:
-        converted = await convert_cancel_pending_trial(pending_trial)
-    except stripe.CardError as e:
-        if not _requires_authentication(e):
-            raise
-        # Only an on-session Checkout can complete 3DS. The failed charge left
-        # the trial untouched, and the stale-subscription cleanup ends it once
-        # the Checkout plan is active.
-        logger.warning(
-            f"SCA required on trial conversion for user {user_id}; using Checkout: {e}"
+    payment_page = await convert_cancel_pending_trial(trial, tier, price_id)
+    status = await get_subscription_status(user_id)
+    if payment_page:
+        status.url = payment_page
+    elif status.tier != tier.value:
+        # Stripe charged the card but the reconcile did not see a
+        # conversion; the person needs the paid plan they bought.
+        logger.error(
+            f"Trial conversion for user {user_id} left tier {status.tier},"
+            f" not {tier.value}"
         )
-        return False
-    if not converted:
-        logger.info(f"Trial conversion for user {user_id} needs a card; using Checkout")
-    return converted
-
-
-def _requires_authentication(error: stripe.CardError) -> bool:
-    decline_code = error.error.decline_code if error.error else None
-    return (
-        error.code in _SCA_CARD_ERROR_CODES or decline_code == "authentication_required"
-    )
+    return status
 
 
 def _stripe_event_dedup_key(event_id: str) -> str:
@@ -809,7 +782,7 @@ async def _notify_checkout_completed(session: dict) -> None:
         PassWorkEvent(
             kind=PassWorkKind.WELCOME,
             user_id="",
-            scheduled_for=datetime.now(tz=timezone.utc),
+            scheduled_for=datetime.now(tz=UTC),
             context={"session_id": str(session_id)},
         ).model_dump_json(),
     )

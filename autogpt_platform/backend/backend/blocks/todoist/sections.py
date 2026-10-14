@@ -1,5 +1,4 @@
 from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
 
 from backend.blocks._base import (
     Block,
@@ -25,7 +24,7 @@ class TodoistListSectionsBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Optional project ID to filter sections"
         )
 
@@ -82,7 +81,7 @@ class TodoistListSectionsBlock(Block):
 
     @staticmethod
     def get_section_lists(
-        credentials: TodoistCredentials, project_id: Optional[str] = None
+        credentials: TodoistCredentials, project_id: str | None = None
     ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())

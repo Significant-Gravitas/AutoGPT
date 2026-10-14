@@ -1,7 +1,7 @@
 import base64
 import io
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -33,8 +33,8 @@ def _make_workspace() -> Workspace:
     return Workspace(
         id="ws-001",
         user_id="test-user-id",
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -42,8 +42,8 @@ def _make_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": "file-001",
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
         "name": "test.bin",
         "path": "/test.bin",
         "storage_path": "local://test.bin",
@@ -151,6 +151,23 @@ def test_office_preview_extracts_embedded_thumbnail(mocker):
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/webp"
+
+
+@pytest.mark.parametrize("mime_type", ["text/plain", "application/octet-stream"])
+@pytest.mark.parametrize("name", ["deck.pptx", "report.docx", "sheet.xlsx"])
+def test_office_preview_by_extension_despite_wrong_mime(mocker, name, mime_type):
+    # Office files often store with a wrong MIME; the extension must still
+    # route them to thumbnail extraction instead of raw text bytes or a 415.
+    _mock_lookups(mocker, _make_file(name=name, path=f"/{name}", mime_type=mime_type))
+    storage = _mock_storage(mocker, _zip_bytes(with_thumbnail=True))
+    _mock_redis(mocker)
+
+    response = client.get("/files/file-001/preview")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/webp"
+    assert response.content[:4] == b"RIFF"
+    storage.retrieve_partial.assert_not_called()
 
 
 def test_office_preview_without_thumbnail_returns_415(mocker):

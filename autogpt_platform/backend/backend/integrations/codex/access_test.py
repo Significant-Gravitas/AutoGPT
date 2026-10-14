@@ -36,9 +36,8 @@ async def test_execution_gate_translates_entitlement_error_to_paywall_error():
         "require_entitlement",
         new_callable=AsyncMock,
         side_effect=denied,
-    ):
-        with pytest.raises(UserPaywalledError, match="Max plan"):
-            await access.enforce_codex_access("user-1")
+    ), pytest.raises(UserPaywalledError, match="Max plan"):
+        await access.enforce_codex_access("user-1")
 
 
 @pytest.mark.asyncio
@@ -52,9 +51,8 @@ async def test_http_gate_translates_entitlement_error_to_payment_required():
         "require_entitlement",
         new_callable=AsyncMock,
         side_effect=denied,
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await access.enforce_codex_access_http("user-1")
+    ), pytest.raises(HTTPException) as exc_info:
+        await access.enforce_codex_access_http("user-1")
 
     assert exc_info.value.status_code == 402
     assert exc_info.value.detail == access.CODEX_MINIMUM_PLAN_ERROR
@@ -67,9 +65,8 @@ async def test_access_gate_propagates_tier_lookup_errors():
         "require_entitlement",
         new_callable=AsyncMock,
         side_effect=RuntimeError("database unavailable"),
-    ):
-        with pytest.raises(RuntimeError, match="database unavailable"):
-            await access.enforce_codex_access("user-1")
+    ), pytest.raises(RuntimeError, match="database unavailable"):
+        await access.enforce_codex_access("user-1")
 
 
 @pytest.mark.asyncio
@@ -79,9 +76,8 @@ async def test_http_gate_maps_tier_lookup_errors_to_service_unavailable():
         "require_entitlement",
         new_callable=AsyncMock,
         side_effect=RuntimeError("database unavailable"),
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await access.enforce_codex_access_http("user-1")
+    ), pytest.raises(HTTPException) as exc_info:
+        await access.enforce_codex_access_http("user-1")
 
     assert exc_info.value.status_code == 503
     assert exc_info.value.headers == {"Retry-After": "30"}

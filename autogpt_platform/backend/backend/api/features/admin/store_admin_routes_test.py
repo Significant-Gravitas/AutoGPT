@@ -7,7 +7,7 @@ Tests are organized by what they protect:
   and add-to-library uses get_graph_as_admin (not get_graph)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -194,7 +194,7 @@ async def test_preview_queries_store_listing_version_not_store_agent() -> None:
     mock_slv.version = 1
     mock_slv.agentGraphId = GRAPH_ID
     mock_slv.agentGraphVersion = GRAPH_VERSION
-    mock_slv.updatedAt = datetime(2026, 3, 24, tzinfo=timezone.utc)
+    mock_slv.updatedAt = datetime(2026, 3, 24, tzinfo=UTC)
     mock_slv.recommendedScheduleCron = "0 9 * * *"
 
     mock_listing = MagicMock()

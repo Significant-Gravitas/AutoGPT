@@ -3,7 +3,8 @@ import inspect
 import logging
 import time
 import uuid
-from typing import Sequence, cast
+from collections.abc import Sequence
+from typing import cast
 
 from autogpt_libs.auth import get_user_id
 

@@ -3,7 +3,7 @@ import contextlib
 import logging
 import platform
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 import fastapi
 import fastapi.responses
@@ -69,7 +69,6 @@ import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
 import backend.api.features.store.skill_routes
-import backend.api.features.subscription_trial_routes as subscription_trial_routes
 import backend.api.features.transfers.routes as transfer_routes
 import backend.api.features.user.routes as user_routes
 import backend.api.features.workspace.folder_routes as workspace_folder_routes
@@ -85,6 +84,7 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
+from backend.api.features import subscription_trial_routes
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
@@ -107,8 +107,8 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
-from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
+from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -127,18 +127,6 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
-
-
-@contextlib.contextmanager
-def feature_flag_context():
-    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_feature_flags()
-        try:
-            yield
-        finally:
-            shutdown_feature_flags()
-    else:
-        yield
 
 
 @contextlib.asynccontextmanager
@@ -203,8 +191,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with feature_flag_context():
-        yield
+    yield
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
@@ -318,7 +305,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.exception(
                     "%s %s failed. Investigate and resolve the underlying issue: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     exc,
                     exc_info=exc,
                 )
@@ -326,7 +313,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.warning(
                     "%s %s failed with %d: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     status_code,
                     exc,
                 )
@@ -354,7 +341,7 @@ async def validation_error_handler(
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
-        request.url.path,
+        redact_url(request.url.path),
         exc,
     )
     errors: list | str
@@ -717,8 +704,8 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_graph(
         graph_id: str,
         user_id: str,
-        graph_version: Optional[int] = None,
-        node_input: Optional[dict[str, Any]] = None,
+        graph_version: int | None = None,
+        node_input: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 
@@ -875,7 +862,7 @@ class AgentServer(backend.util.service.AppProcess):
     async def test_execute_preset(
         preset_id: str,
         user_id: str,
-        inputs: Optional[dict[str, Any]] = None,
+        inputs: dict[str, Any] | None = None,
     ):
         from autogpt_libs.auth.models import RequestContext
 

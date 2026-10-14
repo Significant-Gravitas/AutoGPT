@@ -1,6 +1,6 @@
 """Route tests: domain exceptions → HTTPException status codes."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -60,12 +60,14 @@ class TestTokenInfoRouteTranslation:
         db = _db_mock(
             get_link_token_info=AsyncMock(side_effect=NotFoundError("missing"))
         )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await get_link_token_info_route(token="abc")
+            await get_link_token_info_route(token="abc")
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -77,12 +79,14 @@ class TestTokenInfoRouteTranslation:
         db = _db_mock(
             get_link_token_info=AsyncMock(side_effect=LinkTokenExpiredError("expired"))
         )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await get_link_token_info_route(token="abc")
+            await get_link_token_info_route(token="abc")
         assert exc.value.status_code == 410
 
 
@@ -101,12 +105,14 @@ class TestConfirmLinkRouteTranslation:
         from backend.api.features.platform_linking.routes import confirm_link_token
 
         db = _db_mock(confirm_server_link=AsyncMock(side_effect=exc))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as ctx,
         ):
-            with pytest.raises(HTTPException) as ctx:
-                await confirm_link_token(token="abc", user_id="u1")
+            await confirm_link_token(token="abc", user_id="u1")
         assert ctx.value.status_code == expected_status
 
 
@@ -125,12 +131,14 @@ class TestConfirmUserLinkRouteTranslation:
         from backend.api.features.platform_linking.routes import confirm_user_link_token
 
         db = _db_mock(confirm_user_link=AsyncMock(side_effect=exc))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as ctx,
         ):
-            with pytest.raises(HTTPException) as ctx:
-                await confirm_user_link_token(token="abc", user_id="u1")
+            await confirm_user_link_token(token="abc", user_id="u1")
         assert ctx.value.status_code == expected_status
 
 
@@ -142,12 +150,14 @@ class TestDeleteLinkRouteTranslation:
         db = _db_mock(
             delete_server_link=AsyncMock(side_effect=NotFoundError("missing"))
         )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_link(link_id="x", user_id="u1")
+            await delete_link(link_id="x", user_id="u1")
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -157,12 +167,14 @@ class TestDeleteLinkRouteTranslation:
         db = _db_mock(
             delete_server_link=AsyncMock(side_effect=NotAuthorizedError("nope"))
         )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_link(link_id="x", user_id="u1")
+            await delete_link(link_id="x", user_id="u1")
         assert exc.value.status_code == 403
 
 
@@ -172,12 +184,14 @@ class TestDeleteUserLinkRouteTranslation:
         from backend.api.features.platform_linking.routes import delete_user_link_route
 
         db = _db_mock(delete_user_link=AsyncMock(side_effect=NotFoundError("missing")))
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_user_link_route(link_id="x", user_id="u1")
+            await delete_user_link_route(link_id="x", user_id="u1")
         assert exc.value.status_code == 404
 
     @pytest.mark.asyncio
@@ -187,12 +201,14 @@ class TestDeleteUserLinkRouteTranslation:
         db = _db_mock(
             delete_user_link=AsyncMock(side_effect=NotAuthorizedError("nope"))
         )
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await delete_user_link_route(link_id="x", user_id="u1")
+            await delete_user_link_route(link_id="x", user_id="u1")
         assert exc.value.status_code == 403
 
 
@@ -361,7 +377,7 @@ class TestListBotPlatforms:
             platform="DISCORD",
             platform_user_id="discord-user-1",
             platform_username="bently",
-            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            linked_at=datetime(2026, 5, 1, tzinfo=UTC),
         )
         server_a = PlatformLinkInfo(
             id="srv-a",
@@ -369,7 +385,7 @@ class TestListBotPlatforms:
             platform_server_id="111",
             owner_platform_user_id="discord-user-1",
             server_name="Server A",
-            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            linked_at=datetime(2026, 5, 1, tzinfo=UTC),
         )
         server_b = PlatformLinkInfo(
             id="srv-b",
@@ -377,7 +393,7 @@ class TestListBotPlatforms:
             platform_server_id="222",
             owner_platform_user_id="discord-user-1",
             server_name="Server B",
-            linked_at=datetime(2026, 5, 2, tzinfo=timezone.utc),
+            linked_at=datetime(2026, 5, 2, tzinfo=UTC),
         )
         db = _db_mock(
             list_user_links=AsyncMock(return_value=[dm_link]),
@@ -408,14 +424,14 @@ class TestListBotPlatforms:
             platform="DISCORD",
             platform_user_id="discord-user-2",
             platform_username="newer-handle",
-            linked_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+            linked_at=datetime(2026, 5, 10, tzinfo=UTC),
         )
         older = PlatformUserLinkInfo(
             id="dm-old",
             platform="DISCORD",
             platform_user_id="discord-user-1",
             platform_username="older-handle",
-            linked_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            linked_at=datetime(2026, 5, 1, tzinfo=UTC),
         )
         db = _db_mock(
             list_user_links=AsyncMock(return_value=[newer, older]),
@@ -478,13 +494,13 @@ class TestTelegramLoginVerification:
                 "backend.api.features.platform_linking.routes.verify_login",
                 return_value=None,
             ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await confirm_user_link_token(
-                    "tok",
-                    "user-1",
-                    body=ConfirmLinkRequest(telegram_auth={"id": "1", "hash": "x"}),
-                )
+            await confirm_user_link_token(
+                "tok",
+                "user-1",
+                body=ConfirmLinkRequest(telegram_auth={"id": "1", "hash": "x"}),
+            )
         assert exc.value.status_code == 403
         confirm.assert_not_awaited()
 
@@ -537,12 +553,14 @@ class TestTelegramLoginVerification:
 
         confirm = AsyncMock(side_effect=NotAuthorizedError("different user"))
         db = _db_mock(confirm_user_link=confirm)
-        with patch(
-            "backend.api.features.platform_linking.routes.platform_linking_db",
-            return_value=db,
+        with (
+            patch(
+                "backend.api.features.platform_linking.routes.platform_linking_db",
+                return_value=db,
+            ),
+            pytest.raises(HTTPException) as exc,
         ):
-            with pytest.raises(HTTPException) as exc:
-                await confirm_user_link_token("tok", "user-1", body=None)
+            await confirm_user_link_token("tok", "user-1", body=None)
         assert exc.value.status_code == 403
 
 

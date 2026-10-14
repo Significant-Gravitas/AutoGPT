@@ -16,12 +16,12 @@ import json
 import logging
 import posixpath
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextvars import ContextVar
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID
 
 from prisma.enums import ReviewStatus

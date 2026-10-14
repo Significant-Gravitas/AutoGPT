@@ -1,16 +1,14 @@
 import inspect
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Generic,
     Literal,
-    Optional,
-    Type,
     TypeAlias,
     TypeVar,
     cast,
@@ -164,8 +162,8 @@ class TokenRateDisplay(BaseModel):
 
     input_usd_per_1m: float = Field(ge=0)
     output_usd_per_1m: float = Field(ge=0)
-    cache_read_usd_per_1m: Optional[float] = Field(default=None, ge=0)
-    cache_creation_usd_per_1m: Optional[float] = Field(default=None, ge=0)
+    cache_read_usd_per_1m: float | None = Field(default=None, ge=0)
+    cache_creation_usd_per_1m: float | None = Field(default=None, ge=0)
 
 
 class BlockCost(BaseModel):
@@ -182,13 +180,13 @@ class BlockCost(BaseModel):
     # LLM-specific display rate card. None on non-LLM blocks and on LLM
     # entries whose model isn't in TOKEN_COST yet (those render
     # "Pay-as-you-go" / flat-tier).
-    token_rate: Optional[TokenRateDisplay] = None
+    token_rate: TokenRateDisplay | None = None
 
     def __init__(
         self,
         cost_amount: int,
         cost_type: BlockCostType = BlockCostType.RUN,
-        cost_filter: Optional[BlockInput] = None,
+        cost_filter: BlockInput | None = None,
         cost_divisor: int = 1,
         **data: Any,
     ) -> None:
@@ -494,8 +492,6 @@ class BlockSchemaInput(BlockSchema):
     All block input schemas should extend this class for consistency.
     """
 
-    pass
-
 
 class BlockSchemaOutput(BlockSchema):
     """
@@ -592,16 +588,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         description: str = "",
         contributors: list["ContributorDetails"] = [],
         categories: set[BlockCategory] | None = None,
-        input_schema: Type[BlockSchemaInputType] = EmptyInputSchema,
-        output_schema: Type[BlockSchemaOutputType] = EmptyOutputSchema,
+        input_schema: type[BlockSchemaInputType] = EmptyInputSchema,
+        output_schema: type[BlockSchemaOutputType] = EmptyOutputSchema,
         test_input: BlockInput | list[BlockInput] | None = None,
         test_output: BlockTestOutput | list[BlockTestOutput] | None = None,
         test_mock: dict[str, Any] | None = None,
-        test_credentials: Optional[Credentials | dict[str, Credentials]] = None,
+        test_credentials: Credentials | dict[str, Credentials] | None = None,
         disabled: bool = False,
         static_output: bool = False,
         block_type: BlockType = BlockType.STANDARD,
-        webhook_config: Optional[BlockWebhookConfig | BlockManualWebhookConfig] = None,
+        webhook_config: BlockWebhookConfig | BlockManualWebhookConfig | None = None,
         is_irreversible_action: bool = False,
         capability_kind: CapabilityKind | None = None,
         effect: BlockEffect | None = None,
@@ -719,7 +715,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             output_data: The data for the output_name, matching the defined schema.
         """
         # --- satisfy the type checker, never executed -------------
-        if False:  # noqa: SIM115
+        if False:
             yield "name", "value"  # pyright: ignore[reportMissingYield]
         raise NotImplementedError(f"{self.name} does not implement the run method.")
 

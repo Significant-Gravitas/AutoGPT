@@ -1,5 +1,3 @@
-from typing import Optional
-
 import pydantic
 
 from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
@@ -8,7 +6,7 @@ from backend.data.auth.api_key import APIKeyInfo, APIKeyPermission
 class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
     permissions: list[APIKeyPermission]
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class CreateAPIKeyResponse(pydantic.BaseModel):

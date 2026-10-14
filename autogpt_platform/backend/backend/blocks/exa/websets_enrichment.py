@@ -6,7 +6,7 @@ allowing extraction of additional structured data from existing items.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from exa_py import AsyncExa
 from exa_py.websets.types import WebsetEnrichment as SdkWebsetEnrichment
@@ -36,12 +36,12 @@ class WebsetEnrichmentModel(BaseModel):
     id: str
     webset_id: str
     status: str
-    title: Optional[str]
+    title: str | None
     description: str
     format: str
-    options: List[str]
-    instructions: Optional[str]
-    metadata: Dict[str, Any]
+    options: list[str]
+    instructions: str | None
+    metadata: dict[str, Any]
     created_at: str
     updated_at: str
 
@@ -108,7 +108,7 @@ class ExaCreateEnrichmentBlock(Block):
             description="What data to extract from each item",
             placeholder="Extract the company's main product or service offering",
         )
-        title: Optional[str] = SchemaField(
+        title: str | None = SchemaField(
             default=None,
             description="Short title for this enrichment (auto-generated if not provided)",
             placeholder="Main Product",
@@ -127,7 +127,7 @@ class ExaCreateEnrichmentBlock(Block):
             default=True,
             description="Apply this enrichment to existing items in the webset",
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Metadata to attach to the enrichment",
             advanced=True,
@@ -160,10 +160,10 @@ class ExaCreateEnrichmentBlock(Block):
         instructions: str = SchemaField(
             description="Generated instructions for the enrichment"
         )
-        items_enriched: Optional[int] = SchemaField(
+        items_enriched: int | None = SchemaField(
             description="Number of items enriched (if wait_for_completion was True)"
         )
-        completion_time: Optional[float] = SchemaField(
+        completion_time: float | None = SchemaField(
             description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
 
@@ -369,19 +369,19 @@ class ExaUpdateEnrichmentBlock(Block):
             description="The ID of the enrichment to update",
             placeholder="enrichment-id",
         )
-        description: Optional[str] = SchemaField(
+        description: str | None = SchemaField(
             default=None,
             description="New description for what data to extract",
         )
-        format: Optional[EnrichmentFormat] = SchemaField(
+        format: EnrichmentFormat | None = SchemaField(
             default=None,
             description="New format for the extracted data",
         )
-        options: Optional[list[str]] = SchemaField(
+        options: list[str] | None = SchemaField(
             default=None,
             description="New options when format is 'options'",
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="New metadata to attach to the enrichment",
         )

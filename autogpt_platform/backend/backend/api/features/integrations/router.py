@@ -2,8 +2,8 @@ import asyncio
 import logging
 import secrets
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
+from datetime import datetime
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
 from fastapi import (
@@ -33,7 +33,6 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -43,7 +42,6 @@ from backend.data.model import (
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
-from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
     has_codex_access_for_discovery,
@@ -60,13 +58,13 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import (
-    ensure_managed_credential,
-    ensure_managed_credentials,
-)
-from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.managed_providers.ayrshare import (
-    settings_available as ayrshare_settings_available,
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
@@ -87,7 +85,6 @@ from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
-    MissingConfigError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -471,7 +468,7 @@ async def _exchange_code_for_credentials(
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
+            detail=f"OAuth2 callback failed to exchange code for tokens: {e!s}",
         ) from e
 
     return credentials
@@ -874,7 +871,7 @@ async def _ensure_managed_credentials_bounded(user_id: str) -> None:
             ensure_managed_credentials(user_id, creds_manager.store),
             timeout=_MANAGED_PROVISION_TIMEOUT_S,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         report_credential_failure(
             logger,
             CredentialFailure.MANAGED_PROVISIONING_LATE,
@@ -1951,89 +1948,20 @@ async def get_ayrshare_sso_url(
     hosted social-linking page; all profile lifecycle logic lives with the
     managed provider.
     """
-    if not ayrshare_settings_available():
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
     try:
-        client = AyrshareClient()
-    except MissingConfigError:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
-    # On-demand provisioning: AyrshareManagedProvider opts out of the
-    # credentials sweep (profile quota is per-user subscription-bound).  This
-    # endpoint is the only trigger that provisions a profile — one Ayrshare
-    # profile per user who actually opens the connect flow, not one per
-    # every authenticated user.
-    provisioned = await ensure_managed_credential(
-        user_id, creds_manager.store, AyrshareManagedProvider()
-    )
-    if not provisioned:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-
-    ayrshare_creds = [
-        c
-        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
-        if c.is_managed and isinstance(c, APIKeyCredentials)
-    ]
-    if not ayrshare_creds:
-        logger.error(
-            "Ayrshare credential provisioning did not produce a credential for user %s",
-            user_id,
-        )
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
-
-    private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
-    max_expiry_minutes = 2880
-    try:
-        jwt_response = await client.generate_jwt(
-            private_key=private_key,
-            profile_key=profile_key_str,
-            # `allowed_social` is the set of networks the Ayrshare-hosted
-            # social-linking page will *offer* the user to connect.  Blocks
-            # exist for more platforms than are listed here; the list is
-            # deliberately narrower so the rollout can verify each network
-            # end-to-end before widening the user-visible surface.  Keep
-            # in sync with tested platforms — extend as each is verified
-            # against the block + Ayrshare's network-specific quirks.
-            allowed_social=[
-                SocialPlatform.TWITTER,
-                SocialPlatform.LINKEDIN,
-                SocialPlatform.INSTAGRAM,
-                SocialPlatform.YOUTUBE,
-                SocialPlatform.TIKTOK,
-            ],
-            expires_in=max_expiry_minutes,
-            verify=True,
-        )
-    except Exception as exc:
-        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
-        )
-
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
-    return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
+        link = await get_ayrshare_sso_link(user_id, creds_manager.store)
+    except AyrshareNotConfiguredError as exc:
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except AyrshareProvisioningError as exc:
+        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return AyrshareSSOResponse(sso_url=link.url, expires_at=link.expires_at)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
-@router.get("/providers", response_model=List[ProviderMetadata])
+@router.get("/providers", response_model=list[ProviderMetadata])
 async def list_providers(
     user_id: Annotated[str | None, Security(get_optional_user_id)],
-) -> List[ProviderMetadata]:
+) -> list[ProviderMetadata]:
     """
     Get metadata for every available provider.
 
@@ -2089,8 +2017,8 @@ async def list_providers(
     ]
 
 
-@router.get("/providers/system", response_model=List[str])
-async def list_system_providers() -> List[str]:
+@router.get("/providers/system", response_model=list[str])
+async def list_system_providers() -> list[str]:
     """
     Get a list of providers that have platform credits (system credentials) available.
 

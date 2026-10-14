@@ -15,6 +15,7 @@ from .mailerlite_backfill import (
     mailerlite_fields_command,
 )
 from .onboarding_role_backfill import onboarding_role_backfill_command
+from .posthog_audience_backfill import posthog_audience_backfill_command
 from .rotate_key import rotate_encryption_key
 from .store import store
 from .test import test
@@ -23,7 +24,6 @@ from .test import test
 @click.group()
 def main():
     """AutoGPT Server CLI Tool"""
-    pass
 
 
 main.add_command(chat)
@@ -31,6 +31,7 @@ main.add_command(mailerlite_backfill_command)
 main.add_command(mailerlite_checkout_backfill_command)
 main.add_command(mailerlite_fields_command)
 main.add_command(onboarding_role_backfill_command)
+main.add_command(posthog_audience_backfill_command)
 main.add_command(rotate_encryption_key)
 main.add_command(store)
 main.add_command(test)
@@ -60,6 +61,9 @@ def start():
 
 
 class MainApp(AppProcess):
+    # Only launches the services, each of which starts its own flags.
+    reads_feature_flags = False
+
     def run(self):
         from backend import app
 

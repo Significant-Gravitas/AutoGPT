@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any
 
 
 class BaseSerializer:
@@ -12,7 +12,7 @@ class BaseSerializer:
 
 class IncludesSerializer(BaseSerializer):
     @classmethod
-    def serialize(cls, includes: Dict[str, Any]) -> Dict[str, Any]:
+    def serialize(cls, includes: dict[str, Any]) -> dict[str, Any]:
         """Serializes the includes dictionary"""
         if not includes:
             return {}
@@ -31,7 +31,7 @@ class IncludesSerializer(BaseSerializer):
 
 class ResponseDataSerializer(BaseSerializer):
     @classmethod
-    def serialize_dict(cls, item: Dict[str, Any]) -> Dict[str, Any]:
+    def serialize_dict(cls, item: dict[str, Any]) -> dict[str, Any]:
         """Serializes a single dictionary item"""
         serialized_item = {}
 
@@ -51,7 +51,7 @@ class ResponseDataSerializer(BaseSerializer):
         return serialized_item
 
     @classmethod
-    def serialize_list(cls, data: List[Dict[str, Any]] | None) -> List[Dict[str, Any]]:
+    def serialize_list(cls, data: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
         """Serializes a list of dictionary items"""
         if not data:
             return []
@@ -60,7 +60,7 @@ class ResponseDataSerializer(BaseSerializer):
 
 class ResponseSerializer:
     @classmethod
-    def serialize(cls, response) -> Dict[str, Any]:
+    def serialize(cls, response) -> dict[str, Any]:
         """Main serializer that handles both data and includes"""
         result = {"data": None, "included": {}}
 

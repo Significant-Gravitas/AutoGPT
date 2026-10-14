@@ -105,7 +105,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     try:
         header = jwt.get_unverified_header(token)
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
     # Validate the algorithm before touching the JWK set: a non-string or
     # unsupported `alg` must fail as a 401, not surface as a server error or
@@ -121,7 +121,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     try:
         key = _get_jwks_client().get_signing_key_from_jwt(token).key
     except jwt.PyJWKClientError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
     try:
         payload = jwt.decode(
@@ -134,7 +134,7 @@ def parse_jwt_token(token: str, audience: str = "authenticated") -> dict[str, An
     except jwt.ExpiredSignatureError as e:
         raise ValueError("Token has expired") from e
     except jwt.InvalidTokenError as e:
-        raise ValueError(f"Invalid token: {str(e)}") from e
+        raise ValueError(f"Invalid token: {e!s}") from e
 
 
 def _get_jwks_client() -> jwt.PyJWKClient:

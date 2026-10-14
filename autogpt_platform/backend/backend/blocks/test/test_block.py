@@ -1,4 +1,4 @@
-from typing import Any, Type
+from typing import Any
 
 import pytest
 
@@ -41,7 +41,7 @@ async def test_execute_preserves_insufficient_balance_error_type():
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-async def test_available_blocks(block: Type[Block]):
+async def test_available_blocks(block: type[Block]):
     block_instance = block()
     if block_instance.__class__.__name__ in SKIP_BLOCK_TESTS:
         pytest.skip(
@@ -55,102 +55,259 @@ async def test_available_blocks(block: Type[Block]):
 # safety. MAY ONLY SHRINK: a new block declares its effect, and a follow-up that
 # classifies a provider family deletes its rows.
 _EFFECT_UNCLASSIFIED: frozenset[str] = frozenset(
-    """
-    AddAudioToVideoBlock AddMemoryBlock AgentMailCreateDraftBlock
-    AgentMailCreateInboxBlock AgentMailCreatePodBlock AgentMailCreatePodInboxBlock
-    AgentMailUpdateDraftBlock AgentMailUpdateInboxBlock AgentMailUpdateMessageBlock
-    AirtableCreateBaseBlock AirtableCreateFieldBlock AirtableCreateRecordsBlock
-    AirtableCreateTableBlock AirtableUpdateFieldBlock AirtableUpdateRecordsBlock
-    AirtableUpdateTableBlock AllQuietUpdateIncidentBlock BaasBotLeaveMeetingBlock
-    BlockInstallationBlock CompanyEnrichmentBlock CreateCampaignBlock
-    DataForSeoKeywordSuggestionsBlock DataForSeoRelatedKeywordsBlock
-    DiscordGetCurrentUserBlock EditRedditPostBlock EditTelegramMessageBlock
-    ExaBulkWebsetItemsBlock ExaCancelEnrichmentBlock ExaCancelWebsetBlock
-    ExaCancelWebsetSearchBlock ExaCodeContextBlock ExaCreateEnrichmentBlock
-    ExaCreateImportBlock ExaCreateMonitorBlock ExaCreateOrFindWebsetBlock
-    ExaCreateResearchBlock ExaCreateWebsetBlock ExaCreateWebsetSearchBlock
-    ExaExportWebsetBlock ExaFindOrCreateSearchBlock ExaGetImportBlock
-    ExaUpdateEnrichmentBlock ExaUpdateMonitorBlock ExaUpdateWebsetBlock
-    ExaWaitForEnrichmentBlock ExaWaitForResearchBlock ExaWaitForWebsetBlock
-    ExaWebsetItemsSummaryBlock ExaWebsetSummaryBlock FileStoreBlock
-    GetRedditCommentBlock GetRedditCommentRepliesBlock GetRedditInboxBlock
-    GetRedditPostBlock GetRedditPostCommentsBlock GetRedditPostsBlock
-    GetRedditUserInfoBlock GetStoreAgentDetailsBlock GetSubredditFlairsBlock
-    GetSubredditInfoBlock GetSubredditRulesBlock GetUserPostsBlock
-    GithubAddLabelBlock GithubAssignIssueBlock GithubAssignPRReviewerBlock
-    GithubCreateCheckRunBlock GithubCreateRepositoryBlock GithubCreateStatusBlock
-    GithubForkRepositoryBlock GithubMakeBranchBlock
-    GithubMarkNotificationThreadAsDoneBlock GithubMarkNotificationThreadAsReadBlock
-    GithubMarkNotificationsAsReadBlock GithubMultiFileCommitBlock
-    GithubRemoveLabelBlock GithubResolveReviewDiscussionBlock
-    GithubStarRepositoryBlock GithubUnassignIssueBlock GithubUnassignPRReviewerBlock
-    GithubUnsubscribeNotificationThreadBlock GithubUpdateCheckRunBlock
-    GithubUpdateCommentBlock GmailAddLabelBlock GmailCreateDraftBlock
-    GmailDraftReplyBlock GmailRemoveLabelBlock GoogleDocsAppendMarkdownBlock
-    GoogleDocsAppendPlainTextBlock GoogleDocsCreateBlock
-    GoogleDocsDeleteContentBlock GoogleDocsExportBlock
-    GoogleDocsFindReplacePlainTextBlock GoogleDocsFormatTextBlock
-    GoogleDocsInsertMarkdownAtBlock GoogleDocsInsertPageBreakBlock
-    GoogleDocsInsertPlainTextBlock GoogleDocsInsertTableBlock
-    GoogleDocsReplaceAllWithMarkdownBlock GoogleDocsReplaceContentWithMarkdownBlock
-    GoogleDocsReplaceRangeWithMarkdownBlock GoogleSheetsAddColumnBlock
-    GoogleSheetsAddDropdownBlock GoogleSheetsAddNoteBlock GoogleSheetsAppendRowBlock
-    GoogleSheetsBatchOperationsBlock GoogleSheetsClearBlock
-    GoogleSheetsCopyToSpreadsheetBlock GoogleSheetsCreateNamedRangeBlock
-    GoogleSheetsCreateSpreadsheetBlock GoogleSheetsDeleteColumnBlock
-    GoogleSheetsDeleteRowsBlock GoogleSheetsExportCsvBlock
-    GoogleSheetsFindReplaceBlock GoogleSheetsFormatBlock GoogleSheetsImportCsvBlock
-    GoogleSheetsInsertRowBlock GoogleSheetsManageSheetBlock
-    GoogleSheetsMetadataBlock GoogleSheetsProtectRangeBlock
-    GoogleSheetsRemoveDuplicatesBlock GoogleSheetsSortBlock
-    GoogleSheetsUpdateCellBlock GoogleSheetsUpdateRowBlock GoogleSheetsWriteBlock
-    HubSpotCompanyBlock HubSpotContactBlock JevAskManyBlock JevChoiceBlock
-    JevFilterBlock JevPickBestBlock JevRouteBlock JevScoreBlock JevYesNoBlock
-    LinearCreateCommentBlock LinearCreateIssueBlock LoopVideoBlock
-    MediaDurationBlock ModQueueBlock NotionCreatePageBlock NotionReadDatabaseBlock
-    NotionReadPageBlock NotionReadPageMarkdownBlock NotionSearchBlock
-    PersistInformationBlock PineconeInitBlock PineconeInsertBlock
-    ProfileEnrichmentBlock RMFGAnalyzeDesignBlock RMFGCreateCartBlock
-    RMFGCreateDFMReportBlock RMFGCreateQuoteBlock RMFGCreateReviewLinkBlock
-    RMFGGetOrderBlock RMFGUpdateCartBlock RedditGetMyPostsBlock
-    RetrieveInformationBlock SaveCampaignSequencesBlock SearchRedditBlock
-    SearchStoreAgentsBlock Slant3DEstimateOrderBlock Slant3DEstimateShippingBlock
-    Slant3DFilamentBlock Slant3DSlicerBlock Slant3DTrackingBlock StagehandActBlock
-    StagehandExtractBlock StagehandObserveBlock
-    StripeLinkCreateCardSpendRequestBlock StripeLinkCreateTokenSpendRequestBlock
-    StripeLinkGetPaymentChallengeBlock StripeLinkRetrieveCardBlock
-    TodoistCloseTaskBlock TodoistCreateCommentBlock TodoistCreateLabelBlock
-    TodoistCreateProjectBlock TodoistCreateTaskBlock TodoistGetCommentBlock
-    TodoistGetCommentsBlock TodoistGetLabelBlock TodoistGetProjectBlock
-    TodoistGetSectionBlock TodoistGetSharedLabelsBlock TodoistGetTaskBlock
-    TodoistGetTasksBlock TodoistListCollaboratorsBlock TodoistListLabelsBlock
-    TodoistListProjectsBlock TodoistListSectionsBlock TodoistRenameSharedLabelsBlock
-    TodoistReopenTaskBlock TodoistUpdateCommentBlock TodoistUpdateLabelBlock
-    TodoistUpdateProjectBlock TodoistUpdateTaskBlock TwitterAddListMemberBlock
-    TwitterBookmarkTweetBlock TwitterCreateListBlock TwitterFollowListBlock
-    TwitterFollowUserBlock TwitterGetBlockedUsersBlock
-    TwitterGetBookmarkedTweetsBlock TwitterGetFollowersBlock
-    TwitterGetFollowingBlock TwitterGetHomeTimelineBlock TwitterGetLikedTweetsBlock
-    TwitterGetLikingUsersBlock TwitterGetListBlock TwitterGetListMembersBlock
-    TwitterGetListMembershipsBlock TwitterGetListTweetsBlock
-    TwitterGetMutedUsersBlock TwitterGetOwnedListsBlock TwitterGetPinnedListsBlock
-    TwitterGetQuoteTweetsBlock TwitterGetRetweetersBlock TwitterGetSpaceBuyersBlock
-    TwitterGetSpaceByIdBlock TwitterGetSpaceTweetsBlock TwitterGetSpacesBlock
-    TwitterGetTweetBlock TwitterGetTweetsBlock TwitterGetUserBlock
-    TwitterGetUserMentionsBlock TwitterGetUserTweetsBlock TwitterGetUsersBlock
-    TwitterHideReplyBlock TwitterLikeTweetBlock TwitterMuteUserBlock
-    TwitterPinListBlock TwitterRemoveBookmarkTweetBlock TwitterRemoveListMemberBlock
-    TwitterRemoveRetweetBlock TwitterSearchRecentTweetsBlock
-    TwitterSearchSpacesBlock TwitterUnfollowListBlock TwitterUnfollowUserBlock
-    TwitterUnhideReplyBlock TwitterUnlikeTweetBlock TwitterUnmuteUserBlock
-    TwitterUnpinListBlock TwitterUpdateListBlock VideoClipBlock VideoConcatBlock
-    VideoDownloadBlock VideoNarrationBlock VideoTextOverlayBlock
-    """.split()
+    [
+        "AddAudioToVideoBlock",
+        "AddMemoryBlock",
+        "AgentMailCreateDraftBlock",
+        "AgentMailCreateInboxBlock",
+        "AgentMailCreatePodBlock",
+        "AgentMailCreatePodInboxBlock",
+        "AgentMailUpdateDraftBlock",
+        "AgentMailUpdateInboxBlock",
+        "AgentMailUpdateMessageBlock",
+        "AirtableCreateBaseBlock",
+        "AirtableCreateFieldBlock",
+        "AirtableCreateRecordsBlock",
+        "AirtableCreateTableBlock",
+        "AirtableUpdateFieldBlock",
+        "AirtableUpdateRecordsBlock",
+        "AirtableUpdateTableBlock",
+        "AllQuietUpdateIncidentBlock",
+        "BaasBotLeaveMeetingBlock",
+        "BlockInstallationBlock",
+        "CompanyEnrichmentBlock",
+        "CreateCampaignBlock",
+        "DataForSeoKeywordSuggestionsBlock",
+        "DataForSeoRelatedKeywordsBlock",
+        "DiscordGetCurrentUserBlock",
+        "EditRedditPostBlock",
+        "EditTelegramMessageBlock",
+        "ExaBulkWebsetItemsBlock",
+        "ExaCancelEnrichmentBlock",
+        "ExaCancelWebsetBlock",
+        "ExaCancelWebsetSearchBlock",
+        "ExaCodeContextBlock",
+        "ExaCreateEnrichmentBlock",
+        "ExaCreateImportBlock",
+        "ExaCreateMonitorBlock",
+        "ExaCreateOrFindWebsetBlock",
+        "ExaCreateResearchBlock",
+        "ExaCreateWebsetBlock",
+        "ExaCreateWebsetSearchBlock",
+        "ExaExportWebsetBlock",
+        "ExaFindOrCreateSearchBlock",
+        "ExaGetImportBlock",
+        "ExaUpdateEnrichmentBlock",
+        "ExaUpdateMonitorBlock",
+        "ExaUpdateWebsetBlock",
+        "ExaWaitForEnrichmentBlock",
+        "ExaWaitForResearchBlock",
+        "ExaWaitForWebsetBlock",
+        "ExaWebsetItemsSummaryBlock",
+        "ExaWebsetSummaryBlock",
+        "FileStoreBlock",
+        "GetRedditCommentBlock",
+        "GetRedditCommentRepliesBlock",
+        "GetRedditInboxBlock",
+        "GetRedditPostBlock",
+        "GetRedditPostCommentsBlock",
+        "GetRedditPostsBlock",
+        "GetRedditUserInfoBlock",
+        "GetStoreAgentDetailsBlock",
+        "GetSubredditFlairsBlock",
+        "GetSubredditInfoBlock",
+        "GetSubredditRulesBlock",
+        "GetUserPostsBlock",
+        "GithubAddLabelBlock",
+        "GithubAssignIssueBlock",
+        "GithubAssignPRReviewerBlock",
+        "GithubCreateCheckRunBlock",
+        "GithubCreateRepositoryBlock",
+        "GithubCreateStatusBlock",
+        "GithubForkRepositoryBlock",
+        "GithubMakeBranchBlock",
+        "GithubMarkNotificationThreadAsDoneBlock",
+        "GithubMarkNotificationThreadAsReadBlock",
+        "GithubMarkNotificationsAsReadBlock",
+        "GithubMultiFileCommitBlock",
+        "GithubRemoveLabelBlock",
+        "GithubResolveReviewDiscussionBlock",
+        "GithubStarRepositoryBlock",
+        "GithubUnassignIssueBlock",
+        "GithubUnassignPRReviewerBlock",
+        "GithubUnsubscribeNotificationThreadBlock",
+        "GithubUpdateCheckRunBlock",
+        "GithubUpdateCommentBlock",
+        "GmailAddLabelBlock",
+        "GmailCreateDraftBlock",
+        "GmailDraftReplyBlock",
+        "GmailRemoveLabelBlock",
+        "GoogleDocsAppendMarkdownBlock",
+        "GoogleDocsAppendPlainTextBlock",
+        "GoogleDocsCreateBlock",
+        "GoogleDocsDeleteContentBlock",
+        "GoogleDocsExportBlock",
+        "GoogleDocsFindReplacePlainTextBlock",
+        "GoogleDocsFormatTextBlock",
+        "GoogleDocsInsertMarkdownAtBlock",
+        "GoogleDocsInsertPageBreakBlock",
+        "GoogleDocsInsertPlainTextBlock",
+        "GoogleDocsInsertTableBlock",
+        "GoogleDocsReplaceAllWithMarkdownBlock",
+        "GoogleDocsReplaceContentWithMarkdownBlock",
+        "GoogleDocsReplaceRangeWithMarkdownBlock",
+        "GoogleSheetsAddColumnBlock",
+        "GoogleSheetsAddDropdownBlock",
+        "GoogleSheetsAddNoteBlock",
+        "GoogleSheetsAppendRowBlock",
+        "GoogleSheetsBatchOperationsBlock",
+        "GoogleSheetsClearBlock",
+        "GoogleSheetsCopyToSpreadsheetBlock",
+        "GoogleSheetsCreateNamedRangeBlock",
+        "GoogleSheetsCreateSpreadsheetBlock",
+        "GoogleSheetsDeleteColumnBlock",
+        "GoogleSheetsDeleteRowsBlock",
+        "GoogleSheetsExportCsvBlock",
+        "GoogleSheetsFindReplaceBlock",
+        "GoogleSheetsFormatBlock",
+        "GoogleSheetsImportCsvBlock",
+        "GoogleSheetsInsertRowBlock",
+        "GoogleSheetsManageSheetBlock",
+        "GoogleSheetsMetadataBlock",
+        "GoogleSheetsProtectRangeBlock",
+        "GoogleSheetsRemoveDuplicatesBlock",
+        "GoogleSheetsSortBlock",
+        "GoogleSheetsUpdateCellBlock",
+        "GoogleSheetsUpdateRowBlock",
+        "GoogleSheetsWriteBlock",
+        "HubSpotCompanyBlock",
+        "HubSpotContactBlock",
+        "JevAskManyBlock",
+        "JevChoiceBlock",
+        "JevFilterBlock",
+        "JevPickBestBlock",
+        "JevRouteBlock",
+        "JevScoreBlock",
+        "JevYesNoBlock",
+        "LinearCreateCommentBlock",
+        "LinearCreateIssueBlock",
+        "LoopVideoBlock",
+        "MediaDurationBlock",
+        "ModQueueBlock",
+        "NotionCreatePageBlock",
+        "NotionReadDatabaseBlock",
+        "NotionReadPageBlock",
+        "NotionReadPageMarkdownBlock",
+        "NotionSearchBlock",
+        "PersistInformationBlock",
+        "PineconeInitBlock",
+        "PineconeInsertBlock",
+        "ProfileEnrichmentBlock",
+        "RMFGAnalyzeDesignBlock",
+        "RMFGCreateCartBlock",
+        "RMFGCreateDFMReportBlock",
+        "RMFGCreateQuoteBlock",
+        "RMFGCreateReviewLinkBlock",
+        "RMFGGetOrderBlock",
+        "RMFGUpdateCartBlock",
+        "RedditGetMyPostsBlock",
+        "RetrieveInformationBlock",
+        "SaveCampaignSequencesBlock",
+        "SearchRedditBlock",
+        "SearchStoreAgentsBlock",
+        "Slant3DEstimateOrderBlock",
+        "Slant3DEstimateShippingBlock",
+        "Slant3DFilamentBlock",
+        "Slant3DSlicerBlock",
+        "Slant3DTrackingBlock",
+        "StagehandActBlock",
+        "StagehandExtractBlock",
+        "StagehandObserveBlock",
+        "StripeLinkCreateCardSpendRequestBlock",
+        "StripeLinkCreateTokenSpendRequestBlock",
+        "StripeLinkGetPaymentChallengeBlock",
+        "StripeLinkRetrieveCardBlock",
+        "TodoistCloseTaskBlock",
+        "TodoistCreateCommentBlock",
+        "TodoistCreateLabelBlock",
+        "TodoistCreateProjectBlock",
+        "TodoistCreateTaskBlock",
+        "TodoistGetCommentBlock",
+        "TodoistGetCommentsBlock",
+        "TodoistGetLabelBlock",
+        "TodoistGetProjectBlock",
+        "TodoistGetSectionBlock",
+        "TodoistGetSharedLabelsBlock",
+        "TodoistGetTaskBlock",
+        "TodoistGetTasksBlock",
+        "TodoistListCollaboratorsBlock",
+        "TodoistListLabelsBlock",
+        "TodoistListProjectsBlock",
+        "TodoistListSectionsBlock",
+        "TodoistRenameSharedLabelsBlock",
+        "TodoistReopenTaskBlock",
+        "TodoistUpdateCommentBlock",
+        "TodoistUpdateLabelBlock",
+        "TodoistUpdateProjectBlock",
+        "TodoistUpdateTaskBlock",
+        "TwitterAddListMemberBlock",
+        "TwitterBookmarkTweetBlock",
+        "TwitterCreateListBlock",
+        "TwitterFollowListBlock",
+        "TwitterFollowUserBlock",
+        "TwitterGetBlockedUsersBlock",
+        "TwitterGetBookmarkedTweetsBlock",
+        "TwitterGetFollowersBlock",
+        "TwitterGetFollowingBlock",
+        "TwitterGetHomeTimelineBlock",
+        "TwitterGetLikedTweetsBlock",
+        "TwitterGetLikingUsersBlock",
+        "TwitterGetListBlock",
+        "TwitterGetListMembersBlock",
+        "TwitterGetListMembershipsBlock",
+        "TwitterGetListTweetsBlock",
+        "TwitterGetMutedUsersBlock",
+        "TwitterGetOwnedListsBlock",
+        "TwitterGetPinnedListsBlock",
+        "TwitterGetQuoteTweetsBlock",
+        "TwitterGetRetweetersBlock",
+        "TwitterGetSpaceBuyersBlock",
+        "TwitterGetSpaceByIdBlock",
+        "TwitterGetSpaceTweetsBlock",
+        "TwitterGetSpacesBlock",
+        "TwitterGetTweetBlock",
+        "TwitterGetTweetsBlock",
+        "TwitterGetUserBlock",
+        "TwitterGetUserMentionsBlock",
+        "TwitterGetUserTweetsBlock",
+        "TwitterGetUsersBlock",
+        "TwitterHideReplyBlock",
+        "TwitterLikeTweetBlock",
+        "TwitterMuteUserBlock",
+        "TwitterPinListBlock",
+        "TwitterRemoveBookmarkTweetBlock",
+        "TwitterRemoveListMemberBlock",
+        "TwitterRemoveRetweetBlock",
+        "TwitterSearchRecentTweetsBlock",
+        "TwitterSearchSpacesBlock",
+        "TwitterUnfollowListBlock",
+        "TwitterUnfollowUserBlock",
+        "TwitterUnhideReplyBlock",
+        "TwitterUnlikeTweetBlock",
+        "TwitterUnmuteUserBlock",
+        "TwitterUnpinListBlock",
+        "TwitterUpdateListBlock",
+        "VideoClipBlock",
+        "VideoConcatBlock",
+        "VideoDownloadBlock",
+        "VideoNarrationBlock",
+        "VideoTextOverlayBlock",
+    ]
 )
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_block_declares_an_effect(block: Type[Block]):
+def test_block_declares_an_effect(block: type[Block]):
     instance = block()
     name = block.__name__
     if instance.effect is not None:
@@ -173,7 +330,7 @@ def test_block_declares_an_effect(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
+def test_effect_none_blocks_have_no_io_surface(block: type[Block]):
     """NONE claims pure computation, and a mock exists only to stub I/O out."""
     instance = block()
     if instance.effect is not BlockEffect.NONE:
@@ -191,7 +348,7 @@ def test_effect_none_blocks_have_no_io_surface(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_irreversible_blocks_are_external(block: Type[Block]):
+def test_irreversible_blocks_are_external(block: type[Block]):
     instance = block()
     if not instance.is_irreversible_action:
         return
@@ -202,7 +359,7 @@ def test_irreversible_blocks_are_external(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
+def test_irreversible_action_blocks_have_no_data_input(block: type[Block]):
     """An irreversible-action block's whole input dict becomes the review payload.
 
     `data` is the key the approval card historically unwrapped to, rendering
@@ -223,7 +380,7 @@ def test_irreversible_action_blocks_have_no_data_input(block: Type[Block]):
 
 
 @pytest.mark.parametrize("block", get_blocks().values(), ids=lambda b: b().name)
-async def test_block_ids_valid(block: Type[Block]):
+async def test_block_ids_valid(block: type[Block]):
     # add the tests here to check they are uuid4
     import uuid
 

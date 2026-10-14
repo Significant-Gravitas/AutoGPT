@@ -115,7 +115,7 @@ async def judge(prompt: str) -> JevVerdict | None:
             ),
             timeout=config.gate_jev_timeout_s + 0.5,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         FIRST_STAGE.labels(outcome="timeout").inc()
         logger.warning("Gate first stage timed out; falling through to the LLM")
         return None

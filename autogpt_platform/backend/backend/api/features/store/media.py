@@ -87,7 +87,7 @@ async def upload_media(
         content = await file.read(1024)  # Read first 1KB for validation
         await file.seek(0)  # Reset file pointer
     except Exception as e:
-        logger.error(f"Error reading file content: {str(e)}")
+        logger.error(f"Error reading file content: {e!s}")
         raise store_exceptions.FileReadError("Failed to read file content") from e
 
     content_type = file.content_type
@@ -172,7 +172,7 @@ async def upload_media(
         except store_exceptions.FileSizeTooLargeError:
             raise
         except Exception as e:
-            logger.error(f"Error reading file chunks: {str(e)}")
+            logger.error(f"Error reading file chunks: {e!s}")
             raise store_exceptions.FileReadError("Failed to read uploaded file") from e
 
         if is_avatar:
@@ -226,7 +226,7 @@ async def upload_media(
         except fastapi.HTTPException:
             raise
         except Exception as e:
-            logger.error(f"GCS storage error: {str(e)}")
+            logger.error(f"GCS storage error: {e!s}")
             raise store_exceptions.StorageUploadError(
                 "Failed to upload file to storage"
             ) from e

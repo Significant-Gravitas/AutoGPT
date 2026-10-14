@@ -5,7 +5,7 @@ Step 2 (memory_forget_confirm): delete specific edges by UUID after user confirm
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
@@ -46,7 +46,7 @@ def _now_iso() -> str:
     ISO-8601 matches chronological sort) and round-trip cleanly through
     ``toString(...)`` reads we already do.
     """
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 logger = logging.getLogger(__name__)

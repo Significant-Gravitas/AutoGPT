@@ -13,8 +13,7 @@ token is never persisted.
 """
 
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from prisma.models import BotInstall
 from pydantic import BaseModel
@@ -30,9 +29,9 @@ class BotInstallCredentials(BaseModel):
 
     team_id: str
     bot_token: str
-    bot_user_id: Optional[str] = None
-    app_id: Optional[str] = None
-    name: Optional[str] = None
+    bot_user_id: str | None = None
+    app_id: str | None = None
+    name: str | None = None
 
 
 def _key(platform: Platform, team_id: str) -> dict:
@@ -49,9 +48,9 @@ async def upsert_bot_install(
     platform: Platform,
     team_id: str,
     bot_token: str,
-    bot_user_id: Optional[str] = None,
-    app_id: Optional[str] = None,
-    name: Optional[str] = None,
+    bot_user_id: str | None = None,
+    app_id: str | None = None,
+    name: str | None = None,
 ) -> None:
     """Store (or refresh) a workspace's encrypted bot token. Clears ``revokedAt``
     so a re-install after an uninstall resurrects the row."""
@@ -77,7 +76,7 @@ async def upsert_bot_install(
 
 async def get_bot_install(
     platform: Platform, team_id: str
-) -> Optional[BotInstallCredentials]:
+) -> BotInstallCredentials | None:
     """Return decrypted credentials for a live install, or ``None`` if the
     workspace isn't installed, is revoked, or the token can't be decrypted."""
     row = await BotInstall.prisma().find_unique(where=_key(platform, team_id))
@@ -114,5 +113,5 @@ async def revoke_bot_install(platform: Platform, team_id: str) -> None:
             "platformServerId": team_id,
             "revokedAt": None,
         },
-        data={"revokedAt": datetime.now(timezone.utc)},
+        data={"revokedAt": datetime.now(UTC)},
     )

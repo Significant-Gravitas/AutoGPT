@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import SecretStr
 
@@ -62,7 +62,7 @@ class PublishToMediumBlock(Block):
             description="The format of the content: 'html' or 'markdown'",
             placeholder="html",
         )
-        tags: List[str] = SchemaField(
+        tags: list[str] = SchemaField(
             description="List of tags for your Medium post (up to 5)",
             placeholder="['technology', 'AI', 'blogging']",
         )

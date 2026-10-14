@@ -31,8 +31,9 @@ Run with the platform stack up::
 
 import asyncio
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -310,7 +311,7 @@ async def _backdate_edge(
     await driver.execute_query(
         "MATCH ()-[e:RELATES_TO {uuid: $uuid}]->() SET e.created_at = $created_at",
         uuid=edge_uuid,
-        created_at=(datetime.now(timezone.utc) - age).isoformat(),
+        created_at=(datetime.now(UTC) - age).isoformat(),
     )
 
 

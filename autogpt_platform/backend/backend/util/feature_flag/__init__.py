@@ -5,9 +5,10 @@ import json
 import logging
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from enum import Enum
 from functools import wraps
-from typing import Any, Awaitable, Callable, TypeVar
+from typing import Any, TypeVar
 
 import ldclient
 import sentry_sdk.feature_flags
@@ -238,7 +239,10 @@ def _stop_shadow_evaluations() -> None:
     global _shadow_evaluations_stopped
     _shadow_evaluations_stopped = True
     for task in list(_shadow_evaluations):
-        task.cancel()
+        # A service's cleanup can close the task's loop first, and cancelling
+        # a task on a closed loop raises.
+        if not task.get_loop().is_closed():
+            task.cancel()
     _shadow_evaluations.clear()
 
 
@@ -298,9 +302,8 @@ def shutdown_launchdarkly() -> None:
     if not _is_initialized:
         # `initialize_launchdarkly` returns early when no SDK key is configured,
         # so `ldclient.set_config` was never called and `ldclient.get()` would
-        # raise "set_config was not called". Callers pair init/shutdown on
-        # app_env alone (see `rest_api.feature_flag_context` and
-        # `scheduler._shutdown_feature_flags_for_scheduler`), so an unconfigured
+        # raise "set_config was not called". `AppProcess.execute_run_command`
+        # pairs init/shutdown on app_env alone, so an unconfigured
         # non-LOCAL deployment would otherwise raise out of service teardown and
         # leave the process alive instead of exiting.
         return
@@ -883,7 +886,7 @@ def feature_flag(
                 elif not _flag_backend_initialized():
                     logger.warning(
                         "Feature flag backend not initialized, "
-                        f"using default {flag_key}={repr(default)}"
+                        f"using default {flag_key}={default!r}"
                     )
                     is_enabled = default
                     _record_flag_for_sentry(flag_key, default, False)
@@ -899,8 +902,8 @@ def feature_flag(
                         # Log warning and use default for non-boolean values
                         logger.warning(
                             f"Feature flag {flag_key} returned non-boolean value: "
-                            f"{repr(flag_value)} (type: {type(flag_value).__name__}). "
-                            f"Using default value {repr(default)}"
+                            f"{flag_value!r} (type: {type(flag_value).__name__}). "
+                            f"Using default value {default!r}"
                         )
                         is_enabled = default
                         _record_flag_for_sentry(flag_key, default, False)

@@ -31,11 +31,11 @@ async def setup_webhook_for_block(
     user_id: str,
     trigger_block: "AnyBlockSchema",
     trigger_config: dict[str, JsonValue],  # = Trigger block inputs
-    for_graph_id: Optional[str] = None,
-    for_preset_id: Optional[str] = None,
+    for_graph_id: str | None = None,
+    for_preset_id: str | None = None,
     credentials: Optional["Credentials"] = None,
-    organization_id: Optional[str] = None,
-    team_id: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> tuple["Webhook", None] | tuple[None, str]:
     """
     Utility function to create (and auto-setup if possible) a webhook for a given provider.

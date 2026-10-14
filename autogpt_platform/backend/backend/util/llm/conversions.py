@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 import anthropic
 from anthropic.types import ToolParam
@@ -126,13 +127,13 @@ def extract_openai_reasoning(response: Any) -> str | None:
         return None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
-        return str(getattr(choice, "reasoning"))
+        return str(choice.reasoning)
     if hasattr(response, "reasoning") and getattr(response, "reasoning", None):
-        return str(getattr(response, "reasoning"))
+        return str(response.reasoning)
     if hasattr(choice.message, "reasoning") and getattr(
         choice.message, "reasoning", None
     ):
-        return str(getattr(choice.message, "reasoning"))
+        return str(choice.message.reasoning)
     return None
 
 

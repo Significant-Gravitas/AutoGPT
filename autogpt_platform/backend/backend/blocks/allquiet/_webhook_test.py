@@ -4,9 +4,10 @@ import base64
 import hashlib
 import hmac
 import json
-from datetime import datetime, timedelta, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 from fastapi import HTTPException
@@ -24,14 +25,14 @@ BODY = b'{"id":"81cd20be","title":"RAM above 60%"}'
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
 def _sign(body: bytes, timestamp: str, secret: str = SECRET) -> str:
     return base64.b64encode(
         hmac.new(
             secret.encode("utf-8"),
-            msg=f"{timestamp}:".encode("utf-8") + body,
+            msg=f"{timestamp}:".encode() + body,
             digestmod=hashlib.sha256,
         ).digest()
     ).decode("utf-8")
@@ -200,7 +201,7 @@ class TestSignedWebhooks:
 
 class TestReplayProtection:
     async def test_rejects_a_stale_but_correctly_signed_delivery(self):
-        old = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime(
+        old = (datetime.now(UTC) - timedelta(hours=1)).strftime(
             "%Y-%m-%dT%H:%M:%S.000Z"
         )
         request = _request({"x-aq-signature": _sign(BODY, old), "x-aq-timestamp": old})
@@ -280,7 +281,7 @@ class TestTimestampFormats:
         # MAX_TIMESTAMP_SKEW to reach this test the stamp is already stale and
         # the replay check rejects it -- a failure that depends on how long the
         # rest of the suite took, not on this code.
-        stamp = format_stamp(datetime.now(timezone.utc))
+        stamp = format_stamp(datetime.now(UTC))
         request = _request(
             {"x-aq-signature": _sign(BODY, stamp), "x-aq-timestamp": stamp}
         )
@@ -319,7 +320,7 @@ class TestTimestampFormats:
         assert "recognized format" in exc.value.detail
 
     async def test_rejects_a_stale_epoch_timestamp(self):
-        old = str(int(datetime.now(timezone.utc).timestamp()) - 3600)
+        old = str(int(datetime.now(UTC).timestamp()) - 3600)
         request = _request({"x-aq-signature": _sign(BODY, old), "x-aq-timestamp": old})
 
         with pytest.raises(HTTPException) as exc:
@@ -358,7 +359,7 @@ class TestFutureSkew:
     async def test_rejects_a_timestamp_from_the_future(self):
         # A clock-skewed or forged forward timestamp is as much a replay risk
         # as a stale one; the window is symmetric.
-        ahead = (datetime.now(timezone.utc) + timedelta(hours=1)).strftime(
+        ahead = (datetime.now(UTC) + timedelta(hours=1)).strftime(
             "%Y-%m-%dT%H:%M:%S.000Z"
         )
         request = _request(
@@ -370,7 +371,7 @@ class TestFutureSkew:
         assert "window" in exc.value.detail
 
     async def test_allows_small_clock_skew(self):
-        near = (datetime.now(timezone.utc) + timedelta(seconds=30)).strftime(
+        near = (datetime.now(UTC) + timedelta(seconds=30)).strftime(
             "%Y-%m-%dT%H:%M:%S.000Z"
         )
         request = _request(

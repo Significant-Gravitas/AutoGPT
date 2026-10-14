@@ -17,7 +17,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
@@ -237,7 +237,7 @@ async def _soft_delete_blocking_orphan(user_id: str) -> bool:
     )
     await prisma.organization.update(
         where={"id": orphan.id},
-        data={"deletedAt": datetime.now(timezone.utc)},
+        data={"deletedAt": datetime.now(UTC)},
     )
     return True
 
@@ -269,7 +269,7 @@ async def ensure_personal_org(user_id: str) -> bool:
     number of concurrent callers sees ``True`` for a given user.
 
     On ``UniqueViolationError`` there are two possibilities, distinguished by a
-    re-check (same pattern as ``data.user._ensure_user_profile``): a concurrent
+    re-check (same pattern as ``data.profile.ensure_profile``): a concurrent
     first-request already bootstrapped this user (done), or the resolved slug
     collided with a *different* user's org (loop and retry — ``_resolve_unique_slug``
     now sees the taken slug and picks a fresh suffix).

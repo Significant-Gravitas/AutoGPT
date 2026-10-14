@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import BaseModel
 from zerobouncesdk.zb_validate_response import (
     ZBValidateResponse,
@@ -36,52 +34,52 @@ class Response(BaseModel):
         description="The sub-status of the email address.",
         default=ZBValidateSubStatus.none,
     )
-    account: Optional[str] = SchemaField(
+    account: str | None = SchemaField(
         description="The portion of the email address before the '@' symbol.",
         default="N/A",
     )
-    domain: Optional[str] = SchemaField(
+    domain: str | None = SchemaField(
         description="The portion of the email address after the '@' symbol."
     )
-    did_you_mean: Optional[str] = SchemaField(
+    did_you_mean: str | None = SchemaField(
         description="Suggestive Fix for an email typo",
         default=None,
     )
-    domain_age_days: Optional[str] = SchemaField(
+    domain_age_days: str | None = SchemaField(
         description="Age of the email domain in days or [null].",
         default=None,
     )
-    free_email: Optional[bool] = SchemaField(
+    free_email: bool | None = SchemaField(
         description="Whether the email address is a free email provider.", default=False
     )
-    mx_found: Optional[bool] = SchemaField(
+    mx_found: bool | None = SchemaField(
         description="Whether the MX record was found.", default=False
     )
-    mx_record: Optional[str] = SchemaField(
+    mx_record: str | None = SchemaField(
         description="The MX record of the email address.", default=None
     )
-    smtp_provider: Optional[str] = SchemaField(
+    smtp_provider: str | None = SchemaField(
         description="The SMTP provider of the email address.", default=None
     )
-    firstname: Optional[str] = SchemaField(
+    firstname: str | None = SchemaField(
         description="The first name of the email address.", default=None
     )
-    lastname: Optional[str] = SchemaField(
+    lastname: str | None = SchemaField(
         description="The last name of the email address.", default=None
     )
-    gender: Optional[str] = SchemaField(
+    gender: str | None = SchemaField(
         description="The gender of the email address.", default=None
     )
-    city: Optional[str] = SchemaField(
+    city: str | None = SchemaField(
         description="The city of the email address.", default=None
     )
-    region: Optional[str] = SchemaField(
+    region: str | None = SchemaField(
         description="The region of the email address.", default=None
     )
-    zipcode: Optional[str] = SchemaField(
+    zipcode: str | None = SchemaField(
         description="The zipcode of the email address.", default=None
     )
-    country: Optional[str] = SchemaField(
+    country: str | None = SchemaField(
         description="The country of the email address.", default=None
     )
 

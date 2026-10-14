@@ -5,8 +5,6 @@ Provides code search capabilities to find relevant code snippets and examples
 from open source repositories, documentation, and Stack Overflow.
 """
 
-from typing import Union
-
 from pydantic import BaseModel
 
 from backend.sdk import (
@@ -61,7 +59,7 @@ class ExaCodeContextBlock(Block):
             description="Search query to find relevant code snippets. Describe what you're trying to do or what code you're looking for.",
             placeholder="how to use React hooks for state management",
         )
-        tokens_num: Union[str, int] = SchemaField(
+        tokens_num: str | int = SchemaField(
             default="dynamic",
             description="Token limit for response. Use 'dynamic' for automatic sizing, 5000 for standard queries, or 10000 for comprehensive examples.",
             placeholder="dynamic",

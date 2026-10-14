@@ -1675,7 +1675,7 @@ async def _upload_final_transcript(
         await asyncio.wait_for(
             asyncio.shield(upload_task), timeout=_TRANSCRIPT_UPLOAD_TIMEOUT_S
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         # Upload is still running in _background_tasks; we just stopped waiting.
         logger.info(
             "[Baseline] Transcript upload exceeded %ss wait — continuing as background task",
@@ -2545,11 +2545,7 @@ async def stream_chat_completion_baseline(
                     unflushed_text = state.assistant_text[
                         state._flushed_assistant_text_len :
                     ]
-                    text_only_text = (
-                        unflushed_text[len(recorded_text) :]
-                        if unflushed_text.startswith(recorded_text)
-                        else unflushed_text
-                    )
+                    text_only_text = unflushed_text.removeprefix(recorded_text)
                     current_session = _session_holder[0]
                     if text_only_text.strip():
                         current_session.messages.append(
@@ -2906,8 +2902,7 @@ async def stream_chat_completion_baseline(
             recorded = "".join(
                 m.content or "" for m in state.session_messages if m.role == "assistant"
             )
-            if final_text.startswith(recorded):
-                final_text = final_text[len(recorded) :]
+            final_text = final_text.removeprefix(recorded)
         if final_text.strip():
             session.messages.append(
                 ChatMessage(

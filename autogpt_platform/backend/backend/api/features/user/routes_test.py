@@ -2,7 +2,7 @@ import json
 import re
 import uuid
 from collections.abc import AsyncIterator
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
@@ -79,7 +79,7 @@ def test_get_or_create_user_route(
 ) -> None:
     """Test get or create user endpoint"""
     mock_user = Mock()
-    mock_user.created_at = datetime.now(timezone.utc)
+    mock_user.created_at = datetime.now(UTC)
     mock_user.model_dump.return_value = {
         "id": test_user_id,
         "email": "test@example.com",
@@ -109,7 +109,7 @@ def test_get_or_create_user_route_reports_creation(
     test_user_id: str,
 ) -> None:
     mock_user = Mock()
-    mock_user.created_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    mock_user.created_at = datetime(2020, 1, 1, tzinfo=UTC)
     mock_user.model_dump.return_value = {
         "id": test_user_id,
         "email": "test@example.com",
@@ -159,7 +159,7 @@ def test_update_user_email_route(
 
 
 def _consented_user(user_id: str, opted_out_at: datetime | None) -> User:
-    accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+    accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
     return User(
         id=user_id,
         email="test@example.com",
@@ -179,7 +179,7 @@ def test_record_user_consent_route(
 ) -> None:
     """Records for the caller's own account, whatever the body claims, and
     answers with the four consent fields only."""
-    opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=timezone.utc)
+    opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=UTC)
     record = mocker.patch(
         "backend.api.features.user.routes.record_signup_consent",
         return_value=_consented_user(test_user_id, opted_out_at),

@@ -19,10 +19,7 @@ from backend.data.model import CredentialsField, CredentialsMetaInput, OAuth2Cre
 # package. Every other arrow in this codebase runs blocks -> integrations, and
 # the oauth package builds its registries at import, so importing integrations
 # from here would drag every block in eagerly.
-from backend.integrations.oauth.stripe_link import (  # noqa: E402
-    LINK_API_BASE_URL,
-    LINK_HTTP_TIMEOUT,
-)
+from backend.integrations.oauth.stripe_link import LINK_API_BASE_URL, LINK_HTTP_TIMEOUT
 from backend.integrations.providers import ProviderName
 
 LINK_DEFAULT_SCOPES = ["userinfo:read", "payment_methods.agentic"]

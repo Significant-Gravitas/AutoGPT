@@ -1,9 +1,10 @@
-from typing import Literal, Optional
+from typing import Literal
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, HTTPException, Query, Security, status
 from fastapi.responses import Response
 
+import backend.api.features.library._get_many as get_many
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 
 from .. import db as library_db
@@ -26,9 +27,7 @@ async def list_library_agents(
     ctx: autogpt_auth_lib.RequestContext = Security(
         autogpt_auth_lib.get_request_context
     ),
-    search_term: Optional[str] = Query(
-        None, description="Search term to filter agents"
-    ),
+    search_term: str | None = Query(None, description="Search term to filter agents"),
     sort_by: library_model.LibraryAgentSort = Query(
         library_model.LibraryAgentSort.UPDATED_AT,
         description="Criteria to sort results by",
@@ -43,7 +42,7 @@ async def list_library_agents(
         ge=1,
         description="Number of agents per page (must be >= 1)",
     ),
-    folder_id: Optional[str] = Query(
+    folder_id: str | None = Query(
         None,
         description="Filter by folder ID",
     ),
@@ -51,7 +50,7 @@ async def list_library_agents(
         False,
         description="Only return agents without a folder (root-level agents)",
     ),
-    is_hidden: Optional[bool] = Query(
+    is_hidden: bool | None = Query(
         None,
         description=(
             "Filter by hidden status. True = only hidden, "
@@ -102,6 +101,22 @@ async def list_favorite_library_agents(
     )
 
 
+@router.get("/batch", summary="Get Library Agents By Ids")
+async def get_library_agents_by_ids(
+    ids: list[str] = Query(
+        ...,
+        min_length=1,
+        max_length=get_many.MAX_LIBRARY_AGENTS_PER_BATCH,
+        description="Library agent IDs; unknown or inaccessible ones are omitted",
+    ),
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> list[library_model.LibraryAgent]:
+    """
+    Get several library agents at once, as `GET /agents/{id}` would return each.
+    """
+    return await get_many.get_library_agents_by_ids(ids=ids, user_id=user_id)
+
+
 @router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
@@ -113,7 +128,7 @@ async def get_library_agent(
 @router.get("/by-graph/{graph_id}")
 async def get_library_agent_by_graph_id(
     graph_id: str,
-    version: Optional[int] = Query(default=None),
+    version: int | None = Query(default=None),
     user_id: str = Security(autogpt_auth_lib.get_user_id),
 ) -> library_model.LibraryAgent:
     library_agent = await library_db.get_library_agent_by_graph_id(

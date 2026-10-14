@@ -9,8 +9,8 @@ import hashlib
 import hmac
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Optional, TypeGuard
+from datetime import UTC, datetime
+from typing import TypeGuard
 from urllib.parse import quote
 
 from fastapi import HTTPException, Request
@@ -86,7 +86,7 @@ class RMFGWebhooksManager(BaseWebhooksManager):
         body = await request.body()
         expected = hmac.new(
             secret.encode("utf-8"),
-            msg=f"{timestamp}.".encode("utf-8") + body,
+            msg=f"{timestamp}.".encode() + body,
             digestmod=hashlib.sha256,
         ).hexdigest()
         if not any(
@@ -224,7 +224,7 @@ def _reject_stale_timestamp(timestamp: str) -> None:
         )
 
 
-def _parse_timestamp(timestamp: str) -> Optional[float]:
+def _parse_timestamp(timestamp: str) -> float | None:
     """Accept epoch seconds or an ISO-8601 instant; return epoch seconds."""
     candidate = timestamp.strip()
     try:
@@ -236,7 +236,7 @@ def _parse_timestamp(timestamp: str) -> Optional[float]:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed.timestamp()
 
 

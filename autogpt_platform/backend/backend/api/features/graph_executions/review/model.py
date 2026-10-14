@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime
 from functools import cache
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Union
+from typing import TYPE_CHECKING, Any, Literal, Union
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from prisma.models import PendingHumanReview
 
 # SafeJson-compatible type alias for review data
-SafeJsonData = Union[Dict[str, Any], List[Any], str, int, float, bool, None]
+SafeJsonData = Union[dict[str, Any], list[Any], str, int, float, bool, None]
 
 
 class PendingHumanReviewModel(BaseModel):
@@ -184,9 +184,7 @@ class ReviewItem(BaseModel):
         # Validate SafeJson compatibility
         def validate_safejson_type(obj):
             """Ensure object only contains SafeJson compatible types."""
-            if obj is None:
-                return True
-            elif isinstance(obj, (str, int, float, bool)):
+            if obj is None or isinstance(obj, (str, int, float, bool)):
                 return True
             elif isinstance(obj, dict):
                 return all(
@@ -207,7 +205,7 @@ class ReviewItem(BaseModel):
             if len(json_str) > 1000000:  # 1MB limit
                 raise ValueError("reviewed_data is too large (max 1MB)")
         except (TypeError, ValueError) as e:
-            raise ValueError(f"reviewed_data must be JSON serializable: {str(e)}")
+            raise ValueError(f"reviewed_data must be JSON serializable: {e!s}")
 
         # Ensure no dangerous nested structures (prevent infinite recursion)
         def check_depth(obj, max_depth=10, current_depth=0):
@@ -245,7 +243,7 @@ class ReviewRequest(BaseModel):
     of the same block via the `auto_approve_future` field on ReviewItem.
     """
 
-    reviews: List[ReviewItem] = Field(
+    reviews: list[ReviewItem] = Field(
         description="All reviews with their approval status, data, and messages"
     )
 

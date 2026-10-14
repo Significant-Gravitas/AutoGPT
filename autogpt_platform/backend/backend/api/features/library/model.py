@@ -214,7 +214,7 @@ class LibraryAgent(pydantic.BaseModel):
     has_sensitive_action: bool = pydantic.Field(
         description="Whether the agent has sensitive action blocks"
     )
-    trigger_setup_info: Optional[GraphTriggerInfo] = None
+    trigger_setup_info: GraphTriggerInfo | None = None
 
     new_output: bool
     execution_count: int = 0
@@ -249,11 +249,11 @@ class LibraryAgent(pydantic.BaseModel):
     @staticmethod
     def from_db(
         agent: prisma.models.LibraryAgent,
-        sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
-        store_listing: Optional[prisma.models.StoreListing] = None,
-        profile: Optional[prisma.models.Profile] = None,
-        execution_count_override: Optional[int] = None,
-        schedule_info: Optional[dict[str, str]] = None,
+        sub_graphs: list[prisma.models.AgentGraph] | None = None,
+        store_listing: prisma.models.StoreListing | None = None,
+        profile: prisma.models.Profile | None = None,
+        execution_count_override: int | None = None,
+        schedule_info: dict[str, str] | None = None,
     ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
@@ -286,9 +286,7 @@ class LibraryAgent(pydantic.BaseModel):
             creator_name = agent.Creator.name or "Unknown"
             creator_image_url = agent.Creator.avatarUrl or ""
 
-        week_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
-            days=7
-        )
+        week_ago = datetime.datetime.now(datetime.UTC) - datetime.timedelta(days=7)
         executions = agent.AgentGraph.Executions or []
         status_result = _calculate_agent_status(executions, week_ago)
         status = status_result.status
@@ -307,7 +305,9 @@ class LibraryAgent(pydantic.BaseModel):
                 for e in executions
                 if e.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED
             )
-            success_rate = (success_count / execution_count) * 100
+            # Over the included runs, not the total: an override counts runs
+            # the include never loaded, so their outcomes are unknown here.
+            success_rate = (success_count / len(executions)) * 100
 
             correctness_scores = []
             for e in executions:
@@ -505,13 +505,13 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     Request model used when updating a preset for a library agent.
     """
 
-    inputs: Optional[GraphInput] = None
-    credentials: Optional[dict[str, CredentialsMetaInput]] = None
+    inputs: GraphInput | None = None
+    credentials: dict[str, CredentialsMetaInput] | None = None
 
-    name: Optional[str] = None
-    description: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
 
-    is_active: Optional[bool] = None
+    is_active: bool | None = None
 
 
 class TriggeredPresetSetupRequest(pydantic.BaseModel):
@@ -542,12 +542,12 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     team_id: str | None = None
 
     # Read-only in responses; set server-side via the setup-trigger flow only.
-    webhook_id: Optional[str] = None
+    webhook_id: str | None = None
     webhook: "Webhook | None"
 
     # Expert attribution, resolved server-side at creation; every run this
     # preset fires inherits it.
-    expert_id: Optional[str] = None
+    expert_id: str | None = None
 
     @pydantic.field_serializer("webhook")
     def _redact_webhook_signing_material(
@@ -650,26 +650,26 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     archiving, or deleting.
     """
 
-    auto_update_version: Optional[bool] = pydantic.Field(
+    auto_update_version: bool | None = pydantic.Field(
         default=None, description="Auto-update the agent version"
     )
-    graph_version: Optional[int] = pydantic.Field(
+    graph_version: int | None = pydantic.Field(
         default=None, description="Specific graph version to update to"
     )
-    is_favorite: Optional[bool] = pydantic.Field(
+    is_favorite: bool | None = pydantic.Field(
         default=None, description="Mark the agent as a favorite"
     )
-    is_archived: Optional[bool] = pydantic.Field(
+    is_archived: bool | None = pydantic.Field(
         default=None, description="Archive the agent"
     )
-    is_hidden: Optional[bool] = pydantic.Field(
+    is_hidden: bool | None = pydantic.Field(
         default=None,
         description="Whether to hide the agent from the library listing",
     )
-    settings: Optional[GraphSettings] = pydantic.Field(
+    settings: GraphSettings | None = pydantic.Field(
         default=None, description="User-specific settings for this library agent"
     )
-    folder_id: Optional[str] = pydantic.Field(
+    folder_id: str | None = pydantic.Field(
         default=None,
         description="Folder ID to move agent to (None to move to root)",
     )

@@ -17,12 +17,15 @@ import logging
 import pickle
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache, wraps
-from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
+import sentry_sdk
 from redis.cluster import ClusterNode, RedisCluster
 
+from backend.util import tracing
 from backend.util.retry import conn_retry
 from backend.util.settings import Settings
 
@@ -158,7 +161,7 @@ class CachedFunction(Protocol[P, R_co]):
 
     def cache_clear(self, pattern: str | None = None) -> None:
         """Clear cached entries. If pattern provided, clear matching entries only."""
-        return None
+        return
 
     def cache_info(self) -> dict[str, int | None]:
         """Get cache statistics."""
@@ -404,11 +407,17 @@ def cached(
                     if pattern
                     else f"cache:{func_name}:*"
                 )
-                keys = list(
-                    _get_redis().scan_iter(
-                        match_pattern, target_nodes=RedisCluster.PRIMARIES
+                # One span for the whole sweep: a span per SCAN page fills the
+                # caller's transaction past the SDK's span limit.
+                with (
+                    sentry_sdk.start_span(op="db.redis", name="SCAN cache keys"),
+                    tracing.suppress_child_spans(),
+                ):
+                    keys = list(
+                        _get_redis().scan_iter(
+                            match_pattern, target_nodes=RedisCluster.PRIMARIES
+                        )
                     )
-                )
 
                 if keys:
                     pipeline = _get_redis().pipeline()

@@ -3,7 +3,8 @@ Provider configuration class that holds all provider-related settings.
 """
 
 import uuid
-from typing import Any, Callable, List, Optional, Set, Type
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel, SecretStr
 
@@ -24,8 +25,8 @@ from backend.integrations.webhooks._base import BaseWebhooksManager
 class OAuthConfig(BaseModel):
     """Configuration for OAuth authentication."""
 
-    oauth_handler: Type[BaseOAuthHandler]
-    scopes: Optional[List[str]] = None
+    oauth_handler: type[BaseOAuthHandler]
+    scopes: list[str] | None = None
     client_id_env_var: str
     client_secret_env_var: str
 
@@ -48,14 +49,14 @@ class Provider:
     def __init__(
         self,
         name: str,
-        oauth_config: Optional[OAuthConfig] = None,
-        webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
-        default_credentials: Optional[List[Credentials]] = None,
-        base_costs: Optional[List[BlockCost]] = None,
-        supported_auth_types: Optional[Set[CredentialsType]] = None,
-        api_client_factory: Optional[Callable] = None,
-        error_handler: Optional[Callable[[Exception], str]] = None,
-        description: Optional[str] = None,
+        oauth_config: OAuthConfig | None = None,
+        webhook_manager: type[BaseWebhooksManager] | None = None,
+        default_credentials: list[Credentials] | None = None,
+        base_costs: list[BlockCost] | None = None,
+        supported_auth_types: set[CredentialsType] | None = None,
+        api_client_factory: Callable | None = None,
+        error_handler: Callable[[Exception], str] | None = None,
+        description: str | None = None,
         **kwargs,
     ):
         self.name = name

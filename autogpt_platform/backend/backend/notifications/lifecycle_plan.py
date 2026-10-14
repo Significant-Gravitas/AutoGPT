@@ -7,7 +7,7 @@ from Stripe rather than from our own copy is what keeps the copy honest.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from prisma.enums import SubscriptionTier
@@ -96,17 +96,21 @@ def format_amount(minor_units: int | None, currency: str) -> str:
     aren't."""
     if minor_units is None:
         return "Not available"
-    symbol = {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
+    symbol = currency_symbol(currency)
     if currency.lower() in _ZERO_DECIMAL_CURRENCIES:
         return f"{symbol}{minor_units:,}"
     return f"{symbol}{minor_units / 100:,.2f}"
+
+
+def currency_symbol(currency: str) -> str:
+    return {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
 
 
 def format_date(timestamp: int | None) -> str:
     """The one fact these emails exist to state, so it is never relative."""
     if not timestamp:
         return "Not available"
-    moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    moment = datetime.fromtimestamp(timestamp, tz=UTC)
     return f"{moment.day} {moment.strftime('%b %Y')}"
 
 

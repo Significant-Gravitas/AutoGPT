@@ -3,7 +3,7 @@ import contextlib
 import inspect
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
 from unittest.mock import Mock
@@ -17,6 +17,7 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, Field, TypeAdapter, ValidationError
 
 from backend.data.model import User
+from backend.util import tracing
 from backend.util.exceptions import (
     ExpertNotFoundError,
     ExpertPrivateTenancyNotFoundError,
@@ -989,7 +990,7 @@ class TestGetReturn:
         in a newer database-manager deploy) are silently dropped instead of raising
         ValidationError — making the RPC layer forward-compatible during rolling deploys.
         """
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         valid_dict = {
             "id": "user-id",
             "email": "test@example.com",
@@ -1153,3 +1154,59 @@ async def test_forward_ref_return_is_deserialized_over_the_async_rpc():
 
     assert reviews == [ReviewLike(id="0")]
     assert isinstance(reviews[0], ReviewLike)
+
+
+def _client_recording_requests(
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> tuple[Any, list[httpx.Request]]:
+    """A client built as in production, with only its network layer swapped
+    for one that records each request and answers 8."""
+    sent: list[httpx.Request] = []
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        sent.append(request)
+        return httpx.Response(200, json=8)
+
+    client = get_service_client(ServiceTestClient)
+    inner = cast(Any, client)
+    sync_client = inner._create_sync_client()
+    sync_client._transport = httpx.MockTransport(answer)
+    inner._sync_clients[ServiceTest.__name__] = sync_client
+    async_client = inner._create_async_client()
+    async_client._transport = httpx.MockTransport(answer)
+    inner._async_clients[loop] = async_client
+    return client, sent
+
+
+def test_an_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests()
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+    assert f"sentry-trace_id={transaction.trace_id}" in request.headers["baggage"]
+
+
+@pytest.mark.asyncio
+async def test_an_async_rpc_carries_the_callers_trace(sentry_transactions):
+    client, sent = _client_recording_requests(asyncio.get_running_loop())
+
+    with tracing.start_transaction("executor.node", "Block") as transaction:
+        assert await client.add_async(5, 3) == 8
+
+    [request] = sent
+    assert request.headers["sentry-trace"].startswith(transaction.trace_id)
+
+
+def test_an_untraced_rpc_carries_no_trace(sentry_transactions):
+    """Without a transaction the service starts a trace of its own rather than
+    joining whatever trace the calling thread last saw."""
+    client, sent = _client_recording_requests()
+
+    assert client.add(5, 3) == 8
+
+    [request] = sent
+    assert "sentry-trace" not in request.headers
+    assert "baggage" not in request.headers

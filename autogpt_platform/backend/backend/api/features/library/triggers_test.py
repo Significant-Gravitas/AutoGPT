@@ -114,9 +114,9 @@ async def test_expert_trigger_maps_inaccessible_expert_to_not_found():
             f"{_PATH}.experts_db.resolve_private_expert_tenancy",
             new=AsyncMock(side_effect=experts_db.ExpertNotFoundError("expert-1")),
         ),
+        pytest.raises(NotFoundError, match="Expert #expert-1 not found"),
     ):
-        with pytest.raises(NotFoundError, match="Expert #expert-1 not found"):
-            await _setup(expert_id="expert-1")
+        await _setup(expert_id="expert-1")
 
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
@@ -135,9 +135,9 @@ async def test_expert_trigger_propagates_transient_tenancy_failure():
             f"{_PATH}.experts_db.resolve_private_expert_tenancy",
             new=AsyncMock(side_effect=RuntimeError("database unavailable")),
         ),
+        pytest.raises(RuntimeError, match="database unavailable"),
     ):
-        with pytest.raises(RuntimeError, match="database unavailable"):
-            await _setup(expert_id="expert-1")
+        await _setup(expert_id="expert-1")
 
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
@@ -158,9 +158,9 @@ async def test_expert_trigger_maps_missing_personal_tenancy_to_unavailable():
                 side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
             ),
         ),
+        pytest.raises(MissingConfigError, match="still being set up"),
     ):
-        with pytest.raises(MissingConfigError, match="still being set up"):
-            await _setup(expert_id="expert-1")
+        await _setup(expert_id="expert-1")
 
     webhook_mock.assert_not_awaited()
     create_mock.assert_not_awaited()
@@ -210,9 +210,9 @@ async def test_setup_supplied_session_expert_never_graph_reattributes():
                 side_effect=experts_db.ExpertNotFoundError("expert-archived")
             ),
         ),
+        pytest.raises(NotFoundError, match="Expert #expert-archived not found"),
     ):
-        with pytest.raises(NotFoundError, match="Expert #expert-archived not found"):
-            await _setup(expert_id="expert-archived")
+        await _setup(expert_id="expert-archived")
     create_mock.assert_not_awaited()
     expert_mock.assert_not_awaited()  # no graph-match re-attribution
 
@@ -403,14 +403,14 @@ async def test_update_expert_trigger_maps_missing_personal_tenancy_to_unavailabl
                 side_effect=experts_db.ExpertPrivateTenancyNotFoundError("expert-1")
             ),
         ),
+        pytest.raises(MissingConfigError, match="still being set up"),
     ):
-        with pytest.raises(MissingConfigError, match="still being set up"):
-            await update_triggered_preset(
-                user_id=_USER,
-                preset_id="preset-1",
-                inputs={"repo": "owner/repo"},
-                credentials={},
-            )
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"repo": "owner/repo"},
+            credentials={},
+        )
 
     m["setup"].assert_not_awaited()
     m["update"].assert_not_awaited()
@@ -431,9 +431,8 @@ async def test_update_reconfigure_webhook_rejected_raises():
 
 @pytest.mark.asyncio
 async def test_update_preset_not_found_raises():
-    with _update_patches(current=None):
-        with pytest.raises(NotFoundError):
-            await update_triggered_preset(user_id=_USER, preset_id="missing", name="X")
+    with _update_patches(current=None), pytest.raises(NotFoundError):
+        await update_triggered_preset(user_id=_USER, preset_id="missing", name="X")
 
 
 @pytest.mark.asyncio
@@ -485,9 +484,8 @@ async def test_delete_without_webhook_skips_prune():
 
 @pytest.mark.asyncio
 async def test_delete_not_found_raises():
-    with _delete_patches(preset=None):
-        with pytest.raises(NotFoundError):
-            await delete_preset_with_webhook_cleanup(user_id=_USER, preset_id="missing")
+    with _delete_patches(preset=None), pytest.raises(NotFoundError):
+        await delete_preset_with_webhook_cleanup(user_id=_USER, preset_id="missing")
 
 
 @pytest.mark.asyncio

@@ -21,7 +21,7 @@ What this file does NOT cover (needs an LLM key — separate
   (which we *do* assert on cleanly below).
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import patch
 
 import pytest
@@ -63,7 +63,7 @@ async def test_rebuild_returns_structured_result_on_failure(
           (a)-[:RELATES_TO {uuid: 'e1', group_id: $gid, fact: 'a knows b'}]->(b)
         """,
         gid=group_id,
-        now=datetime.now(timezone.utc).isoformat(),
+        now=datetime.now(UTC).isoformat(),
     )
 
     user_id = _make_user_id(group_id)

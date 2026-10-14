@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -13,7 +13,7 @@ from .briefing import compose_briefing, without_summaries
 from .helpers import AgentRef
 from .models import AUTOPILOT_BRIEFING_AUTHOR, HomeBriefingAuthor
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
 TRIAGE = {"graph": AgentRef(name="Inbox triage", library_agent_id="library-agent")}
 NO_LINK = {"graph": AgentRef(name="Inbox triage", library_agent_id=None)}
 

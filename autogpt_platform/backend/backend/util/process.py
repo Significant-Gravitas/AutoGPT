@@ -4,15 +4,18 @@ import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, get_all_start_methods, set_start_method
-from typing import Optional
+from typing import ClassVar
 
+from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import configure_logging
 from backend.util.metrics import sentry_init
 from backend.util.retry import stop_retry_loops
 from backend.util.secrets_guard import check_secrets
-from backend.util.settings import set_service_name
+from backend.util.settings import AppEnvironment, Config, set_service_name
 
 logger = logging.getLogger(__name__)
+
+config = Config()
 
 # How long ``AppProcess.stop`` waits for a child to act on a signal before
 # escalating. Long enough for an orderly shutdown, short enough that a wedged
@@ -25,9 +28,12 @@ class AppProcess(ABC):
     A class to represent an object that can be executed in a background process.
     """
 
-    process: Optional[Process] = None
+    process: Process | None = None
     _shutting_down: bool = False
     _cleaned_up: bool = False
+    # Opens the flag vendor's client before `run`, so no read waits on its
+    # first load. A service that never reads a flag opts out.
+    reads_feature_flags: ClassVar[bool] = True
 
     if "forkserver" in get_all_start_methods():
         set_start_method("forkserver", force=True)
@@ -45,7 +51,6 @@ class AppProcess(ABC):
         """
         The method that will be executed in the process.
         """
-        pass
 
     @property
     def service_name(self) -> str:
@@ -56,11 +61,14 @@ class AppProcess(ABC):
         Implement this method on a subclass to do post-execution cleanup,
         e.g. disconnecting from a database or terminating child processes.
         """
-        pass
 
     def execute_run_command(self, silent):
         signal.signal(signal.SIGTERM, self._self_terminate)
         signal.signal(signal.SIGINT, self._self_terminate)
+        # LOCAL has no vendor configured; its flags resolve to mock defaults.
+        start_flags = (
+            self.reads_feature_flags and config.app_env is not AppEnvironment.LOCAL
+        )
 
         try:
             if silent:
@@ -69,10 +77,12 @@ class AppProcess(ABC):
 
             set_service_name(self.service_name)
             logger.info(f"[{self.service_name}] Starting...")
+            if start_flags:
+                initialize_feature_flags()
             self.run()
         except BaseException as e:
             logger.warning(
-                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",  # noqa
+                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",
                 exc_info=e if not isinstance(e, SystemExit) else None,
             )
             # Send error to Sentry before cleanup
@@ -84,11 +94,16 @@ class AppProcess(ABC):
                 except Exception:
                     pass  # Silently ignore if Sentry isn't available
         finally:
-            if not self._cleaned_up:
-                self._cleaned_up = True
-                logger.info(f"[{self.service_name}] 🧹 Running cleanup")
-                self.cleanup()
-                logger.info(f"[{self.service_name}] ✅ Cleanup done")
+            try:
+                if not self._cleaned_up:
+                    self._cleaned_up = True
+                    logger.info(f"[{self.service_name}] 🧹 Running cleanup")
+                    self.cleanup()
+                    logger.info(f"[{self.service_name}] ✅ Cleanup done")
+            finally:
+                # After cleanup, which can drain work that still reads flags.
+                if start_flags:
+                    shutdown_feature_flags()
             logger.info(f"[{self.service_name}] 🛑 Terminated")
 
     @staticmethod

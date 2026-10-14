@@ -9,7 +9,7 @@ for Prisma directly while still exercising the queue's branching.
 
 import asyncio
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -48,7 +48,7 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
         "content": "hello",
         "session_id": "s1",
         "metadata": None,
-        "created_at": datetime.now(timezone.utc),
+        "created_at": datetime.now(UTC),
         "sequence": 1,
     }
     base.update(overrides)
@@ -57,7 +57,7 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
 
 def _queued_row(session_id: str = "s1", title: str | None = "T") -> ChatSessionInfo:
     """A row as ``list_chat_sessions_by_status`` returns it to the dispatcher."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return ChatSessionInfo(
         session_id=session_id,
         user_id="u1",
@@ -1406,9 +1406,7 @@ async def test_dispatch_leaves_queued_on_rate_limit_exceeded() -> None:
         patch(
             "backend.copilot.turn_queue.check_rate_limit",
             new=AsyncMock(
-                side_effect=RateLimitExceeded(
-                    "daily", resets_at=datetime.now(timezone.utc)
-                )
+                side_effect=RateLimitExceeded("daily", resets_at=datetime.now(UTC))
             ),
         ),
     ):

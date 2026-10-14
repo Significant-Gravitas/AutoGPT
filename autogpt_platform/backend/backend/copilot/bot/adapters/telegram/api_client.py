@@ -5,7 +5,7 @@ enough that a dedicated SDK dependency isn't warranted.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 
@@ -43,8 +43,8 @@ class TelegramClient:
         chat_id: str,
         content: bytes,
         filename: str,
-        caption: Optional[str] = None,
-        message_thread_id: Optional[int] = None,
+        caption: str | None = None,
+        message_thread_id: int | None = None,
     ) -> Any:
         return await self._send_multipart(
             "sendDocument",
@@ -61,8 +61,8 @@ class TelegramClient:
         chat_id: str,
         content: bytes,
         filename: str,
-        caption: Optional[str] = None,
-        message_thread_id: Optional[int] = None,
+        caption: str | None = None,
+        message_thread_id: int | None = None,
     ) -> Any:
         return await self._send_multipart(
             "sendPhoto",
@@ -81,8 +81,8 @@ class TelegramClient:
         chat_id: str,
         content: bytes,
         filename: str,
-        caption: Optional[str] = None,
-        message_thread_id: Optional[int] = None,
+        caption: str | None = None,
+        message_thread_id: int | None = None,
     ) -> Any:
         """File-carrying methods need multipart, unlike the JSON methods."""
         url = f"{_API_BASE}/bot{self._token}/{method}"

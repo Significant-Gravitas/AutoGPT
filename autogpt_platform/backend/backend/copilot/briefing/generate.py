@@ -1,8 +1,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from typing import NamedTuple, TypedDict
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -196,7 +195,7 @@ def _stored_briefing_content(content: dict) -> BriefingContent | None:
 async def _compose_fresh_briefing(
     user_id: str, now_local: datetime, tz_name: str
 ) -> BriefingContent | None:
-    window_start = (now_local - timedelta(hours=24)).astimezone(dt_timezone.utc)
+    window_start = (now_local - timedelta(hours=24)).astimezone(UTC)
     # The three reads are independent; run them concurrently so the briefing
     # costs one round-trip's latency rather than three. The library lookup
     # can't join them — it needs the graph ids the executions resolve to.

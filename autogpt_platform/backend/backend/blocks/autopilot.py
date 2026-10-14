@@ -388,7 +388,7 @@ class AutoPilotBlock(Block):
         session_id: str,
         max_recursion_depth: int,
         user_id: str,
-        permissions: "CopilotPermissions | None" = None,
+        permissions: CopilotPermissions | None = None,
     ) -> tuple[str, list[ToolCallEntry], str, str, TokenUsage]:
         """Invoke the copilot on the copilot_executor queue and aggregate the
         result.
@@ -756,14 +756,14 @@ def _reset_recursion(
 
 # Inherited permissions from a parent AutoPilotBlock execution.
 # This acts as a ceiling: child executions can only be more restrictive.
-_inherited_permissions: contextvars.ContextVar["CopilotPermissions | None"] = (
+_inherited_permissions: contextvars.ContextVar[CopilotPermissions | None] = (
     contextvars.ContextVar("_inherited_permissions", default=None)
 )
 
 
 async def _build_and_validate_permissions(
-    input_data: "AutoPilotBlock.Input",
-) -> "CopilotPermissions | str":
+    input_data: AutoPilotBlock.Input,
+) -> CopilotPermissions | str:
     """Build a :class:`CopilotPermissions` from block input and validate it.
 
     Returns a :class:`CopilotPermissions` on success or a human-readable
@@ -790,8 +790,10 @@ async def _build_and_validate_permissions(
 
 
 def _merge_inherited_permissions(
-    permissions: "CopilotPermissions | None",
-) -> "tuple[CopilotPermissions | None, contextvars.Token[CopilotPermissions | None] | None]":
+    permissions: CopilotPermissions | None,
+) -> tuple[
+    CopilotPermissions | None, contextvars.Token[CopilotPermissions | None] | None
+]:
     """Merge *permissions* with any inherited parent permissions.
 
     The merged result is stored back into the contextvar so that any nested

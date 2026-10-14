@@ -18,7 +18,7 @@ Contracts pinned here:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 from unittest.mock import AsyncMock, patch
 
@@ -43,8 +43,8 @@ def _dream_result(
         user_id="u",
         pass_id="dream-1",
         execution_path=execution_path,
-        started_at=datetime.now(timezone.utc),
-        completed_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        completed_at=datetime.now(UTC),
         elapsed_seconds=0.5,
         error=error,
         skipped=skipped,
@@ -57,7 +57,7 @@ def _dream_result(
 def _ratification_result(
     *, error: str | None = None, ratified: int = 0, superseded: int = 0
 ) -> RatificationResult:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return RatificationResult(
         user_id="u",
         started_at=now,

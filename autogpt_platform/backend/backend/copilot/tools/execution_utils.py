@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from typing_extensions import TypedDict
 
@@ -100,7 +101,7 @@ async def wait_for_execution(
             timeout=timeout_seconds,
         )
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.info(f"Timeout waiting for execution {execution_id}")
     except Exception as e:
         logger.error(f"Error waiting for execution: {e}", exc_info=True)
@@ -237,8 +238,14 @@ def summarize_node_failures(
 def build_run_health_warning(
     outputs: dict[str, Any] | None,
     node_failures: list[NodeFailureSummary],
+    failed_node_count: int = 0,
 ) -> str | None:
-    """Warning to include in a COMPLETED-run message, or None if healthy."""
+    """Warning to include in a COMPLETED-run message, or None if healthy.
+
+    `failed_node_count` is the run's own tally (`stats.node_error_count`). It
+    still flags a failed node when the per-node trace that `node_failures` is
+    built from wasn't loaded.
+    """
     if node_failures:
         details = "; ".join(
             f"{f['block_name']}: {f['error'] or 'no error detail'}"
@@ -249,6 +256,12 @@ def build_run_health_warning(
             f"status ({details}). Treat this run as unsuccessful — inspect "
             "node_executions, fix the agent, and re-verify before reporting "
             "success."
+        )
+    if failed_node_count > 0:
+        return (
+            f"WARNING: {failed_node_count} node(s) FAILED despite the COMPLETED "
+            "status. Treat this run as unsuccessful — inspect node_executions, "
+            "fix the agent, and re-verify before reporting success."
         )
     if not outputs:
         return (

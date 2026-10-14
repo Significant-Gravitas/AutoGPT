@@ -2,7 +2,7 @@
 
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -218,7 +218,7 @@ class TestAdversarialConfirmRace:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
         )
@@ -242,7 +242,7 @@ class TestAdversarialConfirmRace:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
             platformUserId="pu1",
@@ -271,7 +271,7 @@ class TestAdversarialConfirmRace:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
             platformUserId="pu1",
@@ -312,7 +312,7 @@ class TestAdversarialConfirmRace:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
             platformUserId="pu1",
@@ -359,7 +359,7 @@ class TestAdversarialConfirmRace:
         fake_token = MagicMock(
             linkType=LinkType.USER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformUserId="pu1",
             platformUsername="pu_name",

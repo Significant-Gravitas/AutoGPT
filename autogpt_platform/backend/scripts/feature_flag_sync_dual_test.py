@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -19,9 +19,9 @@ from ldclient.config import Config as LDConfig
 from ldclient.integrations import Files
 from posthog import Posthog
 
-import backend.data.db_accessors as db_accessors
 import backend.util.feature_flag as ff
 import backend.util.feature_flag.posthog as ph
+from backend.data import db_accessors
 from backend.data.user import AuthUserFlagFields
 from backend.util.settings import FeatureFlagBackend
 from scripts.feature_flag_sync import map_flag, map_segment, resolve_cohort_refs
@@ -32,12 +32,12 @@ PEOPLE = {
     "employee": AuthUserFlagFields(
         role="admin",
         email="ada@agpt.co",
-        created_at=datetime(2025, 3, 1, tzinfo=timezone.utc),
+        created_at=datetime(2025, 3, 1, tzinfo=UTC),
     ),
     "outsider": AuthUserFlagFields(
         role="authenticated",
         email="eve@elsewhere.test",
-        created_at=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 9, 1, tzinfo=UTC),
     ),
     "targeted": AuthUserFlagFields(role="authenticated", email="bob@elsewhere.test"),
 }

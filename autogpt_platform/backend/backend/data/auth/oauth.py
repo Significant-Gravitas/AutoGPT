@@ -13,8 +13,8 @@ import hashlib
 import logging
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from autogpt_libs.api_key.keysmith import APIKeySmith
 from prisma.enums import APIKeyPermission as APIPermission
@@ -58,13 +58,9 @@ REFRESH_TOKEN_PREFIX = "agpt_rt_"
 class OAuthError(Exception):
     """Base OAuth error"""
 
-    pass
-
 
 class InvalidClientError(OAuthError):
     """Invalid client_id or client_secret"""
-
-    pass
 
 
 class InvalidGrantError(OAuthError):
@@ -93,8 +89,8 @@ class OAuthApplicationInfo(BaseModel):
 
     id: str
     name: str
-    description: Optional[str] = None
-    logo_url: Optional[str] = None
+    description: str | None = None
+    logo_url: str | None = None
     client_id: str
     redirect_uris: list[str]
     grant_types: list[str]
@@ -155,9 +151,9 @@ class OAuthAuthorizationCodeInfo(BaseModel):
     user_id: str
     scopes: list[APIPermission]
     redirect_uri: str
-    code_challenge: Optional[str] = None
-    code_challenge_method: Optional[str] = None
-    used_at: Optional[datetime] = None
+    code_challenge: str | None = None
+    code_challenge_method: str | None = None
+    used_at: datetime | None = None
 
     @property
     def is_used(self) -> bool:
@@ -225,7 +221,7 @@ class OAuthRefreshTokenInfo(BaseModel):
     created_at: datetime
     expires_at: datetime
     application_id: str
-    revoked_at: Optional[datetime] = None
+    revoked_at: datetime | None = None
 
     @property
     def is_revoked(self) -> bool:
@@ -261,11 +257,11 @@ class TokenIntrospectionResult(BaseModel):
     """Result of token introspection (RFC 7662)"""
 
     active: bool
-    scopes: Optional[list[str]] = None
-    client_id: Optional[str] = None
-    user_id: Optional[str] = None
-    exp: Optional[int] = None  # Unix timestamp
-    token_type: Optional[Literal["access_token", "refresh_token"]] = None
+    scopes: list[str] | None = None
+    client_id: str | None = None
+    user_id: str | None = None
+    exp: int | None = None  # Unix timestamp
+    token_type: Literal["access_token", "refresh_token"] | None = None
 
 
 # ============================================================================
@@ -273,7 +269,7 @@ class TokenIntrospectionResult(BaseModel):
 # ============================================================================
 
 
-async def get_oauth_application(client_id: str) -> Optional[OAuthApplicationInfo]:
+async def get_oauth_application(client_id: str) -> OAuthApplicationInfo | None:
     """Get OAuth application by client ID (without secret)"""
     app = await PrismaOAuthApplication.prisma().find_unique(
         where={"clientId": client_id}
@@ -285,7 +281,7 @@ async def get_oauth_application(client_id: str) -> Optional[OAuthApplicationInfo
 
 async def get_oauth_application_with_secret(
     client_id: str,
-) -> Optional[OAuthApplicationInfoWithSecret]:
+) -> OAuthApplicationInfoWithSecret | None:
     """Get OAuth application by client ID (with secret hash for validation)"""
     app = await PrismaOAuthApplication.prisma().find_unique(
         where={"clientId": client_id}
@@ -347,15 +343,15 @@ async def create_authorization_code(
     user_id: str,
     scopes: list[APIPermission],
     redirect_uri: str,
-    code_challenge: Optional[str] = None,
-    code_challenge_method: Optional[Literal["S256", "plain"]] = None,
+    code_challenge: str | None = None,
+    code_challenge_method: Literal["S256", "plain"] | None = None,
 ) -> OAuthAuthorizationCodeInfo:
     """
     Create a new authorization code.
     Expires in 10 minutes and can only be used once.
     """
     code = _generate_authorization_code()
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + AUTHORIZATION_CODE_TTL
 
     saved_code = await PrismaOAuthAuthorizationCode.prisma().create(
@@ -379,7 +375,7 @@ async def consume_authorization_code(
     code: str,
     application_id: str,
     redirect_uri: str,
-    code_verifier: Optional[str] = None,
+    code_verifier: str | None = None,
 ) -> tuple[str, list[APIPermission]]:
     """
     Consume an authorization code and return (user_id, scopes).
@@ -414,7 +410,7 @@ async def consume_authorization_code(
         )
 
     # Check expiration
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if auth_code.expiresAt < now:
         raise InvalidGrantError("authorization code expired")
 
@@ -442,7 +438,7 @@ async def consume_authorization_code(
 
 
 def _verify_pkce(
-    code_verifier: str, code_challenge: str, code_challenge_method: Optional[str]
+    code_verifier: str, code_challenge: str, code_challenge_method: str | None
 ) -> bool:
     """
     Verify PKCE code verifier against code challenge.
@@ -486,7 +482,7 @@ async def create_access_token(
     """
     plaintext_token = ACCESS_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + ACCESS_TOKEN_TTL
 
     saved_token = await PrismaOAuthAccessToken.prisma().create(
@@ -533,7 +529,7 @@ async def validate_access_token(
         raise InvalidTokenError("access token has been revoked")
 
     # Check expiration
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if access_token.expiresAt < now:
         raise InvalidTokenError("access token expired")
 
@@ -571,7 +567,7 @@ async def revoke_access_token(
                 "applicationId": application_id,
                 "revokedAt": None,
             },
-            data={"revokedAt": datetime.now(timezone.utc)},
+            data={"revokedAt": datetime.now(UTC)},
         )
 
         # Always perform second query to ensure constant time
@@ -603,7 +599,7 @@ async def create_refresh_token(
     """
     plaintext_token = REFRESH_TOKEN_PREFIX + _generate_token()
     token_hash = _hash_token(plaintext_token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + REFRESH_TOKEN_TTL
 
     saved_token = await PrismaOAuthRefreshToken.prisma().create(
@@ -648,7 +644,7 @@ async def refresh_tokens(
         raise InvalidGrantError("refresh token does not belong to this application")
 
     # Check expiration
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if rt.expiresAt < now:
         raise InvalidGrantError("refresh token expired")
 
@@ -702,7 +698,7 @@ async def revoke_refresh_token(
                 "applicationId": application_id,
                 "revokedAt": None,
             },
-            data={"revokedAt": datetime.now(timezone.utc)},
+            data={"revokedAt": datetime.now(UTC)},
         )
 
         # Always perform second query to ensure constant time
@@ -727,7 +723,7 @@ async def revoke_refresh_token(
 
 async def introspect_token(
     token: str,
-    token_type_hint: Optional[Literal["access_token", "refresh_token"]] = None,
+    token_type_hint: Literal["access_token", "refresh_token"] | None = None,
 ) -> TokenIntrospectionResult:
     """
     Introspect a token and return its metadata (RFC 7662).
@@ -758,7 +754,7 @@ async def introspect_token(
 
     if refresh_token and refresh_token.revokedAt is None:
         # Check if valid (not expired)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if refresh_token.expiresAt > now:
             app = await get_oauth_application_by_id(refresh_token.applicationId)
             return TokenIntrospectionResult(
@@ -774,7 +770,7 @@ async def introspect_token(
     return TokenIntrospectionResult(active=False)
 
 
-async def get_oauth_application_by_id(app_id: str) -> Optional[OAuthApplicationInfo]:
+async def get_oauth_application_by_id(app_id: str) -> OAuthApplicationInfo | None:
     """Get OAuth application by ID"""
     app = await PrismaOAuthApplication.prisma().find_unique(where={"id": app_id})
     if not app:
@@ -795,9 +791,9 @@ async def update_oauth_application(
     app_id: str,
     *,
     owner_id: str,
-    is_active: Optional[bool] = None,
-    logo_url: Optional[str] = None,
-) -> Optional[OAuthApplicationInfo]:
+    is_active: bool | None = None,
+    logo_url: str | None = None,
+) -> OAuthApplicationInfo | None:
     """
     Update OAuth application active status.
     Only the owner can update their app's status.
@@ -842,7 +838,7 @@ async def cleanup_expired_oauth_tokens() -> dict[str, int]:
 
     Returns a dict with counts of deleted tokens by type.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     # Delete expired authorization codes
     codes_result = await PrismaOAuthAuthorizationCode.prisma().delete_many(

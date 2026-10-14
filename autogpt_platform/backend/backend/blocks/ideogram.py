@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import SecretStr
 
@@ -125,7 +125,7 @@ class IdeogramModelBlock(Block):
             title="Magic Prompt Option",
             advanced=True,
         )
-        seed: Optional[int] = SchemaField(
+        seed: int | None = SchemaField(
             description="Random seed. Set for reproducible generation",
             default=None,
             title="Seed",
@@ -137,7 +137,7 @@ class IdeogramModelBlock(Block):
             title="Style Type",
             advanced=True,
         )
-        negative_prompt: Optional[str] = SchemaField(
+        negative_prompt: str | None = SchemaField(
             description="Description of what to exclude from the image",
             default=None,
             title="Negative Prompt",
@@ -149,7 +149,7 @@ class IdeogramModelBlock(Block):
             title="Color Palette Preset",
             advanced=True,
         )
-        custom_color_palette: Optional[list[str]] = SchemaField(
+        custom_color_palette: list[str] | None = SchemaField(
             description=(
                 "Only available for model version V_2 or V_2_TURBO. Provide one or more color hex codes "
                 "(e.g., ['#000030', '#1C0C47', '#9900FF', '#4285F4', '#FFFFFF']) to define a custom color "
@@ -236,13 +236,13 @@ class IdeogramModelBlock(Block):
         api_key: SecretStr,
         model_name: str,
         prompt: str,
-        seed: Optional[int],
+        seed: int | None,
         aspect_ratio: str,
         magic_prompt_option: str,
         style_type: str,
-        negative_prompt: Optional[str],
+        negative_prompt: str | None,
         color_palette_name: str,
-        custom_colors: Optional[list[str]],
+        custom_colors: list[str] | None,
     ):
         # Use V3 endpoint for V3 model, legacy endpoint for others
         if model_name == "V_3":
@@ -275,13 +275,13 @@ class IdeogramModelBlock(Block):
         self,
         api_key: SecretStr,
         prompt: str,
-        seed: Optional[int],
+        seed: int | None,
         aspect_ratio: str,
         magic_prompt_option: str,
         style_type: str,
-        negative_prompt: Optional[str],
+        negative_prompt: str | None,
         color_palette_name: str,
-        custom_colors: Optional[list[str]],
+        custom_colors: list[str] | None,
     ):
         url = "https://api.ideogram.ai/v1/ideogram-v3/generate"
         headers = {
@@ -314,7 +314,7 @@ class IdeogramModelBlock(Block):
         )  # Default to 1x1 if not found
 
         # Use JSON for V3 endpoint (simpler than multipart/form-data)
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "prompt": prompt,
             "aspect_ratio": v3_aspect_ratio,
             "magic_prompt": magic_prompt_option,
@@ -341,13 +341,13 @@ class IdeogramModelBlock(Block):
         api_key: SecretStr,
         model_name: str,
         prompt: str,
-        seed: Optional[int],
+        seed: int | None,
         aspect_ratio: str,
         magic_prompt_option: str,
         style_type: str,
-        negative_prompt: Optional[str],
+        negative_prompt: str | None,
         color_palette_name: str,
-        custom_colors: Optional[list[str]],
+        custom_colors: list[str] | None,
     ):
         url = "https://api.ideogram.ai/generate"
         headers = {
@@ -355,7 +355,7 @@ class IdeogramModelBlock(Block):
             "Content-Type": "application/json",
         }
 
-        data: Dict[str, Any] = {
+        data: dict[str, Any] = {
             "image_request": {
                 "prompt": prompt,
                 "model": model_name,

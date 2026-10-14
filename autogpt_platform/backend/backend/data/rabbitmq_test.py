@@ -267,7 +267,6 @@ async def test_publish_reconnects_on_channel_invalid_state() -> None:
     async def _fake_connect():
         # After reconnect the channel must be valid again.
         client._channel = fake_channel
-        return None
 
     with patch.object(client, "connect", side_effect=_fake_connect):
         await client.publish_message(

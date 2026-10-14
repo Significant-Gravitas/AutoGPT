@@ -129,7 +129,7 @@ class CapabilityIndex:
         context: CapabilityContext = "direct",
         kind: CapabilityKindName | None = None,
         connections: ConnectionState | None = None,
-        permissions: "CopilotPermissions | None" = None,
+        permissions: CopilotPermissions | None = None,
         limit: int = DEFAULT_LIMIT,
         fallback_limit: int = DEFAULT_FALLBACK_LIMIT,
         prefer_mcp: bool = False,
@@ -201,7 +201,7 @@ class CapabilityIndex:
         self,
         context: CapabilityContext,
         kind: CapabilityKindName | None,
-        permissions: "CopilotPermissions | None",
+        permissions: CopilotPermissions | None,
     ) -> set[int]:
         allowed_tools: frozenset[str] | None = None
         if permissions is not None:

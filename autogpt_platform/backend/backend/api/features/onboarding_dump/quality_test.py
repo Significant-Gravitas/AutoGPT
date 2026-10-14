@@ -6,7 +6,6 @@ middle may pay for one, and every judge failure resolves to a recoverable
 rejection rather than a silent pass.
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -275,7 +274,7 @@ async def test_empty_choices_rejects(llm):
 @pytest.mark.asyncio
 async def test_llm_timeout_rejects(llm):
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(side_effect=asyncio.TimeoutError())
+    client.chat.completions.create = AsyncMock(side_effect=TimeoutError())
     llm(client)
     assert (
         await quality.check_transcript_quality("Automate my invoices.")

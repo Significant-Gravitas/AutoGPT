@@ -471,9 +471,11 @@ class ChatConfig(BaseSettings):
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
         description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
-        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
-        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
+        "both the baseline and Claude Agent SDK paths, including Codex models "
+        "on the SDK path, where each Codex function call counts as one round. "
+        "Prevents runaway tool loops from burning budget. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
+        "still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
@@ -600,7 +602,7 @@ class ChatConfig(BaseSettings):
             "Applies to models that emit a reasoning channel — Sonnet, Opus, "
             "and Mythos (adaptive thinking) and Kimi K2.6 "
             "(OpenRouter ``reasoning`` extension lit up by #12871). "
-            "Check https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking "  # noqa
+            "Check https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking "
             "for model compatibility and guidance. "
             "None = let the model decide. Override via CHAT_CLAUDE_AGENT_THINKING_EFFORT.",
         )
@@ -772,8 +774,7 @@ class ChatConfig(BaseSettings):
         if not self.use_openrouter:
             return False
         base = (self.base_url or "").rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
+        base = base.removesuffix("/v1")
         return bool(self.api_key and base and base.startswith("http"))
 
     @property

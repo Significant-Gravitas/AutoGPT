@@ -2,7 +2,6 @@
 
 import asyncio
 import logging
-from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
@@ -34,7 +33,7 @@ router = APIRouter(
 
 class UserRateLimitResponse(BaseModel):
     user_id: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
     daily_cost_limit_microdollars: int
     weekly_cost_limit_microdollars: int
     daily_cost_used_microdollars: int
@@ -51,7 +50,7 @@ class UserTierResponse(BaseModel):
     # Set by POST /rate_limit/tier when the grant will not stick: the user has
     # a Stripe customer without an active subscription, so the Stripe
     # reconciliation sweep will revert the tier to NO_TIER on its next run.
-    warning: Optional[str] = None
+    warning: str | None = None
 
 
 class SetUserTierRequest(BaseModel):
@@ -60,8 +59,8 @@ class SetUserTierRequest(BaseModel):
 
 
 async def _resolve_user_id(
-    user_id: Optional[str], email: Optional[str]
-) -> tuple[str, Optional[str]]:
+    user_id: str | None, email: str | None
+) -> tuple[str, str | None]:
     """Resolve a user_id and email from the provided parameters.
 
     Returns (user_id, email). Accepts either user_id or email; at least one
@@ -97,8 +96,8 @@ async def _resolve_user_id(
     summary="Get User Rate Limit",
 )
 async def get_user_rate_limit(
-    user_id: Optional[str] = None,
-    email: Optional[str] = None,
+    user_id: str | None = None,
+    email: str | None = None,
     admin_user_id: str = Security(get_user_id),
 ) -> UserRateLimitResponse:
     """Get a user's current usage and effective rate limits. Admin-only.
@@ -248,7 +247,7 @@ async def set_user_rate_limit_tier(
     return UserTierResponse(user_id=request.user_id, tier=request.tier, warning=warning)
 
 
-async def _sweep_revert_warning(user_id: str, tier: SubscriptionTier) -> Optional[str]:
+async def _sweep_revert_warning(user_id: str, tier: SubscriptionTier) -> str | None:
     """Best-effort: the tier is already written, so a Stripe or DB hiccup here
     must not turn the response into a 500 or hold the admin for long."""
     try:
@@ -267,7 +266,7 @@ async def _sweep_revert_warning(user_id: str, tier: SubscriptionTier) -> Optiona
 
 class UserSearchResult(BaseModel):
     user_id: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
 
 
 @router.get(

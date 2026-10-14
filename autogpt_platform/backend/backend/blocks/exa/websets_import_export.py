@@ -9,7 +9,6 @@ import csv
 import json
 from enum import Enum
 from io import StringIO
-from typing import Optional, Union
 
 from exa_py import AsyncExa
 from exa_py.websets.types import CreateImportResponse
@@ -43,8 +42,8 @@ class ImportModel(BaseModel):
     format: str
     entity_type: str
     count: int
-    upload_url: Optional[str]  # Only in CreateImportResponse
-    upload_valid_until: Optional[str]  # Only in CreateImportResponse
+    upload_url: str | None  # Only in CreateImportResponse
+    upload_valid_until: str | None  # Only in CreateImportResponse
     failed_reason: str
     failed_message: str
     metadata: dict
@@ -52,9 +51,7 @@ class ImportModel(BaseModel):
     updated_at: str
 
     @classmethod
-    def from_sdk(
-        cls, import_obj: Union[SdkImport, CreateImportResponse]
-    ) -> "ImportModel":
+    def from_sdk(cls, import_obj: SdkImport | CreateImportResponse) -> "ImportModel":
         """Convert SDK Import or CreateImportResponse to our stable model."""
         # Extract entity type from union (may be None)
         entity_type = "unknown"
@@ -154,7 +151,7 @@ class ExaCreateImportBlock(Block):
             default=ImportEntityType.COMPANY,
             description="Type of entities being imported",
         )
-        entity_description: Optional[str] = SchemaField(
+        entity_description: str | None = SchemaField(
             default=None,
             description="Description for custom entity type",
             advanced=True,
@@ -164,13 +161,13 @@ class ExaCreateImportBlock(Block):
             description="Column index containing the identifier (0-based)",
             ge=0,
         )
-        url_column: Optional[int] = SchemaField(
+        url_column: int | None = SchemaField(
             default=None,
             description="Column index containing URLs (optional)",
             ge=0,
             advanced=True,
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Metadata to attach to the import",
             advanced=True,
@@ -184,10 +181,10 @@ class ExaCreateImportBlock(Block):
         title: str = SchemaField(description="Title of the import")
         count: int = SchemaField(description="Number of items in the import")
         entity_type: str = SchemaField(description="Type of entities imported")
-        upload_url: Optional[str] = SchemaField(
+        upload_url: str | None = SchemaField(
             description="Upload URL for CSV data (only if csv_data not provided in request)"
         )
-        upload_valid_until: Optional[str] = SchemaField(
+        upload_valid_until: str | None = SchemaField(
             description="Expiration time for upload URL (only if upload_url is provided)"
         )
         created_at: str = SchemaField(description="When the import was created")
@@ -332,16 +329,16 @@ class ExaGetImportBlock(Block):
         format: str = SchemaField(description="Format of the imported data")
         entity_type: str = SchemaField(description="Type of entities imported")
         count: int = SchemaField(description="Number of items imported")
-        upload_url: Optional[str] = SchemaField(
+        upload_url: str | None = SchemaField(
             description="Upload URL for CSV data (if import not yet uploaded)"
         )
-        upload_valid_until: Optional[str] = SchemaField(
+        upload_valid_until: str | None = SchemaField(
             description="Expiration time for upload URL (if applicable)"
         )
-        failed_reason: Optional[str] = SchemaField(
+        failed_reason: str | None = SchemaField(
             description="Reason for failure (if applicable)"
         )
-        failed_message: Optional[str] = SchemaField(
+        failed_message: str | None = SchemaField(
             description="Detailed failure message (if applicable)"
         )
         created_at: str = SchemaField(description="When the import was created")
@@ -397,7 +394,7 @@ class ExaListImportsBlock(Block):
             ge=1,
             le=100,
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination",
             advanced=True,
@@ -411,7 +408,7 @@ class ExaListImportsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more imports to paginate through"
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results"
         )
 

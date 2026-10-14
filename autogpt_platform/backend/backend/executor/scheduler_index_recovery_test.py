@@ -242,7 +242,6 @@ def test_shutdown_during_candidate_lookup_keeps_shared_index_rows():
 
     def stopping_scheduler(*args, **kwargs):
         scheduler.scheduler.running = False
-        return None
 
     scheduler.scheduler.get_job.side_effect = stopping_scheduler
     scheduler.get_execution_schedules(user_id="u1")
@@ -259,7 +258,6 @@ def test_shutdown_during_reconcile_verification_keeps_shared_index_rows():
 
     def stopping_scheduler(*args, **kwargs):
         scheduler.scheduler.running = False
-        return None
 
     scheduler.scheduler.get_job.side_effect = stopping_scheduler
     scheduler._reconcile_schedule_index()

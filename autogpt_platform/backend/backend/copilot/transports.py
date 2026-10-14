@@ -13,7 +13,7 @@ this contract is the one the UI will keep.
 
 import logging
 import time
-from typing import Optional, get_args
+from typing import get_args
 
 from pydantic import BaseModel
 
@@ -186,8 +186,8 @@ async def save_default_chat_route(
 
 def _mark_default(
     transports: list[ChatTransportResponse],
-    saved_provider: Optional[str],
-    saved_credential_id: Optional[str],
+    saved_provider: str | None,
+    saved_credential_id: str | None,
 ) -> None:
     chosen = _saved_default(
         transports, saved_provider, saved_credential_id
@@ -198,8 +198,8 @@ def _mark_default(
 
 def _saved_default(
     transports: list[ChatTransportResponse],
-    saved_provider: Optional[str],
-    saved_credential_id: Optional[str],
+    saved_provider: str | None,
+    saved_credential_id: str | None,
 ) -> ChatTransportResponse | None:
     """The saved choice, or None when it can no longer be honoured.
 

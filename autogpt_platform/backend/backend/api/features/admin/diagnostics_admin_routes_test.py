@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -8,7 +8,7 @@ import pytest_mock
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from prisma.enums import AgentExecutionStatus
 
-import backend.api.features.admin.diagnostics_admin_routes as diagnostics_admin_routes
+from backend.api.features.admin import diagnostics_admin_routes
 from backend.api.features.experts import experts_db
 from backend.data.diagnostics import (
     AgentDiagnosticsSummary,
@@ -59,7 +59,7 @@ def test_get_execution_diagnostics_success(
         completed_1h=50,
         completed_24h=1200,
         throughput_per_hour=50.0,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
     mocker.patch(
@@ -94,10 +94,8 @@ def test_list_invalid_executions(
             user_id="user-123",
             user_email="test@example.com",
             status="QUEUED",
-            created_at=datetime.now(timezone.utc),
-            started_at=datetime.now(
-                timezone.utc
-            ),  # QUEUED but has startedAt - INVALID!
+            created_at=datetime.now(UTC),
+            started_at=datetime.now(UTC),  # QUEUED but has startedAt - INVALID!
             queue_status=None,
         ),
         RunningExecutionDetail(
@@ -108,7 +106,7 @@ def test_list_invalid_executions(
             user_id="user-456",
             user_email="user@example.com",
             status="RUNNING",
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             started_at=None,  # RUNNING but no startedAt - INVALID!
             queue_status=None,
         ),
@@ -134,7 +132,7 @@ def test_list_invalid_executions(
         completed_1h=0,
         completed_24h=0,
         throughput_per_hour=0.0,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
 
     mocker.patch(
@@ -178,8 +176,8 @@ def test_requeue_single_execution_with_add_graph_execution(
         nodes_input_masks=None,
         preset_id=None,
         status=AgentExecutionStatus.QUEUED,
-        started_at=datetime.now(timezone.utc),
-        ended_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
         stats=None,
     )
 
@@ -225,8 +223,8 @@ def test_requeue_single_expert_workspace_unavailable_returns_503(
         nodes_input_masks=None,
         preset_id=None,
         status=AgentExecutionStatus.QUEUED,
-        started_at=datetime.now(timezone.utc),
-        ended_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
         stats=None,
     )
     mocker.patch(
@@ -264,8 +262,8 @@ def test_requeue_single_unavailable_expert_returns_generic_404(
         nodes_input_masks=None,
         preset_id=None,
         status=AgentExecutionStatus.QUEUED,
-        started_at=datetime.now(timezone.utc),
-        ended_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
         stats=None,
     )
     mocker.patch(
@@ -302,8 +300,8 @@ def test_stop_single_execution_with_stop_graph_execution(
         nodes_input_masks=None,
         preset_id=None,
         status=AgentExecutionStatus.RUNNING,
-        started_at=datetime.now(timezone.utc),
-        ended_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
+        ended_at=datetime.now(UTC),
         stats=None,
     )
 
@@ -389,8 +387,8 @@ def test_execution_ids_filter_efficiency(
             nodes_input_masks=None,
             preset_id=None,
             status=AgentExecutionStatus.QUEUED,
-            started_at=datetime.now(timezone.utc),
-            ended_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
+            ended_at=datetime.now(UTC),
             stats=None,
         )
         for i in range(3)
@@ -447,7 +445,7 @@ def _make_mock_diagnostics(**overrides) -> ExecutionDiagnosticsSummary:
         completed_1h=50,
         completed_24h=1200,
         throughput_per_hour=50.0,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
     defaults.update(overrides)
     return ExecutionDiagnosticsSummary(**defaults)
@@ -469,10 +467,8 @@ def _make_mock_execution(
         user_id="user-123",
         user_email="test@example.com",
         status=status,
-        created_at=datetime.now(timezone.utc),
-        started_at=(
-            datetime.now(timezone.utc) if started_at is _SENTINEL else started_at
-        ),
+        created_at=datetime.now(UTC),
+        started_at=(datetime.now(UTC) if started_at is _SENTINEL else started_at),
         queue_status=None,
     )
 
@@ -488,9 +484,9 @@ def _make_mock_failed_execution(
         user_id="user-123",
         user_email="test@example.com",
         status="FAILED",
-        created_at=datetime.now(timezone.utc),
-        started_at=datetime.now(timezone.utc),
-        failed_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        started_at=datetime.now(UTC),
+        failed_at=datetime.now(UTC),
         error_message="Something went wrong",
     )
 
@@ -509,7 +505,7 @@ def _make_mock_schedule_health(**overrides) -> ScheduleHealthMetrics:
         schedules_next_24h=8,
         total_runs_next_hour=12,
         total_runs_next_24h=48,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
     defaults.update(overrides)
     return ScheduleHealthMetrics(**defaults)
@@ -636,7 +632,7 @@ def test_list_stuck_queued_executions(mocker: pytest_mock.MockFixture):
 def test_get_agent_diagnostics(mocker: pytest_mock.MockFixture):
     mock_diag = AgentDiagnosticsSummary(
         agents_with_active_executions=7,
-        timestamp=datetime.now(timezone.utc).isoformat(),
+        timestamp=datetime.now(UTC).isoformat(),
     )
     mocker.patch(
         "backend.api.features.admin.diagnostics_admin_routes.get_agent_diagnostics",
@@ -678,7 +674,7 @@ def test_list_all_schedules(mocker: pytest_mock.MockFixture):
             user_email="alice@example.com",
             cron="0 9 * * *",
             timezone="UTC",
-            next_run_time=datetime.now(timezone.utc).isoformat(),
+            next_run_time=datetime.now(UTC).isoformat(),
         ),
     ]
     mocker.patch(
@@ -709,7 +705,7 @@ def test_list_orphaned_schedules(mocker: pytest_mock.MockFixture):
             user_id="user-1",
             orphan_reason="deleted_graph",
             error_detail=None,
-            next_run_time=datetime.now(timezone.utc).isoformat(),
+            next_run_time=datetime.now(UTC).isoformat(),
         ),
     ]
     mocker.patch(
@@ -742,7 +738,7 @@ def test_stop_multiple_executions(mocker: pytest_mock.MockFixture):
             nodes_input_masks=None,
             preset_id=None,
             status=AgentExecutionStatus.RUNNING,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             ended_at=None,
             stats=None,
         )

@@ -1,5 +1,3 @@
-from typing import Optional
-
 from pydantic import SecretStr
 
 from backend.blocks.desktop._api import SHARED_PATH, WORKSPACE_PATH
@@ -59,7 +57,7 @@ def expert_volume_name(expert_id: str) -> str:
 
 
 def workspace_volume_mounts(
-    user_id: Optional[str], expert_id: Optional[str] = None
+    user_id: str | None, expert_id: str | None = None
 ) -> dict[str, str]:
     """Mount map (``path -> volume name``) for a CoPilot shell or desktop.
 

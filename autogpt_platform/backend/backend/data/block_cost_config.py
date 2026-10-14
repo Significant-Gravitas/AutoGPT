@@ -1,5 +1,5 @@
 import math
-from typing import TYPE_CHECKING, Type
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
@@ -384,7 +384,7 @@ LLM_COST = (
 # See the module docstring on ``backend.copilot.rate_limit`` for the full
 # boundary.
 
-BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
+BLOCK_COSTS: dict[type[Block], list[BlockCost]] = {
     AIConditionBlock: LLM_COST,
     AIConversationBlock: LLM_COST,
     AITextGeneratorBlock: LLM_COST,

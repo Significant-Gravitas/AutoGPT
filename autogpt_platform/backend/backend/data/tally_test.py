@@ -318,7 +318,6 @@ async def test_populate_understanding_full_flow():
 @pytest.mark.asyncio
 async def test_populate_understanding_handles_llm_timeout():
     """LLM timeout is caught and doesn't raise."""
-    import asyncio
 
     mock_settings = MagicMock()
     mock_settings.secrets.tally_api_key = "test-key"
@@ -342,7 +341,7 @@ async def test_populate_understanding_handles_llm_timeout():
         patch(
             "backend.data.tally.extract_business_understanding",
             new_callable=AsyncMock,
-            side_effect=asyncio.TimeoutError(),
+            side_effect=TimeoutError(),
         ),
         patch(
             "backend.data.tally.upsert_business_understanding",
@@ -511,7 +510,7 @@ async def test_extract_business_understanding_invalid_json():
 async def test_extract_business_understanding_timeout():
     """LLM timeout should propagate as asyncio.TimeoutError."""
     mock_client = AsyncMock()
-    mock_client.chat.completions.create.side_effect = asyncio.TimeoutError()
+    mock_client.chat.completions.create.side_effect = TimeoutError()
 
     with (
         patch("backend.data.tally.get_openai_client", return_value=mock_client),

@@ -8,7 +8,7 @@ LLM extraction step and ends up on production :RELATES_TO edges.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -64,8 +64,8 @@ def test_memoryfact_carries_full_envelope_metadata():
         source_kind=SourceKind.assistant_derived,
         scope="project:foo",
         provenance="session:s1#msg:42",
-        web_verified_at=datetime(2026, 5, 12, tzinfo=timezone.utc),
-        ratified_at=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        web_verified_at=datetime(2026, 5, 12, tzinfo=UTC),
+        ratified_at=datetime(2026, 5, 14, tzinfo=UTC),
         expiration_reason="stale_fact",
     )
     dumped = fact.model_dump(mode="json")

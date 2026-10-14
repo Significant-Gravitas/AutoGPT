@@ -190,5 +190,5 @@ class TestReceiveResponseCompat:
 
         from claude_agent_sdk import ClaudeSDKClient
 
-        method = getattr(ClaudeSDKClient, "receive_response")
+        method = ClaudeSDKClient.receive_response
         assert inspect.isfunction(method) or inspect.ismethod(method)

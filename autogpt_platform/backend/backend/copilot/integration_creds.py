@@ -385,23 +385,22 @@ async def get_github_user_git_identity(
     import aiohttp
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"token {token}",
-                    "Accept": "application/vnd.github+json",
-                },
-                timeout=aiohttp.ClientTimeout(total=5),
-            ) as resp:
-                if resp.status != 200:
-                    logger.warning(
-                        "[git-identity] GitHub /user returned %s for user %s",
-                        resp.status,
-                        user_id,
-                    )
-                    return None
-                data = await resp.json()
+        async with aiohttp.ClientSession() as session, session.get(
+            "https://api.github.com/user",
+            headers={
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github+json",
+            },
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as resp:
+            if resp.status != 200:
+                logger.warning(
+                    "[git-identity] GitHub /user returned %s for user %s",
+                    resp.status,
+                    user_id,
+                )
+                return None
+            data = await resp.json()
     except Exception as exc:
         logger.warning(
             "[git-identity] Failed to fetch GitHub profile for user %s: %s",

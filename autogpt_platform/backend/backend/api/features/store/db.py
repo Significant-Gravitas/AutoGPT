@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal, overload
 
@@ -19,6 +19,7 @@ from backend.data.graph import (
 )
 from backend.data.includes import AGENT_GRAPH_INCLUDE
 from backend.data.notifications import NotificationEventModel, VerdictData
+from backend.data.profile import ensure_user_profile
 from backend.notifications.queue import queue_notification_async
 from backend.util.exceptions import DatabaseError, NotFoundError, PreconditionFailed
 from backend.util.settings import Settings
@@ -287,7 +288,7 @@ async def log_search_term(search_query: str):
     """Log a search term to the database"""
 
     # Anonymize the data by preventing correlation with other logs
-    date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         await prisma.models.SearchTerms.prisma().create(
             data={"searchTerm": search_query, "createdDate": date}
@@ -983,7 +984,7 @@ async def create_store_submission(
                     "categories": categories,
                     "subHeading": sub_heading,
                     "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
-                    "submittedAt": datetime.now(tz=timezone.utc),
+                    "submittedAt": datetime.now(tz=UTC),
                     "changesSummary": changes_summary,
                     "recommendedScheduleCron": recommended_schedule_cron,
                     "StoreListing": {
@@ -1216,6 +1217,22 @@ async def get_user_profile(
     except Exception as e:
         logger.error(f"Error getting user profile: {e}")
         raise DatabaseError("Failed to get user profile") from e
+
+
+async def get_or_create_user_profile(
+    user_id: str,
+) -> store_model.ProfileDetails | None:
+    """The user's profile, creating their default one if they have none yet.
+
+    A brand-new user's first page asks for it as soon as the session exists,
+    which can be before account setup (``POST /auth/user``) has created it.
+    None only for an id with no platform user, or if no free handle was found.
+    """
+    profile = await get_user_profile(user_id)
+    if profile is not None:
+        return profile
+    await ensure_user_profile(user_id)
+    return await get_user_profile(user_id)
 
 
 async def update_profile(
@@ -1575,7 +1592,7 @@ async def review_store_submission(
         # Update the version with review information
         update_data: prisma.types.StoreListingVersionUpdateInput = {
             "submissionStatus": submission_status,
-            "reviewedAt": datetime.now(tz=timezone.utc),
+            "reviewedAt": datetime.now(tz=UTC),
             "Reviewer": {"connect": {"id": reviewer_id}},
             "reviewComments": external_comments,
             "internalComments": internal_comments,
@@ -1832,7 +1849,7 @@ async def _approve_sub_agent(
             where={"id": matching_version.id},
             data={
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                "reviewedAt": datetime.now(tz=timezone.utc),
+                "reviewedAt": datetime.now(tz=UTC),
             },
         )
         await prisma.models.StoreListing.prisma(tx).update(
@@ -1869,7 +1886,7 @@ def _create_sub_agent_version_data(
         ),
         changesSummary=f"Auto-approved as sub-agent of {main_agent_name}",
         isAvailable=False,
-        submittedAt=datetime.now(tz=timezone.utc),
+        submittedAt=datetime.now(tz=UTC),
         imageUrls=[],  # Sub-agents don't need images
         categories=[],  # Sub-agents don't need categories
     )
@@ -1889,7 +1906,7 @@ async def _send_submission_review_notification(
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
     reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
+    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=UTC)
     reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%b %Y')}"
 
     if is_approved:

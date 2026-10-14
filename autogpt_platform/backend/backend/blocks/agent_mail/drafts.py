@@ -6,8 +6,6 @@ Drafts enable human-in-the-loop review, scheduled sending (via send_at),
 and complex multi-step email composition workflows.
 """
 
-from typing import Optional
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -354,24 +352,24 @@ class AgentMailUpdateDraftBlock(Block):
             description="Inbox ID or email address the draft belongs to"
         )
         draft_id: str = SchemaField(description="Draft ID to update")
-        to: Optional[list[str]] = SchemaField(
+        to: list[str] | None = SchemaField(
             description="Updated recipient email addresses (replaces existing list). Omit to keep current value.",
             default=None,
         )
-        subject: Optional[str] = SchemaField(
+        subject: str | None = SchemaField(
             description="Updated subject line. Omit to keep current value.",
             default=None,
         )
-        text: Optional[str] = SchemaField(
+        text: str | None = SchemaField(
             description="Updated plain text body. Omit to keep current value.",
             default=None,
         )
-        html: Optional[str] = SchemaField(
+        html: str | None = SchemaField(
             description="Updated HTML body. Omit to keep current value.",
             default=None,
             advanced=True,
         )
-        send_at: Optional[str] = SchemaField(
+        send_at: str | None = SchemaField(
             description="Reschedule: new ISO 8601 send time (e.g. '2025-01-20T14:00:00Z'). Omit to keep current value.",
             default=None,
             advanced=True,

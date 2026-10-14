@@ -385,7 +385,9 @@ def _failure_reason(body: Any, email: str) -> str:
             listed = problems if isinstance(problems, list) else [problems]
             parts.append(f"{field}: {'; '.join(str(p) for p in listed)}")
     reason = " | ".join(parts) or "no reason given"
-    return re.sub(re.escape(email.strip()), pseudonym(email), reason, flags=re.I)
+    return re.sub(
+        re.escape(email.strip()), pseudonym(email), reason, flags=re.IGNORECASE
+    )
 
 
 async def _send_batch(requests: list[dict]) -> list[BatchAnswer]:

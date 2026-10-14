@@ -1,6 +1,5 @@
 import asyncio
 from enum import StrEnum
-from typing import Optional
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -46,7 +45,7 @@ class GithubListCommitsBlock(Block):
             ge=1,
             le=1000,
         )
-        per_page: Optional[int] = SchemaField(
+        per_page: int | None = SchemaField(
             description="[Legacy] Number of commits to return per page (max 100). "
             "If set (or `page` is set), `limit` is ignored.",
             default=None,
@@ -54,7 +53,7 @@ class GithubListCommitsBlock(Block):
             le=100,
             advanced=True,
         )
-        page: Optional[int] = SchemaField(
+        page: int | None = SchemaField(
             description="[Legacy] Page number for pagination. "
             "If set (or `per_page` is set), `limit` is ignored.",
             default=None,

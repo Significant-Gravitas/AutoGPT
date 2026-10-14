@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -75,7 +75,7 @@ def parse_time_expression(
     if not time_expr or time_expr.lower() == "latest":
         return None, None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     expr = time_expr.lower().strip()
 
@@ -96,7 +96,7 @@ def parse_time_expression(
     if date_match:
         try:
             year, month, day = map(int, date_match.groups())
-            start = datetime(year, month, day, 0, 0, 0, tzinfo=timezone.utc)
+            start = datetime(year, month, day, 0, 0, 0, tzinfo=UTC)
             return start, start + timedelta(days=1)
         except ValueError:
             # Invalid date components (e.g., month=13, day=32)
@@ -106,7 +106,7 @@ def parse_time_expression(
     try:
         parsed = datetime.fromisoformat(expr.replace("Z", "+00:00"))
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
         return parsed - timedelta(hours=1), parsed + timedelta(hours=1)
     except ValueError:
         return None, None
@@ -391,7 +391,13 @@ class AgentOutputTool(BaseTool):
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
             message = f"Found execution outputs for agent '{agent.name}'"
-            health_warning = build_run_health_warning(execution.outputs, node_failures)
+            health_warning = build_run_health_warning(
+                execution.outputs,
+                node_failures,
+                failed_node_count=(
+                    execution.stats.node_error_count if execution.stats else 0
+                ),
+            )
             if health_warning:
                 if not isinstance(execution, GraphExecutionWithNodes):
                     health_warning += (

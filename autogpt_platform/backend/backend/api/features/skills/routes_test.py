@@ -28,10 +28,7 @@ from backend.copilot.tools.skills import (
 # _FakeWorkspaceManager/_patch_skills_path: the skills layer's own test owns the
 # in-memory workspace these round-trip tests need; a second copy here would
 # drift from the real manager's surface.
-from backend.copilot.tools.skills_test import (  # noqa: E402
-    _FakeWorkspaceManager,
-    _patch_skills_path,
-)
+from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.util.exceptions import ConflictError
 
 app = fastapi.FastAPI()
@@ -183,6 +180,13 @@ def test_read_copilot_skill_returns_user_body(
                 version="1",
             )
         ),
+    )
+    # Unstubbed, listing the files upserts the user's workspace through the
+    # session's database client from TestClient's own event loop, and that
+    # write left its connection inside an open transaction for later tests.
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skill_files",
+        AsyncMock(return_value=[]),
     )
 
     response = client.get("/skills/oauth_flow")

@@ -6,7 +6,7 @@ strip of attacker-supplied ``<session_context>`` blocks before the trusted
 server-side block is re-injected.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -34,7 +34,7 @@ def _one_shot(*, schedule_id: str, name: str, fires_at: str) -> CopilotTurnJobIn
         session_id=_SESSION,
         message="placeholder message",
         cron=None,
-        run_at=datetime(2026, 5, 22, 13, 50, tzinfo=timezone.utc),
+        run_at=datetime(2026, 5, 22, 13, 50, tzinfo=UTC),
         id=schedule_id,
         name=name,
         next_run_time=fires_at,

@@ -1,5 +1,3 @@
-from typing import Optional
-
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Query, Security, status
 from fastapi.responses import Response
@@ -25,7 +23,7 @@ router = APIRouter(
 )
 async def list_folders(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
-    parent_id: Optional[str] = Query(
+    parent_id: str | None = Query(
         None,
         description="Filter by parent folder ID. If not provided, returns root-level folders.",
     ),

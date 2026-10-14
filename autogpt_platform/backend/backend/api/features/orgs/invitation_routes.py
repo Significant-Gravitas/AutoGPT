@@ -1,7 +1,7 @@
 """Invitation API routes for organization membership."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
 from autogpt_libs.auth import get_user_id, requires_org_permission, requires_user
@@ -63,7 +63,7 @@ async def create_invitation(
                 detail=f"Teams not found in this organization: {invalid}",
             )
 
-    expires_at = datetime.now(timezone.utc) + timedelta(days=INVITATION_TTL_DAYS)
+    expires_at = datetime.now(UTC) + timedelta(days=INVITATION_TTL_DAYS)
 
     invitation = await prisma.orginvitation.create(
         data={
@@ -101,7 +101,7 @@ async def list_invitations(
             "orgId": org_id,
             "acceptedAt": None,
             "revokedAt": None,
-            "expiresAt": {"gt": datetime.now(timezone.utc)},
+            "expiresAt": {"gt": datetime.now(UTC)},
         },
         order={"createdAt": "desc"},
     )
@@ -129,7 +129,7 @@ async def revoke_invitation(
 
     await prisma.orginvitation.update(
         where={"id": invitation_id},
-        data={"revokedAt": datetime.now(timezone.utc)},
+        data={"revokedAt": datetime.now(UTC)},
     )
 
 
@@ -153,7 +153,7 @@ async def accept_invitation(
         raise HTTPException(400, detail="Invitation already accepted")
     if invitation.revokedAt is not None:
         raise HTTPException(400, detail="Invitation has been revoked")
-    if invitation.expiresAt < datetime.now(timezone.utc):
+    if invitation.expiresAt < datetime.now(UTC):
         raise HTTPException(400, detail="Invitation has expired")
 
     # Verify the accepting user's email matches the invitation
@@ -206,7 +206,7 @@ async def accept_invitation(
     # Mark invitation as accepted
     await prisma.orginvitation.update(
         where={"id": invitation.id},
-        data={"acceptedAt": datetime.now(timezone.utc), "targetUserId": user_id},
+        data={"acceptedAt": datetime.now(UTC), "targetUserId": user_id},
     )
 
     return {"orgId": invitation.orgId, "message": "Invitation accepted"}
@@ -232,7 +232,7 @@ async def decline_invitation(
         raise HTTPException(400, detail="Invitation already accepted")
     if invitation.revokedAt is not None:
         raise HTTPException(400, detail="Invitation already revoked")
-    if invitation.expiresAt < datetime.now(timezone.utc):
+    if invitation.expiresAt < datetime.now(UTC):
         raise HTTPException(400, detail="Invitation has expired")
 
     # Verify the declining user's email matches the invitation
@@ -246,7 +246,7 @@ async def decline_invitation(
 
     await prisma.orginvitation.update(
         where={"id": invitation.id},
-        data={"revokedAt": datetime.now(timezone.utc)},
+        data={"revokedAt": datetime.now(UTC)},
     )
 
 
@@ -269,7 +269,7 @@ async def list_pending_for_user(
             "email": user.email,
             "acceptedAt": None,
             "revokedAt": None,
-            "expiresAt": {"gt": datetime.now(timezone.utc)},
+            "expiresAt": {"gt": datetime.now(UTC)},
         },
         order={"createdAt": "desc"},
     )

@@ -107,10 +107,13 @@ async def _reconcile_locked(
             snapshot = SubscriptionSnapshot.model_validate(raw)
             if snapshot.id != subscription_id or snapshot.status != "canceled":
                 raise ValueError("Stripe did not confirm trial cancellation")
+    # The one other price a trial may end on is the plan the customer chose
+    # to start in its place, once that switch has gone through.
     if (
         trial.converted_at is None
         and snapshot.status in ("active", "trialing")
         and not snapshot.has_accepted_price(trial.offer)
+        and not (snapshot.status == "active" and snapshot.chosen_plan())
     ):
         raise ValueError(
             "Stripe items do not match the accepted trial price and quantity"
@@ -231,7 +234,8 @@ def trial_subscription_tier(
         and invoice.created >= end
         and invoice.billing_reason != "subscription_create"
     ):
-        return SubscriptionTier(trial.offer.tier)
+        chosen = subscription.chosen_plan()
+        return chosen.tier if chosen else SubscriptionTier(trial.offer.tier)
     return SubscriptionTier.NO_TIER
 
 
@@ -254,7 +258,11 @@ async def _save_snapshot(
         consumed_at = consumed_at or now
     converted_at = trial.converted_at
     conversion_invoice_id = trial.conversion_invoice_id
-    if converted_at is None and tier.value == trial.offer.tier:
+    # Only a paid conversion reads as a paid tier here.
+    if converted_at is None and tier not in (
+        SubscriptionTier.TRIAL,
+        SubscriptionTier.NO_TIER,
+    ):
         if snapshot.latest_invoice is None:
             raise ValueError("Trial conversion requires a paid invoice")
         converted_at = now

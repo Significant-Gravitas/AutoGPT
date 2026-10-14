@@ -122,11 +122,10 @@ class TestCallSlackApi:
             "backend.blocks.slack._api.Requests.post",
             new_callable=AsyncMock,
             return_value=mock_resp,
-        ):
-            with pytest.raises(SlackAPIException, match="channel_not_found"):
-                await call_slack_api(
-                    TEST_CREDENTIALS, "chat.postMessage", {"channel": "BAD"}
-                )
+        ), pytest.raises(SlackAPIException, match="channel_not_found"):
+            await call_slack_api(
+                TEST_CREDENTIALS, "chat.postMessage", {"channel": "BAD"}
+            )
 
     @pytest.mark.asyncio
     async def test_unknown_error(self):
@@ -135,9 +134,8 @@ class TestCallSlackApi:
             "backend.blocks.slack._api.Requests.post",
             new_callable=AsyncMock,
             return_value=mock_resp,
-        ):
-            with pytest.raises(SlackAPIException, match="unknown_error"):
-                await call_slack_api(TEST_CREDENTIALS, "chat.postMessage")
+        ), pytest.raises(SlackAPIException, match="unknown_error"):
+            await call_slack_api(TEST_CREDENTIALS, "chat.postMessage")
 
     @pytest.mark.asyncio
     async def test_empty_data_sends_empty_dict(self):
@@ -225,13 +223,12 @@ class TestPostMessage:
             "backend.blocks.slack._api.Requests.post",
             new_callable=AsyncMock,
             return_value=mock_resp,
-        ):
-            with pytest.raises(SlackAPIException, match="not_in_channel"):
-                await post_message(
-                    credentials=TEST_CREDENTIALS,
-                    channel="C1",
-                    text="oops",
-                )
+        ), pytest.raises(SlackAPIException, match="not_in_channel"):
+            await post_message(
+                credentials=TEST_CREDENTIALS,
+                channel="C1",
+                text="oops",
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -328,11 +325,8 @@ class TestSendSlackMessageBlock:
             "_post_message",
             new_callable=AsyncMock,
             side_effect=SlackAPIException("invalid_auth"),
-        ):
-            with pytest.raises(SlackAPIException, match="invalid_auth"):
-                await _collect_outputs(
-                    self.block, input_data, credentials=TEST_CREDENTIALS
-                )
+        ), pytest.raises(SlackAPIException, match="invalid_auth"):
+            await _collect_outputs(self.block, input_data, credentials=TEST_CREDENTIALS)
 
     @pytest.mark.asyncio
     async def test_run_propagates_generic_exception(self):
@@ -348,11 +342,8 @@ class TestSendSlackMessageBlock:
             "_post_message",
             new_callable=AsyncMock,
             side_effect=RuntimeError("connection lost"),
-        ):
-            with pytest.raises(RuntimeError, match="connection lost"):
-                await _collect_outputs(
-                    self.block, input_data, credentials=TEST_CREDENTIALS
-                )
+        ), pytest.raises(RuntimeError, match="connection lost"):
+            await _collect_outputs(self.block, input_data, credentials=TEST_CREDENTIALS)
 
     @pytest.mark.asyncio
     async def test_framework_test_mock_works(self):

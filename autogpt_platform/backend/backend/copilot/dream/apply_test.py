@@ -11,7 +11,7 @@ to ``enqueue_episode`` / ``mark_edges_superseded`` /
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,8 +36,8 @@ def _bundle_with_known_facts(*uuids: str) -> DreamInput:
     return DreamInput(
         user_id="u-bundle",
         group_id="u-bundle",
-        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
-        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
+        window_start=datetime(2026, 5, 1, tzinfo=UTC),
+        window_end=datetime(2026, 5, 14, tzinfo=UTC),
         known_fact_uuids=set(uuids),
     )
 
@@ -423,7 +423,7 @@ async def test_dream_session_titled_with_utc_date():
 
     copilot_db.update_chat_session_title.assert_awaited_once()
     title_kwargs = copilot_db.update_chat_session_title.await_args.kwargs
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
     assert title_kwargs["title"] == f"Dream summary — {today}"
     assert title_kwargs["session_id"] == stats["session_id"]
     assert title_kwargs["user_id"] == "u-title"

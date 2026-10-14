@@ -15,7 +15,7 @@ import {
   getUpdateExpertBudgetMockHandler,
 } from "@/app/api/__generated__/endpoints/experts/experts.msw";
 import {
-  getGetV2GetLibraryAgentMockHandler200,
+  getGetV2GetLibraryAgentsByIdsMockHandler200,
   getGetV2ListLibraryAgentsMockHandler200,
 } from "@/app/api/__generated__/endpoints/library/library.msw";
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
@@ -425,10 +425,12 @@ describe("ExpertDetailPage", () => {
     const user = userEvent.setup();
     // The chain stands in for a workflow with no image of its own.
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -446,11 +448,13 @@ describe("ExpertDetailPage", () => {
 
   test("shows each workflow's total runs from its library agent", async () => {
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        execution_count: 12,
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          execution_count: 12,
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -479,11 +483,13 @@ describe("ExpertDetailPage", () => {
   test("opens the run dialog from the card's Run button", async () => {
     const user = userEvent.setup();
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        name: "Content Calendar",
-      } as LibraryAgent),
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          name: "Content Calendar",
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 
@@ -599,20 +605,22 @@ describe("ExpertDetailPage", () => {
 
   test("stacks the credentials a workflow will use beside Run", async () => {
     server.use(
-      getGetV2GetLibraryAgentMockHandler200({
-        ...ownLibraryAgent,
-        id: "lib-1",
-        credentials_input_schema: {
-          type: "object",
-          properties: {
-            github: { credentials_provider: ["github"] },
-            notion: { credentials_provider: ["notion"] },
-            slack: { credentials_provider: ["slack"] },
-            linear: { credentials_provider: ["linear"] },
-            discord: { credentials_provider: ["discord"] },
+      getGetV2GetLibraryAgentsByIdsMockHandler200([
+        {
+          ...ownLibraryAgent,
+          id: "lib-1",
+          credentials_input_schema: {
+            type: "object",
+            properties: {
+              github: { credentials_provider: ["github"] },
+              notion: { credentials_provider: ["notion"] },
+              slack: { credentials_provider: ["slack"] },
+              linear: { credentials_provider: ["linear"] },
+              discord: { credentials_provider: ["discord"] },
+            },
           },
-        },
-      } as LibraryAgent),
+        } as LibraryAgent,
+      ]),
     );
     render(<ExpertDetailPage />);
 

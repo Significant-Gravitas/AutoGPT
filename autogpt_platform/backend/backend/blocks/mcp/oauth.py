@@ -10,14 +10,14 @@ import logging
 import time
 import urllib.parse
 from base64 import b64encode
-from typing import ClassVar, Literal, Optional
+from typing import ClassVar, Literal
 
 from pydantic import SecretStr
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.oauth.base import BaseOAuthHandler, parse_granted_scopes
 from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
+from backend.util.request import Requests, Response
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         self,
         scopes: list[str],
         state: str,
-        code_challenge: Optional[str],
+        code_challenge: str | None,
     ) -> str:
         scopes = self.handle_default_scopes(scopes)
 
@@ -102,7 +102,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         self,
         code: str,
         scopes: list[str],
-        code_verifier: Optional[str],
+        code_verifier: str | None,
     ) -> OAuth2Credentials:
         client_auth, headers = self._token_client_auth()
         data: dict[str, str] = {
@@ -116,11 +116,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         if self.resource_url:
             data["resource"] = self.resource_url
 
-        response = await Requests(raise_for_status=True).post(
-            self.token_url,
-            data=data,
-            headers=headers,
-        )
+        response = await _post_client_form(self.token_url, data, headers)
         tokens = response.json()
 
         if "error" in tokens:
@@ -168,11 +164,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         if self.resource_url:
             data["resource"] = self.resource_url
 
-        response = await Requests(raise_for_status=True).post(
-            self.token_url,
-            data=data,
-            headers=headers,
-        )
+        response = await _post_client_form(self.token_url, data, headers)
         tokens = response.json()
 
         if "error" in tokens:
@@ -213,11 +205,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
                 "token": credentials.access_token.get_secret_value(),
                 "token_type_hint": "access_token",
             }
-            await Requests(raise_for_status=True).post(
-                self.revoke_url,
-                data=data,
-                headers=headers,
-            )
+            await _post_client_form(self.revoke_url, data, headers)
             return True
         except Exception:
             logger.warning("Failed to revoke MCP OAuth tokens", exc_info=True)
@@ -242,3 +230,23 @@ class MCPOAuthHandler(BaseOAuthHandler):
         elif self.token_endpoint_auth_method != "none":
             raise ValueError("Unsupported MCP client authentication method")
         return data, headers
+
+
+async def _post_client_form(
+    url: str, data: dict[str, str], headers: dict[str, str]
+) -> Response:
+    """POST to a token or revocation endpoint without following redirects.
+
+    The form carries the client secret, the code or a token, and ``Requests``
+    re-sends the body on every hop, so a redirect would hand them to a host
+    outside the endpoints checked for the server's pre-registered app.
+    """
+    response = await Requests(raise_for_status=True).post(
+        url, data=data, headers=headers, allow_redirects=False
+    )
+    if response.status in (301, 302, 303, 307, 308):
+        raise RuntimeError(
+            f"OAuth endpoint {url} answered with a redirect (HTTP "
+            f"{response.status}), which is not followed with client credentials"
+        )
+    return response

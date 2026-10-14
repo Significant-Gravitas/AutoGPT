@@ -175,7 +175,7 @@ async def _jev_chunk(source: str, chunk: str) -> tuple[bool, dict[str, float]] |
             ),
             timeout=config.gate_jev_timeout_s + 0.5,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         FIRST_STAGE.labels(outcome="timeout").inc()
         logger.warning(f"Content first stage timed out on {source[:80]}")
         return None

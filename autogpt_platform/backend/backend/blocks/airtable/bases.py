@@ -2,8 +2,6 @@
 Airtable base operation blocks.
 """
 
-from typing import Optional
-
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -133,7 +131,7 @@ class AirtableListBasesBlock(Block):
 
     class Output(BlockSchemaOutput):
         bases: list[dict] = SchemaField(description="Array of base objects")
-        offset: Optional[str] = SchemaField(
+        offset: str | None = SchemaField(
             description="Offset for next page (null if no more bases)", default=None
         )
 

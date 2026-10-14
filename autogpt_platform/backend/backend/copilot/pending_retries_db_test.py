@@ -24,6 +24,7 @@ from backend.copilot.pending_message_receipts import pending_message_receipt_key
 from backend.copilot.pending_message_reconciliation import reconcile_pending_rows
 from backend.copilot.pending_messages import (
     PendingMessage,
+    _client_message_key,
     drain_pending_messages,
     push_pending_message,
 )
@@ -171,6 +172,7 @@ async def test_http_retry_uses_persisted_row_after_redis_receipt_expires(
         message_id = scoped_client_message_id(
             session.user_id, session.session_id, body["message_id"]
         )
+        await redis.delete(_client_message_key(session.session_id, message_id))
         await redis.delete(pending_message_receipt_key(session.session_id, message_id))
         await redis.hset(
             stream_registry.get_session_meta_key(session.session_id),
@@ -178,7 +180,7 @@ async def test_http_retry_uses_persisted_row_after_redis_receipt_expires(
         )
         response = await client.post(path, json=body)
         assert response.status_code == 200
-        assert response.json()["turn_in_flight"] is False
+        assert response.json()["turn_in_flight"] is True
         assert await drain_pending_messages(session.session_id) == []
         assert (
             await StoredMessage.prisma().count(where={"sessionId": session.session_id})

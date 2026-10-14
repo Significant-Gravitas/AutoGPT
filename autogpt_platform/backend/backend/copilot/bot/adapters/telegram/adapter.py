@@ -18,7 +18,7 @@ import html
 import json
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -78,7 +78,7 @@ class TelegramAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
         self._api = api
         self._client = TelegramClient(config.get_bot_token())
-        self._on_message_callback: Optional[MessageCallback] = None
+        self._on_message_callback: MessageCallback | None = None
         # getMe identity, resolved once (truthy-only cache).
         self._bot_id: str = ""
         self._bot_username: str = ""
@@ -262,7 +262,7 @@ class TelegramAdapter(WebhookAdapter):
         elif status in ("left", "kicked"):
             self._api.track_guild_left("telegram", chat_id)
 
-    async def _build_context(self, message: dict[str, Any]) -> Optional[MessageContext]:
+    async def _build_context(self, message: dict[str, Any]) -> MessageContext | None:
         chat = message.get("chat") or {}
         sender = message.get("from") or {}
         chat_id = str(chat.get("id", ""))
@@ -557,7 +557,7 @@ class TelegramAdapter(WebhookAdapter):
 
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
-    ) -> Optional[str]:
+    ) -> str | None:
         # Group conversations stay in the chat (replying into the same forum
         # topic when there is one) — creating/subscribing threads in a
         # human-owned group would risk hijacking it. The handler falls back to
@@ -573,7 +573,7 @@ class TelegramAdapter(WebhookAdapter):
         # target a raw chat id.
         return []
 
-    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+    async def get_channel_server_id(self, channel_id: str) -> str | None:
         chat_id, _ = _decode_target(channel_id)
         try:
             chat = await self._client.call("getChat", chat_id=chat_id)
@@ -583,16 +583,16 @@ class TelegramAdapter(WebhookAdapter):
             return str(chat.get("id"))
         return None
 
-    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+    async def open_dm_channel(self, platform_user_id: str) -> str | None:
         # A Telegram private chat's ID is the user's own numeric ID — no open
         # call exists or is needed.
         return platform_user_id
 
     async def post_channel_message(
         self, channel_id: str, text: str
-    ) -> Optional[PostedRef]:
+    ) -> PostedRef | None:
         chat_id, thread_id = _decode_target(channel_id)
-        first_id: Optional[str] = None
+        first_id: str | None = None
         # Chunk the canonical markdown (the splitter balances ``` fences), then
         # localize each chunk, so a cut never lands inside a <pre> block. The
         # 4096 cap is "characters after entities parsing" (Bot API,
@@ -630,7 +630,7 @@ class TelegramAdapter(WebhookAdapter):
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
-    ) -> Optional[PostedRef]:
+    ) -> PostedRef | None:
         # No named threads to create — post with the name as a bold header;
         # the returned ref keeps subsequent sends in the same chat/topic.
         posted = await self.post_channel_message(channel_id, f"**{name}**\n\n{text}")
@@ -705,7 +705,7 @@ def _verify_secret(request: Request, _body: bytes) -> bool:
 
 def _context_from_callback_query(
     callback_query: dict[str, Any], option: str
-) -> Optional[MessageContext]:
+) -> MessageContext | None:
     message = callback_query.get("message") or {}
     chat = message.get("chat") or {}
     chat_id = str(chat.get("id", ""))

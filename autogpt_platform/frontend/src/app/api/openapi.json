@@ -9800,6 +9800,56 @@
         }
       }
     },
+    "/api/library/agents/batch": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agents By Ids",
+        "description": "Get several library agents at once, as `GET /agents/{id}` would return each.",
+        "operationId": "getV2Get library agents by ids",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Library agent IDs; unknown or inaccessible ones are omitted",
+              "title": "Ids"
+            },
+            "description": "Library agent IDs; unknown or inaccessible ones are omitted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2Get Library Agents By Ids"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/by-graph/{graph_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
@@ -14198,6 +14248,57 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": ["v1", "schedules"],
+        "summary": "Update execution schedule",
+        "description": "Change an agent schedule's name, timing or inputs. Only the schedule's\nowner can edit it; anyone else gets the same 404 as a missing schedule.",
+        "operationId": "patchV1Update execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the schedule to update",
+              "title": "Schedule Id"
+            },
+            "description": "ID of the schedule to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScheduleUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphExecutionJobInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/search/global": {
@@ -15545,7 +15646,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user, creating their\ndefault profile if account setup hasn't yet.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -29464,6 +29565,48 @@
         "required": ["message", "schedule_id", "paused"],
         "title": "ScheduleToggledResponse"
       },
+      "ScheduleUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "minLength": 1, "pattern": "\\S" },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credentials"
+          },
+          "timezone": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Timezone",
+            "description": "Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone."
+          }
+        },
+        "type": "object",
+        "title": "ScheduleUpdateRequest",
+        "description": "Fields to change on an existing schedule; omitted fields keep their value."
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -30888,7 +31031,7 @@
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, so the Postgres unique-constraint on the resulting PK is the atomic dedup primitive. A duplicate INSERT returns a subscribe-only response without creating a parallel turn. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, and the server claims it once: a retransmit neither starts a parallel turn nor, while a turn is running, queues the message again, and gets a subscribe-only response. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
           },
           "expert_kickoff": {
             "type": "boolean",
@@ -31042,7 +31185,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade), or when a trial ending early needs the customer's bank to confirm its payment, on Stripe's invoice page. Empty string in all other branches — the client sends the customer to this URL when non-empty.",
             "default": ""
           }
         },

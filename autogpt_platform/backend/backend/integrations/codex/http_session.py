@@ -41,10 +41,6 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[CodexStreamEvent], Awaitable[None]]
 ToolHandler = Callable[[CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]]
 
-# A turn that keeps asking for tools without converging is a bug somewhere;
-# stop rather than spending someone's quota in a loop.
-MAX_TOOL_ITERATIONS = 32
-
 
 class CodexHttpSession:
     """One user's Codex turn, run over HTTPS."""
@@ -83,7 +79,7 @@ class CodexHttpSession:
                 self._run(request, dynamic_tools, tool_handler, event_handler),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise CodexInvocationTimeoutError("codex_copilot_turn_timeout") from None
 
     async def _run(
@@ -103,7 +99,10 @@ class CodexHttpSession:
         reasoning_summary = ""
         usage = _ZERO_USAGE
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        # No round cap here: whoever runs the tools bounds the turn. On the
+        # copilot path that is the Claude CLI, which counts every call against
+        # CHAT_AGENT_MAX_TURNS; the turn and tool timeouts cover the rest.
+        while True:
             turn = await self._stream_turn(request, conversation, tools, event_handler)
 
             response_id = turn.response_id or response_id
@@ -132,10 +131,6 @@ class CodexHttpSession:
             for call in turn.tool_calls:
                 conversation.append(await self._dispatch_tool(call, tool_handler))
 
-        raise CodexTurnLimitError(
-            f"Codex turn did not converge within {MAX_TOOL_ITERATIONS} tool rounds"
-        )
-
     async def _dispatch_tool(
         self, call: "_ToolCall", tool_handler: ToolHandler
     ) -> dict[str, Any]:
@@ -152,7 +147,7 @@ class CodexHttpSession:
                 tool_handler(request), timeout=self._tool_timeout_seconds
             )
             output = result.content
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Report the timeout to the model rather than failing the turn: it
             # can usually recover by trying something else.
             output = f"Tool {call.name!r} timed out."
@@ -267,16 +262,12 @@ class CodexInvocationTimeoutError(RuntimeError):
     """The whole turn exceeded its deadline."""
 
 
-class CodexTurnLimitError(RuntimeError):
-    """The tool loop did not converge."""
-
-
 class CodexTurnFailedError(RuntimeError):
     """ChatGPT reported the turn as failed."""
 
 
 class _ToolCall:
-    __slots__ = ("call_id", "name", "arguments", "response_id")
+    __slots__ = ("arguments", "call_id", "name", "response_id")
 
     def __init__(
         self, call_id: str, name: str, arguments: object, response_id: str

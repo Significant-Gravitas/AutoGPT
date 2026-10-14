@@ -4,17 +4,16 @@ import base64
 import enum
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from json import JSONDecodeError
 from typing import (
     TYPE_CHECKING,
     Annotated,
     Any,
-    Callable,
     ClassVar,
     Generic,
     Literal,
-    Optional,
     TypeVar,
     cast,
     get_args,
@@ -64,15 +63,15 @@ class User(BaseModel):
     id: str = Field(..., description="User ID")
     email: str = Field(..., description="User email address")
     email_verified: bool = Field(default=True, description="Whether email is verified")
-    name: Optional[str] = Field(None, description="User display name")
+    name: str | None = Field(None, description="User display name")
     created_at: datetime = Field(..., description="When user was created")
     updated_at: datetime = Field(..., description="When user was last updated")
     metadata: dict[str, Any] = Field(
         default_factory=dict, description="User metadata as dict"
     )
     integrations: str = Field(default="", description="Encrypted integrations data")
-    stripe_customer_id: Optional[str] = Field(None, description="Stripe customer ID")
-    top_up_config: Optional["AutoTopUpConfig"] = Field(
+    stripe_customer_id: str | None = Field(None, description="Stripe customer ID")
+    top_up_config: AutoTopUpConfig | None = Field(
         None, description="Top up configuration"
     )
     subscription_tier: SubscriptionTier = Field(
@@ -99,16 +98,16 @@ class User(BaseModel):
     )
 
     # Consent captured at signup (see record_signup_consent).
-    terms_accepted_at: Optional[datetime] = Field(
+    terms_accepted_at: datetime | None = Field(
         None, description="When the user accepted the terms and privacy policy"
     )
-    terms_version: Optional[str] = Field(
+    terms_version: str | None = Field(
         None, description="Version of the terms and privacy policy accepted"
     )
-    marketing_opt_out_at: Optional[datetime] = Field(
+    marketing_opt_out_at: datetime | None = Field(
         None, description="When the user opted out of marketing email"
     )
-    marketing_opt_out_source: Optional[str] = Field(
+    marketing_opt_out_source: str | None = Field(
         None, description="Where the marketing opt-out came from"
     )
 
@@ -116,15 +115,15 @@ class User(BaseModel):
     # plain strings here: the data layer stores the choice, the copilot layer
     # decides what a given value means (and treats one it doesn't recognise as
     # "automatic", so a value written by a newer server can't break an older one).
-    default_chat_auth_provider: Optional[str] = Field(
+    default_chat_auth_provider: str | None = Field(
         None, description="Saved default chat transport, or None for automatic"
     )
-    default_chat_credential_id: Optional[str] = Field(
+    default_chat_credential_id: str | None = Field(
         None, description="Credential backing the saved default chat transport"
     )
 
     @classmethod
-    def from_db(cls, prisma_user: "PrismaUser") -> "User":
+    def from_db(cls, prisma_user: PrismaUser) -> User:
         """Convert a database User object to application User model."""
         # Handle metadata field - convert from JSON string or dict to dict
         metadata = {}
@@ -192,7 +191,7 @@ GraphInput = dict[str, Any]
 
 
 class BlockSecret:
-    def __init__(self, key: Optional[str] = None, value: Optional[str] = None):
+    def __init__(self, key: str | None = None, value: str | None = None):
         if value is not None:
             trimmed_value = value.strip()
             if value != trimmed_value:
@@ -259,11 +258,11 @@ class BlockSecret:
 
 
 def SecretField(
-    value: Optional[str] = None,
-    key: Optional[str] = None,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    placeholder: Optional[str] = None,
+    value: str | None = None,
+    key: str | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    placeholder: str | None = None,
     **kwargs,
 ) -> BlockSecret:
     return SchemaField(
@@ -279,22 +278,22 @@ def SecretField(
 def SchemaField(
     default: T | PydanticUndefinedType = PydanticUndefined,
     *args,
-    default_factory: Optional[Callable[[], T]] = None,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
-    placeholder: Optional[str] = None,
-    advanced: Optional[bool] = None,
+    default_factory: Callable[[], T] | None = None,
+    title: str | None = None,
+    description: str | None = None,
+    placeholder: str | None = None,
+    advanced: bool | None = None,
     secret: bool = False,
     exclude: bool = False,
-    hidden: Optional[bool] = None,
-    depends_on: Optional[list[str]] = None,
-    ge: Optional[float] = None,
-    le: Optional[float] = None,
-    min_length: Optional[int] = None,
-    max_length: Optional[int] = None,
-    discriminator: Optional[str] = None,
-    format: Optional[str] = None,
-    json_schema_extra: Optional[dict[str, Any]] = None,
+    hidden: bool | None = None,
+    depends_on: list[str] | None = None,
+    ge: float | None = None,
+    le: float | None = None,
+    min_length: int | None = None,
+    max_length: int | None = None,
+    discriminator: str | None = None,
+    format: str | None = None,
+    json_schema_extra: dict[str, Any] | None = None,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
         advanced = False
@@ -343,7 +342,7 @@ def is_sdk_default(cred_id: str) -> bool:
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
-    title: Optional[str] = None
+    title: str | None = None
     is_managed: bool = False
     metadata: dict[str, Any] = Field(default_factory=dict)
 
@@ -359,18 +358,18 @@ OAuthRefreshStrategy = Literal["oauth_handler", "provider_runtime"]
 
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
-    username: Optional[str] = None
+    username: str | None = None
     """Username of the third-party service user that these credentials belong to"""
     access_token: SecretStr
-    access_token_expires_at: Optional[int] = None
+    access_token_expires_at: int | None = None
     """Unix timestamp (seconds) indicating when the access token expires (if at all)"""
-    refresh_token: Optional[SecretStr] = None
-    refresh_token_expires_at: Optional[int] = None
+    refresh_token: SecretStr | None = None
+    refresh_token_expires_at: int | None = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
     refresh_strategy: OAuthRefreshStrategy = "oauth_handler"
-    provider_state: Optional[SecretStr] = None
-    provider_state_version: Optional[int] = None
+    provider_state: SecretStr | None = None
+    provider_state_version: int | None = None
 
     def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
@@ -379,7 +378,7 @@ class OAuth2Credentials(_BaseCredentials):
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int] = Field(
+    expires_at: int | None = Field(
         default=None,
         description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
     )
@@ -441,10 +440,12 @@ class HostScopedCredentials(_BaseCredentials):
             return False
 
         # If a port is specified in credential host, the request host port must match
-        if cred_scope_port is not None and request_port != cred_scope_port:
-            return False
-        # Non-standard ports are only allowed if explicitly specified in credential host
-        elif cred_scope_port is None and request_port not in (80, 443, None):
+        if (
+            cred_scope_port is not None
+            and request_port != cred_scope_port
+            or cred_scope_port is None
+            and request_port not in (80, 443, None)
+        ):
             return False
 
         # Simple host matching
@@ -481,17 +482,17 @@ class OAuthState(BaseModel):
     token: str
     provider: str
     expires_at: int
-    code_verifier: Optional[str] = None
+    code_verifier: str | None = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""
     scopes: list[str]
-    credential_id: Optional[str] = None
+    credential_id: str | None = None
     """If set, this OAuth flow upgrades an existing credential's scopes."""
     # Fields for external API OAuth flows
-    callback_url: Optional[str] = None
+    callback_url: str | None = None
     """External app's callback URL for OAuth redirect"""
     state_metadata: dict[str, Any] = Field(default_factory=dict)
     """Metadata to echo back to external app on completion"""
-    initiated_by_api_key_id: Optional[str] = None
+    initiated_by_api_key_id: str | None = None
     """ID of the API key that initiated this OAuth flow"""
 
     @property
@@ -518,7 +519,7 @@ class UserIntegrations(BaseModel):
     class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 
-        ayrshare_profile_key: Optional[SecretStr] = None
+        ayrshare_profile_key: SecretStr | None = None
 
         @field_serializer("*")
         def dump_secret_strings(value: Any, _info):
@@ -541,7 +542,7 @@ def is_credentials_field_name(field_name: str) -> bool:
 
 class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     id: str
-    title: Optional[str] = None
+    title: str | None = None
     provider: CP
     type: CT
 
@@ -632,15 +633,15 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
     provider: frozenset[CP] = Field(..., alias="credentials_provider")
     supported_types: frozenset[CT] = Field(..., alias="credentials_types")
-    required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
-    discriminator: Optional[str] = None
-    discriminator_mapping: Optional[dict[str, CP]] = None
-    discriminator_type_mapping: Optional[dict[str, frozenset[CT]]] = None
+    required_scopes: frozenset[str] | None = Field(None, alias="credentials_scopes")
+    discriminator: str | None = None
+    discriminator_mapping: dict[str, CP] | None = None
+    discriminator_type_mapping: dict[str, frozenset[CT]] | None = None
     discriminator_values: set[Any] = Field(default_factory=set)
     credential_free_discriminator_values: set[Any] = Field(default_factory=set)
     is_auto_credential: bool = False
     credential_reference_only: bool = False
-    input_field_name: Optional[str] = None
+    input_field_name: str | None = None
 
     @classmethod
     def combine(
@@ -816,13 +817,13 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
 def CredentialsField(
     required_scopes: set[str] = set(),
     *,
-    discriminator: Optional[str] = None,
-    discriminator_mapping: Optional[dict[str, Any]] = None,
-    discriminator_type_mapping: Optional[dict[str, Any]] = None,
-    discriminator_values: Optional[set[Any]] = None,
-    credential_free_discriminator_values: Optional[set[Any]] = None,
-    title: Optional[str] = None,
-    description: Optional[str] = None,
+    discriminator: str | None = None,
+    discriminator_mapping: dict[str, Any] | None = None,
+    discriminator_type_mapping: dict[str, Any] | None = None,
+    discriminator_values: set[Any] | None = None,
+    credential_free_discriminator_values: set[Any] | None = None,
+    title: str | None = None,
+    description: str | None = None,
     **kwargs,
 ) -> CredentialsMetaInput:
     """
@@ -876,7 +877,7 @@ class AutoTopUpConfig(BaseModel):
 
 class UserTransaction(BaseModel):
     transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+    transaction_time: datetime = datetime.min.replace(tzinfo=UTC)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
     running_balance: int = 0
@@ -885,7 +886,7 @@ class UserTransaction(BaseModel):
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    usage_start_time: datetime = datetime.max.replace(tzinfo=UTC)
     user_id: str
     user_email: str | None = None
     reason: str | None = None
@@ -913,7 +914,7 @@ class CreditHistoryRelatedExecution(BaseModel):
 class CreditTransactionItem(BaseModel):
     id: str = ""
     transaction_key: str = ""
-    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+    transaction_time: datetime = datetime.min.replace(tzinfo=UTC)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
     description: str | None = None
@@ -923,7 +924,7 @@ class CreditTransactionItem(BaseModel):
         default=None, description="The AutoPilot chat the usage came from"
     )
     usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    usage_start_time: datetime = datetime.max.replace(tzinfo=UTC)
     user_id: str
     activity_type: Literal["agent_run", "copilot_tools", "block_usage", "other"] = (
         "other"
@@ -989,7 +990,7 @@ class NodeExecutionStats(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    error: Optional[BaseException | str] = None
+    error: BaseException | str | None = None
     walltime: float = 0
     cputime: float = 0
     input_size: int = 0
@@ -1015,16 +1016,16 @@ class NodeExecutionStats(BaseModel):
     # Type of the provider-reported cost/usage captured above. When set
     # by a block, resolve_tracking honors this directly instead of
     # guessing from provider name.
-    provider_cost_type: Optional[ProviderCostType] = None
-    billing_mode: Optional[str] = None
-    auth_provider: Optional[str] = None
-    execution_path: Optional[str] = None
-    resolved_model: Optional[str] = None
+    provider_cost_type: ProviderCostType | None = None
+    billing_mode: str | None = None
+    auth_provider: str | None = None
+    execution_path: str | None = None
+    resolved_model: str | None = None
     # Moderation fields
-    cleared_inputs: Optional[dict[str, list[str]]] = None
-    cleared_outputs: Optional[dict[str, list[str]]] = None
+    cleared_inputs: dict[str, list[str]] | None = None
+    cleared_outputs: dict[str, list[str]] | None = None
 
-    def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
+    def __iadd__(self, other: NodeExecutionStats) -> NodeExecutionStats:
         """Mutate this instance by adding another NodeExecutionStats.
 
         Avoids calling model_dump() twice per merge (called on every
@@ -1062,8 +1063,8 @@ class GraphExecutionStats(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    error: Optional[Exception | str] = None
-    failure_reason: Optional[ExecutionFailureReason] = Field(
+    error: Exception | str | None = None
+    failure_reason: ExecutionFailureReason | None = Field(
         default=None,
         description="Structured reason for a terminal execution failure",
     )
@@ -1080,10 +1081,10 @@ class GraphExecutionStats(BaseModel):
         default=0, description="Total number of errors generated"
     )
     cost: int = Field(default=0, description="Total execution cost (cents)")
-    activity_status: Optional[str] = Field(
+    activity_status: str | None = Field(
         default=None, description="AI-generated summary of what the agent did"
     )
-    correctness_score: Optional[float] = Field(
+    correctness_score: float | None = Field(
         default=None,
         description="AI-generated score (0.0-1.0) indicating how well the execution achieved its intended purpose",
     )
@@ -1123,12 +1124,12 @@ class UserOnboarding(BaseModel):
     walletShown: bool
     notified: list[OnboardingStep]
     rewardedFor: list[OnboardingStep]
-    usageReason: Optional[str]
+    usageReason: str | None
     integrations: list[str]
-    otherIntegrations: Optional[str]
-    selectedStoreListingVersionId: Optional[str]
-    agentInput: Optional[dict[str, Any]]
-    onboardingAgentExecutionId: Optional[str]
+    otherIntegrations: str | None
+    selectedStoreListingVersionId: str | None
+    agentInput: dict[str, Any] | None
+    onboardingAgentExecutionId: str | None
     agentRuns: int
-    lastRunAt: Optional[datetime]
+    lastRunAt: datetime | None
     consecutiveRunDays: int

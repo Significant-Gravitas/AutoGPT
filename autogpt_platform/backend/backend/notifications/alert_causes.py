@@ -10,7 +10,7 @@ Every sentence is assembled from those slots — there is no hand-written copy
 per condition — and the CTA verb is always the fix, never "View dashboard".
 """
 
-from typing import Annotated, Generic, Literal, TypeVar, Union
+from typing import Annotated, Generic, Literal, TypeVar
 
 from prisma.enums import AlertCause
 from pydantic import BaseModel, Field
@@ -463,17 +463,15 @@ class GuardrailCause(BaseCause[Literal[AlertCause.GUARDRAIL]]):
 
 
 AlertCausePayload = Annotated[
-    Union[
-        AuthExpiredCause,
-        PausedFailuresCause,
-        BlockFailedCause,
-        ContinuousErrorCause,
-        AwaitingReviewCause,
-        AwaitingInputCause,
-        LowBalanceCause,
-        ZeroBalanceCause,
-        GuardrailCause,
-    ],
+    AuthExpiredCause
+    | PausedFailuresCause
+    | BlockFailedCause
+    | ContinuousErrorCause
+    | AwaitingReviewCause
+    | AwaitingInputCause
+    | LowBalanceCause
+    | ZeroBalanceCause
+    | GuardrailCause,
     Field(discriminator="cause"),
 ]
 

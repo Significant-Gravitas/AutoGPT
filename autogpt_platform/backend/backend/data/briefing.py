@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 import prisma.errors
@@ -38,7 +38,7 @@ class BriefingRecord(BaseModel):
 
 
 def _as_db_date(briefing_date: date) -> datetime:
-    return datetime.combine(briefing_date, time.min, tzinfo=timezone.utc)
+    return datetime.combine(briefing_date, time.min, tzinfo=UTC)
 
 
 async def create_briefing(
@@ -89,7 +89,7 @@ async def update_briefing_content(
 async def mark_briefing_delivered(user_id: str, briefing_id: str) -> None:
     await prisma.models.UserBriefing.prisma().update_many(
         where={"id": briefing_id, "userId": user_id},
-        data={"deliveredAt": datetime.now(timezone.utc)},
+        data={"deliveredAt": datetime.now(UTC)},
     )
 
 

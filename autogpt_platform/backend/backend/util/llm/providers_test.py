@@ -24,11 +24,15 @@ from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
+    BatchResultRow,
+    BatchSubmissionRef,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
     call_provider,
     call_provider_openai_compat_sync,
+    download_batch_results,
+    poll_batch,
     request_timeout,
 )
 from backend.util.settings import Config, Settings
@@ -592,15 +596,14 @@ class TestAnthropicMessages:
             return_value=SimpleNamespace(
                 messages=SimpleNamespace(create=AsyncMock(return_value=fake_response))
             ),
-        ):
-            with pytest.raises(ValueError, match="No content"):
-                await call_provider(
-                    provider="anthropic",
-                    model="claude-sonnet-4-6",
-                    api_key="sk-test",
-                    messages=[_msg("user", "hi")],
-                    max_tokens=10,
-                )
+        ), pytest.raises(ValueError, match="No content"):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="sk-test",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -783,6 +786,14 @@ class TestAIMLAPI:
         # AI/ML expects branded headers on the client construction.
         ctor_kwargs = constructor.call_args.kwargs
         assert ctor_kwargs["default_headers"]["X-Project"] == "AutoGPT"
+        # AI/ML API is served under /v1 (the /v2 host does not exist).
+        assert ctor_kwargs["base_url"] == "https://api.aimlapi.com/v1"
+        # Attribution headers identify agent-originated traffic to the provider.
+        assert ctor_kwargs["default_headers"]["X-AIMLAPI-Source"] == "agent/autogpt"
+        assert (
+            ctor_kwargs["default_headers"]["X-AIMLAPI-Partner-ID"]
+            == "part_T70zDIEvQLKSMzMQ7asjdtKR"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1398,16 +1409,15 @@ class TestTimeoutWrapping:
         with patch(
             "backend.util.llm.providers.anthropic.AsyncAnthropic",
             return_value=fake_client,
-        ):
-            with pytest.raises(TimeoutError, match="anthropic/"):
-                await call_provider(
-                    provider="anthropic",
-                    model="claude-sonnet-4-6",
-                    api_key="x",
-                    messages=[_msg("user", "hi")],
-                    max_tokens=10,
-                    timeout_seconds=0.05,
-                )
+        ), pytest.raises(TimeoutError, match="anthropic/"):
+            await call_provider(
+                provider="anthropic",
+                model="claude-sonnet-4-6",
+                api_key="x",
+                messages=[_msg("user", "hi")],
+                max_tokens=10,
+                timeout_seconds=0.05,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1697,14 +1707,6 @@ class TestDefaults:
 # ---------------------------------------------------------------------------
 # Anthropic batch submission + poll + download
 # ---------------------------------------------------------------------------
-
-
-from backend.util.llm.providers import (  # noqa: E402
-    BatchResultRow,
-    BatchSubmissionRef,
-    download_batch_results,
-    poll_batch,
-)
 
 
 class TestBatchSubmission:
