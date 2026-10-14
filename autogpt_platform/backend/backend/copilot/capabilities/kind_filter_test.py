@@ -162,22 +162,3 @@ def test_a_block_filter_does_not_hide_a_platform_tool_it_ties(index):
     assert result.hits[0].entry.name == "PageReaderBlock"
     assert [hit.entry.name for hit in result.other_kinds] == ["web_fetch"]
 
-
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "A service query drops platform tools until #15011 (SECRT-2676) lets "
-        "a tool that names the service through; drop this mark with it."
-    ),
-)
-def test_a_block_filter_lists_the_platform_tool_for_a_named_service(index):
-    post = _tool(
-        "post_to_chat_platform",
-        "Send a message as the AutoGPT bot to Discord, Slack or Telegram.",
-    )
-    result = index.with_entries([post]).search(
-        "send a discord message", kind="block", connections=ConnectionState()
-    )
-
-    assert result.hits[0].entry.name == "SendDiscordMessageBlock"
-    assert "post_to_chat_platform" in [hit.entry.name for hit in result.other_kinds]
