@@ -7,8 +7,10 @@ import pytest
 import sentry_sdk
 from sentry_sdk.integrations.logging import LoggingIntegration
 
+from backend.copilot.provider_failure import ProviderFailureKind
 from backend.copilot.stream_registry import CANCELLED_MESSAGE
 from backend.util.exceptions import NotFoundError
+from backend.util.llm.provider_billing import PROVIDER_UNAVAILABLE_CODE
 
 from . import failures
 from .bot_backend import BotStreamError
@@ -43,6 +45,12 @@ from .bot_backend import BotStreamError
             BotStreamError("backend_stream_error", "x", code="policy_denied"),
             failures.REQUEST_DECLINED,
         ),
+        # Our own provider account is out of credits: not a bug in the turn.
+        pytest.param(
+            BotStreamError("backend_stream_error", "x", code=PROVIDER_UNAVAILABLE_CODE),
+            failures.MODEL_UNAVAILABLE,
+            marks=pytest.mark.xfail(reason="provider_unavailable is not mapped yet"),
+        ),
         (BotStreamError("stream_timeout", "response timed out"), failures.TOO_LONG),
         (BotStreamError("subscribe_failed", "no stream"), failures.START_FAILED),
         (
@@ -60,6 +68,14 @@ from .bot_backend import BotStreamError
 )
 def test_categorize(exc: BaseException, category: failures.FailureCategory) -> None:
     assert failures.categorize(exc) == category
+
+
+@pytest.mark.parametrize("kind", list(ProviderFailureKind))
+def test_every_provider_failure_kind_names_its_cause(
+    kind: ProviderFailureKind,
+) -> None:
+    exc = BotStreamError("backend_stream_error", "x", code=kind.value)
+    assert failures.categorize(exc) != failures.INTERNAL
 
 
 def test_reply_names_the_cause_and_reference() -> None:
