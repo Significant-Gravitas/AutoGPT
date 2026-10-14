@@ -26,8 +26,11 @@ async def client():
 
 @pytest.fixture(autouse=True)
 def profile_dependencies(mocker):
-    existing = mocker.patch.object(
-        routes, "get_business_understanding", new=AsyncMock(return_value=None)
+    existing = AsyncMock(return_value=None)
+    mocker.patch.object(
+        routes,
+        "understanding_db",
+        return_value=MagicMock(get_business_understanding=existing),
     )
     admission = mocker.patch.object(
         routes, "enforce_personalization_budget", new=AsyncMock()
@@ -38,9 +41,18 @@ def profile_dependencies(mocker):
 @pytest.fixture(autouse=True)
 def role_writes(mocker):
     """The kept pick's copy, and its MailerLite and PostHog writes."""
+    save, queue = AsyncMock(), AsyncMock()
+    mocker.patch.object(
+        routes, "onboarding_role_db", return_value=MagicMock(save_onboarding_role=save)
+    )
+    mocker.patch.object(
+        routes,
+        "onboarding_audience_db",
+        return_value=MagicMock(queue_onboarding_role=queue),
+    )
     return {
-        "save": mocker.patch.object(routes, "save_onboarding_role", new=AsyncMock()),
-        "queue": mocker.patch.object(routes, "queue_onboarding_role", new=AsyncMock()),
+        "save": save,
+        "queue": queue,
         "posthog": mocker.patch.object(routes, "set_onboarding_role", new=MagicMock()),
     }
 

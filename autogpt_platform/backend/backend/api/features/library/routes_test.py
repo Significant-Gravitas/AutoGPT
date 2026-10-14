@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 import fastapi.testclient
 import pytest
 import pytest_mock
+from prisma.errors import ClientNotConnectedError
 from pytest_snapshot.plugin import Snapshot
 
 from backend.util.exceptions import MissingConfigError
@@ -311,3 +312,27 @@ async def test_list_trigger_agents_route(
         user_id=test_user_id,
         library_agent_id="parent-id",
     )
+
+
+def test_batch_read_goes_through_database_manager_without_prisma(
+    mocker: pytest_mock.MockFixture, test_user_id: str
+):
+    rpc = mocker.MagicMock()
+    rpc.get_library_agents_by_ids = AsyncMock(return_value=[])
+    mocker.patch("backend.data.db.is_connected", return_value=False)
+    mocker.patch(
+        "backend.util.clients.get_database_manager_async_client", return_value=rpc
+    )
+    local = mocker.patch(
+        "backend.api.features.library._get_many.get_library_agents_by_ids",
+        new=AsyncMock(side_effect=ClientNotConnectedError()),
+    )
+
+    response = client.get("/agents/batch", params={"ids": ["agent-1", "agent-2"]})
+
+    assert response.status_code == 200
+    assert response.json() == []
+    rpc.get_library_agents_by_ids.assert_awaited_once_with(
+        ids=["agent-1", "agent-2"], user_id=test_user_id
+    )
+    local.assert_not_awaited()

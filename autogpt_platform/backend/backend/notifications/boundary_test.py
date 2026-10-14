@@ -14,17 +14,6 @@ import pathlib
 
 import pytest
 
-# Modules in this package that do NOT run inside the notification service, and
-# so are allowed their own Prisma access. Each is called from a process that
-# owns a connection; adding to this list means asserting the same.
-_RUNS_ELSEWHERE = {
-    # Called from data/execution.py, which is exposed on the DatabaseManager and
-    # therefore runs inside it.
-    "scoring.py",
-    # Called from data/human_review.py, likewise inside the DatabaseManager.
-    "review_alerts.py",
-}
-
 _FORBIDDEN_CALLS = {"prisma"}
 _FORBIDDEN_IMPORTS = {
     "backend.data.db": {"prisma", "query_raw_with_schema", "connect"},
@@ -34,16 +23,12 @@ _PACKAGE = pathlib.Path(__file__).parent
 
 
 def _modules() -> list[pathlib.Path]:
-    return sorted(
-        p
-        for p in _PACKAGE.glob("*.py")
-        if not p.name.endswith("_test.py") and p.name not in _RUNS_ELSEWHERE
-    )
+    return sorted(p for p in _PACKAGE.glob("*.py") if not p.name.endswith("_test.py"))
 
 
 @pytest.mark.parametrize("module", _modules(), ids=lambda p: p.name)
 def test_no_direct_prisma_access_in_the_notification_service(module: pathlib.Path):
-    tree = ast.parse(module.read_text(), filename=str(module))
+    tree = ast.parse(module.read_text(encoding="utf-8"), filename=str(module))
 
     for node in ast.walk(tree):
         # `Something.prisma()` — the Prisma model accessor.
@@ -68,18 +53,11 @@ def test_no_direct_prisma_access_in_the_notification_service(module: pathlib.Pat
                 )
 
 
-def test_the_allowlist_only_names_modules_that_exist():
-    """A stale allowlist entry would silently exempt nothing, or worse, mask a
-    module that later moved into the service."""
-    for name in _RUNS_ELSEWHERE:
-        assert (_PACKAGE / name).exists(), f"{name} is allowlisted but does not exist"
-
-
 def test_the_service_does_not_connect_a_database_itself():
     """If this ever needs changing, the RPC boundary has been abandoned and
     every module above is free to query Prisma again — which is the state that
     shipped the outage."""
-    source = (_PACKAGE / "notifications.py").read_text()
+    source = (_PACKAGE / "notifications.py").read_text(encoding="utf-8")
     assert "db.connect()" not in source, (
         "NotificationManager must not open its own Prisma connection; its "
         "database access belongs behind the DatabaseManager RPC."

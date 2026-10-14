@@ -2,9 +2,14 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from backend.api.features.library import _get_many as library_batch_module
+from backend.api.features.onboarding_dump import db as onboarding_dump_module
 from backend.api.features.orgs import db as orgs_module
 from backend.data import bot_installs as bot_installs_module
-from backend.data import db_accessors
+from backend.data import db_accessors, onboarding_audience, onboarding_role
+from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 
 
 def test_orgs_db_uses_direct_module_when_connected():
@@ -43,3 +48,36 @@ def test_bot_installs_db_falls_back_to_database_manager_client():
         ),
     ):
         assert db_accessors.bot_installs_db() is client
+
+
+@pytest.mark.parametrize(
+    "accessor, module, endpoint",
+    [
+        (db_accessors.onboarding_role_db, onboarding_role, "save_onboarding_role"),
+        (
+            db_accessors.onboarding_audience_db,
+            onboarding_audience,
+            "queue_onboarding_role",
+        ),
+        (db_accessors.onboarding_dump_db, onboarding_dump_module, "mark_failed"),
+        (
+            db_accessors.library_batch_db,
+            library_batch_module,
+            "get_library_agents_by_ids",
+        ),
+    ],
+)
+def test_routed_accessors_preserve_connected_and_rpc_paths(accessor, module, endpoint):
+    assert endpoint in vars(DatabaseManager)
+    assert endpoint in vars(DatabaseManagerAsyncClient)
+    with patch("backend.data.db_accessors.db.is_connected", return_value=True):
+        assert accessor() is module
+    client = MagicMock(spec=DatabaseManagerAsyncClient)
+    with (
+        patch("backend.data.db_accessors.db.is_connected", return_value=False),
+        patch(
+            "backend.util.clients.get_database_manager_async_client",
+            return_value=client,
+        ),
+    ):
+        assert accessor() is client

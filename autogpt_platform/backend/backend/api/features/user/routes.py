@@ -14,12 +14,12 @@ from backend.api.model import (
     UpdateTimezoneRequest,
     UserConsentResponse,
 )
+from backend.data.db_accessors import user_db
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.user import (
     get_or_create_user,
     get_or_create_user_with_status,
     get_user_notification_preference,
-    record_signup_consent,
     update_user_email,
     update_user_notification_preference,
     update_user_timezone,
@@ -135,7 +135,7 @@ async def record_user_consent_route(
 ) -> UserConsentResponse:
     """Record the terms version accepted at signup and, if the user refused
     marketing email, the opt-out. Idempotent; never clears an opt-out."""
-    user = await record_signup_consent(
+    user = await user_db().record_signup_consent(
         user_id, request.terms_version, request.marketing_opt_out
     )
     return UserConsentResponse(
