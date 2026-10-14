@@ -6,8 +6,28 @@ export function createUniqueAgentName(prefix: string): string {
   return `${prefix} ${Date.now()}-${randomUUID().slice(0, 8)}`;
 }
 
+// The agent addSimpleAgentBlocks builds: Store Value passes `value` to an
+// Agent Output named `outputName`, so every run of it outputs exactly that.
+export const SIMPLE_AGENT = {
+  value: "smoke-value",
+  outputName: "smoke-result",
+} as const;
+
+// A node by its position on the canvas or by its block title.
+type NodeRef = number | string;
+
+interface BuilderRun {
+  status: string;
+  outputs: Record<string, unknown[]>;
+}
+
 function escapeRegex(text: string): string {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function getNodeID(node: Locator): Promise<string> {
+  const dataID = await node.getAttribute("data-id");
+  return (dataID ?? "").replace("custom-node-", "");
 }
 
 export class BuildPage extends BasePage {
@@ -140,6 +160,12 @@ export class BuildPage extends BasePage {
       .first();
   }
 
+  private getNode(node: NodeRef): Locator {
+    return typeof node === "number"
+      ? this.getNodeLocator(node)
+      : this.getNodeLocatorByTitle(node);
+  }
+
   getNodeTextInputs(nodeTitle: string): Locator {
     return this.getNodeLocatorByTitle(nodeTitle).locator(
       'input[placeholder="Enter string value..."]:visible',
@@ -213,21 +239,32 @@ export class BuildPage extends BasePage {
 
   // --- Connections (Edges) ---
 
-  async connectNodes(
-    sourceNodeIndex: number,
-    targetNodeIndex: number,
-  ): Promise<void> {
-    // Get the node wrapper elements to scope handle search
-    const sourceNode = this.getNodeLocator(sourceNodeIndex);
-    const targetNode = this.getNodeLocator(targetNodeIndex);
-
-    // ReactFlow renders Handle components as .react-flow__handle elements
-    // Output handles have class .react-flow__handle-right (Position.Right)
-    // Input handles have class .react-flow__handle-left (Position.Left)
-    const sourceHandle = sourceNode
-      .locator(".react-flow__handle-right")
-      .first();
-    const targetHandle = targetNode.locator(".react-flow__handle-left").first();
+  // Wires the named output of one node to the named input of another. Every
+  // pin has a handle, starting with `error` on most blocks, so a handle picked
+  // by position wires the wrong pin; and a drop that misses makes no edge.
+  async connectNodes({
+    source,
+    target,
+  }: {
+    source: { node: NodeRef; output: string };
+    target: { node: NodeRef; input: string };
+  }): Promise<void> {
+    const sourceNode = this.getNode(source.node);
+    const targetNode = this.getNode(target.node);
+    const sourceHandle = sourceNode.locator(
+      `.react-flow__handle-right[data-handleid="${source.output}"]`,
+    );
+    const targetHandle = targetNode.locator(
+      `.react-flow__handle-left[data-handleid="${target.input}"]`,
+    );
+    await expect(
+      sourceHandle,
+      `output "${source.output}" should be on ${source.node}`,
+    ).toBeVisible();
+    await expect(
+      targetHandle,
+      `input "${target.input}" should be on ${target.node}`,
+    ).toBeVisible();
 
     // Get precise center coordinates using evaluate to avoid CSS transform issues
     const getHandleCenter = async (locator: Locator) => {
@@ -240,22 +277,34 @@ export class BuildPage extends BasePage {
       return rect;
     };
 
-    const source = await getHandleCenter(sourceHandle);
-    const target = await getHandleCenter(targetHandle);
+    const from = await getHandleCenter(sourceHandle);
+    const to = await getHandleCenter(targetHandle);
 
     // ReactFlow requires a proper drag sequence with intermediate moves
-    await this.page.mouse.move(source.x, source.y);
+    await this.page.mouse.move(from.x, from.y);
     await this.page.mouse.down();
     // Move in steps to trigger ReactFlow's connection detection
     const steps = 20;
     for (let i = 1; i <= steps; i++) {
       const ratio = i / steps;
       await this.page.mouse.move(
-        source.x + (target.x - source.x) * ratio,
-        source.y + (target.y - source.y) * ratio,
+        from.x + (to.x - from.x) * ratio,
+        from.y + (to.y - from.y) * ratio,
       );
     }
     await this.page.mouse.up();
+
+    // The builder names each edge after both of its pins.
+    const [sourceID, targetID] = await Promise.all([
+      getNodeID(sourceNode),
+      getNodeID(targetNode),
+    ]);
+    await expect(
+      this.page.getByTestId(
+        `rf__edge-${sourceID}:${source.output}->${targetID}:${target.input}`,
+      ),
+      `edge ${source.output} -> ${target.input} should be on the canvas`,
+    ).toBeAttached();
   }
 
   async getEdgeCount(): Promise<number> {
@@ -413,22 +462,17 @@ export class BuildPage extends BasePage {
     await this.waitForNodeOnCanvas(1);
     await this.fillBlockInputByPlaceholder(
       "Enter string value...",
-      "smoke-value",
+      SIMPLE_AGENT.value,
       0,
     );
 
-    await this.addBlockByClick("Add to Dictionary");
+    await this.addBlockByClick("Agent Output");
     await this.waitForNodeOnCanvas(2);
-
-    await this.fillNodeTextInput("Add to Dictionary", "smoke-key", 0);
-    await this.fillNodeTextInput("Add to Dictionary", "smoke-value", 1);
-
-    // Connect Store Value's output to Add to Dictionary so the graph has a
-    // real edge and actually produces output when run. Without this edge the
-    // graph runs but emits no output, and `assertRunProducedOutput` rightly
-    // fails — catching exactly the "I forgot to connect the blocks" bug
-    // manual QA would catch.
-    await this.connectNodes(0, 1);
+    await this.connectNodes({
+      source: { node: "Store Value", output: "output" },
+      target: { node: "Agent Output", input: "value" },
+    });
+    await this.fillLastNodeTextInput("Agent Output", SIMPLE_AGENT.outputName);
   }
 
   async createAndSaveSimpleAgent(
@@ -475,18 +519,25 @@ export class BuildPage extends BasePage {
     }
   }
 
-  async getExecutionState(): Promise<"running" | "idle" | "unknown"> {
-    const stopButton = this.page.locator('[data-id="stop-graph-button"]');
-    if (await stopButton.isVisible().catch(() => false)) {
-      return "running";
-    }
-
-    const runButton = this.page.locator('[data-id="run-graph-button"]');
-    if (await runButton.isVisible().catch(() => false)) {
-      return "idle";
-    }
-
-    return "unknown";
+  // The run the builder last started, read back from the API once it ends.
+  async waitForRunToEnd(): Promise<BuilderRun> {
+    await expect(this.page).toHaveURL(/flowExecutionID=/);
+    const { graphId } = this.getSavedGraphRef();
+    const runID = new URL(this.page.url()).searchParams.get("flowExecutionID");
+    let run: BuilderRun = { status: "UNKNOWN", outputs: {} };
+    await expect
+      .poll(
+        async () => {
+          const response = await this.page.request.get(
+            `/api/proxy/api/graphs/${graphId}/executions/${runID}`,
+          );
+          if (response.ok()) run = (await response.json()) as BuilderRun;
+          return run.status;
+        },
+        { message: "the builder's run should end", timeout: 30000 },
+      )
+      .toMatch(/^(COMPLETED|FAILED|TERMINATED)$/);
+    return run;
   }
 
   // --- Tutorial (Shepherd.js tour) ---
