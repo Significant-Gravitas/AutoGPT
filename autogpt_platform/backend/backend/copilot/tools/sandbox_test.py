@@ -29,7 +29,18 @@ def test_get_sandbox_backend_vetto():
     with patch(
         "shutil.which",
         side_effect=lambda bin: "/usr/bin/vetto" if bin == "vetto" else None,
-    ):
+    ), patch("platform.system", return_value="Linux"):
+        sandbox._SANDBOX_BACKEND = None
+        backend = get_sandbox_backend()
+        assert backend == "vetto"
+        assert has_full_sandbox() is True
+
+
+def test_get_sandbox_backend_vetto_darwin():
+    with patch(
+        "shutil.which",
+        side_effect=lambda bin: "/usr/local/bin/vetto" if bin == "vetto" else None,
+    ), patch("platform.system", return_value="Darwin"):
         sandbox._SANDBOX_BACKEND = None
         backend = get_sandbox_backend()
         assert backend == "vetto"
@@ -154,5 +165,6 @@ async def test_run_sandboxed_invokes_vetto():
         assert call_args[0] == "vetto"
         assert call_args[1] == "run"
         assert stdout == "vetto stdout\n"
+        assert stderr == ""
         assert exit_code == 0
         assert timed_out is False
