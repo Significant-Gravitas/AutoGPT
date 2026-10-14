@@ -109,6 +109,17 @@ update_env_var() {
   fi
 }
 
+remove_env_var() {
+  local key="$1" file="$2"
+  if grep -q "^${key}=" "$file" 2>/dev/null; then
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+      sed -i '' "/^${key}=/d" "$file"
+    else
+      sed -i "/^${key}=/d" "$file"
+    fi
+  fi
+}
+
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "WARNING: $ENV_FILE does not exist, creating it."
   touch "$ENV_FILE"
@@ -116,7 +127,10 @@ fi
 
 update_env_var "CLAUDE_CODE_OAUTH_TOKEN" "$ACCESS_TOKEN" "$ENV_FILE"
 [[ -n "$REFRESH_TOKEN" ]] && update_env_var "CLAUDE_CODE_REFRESH_TOKEN" "$REFRESH_TOKEN" "$ENV_FILE"
-update_env_var "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION" "true" "$ENV_FILE"
+update_env_var "CHAT_PLATFORM_ROUTE" "subscription" "$ENV_FILE"
+# Older versions of this script set this flag; the backend no longer reads
+# it and refuses to start while it is set.
+remove_env_var "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION" "$ENV_FILE"
 
 echo ""
 echo "Updated $ENV_FILE with Claude subscription tokens."

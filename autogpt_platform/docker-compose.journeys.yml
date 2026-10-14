@@ -10,16 +10,14 @@
 # scripted_model/README.md.
 
 x-scripted-model-env: &scripted-model-env
-  # OpenRouter mode pointed at the fake. The SDK engine's CLI gets this URL
-  # without /v1 as ANTHROPIC_BASE_URL (backend/copilot/sdk/env.py); the
-  # baseline engine and side calls (session titles) use it as their
-  # OpenAI-compatible endpoint. The key is never checked.
+  # The OpenRouter route pointed at the fake. The SDK engine's CLI gets this
+  # URL as ANTHROPIC_BASE_URL (backend/copilot/sdk/env.py); side calls
+  # (session titles) use its /v1 as their OpenAI-compatible endpoint. The
+  # key is never checked.
   CHAT_TEST_MODE: "false"
-  CHAT_USE_LOCAL: "false"
-  CHAT_USE_OPENROUTER: "true"
-  CHAT_USE_CLAUDE_CODE_SUBSCRIPTION: "false"
-  CHAT_BASE_URL: http://scripted_model:4010/api/v1
-  CHAT_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
+  CHAT_PLATFORM_ROUTE: "openrouter"
+  CHAT_OPENROUTER_BASE_URL: http://scripted_model:4010/api
+  CHAT_OPENROUTER_API_KEY: "scripted-model-accepts-any-key" # pragma: allowlist secret
   # Memory (graphiti-memory is a hosted flag) would otherwise send that key to
   # openrouter.ai and api.openai.com. Kept inside the stack, its calls fail
   # fast and the turn goes on without memory, as it does on any failure.

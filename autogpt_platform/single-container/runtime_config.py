@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+import importlib.util
 import ipaddress
 import os
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 CONFIG_VERSION = "1"
+_BACKEND_DIR = "/app/autogpt_platform/backend"
 SAFE_SECRET = re.compile(r"^[A-Za-z0-9._~-]+={0,2}$")
 SAFE_USERNAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SAFE_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -40,6 +42,9 @@ def main() -> int:
 
     url_parser = subparsers.add_parser("validate-public-url")
     url_parser.add_argument("url")
+
+    chat_parser = subparsers.add_parser("check-chat-env")
+    chat_parser.add_argument("--backend-env", type=Path, required=True)
 
     args = parser.parse_args()
     try:
@@ -65,6 +70,9 @@ def main() -> int:
                 )
             if offenders:
                 return 1
+        elif args.command == "check-chat-env":
+            for warning in check_chat_env(args.backend_env, os.environ):
+                print(f"chat settings: {warning}", file=sys.stderr)
         else:
             print(validate_public_url(args.url))
     except (OSError, ValueError) as exc:
@@ -141,6 +149,27 @@ def _replace_atomically(path: Path, content: str) -> None:
     except BaseException:
         temporary.unlink(missing_ok=True)
         raise
+
+
+def check_chat_env(backend_env: Path, environment: Mapping[str, str]) -> list[str]:
+    """Run the backend's own chat-settings check on this environment and the
+    backend's dotenv file; return its warnings, raise its problems.
+
+    Loaded from the backend's source rather than imported: this script's
+    other commands run under a bare ``python3``, and the check must be the
+    one the backend itself runs (``backend/copilot/chat_env.py``)."""
+    backend_dir = Path(environment.get("AUTOGPT_BACKEND_DIR", _BACKEND_DIR))
+    source = backend_dir / "backend" / "copilot" / "chat_env.py"
+    spec = importlib.util.spec_from_file_location("autogpt_chat_env", source)
+    if spec is None or spec.loader is None:
+        raise ValueError(f"cannot load the chat-settings check from {source}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    dotenv_paths = [backend_env] if backend_env.is_file() else []
+    try:
+        return module.check_chat_environment(environment, dotenv_paths)
+    except module.ChatEnvironmentError as exc:
+        raise ValueError(str(exc)) from None
 
 
 def validate_public_url(value: str) -> str:

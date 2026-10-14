@@ -224,6 +224,7 @@ cd autogpt_platform/installer
 # Optional overrides:
 #   --ollama-model=qwen3:14b-instruct-q4_K_M
 #   --ollama-host=http://gpu-rig.lab:11434   # use an existing Ollama
+#   --context-tokens=131072                  # the window Ollama loads the model with
 ```
 
 #### Windows
@@ -234,14 +235,18 @@ setup-autogpt.bat /with-ollama
 REM Optional overrides:
 REM   /ollama-model=qwen3:14b-instruct-q4_K_M
 REM   /ollama-host=http://gpu-rig.lab:11434
+REM   /context-tokens=131072
 ```
 
 The installer:
 
 1. Installs Ollama (skipped if already present, or if `--ollama-host` points at an existing one).
-2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=32768` so containers can reach it and so AutoPilot's ~8 k system prompt isn't truncated by Ollama's 4 k default.
-3. Pulls the chat model (default `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M`).
-4. Appends a marker-bounded block to `autogpt_platform/backend/.env` with `CHAT_USE_LOCAL=true` plus the `CHAT_BASE_URL` / `CHAT_API_KEY` / `CHAT_*_MODEL` overrides.
+2. Configures `OLLAMA_HOST=0.0.0.0:11434` + `OLLAMA_CONTEXT_LENGTH=262144` so containers can reach it and so AutoPilot's system prompt and tools aren't truncated by Ollama's 4 k default.
+3. Pulls the chat model (default `hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M`).
+4. Loads the model and reads back the context window Ollama loaded it with. When the server doesn't report one, the installer asks for it; `--context-tokens` (`/context-tokens` on Windows) sets it outright. AutoPilot needs at least 65,536 tokens, and the installer stops below that.
+5. Appends a marker-bounded block to `autogpt_platform/backend/.env` with `CHAT_PLATFORM_ROUTE=local`, `CHAT_LOCAL_BASE_URL`, `CHAT_LOCAL_ADAPTER=openai_chat`, `CHAT_LOCAL_CONTEXT_TOKENS` and the model as both `CHAT_STANDARD_MODEL` and `CHAT_ADVANCED_MODEL`. Ollama takes no key, so `CHAT_LOCAL_API_KEY` stays unset.
+
+A `backend/.env` from before these settings may still carry `CHAT_USE_LOCAL`, `CHAT_BASE_URL` or `CHAT_API_KEY` lines outside the installer's block. The backend refuses to start while any of them is set, even empty, and names each one: delete them.
 
 Re-running with `--with-ollama` is idempotent — the wiring block is rewritten in place.
 

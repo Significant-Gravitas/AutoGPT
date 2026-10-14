@@ -10,13 +10,16 @@
 # Optional flags:
 #   --with-ollama          Also install Ollama, pull a default chat model, and
 #                          wire backend/.env so AutoPilot runs without any
-#                          cloud API keys (CHAT_USE_LOCAL=true). See
+#                          cloud API keys (CHAT_PLATFORM_ROUTE=local). See
 #                          docs/platform/copilot-local-llm.md.
 #   --ollama-model=NAME    Model to pull (default: hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M).
 #   --ollama-host=URL      Use an existing Ollama at this URL instead of
 #                          installing one locally. Skips the Ollama install
-#                          but still writes the CHAT_USE_LOCAL .env entries.
+#                          but still writes the local-route .env entries.
 #                          Example: --ollama-host=http://gpu-rig.lab:11434
+#   --context-tokens=N     The context window Ollama loads the model with.
+#                          Read from the server when omitted, and asked for
+#                          when it can't be read. AutoPilot needs 65536+.
 # ------------------------------------------------------------------------------
 
 # --- Global Variables ---
@@ -35,6 +38,10 @@ LOG_FILE=""
 WITH_OLLAMA=false
 OLLAMA_MODEL="hf.co/ornith-ai/Ornith-1.5-9B-GGUF:Q4_K_M"
 OLLAMA_HOST_URL=""
+LOCAL_CONTEXT_TOKENS=""
+# AutoPilot's prompt and tools beside a working conversation need this much
+# context (backend/copilot/chat_env.py checks the same floor at startup).
+MIN_LOCAL_CONTEXT_TOKENS=65536
 
 # OS-family detection — Linux and macOS install Ollama very differently
 # (systemd unit + curl-pipe-sh vs launchd-managed brew/dmg app), bind the
@@ -54,7 +61,8 @@ for arg in "$@"; do
         --with-ollama)        WITH_OLLAMA=true ;;
         --ollama-model=*)     OLLAMA_MODEL="${arg#*=}"; WITH_OLLAMA=true ;;
         --ollama-host=*)      OLLAMA_HOST_URL="${arg#*=}"; WITH_OLLAMA=true ;;
-        -h|--help)            sed -n '4,19p' "$0"; exit 0 ;;
+        --context-tokens=*)   LOCAL_CONTEXT_TOKENS="${arg#*=}"; WITH_OLLAMA=true ;;
+        -h|--help)            sed -n '4,22p' "$0"; exit 0 ;;
         *) echo "Unknown flag: $arg" >&2; exit 2 ;;
     esac
 done
@@ -160,10 +168,10 @@ bootstrap_ollama() {
     if [ -n "$OLLAMA_HOST_URL" ]; then
         # Normalize: strip trailing slash and an optional ``/v1`` so that
         # ``--ollama-host`` accepts either the Ollama root
-        # (``http://host:11434``) or a copy-pasted ``CHAT_BASE_URL`` value
-        # (``http://host:11434/v1``). Without this, an operator passing the
-        # latter would have us probe ``/v1/api/version`` (404) and write
-        # ``CHAT_BASE_URL=…/v1/v1`` into the .env.
+        # (``http://host:11434``) or a copy-pasted ``CHAT_LOCAL_BASE_URL``
+        # value (``http://host:11434/v1``). Without this, an operator passing
+        # the latter would have us probe ``/v1/api/version`` (404) and write
+        # ``CHAT_LOCAL_BASE_URL=…/v1/v1`` into the .env.
         local OLLAMA_ROOT="${OLLAMA_HOST_URL%/}"
         OLLAMA_ROOT="${OLLAMA_ROOT%/v1}"
         print_color "BLUE" "Using existing Ollama at $OLLAMA_ROOT"
@@ -325,6 +333,55 @@ _bootstrap_ollama_macos() {
     print_color "GREEN" "✓ Ollama ready: http://localhost:11434"
 }
 
+ollama_loaded_window() {
+    # The context window the Ollama server at $1 loads $OLLAMA_MODEL with:
+    # load the model (a generate request with no prompt only loads it), then
+    # read the window back from /api/ps. Prints nothing when the server
+    # does not report one.
+    local root="$1" ps_json rest needle
+    curl -sf --max-time 600 "${root}/api/generate" \
+        -H "Content-Type: application/json" \
+        -d "{\"model\":\"$OLLAMA_MODEL\",\"keep_alive\":\"10m\"}" > /dev/null \
+        || return 0
+    ps_json=$(curl -sf --max-time 10 "${root}/api/ps") || return 0
+    # Each loaded model's entry starts with its name and ends with its
+    # context_length, so the first context_length after the model's name is
+    # its own. The quoted needle matches the name literally.
+    for needle in "\"name\":\"${OLLAMA_MODEL}\"" "\"name\":\"${OLLAMA_MODEL}:latest\""; do
+        rest="${ps_json#*"$needle"}"
+        if [ "$rest" != "$ps_json" ]; then
+            grep -o '"context_length":[0-9]*' <<< "$rest" | head -1 | cut -d: -f2
+            return 0
+        fi
+    done
+}
+
+resolve_context_tokens() {
+    # CHAT_LOCAL_CONTEXT_TOKENS has to be the window the server really loads
+    # the model with: AutoPilot compacts its conversation to fit it, and a
+    # guess too high overflows the model while one too low throws history
+    # away. --context-tokens wins; otherwise read it from the server, and ask
+    # when the server doesn't say.
+    local root="${OLLAMA_HOST_URL:-http://localhost:11434}"
+    if [ -z "$LOCAL_CONTEXT_TOKENS" ]; then
+        print_color "BLUE" "Reading the context window Ollama loads $OLLAMA_MODEL with..."
+        LOCAL_CONTEXT_TOKENS=$(ollama_loaded_window "$root")
+    fi
+    if [ -z "$LOCAL_CONTEXT_TOKENS" ] && { true < /dev/tty; } 2> /dev/null; then
+        print_color "YELLOW" "Ollama at $root did not report the context window it loads $OLLAMA_MODEL with."
+        printf "Context window in tokens (at least %s): " "$MIN_LOCAL_CONTEXT_TOKENS" > /dev/tty
+        read -r LOCAL_CONTEXT_TOKENS < /dev/tty || LOCAL_CONTEXT_TOKENS=""
+    fi
+    case "$LOCAL_CONTEXT_TOKENS" in
+        ''|*[!0-9]*)
+            handle_error "Could not determine the context window Ollama loads $OLLAMA_MODEL with. Re-run with --context-tokens=N (at least $MIN_LOCAL_CONTEXT_TOKENS)." ;;
+    esac
+    if [ "$LOCAL_CONTEXT_TOKENS" -lt "$MIN_LOCAL_CONTEXT_TOKENS" ]; then
+        handle_error "Ollama loads $OLLAMA_MODEL with a $LOCAL_CONTEXT_TOKENS-token context window; AutoPilot needs at least $MIN_LOCAL_CONTEXT_TOKENS. Raise the server's OLLAMA_CONTEXT_LENGTH (or use a model with a larger window) and re-run."
+    fi
+    print_color "GREEN" "✓ Context window: $LOCAL_CONTEXT_TOKENS tokens"
+}
+
 init_env() {
     # The .env.default files leave ENCRYPTION_KEY, UNSUBSCRIBE_SECRET_KEY and
     # BETTER_AUTH_SECRET blank and the backend refuses to start without an
@@ -354,8 +411,8 @@ init_env() {
 }
 
 write_local_env() {
-    # Wire backend/.env so the new ChatConfig.local transport activates and
-    # AutoPilot routes through Ollama with no cloud API keys. Uses the host
+    # Wire backend/.env so AutoPilot's local route activates and AutoPilot
+    # runs on Ollama with no cloud API keys. Uses the host
     # LAN IP (or the explicit --ollama-host URL) so containers on Linux
     # can reach Ollama without docker-compose extra_hosts gymnastics.
     cd "$REPO_DIR/autogpt_platform/backend" || handle_error "no backend dir"
@@ -396,7 +453,7 @@ write_local_env() {
         # first non-loopback IPv4, which the bridge network always reaches.
         # We fall back to 127.0.0.1 only when -I returns nothing
         # (e.g. a host with no LAN IPs); in that case the operator will
-        # need to override CHAT_BASE_URL by hand.
+        # need to override CHAT_LOCAL_BASE_URL by hand.
         local host_ip
         host_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
         : "${host_ip:=127.0.0.1}"
@@ -432,20 +489,21 @@ write_local_env() {
         echo
         echo "$START_MARKER"
         echo "# See docs/platform/copilot-local-llm.md for the full reference."
-        echo "CHAT_USE_LOCAL=true"
-        echo "CHAT_BASE_URL=${host_url}/v1"
-        echo "CHAT_API_KEY=ollama"
-        echo "CHAT_FAST_STANDARD_MODEL=$OLLAMA_MODEL"
-        echo "CHAT_FAST_ADVANCED_MODEL=$OLLAMA_MODEL"
-        # title_model + simulation_model auto-derive from fast_standard_model
-        # under the local transport — no need to set them explicitly.
-        # OLLAMA_HOST is the block-layer LLM (separate from the chat path);
+        echo "CHAT_PLATFORM_ROUTE=local"
+        echo "CHAT_LOCAL_BASE_URL=${host_url}/v1"
+        echo "CHAT_LOCAL_ADAPTER=openai_chat"
+        echo "CHAT_LOCAL_CONTEXT_TOKENS=$LOCAL_CONTEXT_TOKENS"
+        echo "CHAT_STANDARD_MODEL=$OLLAMA_MODEL"
+        echo "CHAT_ADVANCED_MODEL=$OLLAMA_MODEL"
+        # Ollama takes no key, so CHAT_LOCAL_API_KEY stays unset. Titles and
+        # other side calls use the standard tier on the local route.
+        # OLLAMA_HOST is the block-layer LLM (separate from the chat route);
         # set it too so the AI Text Generator block points at the same backend.
         echo "OLLAMA_HOST=${host_url}"
         echo "$END_MARKER"
     } >> .env
     cd ..
-    print_color "GREEN" "✓ wrote backend/.env (CHAT_USE_LOCAL=true, Ollama at $host_url)"
+    print_color "GREEN" "✓ wrote backend/.env (CHAT_PLATFORM_ROUTE=local, Ollama at $host_url, $LOCAL_CONTEXT_TOKENS-token window)"
 }
 
 check_backend_running() {
@@ -506,6 +564,7 @@ main() {
     init_env
     if [ "$WITH_OLLAMA" = true ]; then
         bootstrap_ollama
+        resolve_context_tokens
         write_local_env
     fi
     run_docker
@@ -520,9 +579,8 @@ main() {
     if [ "$WITH_OLLAMA" = true ]; then
         echo
         print_color "BLUE" "🦙 AutoPilot wired to Ollama (model: $OLLAMA_MODEL)"
-        print_color "YELLOW" "  Extended-thinking mode auto-downgrades to fast — Ollama"
-        print_color "YELLOW" "  doesn't speak Anthropic's wire protocol. See"
-        print_color "YELLOW" "  docs/platform/copilot-local-llm.md."
+        print_color "YELLOW" "  Context window: $LOCAL_CONTEXT_TOKENS tokens. Change the model or"
+        print_color "YELLOW" "  its window in backend/.env; see docs/platform/copilot-local-llm.md."
     fi
     echo
     print_color "YELLOW" "To stop services: docker compose down"

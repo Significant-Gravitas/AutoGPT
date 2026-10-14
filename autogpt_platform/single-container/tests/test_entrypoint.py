@@ -189,6 +189,30 @@ class EnvironmentPolicyTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.splitlines()[-1], "2500000 -1")
 
+    def test_runs_connection_only_without_a_chat_route(self) -> None:
+        result = self._configure(output="$CHAT_PLATFORM_ROUTE")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "disabled")
+
+    def test_preserves_the_operators_chat_route(self) -> None:
+        result = self._configure(
+            output="$CHAT_PLATFORM_ROUTE", CHAT_PLATFORM_ROUTE="openrouter"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.splitlines()[-1], "openrouter")
+
+    def test_checks_the_chat_settings_before_any_service_starts(self) -> None:
+        text = ENTRYPOINT_PATH.read_text(encoding="utf-8")
+        start = text.index("main() {")
+        main = text[start : text.index("\n}\n", start)]
+
+        self.assertLess(
+            main.index("configure_environment"), main.index("check-chat-env")
+        )
+        self.assertLess(main.index("check-chat-env"), main.index('exec "$@"'))
+
     def _configure(
         self, *, output: str = "$BEHAVE_AS", **overrides: str
     ) -> subprocess.CompletedProcess[str]:

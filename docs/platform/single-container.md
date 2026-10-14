@@ -342,10 +342,24 @@ process toggle in this distribution. Graphiti memory is enabled by the image's
 default feature configuration.
 
 The image does not include model-provider credentials. This does not block
-startup, authentication, Builder, or provider-free blocks. Configure one of
-the following profiles before expecting AutoPilot and memory extraction to
-work; until then, provider-backed requests return the same missing-credential
-errors as other AutoGPT deployment modes.
+startup, authentication, Builder, or provider-free blocks. Without a chat
+route the image runs connection-only (`CHAT_PLATFORM_ROUTE=disabled`, the
+default): users chat over the accounts they connect, and the platform runs
+no chat model of its own. Configure one of the following profiles for the
+platform's own AutoPilot and memory extraction; until then,
+provider-backed requests return the same missing-credential errors as other
+AutoGPT deployment modes.
+
+`CHAT_PLATFORM_ROUTE` selects one route, and each route takes its own key:
+the integration keys below (`OPEN_ROUTER_API_KEY`, `OPENAI_API_KEY`,
+`ANTHROPIC_API_KEY`) serve blocks and memory, never the chat. The image
+checks the chat settings before any service starts: a setting from the
+old format (`CHAT_USE_OPENROUTER`, `CHAT_USE_LOCAL`, `CHAT_BASE_URL`,
+`CHAT_API_KEY`, `CHAT_FAST_STANDARD_MODEL` and the like), even an empty
+one, or a route missing what it needs stops startup with a list naming
+each setting and its replacement. The list names settings, never their
+values. The release installer runs the same check before it creates the
+container.
 
 ### OpenRouter with OpenAI embeddings
 
@@ -353,30 +367,35 @@ The default remote profile uses OpenRouter for chat and memory extraction and
 OpenAI for embeddings:
 
 ```dotenv
-CHAT_USE_LOCAL=false
-CHAT_USE_OPENROUTER=true
+CHAT_PLATFORM_ROUTE=openrouter
+CHAT_OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
 OPEN_ROUTER_API_KEY=YOUR_OPENROUTER_KEY
 OPENAI_API_KEY=YOUR_OPENAI_KEY
 ```
 
-Both keys are needed for the complete memory path. `OPENAI_API_KEY` alone does
-not select direct OpenAI routing for AutoPilot.
+The chat uses `CHAT_OPENROUTER_API_KEY`; memory extraction uses
+`OPEN_ROUTER_API_KEY` and embeddings `OPENAI_API_KEY`, so all three are
+needed for the complete memory path (the two OpenRouter keys may be the
+same key). `CHAT_OPENROUTER_BASE_URL` defaults to
+`https://openrouter.ai/api`; set it only to send the chat through another
+OpenRouter-compatible endpoint.
 
 ### Anthropic chat with remote memory
 
 To route AutoPilot directly to Anthropic:
 
 ```dotenv
-CHAT_USE_LOCAL=false
-CHAT_USE_OPENROUTER=false
-ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY
+CHAT_PLATFORM_ROUTE=direct_anthropic
+CHAT_ANTHROPIC_API_KEY=YOUR_ANTHROPIC_KEY
 OPEN_ROUTER_API_KEY=YOUR_OPENROUTER_KEY
 OPENAI_API_KEY=YOUR_OPENAI_KEY
 ```
 
-The Anthropic key changes the AutoPilot chat transport. The OpenRouter and
-OpenAI keys are still required by Graphiti's default remote extraction and
-embedding clients.
+`CHAT_ANTHROPIC_API_KEY` is the chat's key. The OpenRouter and OpenAI keys
+are still required by Graphiti's default remote extraction and embedding
+clients. On either cloud route, `CHAT_STANDARD_MODEL` and
+`CHAT_ADVANCED_MODEL` override the two model tiers; leave them unset for
+the route's defaults.
 
 ### Ollama or another local OpenAI-compatible server
 
@@ -388,10 +407,13 @@ ollama pull hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ollama pull nomic-embed-text
 ```
 
-Configure the host's Ollama service with `OLLAMA_CONTEXT_LENGTH=32768` and
-restart Ollama before using AutoPilot. This is an Ollama-server setting, not an
-`autogpt.env` entry; Ollama's smaller default context cannot hold AutoPilot's
-roughly 8k-token system prompt.
+Configure the host's Ollama service with `OLLAMA_CONTEXT_LENGTH=65536` and
+restart Ollama before using AutoPilot. This is an Ollama-server setting;
+`CHAT_LOCAL_CONTEXT_TOKENS` below tells AutoPilot the same number, and the
+two must agree. 65,536 is the smallest window AutoPilot accepts: its system
+prompt and tools beside a working conversation need that much, and
+Ollama's smaller default cannot hold them. The model's native window is
+262,144 tokens, so a host with memory to spare can raise both numbers.
 
 The chat model and exact `Q4_K_M` artifact are published in the
 [Unsloth Qwen3.5-4B-GGUF repository](https://huggingface.co/unsloth/Qwen3.5-4B-GGUF/tree/main).
@@ -403,14 +425,16 @@ has sufficient resources.
 Then set:
 
 ```dotenv
-CHAT_USE_LOCAL=true
-CHAT_BASE_URL=http://host.docker.internal:11434/v1
-CHAT_API_KEY=ollama
-CHAT_FAST_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+CHAT_PLATFORM_ROUTE=local
+CHAT_LOCAL_BASE_URL=http://host.docker.internal:11434/v1
+CHAT_LOCAL_ADAPTER=openai_chat
+CHAT_LOCAL_CONTEXT_TOKENS=65536
+CHAT_STANDARD_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
+CHAT_ADVANCED_MODEL=hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M
 ```
 
-`CHAT_API_KEY` must be non-empty even if the local server ignores it. The
-local transport makes Graphiti inherit the same base URL and API key. With the
+Set `CHAT_LOCAL_API_KEY` only when the server checks a key; Ollama does not.
+The local route makes Graphiti inherit the same base URL and key. With the
 default profile above, Graphiti rewrites its extraction and reranker models to
 `hf.co/unsloth/Qwen3.5-4B-GGUF:Q4_K_M` and uses `nomic-embed-text` for
 embeddings. If you choose another chat model, also set `GRAPHITI_LLM_MODEL`

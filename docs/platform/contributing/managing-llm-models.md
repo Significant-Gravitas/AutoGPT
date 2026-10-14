@@ -40,7 +40,7 @@ Each `CatalogModel` entry:
 > legacy price change may simply delete the snapshot test instead
 > (it is cutover proof, not a permanent fixture).
 
-`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination. **Cells ship empty**: an unset cell means the `CHAT_*_MODEL` env vars keep that combination, and *claiming* a cell is the explicit act of moving its control into the catalog:
+`CatalogPayload.routing` holds AutoPilot's routing cells — which model serves each `(mode, tier)` combination. The platform route (`CHAT_PLATFORM_ROUTE`) decides the engine, and with it the mode: the OpenRouter and Anthropic routes run the SDK engine, which reads the `thinking` cells; the `fast` cells serve the baseline engine, which runs the local route. **Cells ship empty**: an unset cell means the route's tier (`CHAT_STANDARD_MODEL` / `CHAT_ADVANCED_MODEL`, else the route's default) keeps that combination, and *claiming* a cell is the explicit act of moving its control into the catalog:
 
 ```python
 # Claiming thinking.standard — env vars keep the other three cells:
@@ -56,10 +56,10 @@ serving transport accepts (OpenRouter's vendor-prefixed dot forms, as
 above). The catalog's integrity tests enforce this convention.
 
 **Cells apply only on the managed cloud deployment** (`BEHAVE_AS=cloud`).
-Self-hosted installs — cloud transport or local — always resolve
-LaunchDarkly → env: a cell set for the cloud platform travels in the
-shipped file but never overrides a self-hosted operator's
-`CHAT_*_MODEL` configuration.
+Self-hosted installs — any route — always resolve LaunchDarkly → the
+route's tier: a cell set for the cloud platform travels in the shipped
+file but never overrides a self-hosted operator's `CHAT_STANDARD_MODEL`
+/ `CHAT_ADVANCED_MODEL`.
 
 ## Updating the catalog
 
