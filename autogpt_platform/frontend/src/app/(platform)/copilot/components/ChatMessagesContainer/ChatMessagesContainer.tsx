@@ -24,7 +24,11 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
+import {
+  answeredLabel,
+  countHeldCalls,
+  getHeldCallRowKind,
+} from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -552,7 +556,7 @@ export function ChatMessagesContainer({
                   variant="small"
                   className="py-1 text-center text-zinc-500"
                 >
-                  Approval answered
+                  {answeredLabel(renderRows, rowIndex)}
                 </Text>
               );
             }
