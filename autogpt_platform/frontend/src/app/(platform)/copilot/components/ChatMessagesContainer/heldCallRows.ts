@@ -1,7 +1,7 @@
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import type { UIDataTypes, UIMessage, UITools } from "ai";
 import { cardArguments, fallbackAsk } from "../ApprovalQueue/helpers";
-import { heldAskText, heldToolName } from "../ToolChain/heldRow";
+import { heldAskText, heldToolName, isHeldReadId } from "../ToolChain/heldRow";
 
 // Rows the server writes for a held call: the one that starts the turn when a
 // card is answered, and the call's late result, which the reply narrates.
@@ -49,7 +49,7 @@ export function answeredLabel(
       asks.set(reviewId, heldAskText(card, heldToolName(card, partTool(part))));
     }
   }
-  const byOutcome = new Map<HeldOutcomeKind | null, string[]>();
+  const byOutcome = new Map<AnswerKind | null, string[]>();
   for (const message of messages.slice(wakeIndex + 1)) {
     if (getHeldCallRowKind(message.metadata) !== "result") break;
     const held = (message.metadata as { held_call: Record<string, unknown> })
@@ -59,8 +59,13 @@ export function answeredLabel(
       asks.get(str(held?.review_id) ?? "") ?? (tool && fallbackAsk(tool));
     if (!name) continue;
     const outcome = str(held?.outcome);
-    const kind =
+    const recorded =
       outcome && OUTCOMES.has(outcome) ? (outcome as HeldOutcomeKind) : null;
+    // Only a read closes after an identical re-read already delivered it.
+    const kind =
+      recorded === "closed" && isHeldReadId(str(held?.review_id))
+        ? "closed-read"
+        : recorded;
     byOutcome.set(kind, [...(byOutcome.get(kind) ?? []), name]);
   }
   if (!byOutcome.size) return "Approval answered";
@@ -73,7 +78,7 @@ export function answeredLabel(
 }
 
 // Every answer writes a result row, but only an approval's carries a result.
-function sentOn(outcome: HeldOutcomeKind, several: boolean): string {
+function sentOn(outcome: AnswerKind, several: boolean): string {
   switch (outcome) {
     case "approved":
       return `${several ? "Results" : "Result"} sent to ${AUTOPILOT_NAME}.`;
@@ -82,8 +87,9 @@ function sentOn(outcome: HeldOutcomeKind, several: boolean): string {
     case "expired":
       return `Expired; nothing was sent to ${AUTOPILOT_NAME}.`;
     case "closed":
-      // A closed read was already delivered to an identical re-read.
-      return `Closed; nothing more was sent to ${AUTOPILOT_NAME}.`;
+      return "Closed; nothing ran.";
+    case "closed-read":
+      return `Closed; nothing was released, or ${AUTOPILOT_NAME} already had it.`;
     case "unknown":
       return "Unclear; check before relying on it.";
   }
@@ -127,6 +133,8 @@ export type HeldOutcomeKind =
   | "expired"
   | "closed"
   | "unknown";
+
+type AnswerKind = HeldOutcomeKind | "closed-read";
 
 export interface HeldOutcome {
   outcome: HeldOutcomeKind;
