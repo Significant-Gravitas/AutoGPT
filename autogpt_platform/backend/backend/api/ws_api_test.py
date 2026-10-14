@@ -3,6 +3,7 @@ from typing import cast
 from unittest.mock import AsyncMock
 
 import pytest
+from autogpt_libs.auth import forget_account_state, remember_account_closed
 from fastapi import WebSocket, WebSocketDisconnect
 from pytest_snapshot.plugin import Snapshot
 
@@ -432,6 +433,28 @@ async def test_authenticate_websocket_happy_path_returns_sub(mocker) -> None:
     user_id = await authenticate_websocket(ws)
 
     assert user_id == "user-X"
+
+
+@pytest.mark.asyncio
+async def test_authenticate_websocket_closed_account_closes_4003(mocker) -> None:
+    """A token minted before the account closed still verifies for an hour."""
+    from backend.api.ws_api import authenticate_websocket
+
+    mocker.patch.object(settings.config, "enable_auth", True)
+    mocker.patch(
+        "backend.api.ws_api.parse_jwt_token_async",
+        new=AsyncMock(return_value={"sub": "user-closed"}),
+    )
+    ws = AsyncMock(spec=WebSocket)
+    ws.query_params = {"token": "abc"}
+    remember_account_closed("user-closed")
+    try:
+        user_id = await authenticate_websocket(ws)
+    finally:
+        forget_account_state("user-closed")
+
+    ws.close.assert_awaited_once_with(code=4003, reason="This account is closed.")
+    assert user_id == ""
 
 
 @pytest.mark.asyncio

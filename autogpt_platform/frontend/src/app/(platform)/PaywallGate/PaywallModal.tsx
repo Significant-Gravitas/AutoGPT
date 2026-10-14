@@ -4,10 +4,13 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { useCanDeleteAccount } from "@/components/organisms/DeleteAccountFlow/useCanDeleteAccount";
 import { SubscriptionPlans } from "@/components/organisms/SubscriptionPlans/SubscriptionPlans";
 import { TrialCardContent } from "@/components/organisms/TrialCard/TrialCard";
+import { cn } from "@/lib/utils";
 import { Logout03Icon } from "@hugeicons/core-free-icons";
 import { SwitchTierDialog } from "../settings/billing/components/SubscriptionTab/YourPlanCard/SwitchTierDialog";
+import { DeleteAccountButton } from "./components/DeleteAccountButton/DeleteAccountButton";
 import { PaywallHeader } from "./components/PaywallHeader";
 import { usePaywallModal } from "./usePaywallModal";
 
@@ -34,17 +37,24 @@ export function PaywallModal() {
     trial,
     trialOffer,
   } = usePaywallModal();
+  const canDeleteAccount = useCanDeleteAccount();
 
   return (
     <Dialog forceOpen controlled={{ isOpen: true, set: () => {} }}>
       <Dialog.Content>
         <div className="relative flex w-full flex-col items-center gap-4 px-2 py-2">
-          {/* Sticky (not absolute) so the button pins to the top of the
+          {/* Sticky (not absolute) so the buttons pin to the top of the
               dialog's scroll viewport instead of getting clipped or scrolled
-              away when the plan cards overflow on short screens. The negative
-              margin collapses the row's layout space so the title keeps its
-              position. */}
-          <div className="sticky top-0 z-10 -mb-[3.25rem] flex w-full justify-end">
+              away when the plan cards overflow on short screens. With Log out
+              alone, the negative margin collapses the row's layout space so
+              the title keeps its position; two buttons would cover the
+              title, so the row then keeps its own line. */}
+          <div
+            className={cn(
+              "sticky top-0 z-10 flex w-full justify-end",
+              canDeleteAccount ? "flex-wrap gap-1" : "-mb-[3.25rem]",
+            )}
+          >
             <Button
               variant="ghost"
               size="small"
@@ -54,6 +64,7 @@ export function PaywallModal() {
             >
               Log out
             </Button>
+            {canDeleteAccount ? <DeleteAccountButton /> : null}
           </div>
           <PaywallHeader />
 

@@ -7,6 +7,96 @@
     "version": "0.1"
   },
   "paths": {
+    "/api/account/deletion": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Delete account",
+        "operationId": "postAccountDelete account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountDeletionRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionResponse"
+                }
+              }
+            }
+          },
+          "400": { "description": "That email doesn't match your account." },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "We couldn't cancel your plan. Nothing was deleted. Try again."
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/account/deletion/feedback": {
+      "post": {
+        "tags": ["account"],
+        "summary": "Send exit feedback",
+        "operationId": "postAccountSend exit feedback",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeletionFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "403": {
+            "description": "Account deletion isn't available while impersonating a user."
+          },
+          "404": {
+            "description": "The self-serve-account-deletion flag is off"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": { "description": "Too many answers from this account" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/admin/blocks/cost-estimates": {
       "get": {
         "tags": ["v2", "admin", "admin", "blocks"],
@@ -17537,6 +17627,35 @@
         "enum": ["ACTIVE", "REVOKED", "SUSPENDED"],
         "title": "APIKeyStatus"
       },
+      "AccountDeletionRequestBody": {
+        "properties": {
+          "confirm_email": {
+            "type": "string",
+            "maxLength": 320,
+            "title": "Confirm Email"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["settings", "paywall"],
+            "title": "Source"
+          }
+        },
+        "type": "object",
+        "required": ["confirm_email", "source"],
+        "title": "AccountDeletionRequestBody"
+      },
+      "AccountDeletionResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "scheduled",
+            "title": "Status"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "AccountDeletionResponse"
+      },
       "AccuracyAlertData": {
         "properties": {
           "graph_id": { "type": "string", "title": "Graph Id" },
@@ -21081,6 +21200,63 @@
         "type": "object",
         "required": ["success"],
         "title": "DeleteLinkResponse"
+      },
+      "DeletionFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["opened", "answer", "alternative_clicked"],
+            "title": "Kind"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "privacy",
+                  "cost",
+                  "not_using",
+                  "missing_capability",
+                  "limits",
+                  "other",
+                  "skipped"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Reason"
+          },
+          "text": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Text"
+          },
+          "alternative": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "manage_apps",
+                  "disconnect_all",
+                  "billing",
+                  "keep_account"
+                ]
+              },
+              { "type": "null" }
+            ],
+            "title": "Alternative"
+          },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "enum": ["settings", "paywall"] },
+              { "type": "null" }
+            ],
+            "title": "Surface"
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "DeletionFeedbackRequest",
+        "description": "One open of the Delete account dialog (with the surface it was opened\nfrom), one answer to \"Why are you leaving?\", or one click on the\nalternative it offered. Nothing here identifies the person; the route adds\nno identity either."
       },
       "DemotionSummary": {
         "properties": {

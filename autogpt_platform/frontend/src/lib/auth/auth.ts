@@ -5,6 +5,7 @@ import { admin, jwt } from "better-auth/plugins";
 import { compare, hash } from "bcryptjs";
 import { Pool } from "pg";
 import { runAfterResponse } from "./background-tasks";
+import { CLOSED_ACCOUNT_MESSAGE } from "./closed-account";
 import { mirrorVerifiedEmailToPlatformUser } from "./email-mirror";
 import { sendAuthEmail } from "./email";
 import { isAwaitingEmailVerification } from "./email-verification";
@@ -335,7 +336,8 @@ export const auth = betterAuth({
   },
   socialProviders: getSocialProviders(),
   plugins: [
-    admin(),
+    // What a closed (deleted, so banned) account sees when it signs in again.
+    admin({ bannedUserMessage: CLOSED_ACCOUNT_MESSAGE }),
     jwt({
       schema: {
         jwks: { modelName: "UserAuthJwks" },

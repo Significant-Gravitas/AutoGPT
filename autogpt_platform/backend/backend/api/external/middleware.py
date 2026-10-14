@@ -1,3 +1,4 @@
+from autogpt_libs.auth import reject_closed_account
 from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from prisma.enums import APIKeyPermission
@@ -14,6 +15,10 @@ from backend.data.auth.oauth import (
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
+# Every path rejects a closed account's key or token with a 401: deletion
+# revokes every key and grant, but one issued while the account was closing
+# would otherwise keep working until the account's data is erased.
+
 
 async def require_api_key(api_key: str | None = Security(api_key_header)) -> APIKeyInfo:
     """Middleware for API key authentication only"""
@@ -29,6 +34,7 @@ async def require_api_key(api_key: str | None = Security(api_key_header)) -> API
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
         )
 
+    await reject_closed_account(api_key_obj.user_id)
     return api_key_obj
 
 
@@ -47,6 +53,7 @@ async def require_access_token(
     except (InvalidClientError, InvalidTokenError) as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
+    await reject_closed_account(token_info.user_id)
     return token_info
 
 
@@ -68,6 +75,7 @@ async def require_auth(
     if api_key is not None:
         api_key_info = await validate_api_key(api_key)
         if api_key_info:
+            await reject_closed_account(api_key_info.user_id)
             return api_key_info
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key"
@@ -77,9 +85,10 @@ async def require_auth(
     if bearer is not None:
         try:
             token_info, _ = await validate_access_token(bearer.credentials)
-            return token_info
         except (InvalidClientError, InvalidTokenError) as e:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        await reject_closed_account(token_info.user_id)
+        return token_info
 
     # No credentials provided
     raise HTTPException(

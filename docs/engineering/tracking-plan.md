@@ -60,8 +60,8 @@ Every event must carry:
 | `environment` | `settings.config.app_env` on the backend (`local`, `dev`, `prod`), the matching app environment in the browser. |
 | `source` | Which emitter sent it: `chat_copilot` (the events `copilot/tracking.py` captures itself; `chat_message_sent` goes through `product_analytics` and is `platform`), `platform` (every other backend emitter), `web` (the browser). |
 
-Every backend event goes through `capture()` in
-`backend/util/posthog_client.py`, which applies both last, so a caller cannot
+Every backend event goes through `capture()` or `capture_anonymous()` in
+`backend/util/posthog_client.py`, which apply both last, so a caller cannot
 overwrite them. The browser registers them once as PostHog super properties
 (`src/services/analytics/posthog-base-properties.ts`), again after `reset()`
 at logout; a Vercel preview reports `environment: preview`, while the dev
@@ -76,7 +76,8 @@ something else now use `hire_started.surface`,
 
 - **`distinct_id` is the platform user id** for every backend event, the same
   id the browser passes to `posthog.identify(user.id)`, so both halves land
-  on one person.
+  on one person. The anonymous [Account deletion](#account-deletion) events
+  are the only exception (see **No synthetic ids** below).
 - **Before login the browser uses the first-party anonymous id**
   (`src/services/analytics/anonymous-id.ts`), passed to `posthog.init` as the
   bootstrap `distinctID`. `identify` merges it into the user at login, and
@@ -88,7 +89,10 @@ something else now use `hire_started.surface`,
   depend on it.
 - **No synthetic ids.** A backend event with no user is dropped
   (`posthog_client.capture` does it for every emitter), since a made-up id
-  creates a person nobody can merge.
+  creates a person nobody can merge. The one exception is an event that must
+  not be linked to anyone ([Account deletion](#account-deletion)):
+  `posthog_client.capture_anonymous` sends it with a fresh random id and
+  `$process_person_profile: false`, so PostHog creates no person for it.
 - **No email or name in event properties.** Identify ids only. The email and
   display name are person properties set by `identify` and nowhere else.
   (`expert_hired.name` is the expert's display name, not a person's.)
@@ -297,6 +301,52 @@ sent or dropped this way, not while it is held.
 
 Return visits are `$pageview`; account-level retention is computed in
 `retention_task_weekly` and `user_lifecycle`, not sent as events.
+
+## Account deletion
+
+Self-serve account deletion (SECRT-2877), behind the
+`self-serve-account-deletion` flag; nothing is sent while it is off. These
+events are anonymous: the backend sends each one with `capture_anonymous()`,
+under a fresh random `distinct_id` and with `$process_person_profile: false`,
+so PostHog creates no person and nothing links the event to an account. The
+backend never adds the user id, email or name to them, so they cannot be
+joined to the person's other events.
+
+They are the exception to [Who sends it](#who-sends-it): the clicks are sent
+by the backend too (`POST /api/account/deletion/feedback`), because posthog-js
+attaches the signed-in user's id to every event and browser events wait for
+analytics consent. The dialog carries `ph-no-capture`, so posthog-js
+autocapture and session replay record nothing inside it: the chosen reason and
+the panel buttons never reach PostHog under the person's id.
+
+| Event | Sender | Status | Required properties | Fires when |
+| --- | --- | --- | --- | --- |
+| `account_deletion_started` | backend | live | `plan_state`, `tenure_bucket` (as below), `surface` (`settings`, `paywall`: where the flow was opened) | The Delete account dialog opens: once per open, and reopening counts again. Sent when the button is clicked, so a dialog closed with the X still counts. |
+| `account_deletion_feedback` | backend | live | `plan_state` (`max`, `pro`, `trial`, `none`, `managed` for BASIC, BUSINESS and ENTERPRISE), `tenure_bucket` (account age: `<7d`, `7-30d`, `30-90d`, `90d+`). Optional: `reason` (`privacy`, `cost`, `not_using`, `missing_capability`, `limits`, `other`, `skipped`; absent when only text was typed), `text` (what was typed in the optional field, trimmed, at most 1000 characters; absent when nothing was typed) | Skip or Continue is clicked on the "Why are you leaving?" step, once per pass through it. Skip sends `reason: skipped`, so the skip rate is the share of `skipped`. |
+| `account_deletion_alternative_clicked` | backend | live | `alternative` (`manage_apps`, `disconnect_all`, `billing`, `keep_account`), `plan_state`, `tenure_bucket`. Optional: `reason` (the one the alternative was shown for) | The button of the alternative shown for a reason is clicked: "Manage connected apps", "Disconnect all apps", "Go to Billing" or "Keep my account". |
+| `account_deletion_completed` | backend | live | `plan_state` (as above: the plan the account had), `surface` (`settings`, `paywall`: where the flow was opened) | `POST /api/account/deletion` closes the account. Once per account: a repeat call sends nothing. |
+
+`plan_state` and `tenure_bucket` are read from the account on the server; the
+browser cannot set them. An optional property the person left empty is left
+out, never sent as null. The feedback route accepts 20 calls per account per
+hour and answers 429 after that, so a script cannot flood these counts.
+
+`text` is free text sent as typed, so it can hold anything the person wrote;
+that is one more reason the events are anonymous, and the backend never logs
+it. The deletion source is `surface`, not `source`, which is the
+[base property](#base-properties) (`platform`).
+
+Reading the funnel (someone who reopens the flow counts again, and with no id
+the repeats cannot be removed):
+
+- starts: `account_deletion_started`; read the numbers after the first 30.
+- skip rate: `account_deletion_feedback` with `reason: skipped` over all
+  `account_deletion_feedback`, which counts the passes that reached the
+  confirmation card.
+- save rate: `account_deletion_alternative_clicked` with `alternative` of
+  `keep_account`, `billing` or `manage_apps`, over `account_deletion_started`.
+- completion: `account_deletion_completed` (the accounts that were deleted)
+  over `account_deletion_started`.
 
 ## Experiments
 

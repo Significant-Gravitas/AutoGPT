@@ -67,6 +67,12 @@ export enum Flag {
   // The chat's own stream runtime in place of the AI SDK's: resume at a
   // cursor, render from the persisted rows. Frontend only; fail-closed.
   COPILOT_STREAM_RUNTIME = "copilot-stream-runtime",
+  // Deleting an account from Settings > Account and the paywall. Mirror of
+  // the backend ``Flag`` enum — the deletion and feedback routes 404 when
+  // off, so both sides must agree. Stays off until SECRT-2854's data erasure
+  // runs in production, since only that routine erases a closed account.
+  // Fail-closed.
+  SELF_SERVE_ACCOUNT_DELETION = "self-serve-account-deletion",
 }
 
 const isPwMockEnabled = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -102,6 +108,7 @@ const defaultFlags = {
   [Flag.COPILOT_AUTO_MODE]: false,
   [Flag.COPILOT_STREAM_SHADOW]: 0,
   [Flag.COPILOT_STREAM_RUNTIME]: false,
+  [Flag.SELF_SERVE_ACCOUNT_DELETION]: false,
 };
 
 type FlagValues = typeof defaultFlags;
@@ -169,6 +176,8 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_AUTO_MODE;
     case Flag.COPILOT_STREAM_RUNTIME:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_STREAM_RUNTIME;
+    case Flag.SELF_SERVE_ACCOUNT_DELETION:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_SELF_SERVE_ACCOUNT_DELETION;
     case Flag.COPILOT_BOT_PLATFORMS:
     case Flag.COPILOT_STREAM_SHADOW:
       return undefined;

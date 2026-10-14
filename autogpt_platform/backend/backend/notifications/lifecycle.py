@@ -19,7 +19,10 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import (
+    PAYMENT_FAILURE_CANCELLATION_COMMENT,
+    is_account_deletion_cancellation,
+)
 from backend.data.notifications import (
     AudienceAction,
     NotificationEventModel,
@@ -236,6 +239,8 @@ async def on_payment_failed(invoice: dict) -> None:
 async def on_subscription_updated(subscription: dict, previous: dict) -> None:
     """Only the cancel_at_period_end flip matters here; this event fires for
     many unrelated changes."""
+    if _ended_by_account_deletion(subscription):
+        return
     if await on_trial_subscription_updated(subscription, previous):
         return
     if "cancel_at_period_end" not in previous:
@@ -304,7 +309,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
-    exhaustion — so the copy branches on which one the customer took."""
+    exhaustion — so the copy branches on which one the customer took. A third,
+    the account deletion, ends without a word: it sends its own confirmation."""
+    if _ended_by_account_deletion(subscription):
+        return
     if await notify_trial(subscription, "ended"):
         return
     user = await _user_for(subscription.get("customer"))
@@ -355,6 +363,19 @@ async def _queue_fields(
 ) -> None:
     if audience_change_allowed(user, AudienceAction.UPDATE_FIELDS):
         await subscriber_fields.queue_fields(user.id, user.email, fields)
+
+
+def _ended_by_account_deletion(subscription: dict) -> bool:
+    """No ended, cancelled or trial email, no MailerLite move and no churn
+    event for an account that is being erased: the deletion sends the only
+    email, and analytics counts it anonymously."""
+    if not is_account_deletion_cancellation(subscription):
+        return False
+    logger.info(
+        f"Subscription {subscription.get('id')} ended with its account; "
+        "skipping its lifecycle email and audience change"
+    )
+    return True
 
 
 def _churn_reason(subscription: dict) -> str | None:

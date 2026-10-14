@@ -126,6 +126,28 @@ describe("login", () => {
     expect(createUserMock).not.toHaveBeenCalled();
   });
 
+  it("passes a closed account's message through instead of a generic error", async () => {
+    // What the admin plugin throws once the session hook finds the user
+    // banned, with bannedUserMessage from lib/auth/auth.ts.
+    signInEmailMock.mockRejectedValue(
+      new APIError("FORBIDDEN", {
+        message:
+          "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
+        code: "BANNED_USER",
+      }),
+    );
+
+    const result = await login("closed@example.com", "hunter2-password");
+
+    expect(result).toEqual({
+      success: false,
+      error:
+        "This account is closed. If you think this is a mistake, contact contact@agpt.co.",
+    });
+    expect(createUserMock).not.toHaveBeenCalled();
+    expect(captureExceptionMock).not.toHaveBeenCalled();
+  });
+
   it("reports email_not_verified so the page can show check-your-inbox", async () => {
     // Right password, unverified address: with sendOnSignIn Better Auth has
     // already emailed a fresh link by the time it throws this.
