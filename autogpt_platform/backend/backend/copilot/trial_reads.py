@@ -3,12 +3,18 @@
 The chat route's paywall and its rate-limit checks each read the user's
 trial, and every read is a database round trip (about 110 ms in prod). Inside
 ``trial_reads_shared()`` those checks share one read per user; outside it,
-every call reads the database.
+every call reads the database. The copilot executor holds a block from a
+turn's start until the model's first output, so the budget and tier checks
+that set up the turn share one read too.
 
-The sharing is scoped to one block of one request, never across requests, so
+The sharing is scoped to one block, never across requests or turns, so
 nothing can go stale: a trial's state is not expected to change between
-checks a few milliseconds apart. A task started inside the block inherits the
-block, but stops sharing when the block ends.
+checks a few seconds apart. A task started inside the block inherits the
+block, but stops sharing when the block ends or is closed.
+
+A tool never shares: it acts on the trial as it is when the tool runs, and a
+tool can start before the executor's block sees the model's first output.
+Tools run inside ``trial_reads_fresh()``.
 """
 
 import asyncio
@@ -24,30 +30,44 @@ _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
 
-class _SharedReads:
+class SharedTrialReads:
     """The reads a ``trial_reads_shared`` block shares while it is open."""
 
     def __init__(self) -> None:
         self.reads: dict[str, asyncio.Future[TrialState | None]] = {}
         self.open = True
 
+    def close(self) -> None:
+        """Stop sharing: later lookups read the database again."""
+        self.open = False
 
-_shared_reads: contextvars.ContextVar[_SharedReads | None] = contextvars.ContextVar(
+
+_shared_reads: contextvars.ContextVar[SharedTrialReads | None] = contextvars.ContextVar(
     "copilot_shared_trial_reads", default=None
 )
 
 
 @contextmanager
-def trial_reads_shared() -> Iterator[None]:
+def trial_reads_shared() -> Iterator[SharedTrialReads]:
     """Let the trial lookups inside the block share one read per user."""
-    shared = _SharedReads()
+    shared = SharedTrialReads()
     token = _shared_reads.set(shared)
     try:
-        yield
+        yield shared
     finally:
         # Tasks started in the block copied the context and still see
         # ``shared``; closing it sends their later lookups to the database.
-        shared.open = False
+        shared.close()
+        _shared_reads.reset(token)
+
+
+@contextmanager
+def trial_reads_fresh() -> Iterator[None]:
+    """Read the trial from the database inside the block, even within a shared one."""
+    token = _shared_reads.set(None)
+    try:
+        yield
+    finally:
         _shared_reads.reset(token)
 
 

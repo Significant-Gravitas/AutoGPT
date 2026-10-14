@@ -12,7 +12,8 @@ import concurrent.futures
 import logging
 import threading
 import time
-from contextlib import asynccontextmanager
+from collections.abc import Iterator
+from contextlib import asynccontextmanager, contextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -23,6 +24,7 @@ from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
+    _closing_at_model_output,
     _normalize_private_expert_session_tenancy,
     _wait_for_expert_setup,
     sync_fail_close_session,
@@ -34,13 +36,18 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.rate_limit import (
+    SubscriptionTier,
+    UserPaywalledError,
+    get_user_tier,
+)
 from backend.copilot.response_model import (
     StreamError,
     StreamStatus,
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.trial_reads import SharedTrialReads, trial_reads_shared
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -269,6 +276,82 @@ class TestExecuteAsyncScheduledTurnContext:
         assert seen == {"unattended": False, "pins": {}}
 
 
+@pytest.mark.asyncio
+async def test_turn_setup_shares_one_trial_read_until_the_model_answers() -> None:
+    """Cost attribution and the setup's tier checks share one trial read; a
+    lookup after the model's first output, like a tool's, reads it again."""
+    store = MagicMock()
+    store.get_subscription_trial = AsyncMock(
+        return_value=MagicMock(id="trial-1", active=True, consumed_at=None)
+    )
+
+    async def stream(**_kwargs):
+        await get_user_tier("user-1")
+        await get_user_tier("user-1")
+        yield StreamTextDelta(id="text-1", delta="Hi")
+        await get_user_tier("user-1")
+
+    with (
+        patch(
+            "backend.copilot.executor.processor.ChatConfig",
+            return_value=MagicMock(test_mode=True),
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_chat_completion_dummy",
+            side_effect=stream,
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+            side_effect=lambda **kwargs: kwargs["stream"],
+        ),
+        patch(
+            "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+            new=AsyncMock(),
+        ),
+        patch(
+            "backend.copilot.model.get_chat_session",
+            new=AsyncMock(return_value=ChatSession.new("user-1", dry_run=False)),
+        ),
+        patch(
+            "backend.copilot.trial_cost_context.db_accessors.credit_db",
+            return_value=store,
+        ),
+        patch("backend.copilot.rate_limit.credit_db", return_value=store),
+        patch(
+            "backend.copilot.rate_limit._fetch_user_tier",
+            new=AsyncMock(return_value=SubscriptionTier.TRIAL),
+        ),
+    ):
+        await asyncio.create_task(
+            CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+        )
+
+    assert store.get_subscription_trial.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_closing_the_turn_stream_closes_the_engine_stream() -> None:
+    engine_closed = False
+
+    async def engine():
+        nonlocal engine_closed
+        try:
+            yield StreamStatus(message="Working…")
+            yield StreamTextDelta(id="text-1", delta="Hi")
+        finally:
+            engine_closed = True
+
+    trial_reads = SharedTrialReads()
+    stream = _closing_at_model_output(engine(), trial_reads)
+    assert isinstance(await anext(stream), StreamStatus)
+    assert trial_reads.open
+    await stream.aclose()
+
+    assert engine_closed
+
+
 class TestExecuteAsyncAclose:
     """``_execute_async`` must call ``aclose`` on the published stream both
     when the loop exits naturally and when ``cancel`` is set mid-stream —
@@ -328,6 +411,40 @@ class TestExecuteAsyncAclose:
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_turn_stops_sharing_its_trial_read(self) -> None:
+        """Cancelled before the model's first output, the turn still ends its
+        shared block, so nothing it started goes on reusing the turn's read."""
+        published = _TrackedStream(events=[StreamStatus(message="Working…")])
+        cancel = threading.Event()
+        cancel.set()
+        opened: list[SharedTrialReads] = []
+
+        @contextmanager
+        def recorded_block() -> Iterator[SharedTrialReads]:
+            with trial_reads_shared() as shared:
+                opened.append(shared)
+                yield shared
+
+        patches = self._patches(published)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patch(
+                "backend.copilot.executor.processor.trial_reads_shared",
+                recorded_block,
+            ),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), cancel, MagicMock(), _make_log()
+            )
+
+        [shared] = opened
+        assert not shared.open
 
     @pytest.mark.asyncio
     async def test_a_turn_is_one_transaction_in_the_dispatchers_trace(

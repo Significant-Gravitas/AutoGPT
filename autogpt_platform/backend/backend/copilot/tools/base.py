@@ -10,6 +10,7 @@ from openai.types.chat import ChatCompletionToolParam
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.response_model import StreamToolOutputAvailable
+from backend.copilot.trial_reads import trial_reads_fresh
 from backend.copilot.turn_tracing import tool_transaction
 from backend.data.activity_event import ActivityEventDraft
 from backend.data.db_accessors import activity_event_db, workspace_db
@@ -424,7 +425,10 @@ class BaseTool:
             Pydantic response object
 
         """
-        with tool_transaction(self.name, tool_call_id, session.session_id) as span:
+        with (
+            tool_transaction(self.name, tool_call_id, session.session_id) as span,
+            trial_reads_fresh(),
+        ):
             output = await self._execute_checked(
                 user_id, session, tool_call_id, **kwargs
             )
