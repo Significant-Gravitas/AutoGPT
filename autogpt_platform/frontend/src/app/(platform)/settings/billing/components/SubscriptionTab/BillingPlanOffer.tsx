@@ -6,6 +6,7 @@ import { Text } from "@/components/atoms/Text/Text";
 interface Props {
   target: string;
   title: string;
+  quiet?: boolean;
   description?: string;
   price: string | null;
   isTrialOffer?: boolean;
@@ -19,6 +20,7 @@ interface Props {
 export function BillingPlanOffer({
   target,
   title,
+  quiet = false,
   description,
   price,
   isTrialOffer = false,
@@ -31,7 +33,11 @@ export function BillingPlanOffer({
   return (
     <section
       aria-label={`AutoGPT ${target}`}
-      className="flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-6"
+      className={
+        quiet
+          ? "flex h-full flex-col rounded-2xl border border-zinc-200 bg-white p-6"
+          : "flex h-full flex-col rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50 via-white to-blue-50 p-6"
+      }
     >
       <div className="flex items-center gap-2.5">
         <span className="flex size-7 items-center justify-center rounded-lg bg-purple-100 text-purple-700">
@@ -83,6 +89,7 @@ export function BillingPlanOffer({
         ))}
       </ul>
       <Button
+        variant={quiet ? "secondary" : "primary"}
         size="large"
         className="mt-auto w-full"
         onClick={onAction}

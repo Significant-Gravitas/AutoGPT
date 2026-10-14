@@ -83,6 +83,7 @@ export function getUsageExperience(
       isActiveTrial &&
       !trial?.cancel_at_period_end &&
       trial?.offer?.tier === "PRO",
+    isCancelPending: isActiveTrial && trial?.cancel_at_period_end === true,
     trialPercent,
     inactiveTrialStatus,
     payment:
@@ -105,6 +106,27 @@ export function getUsageExperience(
 }
 
 export type UsageExperience = ReturnType<typeof getUsageExperience>;
+
+export function getUsageStatus(percent: number) {
+  if (percent >= 100) return "reached" as const;
+  return percent >= 80 ? ("low" as const) : ("plenty" as const);
+}
+
+export function getFeaturedUsagePercent(
+  experience: UsageExperience,
+  usage?: Usage | null,
+) {
+  if (
+    experience.isLifetimeTrial ||
+    (experience.isActiveTrial && experience.window === "trial")
+  )
+    return experience.trialPercent ?? 0;
+  const featured =
+    experience.window === "weekly" || !usage?.daily
+      ? usage?.weekly
+      : usage.daily;
+  return featured?.percent_used ?? 0;
+}
 
 export function formatUsagePercent(value: number) {
   if (value > 0 && value < 1) return "<1%";
@@ -137,6 +159,11 @@ export function formatTrialDate(value: string | Date | null) {
 export function formatTrialStartDescription(value: string | Date | null) {
   const date = formatTrialDate(value);
   return `Pro starts on its own ${date ? `on ${date}` : "when your trial ends"}. Start it now to keep working today.`;
+}
+
+export function formatTrialStartTitle(value: string | Date | null) {
+  const date = formatTrialDate(value);
+  return date ? `Pro starts on ${date}` : "Pro starts when your trial ends";
 }
 
 export function formatResumeTime(value: string | Date | null) {
@@ -193,5 +220,6 @@ export function getUsageOfferAction(
     const amount = formatOfferPrice(offer.price, offer.currency);
     return `Start Pro now${amount ? ` · ${amount}` : ""}`;
   }
+  if (experience.isCancelPending) return "Subscribe now";
   return experience.tier === "BASIC" ? "Upgrade to Pro" : "Start Pro";
 }

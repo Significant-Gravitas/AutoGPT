@@ -122,7 +122,7 @@ export function PlanOffer({
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"
-            ? "What you’ve used today counts toward Max’s higher limit."
+            ? "What you’ve already used counts toward Max’s higher limit."
             : "Review your plan and payment before confirming."}
       </Text>
     </section>

@@ -102,8 +102,8 @@ export function SwitchTierDialog({
             tone="secondary"
             className="mt-4 rounded-xl bg-zinc-50 p-4 leading-6"
           >
-            You can keep going once payment goes through. What you’ve used today
-            counts toward Max’s limit
+            You can keep going once payment goes through. What you’ve already
+            used counts toward Max’s limit
             {usageMultiplier
               ? `, which is ${usageMultiplier} times as high as Pro’s.`
               : "."}

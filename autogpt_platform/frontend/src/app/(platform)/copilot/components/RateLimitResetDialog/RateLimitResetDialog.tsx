@@ -135,7 +135,7 @@ export function RateLimitResetDialog({
             >
               {copy.description}
             </Text>
-            {copy.trialSpent ? (
+            {copy.trialSpent && (
               <div className="mb-5">
                 <UsageMeter
                   label="Trial allowance"
@@ -143,15 +143,6 @@ export function RateLimitResetDialog({
                   detail="One allowance for your trial. It doesn’t refresh."
                 />
               </div>
-            ) : (
-              copy.resetLabel && (
-                <div className="mb-5 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                  <Text variant="small" className="mb-1 !text-zinc-500">
-                    You can continue after
-                  </Text>
-                  <Text variant="body-medium">{copy.resetLabel}</Text>
-                </div>
-              )
             )}
             {isBillingEnabled && model.targetTier && (
               <PlanOffer

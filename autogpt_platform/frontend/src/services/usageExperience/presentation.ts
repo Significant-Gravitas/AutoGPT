@@ -3,7 +3,6 @@ import {
   formatResumeTime,
   formatTrialDate,
   formatTrialStartDescription,
-  formatUsageDate,
   type UsageExperience,
 } from "./helpers";
 import { formatPaymentDue } from "./payment";
@@ -35,7 +34,6 @@ export function usagePresentation(
         : canceled
           ? "Your trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan."
           : "Your chats, agents and results are saved. Choose a plan to keep going.",
-      resetLabel: null,
       supportLabel: "Contact support",
       secondary: "Back to my work",
       trialSpent: false,
@@ -68,9 +66,6 @@ export function usagePresentation(
         : tier === "PRO"
           ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
           : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
-    resetLabel: experience.resetsAt
-      ? formatUsageDate(experience.resetsAt)
-      : null,
     supportLabel:
       tier === "ENTERPRISE"
         ? "Contact your account team"

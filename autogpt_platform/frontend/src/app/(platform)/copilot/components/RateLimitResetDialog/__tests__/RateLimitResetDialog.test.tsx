@@ -135,6 +135,18 @@ describe("Usage limit dialog", () => {
     ).toBeDefined();
   });
 
+  it("names the reset time once instead of repeating it in a box", () => {
+    render(
+      <RateLimitResetDialog
+        isOpen
+        onClose={vi.fn()}
+        experience={getUsageExperience({ ...usage, tier: "MAX" })}
+      />,
+    );
+    expect(screen.getByText(/^You can continue /)).toBeDefined();
+    expect(screen.queryByText("You can continue after")).toBeNull();
+  });
+
   it("pays the open trial invoice straight from the dialog", () => {
     const onUpgrade = vi.fn();
     render(

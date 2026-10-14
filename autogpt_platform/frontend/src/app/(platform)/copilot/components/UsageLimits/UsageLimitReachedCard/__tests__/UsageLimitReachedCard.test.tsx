@@ -211,4 +211,24 @@ describe("Usage notice", () => {
     }
     expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
   });
+  it("asks a cancel-pending trial to subscribe instead of starting Pro", async () => {
+    setTrialUser();
+    setup("TRIAL");
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        HttpResponse.json(
+          trialResponse({
+            allowance_used_percent: 100,
+            usage_policy: "lifetime",
+            cancel_at_period_end: true,
+          }),
+        ),
+      ),
+    );
+    render(<UsageLimitReachedCard />);
+    expect(
+      await screen.findByRole("button", { name: "Subscribe now" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Start Pro/ })).toBeNull();
+  });
 });
