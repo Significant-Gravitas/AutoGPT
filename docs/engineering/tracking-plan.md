@@ -325,7 +325,10 @@ What joins them:
 - **Impersonation.** A turn or rating an admin made while impersonating the
   user (`X-Act-As-User-Id`) is still sent, as the user, with
   `metadata_impersonated` / `impersonated` true, so it can be filtered out.
-  A turn queued behind the running-turn cap and promoted later loses the mark.
+  The mark is kept for a turn queued behind the running-turn cap and for
+  sub-sessions such a turn starts. A follow-up sent while a turn runs takes
+  that turn's mark, and an engine-switch continuation or an approval wake
+  starts unmarked.
 
 Calls that skip OpenRouter never reach Broadcast and have no
 `$ai_generation`: direct Anthropic and Claude Code subscription deployments,
