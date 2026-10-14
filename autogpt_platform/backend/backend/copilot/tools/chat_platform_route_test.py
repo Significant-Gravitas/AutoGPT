@@ -59,6 +59,8 @@ async def _prepare(
     bot_configured: bool = True,
     unattended: bool = False,
     permissions: CopilotPermissions | None = None,
+    pins: dict | None = None,
+    grant_hint: str = "",
 ):
     session = MagicMock()
     session.session_id = _SESSION
@@ -92,6 +94,18 @@ async def _prepare(
         ),
         patch(f"{_ROUTE}.platform_linking_db", return_value=links),
         patch(f"{_ROUTE}._any_chat_platform_configured", return_value=bot_configured),
+        patch(
+            "backend.copilot.tools.helpers.turn_credential_pins",
+            return_value=pins or {},
+        ),
+        patch(
+            "backend.copilot.tools.helpers.ungranted_credential_hint",
+            AsyncMock(return_value=grant_hint),
+        ),
+        patch(
+            "backend.copilot.tools.helpers.unattended_missing_credentials_error",
+            AsyncMock(side_effect=_unattended_error),
+        ),
         patch(f"{_ROUTE}.get_current_permissions", return_value=permissions),
         patch(
             "backend.copilot.tools.helpers.get_current_permissions",
@@ -106,6 +120,15 @@ async def _prepare(
             session_id=_SESSION,
             dry_run=False,
         )
+
+
+async def _unattended_error(subject, missing, session_id, user_id, expert_id):
+    return ErrorResponse(
+        message=f"{subject} has no discord credential connected, so this step "
+        "did not run.",
+        error="missing_credentials",
+        session_id=session_id,
+    )
 
 
 @pytest.mark.asyncio
@@ -258,4 +281,34 @@ async def test_a_search_without_the_tool_reads_no_links():
     result = await _find("web search", links)
 
     assert isinstance(result, CapabilityListResponse)
+    links.list_server_links.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_schedule_pinned_to_a_discord_account_keeps_its_own_error():
+    """The owner picked a Discord account for this routine; a run that cannot
+    use it must say so, not quietly post as the bot instead."""
+    links = _links("DISCORD")
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        links,
+        unattended=True,
+        pins={"discord": MagicMock()},
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "missing_credentials"
+    links.list_server_links.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_ungranted_discord_credential_keeps_the_grant_card():
+    """The account owns a Discord credential this expert was not granted:
+    granting it is the fix the owner set up, not the bot."""
+    hint = " The account already has a discord credential: grant it."
+    links = _links("DISCORD")
+    result = await _prepare("SendDiscordMessageBlock", links, grant_hint=hint)
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert hint in result.message
     links.list_server_links.assert_not_called()

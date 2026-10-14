@@ -1129,8 +1129,25 @@ async def prepare_block_for_execution(
         missing_entries = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
-        if missing_credentials and (
-            redirect := await bot_post_redirect(user_id, block.name, session_id)
+        missing_providers = {provider_slug(m.provider) for m in missing_credentials}
+        grant_hint = (
+            await ungranted_credential_hint(
+                user_id,
+                session.expert_id,
+                missing_providers,
+                missing_entries.values(),
+            )
+            if missing_credentials
+            else ""
+        )
+        # A pinned account or an ungranted credential is the fix the owner
+        # set up, so its error or grant card stands; the bot is the answer
+        # only when nothing of theirs would be.
+        if (
+            missing_credentials
+            and not grant_hint
+            and not set(turn_credential_pins()) & missing_providers
+            and (redirect := await bot_post_redirect(user_id, block.name, session_id))
         ):
             return redirect
         if missing_credentials and is_unattended_turn():
@@ -1154,12 +1171,7 @@ async def prepare_block_for_execution(
                     "configured. Please set up the required credentials before "
                     "running this block."
                 )
-                + await ungranted_credential_hint(
-                    user_id,
-                    session.expert_id,
-                    {provider_slug(m.provider) for m in missing_credentials},
-                    missing_entries.values(),
-                )
+                + grant_hint
                 + bot_link_hint(block.name)
             )
         else:
