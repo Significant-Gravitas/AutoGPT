@@ -563,11 +563,13 @@ def drained_rows_entry(
     content_of: Callable[[PendingMessage], str] = lambda pm: pm.content,
 ) -> StreamPendingDrained:
     """The stream entry for the user rows ``persist_pending_as_user_rows``
-    landed: one message per row, with the row's own content."""
+    landed: one message per row, with the row's own content and metadata."""
     return StreamPendingDrained(
         drainedCount=len(pending),
         messages=[
-            StreamPendingDrainedMessage(id=pm.id, content=content_of(pm))
+            StreamPendingDrainedMessage(
+                id=pm.id, content=content_of(pm), metadata=pm.metadata or None
+            )
             for pm in pending
         ],
     )
