@@ -33,7 +33,10 @@ def get_sandbox_backend() -> str | None:
     global _SANDBOX_BACKEND
     if _SANDBOX_BACKEND is None:
         if shutil.which("vetto") is not None:
-            _SANDBOX_BACKEND = "vetto"
+            if platform.system() == "Windows" and shutil.which("bash") is None:
+                _SANDBOX_BACKEND = "none"
+            else:
+                _SANDBOX_BACKEND = "vetto"
         elif platform.system() == "Linux" and shutil.which("bwrap") is not None:
             _SANDBOX_BACKEND = "bwrap"
         else:

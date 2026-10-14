@@ -59,6 +59,38 @@ def test_get_sandbox_backend_none():
         assert has_full_sandbox() is False
 
 
+def test_get_sandbox_backend_vetto_windows_without_bash():
+    def mock_which(bin):
+        if bin == "vetto":
+            return r"C:\Program Files\vetto\vetto.exe"
+        return None
+
+    with patch("shutil.which", side_effect=mock_which), patch(
+        "platform.system", return_value="Windows"
+    ):
+        sandbox._SANDBOX_BACKEND = None
+        backend = get_sandbox_backend()
+        assert backend is None
+        assert has_full_sandbox() is False
+
+
+def test_get_sandbox_backend_vetto_windows_with_bash():
+    def mock_which(bin):
+        if bin == "vetto":
+            return r"C:\Program Files\vetto\vetto.exe"
+        if bin == "bash":
+            return r"C:\Program Files\Git\bin\bash.exe"
+        return None
+
+    with patch("shutil.which", side_effect=mock_which), patch(
+        "platform.system", return_value="Windows"
+    ):
+        sandbox._SANDBOX_BACKEND = None
+        backend = get_sandbox_backend()
+        assert backend == "vetto"
+        assert has_full_sandbox() is True
+
+
 def test_build_vetto_command():
     command = ["python", "-c", "print('hello')"]
     cwd = "/tmp/copilot-test"
