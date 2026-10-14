@@ -11,6 +11,7 @@ import asyncio
 import concurrent.futures
 import logging
 import threading
+import time
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -32,8 +33,15 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
+from backend.copilot.response_model import (
+    StreamError,
+    StreamStatus,
+    StreamTextDelta,
+    StreamToolInputAvailable,
+)
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -211,6 +219,7 @@ class TestExecuteAsyncScheduledTurnContext:
         def stream(**_kwargs):
             seen["unattended"] = is_unattended_turn()
             seen["pins"] = dict(turn_credential_pins())
+            seen["impersonated"] = is_turn_impersonated()
             return MagicMock()
 
         with (
@@ -253,13 +262,21 @@ class TestExecuteAsyncScheduledTurnContext:
 
         seen = await self._seen_by_the_turn(entry)
 
-        assert seen == {"unattended": True, "pins": {"exa": pin}}
+        assert seen == {"unattended": True, "pins": {"exa": pin}, "impersonated": False}
 
     @pytest.mark.asyncio
     async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
         seen = await self._seen_by_the_turn(_make_entry())
 
-        assert seen == {"unattended": False, "pins": {}}
+        assert seen == {"unattended": False, "pins": {}, "impersonated": False}
+
+    @pytest.mark.asyncio
+    async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
+        entry = _make_entry().model_copy(update={"impersonated": True})
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["impersonated"] is True
 
 
 class TestExecuteAsyncAclose:
@@ -321,6 +338,86 @@ class TestExecuteAsyncAclose:
             await proc._execute_async(_make_entry(), cancel, cluster_lock, _make_log())
 
         assert published.aclose_called is True
+
+    @pytest.mark.asyncio
+    async def test_a_turn_is_one_transaction_in_the_dispatchers_trace(
+        self, sentry_transactions
+    ) -> None:
+        trace_id, parent_span_id = "a" * 32, "b" * 16
+        entry = _make_entry().model_copy(
+            update={
+                "trace_headers": {"sentry-trace": f"{trace_id}-{parent_span_id}-1"},
+                "enqueued_at": time.time() - 2,
+            }
+        )
+        published = _TrackedStream(
+            events=[
+                StreamStatus(message="Thinking…"),
+                StreamTextDelta(id="t", delta="hi"),
+                StreamToolInputAvailable(toolCallId="c", toolName="run_block"),
+            ]
+        )
+
+        patches = self._patches(published)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                entry, threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        trace = turn["contexts"]["trace"]
+        assert turn["transaction"] == "copilot.turn"
+        assert trace["op"] == "copilot.turn"
+        assert trace["trace_id"] == trace_id
+        assert trace["parent_span_id"] == parent_span_id
+        assert trace["status"] == "ok"
+        assert turn["tags"] == {
+            "copilot.llm_auth_provider": "platform",
+            "copilot.model_tier": "default",
+            "copilot.turn.origin": "chat",
+            "copilot.engine": "dummy",
+            "copilot.turn.outcome": "completed",
+        }
+        data = trace["data"]
+        assert data["copilot.session_id"] == "sess-1"
+        assert data["copilot.turn_id"] == "turn-1"
+        assert data["copilot.turn.queue_wait_ms"] >= 2000
+        assert 0 <= data["copilot.turn.setup_ms"] <= data["copilot.turn.ttft_ms"]
+        assert data["copilot.turn.ttft_ms"] <= data["copilot.turn.duration_ms"]
+        assert data["copilot.turn.chunk_count"] == 3
+        assert data["copilot.turn.tool_call_count"] == 1
+
+    @pytest.mark.asyncio
+    async def test_a_turn_that_streams_an_error_is_failed(
+        self, sentry_transactions
+    ) -> None:
+        published = _TrackedStream(events=[StreamError(errorText="provider down")])
+
+        patches = self._patches(published)
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        assert turn["tags"]["copilot.turn.outcome"] == "failed"
+        assert turn["contexts"]["trace"]["status"] == "internal_error"
+        assert "copilot.turn.ttft_ms" not in turn["contexts"]["trace"]["data"]
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_turn_is_cancelled(self, sentry_transactions) -> None:
+        cancel = threading.Event()
+        cancel.set()
+
+        patches = self._patches(_TrackedStream(events=[MagicMock()]))
+        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), cancel, MagicMock(), _make_log()
+            )
+
+        [turn] = sentry_transactions
+        assert turn["tags"]["copilot.turn.outcome"] == "cancelled"
+        assert turn["contexts"]["trace"]["status"] == "cancelled"
 
     @pytest.mark.asyncio
     async def test_persisted_expert_session_is_passed_to_engine(self) -> None:

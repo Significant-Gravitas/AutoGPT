@@ -28,6 +28,7 @@ from backend.copilot import stream_registry
 from backend.copilot.active_turns import ConcurrentTurnLimitError
 from backend.copilot.config import CopilotLlmAuthProvider
 from backend.copilot.executor.utils import queue_spawned_turn, schedule_turn
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import (
     CHAT_STATUS_QUEUED,
     _get_session_lock,
@@ -280,6 +281,8 @@ async def run_copilot_turn_via_queue(
             message_metadata=message_metadata,
             spawner_envelope=spawner_envelope,
             delegated=delegated,
+            # A child of an impersonated turn is the admin's work too.
+            impersonated=is_turn_impersonated(),
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)
@@ -374,6 +377,7 @@ async def _queue_for_slot(
             spawn=spawn,
             message_metadata=message_metadata,
             spawner_envelope=spawner_envelope,
+            impersonated=is_turn_impersonated(),
         )
     except TreeRefusal as refused:
         return "refused", SessionResult(refusal=refused.message)

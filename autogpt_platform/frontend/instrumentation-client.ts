@@ -2,11 +2,14 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { isLoggedRequestFailure } from "@/app/api/mutators/request-failure-log";
 import {
   CLIENT_IGNORE_ERRORS,
   isFromBot,
+  isInjectedIframeProbe,
   isNextRSCNavigationFallback,
 } from "@/lib/sentry-filters";
+import { getSentryTunnelURL } from "@/lib/sentry-tunnel";
 import { setupSessionReplay } from "@/lib/session-replay";
 import { environment } from "@/services/environment";
 import * as Sentry from "@sentry/nextjs";
@@ -16,9 +19,13 @@ const dsn = environment.getSentryDSN();
 Sentry.init({
   dsn,
 
-  environment: environment.getEnvironmentStr(),
+  environment: environment.getSentryEnvironment(),
 
   enabled: Boolean(dsn),
+
+  // The tunnel is same-origin, so fetch would attach our cookies to every envelope.
+  tunnel: getSentryTunnelURL(dsn),
+  transportOptions: { fetchOptions: { credentials: "omit" } },
 
   // Suppress cross-origin stylesheet errors from Sentry Replay (rrweb)
   // serializing DOM snapshots with cross-origin stylesheets
@@ -28,8 +35,14 @@ Sentry.init({
   // Next's handled RSC fetch fallback reaches us only through console capture
   // and falls back to a full navigation, so it is noise (BUILDER-3QB).
   // Crawlers render our pages too; what breaks for them is not a user's bug.
+  // A failed API request the request logger reports, titled by its route,
+  // would otherwise arrive again from the HttpClient integration (BUILDER-95D).
+  // Some browsers inject a script that logs every cross-origin iframe it may
+  // not read (BUILDER-943).
   beforeSend(event) {
     if (isFromBot(navigator.userAgent)) return null;
+    if (isLoggedRequestFailure(event)) return null;
+    if (isInjectedIframeProbe(event)) return null;
     return isNextRSCNavigationFallback(event) ? null : event;
   },
   beforeSendTransaction(event) {
