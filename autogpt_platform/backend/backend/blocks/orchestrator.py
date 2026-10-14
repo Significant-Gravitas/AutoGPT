@@ -30,6 +30,7 @@ from backend.copilot.route_profile import user_key_profile
 from backend.copilot.sdk.env import common_launch_options
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.env import route_launch_env
+from backend.copilot.sdk.launch_env import launch_options
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1751,7 +1752,7 @@ class OrchestratorBlock(Block):
             # span from the trace.
 
             _HEARTBEAT_INTERVAL = 10.0  # seconds
-            async with ClaudeSDKClient(options=options) as client:
+            async with ClaudeSDKClient(options=launch_options(options)) as client:
                 await client.query(user_message)
 
                 msg_iter = client.receive_response().__aiter__()

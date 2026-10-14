@@ -65,11 +65,30 @@ class TestRequireLocalOAuthBaseUrl:
 
 
 def test_subscription_env_sets_no_key_and_no_base_url():
-    assert subscription_env() == {
-        "ANTHROPIC_API_KEY": "",
-        "ANTHROPIC_AUTH_TOKEN": "",
-        "ANTHROPIC_BASE_URL": "",
+    with patch.dict("os.environ", {}, clear=True):
+        assert subscription_env() == {
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
+            "ANTHROPIC_BASE_URL": "",
+        }
+
+
+def test_a_host_login_held_in_variables_travels_with_the_launch():
+    """The launch keeps nothing else of the parent's, so the host's own
+    login goes with it; an integration key does not."""
+    parent = {
+        "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-FAKE",
+        "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "FAKE-refresh",
+        "ANTHROPIC_API_KEY": "sk-ant-FAKE-integration",
     }
+    with patch.dict("os.environ", parent, clear=True):
+        assert subscription_env() == {
+            "ANTHROPIC_API_KEY": "",
+            "ANTHROPIC_AUTH_TOKEN": "",
+            "ANTHROPIC_BASE_URL": "",
+            "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-FAKE",
+            "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "FAKE-refresh",
+        }
 
 
 def test_oauth_blank_covers_every_variable_the_cli_reads():

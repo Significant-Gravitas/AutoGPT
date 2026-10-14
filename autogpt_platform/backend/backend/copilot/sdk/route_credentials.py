@@ -31,14 +31,25 @@ CLAUDE_OAUTH_BLANK: dict[str, str] = {
 }
 
 
+# The variables a host may hold its Claude login in instead of a
+# ``claude login`` credentials file.
+_HOST_LOGIN_VARIABLES = ("CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN")
+
+
 def subscription_env() -> dict[str, str]:
-    """No key or token, so the CLI uses the ``claude login`` OAuth credential,
-    and no base URL, so it sends that credential to Anthropic."""
-    return {
+    """No key or token, so the CLI uses the host's Claude login, and no base
+    URL, so it sends that login to Anthropic. A login the host holds in a
+    variable rather than a credentials file travels with the launch, which
+    keeps nothing else of the parent's (``launch_env.py``)."""
+    env = {
         "ANTHROPIC_API_KEY": "",
         "ANTHROPIC_AUTH_TOKEN": "",
         "ANTHROPIC_BASE_URL": "",
     }
+    for name in _HOST_LOGIN_VARIABLES:
+        if value := os.environ.get(name):
+            env[name] = value
+    return env
 
 
 def require_loopback_http(url: str, what: str) -> None:

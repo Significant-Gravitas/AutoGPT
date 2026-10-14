@@ -36,6 +36,7 @@ from .cli_openrouter_compat_test import (
     assert_pinned_cli,
 )
 from .env import GatewayEndpoint, route_launch_env
+from .launch_env import launch_options
 
 _FAKE_OAUTH = "sk-ant-oat01-FAKE-not-a-real-credential-0000000000000000"
 _PARENT_KEY = "sk-ant-FAKE-parent-environment-key"
@@ -223,7 +224,8 @@ async def _run_turn(
 
 
 async def _one_turn(options: ClaudeAgentOptions) -> None:
-    async with ClaudeSDKClient(options) as client:
+    # As the chat and the orchestrator launch: from the allowlisted parent.
+    async with ClaudeSDKClient(launch_options(options)) as client:
         await client.query("hello")
         async for _ in client.receive_response():
             pass

@@ -1,10 +1,12 @@
 """The orchestrator block's SDK launch carries the user's key and nothing else.
 
 A host may hold a Claude login (``CLAUDE_CODE_OAUTH_TOKEN``, a deployment
-``ANTHROPIC_API_KEY``, a base URL) in the backend's own environment, which the
-SDK merges under ``options.env``.  The launch must override every one of them.
+``ANTHROPIC_API_KEY``, a base URL) and every other backend secret in its own
+environment, which the SDK merges under ``options.env``.  The launch must
+override every one of them.
 """
 
+import os
 from collections.abc import AsyncGenerator
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -17,11 +19,23 @@ from pydantic import SecretStr
 from backend.blocks.orchestrator import OrchestratorBlock
 from backend.data.model import APIKeyCredentials
 
+# Other routes' keys, integration keys and service credentials, all fake.
+_PARENT_SECRETS = {
+    "CHAT_OPENROUTER_API_KEY": "sk-or-FAKE-chat-route",
+    "CHAT_LOCAL_API_KEY": "FAKE-local-server-key",
+    "OPEN_ROUTER_API_KEY": "sk-or-FAKE-integration",
+    "E2B_API_KEY": "e2b_FAKE",
+    "DATABASE_URL": "postgresql://app:FAKE-db-password@db:5432/app",
+    "SUPABASE_SERVICE_ROLE_KEY": "FAKE-service-role",
+    "LANGFUSE_SECRET_KEY": "sk-lf-FAKE",
+    "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer FAKE-otel",
+}
 _PARENT_ENV = {
     "ANTHROPIC_BASE_URL": "https://remote-gateway.example.com",
     "ANTHROPIC_API_KEY": "sk-ant-deployment-key",
     "ANTHROPIC_AUTH_TOKEN": "inherited-token",
     "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat01-inherited",
+    **_PARENT_SECRETS,
 }
 
 
@@ -69,6 +83,7 @@ async def _launch_env(provider: str, key: str) -> dict[str, str]:
         patch.object(claude_agent_sdk, "ClaudeSDKClient", _RecordingClient),
         patch.dict("os.environ", _PARENT_ENV),
     ):
+        parent = dict(os.environ)
         async for _ in OrchestratorBlock()._execute_tools_sdk_mode(
             input_data=input_data,
             credentials=credentials,
@@ -79,7 +94,7 @@ async def _launch_env(provider: str, key: str) -> dict[str, str]:
         ):
             pass
     [options] = _RecordingClient.launched
-    return {**_PARENT_ENV, **options.env}
+    return {**parent, **options.env}
 
 
 @pytest.mark.asyncio
@@ -100,3 +115,14 @@ async def test_openrouter_key_goes_to_openrouter_without_oauth():
     assert env["ANTHROPIC_API_KEY"] == ""
     assert env["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == ""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider, key",
+    [("anthropic", "sk-ant-user-key"), ("open_router", "sk-or-user-key")],
+)
+async def test_the_launch_keeps_no_other_secret_of_the_parent(provider, key):
+    env = await _launch_env(provider, key)
+    for name, secret in _PARENT_SECRETS.items():
+        assert not any(secret in value for value in env.values()), name

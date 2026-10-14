@@ -63,6 +63,9 @@ from backend.copilot.sdk.env import (
     describe_sdk_context,
     route_launch_env,
 )
+from backend.copilot.sdk.launch_env import (
+    launch_options,
+)
 from backend.copilot.sdk.turn_route import (
     resolve_turn_profile,
     start_route_gateway,
@@ -4142,7 +4145,7 @@ async def _run_stream_attempt(
             read_cli_session_usage, ctx.sdk_cwd, state.options.resume, ctx.log_prefix
         )
         state.usage.start_cli_session(baseline)
-    sdk_client = ClaudeSDKClient(options=state.options)
+    sdk_client = ClaudeSDKClient(options=launch_options(state.options))
     client = await sdk_client.__aenter__()
     try:
         logger.info(
