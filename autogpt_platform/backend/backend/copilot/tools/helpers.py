@@ -57,6 +57,7 @@ from backend.util.type import coerce_inputs_to_schema
 from .ayrshare_managed import is_ayrshare, is_not_linked_error
 from .ayrshare_managed import not_linked_response as ayrshare_not_linked_response
 from .ayrshare_managed import provision_for_block as provision_ayrshare_for_block
+from .chat_platform_route import bot_link_hint, bot_post_redirect
 from .expert_scope import (
     annotate_expert_grants,
     provider_slug,
@@ -1128,28 +1129,38 @@ async def prepare_block_for_execution(
         missing_entries = build_missing_credentials_from_field_info(
             credentials_fields_info, set(matched_credentials.keys())
         )
+        if missing_credentials and (
+            redirect := await bot_post_redirect(user_id, block.name, session_id)
+        ):
+            return redirect
         if missing_credentials and is_unattended_turn():
-            return await unattended_missing_credentials_error(
+            unattended = await unattended_missing_credentials_error(
                 f"Block '{block.name}'",
                 missing_entries,
                 session_id,
                 user_id,
                 session.expert_id,
             )
+            unattended.message += bot_link_hint(block.name)
+            return unattended
         missing_creds_dict = await annotate_expert_grants(
             user_id, session.expert_id, missing_entries
         )
         missing_creds_list = list(missing_creds_dict.values())
         if missing_credentials:
             message = (
-                f"Block '{block.name}' requires credentials that are not "
-                "configured. Please set up the required credentials before "
-                "running this block."
-            ) + await ungranted_credential_hint(
-                user_id,
-                session.expert_id,
-                {provider_slug(m.provider) for m in missing_credentials},
-                missing_entries.values(),
+                (
+                    f"Block '{block.name}' requires credentials that are not "
+                    "configured. Please set up the required credentials before "
+                    "running this block."
+                )
+                + await ungranted_credential_hint(
+                    user_id,
+                    session.expert_id,
+                    {provider_slug(m.provider) for m in missing_credentials},
+                    missing_entries.values(),
+                )
+                + bot_link_hint(block.name)
             )
         else:
             message = (

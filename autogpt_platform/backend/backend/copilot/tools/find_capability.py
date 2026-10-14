@@ -16,6 +16,7 @@ from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
+from .chat_platform_route import POST_TOOL, linked_chat_platforms
 from .models import (
     CapabilityListResponse,
     ErrorResponse,
@@ -143,8 +144,13 @@ class FindCapabilityTool(BaseTool):
                 ],
                 session_id=session_id,
             )
-        capabilities = [_listing(hit, connections) for hit in result.hits]
-        fallback = [_listing(hit, connections) for hit in result.fallback]
+        linked = (
+            await linked_chat_platforms(user_id)
+            if POST_TOOL in result.names
+            else frozenset()
+        )
+        capabilities = [_listing(hit, connections, linked) for hit in result.hits]
+        fallback = [_listing(hit, connections, linked) for hit in result.fallback]
         return CapabilityListResponse(
             message=_message(
                 result.service,
@@ -166,8 +172,15 @@ class FindCapabilityTool(BaseTool):
         )
 
 
-def _listing(hit: SearchHit, connections: ConnectionState) -> dict[str, Any]:
+def _listing(
+    hit: SearchHit, connections: ConnectionState, linked: frozenset[str]
+) -> dict[str, Any]:
     listing = hit.entry.listing()
+    # The bot posts only where the user linked a platform to it, which no
+    # credential records: without this the model cannot tell a tool that
+    # will post from one that answers "nothing is linked".
+    if hit.entry.name == POST_TOOL:
+        listing["linked"] = sorted(linked)
     if hit.entry.connection.required:
         listing["connected"] = (
             NEEDS_EXPERT_GRANT

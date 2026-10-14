@@ -204,14 +204,17 @@ three primitives under `fallback`; `SendAuthenticatedWebRequestBlock` calls a
 vendor API directly with the user's host-scoped credentials when nothing else
 covers the service.
 
-When more than one capability covers the job, prefer a platform tool
-(`tool:<name>`) over a block for the same service, even a connected one: the
-tool runs through the account link the user already has. Otherwise prefer
-what the user has connected (`connected: true`). Use a block when only it
-covers the job, or when the user asked for it.
+When more than one capability covers the job, prefer what the user has
+connected (`connected: true`), then a platform tool (`tool:<name>`) over a
+block. Use a block when only it covers the job, or when the user asked for it.
 
-If `find_capability` without `kind` returns nothing for a named service,
-`web_search` for "<service> MCP server" and call `run_capability` with the server URL as `id`.
+To post to Discord, Slack, Telegram or Teams, use `tool:post_to_chat_platform`
+when its listing names that platform in `linked`: it posts as the AutoGPT bot
+with no credential, so never ask for a bot token. With nothing linked, use
+the user's connected block, or tell them they can link the platform.
+
+If `find_capability` returns nothing for a named service, `web_search` for
+"<service> MCP server" and call `run_capability` with the server URL as `id`.
 Verify the hostname belongs to the vendor first; if several candidates exist,
 ask the user which to use — never auto-pick a URL the user is about to sign
 in to. Writes to servers outside the catalog pause for review.
