@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
@@ -7,7 +8,7 @@ from multidict import CIMultiDict, CIMultiDictProxy
 from yarl import URL
 
 from backend.util.gcs_utils import (
-    blob_exists,
+    blob_created_at,
     download_range,
     download_with_fresh_session,
     generate_iam_signed_url,
@@ -175,26 +176,30 @@ async def test_download_keeps_other_errors_when_url_contains_404(mocker, status)
 
 
 @pytest.mark.asyncio
-async def test_blob_exists_reads_metadata_only(mocker):
+async def test_blob_created_at_reads_metadata_only(mocker):
     client = _mock_client(mocker, download=AsyncMock())
-    client.download_metadata = AsyncMock(return_value={"name": "blob"})
+    client.download_metadata = AsyncMock(
+        return_value={"name": "blob", "timeCreated": "2026-10-13T12:00:00.123Z"}
+    )
 
-    assert await blob_exists("bucket", "blob") is True
+    assert await blob_created_at("bucket", "blob") == datetime(
+        2026, 10, 13, 12, 0, 0, 123000, tzinfo=timezone.utc
+    )
     client.download_metadata.assert_awaited_once_with("bucket", "blob")
     client.download.assert_not_awaited()
     client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_blob_exists_is_false_only_for_a_real_404(mocker):
+async def test_blob_created_at_is_none_only_for_a_real_404(mocker):
     client = _mock_client(mocker, download=AsyncMock())
     client.download_metadata = AsyncMock(
         side_effect=_gcs_http_error(404, _URL_CONTAINING_404)
     )
-    assert await blob_exists("bucket", "missing") is False
+    assert await blob_created_at("bucket", "missing") is None
 
     client.download_metadata = AsyncMock(
         side_effect=_gcs_http_error(503, _URL_CONTAINING_404)
     )
     with pytest.raises(aiohttp.ClientResponseError):
-        await blob_exists("bucket", "blob")
+        await blob_created_at("bucket", "blob")

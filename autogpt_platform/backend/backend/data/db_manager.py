@@ -455,7 +455,9 @@ class DatabaseManager(AppService):
 
     # ============ Onboarding ============ #
     increment_onboarding_runs = _(increment_onboarding_runs)
-    clear_brain_dump_audio_paths = _(onboarding_dump_db.clear_audio_paths)
+    clear_brain_dump_audio_paths = _(
+        onboarding_dump_db.clear_audio_paths, name="clear_brain_dump_audio_paths"
+    )
 
     # ============ OAuth ============ #
     cleanup_expired_oauth_tokens = _(cleanup_expired_oauth_tokens)

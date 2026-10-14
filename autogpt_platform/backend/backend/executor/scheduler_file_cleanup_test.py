@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 from pytest_mock import MockerFixture
 
 from backend.api.features.onboarding_dump.retention import RecordingPurgeResult
+
+# Imported here, not in the test: the executor conftest patches a function
+# ``db_manager`` wraps at import, and an import under that patch would wrap
+# the mock.
+from backend.data.db_manager import DatabaseManager, DatabaseManagerAsyncClient
 from backend.executor import scheduler
+from backend.util.service import EXPOSED_FLAG
 
 
 def _run(coro):
@@ -53,3 +59,18 @@ def test_a_failed_recording_purge_does_not_stop_the_generic_cleanup(
     scheduler.cleanup_expired_files()
 
     generic.assert_awaited_once()
+
+
+def test_the_purge_reaches_the_database_manager_endpoint_it_calls():
+    """The server serves each exposed method at ``/{attribute name}`` and
+    the client POSTs to ``/{function __name__}``; if they differ the purge
+    404s on every run."""
+    served = {
+        name
+        for name, attr in vars(DatabaseManager).items()
+        if getattr(attr, EXPOSED_FLAG, False)
+    }
+    called = DatabaseManagerAsyncClient.clear_brain_dump_audio_paths.__name__
+
+    assert called == "clear_brain_dump_audio_paths"
+    assert called in served

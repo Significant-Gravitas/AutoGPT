@@ -162,16 +162,27 @@ async def fresh_gcs_client() -> AsyncIterator[async_gcs_storage.Storage]:
         await session.close()
 
 
-async def blob_exists(bucket: str, blob: str) -> bool:
-    """Whether the object exists. Errors other than a 404 propagate."""
+def object_created_at(item: dict) -> datetime:
+    """When GCS created the object, from its ``timeCreated`` field."""
+    # RFC 3339 with a trailing "Z", which ``fromisoformat`` only reads from
+    # Python 3.11 on.
+    created = datetime.fromisoformat(item["timeCreated"].replace("Z", "+00:00"))
+    return created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+
+
+async def blob_created_at(bucket: str, blob: str) -> datetime | None:
+    """When the object was created, or ``None`` if it doesn't exist.
+
+    Errors other than a 404 propagate.
+    """
     async with fresh_gcs_client() as client:
         try:
-            await client.download_metadata(bucket, blob)
+            metadata = await client.download_metadata(bucket, blob)
         except Exception as e:
             if is_not_found_error(e):
-                return False
+                return None
             raise
-    return True
+    return object_created_at(metadata)
 
 
 async def generate_signed_url(

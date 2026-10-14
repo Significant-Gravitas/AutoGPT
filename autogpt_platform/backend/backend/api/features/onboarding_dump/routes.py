@@ -98,8 +98,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -119,8 +118,7 @@ async def upload_brain_dump_part(
         raise fastapi.HTTPException(
             status_code=413,
             detail=(
-                "Recording exceeds the "
-                f"{MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
+                f"Recording exceeds the {MAX_RECORDING_BYTES // (1024 * 1024)} MB limit"
             ),
         )
 
@@ -260,13 +258,14 @@ async def download_brain_dump_recording(
 
     Kept working even when ``status`` is ``failed`` — "your recording is
     safe" has to be true, and this is what makes it checkable. Recordings
-    are deleted after 7 days (see ``retention.py``); a signed URL for one
-    that is gone would only fail at the bucket, so say so here instead.
+    are deleted within 7 days (see ``retention.py``), and one that is due
+    is refused even before the sweep reaches it; a signed URL for one that
+    is gone would only fail at the bucket, so say so here instead.
     """
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:
         raise fastapi.HTTPException(status_code=404, detail="No recording found")
-    if not await storage.audio_exists(dump.audioPath):
+    if not await storage.audio_available(dump.audioPath):
         raise fastapi.HTTPException(
             status_code=404, detail="Recording no longer available"
         )

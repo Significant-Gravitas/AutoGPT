@@ -7,7 +7,7 @@ import logging
 import os.path
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Tuple
+from typing import Any, Tuple
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -144,6 +144,7 @@ class CloudStorageHandler:
         user_id: str | None = None,
         graph_exec_id: str | None = None,
         delete_when_expired: bool = False,
+        custom_metadata: dict[str, str] | None = None,
     ) -> str:
         """
         Store file content in cloud storage.
@@ -159,6 +160,9 @@ class CloudStorageHandler:
                 ``expiration_hours`` have passed. Off by default: files from
                 ``/files/upload`` carry an expiry but saved schedules and
                 presets keep pointing at them, so they must not be deleted.
+            custom_metadata: Extra custom metadata to keep on the object. Only
+                the server sets it, so it can mark files a user's own upload
+                must not be mistaken for.
 
         Note:
             Provide either user_id OR graph_exec_id, not both. If neither is provided,
@@ -175,6 +179,7 @@ class CloudStorageHandler:
                 user_id,
                 graph_exec_id,
                 delete_when_expired,
+                custom_metadata,
             )
         else:
             raise ValueError(f"Unsupported cloud storage provider: {provider}")
@@ -187,6 +192,7 @@ class CloudStorageHandler:
         user_id: str | None = None,
         graph_exec_id: str | None = None,
         delete_when_expired: bool = False,
+        custom_metadata: dict[str, str] | None = None,
     ) -> str:
         """Store file in Google Cloud Storage."""
         if not self.config.gcs_bucket_name:
@@ -222,11 +228,15 @@ class CloudStorageHandler:
         # GCS keeps only what sits under "metadata" as custom metadata, which is
         # the one place the expiry cleanup reads. Top-level keys are dropped, so
         # a file stored without ``delete_when_expired`` is never deleted.
+        custom = {**(expiry if delete_when_expired else {}), **(custom_metadata or {})}
+        metadata: dict[str, Any] = {} if delete_when_expired else dict(expiry)
+        if custom:
+            metadata["metadata"] = custom
         await async_client.upload(
             self.config.gcs_bucket_name,
             blob_name,
             content,
-            metadata={"metadata": expiry} if delete_when_expired else expiry,
+            metadata=metadata,
         )
 
         return f"gcs://{self.config.gcs_bucket_name}/{blob_name}"

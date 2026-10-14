@@ -127,6 +127,32 @@ class TestCloudStorageHandler:
             "test-bucket", "uploads/users/user-1/x/a.webm"
         )
 
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
+    @pytest.mark.asyncio
+    async def test_store_file_keeps_custom_metadata_with_or_without_expiry(
+        self, mock_get_async_client, handler
+    ):
+        mock_async_client = AsyncMock()
+        mock_get_async_client.return_value = mock_async_client
+        marker = {"brain_dump_recording": "true"}
+
+        await handler.store_file(
+            b"audio",
+            "a.webm",
+            user_id="user-1",
+            delete_when_expired=True,
+            custom_metadata=marker,
+        )
+        custom = mock_async_client.upload.call_args.kwargs["metadata"]["metadata"]
+        assert custom["brain_dump_recording"] == "true"
+        assert custom["expires_at"]
+
+        await handler.store_file(
+            b"audio", "a.webm", user_id="user-1", custom_metadata=marker
+        )
+        upload_metadata = mock_async_client.upload.call_args.kwargs["metadata"]
+        assert upload_metadata["metadata"] == marker
+
     @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
     async def test_retrieve_file_gcs(self, mock_storage_class, handler):

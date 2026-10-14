@@ -6,6 +6,7 @@ long recording and a silently corrupted or wrongly rejected upload — are
 exercised against a fake hash rather than mocked away.
 """
 
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -179,7 +180,7 @@ def _handler(mocker: MockerFixture, bucket: str = "private-bucket") -> MagicMock
 
 
 @pytest.mark.asyncio
-async def test_recordings_are_stored_to_expire_after_seven_days(
+async def test_recordings_are_stored_marked_with_a_backstop_expiry(
     mocker: MockerFixture,
 ):
     handler = _handler(mocker)
@@ -187,28 +188,61 @@ async def test_recordings_are_stored_to_expire_after_seven_days(
     await storage.store_audio(USER_ID, b"audio", "brain-dump-rec-1.webm")
 
     kwargs = handler.store_file.call_args.kwargs
-    assert kwargs["expiration_hours"] == 7 * 24
+    # A day past the sweep, so the generic cleanup never races it.
+    assert kwargs["expiration_hours"] == 8 * 24
     assert kwargs["delete_when_expired"] is True
+    assert kwargs["custom_metadata"] == {
+        storage.RECORDING_MARKER_KEY: storage.RECORDING_MARKER_VALUE
+    }
     assert kwargs["user_id"] == USER_ID
 
 
-@pytest.mark.asyncio
-async def test_audio_exists_checks_the_configured_bucket(mocker: MockerFixture):
-    _handler(mocker)
-    exists = mocker.patch.object(storage, "blob_exists", AsyncMock(return_value=False))
+def test_recordings_are_due_one_cleanup_interval_before_seven_days(
+    mocker: MockerFixture,
+):
+    """The sweep runs once per interval, so it has to start that much early
+    for "within 7 days" to hold."""
+    config = MagicMock(cloud_storage_cleanup_interval_hours=6)
+    mocker.patch.object(storage, "Config", return_value=config)
 
-    path = "gcs://private-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
-    assert await storage.audio_exists(path) is False
-    exists.assert_awaited_once_with(
+    assert storage.audio_max_age() == timedelta(days=6, hours=18)
+
+
+NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+AUDIO_PATH = "gcs://private-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
+
+
+@pytest.mark.asyncio
+async def test_audio_available_checks_the_configured_bucket(mocker: MockerFixture):
+    _handler(mocker)
+    created = mocker.patch.object(
+        storage, "blob_created_at", AsyncMock(return_value=None)
+    )
+
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is False
+    created.assert_awaited_once_with(
         "private-bucket", "uploads/users/user-1/u/brain-dump-rec-1.webm"
     )
 
 
 @pytest.mark.asyncio
+async def test_audio_due_for_deletion_is_no_longer_served(mocker: MockerFixture):
+    """Still in the bucket until the next sweep, but already past the policy."""
+    _handler(mocker)
+    created = mocker.patch.object(storage, "blob_created_at", AsyncMock())
+
+    created.return_value = NOW - storage.audio_max_age() + timedelta(minutes=1)
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is True
+
+    created.return_value = NOW - storage.audio_max_age()
+    assert await storage.audio_available(AUDIO_PATH, now=NOW) is False
+
+
+@pytest.mark.asyncio
 async def test_audio_in_another_bucket_counts_as_gone(mocker: MockerFixture):
     _handler(mocker)
-    exists = mocker.patch.object(storage, "blob_exists", AsyncMock())
+    created = mocker.patch.object(storage, "blob_created_at", AsyncMock())
 
     path = "gcs://legacy-bucket/uploads/users/user-1/u/brain-dump-rec-1.webm"
-    assert await storage.audio_exists(path) is False
-    exists.assert_not_awaited()
+    assert await storage.audio_available(path) is False
+    created.assert_not_awaited()

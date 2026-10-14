@@ -11,10 +11,21 @@ promise, and it works from the bucket rather than from the table:
   cleanup can read (``store_file`` used to drop it), so only their age in
   the bucket says when they are due.
 
+What counts as a recording: ``POST /files/upload`` stores a user's file
+under its own name in the same ``uploads/users/{user_id}/{uuid}/`` layout,
+so a name like ``brain-dump-<id>.webm`` (the name a downloaded recording
+is saved under) proves nothing. ``store_audio`` marks recordings in their
+custom metadata, which an upload can't set. Recordings from before the
+marker existed are recognised by name, but only if they were created
+before ``_UNMARKED_RECORDINGS_BEFORE``, a date on or after the release
+that added the marker.
+
 Rows that point at an expired recording are cleared *before* the blob is
 deleted. If clearing fails nothing is deleted and the next run retries; if
 a delete fails the row is already clear and the blob is found again next
-run, so the database never points at a recording that is gone.
+run, so the database never points at a recording that is gone. (Only the
+blob's backstop expiry, which fires if the sweep keeps failing for a day,
+can leave a row behind; the download route answers 404 for that.)
 """
 
 import asyncio
@@ -30,9 +41,17 @@ from backend.api.features.onboarding_dump.models import (
     AUDIO_FILE_EXTENSIONS,
     RECORDING_FILENAME_PREFIX,
 )
-from backend.api.features.onboarding_dump.storage import AUDIO_RETENTION
+from backend.api.features.onboarding_dump.storage import (
+    RECORDING_MARKER_KEY,
+    RECORDING_MARKER_VALUE,
+    audio_max_age,
+)
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.gcs_utils import fresh_gcs_client, is_not_found_error
+from backend.util.gcs_utils import (
+    fresh_gcs_client,
+    is_not_found_error,
+    object_created_at,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +64,16 @@ _RECORDING_NAME = re.compile(
     + "|".join(sorted(set(AUDIO_FILE_EXTENSIONS.values())))
     + r")$"
 )
+# Must not be earlier than the production release that started marking
+# recordings: an unmarked recording stored in between would never be
+# deleted. Later only risks an upload named like a recording, stored after
+# that release and before this date.
+_UNMARKED_RECORDINGS_BEFORE = datetime(2026, 11, 1, tzinfo=timezone.utc)
 _DELETE_CONCURRENCY = 10
+# Keeps one run well inside the scheduler's 5-minute timeout; the first run
+# after this shipped has every recording ever stored to delete, and the
+# next run picks up the rest.
+_MAX_PURGED_PER_RUN = 2000
 
 ClearAudioPaths = Callable[[list[str]], Awaitable[int]]
 
@@ -61,7 +89,7 @@ async def purge_expired_recordings(
     clear_audio_paths: ClearAudioPaths,
     now: datetime | None = None,
 ) -> RecordingPurgeResult:
-    """Delete every recording older than ``AUDIO_RETENTION``.
+    """Delete every recording that reached ``audio_max_age()``.
 
     ``clear_audio_paths`` nulls ``audioPath`` on rows that point at the
     given paths: the database manager's in the scheduler, which has no
@@ -74,7 +102,7 @@ async def purge_expired_recordings(
         # Without a bucket ``store_audio`` fails, so nothing was ever stored.
         return RecordingPurgeResult()
 
-    cutoff = (now or datetime.now(timezone.utc)) - AUDIO_RETENTION
+    cutoff = (now or datetime.now(timezone.utc)) - audio_max_age()
     async with fresh_gcs_client() as client:
         names = await _list_expired_recordings(client, bucket, cutoff)
         if not names:
@@ -106,19 +134,20 @@ async def _list_expired_recordings(
         names.extend(
             item["name"]
             for item in page.get("items", [])
-            if _RECORDING_NAME.match(item.get("name", ""))
-            and _created_at(item) <= cutoff
+            if _is_recording(item) and object_created_at(item) <= cutoff
         )
         page_token = page.get("nextPageToken")
-        if not page_token:
-            return names
+        if not page_token or len(names) >= _MAX_PURGED_PER_RUN:
+            return names[:_MAX_PURGED_PER_RUN]
 
 
-def _created_at(item: dict) -> datetime:
-    # RFC 3339 with a trailing "Z", which ``fromisoformat`` only reads
-    # from Python 3.11 on.
-    created = datetime.fromisoformat(item["timeCreated"].replace("Z", "+00:00"))
-    return created if created.tzinfo else created.replace(tzinfo=timezone.utc)
+def _is_recording(item: dict) -> bool:
+    if not _RECORDING_NAME.match(item.get("name", "")):
+        return False
+    custom = item.get("metadata") or {}
+    if custom.get(RECORDING_MARKER_KEY) == RECORDING_MARKER_VALUE:
+        return True
+    return object_created_at(item) < _UNMARKED_RECORDINGS_BEFORE
 
 
 async def _delete_blobs(
@@ -135,8 +164,7 @@ async def _delete_blobs(
                 if is_not_found_error(e):
                     return True
                 logger.warning(
-                    f"[BrainDumpRetention] Recording delete failed: "
-                    f"{type(e).__name__}"
+                    f"[BrainDumpRetention] Recording delete failed: {type(e).__name__}"
                 )
                 return False
             return True

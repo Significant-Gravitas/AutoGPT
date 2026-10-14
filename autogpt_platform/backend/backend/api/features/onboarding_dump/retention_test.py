@@ -13,18 +13,27 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from pytest_mock import MockerFixture
 
-from backend.api.features.onboarding_dump import retention
+from backend.api.features.onboarding_dump import retention, storage
 from backend.util.gcs_utils_test import _URL_CONTAINING_404, _gcs_http_error
 
 BUCKET = "private-bucket"
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
+# After every unmarked recording is gone: only the marker counts.
+LATER = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)
+MAX_AGE = timedelta(days=6, hours=18)
 OLD = "uploads/users/user-1/uuid-a/brain-dump-rec-old.webm"
 RECENT = "uploads/users/user-1/uuid-b/brain-dump-rec-new.webm"
+MARKER = {storage.RECORDING_MARKER_KEY: storage.RECORDING_MARKER_VALUE}
 
 
-def _item(name: str, age: timedelta) -> dict[str, str]:
-    created = (NOW - age).isoformat().replace("+00:00", "Z")
-    return {"name": name, "timeCreated": created}
+def _item(
+    name: str, age: timedelta, *, now: datetime = NOW, marked: bool = True
+) -> dict[str, Any]:
+    created = (now - age).isoformat().replace("+00:00", "Z")
+    item: dict[str, Any] = {"name": name, "timeCreated": created}
+    if marked:
+        item["metadata"] = {"expires_at": "2026-01-01T00:00:00+00:00", **MARKER}
+    return item
 
 
 class Calls:
@@ -53,6 +62,7 @@ def client(mocker: MockerFixture, calls: Calls) -> MagicMock:
         yield client
 
     mocker.patch.object(retention, "fresh_gcs_client", fresh_client)
+    mocker.patch.object(retention, "audio_max_age", return_value=MAX_AGE)
     handler = MagicMock()
     handler.config.gcs_bucket_name = BUCKET
     mocker.patch.object(
@@ -76,8 +86,8 @@ async def test_old_recording_is_cleared_from_its_row_then_deleted(
 ):
     client.list_objects.return_value = {
         "items": [
-            _item(OLD, timedelta(days=7, minutes=1)),
-            _item(RECENT, timedelta(days=6, hours=23)),
+            _item(OLD, MAX_AGE),
+            _item(RECENT, MAX_AGE - timedelta(minutes=1)),
         ]
     }
 
@@ -113,6 +123,64 @@ async def test_recent_recordings_and_other_uploads_are_left_alone(
     assert result == retention.RecordingPurgeResult()
     clear.assert_not_awaited()
     client.delete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_unmarked_recordings_from_before_the_marker_are_purged_by_name(
+    client: MagicMock, calls: Calls
+):
+    """Recordings stored before ``store_audio`` marked them, orphans
+    included, are only recognisable by their name."""
+    client.list_objects.return_value = {
+        "items": [_item(OLD, timedelta(days=30), marked=False)]
+    }
+
+    result = await retention.purge_expired_recordings(_clear(calls), now=NOW)
+
+    assert result.deleted == 1
+    assert calls.order == ["clear", f"delete:{OLD}"]
+
+
+@pytest.mark.asyncio
+async def test_a_user_upload_named_like_a_recording_is_left_alone(
+    client: MagicMock, calls: Calls
+):
+    """A downloaded recording uploaded again through ``/files/upload`` keeps
+    its name but not the marker, so schedules and presets using it keep
+    working."""
+    reuploaded = "uploads/users/user-1/uuid-g/brain-dump-rec-old.webm"
+    client.list_objects.return_value = {
+        "items": [
+            _item(reuploaded, timedelta(days=20), now=LATER, marked=False),
+            _item(OLD, timedelta(days=20), now=LATER),
+        ]
+    }
+    clear = _clear(calls)
+
+    result = await retention.purge_expired_recordings(clear, now=LATER)
+
+    assert result.expired == 1
+    assert calls.cleared == [f"gcs://{BUCKET}/{OLD}"]
+    assert calls.order == ["clear", f"delete:{OLD}"]
+
+
+@pytest.mark.asyncio
+async def test_a_large_backlog_is_spread_over_several_runs(
+    client: MagicMock, calls: Calls, mocker: MockerFixture
+):
+    mocker.patch.object(retention, "_MAX_PURGED_PER_RUN", 1)
+    client.list_objects.side_effect = [
+        {
+            "items": [_item(OLD, timedelta(days=60)), _item(RECENT, timedelta(60))],
+            "nextPageToken": "page-2",
+        },
+    ]
+
+    result = await retention.purge_expired_recordings(_clear(calls), now=NOW)
+
+    assert result.expired == 1
+    assert calls.order == ["clear", f"delete:{OLD}"]
+    client.list_objects.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -14,12 +14,13 @@ never a recording.
 
 import base64
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Awaitable, cast
 
 from backend.data import redis_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.gcs_utils import blob_exists, parse_gcs_path
+from backend.util.gcs_utils import blob_created_at, parse_gcs_path
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +30,32 @@ logger = logging.getLogger(__name__)
 PART_BUFFER_TTL_SECONDS = 6 * 60 * 60
 
 # Privacy policy: "We delete the recording within 7 days and keep the
-# transcript while your account exists." ``retention.py`` enforces it; the
-# blob's own expiry is the backstop for a recording no row points at.
+# transcript while your account exists." ``retention.py`` enforces it.
 AUDIO_RETENTION = timedelta(days=7)
-AUDIO_EXPIRATION_HOURS = int(AUDIO_RETENTION.total_seconds() // 3600)
+
+# The blob's own expiry, read by the generic cleanup, is only a backstop for
+# a sweep that keeps failing. It sits a day past the sweep's reach, so it
+# never races the sweep for a recording whose row still points at it; if it
+# ever fires, the download route already answers 404 for a missing file.
+AUDIO_BACKSTOP_EXPIRATION_HOURS = int(
+    (AUDIO_RETENTION + timedelta(days=1)).total_seconds() // 3600
+)
+
+# Set only by ``store_audio``, so a user's own upload that happens to be named
+# like a recording (say, one they downloaded) is never taken for one.
+RECORDING_MARKER_KEY = "brain_dump_recording"
+RECORDING_MARKER_VALUE = "true"
+
+
+def audio_max_age() -> timedelta:
+    """The age at which a recording is deleted and no longer served.
+
+    The sweep runs once per cleanup interval, so a recording just short of
+    this age at one run goes at the next. Taking the interval off the
+    retention keeps the deletion inside ``AUDIO_RETENTION``.
+    """
+    interval = timedelta(hours=Config().cloud_storage_cleanup_interval_hours)
+    return AUDIO_RETENTION - interval
 
 
 def _buffer_key(user_id: str, recording_id: str, suffix: str) -> str:
@@ -127,23 +150,29 @@ async def store_audio(user_id: str, content: bytes, filename: str) -> str:
     return await handler.store_file(
         content,
         filename,
-        expiration_hours=AUDIO_EXPIRATION_HOURS,
+        expiration_hours=AUDIO_BACKSTOP_EXPIRATION_HOURS,
         user_id=user_id,
         delete_when_expired=True,
+        custom_metadata={RECORDING_MARKER_KEY: RECORDING_MARKER_VALUE},
     )
 
 
-async def audio_exists(audio_path: str) -> bool:
-    """Whether the stored recording is still in the bucket.
+async def audio_available(audio_path: str, now: datetime | None = None) -> bool:
+    """Whether the stored recording can still be handed back.
 
-    A path outside the configured private bucket can't be served either,
-    so it counts as gone.
+    It can't once it is gone, nor once it is old enough for the sweep to
+    delete: until the next run it is still in the bucket, but the policy
+    already counts it as deleted. A path outside the configured private
+    bucket can't be served either.
     """
     handler = await get_cloud_storage_handler()
     bucket, blob = parse_gcs_path(audio_path)
     if bucket != handler.config.gcs_bucket_name:
         return False
-    return await blob_exists(bucket, blob)
+    created = await blob_created_at(bucket, blob)
+    if created is None:
+        return False
+    return (now or datetime.now(timezone.utc)) - created < audio_max_age()
 
 
 async def audio_download_url(user_id: str, audio_path: str) -> str:

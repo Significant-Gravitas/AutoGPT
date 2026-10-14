@@ -200,7 +200,7 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "store_audio": AsyncMock(return_value="brain-dumps/rec-1.webm"),
         "discard_parts": AsyncMock(),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
-        "audio_exists": AsyncMock(return_value=True),
+        "audio_available": AsyncMock(return_value=True),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -545,7 +545,7 @@ def test_recording_deleted_by_retention_is_404_not_a_dead_link(
 ):
     upload_part()
     finalize()
-    storage_mocks["audio_exists"].return_value = False
+    storage_mocks["audio_available"].return_value = False
 
     recording = client.get(RECORDING_URL, follow_redirects=False)
 
