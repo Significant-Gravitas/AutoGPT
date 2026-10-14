@@ -2158,3 +2158,54 @@ async def test_save_session_to_db_stamp_backfill_failure_keeps_flag(
     )
 
     assert flushed.stamps_pending_save is True
+
+
+@pytest.mark.asyncio
+async def test_clear_pending_question_invalidates_session_cache(
+    mocker: MockerFixture,
+):
+    """Clearing a Home card must also drop the Redis copy, or a reject path
+    that returns before the turn's upsert leaves get_chat_session serving the
+    stale pending_question (#14567)."""
+    from datetime import datetime, timezone
+    from unittest.mock import AsyncMock, MagicMock
+
+    from .model import PendingQuestion, clear_pending_question
+
+    session = ChatSession.new(user_id="user-1", dry_run=False)
+    session.metadata.pending_question = PendingQuestion(
+        text="Which channel?",
+        asked_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    clear_db = AsyncMock()
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        MagicMock(return_value=MagicMock(clear_session_pending_question=clear_db)),
+    )
+    invalidate = mocker.patch(
+        "backend.copilot.model.invalidate_session_cache", new=AsyncMock()
+    )
+
+    await clear_pending_question(session)
+
+    assert session.metadata.pending_question is None
+    clear_db.assert_awaited_once_with(session.session_id, session.user_id)
+    invalidate.assert_awaited_once_with(session.session_id)
+
+
+@pytest.mark.asyncio
+async def test_clear_pending_question_noop_skips_cache_invalidation(
+    mocker: MockerFixture,
+):
+    from unittest.mock import AsyncMock
+
+    from .model import clear_pending_question
+
+    session = ChatSession.new(user_id="user-1", dry_run=False)
+    invalidate = mocker.patch(
+        "backend.copilot.model.invalidate_session_cache", new=AsyncMock()
+    )
+
+    await clear_pending_question(session)
+
+    invalidate.assert_not_awaited()
