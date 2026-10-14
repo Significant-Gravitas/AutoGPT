@@ -161,4 +161,3 @@ def test_a_block_filter_does_not_hide_a_platform_tool_it_ties(index):
 
     assert result.hits[0].entry.name == "PageReaderBlock"
     assert [hit.entry.name for hit in result.other_kinds] == ["web_fetch"]
-
