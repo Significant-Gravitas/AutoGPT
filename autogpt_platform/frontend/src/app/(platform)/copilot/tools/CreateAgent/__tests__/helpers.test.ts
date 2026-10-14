@@ -54,4 +54,13 @@ describe("CreateAgent getAnimationText", () => {
       "Error creating workflow",
     );
   });
+
+  it("returns the error copy when the tool answers with an error", () => {
+    expect(
+      getAnimationText({
+        state: "output-available",
+        output: { type: "error", error: "boom", message: "boom" },
+      }),
+    ).toBe("Error creating workflow");
+  });
 });

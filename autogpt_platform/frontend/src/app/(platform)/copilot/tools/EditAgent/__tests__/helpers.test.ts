@@ -48,4 +48,13 @@ describe("EditAgent getAnimationText", () => {
       "Error editing workflow",
     );
   });
+
+  it("returns the error copy when the tool answers with an error", () => {
+    expect(
+      getAnimationText({
+        state: "output-available",
+        output: { type: "error", error: "boom", message: "boom" },
+      }),
+    ).toBe("Error editing workflow");
+  });
 });
