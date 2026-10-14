@@ -669,6 +669,34 @@ class TestDeleteNightlyBatchSchedule:
         s.scheduler.get_job.return_value = None
         assert s.delete_nightly_batch_schedule("abc") is False
 
+    def test_the_registry_forgets_the_cron_before_it_is_removed(self) -> None:
+        """A cron a row records is restored by the reconcile, so the record
+        goes first; a forget that fails keeps the cron and fails the delete."""
+        s = _stub_scheduler()
+        job = MagicMock()
+        s.scheduler.get_job.return_value = job
+        order: list[str] = []
+        job.remove.side_effect = lambda: order.append("remove")
+
+        def forgot(*args, **kwargs):
+            order.append("forget")
+            return True
+
+        with (
+            patch("backend.executor.scheduler.run_async", side_effect=forgot),
+            patch("backend.executor.scheduler.forget_registration"),
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is True
+        assert order == ["forget", "remove"]
+
+        job.remove.reset_mock()
+        with (
+            patch("backend.executor.scheduler.run_async", return_value=False),
+            patch("backend.executor.scheduler.forget_registration"),
+        ):
+            assert s.delete_nightly_batch_schedule("abc") is False
+        job.remove.assert_not_called()
+
     def test_delete_forgets_the_registration_so_ensure_can_re_register(
         self,
     ) -> None:

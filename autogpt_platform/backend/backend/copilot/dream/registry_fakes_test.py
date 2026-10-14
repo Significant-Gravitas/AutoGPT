@@ -219,6 +219,10 @@ class FakeCronStore:
     ) -> None:
         await job.register(self.scheduler, scope, user_timezone)
 
+    async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None:
+        self.scheduler.jobs.pop(job.job_id(scope), None)
+        self.scheduler.scopes.pop(job.job_id(scope), None)
+
     async def remove(self, scope: MemoryScope) -> None:
         await self.scheduler.remove_scope_memory_jobs(scope=scope)
 
@@ -260,6 +264,7 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
     monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)
     monkeypatch.setattr(registry, "resolve_user_timezone", owner_timezone)
+    monkeypatch.setattr(scope_reconcile._Place, "local", None)
     return env
 
 

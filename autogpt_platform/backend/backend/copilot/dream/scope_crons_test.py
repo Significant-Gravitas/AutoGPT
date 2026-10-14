@@ -188,7 +188,7 @@ async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
 ):
     await registry.ensure_scope_scheduled(ACCOUNT)
 
-    await scope_crons.forget_registration(
+    assert await scope_crons.forget_registration(
         ACCOUNT, dream_system_job("dream_nightly_batch")
     )
 
@@ -198,6 +198,21 @@ async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
     again = await registry.ensure_scope_scheduled(ACCOUNT)
     assert again["community_rebuild"] is None
     assert again["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
+
+
+@pytest.mark.asyncio
+async def test_a_forget_that_cannot_write_the_row_says_so(env, monkeypatch):
+    """The delete it serves then keeps its cron (``executor/scheduler.py``):
+    a row still recording it would have the reconcile restore it."""
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    monkeypatch.setattr(
+        env.db, "forget_scope_job", AsyncMock(side_effect=ConnectionError("down"))
+    )
+
+    assert not await scope_crons.forget_registration(
+        ACCOUNT, dream_system_job("dream_nightly_batch")
+    )
+    assert env.db.rows[USER].nightly_job_id == f"dream_nightly_batch_{USER}"
 
 
 def test_job_kwargs_keep_the_accounts_legacy_shape():

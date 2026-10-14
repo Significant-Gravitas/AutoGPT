@@ -1,10 +1,24 @@
 import logging
 import pickle
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 
+from apscheduler.jobstores.base import ConflictingIdError, JobLookupError
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
-from sqlalchemy import and_, select, text
+from apscheduler.util import datetime_to_utc_timestamp
+from sqlalchemy import Connection, and_, select, text
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
+
+# Seconds a job write in this context may wait for a row another transaction
+# holds, or run, on PostgreSQL: set around its own writes by a caller that
+# must not be held by one (the memory cron reconcile,
+# ``executor/scheduler.py``). The scheduler's other writes leave it unset.
+WRITE_TIMEOUT: ContextVar[float | None] = ContextVar(
+    "jobstore_write_timeout", default=None
+)
 
 
 class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
@@ -40,14 +54,8 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
         unrestorable: list = []
 
         with self.engine.begin() as connection:
-            if (
-                statement_timeout is not None
-                and connection.dialect.name == "postgresql"
-            ):
-                connection.execute(
-                    text("SELECT set_config('statement_timeout', :ms, true)"),
-                    {"ms": str(int(statement_timeout * 1000))},
-                )
+            if statement_timeout is not None:
+                _limit(connection, statement_timeout, "statement_timeout")
             for row in connection.execute(selectable):
                 try:
                     jobs.append(self._reconstitute_job(row.job_state))
@@ -71,6 +79,52 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
                     )
 
         return jobs
+
+    def add_job(self, job):
+        """Upstream's insert, bounded by ``WRITE_TIMEOUT`` when set."""
+        insert = self.jobs_t.insert().values(
+            id=job.id,
+            next_run_time=datetime_to_utc_timestamp(job.next_run_time),
+            job_state=pickle.dumps(job.__getstate__(), self.pickle_protocol),
+        )
+        with self._write() as connection:
+            try:
+                connection.execute(insert)
+            except IntegrityError:
+                raise ConflictingIdError(job.id) from None
+
+    def update_job(self, job):
+        """Upstream's update, bounded by ``WRITE_TIMEOUT`` when set."""
+        update = (
+            self.jobs_t.update()
+            .values(
+                next_run_time=datetime_to_utc_timestamp(job.next_run_time),
+                job_state=pickle.dumps(job.__getstate__(), self.pickle_protocol),
+            )
+            .where(self.jobs_t.c.id == job.id)
+        )
+        with self._write() as connection:
+            if connection.execute(update).rowcount == 0:
+                raise JobLookupError(job.id)
+
+    def remove_job(self, job_id):
+        """Upstream's delete, bounded by ``WRITE_TIMEOUT`` when set."""
+        delete = self.jobs_t.delete().where(self.jobs_t.c.id == job_id)
+        with self._write() as connection:
+            if connection.execute(delete).rowcount == 0:
+                raise JobLookupError(job_id)
+
+    @contextmanager
+    def _write(self) -> Iterator[Connection]:
+        """A write's transaction, its lock waits and statements limited to
+        ``WRITE_TIMEOUT`` when this context sets it: the write then fails
+        instead of holding its thread, and APScheduler's lock, on a row
+        another transaction keeps."""
+        with self.engine.begin() as connection:
+            timeout = WRITE_TIMEOUT.get()
+            if timeout is not None:
+                _limit(connection, timeout, "lock_timeout", "statement_timeout")
+            yield connection
 
     def _park(self, connection, row) -> bool:
         """Clear ``next_run_time`` for the row we read, and say whether we did.
@@ -186,3 +240,15 @@ class ResilientSQLAlchemyJobStore(SQLAlchemyJobStore):
                 self._parked_ids.discard(row.id)
                 healed.append(row.id)
         return seen
+
+
+def _limit(connection: Connection, seconds: float, *settings: str) -> None:
+    """Limit ``settings`` for the rest of ``connection``'s transaction, on
+    PostgreSQL; other databases have no such settings."""
+    if connection.dialect.name != "postgresql":
+        return
+    for setting in settings:
+        connection.execute(
+            text("SELECT set_config(:setting, :ms, true)"),
+            {"setting": setting, "ms": str(int(seconds * 1000))},
+        )

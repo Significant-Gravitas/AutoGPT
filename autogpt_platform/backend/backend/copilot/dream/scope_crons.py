@@ -73,9 +73,10 @@ async def record_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> bool:
         return False
 
 
-async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
-    """After ``job`` was deleted outside the registry, drop its id from the
-    row and its Redis marker so the next ensure registers it again."""
+async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> bool:
+    """Before ``job`` is deleted outside the registry, drop its id from the
+    row and its Redis marker, so the reconcile does not restore it and the
+    next ensure registers it again; whether the row's write went through."""
     await clear_registration_marker(scope, job.registration_key_prefix)
     try:
         await within_deadline(
@@ -87,6 +88,8 @@ async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
         logger.warning(
             f"Could not forget {job.name} of {scope_label(scope)}", exc_info=True
         )
+        return False
+    return True
 
 
 def nightly_error_parts(result: "NightlyBatchResult") -> list[str]:

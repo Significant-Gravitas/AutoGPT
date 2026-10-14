@@ -77,7 +77,7 @@ from backend.data.model import CredentialsMetaInput, GraphInput
 from backend.data.schedule import normalize_schedule_name
 from backend.executor import schedule_events
 from backend.executor import utils as execution_utils
-from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 from backend.executor.schedule_index import ScheduleIndex, ScheduleIndexEntry
 from backend.monitoring import (
     flush_matured_alerts,
@@ -167,6 +167,9 @@ STRIPE_RECONCILE_TIMEOUT_SECONDS = 1800  # 30 minutes
 # the thread running.
 MEMORY_CRON_RECONCILE_TIMEOUT_SECONDS = 20 * 60
 MEMORY_CRON_LISTING_TIMEOUT_SECONDS = 60
+# Each of the reconcile's jobstore writes gives up after this on a row another
+# transaction holds (``jobstore.WRITE_TIMEOUT``), failing only its scope.
+MEMORY_CRON_WRITE_TIMEOUT_SECONDS = 10
 _MEMORY_CRON_RECONCILE_JOB_ID = "reconcile_memory_scope_crons"
 
 
@@ -1651,8 +1654,11 @@ def listed_cron(job: JobObj) -> ListedCron | None:
 
 
 class _SchedulerCrons:
-    """``scope_reconcile.CronStore`` over this scheduler's own jobstore. The
-    jobstore calls block, so they run off the event loop."""
+    """``scope_reconcile.CronStore`` over this scheduler's own jobstore, off
+    the event loop. Each write gives up after
+    ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` on a row another transaction holds,
+    failing only its scope: cancelling the wait for it would leave the
+    thread, and APScheduler's lock, held."""
 
     def __init__(self, scheduler: "Scheduler") -> None:
         self._scheduler = scheduler
@@ -1663,7 +1669,7 @@ class _SchedulerCrons:
     async def add(
         self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
     ) -> None:
-        await asyncio.to_thread(
+        await _bounded_write(
             self._scheduler._add_memory_job,
             *_MEMORY_CRONS[job.job_id_prefix],
             job,
@@ -1671,8 +1677,22 @@ class _SchedulerCrons:
             user_timezone,
         )
 
+    async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None:
+        await _bounded_write(self._scheduler._drop_memory_job, job, scope)
+
     async def remove(self, scope: MemoryScope) -> None:
-        await asyncio.to_thread(self._scheduler.remove_scope_memory_jobs, scope)
+        await _bounded_write(self._scheduler.remove_scope_memory_jobs, scope)
+
+
+async def _bounded_write(call: Callable[..., object], *args: object) -> None:
+    """``call`` off the event loop, its jobstore writes limited to
+    ``MEMORY_CRON_WRITE_TIMEOUT_SECONDS`` (``asyncio.to_thread`` carries
+    ``WRITE_TIMEOUT`` into the thread)."""
+    token = WRITE_TIMEOUT.set(MEMORY_CRON_WRITE_TIMEOUT_SECONDS)
+    try:
+        await asyncio.to_thread(call, *args)
+    finally:
+        WRITE_TIMEOUT.reset(token)
 
 
 def _removed(job: JobObj) -> bool:
@@ -1684,15 +1704,12 @@ def _removed(job: JobObj) -> bool:
     return True
 
 
-def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
-    """Bridge ``forget_registration`` onto the scheduler's event loop.
-
-    Clears the removed cron's id on the scope's registry row (and its Redis
-    marker) so the next ``ensure_scope_scheduled`` registers it again.
-    Best-effort: it must never break the delete RPC that called it.
-    """
+def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> bool:
+    """Bridge ``forget_registration`` onto the scheduler's event loop: whether
+    the scope's row no longer records the cron. Never raises: a delete that
+    cannot forget keeps its cron."""
     try:
-        run_async(
+        return run_async(
             forget_registration(scope, job),
             timeout=bridge_timeout(),
             cancel_on_timeout=True,
@@ -1701,6 +1718,7 @@ def _forget_dream_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
         logger.warning(
             "Failed to forget %s of %s", job.name, scope_label(scope), exc_info=True
         )
+        return False
 
 
 def cleanup_oauth_tokens():
@@ -3554,18 +3572,36 @@ class Scheduler(AppService):
         return added
 
     def _delete_account_memory_job(self, user_id: str, job: DreamSystemJob) -> bool:
-        """Remove one of the account's crons and forget it in the registry,
-        so the next ``ensure_scope_scheduled`` registers it again."""
+        """Remove one of the account's crons, the registry forgetting it
+        first: the reconcile restores a cron a row records, and takes back
+        one it restored that the row stopped recording, so the record goes
+        before the job. A forget that fails keeps the job, and says so. The
+        next ``ensure_scope_scheduled`` registers it again."""
         scope = MemoryScope.for_user(user_id)
         existing = self.scheduler.get_job(
             job.job_id(scope), jobstore=Jobstores.EXECUTION.value
         )
         if not existing:
             return False
-        existing.remove()
-        _forget_dream_registration(scope, job)
+        if not _forget_dream_registration(scope, job):
+            logger.warning(
+                "Kept %s job for user %s: the registry could not forget it",
+                job.name,
+                user_id[:12],
+            )
+            return False
+        _removed(existing)
         logger.info("Removed %s job for user %s", job.name, user_id[:12])
         return True
+
+    def _drop_memory_job(self, job: DreamSystemJob, scope: MemoryScope) -> None:
+        """Remove one dream-system cron of ``scope`` if it is there."""
+        try:
+            self.scheduler.remove_job(
+                job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+            )
+        except JobLookupError:
+            pass
 
     @expose
     def execute_community_rebuild_pass(self, user_id: str, force: bool = False) -> dict:

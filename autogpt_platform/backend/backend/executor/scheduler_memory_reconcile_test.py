@@ -12,6 +12,7 @@ The listing, registration and removal probes are an independent review's
 import asyncio
 import concurrent.futures
 import os
+import re
 import tempfile
 import threading
 import time
@@ -41,9 +42,10 @@ from backend.copilot.dream.scope_reconcile import (
 )
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor import scheduler as scheduler_module
-from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.executor.jobstore import WRITE_TIMEOUT, ResilientSQLAlchemyJobStore
 from backend.executor.scheduler import (
     MEMORY_CRON_LISTING_TIMEOUT_SECONDS,
+    MEMORY_CRON_WRITE_TIMEOUT_SECONDS,
     Jobstores,
     Scheduler,
     _extract_schema_from_url,
@@ -251,15 +253,20 @@ async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None
     scheduler = Scheduler(register_system_tasks=False)
     crons: CronStore = _SchedulerCrons(scheduler)
     listed = [ListedCron(job_id="x", scope=EXPERT, timezone="UTC")]
+    nightly = dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
     with (
         patch.object(scheduler, "_memory_crons", return_value=listed),
         patch.object(scheduler, "_add_memory_job") as add,
+        patch.object(scheduler, "_drop_memory_job") as drop,
         patch.object(scheduler, "remove_scope_memory_jobs") as remove,
     ):
         assert await crons.listing() == listed
         await crons.add(dream_system_job(COMMUNITY_REBUILD_JOB_PREFIX), EXPERT, "UTC")
-        await crons.add(dream_system_job(NIGHTLY_BATCH_JOB_PREFIX), EXPERT, "UTC")
+        await crons.add(nightly, EXPERT, "UTC")
+        await crons.drop(nightly, EXPERT)
         await crons.remove(EXPERT)
+
+    drop.assert_called_once_with(nightly, EXPERT)
 
     assert [call.args[:2] for call in add.call_args_list] == [
         (scheduler_module.execute_community_rebuild, "0 4 * * 0"),
@@ -267,6 +274,95 @@ async def test_the_cron_store_lists_and_registers_as_the_scope_rpcs_do() -> None
     ]
     assert [call.args[3:] for call in add.call_args_list] == [(EXPERT, "UTC")] * 2
     remove.assert_called_once_with(EXPERT)
+
+
+@pytest.mark.asyncio
+async def test_the_cron_stores_writes_carry_the_write_timeout() -> None:
+    """Each write runs in a thread that sees ``WRITE_TIMEOUT``, so the
+    jobstore limits it; the caller's context is left as it was."""
+    scheduler = Scheduler(register_system_tasks=False)
+    crons: CronStore = _SchedulerCrons(scheduler)
+    seen: list[float | None] = []
+
+    def note(*args) -> None:
+        seen.append(WRITE_TIMEOUT.get())
+
+    with (
+        patch.object(scheduler, "_add_memory_job", note),
+        patch.object(scheduler, "_drop_memory_job", note),
+        patch.object(scheduler, "remove_scope_memory_jobs", note),
+    ):
+        await crons.add(dream_system_job(NIGHTLY_BATCH_JOB_PREFIX), EXPERT, "UTC")
+        await crons.drop(dream_system_job(NIGHTLY_BATCH_JOB_PREFIX), EXPERT)
+        await crons.remove(EXPERT)
+
+    assert seen == [MEMORY_CRON_WRITE_TIMEOUT_SECONDS] * 3
+    assert WRITE_TIMEOUT.get() is None
+
+
+def test_dropping_a_cron_that_is_gone_is_no_error() -> None:
+    """Another scheduler, or the delete RPC, may have removed it first."""
+    with _sqlite_file() as url, _scheduler_on(url) as scheduler:
+        nightly = dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
+        scheduler._add_memory_job(noop, "0 3 * * *", nightly, EXPERT, "UTC")
+
+        scheduler._drop_memory_job(nightly, EXPERT)
+        scheduler._drop_memory_job(nightly, EXPERT)
+
+        assert scheduler.scheduler.get_jobs(jobstore=_EXECUTION) == []
+
+
+@pytest.mark.skipif(_postgres_url() is None, reason="needs the PostgreSQL test DB")
+def test_a_write_under_the_write_timeout_gives_up_on_a_locked_row() -> None:
+    """On PostgreSQL a write in a context that sets ``WRITE_TIMEOUT`` fails
+    once it has waited that long for a row another transaction holds,
+    leaving no thread behind; one in a context that does not, as every
+    other scheduler write, waits for the row."""
+    name = f"apscheduler_jobs_lock_{os.getpid()}"
+    store = ResilientSQLAlchemyJobStore(url=_postgres_url(), tablename=name)
+    apscheduler = BackgroundScheduler()
+    apscheduler.add_jobstore(store, _EXECUTION)
+    apscheduler.start(paused=True)
+    locker = store.engine.connect()
+    try:
+        apscheduler.add_job(noop, "interval", hours=1, id="a", jobstore=_EXECUTION)
+        hold = locker.begin()
+        locker.execute(text(f"SELECT id FROM {name} WHERE id = 'a' FOR UPDATE")).all()
+        raised: list[BaseException] = []
+
+        def bounded() -> None:
+            # A new thread starts with an empty context: set it there.
+            WRITE_TIMEOUT.set(0.2)
+            try:
+                apscheduler.modify_job("a", jobstore=_EXECUTION, name="bounded")
+            except BaseException as exc:
+                raised.append(exc)
+
+        writer = threading.Thread(target=bounded)
+        writer.start()
+        writer.join(timeout=5)
+        assert not writer.is_alive(), "the bounded write gave up on the row"
+        [error] = raised
+        assert isinstance(error, OperationalError)
+        assert re.search("(lock|statement) timeout", str(error))
+        unbounded = threading.Thread(
+            target=apscheduler.modify_job,
+            args=("a",),
+            kwargs={"jobstore": _EXECUTION, "name": "waited"},
+        )
+        unbounded.start()
+        unbounded.join(timeout=1)
+        assert unbounded.is_alive(), "an unbounded write waits for the row"
+        hold.rollback()
+        unbounded.join(timeout=5)
+        assert not unbounded.is_alive()
+        assert apscheduler.get_job("a", jobstore=_EXECUTION).name == "waited"
+    finally:
+        locker.close()
+        apscheduler.remove_jobstore(_EXECUTION, shutdown=False)
+        apscheduler.shutdown(wait=False)
+        store.jobs_t.drop(store.engine, checkfirst=True)
+        store.engine.dispose()
 
 
 def test_a_pass_hands_the_reconcile_its_cron_store() -> None:

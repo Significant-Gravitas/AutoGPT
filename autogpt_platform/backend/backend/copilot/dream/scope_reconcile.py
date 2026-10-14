@@ -1,42 +1,35 @@
 """Keep the scheduler's dream-system crons in step with the registry rows.
 
-The registry's own paths act on events (a pause removes a scope's crons, a
-resume or an ensure registers them), and events interleave: a stale takedown
-lands after a resume, a re-read fails, a registration that read the row
-before a timezone change lands after it. Each leaves an ACTIVE row whose
-recorded crons the scheduler lacks or runs in another timezone, and an
-ensure, trusting the recorded job ids, never notices.
+The registry acts on events, and events interleave (a stale takedown after a
+resume, a failed re-read, a registration landing after a timezone change),
+leaving an ACTIVE row whose recorded crons the scheduler lacks or runs in
+another timezone, which an ensure, trusting the recorded ids, never notices.
 
-:func:`reconcile` is the level-triggered backstop, run by the scheduler every
-``RECONCILE_INTERVAL_MINUTES``. It lists the scheduler's dream-system crons
-and every registry row, then settles each scope either names, in scope-key
-order:
+:func:`reconcile` is the level-triggered backstop the scheduler runs every
+``RECONCILE_INTERVAL_MINUTES``. It lists the dream-system crons and every
+row, then settles each scope in key order. An ACTIVE row's crons are the ones
+it records, in its timezone: what the scheduler lacks or runs elsewhere is
+registered, and taken back if a fresh read shows the row stopped recording it
+meanwhile (a pause, a deleted cron). A cron no row records is the registry's
+to decide, so no flag is read here. Every cron of a PAUSED or WIPED row, or of
+an expert with no row, is removed; an account's crons with no row predate the
+registry and stay. Each scope is read again before it is changed, and every
+change is idempotent, so two schedulers reconciling at once converge (one may
+replay scopes the other settled, never skip one).
 
-- an ACTIVE row's crons are the ones it records: each the scheduler lacks,
-  or runs in a timezone other than the row's, is registered in the row's
-  timezone. A cron the row does not record is the registry's to decide (an
-  ensure registers what the owner's flags enable), so no flag is read here;
-- every cron of a PAUSED or WIPED row, or of an expert whose row is gone, is
-  removed. An account's crons with no row stay: they predate the registry,
-  and the cron gate lets them run.
-
-Each scope is read again right before it is changed, so a pause, resume or
-timezone change landing during the pass wins, and one landing between that
-read and the change is set right by the next pass. Every change is
-idempotent, so two schedulers reconciling at once end in the same state.
-
-A pass cut off at the scheduler's ceiling leaves the last scope it settled
-in Redis (``CURSOR_KEY``) and the next pass carries on after it; one that
-settles the last scope clears it. So a lost or stale cron is back after the
-next pass that reaches its scope: about one interval plus that pass, not a
-fixed bound. Without Redis every pass starts from the first scope. A pass
-that cannot list the crons or the rows changes nothing.
+A pass keeps its place before it works a scope, in Redis (``CURSOR_KEY``) and
+in this process, and the next pass carries on after it: one cut off at its
+ceiling, mid-scope or not, still moves on, and the scope it was cut in is
+retried next cycle. A pass that settles the last scope clears the place. A
+lost or stale cron is back after the next pass that reaches its scope: about
+one interval plus that pass, not a fixed bound. A pass that cannot list the
+crons or the rows changes nothing.
 """
 
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 from prisma.enums import MemoryScopeScheduleState
 from pydantic import BaseModel, Field
@@ -56,8 +49,7 @@ logger = logging.getLogger(__name__)
 RECONCILE_INTERVAL_MINUTES = 30
 # Rows read from the registry per call while a pass lists them.
 PAGE_SIZE = 500
-# The last scope key a pass that was cut off settled. It outlives a day of
-# passes that could not write it, then the next pass starts over.
+# The last scope a pass began to work, for the pass after it.
 CURSOR_KEY = "dream:cron_reconcile:after"
 CURSOR_TTL_SECONDS = 24 * 3600
 _ACTIVE = MemoryScopeScheduleState.ACTIVE
@@ -73,9 +65,8 @@ class ListedCron(BaseModel):
 
 
 class CronStore(Protocol):
-    """The scheduler side of a pass: listing its dream-system crons,
-    registering one cron of a scope, and removing every dream-system cron of
-    a scope."""
+    """The scheduler side of a pass: its dream-system crons, and adding one
+    cron of a scope, dropping one, or removing them all."""
 
     async def listing(self) -> Sequence[ListedCron]: ...
 
@@ -83,24 +74,23 @@ class CronStore(Protocol):
         self, job: DreamSystemJob, scope: MemoryScope, user_timezone: str
     ) -> None: ...
 
+    async def drop(self, job: DreamSystemJob, scope: MemoryScope) -> None: ...
+
     async def remove(self, scope: MemoryScope) -> None: ...
 
 
 class ReconcileReport(BaseModel):
-    """What one pass changed: the job ids it registered, the scopes whose
-    crons it removed, the scopes a change failed for, and whether it settled
-    the last scope."""
+    """What one pass changed: the job ids it registered and kept, the scopes
+    whose crons it removed, and the scopes a change failed for."""
 
     restored: list[str] = Field(default_factory=list)
     removed: list[str] = Field(default_factory=list)
     failed: list[str] = Field(default_factory=list)
-    finished: bool = False
 
 
 async def reconcile(store: CronStore) -> ReconcileReport:
-    """One pass: list the scheduler's crons and every registry row, then
-    settle each scope after the cursor in scope-key order. Never raises; the
-    scheduler cancels it at its ceiling, and the cursor keeps its place."""
+    """One pass (above). Never raises; the scheduler cancels it at its
+    ceiling, and the place it kept carries the next pass on."""
     report = ReconcileReport()
     try:
         listed = await store.listing()
@@ -118,13 +108,21 @@ async def reconcile(store: CronStore) -> ReconcileReport:
     place = _Place()
     after = await place.read()
     for key in sorted(rows.keys() | held.keys()):
-        if after is not None and key <= after:
+        row, crons = rows.get(key), held.get(key, [])
+        if (after is not None and key <= after) or not _out_of_step(row, crons):
             continue
-        if await _settle(rows.get(key), held.get(key, []), store, report):
-            await place.keep(key)
+        await place.keep(key)
+        await _settle(row, crons, store, report)
     await place.keep(None)
-    report.finished = True
     return report
+
+
+def _out_of_step(row: MemoryScopeSchedule | None, crons: list[ListedCron]) -> bool:
+    """Whether the listing shows the scope out of step: an ACTIVE row's
+    recorded crons missing or elsewhere, or crons it should not have."""
+    if row is not None and row.state == _ACTIVE:
+        return bool(_off(row, _scope_of(row), _zones(crons)))
+    return bool(crons) and _straggling(crons[0].scope, row)
 
 
 async def _settle(
@@ -132,52 +130,75 @@ async def _settle(
     crons: list[ListedCron],
     store: CronStore,
     report: ReconcileReport,
-) -> bool:
-    """Settle one scope; whether it had to read the scope again, the work
-    the cursor keeps."""
+) -> None:
     if row is not None and row.state == _ACTIVE:
-        return await _restore(row, crons, store, report)
-    if crons and _straggling(crons[0].scope, row):
-        return await _remove(crons[0].scope, store, report)
-    return False
+        await _restore(_scope_of(row), _zones(crons), store, report)
+    else:
+        await _remove(crons[0].scope, store, report)
 
 
 async def _restore(
-    row: MemoryScopeSchedule,
-    crons: list[ListedCron],
+    scope: MemoryScope,
+    zones: dict[str, str | None],
     store: CronStore,
     report: ReconcileReport,
-) -> bool:
-    """Register each cron ``row`` records that the scheduler lacks or runs in
-    another timezone, as a fresh read of the row still says."""
-    scope = MemoryScope.build(row.user_id, row.expert_id)
-    zones = {cron.job_id: cron.timezone for cron in crons}
-    if not _off(row, scope, zones):
-        return False
+) -> None:
+    """Register each cron the scope's row records that ``zones`` lacks or
+    has elsewhere, as a fresh read still says, then take back any a second
+    read shows the row stopped recording."""
     try:
         current = await _read(scope)
     except Exception:
         logger.warning(f"Could not read {scope_label(scope)} again", exc_info=True)
-        return True
+        return
     if current is None or current.state != _ACTIVE:
-        return True
+        return
     off = _off(current, scope, zones)
     try:
         for job in off:
             await store.add(job, scope, current.timezone)
-            report.restored.append(job.job_id(scope))
+        taken_back = await _take_back(scope, off, store)
     except Exception:
         logger.warning(
             f"Could not restore the crons of {scope_label(scope)}", exc_info=True
         )
         report.failed.append(scope.scope_key)
-        return True
-    if off:
+        return
+    kept = [job for job in off if job not in taken_back]
+    report.restored += [job.job_id(scope) for job in kept]
+    if kept:
         logger.info(
-            f"Memory cron reconcile registered {[job.name for job in off]} for "
+            f"Memory cron reconcile registered {[job.name for job in kept]} for "
             f"{scope_label(scope)} in {current.timezone}"
         )
-    return True
+
+
+async def _take_back(
+    scope: MemoryScope, added: list[DreamSystemJob], store: CronStore
+) -> list[DreamSystemJob]:
+    """Drop what a restore added that the row no longer records as read now:
+    a pause or a deleted cron landed between the restore's read and its
+    write. A read that fails drops it all; a cron still recorded is restored
+    by the next pass. The crons dropped."""
+    if not added:
+        return []
+    try:
+        row = await _read(scope)
+    except Exception:
+        logger.warning(
+            f"Could not read {scope_label(scope)} after restoring its crons; "
+            "dropping them for the next pass",
+            exc_info=True,
+        )
+        row = None
+    stale = [
+        job
+        for job in added
+        if row is None or row.state != _ACTIVE or recorded_job_id(row, job) is None
+    ]
+    for job in stale:
+        await store.drop(job, scope)
+    return stale
 
 
 def _off(
@@ -189,22 +210,22 @@ def _off(
         job
         for job in DREAM_SYSTEM_JOBS
         if recorded_job_id(row, job) is not None
-        and (job.job_id(scope) not in zones or zones[job.job_id(scope)] != row.timezone)
+        and zones.get(job.job_id(scope), "") != row.timezone
     ]
 
 
 async def _remove(
     scope: MemoryScope, store: CronStore, report: ReconcileReport
-) -> bool:
+) -> None:
     """Remove the crons of a scope that should have none, once a fresh read
     still says so."""
     try:
         row = await _read(scope)
     except Exception:
         logger.warning(f"Could not read {scope_label(scope)} again", exc_info=True)
-        return True
+        return
     if not _straggling(scope, row):
-        return True
+        return
     try:
         await store.remove(scope)
     except Exception:
@@ -212,10 +233,9 @@ async def _remove(
             f"Could not remove the crons of {scope_label(scope)}", exc_info=True
         )
         report.failed.append(scope.scope_key)
-        return True
+        return
     report.removed.append(scope.scope_key)
     logger.info(f"Memory cron reconcile removed the crons of {scope_label(scope)}")
-    return True
 
 
 def _straggling(scope: MemoryScope, row: MemoryScopeSchedule | None) -> bool:
@@ -226,10 +246,17 @@ def _straggling(scope: MemoryScope, row: MemoryScopeSchedule | None) -> bool:
     return row.state != _ACTIVE
 
 
+def _scope_of(row: MemoryScopeSchedule) -> MemoryScope:
+    return MemoryScope.build(row.user_id, row.expert_id)
+
+
+def _zones(crons: list[ListedCron]) -> dict[str, str | None]:
+    return {cron.job_id: cron.timezone for cron in crons}
+
+
 async def _read(scope: MemoryScope) -> MemoryScopeSchedule | None:
     """The scope's row as it stands now, None when it has none, under the
-    registry deadline. Raises when it cannot be read: the caller then
-    changes nothing for the scope this pass."""
+    registry deadline. Raises when it cannot be read."""
     return await within_deadline(
         memory_schedule_db().get_scope_schedule(scope.owner_user_id, scope.scope_key)
     )
@@ -250,22 +277,27 @@ async def _all_rows() -> list[MemoryScopeSchedule]:
 
 
 class _Place:
-    """Where a pass stands (``CURSOR_KEY``), kept for a successor in case it
-    is cut off. Best-effort: once a Redis call fails the pass stops keeping
-    it, so an outage costs a pass one timeout, not one per scope, and its
-    successor starts further back, never further on."""
+    """Where the reconcile stands, kept in Redis for every scheduler and in
+    this process (``local``) for when Redis fails: a pass whose Redis read
+    fails or finds nothing carries on from the local place. Once a Redis
+    call fails the pass stops calling it, so an outage costs one timeout a
+    pass."""
+
+    local: ClassVar[str | None] = None
 
     def __init__(self) -> None:
         self._redis_up = True
 
     async def read(self) -> str | None:
-        """The last scope a pass that was cut off settled; None to start
-        from the first."""
         place = await self._call(lambda redis: redis.get(CURSOR_KEY))
-        return place.decode() if isinstance(place, bytes) else place
+        if isinstance(place, bytes):
+            place = place.decode()
+        return place or _Place.local
 
     async def keep(self, scope_key: str | None) -> None:
-        """Keep ``scope_key`` as settled; None once the last one is."""
+        """Keep ``scope_key`` as the place; None once the last scope is
+        settled, clearing it."""
+        _Place.local = scope_key
         if scope_key is None:
             await self._call(lambda redis: redis.delete(CURSOR_KEY))
         else:
@@ -282,8 +314,8 @@ class _Place:
         except Exception:
             self._redis_up = False
             logger.warning(
-                "Memory cron reconcile cannot reach Redis; this pass keeps no "
-                "place for the next one",
+                "Memory cron reconcile cannot reach Redis; this pass keeps its "
+                "place in this process only",
                 exc_info=True,
             )
             return None
