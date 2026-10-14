@@ -18023,7 +18023,7 @@
           "title": {
             "type": "string",
             "title": "Title",
-            "default": "Available Agents"
+            "default": "Available Workflows"
           },
           "agents": {
             "items": { "$ref": "#/components/schemas/AgentInfo" },

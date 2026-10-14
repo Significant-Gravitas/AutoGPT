@@ -82,9 +82,9 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
     if not agents:
         return NoResultsResponse(
             message=(
-                f"No agents found matching '{query}'. Let the user know they can "
+                f"No workflows found matching '{query}'. Let the user know they can "
                 "try different keywords or browse the marketplace. Also let them "
-                "know you can create a custom agent for them based on their needs."
+                "know you can create a custom workflow for them based on their needs."
             ),
             suggestions=[
                 "Try more general terms",
@@ -97,11 +97,11 @@ async def _search_marketplace(query: str, session_id: str | None) -> ToolRespons
     return AgentsFoundResponse(
         message=(
             "Now you have found some options for the user to choose from. "
-            "You can add a link to a recommended agent at: /marketplace/agent/agent_id "
-            "Please ask the user if they would like to use any of these agents. "
-            "Let the user know we can create a custom agent for them based on their needs."
+            "You can add a link to a recommended workflow at: /marketplace/agent/agent_id "
+            "Please ask the user if they would like to use any of these workflows. "
+            "Let the user know we can create a custom workflow for them based on their needs."
         ),
-        title=f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} for '{query}'",
+        title=f"Found {len(agents)} workflow{'s' if len(agents) != 1 else ''} for '{query}'",
         agents=agents,
         count=len(agents),
         session_id=session_id,
@@ -181,19 +181,19 @@ async def _search_library(
             return NoResultsResponse(
                 message=(
                     "Your library is empty. Let the user know they can browse the "
-                    "marketplace to find agents, or you can create a custom agent "
+                    "marketplace to find workflows, or you can create a custom workflow "
                     "for them based on their needs."
                 ),
                 suggestions=[
-                    "Browse the marketplace to find and add agents",
+                    "Browse the marketplace to find and add workflows",
                     "Use tool:find_agent to search the marketplace",
                 ],
                 session_id=session_id,
             )
         return NoResultsResponse(
             message=(
-                f"No agents matching '{query}' found in your library. Let the "
-                "user know you can create a custom agent for them based on "
+                f"No workflows matching '{query}' found in your library. Let the "
+                "user know you can create a custom workflow for them based on "
                 "their needs."
             ),
             suggestions=[
@@ -205,24 +205,24 @@ async def _search_library(
         )
 
     if not query:
-        title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library"
+        title = f"Found {len(agents)} workflow{'s' if len(agents) != 1 else ''} in your library"
     else:
-        title = f"Found {len(agents)} agent{'s' if len(agents) != 1 else ''} in your library for '{query}'"
+        title = f"Found {len(agents)} workflow{'s' if len(agents) != 1 else ''} in your library for '{query}'"
 
     message = (
-        "Found agents in the user's library. You can provide a link to view "
-        "an agent at: /library/agents/{agent_id}. Use tool:view_agent_output to get "
+        "Found workflows in the user's library. You can provide a link to view "
+        "a workflow at: /library/agents/{agent_id}. Use tool:view_agent_output to get "
         "execution results, or run_agent to execute. Let the user know we can "
-        "create a custom agent for them based on their needs."
+        "create a custom workflow for them based on their needs."
     )
     if any(a.trigger_info for a in agents):
         message += (
-            "\n\nSome agents have a webhook trigger (see their "
+            "\n\nSome workflows have a webhook trigger (see their "
             "`trigger_info`). To set up or activate "
             "such a trigger, call tool:setup_agent_webhook_trigger and pass the "
             "config_schema fields as `trigger_config` — you don't need the full "
             "graph for this, and must NOT edit the trigger node's values in the "
-            "graph (that changes the agent's global default for everyone)."
+            "graph (that changes the workflow's global default for everyone)."
         )
     if truncation_notice:
         message += f"\n\nNote: {truncation_notice}"
@@ -304,9 +304,9 @@ async def _enrich_agents_with_graph(
         )
         return (
             f"Graph data included for {len(fetchable)} of "
-            f"{len(with_graph_id)} eligible agents (limit: {_MAX_GRAPH_FETCHES}). "
-            f"To fetch graphs for remaining agents, narrow your search to a "
-            f"specific agent by UUID."
+            f"{len(with_graph_id)} eligible workflows (limit: {_MAX_GRAPH_FETCHES}). "
+            f"To fetch graphs for remaining workflows, narrow your search to a "
+            f"specific workflow by UUID."
         )
     return None
 
@@ -392,10 +392,10 @@ async def search_library_for_creation(
         return NoResultsResponse(
             message=(
                 "No `goal_summary` was provided, so no similarity check "
-                "ran. If the user is asking for a new agent, retry "
+                "ran. If the user is asking for a new workflow, retry "
                 "find_library_agent with for_creation=true and a "
                 "goal_summary describing what they want. If the user has "
-                "since clarified they want a new agent regardless, "
+                "since clarified they want a new workflow regardless, "
                 "proceed with tool:create_agent and pass "
                 "library_check_ack=true."
             ),
@@ -449,13 +449,13 @@ async def search_library_for_creation(
         )
         return NoResultsResponse(
             message=(
-                "No functionally similar agents found in the user's library. "
-                "You may proceed to create a new agent: call `tool:create_agent` "
+                "No functionally similar workflows found in the user's library. "
+                "You may proceed to create a new workflow: call `tool:create_agent` "
                 "with `library_check_ack=true` to satisfy the similarity "
                 "gate."
             ),
             suggestions=[
-                "Proceed with tool:create_agent (no similar library agent to reuse)",
+                "Proceed with tool:create_agent (no similar library workflow to reuse)",
             ],
             session_id=session_id,
         )
@@ -468,13 +468,13 @@ async def search_library_for_creation(
         )
         return NoResultsResponse(
             message=(
-                "No functionally similar agents found in the user's library. "
-                "You may proceed to create a new agent: call `tool:create_agent` "
+                "No functionally similar workflows found in the user's library. "
+                "You may proceed to create a new workflow: call `tool:create_agent` "
                 "with `library_check_ack=true` to satisfy the similarity "
                 "gate."
             ),
             suggestions=[
-                "Proceed with tool:create_agent (no similar library agent to reuse)",
+                "Proceed with tool:create_agent (no similar library workflow to reuse)",
             ],
             session_id=session_id,
         )
@@ -489,16 +489,16 @@ async def search_library_for_creation(
     )
     return AgentsFoundResponse(
         message=(
-            "Found agents in the user's library that may already match the "
+            "Found workflows in the user's library that may already match the "
             "user's goal. Present them with their `match_score` (a float in "
             "[0, 1]; format as `[N% match]` for the user) and ask whether "
             "they want to reuse one of these instead of creating a new "
-            "agent. Use run_agent to execute a chosen existing agent. ONLY "
+            "workflow. Use run_agent to execute a chosen existing workflow. ONLY "
             "call `tool:create_agent` with `library_check_ack=true` if the user "
             "explicitly chooses to build a new one anyway."
         ),
         title=(
-            f"Found {len(agents)} potentially similar agent"
+            f"Found {len(agents)} potentially similar workflow"
             f"{'s' if len(agents) != 1 else ''} in your library"
         ),
         agents=agents,
@@ -553,7 +553,7 @@ async def lookup_library_agent_by_id(
     """
     if not user_id:
         return ErrorResponse(
-            message="User authentication required to fetch a library agent",
+            message="User authentication required to fetch a library workflow",
             session_id=session_id,
         )
 
@@ -562,7 +562,7 @@ async def lookup_library_agent_by_id(
     except DatabaseError as e:
         logger.error(f"Error fetching library agent {agent_id}: {e}", exc_info=True)
         return ErrorResponse(
-            message="Failed to fetch the library agent. Please try again.",
+            message="Failed to fetch the library workflow. Please try again.",
             error=str(e),
             session_id=session_id,
         )
@@ -570,9 +570,9 @@ async def lookup_library_agent_by_id(
     if agent is None:
         return NoResultsResponse(
             message=(
-                f"No library agent found with id '{agent_id}'. It may have been "
+                f"No library workflow found with id '{agent_id}'. It may have been "
                 "deleted or you may not have access. Retry find_library_agent "
-                "with a name query, or create a custom agent."
+                "with a name query, or create a custom workflow."
             ),
             suggestions=[
                 "Retry find_library_agent with a name/description query",
@@ -586,7 +586,7 @@ async def lookup_library_agent_by_id(
         truncation_notice = await _enrich_agents_with_graph([agent], user_id)
 
     message = (
-        "Found the requested library agent. Link to it at "
+        "Found the requested library workflow. Link to it at "
         "/library/agents/{agent_id}. Use tool:view_agent_output for execution "
         "results, or run_agent to execute it."
     )
@@ -595,7 +595,7 @@ async def lookup_library_agent_by_id(
 
     return AgentsFoundResponse(
         message=message,
-        title=f"Loaded agent '{agent.name}'",
+        title=f"Loaded workflow '{agent.name}'",
         agents=[agent],
         count=1,
         session_id=session_id,

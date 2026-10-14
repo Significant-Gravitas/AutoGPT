@@ -160,9 +160,9 @@ async def _resolve_ref(
     uri = _ref_to_uri(ref)
     if uri is None:
         return None, (
-            f"Could not interpret agent graph reference "
+            f"Could not interpret workflow reference "
             f"'{os.path.basename(ref)[:80]}' as a workspace file reference. "
-            "Pass the agent graph inline as agent_json, or a "
+            "Pass the workflow inline as agent_json, or a "
             "'workspace:///agent.json' reference as agent_json_ref."
         )
 
@@ -172,13 +172,13 @@ async def _resolve_ref(
     try:
         data = await read_file_bytes(uri, user_id, session)
     except ValueError:
-        return None, f"Could not read referenced agent graph file '{ref_name}'."
+        return None, f"Could not read referenced workflow file '{ref_name}'."
 
     parsed = _try_parse_json(data.decode("utf-8", errors="replace"))
     if not isinstance(parsed, dict) or not parsed:
         return None, (
-            f"Referenced agent graph file '{ref_name}' did not contain a JSON "
-            "object. Ensure the file holds the full agent graph before "
+            f"Referenced workflow file '{ref_name}' did not contain a JSON "
+            "object. Ensure the file holds the full workflow before "
             "referencing it."
         )
     return parsed, None

@@ -22,8 +22,8 @@ export function EmptyState() {
         No submissions yet
       </Text>
       <Text variant="small" className="max-w-[460px] text-zinc-500">
-        Once you submit an agent to the store, it&apos;ll show up here with its
-        status, runs, and reviews.
+        Once you submit a workflow to the store, it&apos;ll show up here with
+        its status, runs, and reviews.
       </Text>
     </motion.div>
   );

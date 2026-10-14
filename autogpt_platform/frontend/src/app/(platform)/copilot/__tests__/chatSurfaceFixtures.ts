@@ -235,7 +235,7 @@ export const CARD_FIXTURES: Record<string, CardFixture> = Object.fromEntries([
     },
     "Fetch the data",
   ),
-  card("validate_agent_graph", { valid: true }, "Graph is valid"),
+  card("validate_agent_graph", { valid: true }, "Workflow is valid"),
   card(
     "fix_agent_graph",
     { valid_after_fix: true, fixes_applied: ["Linked input"] },
