@@ -469,12 +469,13 @@ sync price, which on local Ollama is `$0`.
 ### Subscription mode caveat
 
 If the chat runs on a Claude Code subscription (`CHAT_PLATFORM_ROUTE=subscription`),
-the dream pass needs a separate `ANTHROPIC_API_KEY`
-set in the environment. The Claude Code OAuth token authenticates the
-chat CLI only; per Anthropic's Feb-2026 ToS update, OAuth tokens
-**cannot** call the Messages API directly. Without `ANTHROPIC_API_KEY`,
-the dream pass writes an `errored` JobStatus with a friendly hint
-pointing you at this section.
+the platform has no model API of its own. The Claude Code OAuth token
+authenticates the chat CLI only; per Anthropic's Feb-2026 ToS update, OAuth
+tokens **cannot** call the Messages API directly. So the dream pass skips
+(reason `no_platform_api`) before any model call, and briefings and teammate
+consults go without their model-written parts. An integration key such as
+`ANTHROPIC_API_KEY` is never used in its place. Choose an API route
+(`openrouter`, `direct_anthropic` or `local`) to run them.
 
 A separate Anthropic Agent-SDK credit pool launches **2026-06-15**
 ($20 Pro / $100 Max-5x / $200 Max-20x at standard API rates,

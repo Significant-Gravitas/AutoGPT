@@ -750,6 +750,19 @@ async def _execute_dream_pass_async(
     started_at = datetime.now(timezone.utc)
     monotonic_start = asyncio.get_event_loop().time()
 
+    if not config.has_platform_api:
+        # A Claude login or a disabled route: no model of the platform's
+        # own to dream on, and no other key stands in for one.
+        return DreamPassResult(
+            user_id=user_id,
+            pass_id=pass_id,
+            started_at=started_at,
+            completed_at=datetime.now(timezone.utc),
+            elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
+            skipped=True,
+            skip_reason="no_platform_api",
+        )
+
     has_anthropic_key = bool(config.batch_anthropic_api_key)
     # Step 5: the async Anthropic batch path is gated by the
     # ``DREAM_PASS_BATCH_ENABLED`` LD flag AND a direct Anthropic key (the

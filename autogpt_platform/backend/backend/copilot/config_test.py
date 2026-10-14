@@ -177,13 +177,37 @@ class TestSideCalls:
     def test_no_api_no_side_call_client(self, route):
         assert ChatConfig(platform_route=route).aux_client_credentials == (None, None)
 
-    def test_the_batch_key_falls_back_to_the_integration_key(self, mocker):
+    def test_the_batch_key_only_on_the_routes_that_use_the_batch_api(self, mocker):
+        """OpenRouter and direct take the Batch key (the direct route's, else
+        the integration key); a Claude login, a local server and a disabled
+        route have none, whatever keys the deployment holds."""
         from .config import settings
 
         mocker.patch.object(settings.secrets, "anthropic_api_key", "sk-batch")
-        assert ChatConfig().batch_anthropic_api_key == "sk-batch"
-        cfg = ChatConfig(anthropic_api_key="sk-direct")
+        for route in ("openrouter", "direct_anthropic"):
+            assert (
+                ChatConfig(platform_route=route).batch_anthropic_api_key == "sk-batch"
+            )
+        cfg = ChatConfig(
+            platform_route="direct_anthropic", anthropic_api_key="sk-direct"
+        )
         assert cfg.batch_anthropic_api_key == "sk-direct"
+        for route in ("subscription", "local", "disabled"):
+            cfg = ChatConfig(platform_route=route, anthropic_api_key="sk-direct")
+            assert cfg.batch_anthropic_api_key is None
+
+    @pytest.mark.parametrize(
+        "route, expected",
+        [
+            ("openrouter", True),
+            ("direct_anthropic", True),
+            ("local", True),
+            ("subscription", False),
+            ("disabled", False),
+        ],
+    )
+    def test_which_routes_have_a_platform_api(self, route, expected):
+        assert ChatConfig(platform_route=route).has_platform_api is expected
 
 
 class TestE2BActive:

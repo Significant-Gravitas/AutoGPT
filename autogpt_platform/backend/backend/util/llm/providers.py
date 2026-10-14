@@ -225,8 +225,15 @@ async def call_provider(
     ollama_host: str = "localhost:11434",
     custom_id: str | None = None,
     timeout_seconds: float | None = None,
+    base_url: str | None = None,
 ) -> ProviderResponse | BatchSubmissionRef:
     """Dispatch a single LLM call to the correct provider SDK.
+
+    ``base_url`` sends a sync call somewhere other than the provider's
+    public endpoint: the Messages API's root for ``anthropic``, the
+    OpenAI-compatible base (with ``/v1``) for ``open_router``. Other
+    providers and batch submissions take none (``ValueError``); Ollama
+    takes ``ollama_host``.
 
     Sync mode (``execution_mode="sync"``) returns a ``ProviderResponse``
     with content + token counts + optional cost. Batch mode (Step 4)
@@ -243,6 +250,13 @@ async def call_provider(
     """
     if timeout_seconds is None:
         timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    if base_url is not None and (
+        execution_mode == "batch" or provider not in _BASE_URL_PROVIDERS
+    ):
+        raise ValueError(
+            f"base_url is not supported for provider={provider} "
+            f"execution_mode={execution_mode}"
+        )
     if execution_mode == "batch":
         if not custom_id:
             raise ValueError(
@@ -297,6 +311,7 @@ async def call_provider(
                 ollama_host=ollama_host,
                 timeout_seconds=timeout_seconds,
                 service_tier=service_tier,
+                base_url=base_url,
             ),
             timeout=timeout_seconds,
         )
@@ -307,6 +322,9 @@ async def call_provider(
 # ---------------------------------------------------------------------------
 # Sync dispatch
 # ---------------------------------------------------------------------------
+
+# The providers whose sync calls take a ``base_url``.
+_BASE_URL_PROVIDERS = frozenset({"anthropic", "open_router"})
 
 
 async def _dispatch_sync(
@@ -324,6 +342,7 @@ async def _dispatch_sync(
     ollama_host: str,
     timeout_seconds: float,
     service_tier: str | None = None,
+    base_url: str | None = None,
 ) -> ProviderResponse:
     if provider == "openai":
         return await _call_openai_responses(
@@ -348,6 +367,7 @@ async def _dispatch_sync(
             tools=tools,
             tool_choice=tool_choice,
             timeout_seconds=timeout_seconds,
+            base_url=base_url,
         )
     if provider == "groq":
         return await _call_groq(
@@ -373,7 +393,7 @@ async def _dispatch_sync(
         )
     if provider == "open_router":
         return await _call_openai_compat(
-            base_url=OPENROUTER_BASE_URL,
+            base_url=base_url or OPENROUTER_BASE_URL,
             model=model,
             api_key=api_key,
             messages=messages,
@@ -546,6 +566,7 @@ async def _call_anthropic_messages(
     tools: list[dict] | None,
     tool_choice: dict | None,
     timeout_seconds: float,
+    base_url: str | None = None,
 ) -> ProviderResponse:
     an_tools = convert_openai_tool_fmt_to_anthropic(tools)
     # Cache tool definitions alongside the system prompt — placing
@@ -572,7 +593,7 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,

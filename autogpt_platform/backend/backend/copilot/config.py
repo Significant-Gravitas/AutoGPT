@@ -463,10 +463,24 @@ class ChatConfig(BaseSettings):
         return self.tier_model(tier) or default
 
     @property
+    def has_platform_api(self) -> bool:
+        """Whether the platform route has an API for the platform's own
+        background calls (dream passes, briefings, consults). A Claude login
+        (subscription) has none, and neither has a disabled route: that work
+        skips before any provider call."""
+        row = self.route_row
+        return row is not None and row.dispatch_provider is not None
+
+    @property
     def batch_anthropic_api_key(self) -> str | None:
-        """The key for Anthropic's Batch API: the direct route's key, else the
-        deployment's Anthropic integration key. The Batch API cannot be reached
-        through OpenRouter, so it keeps a key of its own."""
+        """The key for Anthropic's Batch API on the routes whose dream passes
+        use it: the direct route's key, else the deployment's Anthropic
+        integration key. The Batch API cannot be reached through OpenRouter,
+        so it keeps a key of its own. No other route has one: a Claude login
+        and a disabled route have no platform API, and a local server's
+        passes stay on that server."""
+        if self.platform_route not in ("openrouter", "direct_anthropic"):
+            return None
         return self.anthropic_api_key or settings.secrets.anthropic_api_key or None
 
     @property

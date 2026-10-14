@@ -2477,3 +2477,32 @@ class TestClaude5TemperatureRejection:
     )
     def test_self_heal_ignores_unrelated_errors(self, message: str):
         assert not _is_temperature_deprecation_error(self._err(message))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["openai", "groq", "ollama", "llama_api"])
+async def test_a_base_url_is_refused_where_the_provider_takes_none(provider):
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider=provider,
+            model="m",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            base_url="https://proxy.example/v1",
+        )
+
+
+@pytest.mark.asyncio
+async def test_a_batch_submission_takes_no_base_url():
+    with pytest.raises(ValueError, match="base_url is not supported"):
+        await call_provider(
+            provider="anthropic",
+            model="claude-sonnet-5-5",
+            api_key="k",
+            messages=[_msg("user", "hi")],
+            max_tokens=10,
+            execution_mode="batch",
+            custom_id="c",
+            base_url="https://proxy.example",
+        )

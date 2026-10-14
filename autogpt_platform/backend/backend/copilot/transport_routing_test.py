@@ -143,97 +143,104 @@ class TestLocalRoute:
 
 
 class TestOpenRouterRoute:
-    """OpenRouter is the canonical cloud path. Reads
-    ``settings.secrets.open_router_api_key`` when the route's own key is
-    unset; ``base_url`` is left ``None`` so ``call_provider``'s OpenRouter
-    branch uses its baked-in ``OPENROUTER_BASE_URL``."""
+    """OpenRouter: the route's own key, sent to the route's OpenAI-compatible
+    URL; never the OpenRouter integration key."""
 
-    def test_the_routes_key_wins(self, monkeypatch: pytest.MonkeyPatch):
+    def test_the_routes_key_and_url(self, monkeypatch: pytest.MonkeyPatch):
         cfg = ChatConfig(
             platform_route="openrouter",
             openrouter_api_key="or-key-from-chat-config",
+            openrouter_base_url="https://or.proxy.example/api/",
         )
         _patch_chat_cfg(monkeypatch, cfg)
         _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
 
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "open_router"
-        assert result.api_key == "or-key-from-chat-config"
-        assert result.base_url is None
-        assert result.supports_flex is True
-        assert result.cost_log_provider == "open_router"
+        assert routing_kwargs_for_chat_transport() == ProviderRoutingKwargs(
+            provider="open_router",
+            api_key="or-key-from-chat-config",
+            base_url="https://or.proxy.example/api/v1",
+            supports_flex=True,
+            cost_log_provider="open_router",
+        )
 
-    def test_falls_back_to_the_integration_key(self, monkeypatch: pytest.MonkeyPatch):
+    def test_the_default_url_is_openrouters_own(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="openrouter", openrouter_api_key="k")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch)
+
+        assert routing_kwargs_for_chat_transport().base_url == (
+            "https://openrouter.ai/api/v1"
+        )
+
+    def test_never_the_integration_key(self, monkeypatch: pytest.MonkeyPatch):
         _patch_chat_cfg(monkeypatch, ChatConfig(platform_route="openrouter"))
         _patch_settings(monkeypatch, open_router_api_key="or-key-from-secrets")
 
-        assert routing_kwargs_for_chat_transport().api_key == "or-key-from-secrets"
+        assert routing_kwargs_for_chat_transport().api_key == ""
 
 
 class TestSubscriptionRoute:
-    """Subscription users authenticate the chat path via Claude Code
-    OAuth, but that token can't call the Messages API directly (see
-    Anthropic Feb-2026 ToS). Dream pass needs a separate
-    ``ANTHROPIC_API_KEY`` — the helper surfaces ``""`` when missing
-    so callers can produce a friendly error."""
+    """A Claude login cannot call the Messages API, and no integration key
+    stands in for it: background calls have no route at all."""
 
-    def test_subscription_with_anthropic_key_from_settings(
+    def test_no_platform_api_whatever_keys_are_around(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        _patch_chat_cfg(monkeypatch, ChatConfig(platform_route="subscription"))
-        _patch_settings(monkeypatch, anthropic_api_key="ant-key-12345")
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == "ant-key-12345"
-        assert result.base_url is None
-        assert result.supports_flex is False
-        assert result.cost_log_provider == "anthropic"
-
-    def test_subscription_without_anthropic_key_returns_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        """Friendly-error path — callers (e.g. dream/llm.py) check for
-        empty ``api_key`` and raise with an env-var hint instead of
-        letting ``call_provider`` 401."""
-        _patch_chat_cfg(monkeypatch, ChatConfig(platform_route="subscription"))
-        _patch_settings(monkeypatch)  # anthropic_api_key="" by default
-
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == ""
-        assert result.cost_log_provider == "anthropic"
-
-    def test_subscription_prefers_the_anthropic_api_key_field(
-        self, monkeypatch: pytest.MonkeyPatch
-    ):
-        """``CHAT_ANTHROPIC_API_KEY`` (if the operator set it) wins over the
-        platform-wide ``settings.secrets.anthropic_api_key``."""
         cfg = ChatConfig(
             platform_route="subscription", anthropic_api_key="ant-key-direct-cfg"
         )
         _patch_chat_cfg(monkeypatch, cfg)
-        _patch_settings(monkeypatch, anthropic_api_key="ant-key-from-secrets")
+        _patch_settings(
+            monkeypatch,
+            anthropic_api_key="ant-key-from-secrets",
+            open_router_api_key="or-key-from-secrets",
+        )
 
-        assert routing_kwargs_for_chat_transport().api_key == "ant-key-direct-cfg"
+        result = routing_kwargs_for_chat_transport()
+        assert result.provider is None
+        assert result.api_key == ""
+        assert result.base_url is None
+        assert cfg.batch_anthropic_api_key is None
 
 
 class TestDirectAnthropicRoute:
-    """direct_anthropic is the explicit "skip OpenRouter, talk to
-    Anthropic" cloud route. Same provider as subscription but its own
-    cost-log label."""
+    """direct_anthropic: the route's own key, sent to the route's Messages
+    API root. The Batch API keeps its own policy (the route's key, else the
+    integration key); the synchronous path never takes the integration key."""
 
-    def test_direct_anthropic_routing_kwargs(self, monkeypatch: pytest.MonkeyPatch):
-        cfg = ChatConfig(platform_route="direct_anthropic", anthropic_api_key="ant-key")
+    def test_the_routes_key_and_url(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(
+            platform_route="direct_anthropic",
+            anthropic_api_key="ant-key",
+            anthropic_base_url="https://anthropic.proxy.example/",
+        )
         _patch_chat_cfg(monkeypatch, cfg)
         _patch_settings(monkeypatch)
 
-        result = routing_kwargs_for_chat_transport()
-        assert result.provider == "anthropic"
-        assert result.api_key == "ant-key"
-        assert result.base_url is None
-        assert result.supports_flex is False
-        assert result.cost_log_provider == "anthropic"
+        assert routing_kwargs_for_chat_transport() == ProviderRoutingKwargs(
+            provider="anthropic",
+            api_key="ant-key",
+            base_url="https://anthropic.proxy.example",
+            supports_flex=False,
+            cost_log_provider="anthropic",
+        )
+
+    def test_the_default_url_is_anthropics_own(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="direct_anthropic", anthropic_api_key="k")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch)
+
+        assert (
+            routing_kwargs_for_chat_transport().base_url == "https://api.anthropic.com"
+        )
+
+    def test_never_the_integration_key(self, monkeypatch: pytest.MonkeyPatch):
+        cfg = ChatConfig(platform_route="direct_anthropic")
+        _patch_chat_cfg(monkeypatch, cfg)
+        _patch_settings(monkeypatch, anthropic_api_key="ant-key-from-secrets")
+
+        assert routing_kwargs_for_chat_transport().api_key == ""
+        assert cfg.batch_anthropic_api_key == "ant-key-from-secrets"
 
 
 class TestDisabledRoute:
@@ -244,5 +251,6 @@ class TestDisabledRoute:
         _patch_settings(monkeypatch, open_router_api_key="or-secrets-key")
 
         result = routing_kwargs_for_chat_transport()
+        assert result.provider is None
         assert result.api_key == ""
         assert result.cost_log_provider == "none"

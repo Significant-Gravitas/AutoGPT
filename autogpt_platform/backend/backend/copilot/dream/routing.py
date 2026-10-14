@@ -32,12 +32,9 @@ ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
 #   unrelated reason, the dream pass should stay on the local LLM that
 #   the rest of the install uses (and that ``CHAT_PLATFORM_ROUTE=local``
 #   explicitly opted in to).
-# - ``"subscription"`` — the chat layer authenticates via Claude Code
-#   OAuth (no API key); dual-billing the user's Anthropic API key for
-#   the dream pass would surprise the operator and split the cost-log
-#   audit trail across two surfaces. Force sync so dream + chat
-#   continue to roll up under the same provider label
-#   (``cost_log_provider="anthropic"``).
+# - ``"subscription"`` — a Claude login is no platform API, so the pass
+#   skips before it gets here (``ChatConfig.has_platform_api``); listed
+#   so a direct caller never reaches the Batch path either.
 _TRANSPORTS_FORCE_SYNC: frozenset[PlatformRoute] = frozenset({"local", "subscription"})
 
 

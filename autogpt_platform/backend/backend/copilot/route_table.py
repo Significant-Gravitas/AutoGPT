@@ -84,7 +84,9 @@ class RouteRow(BaseModel):
     usd_budget: bool
     gateway_adapter: GatewayAdapter | None
     api_timeout_ms: int
-    # For the platform's own side calls (memory, dream jobs) on this route.
+    # For the platform's own background calls (dream passes, briefings,
+    # consults) on this route. None where the platform has no API of its
+    # own: a Claude login, or a connected account.
     dispatch_provider: ProviderLiteral | None
     supports_flex_tier: bool
     # The side-call model for titles and summaries; None follows the standard
@@ -167,7 +169,7 @@ ROUTES: dict[RouteName, RouteRow] = {
         usd_budget=True,
         gateway_adapter=None,
         api_timeout_ms=600_000,
-        dispatch_provider="anthropic",
+        dispatch_provider=None,
         supports_flex_tier=False,
         aux_model=_HAIKU,
         simulation_model=_FLASH_LITE,
