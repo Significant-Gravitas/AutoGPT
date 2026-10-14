@@ -19,8 +19,8 @@ from backend.copilot.baseline.service import (
     _upload_final_transcript,
     should_upload_transcript,
 )
+from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatMessage
-from backend.copilot.service import config
 from backend.copilot.transcript import (
     STOP_REASON_END_TURN,
     STOP_REASON_TOOL_USE,
@@ -70,131 +70,56 @@ def _make_session_messages(*roles: str) -> list[ChatMessage]:
 class TestResolveBaselineModel:
     """Baseline model resolution honours the per-request tier toggle.
 
-    Baseline reads the ``fast_*_model`` cells of the (path, tier) matrix
-    and never falls through to the SDK-side ``thinking_*_model`` cells.
-    Without a user_id (so no LD context) the resolver returns the
-    ``ChatConfig`` static default stamped ``source="env"``; per-user
-    overrides are exercised in ``copilot/model_router_test.py``.
+    The baseline engine runs the local route, whose two tiers are the
+    operator's ``CHAT_STANDARD_MODEL`` / ``CHAT_ADVANCED_MODEL``. Without a
+    user_id (so no LD context) the resolver returns the tier stamped
+    ``source="env"``; per-user overrides are exercised in
+    ``copilot/model_router_test.py``.
     """
 
+    @pytest.fixture(autouse=True)
+    def _local_route(self):
+        cfg = ChatConfig(
+            platform_route="local",
+            local_base_url="http://localhost:11434/v1",
+            local_adapter="openai_chat",
+            local_context_tokens=131_072,
+            standard_model="llama3.1:8b",
+            advanced_model="qwen3:14b",
+        )
+        with patch("backend.copilot.baseline.service.config", cfg):
+            yield
+
     @pytest.mark.asyncio
-    async def test_advanced_tier_selects_fast_advanced_model(self):
+    async def test_advanced_tier_selects_the_advanced_model(self):
         assert await _resolve_baseline_model("advanced", None) == (
-            config.fast_advanced_model,
+            "qwen3:14b",
             "env",
         )
 
     @pytest.mark.asyncio
-    async def test_standard_tier_selects_fast_standard_model(self):
+    async def test_standard_tier_selects_the_standard_model(self):
         assert await _resolve_baseline_model("standard", None) == (
-            config.fast_standard_model,
+            "llama3.1:8b",
             "env",
         )
 
     @pytest.mark.asyncio
-    async def test_none_tier_selects_fast_standard_model(self):
-        """Baseline users without a tier get the fast-standard default."""
-        assert await _resolve_baseline_model(None, None) == (
-            config.fast_standard_model,
-            "env",
-        )
+    async def test_none_tier_selects_the_standard_model(self):
+        """Baseline users without a tier get the standard tier."""
+        assert await _resolve_baseline_model(None, None) == ("llama3.1:8b", "env")
 
-    def test_fast_standard_default_is_sonnet(self):
-        """Shipped default: Sonnet on the baseline standard cell — the
-        non-Anthropic routes ship via the LD flag instead of a config
-        change.  Asserts the declared ``Field`` default so a deploy-time
-        ``CHAT_FAST_STANDARD_MODEL`` override doesn't flake CI."""
-        from backend.copilot.config import ChatConfig
-
-        assert (
-            ChatConfig.model_fields["fast_standard_model"].default
-            == "anthropic/claude-sonnet-5-5"
-        )
-
-    def test_fast_advanced_default_is_opus(self):
-        """Shipped default: Opus on the baseline advanced cell — mirrors
-        the SDK advanced cell so the advanced-tier A/B stays clean
-        (same model, different path)."""
-        from backend.copilot.config import ChatConfig
-
-        assert (
-            ChatConfig.model_fields["fast_advanced_model"].default
-            == "anthropic/claude-opus-5-5"
-        )
-
-    def test_standard_and_advanced_cells_differ_on_fast(self):
-        """Advanced tier defaults to a different model than standard on
-        the baseline path.  Checked against declared ``Field`` defaults
-        so operator env overrides don't flake the test."""
-        from backend.copilot.config import ChatConfig
-
-        assert (
-            ChatConfig.model_fields["fast_standard_model"].default
-            != ChatConfig.model_fields["fast_advanced_model"].default
-        )
-
-    def test_legacy_env_aliases_route_to_new_fields(self, monkeypatch):
-        """Backward compat: the pre-split env var names must still bind.
-
-        The four-field matrix was introduced with ``validation_alias``
-        entries so that existing deployments setting ``CHAT_MODEL`` /
-        ``CHAT_ADVANCED_MODEL`` / ``CHAT_FAST_MODEL`` continue to override
-        the same effective cell without a rename.  Construct a fresh
-        ``ChatConfig`` with each legacy name set and confirm it lands on
-        the new field.
-        """
-        from backend.copilot.config import ChatConfig
-
-        monkeypatch.setenv("CHAT_MODEL", "legacy/sonnet-via-chat-model")
-        monkeypatch.setenv("CHAT_ADVANCED_MODEL", "legacy/opus-via-advanced")
-        monkeypatch.setenv("CHAT_FAST_MODEL", "legacy/fast-via-fast-model")
-        # Force OR mode so the SDK-vendor validator doesn't reject the
-        # non-Anthropic legacy slugs — this test only cares about env-var
-        # binding, not transport compatibility.  (Default is now
-        # ``use_openrouter=False`` so we have to opt in explicitly.)
-        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
-        monkeypatch.setenv("CHAT_API_KEY", "or-key")
-        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
+    def test_the_tiers_bind_to_their_env_names(self, monkeypatch):
+        """``CHAT_STANDARD_MODEL`` / ``CHAT_ADVANCED_MODEL`` are the only model
+        settings; an accidental unbinding would silently ignore an operator's
+        local models."""
+        monkeypatch.setenv("CHAT_STANDARD_MODEL", "explicit/std")
+        monkeypatch.setenv("CHAT_ADVANCED_MODEL", "explicit/adv")
 
         cfg = ChatConfig()
 
-        assert cfg.thinking_standard_model == "legacy/sonnet-via-chat-model"
-        assert cfg.thinking_advanced_model == "legacy/opus-via-advanced"
-        assert cfg.fast_standard_model == "legacy/fast-via-fast-model"
-
-    def test_all_four_new_env_vars_bind_to_their_cells(self, monkeypatch):
-        """Each of the four (path, tier) cells must be overridable via
-        its documented ``CHAT_*_*_MODEL`` env var — including
-        ``CHAT_FAST_ADVANCED_MODEL`` which was missing a
-        ``validation_alias`` in the original split and only bound
-        implicitly through ``env_prefix``.  Pinning all four here so
-        that whenever someone touches the config shape, an accidental
-        unbinding fails CI instead of silently ignoring operator
-        overrides.
-        """
-        from backend.copilot.config import ChatConfig
-
-        monkeypatch.setenv("CHAT_FAST_STANDARD_MODEL", "explicit/fast-std")
-        monkeypatch.setenv("CHAT_FAST_ADVANCED_MODEL", "explicit/fast-adv")
-        monkeypatch.setenv("CHAT_THINKING_STANDARD_MODEL", "explicit/think-std")
-        monkeypatch.setenv("CHAT_THINKING_ADVANCED_MODEL", "explicit/think-adv")
-        # Force OR mode so the SDK-vendor validator doesn't reject the
-        # non-Anthropic explicit slugs — this test only cares about
-        # env-var binding, not transport compatibility.
-        monkeypatch.setenv("CHAT_USE_OPENROUTER", "true")
-        monkeypatch.setenv("CHAT_API_KEY", "or-key")
-        monkeypatch.setenv("CHAT_BASE_URL", "https://openrouter.ai/api/v1")
-        # Clear the legacy aliases so they don't win priority in
-        # ``AliasChoices`` (first match wins).
-        for legacy in ("CHAT_MODEL", "CHAT_ADVANCED_MODEL", "CHAT_FAST_MODEL"):
-            monkeypatch.delenv(legacy, raising=False)
-
-        cfg = ChatConfig()
-
-        assert cfg.fast_standard_model == "explicit/fast-std"
-        assert cfg.fast_advanced_model == "explicit/fast-adv"
-        assert cfg.thinking_standard_model == "explicit/think-std"
-        assert cfg.thinking_advanced_model == "explicit/think-adv"
+        assert cfg.standard_model == "explicit/std"
+        assert cfg.advanced_model == "explicit/adv"
 
 
 class TestLoadPriorTranscript:

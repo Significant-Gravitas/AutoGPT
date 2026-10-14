@@ -38,7 +38,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.route_profile import codex_profile
 from backend.copilot.sdk.compaction import CompactionStats
+from backend.copilot.sdk.retry_scenarios_test import scenario_profile
 from backend.copilot.sdk.service import _build_query_message, _compress_messages
 from backend.util.prompt import CompressResult
 
@@ -576,11 +578,8 @@ class TestCompressMessages:
 
 class TestRetryTargetTokens:
     def test_first_retry_is_a_quarter_of_the_pinned_window(self):
-        from backend.copilot.sdk.context_window import pinned_context_window
-        from backend.copilot.sdk.service import _retry_target_tokens, config
-
-        window = pinned_context_window(config, None, codex_route=False)
-        assert _retry_target_tokens(None)[0] == window // 4
+        profile = scenario_profile()
+        assert profile.retry_target_tokens()[0] == profile.window // 4
 
     def test_second_retry_lowered_to_bare_message_floor(self):
         """The second retry's target must be at or below the bare-message
@@ -589,21 +588,20 @@ class TestRetryTargetTokens:
         stored history exceeds the model's context window can exhaust all
         retries without ever falling through to the floor (regression guard
         for SENTRY-1207's persistent ``Prompt is too long``)."""
-        from backend.copilot.sdk.service import (
-            _BARE_MESSAGE_TOKEN_FLOOR,
-            _retry_target_tokens,
-        )
+        from backend.copilot.sdk.service import _BARE_MESSAGE_TOKEN_FLOOR
 
-        assert _retry_target_tokens(None)[1] <= _BARE_MESSAGE_TOKEN_FLOOR
         # ...on every route, not just the 200K one.
-        assert _retry_target_tokens("gpt-6-astra", codex_route=True)[1] <= (
-            _BARE_MESSAGE_TOKEN_FLOOR
-        )
+        for profile in (
+            scenario_profile(),
+            scenario_profile("anthropic/claude-sonnet-4-6", "openrouter"),
+            codex_profile(
+                "gpt-6-astra", effort=None, routing_source="env", codex_engine=None
+            ),
+        ):
+            assert profile.retry_target_tokens()[1] <= _BARE_MESSAGE_TOKEN_FLOOR
 
     def test_second_slot_smaller_than_first(self):
-        from backend.copilot.sdk.service import _retry_target_tokens
-
-        first, last = _retry_target_tokens(None)
+        first, last = scenario_profile().retry_target_tokens()
         assert last < first
 
 

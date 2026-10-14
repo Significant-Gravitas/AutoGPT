@@ -1,9 +1,9 @@
 """Baseline LLM fallback — OpenAI-compatible streaming with tool calling.
 
-Used when ``CHAT_USE_CLAUDE_AGENT_SDK=false``, e.g. as a fallback when the
-Claude Agent SDK / Anthropic API is unavailable.  Routes through any
-OpenAI-compatible provider (OpenRouter by default) and reuses the same
-shared tool registry as the SDK path.
+Serves the local route (``CHAT_PLATFORM_ROUTE=local``) until the shared
+model gateway carries it on the SDK path.  Talks to the local server's
+OpenAI-compatible API and reuses the same shared tool registry as the
+SDK path.
 """
 
 import asyncio
@@ -117,6 +117,7 @@ from backend.copilot.response_model import (
     StreamUsage,
     ToolDisplayData,
 )
+from backend.copilot.route_profile import THINKING_BUDGET_TOKENS
 from backend.copilot.sdk.resume_gap import unseen_rows
 from backend.copilot.service import (
     _build_system_prompt,
@@ -333,6 +334,11 @@ _UNSAFE_FILENAME = re.compile(r"[^\w.\-]")
 # into the final usage chunk. Module-level constant so we don't reallocate
 # an identical dict on every streaming call.
 _OPENROUTER_INCLUDE_USAGE_COST = {"usage": {"include": True}}
+
+# Prompt-cache marker lifetime on the OpenRouter and direct dialects. 1h is
+# strictly cheaper overall when the static prefix gets >7 reads per write
+# window, and the system prompt + tools are the same for every user.
+_PROMPT_CACHE_TTL = "1h"
 
 
 def _extract_usage_cost(usage: CompletionUsage) -> float | None:
@@ -628,8 +634,8 @@ def _supports_prompt_cache_markers(model: str) -> bool:
 def _fresh_ephemeral_cache_control() -> dict[str, str]:
     """Return a FRESH ephemeral ``cache_control`` dict each call.
 
-    The ``ttl`` is sourced from :attr:`ChatConfig.baseline_prompt_cache_ttl`
-    (default ``1h``) so the static prefix stays warm across many users'
+    The ``ttl`` is ``_PROMPT_CACHE_TTL`` (``1h``) so the static prefix
+    stays warm across many users'
     requests in the same workspace cache.  Anthropic caches are keyed
     per-workspace, so every copilot user reading the same system prompt
     hits the same cached entry.
@@ -638,7 +644,7 @@ def _fresh_ephemeral_cache_control() -> dict[str, str]:
     (e.g. the OpenAI SDK normalising fields in-place) poison every future
     request's marker.  Construction is O(1) so the safety margin is free.
     """
-    return {"type": "ephemeral", "ttl": config.baseline_prompt_cache_ttl}
+    return {"type": "ephemeral", "ttl": _PROMPT_CACHE_TTL}
 
 
 def _fresh_anthropic_caching_headers() -> dict[str, str]:
@@ -883,7 +889,7 @@ async def _baseline_llm_caller(
         typed_messages = cast(list[ChatCompletionMessageParam], final_messages)
         # The wire format must match the endpoint ``main_client_credentials``
         # actually dialed — ``baseline_provider`` is the shared truth for both
-        # (local → openrouter_active → anthropic). Keying on
+        # (one per platform route). Keying on
         # ``transport.name == "openrouter"`` would send direct-Anthropic shape
         # to an OpenRouter endpoint in subscription mode with OR creds present,
         # where ``transport.name`` is ``"subscription"`` but the baseline client
@@ -901,15 +907,13 @@ async def _baseline_llm_caller(
         elif is_openrouter_transport:
             # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
             extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
-            reasoning_param = reasoning_extra_body(
-                state.model, config.claude_agent_max_thinking_tokens
-            )
+            reasoning_param = reasoning_extra_body(state.model, THINKING_BUDGET_TOKENS)
             if reasoning_param:
                 extra_body.update(reasoning_param)
         else:
             # Direct mode (non-OR, non-local): use native Anthropic thinking param.
             thinking_param = anthropic_thinking_extra_body(
-                state.model, config.claude_agent_max_thinking_tokens
+                state.model, THINKING_BUDGET_TOKENS
             )
             if thinking_param:
                 extra_body.update(thinking_param)
@@ -917,7 +921,7 @@ async def _baseline_llm_caller(
         max_tokens_arg: int | Any = openai_omit
         if not is_openrouter_transport and "thinking" in extra_body:
             model_max = get_max_output_tokens(state.model)
-            budget = min(config.claude_agent_max_thinking_tokens, model_max - 1)
+            budget = min(THINKING_BUDGET_TOKENS, model_max - 1)
             extra_body["thinking"]["budget_tokens"] = budget
             max_tokens_arg = min(budget + 4096, model_max)
         # Route through the shared providers helper so future provider
@@ -979,7 +983,7 @@ async def _baseline_llm_caller(
                             cache_creation_tokens=(
                                 _extract_cache_creation_tokens(ptd) if ptd else 0
                             ),
-                            cache_ttl=config.baseline_prompt_cache_ttl,
+                            cache_ttl=_PROMPT_CACHE_TTL,
                         )
                     if cost is not None:
                         state.cost_usd = (state.cost_usd or 0.0) + cost
@@ -1392,8 +1396,11 @@ async def _compress_session_messages(
     # ~120k and never fire before the (much smaller) local window overflows.
     # Probe the backend for its real window and target compaction at it.
     target_tokens: int | None = None
-    if config.effective_transport == "local" and config.base_url:
-        window = await probe_local_context_window(config.base_url, model)
+    local_url = config.local_openai_base_url
+    if config.platform_route == "local" and local_url:
+        window = await probe_local_context_window(
+            local_url, model, fallback=config.local_context_tokens
+        )
         target_tokens = compaction_target_for_window(window)
 
     try:
@@ -1440,11 +1447,11 @@ def _humanize_baseline_error(e: Exception) -> str:
     operator's LLM backend (Ollama/vLLM/…) isn't running — say so, instead of
     surfacing a bare "Connection error.".
     """
-    if isinstance(e, APIConnectionError) and config.effective_transport == "local":
+    if isinstance(e, APIConnectionError) and config.platform_route == "local":
         return (
-            f"Can't reach the local LLM backend at {config.base_url}. Make sure "
-            "your model server is running — for Ollama, start it with "
-            "`ollama serve` (or check CHAT_BASE_URL)."
+            f"Can't reach the local LLM backend at {config.local_base_url}. "
+            "Make sure your model server is running — for Ollama, start it "
+            "with `ollama serve` (or check CHAT_LOCAL_BASE_URL)."
         )
     return str(e) or type(e).__name__
 
@@ -1820,9 +1827,7 @@ async def stream_chat_completion_baseline(
         # config default is also invalid (deployment-level misconfig caught
         # by the ``model_validator`` at startup).
         tier_default = (
-            config.fast_advanced_model
-            if model == "advanced"
-            else config.fast_standard_model
+            config.tier_model("advanced" if model == "advanced" else "standard") or ""
         )
         try:
             active_model = normalize_model_for_transport(tier_default, config)
@@ -2677,7 +2682,7 @@ async def stream_chat_completion_baseline(
         logger.error("[Baseline] Streaming error: %s", error_msg, exc_info=True)
         if out_of_credits:
             report_provider_out_of_credits(
-                provider=config.effective_transport,
+                provider=config.platform_route,
                 model=active_model,
                 surface="copilot_baseline",
                 error=e,
@@ -2841,7 +2846,7 @@ async def stream_chat_completion_baseline(
                 completion_tokens=state.turn_completion_tokens,
                 cache_read_tokens=state.turn_cache_read_tokens,
                 cache_creation_tokens=state.turn_cache_creation_tokens,
-                cache_ttl=config.baseline_prompt_cache_ttl,
+                cache_ttl=_PROMPT_CACHE_TTL,
             )
             if recovered is not None:
                 state.cost_usd = recovered
@@ -2863,11 +2868,7 @@ async def stream_chat_completion_baseline(
             log_prefix="[Baseline]",
             cost_usd=state.cost_usd,
             model=active_model,
-            provider=(
-                "open_router"
-                if baseline_provider == "openrouter"
-                else config.transport.cost_log_provider
-            ),
+            provider=config.aux_provider_label,
         )
 
         # Persist structured tool-call history (assistant + tool messages)

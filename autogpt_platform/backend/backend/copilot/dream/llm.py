@@ -128,7 +128,7 @@ async def structured_completion(
             timeout_seconds=timeout_seconds,
             # ``call_provider`` only honors ``ollama_host`` when
             # ``provider="ollama"``; passing it on cloud transports is
-            # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``
+            # harmless. ``routing.base_url`` is the ``CHAT_LOCAL_BASE_URL``
             # for local installs (e.g. ``http://localhost:11434/v1``);
             # strip the OpenAI-compat ``/v1`` suffix because
             # ``ollama.AsyncClient`` wants the raw host:port.
@@ -306,9 +306,9 @@ def _missing_api_key_message(provider: ProviderLiteral) -> str:
 
 
 def _normalize_ollama_host(base_url: str | None) -> str:
-    """Turn ``CHAT_BASE_URL`` into the host string ollama.AsyncClient wants.
+    """Turn ``CHAT_LOCAL_BASE_URL`` into the host string ollama.AsyncClient wants.
 
-    ``CHAT_BASE_URL`` for local installs points at the OpenAI-compat
+    ``CHAT_LOCAL_BASE_URL`` for local installs points at the OpenAI-compat
     surface — e.g. ``http://localhost:11434/v1``. Ollama's native
     Python client takes the raw host (no ``/v1`` suffix); pass the
     trailing path through and the client tries to POST to

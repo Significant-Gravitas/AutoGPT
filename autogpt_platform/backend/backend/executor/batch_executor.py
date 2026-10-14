@@ -523,8 +523,8 @@ def _default_api_key_for(provider: ProviderLiteral) -> str | None:
             from backend.copilot.config import ChatConfig
 
             chat = ChatConfig()
-            if chat.direct_anthropic_api_key:
-                return chat.direct_anthropic_api_key
+            if chat.batch_anthropic_api_key:
+                return chat.batch_anthropic_api_key
         except Exception:
             logger.debug("ChatConfig unavailable for batch API key lookup")
         from backend.util.settings import Settings

@@ -7,20 +7,23 @@ Each cell of the ``(mode, tier)`` matrix resolves through three layers:
    slugs directly).
 2. The catalog's routing cell (``catalog.py`` ``routing`` section, surface
    ``"copilot"``) — our cloud's deployment config, shipped with the code.
-3. The static ``ChatConfig`` default (env vars) — the bootstrap floor.
+3. The platform route's tier (``CHAT_STANDARD_MODEL`` /
+   ``CHAT_ADVANCED_MODEL``, else the route's default) — the bootstrap floor.
 
 On our cloud, the registry is the serve-time gate for layers 1 and 2: a slug
 the catalog doesn't know, or one with ``is_enabled=False`` (the kill switch),
 is refused — loudly (log + Sentry) — and resolution falls through to the next
 layer. ``visibility=HIDDEN`` models DO serve when routed: that's the
 pre-launch testing state (registered + routable, not shown in pickers).
-Self-hosted installs and local transports skip the gate entirely (their LD
+Self-hosted installs and the local route skip the gate entirely (their LD
 and env slugs are their own business — the shipped catalog must not veto an
 operator's custom model). An EMPTY registry never gates anything either;
 production processes always load it (fail-hard boot), so that branch is
 defense-in-depth for exotic embedders only.
 
-Matrix:
+Matrix (the SDK engine, which the OpenRouter and Anthropic routes run,
+reads the ``thinking`` row; the baseline engine, the local route's, reads
+``fast``):
 
     +----------+----------+----------+
     |          | standard | advanced |
@@ -182,18 +185,9 @@ async def _registry_refuses(slug: str, layer: RoutingSource) -> str | None:
     return reason
 
 
-def _config_default(config: ChatConfig, mode: ModelMode, tier: ModelTier) -> str:
-    if mode == "fast":
-        return (
-            config.fast_advanced_model
-            if tier == "advanced"
-            else config.fast_standard_model
-        )
-    return (
-        config.thinking_advanced_model
-        if tier == "advanced"
-        else config.thinking_standard_model
-    )
+def _config_default(config: ChatConfig, tier: ModelTier) -> str:
+    """The platform route's model for *tier* (``ChatConfig.tier_model``)."""
+    return config.tier_model(tier) or ""
 
 
 async def _ld_cell_value(mode: ModelMode, tier: ModelTier, user_id: str) -> str | None:
@@ -265,12 +259,12 @@ async def _env_floor(
     refuses it (refusing would leave nothing). A kill switch pointing here
     is an incident the operator must hear about: log + Sentry, then serve.
     """
-    env_slug = _config_default(config, mode, tier).strip()
+    env_slug = _config_default(config, tier)
     if await _registry_refuses(env_slug, "env") is not None:
         logger.error(
             "[model_router] env default %r is refused by the catalog "
             "but served anyway (last-resort floor) — change the "
-            "CHAT_*_MODEL default or the routing cell",
+            "CHAT_STANDARD_MODEL / CHAT_ADVANCED_MODEL or the routing cell",
             env_slug,
         )
     return ResolvedModel(env_slug, "env")
@@ -295,13 +289,12 @@ async def resolve_model_route(
     # - self-hosted installs (behave_as != CLOUD) keep LD/env authority over
     #   their own slugs; the shipped catalog must not veto an operator's
     #   custom model (they can't edit our catalog to register it)
-    # - local transports (Ollama/vLLM) pass slugs through verbatim; catalog
+    # - the local route (Ollama/vLLM) passes slugs through verbatim; catalog
     #   gating would refuse every local model and a cloud-slug cell would
     #   404 at request time
     # Both resolve LD → env, exactly as before the catalog existed.
     gated = (
-        settings.config.behave_as == BehaveAs.CLOUD
-        and config.baseline_provider != "local"
+        settings.config.behave_as == BehaveAs.CLOUD and config.platform_route != "local"
     )
 
     if user_id:
@@ -310,7 +303,7 @@ async def resolve_model_route(
             return ResolvedModel(ld_slug, "ld")
 
     if not gated:
-        return ResolvedModel(_config_default(config, mode, tier).strip(), "env")
+        return ResolvedModel(_config_default(config, tier), "env")
 
     cell_slug = llm_registry.get_route(ROUTE_SURFACE_COPILOT, mode, tier)
     if cell_slug and await _registry_refuses(cell_slug, "catalog") is None:

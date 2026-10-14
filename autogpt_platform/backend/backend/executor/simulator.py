@@ -71,9 +71,8 @@ logger = logging.getLogger(__name__)
 #    Flash-Lite would fail that check, which is why we override
 #    ``execution_mode`` to BUILT_IN below regardless of user choice.
 #
-# Configurable via ``ChatConfig.simulation_model``
-# (``CHAT_SIMULATION_MODEL`` env var); overrides must satisfy
-# constraints (1) and (2).
+# The platform route picks the model (``ChatConfig.simulation_model``):
+# this one on the API routes, the standard tier on local.
 _DEFAULT_SIMULATOR_MODEL = LLMModel.GEMINI_2_5_FLASH_LITE.value
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
@@ -178,8 +177,8 @@ async def _call_llm_for_simulation(
     if client is None:
         raise RuntimeError(
             "[SIMULATOR ERROR — NOT A BLOCK FAILURE] No LLM client available. "
-            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_USE_LOCAL=true with "
-            "CHAT_BASE_URL + CHAT_API_KEY (local). See "
+            "Set OPEN_ROUTER_API_KEY (cloud) or CHAT_PLATFORM_ROUTE=local with "
+            "CHAT_LOCAL_BASE_URL (local). See "
             "docs/platform/copilot-local-llm.md."
         )
 
@@ -195,7 +194,7 @@ async def _call_llm_for_simulation(
     # Ollama's OpenAI shim ignores ``options.num_ctx`` anyway.
     from backend.copilot.sdk.env import config as chat_cfg
 
-    if chat_cfg.transport.name == "local":
+    if chat_cfg.platform_route == "local":
         extra_body: dict[str, Any] = {}
     else:
         # Shallow-copy the constant rather than sharing the reference — see
@@ -537,7 +536,7 @@ def prepare_dry_run(block: Any, input_data: dict[str, Any]) -> dict[str, Any] | 
         # accepts both the snapshot and the OR slug.
         #
         # Fall back to the default if the configured override is malformed
-        # or unmapped — an invalid ``CHAT_SIMULATION_MODEL`` env value
+        # or unmapped — a model the enum does not know (a local tier)
         # shouldn't take out every dry-run.  The default is asserted as
         # ``LLMModel``-parseable by ``TestDefaultSimulatorModel``, so the
         # fallback ``LLMModel(_DEFAULT_SIMULATOR_MODEL)`` cannot raise

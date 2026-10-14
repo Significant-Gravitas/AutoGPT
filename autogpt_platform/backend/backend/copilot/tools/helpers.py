@@ -21,6 +21,7 @@ from backend.copilot.constants import (
 )
 from backend.copilot.context import is_unattended_turn
 from backend.copilot.credential_selection import turn_credential_pins
+from backend.copilot.engine import platform_engine
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 from backend.copilot.sdk.file_ref import FileRefExpansionError, expand_file_refs_in_args
@@ -1537,7 +1538,7 @@ def require_guide_read(session: ChatSession, tool_name: str):
     if session_read_building_guide(session):
         return None
     if session.has_tool_been_called(_ENTER_BUILDING_MODE_TOOL_NAME):
-        if not chat_config.transport.supports_sdk:
+        if platform_engine(chat_config) != "sdk":
             # SDK-less deployment: the enter tool served the guide inline.
             return None
         return ErrorResponse(

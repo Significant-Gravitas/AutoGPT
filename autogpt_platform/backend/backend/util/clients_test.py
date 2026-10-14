@@ -89,12 +89,19 @@ class TestOpenrouterHelperCostProvider:
     def _patch_transport(self, monkeypatch, cfg):
         monkeypatch.setattr("backend.copilot.sdk.env.config", cfg)
 
-    def test_local_transport_is_ollama(self, monkeypatch):
+    def test_local_route_is_local(self, monkeypatch):
         from backend.copilot.config import ChatConfig
 
-        cfg = ChatConfig(use_local=True, api_key="ollama", base_url="http://h:11434/v1")
+        cfg = ChatConfig(
+            platform_route="local",
+            local_base_url="http://h:11434/v1",
+            local_adapter="openai_chat",
+            local_context_tokens=131_072,
+            standard_model="llama3.1:8b",
+            advanced_model="llama3.1:8b",
+        )
         self._patch_transport(monkeypatch, cfg)
-        assert openrouter_helper_cost_provider() == "ollama"
+        assert openrouter_helper_cost_provider() == "local"
 
     def test_subscription_transport_is_open_router(self, monkeypatch):
         """Regression: subscription routes the helper through OpenRouter when
@@ -102,13 +109,7 @@ class TestOpenrouterHelperCostProvider:
         (the transport's ``cost_log_provider``)."""
         from backend.copilot.config import ChatConfig
 
-        cfg = ChatConfig(
-            use_local=False,
-            use_claude_code_subscription=True,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
+        cfg = ChatConfig(platform_route="subscription")
         self._patch_transport(monkeypatch, cfg)
         assert openrouter_helper_cost_provider() == "open_router"
 
@@ -116,14 +117,7 @@ class TestOpenrouterHelperCostProvider:
         from backend.copilot.config import ChatConfig
 
         cfg = ChatConfig(
-            use_local=False,
-            use_openrouter=False,
-            direct_anthropic_api_key="anthropic-key",
-            api_key=None,
-            base_url=None,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
+            platform_route="direct_anthropic", anthropic_api_key="anthropic-key"
         )
         self._patch_transport(monkeypatch, cfg)
         assert openrouter_helper_cost_provider() == "open_router"
@@ -131,11 +125,6 @@ class TestOpenrouterHelperCostProvider:
     def test_openrouter_transport_is_open_router(self, monkeypatch):
         from backend.copilot.config import ChatConfig
 
-        cfg = ChatConfig(
-            use_local=False,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-        )
+        cfg = ChatConfig(platform_route="openrouter", openrouter_api_key="or-key")
         self._patch_transport(monkeypatch, cfg)
         assert openrouter_helper_cost_provider() == "open_router"

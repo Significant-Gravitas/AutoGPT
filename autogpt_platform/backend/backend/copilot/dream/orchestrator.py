@@ -122,9 +122,9 @@ SANITIZE_MAX_TOKENS = 16384
 # test_phase_timeouts_plus_headroom_fit_scheduler_and_lock_envelope —
 # bumping any value here fails that test until the budget is re-balanced.
 #
-# Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
+# Recombine (the advanced tier, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
-# on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
+# on the faster standard tier: 480s covers 16384 at ~34 tok/s.
 # Consolidate's 4096-token budget fits 240s at ~17 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
@@ -535,7 +535,7 @@ async def _run_consolidate(
     """First step: merge near-duplicate recent facts into canonical statements."""
     messages = build_consolidate_prompt(input_bundle)
     return await structured_completion(
-        model=config.fast_standard_model,
+        model=config.job_tier_model("standard"),
         messages=messages,
         response_model=ConsolidationOutput,
         temperature=CONSOLIDATE_TEMP,
@@ -552,7 +552,7 @@ async def _run_recombine(
     """Second step: propose novel connections + weak-link findings."""
     messages = build_recombine_prompt(input_bundle, consolidated.model_dump_json())
     return await structured_completion(
-        model=config.fast_advanced_model,
+        model=config.job_tier_model("advanced"),
         messages=messages,
         response_model=RecombinationOutput,
         temperature=RECOMBINE_TEMP,
@@ -574,7 +574,7 @@ async def _run_sanitize(
         recombined.model_dump_json(),
     )
     return await structured_completion(
-        model=config.fast_standard_model,
+        model=config.job_tier_model("standard"),
         messages=messages,
         response_model=DreamOperations,
         temperature=SANITIZE_TEMP,
@@ -750,7 +750,7 @@ async def _execute_dream_pass_async(
     started_at = datetime.now(timezone.utc)
     monotonic_start = asyncio.get_event_loop().time()
 
-    has_anthropic_key = bool(config.direct_anthropic_api_key)
+    has_anthropic_key = bool(config.batch_anthropic_api_key)
     # Step 5: the async Anthropic batch path is gated by the
     # ``DREAM_PASS_BATCH_ENABLED`` LD flag AND a direct Anthropic key (the
     # native Batch API can't be reached via OpenRouter/subscription, so the
@@ -769,7 +769,7 @@ async def _execute_dream_pass_async(
     execution_path: ExecutionPath = resolve_dream_execution_path(
         has_anthropic_key=has_anthropic_key,
         batch_processing_enabled=batch_enabled,
-        transport_name=config.transport.name,
+        transport_name=config.platform_route,
     )
 
     ttl = _resolve_lock_ttl(transport_is_local)
@@ -1118,7 +1118,7 @@ async def _submit_dream_pass_batch(
         submit_phase,
     )
 
-    api_key = config.direct_anthropic_api_key
+    api_key = config.batch_anthropic_api_key
     if not api_key:
         # Shouldn't happen — routing.py only picks anthropic_batch when
         # the key is present. Guard for type-narrowing + future safety.

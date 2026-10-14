@@ -30,6 +30,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.response_model import (
@@ -41,6 +42,7 @@ from backend.copilot.response_model import (
     StreamToolInputStart,
     StreamToolOutputAvailable,
 )
+from backend.copilot.route_profile import RouteProfile, platform_profile
 from backend.copilot.sdk.compaction import CompactionStats
 from backend.copilot.sdk.service import _RestoreResult, stream_chat_completion_sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
@@ -229,7 +231,9 @@ class TestScenarioNoTranscriptFallback:
     async def test_empty_transcript_content_skips_compaction(self):
         """When transcript_content is empty, _reduce_context goes straight to
         DB fallback without attempting compaction."""
-        ctx = await _reduce_context(transcript_content="", log_prefix="[T4]")
+        ctx = await _reduce_context(
+            transcript_content="", log_prefix="[T4]", profile=scenario_profile()
+        )
         # No transcript → transcript is lost
         assert ctx.transcript_lost is True
 
@@ -284,7 +288,10 @@ class TestScenarioDoubleFailDBFallback:
         # If attempt 2 also fails, the second retry (attempt=2)
         # unconditionally drops the transcript and returns DB fallback
         ctx = await _reduce_context(
-            transcript_content=result, log_prefix="[T5]", attempt=2
+            transcript_content=result,
+            log_prefix="[T5]",
+            profile=scenario_profile(),
+            attempt=2,
         )
         assert ctx.transcript_lost is True
 
@@ -305,7 +312,10 @@ class TestScenarioAllAttemptsExhausted:
         # Even with a non-empty transcript, once compaction was tried
         # (all prior strategies used) we must drop to DB fallback
         ctx = await _reduce_context(
-            transcript_content=transcript, log_prefix="[T6]", attempt=2
+            transcript_content=transcript,
+            log_prefix="[T6]",
+            profile=scenario_profile(),
+            attempt=2,
         )
         assert ctx.transcript_lost is True
 
@@ -357,7 +367,9 @@ class TestScenarioCompactionIdentical:
             return_value=None,
         ):
             ctx = await _reduce_context(
-                transcript_content=transcript, log_prefix="[T7]"
+                transcript_content=transcript,
+                log_prefix="[T7]",
+                profile=scenario_profile(),
             )
 
         # compact_transcript returned None → must drop to DB fallback
@@ -611,16 +623,36 @@ def _make_lock_mock():
     return _lock_factory
 
 
+def scenario_profile(
+    model: str = "claude-sonnet-4-6", route: str = "direct_anthropic"
+) -> RouteProfile:
+    """The route a scenario turn runs on: direct Anthropic unless a test says
+    otherwise, so the turn is priced on the rate card and persisted through
+    ``persist_and_record_usage``. Held to a 200K window with the CLI's own
+    trigger, the shape the scenarios' history sizes were written against.
+    """
+    cfg = ChatConfig(
+        platform_route=route,
+        anthropic_api_key="sk-ant-scenario",
+        openrouter_api_key="sk-or-scenario",
+    )
+    profile = platform_profile(cfg, model, "env")
+    return profile.model_copy(update={"window": 200_000, "trigger_pct": None})
+
+
 def _make_sdk_patches(
     session,
     original_transcript: str,
     compacted_transcript: str | None,
     client_side_effect,
+    *,
+    profile: RouteProfile | None = None,
 ):
     """Return a list of (target, kwargs) tuples for patching service dependencies.
 
     Using a flat list instead of nested ``with`` statements avoids Python's
     20-block nesting limit.  Callers apply them via ``contextlib.ExitStack``.
+    The turn runs on *profile* (default: ``scenario_profile()``).
     """
     return [
         (
@@ -685,13 +717,21 @@ def _make_sdk_patches(
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}.build_sdk_env", dict(return_value={})),
+        (f"{_SVC}.route_launch_env", dict(return_value={})),
+        # The route the turn runs on: model, window, trigger and cost
+        # source all come from it, never from the mocked config below.
+        (
+            f"{_SVC}.resolve_turn_profile",
+            dict(
+                new_callable=AsyncMock,
+                return_value=profile or scenario_profile(),
+            ),
+        ),
         (f"{_SVC}.set_execution_context", {}),
         (
             f"{_SVC}.config",
             dict(
-                api_key="test-key",
-                use_claude_code_subscription=False,
+                platform_route="direct_anthropic",
                 claude_agent_max_buffer_size=100_000,
                 claude_agent_max_subtasks=5,
                 stream_lock_ttl=60,
@@ -700,31 +740,10 @@ def _make_sdk_patches(
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
                 claude_agent_max_budget_usd=100.0,
-                claude_agent_max_thinking_tokens=0,
-                claude_agent_autocompact_pct_override=0,
-                claude_agent_thinking_effort=None,
-                # Real strings: the stamp path canonicalizes the model for
-                # fallback detection; auto-MagicMock attributes would leak
-                # into regex-based comparison.
-                claude_agent_model="claude-sonnet-4-6",
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                # A real string: compaction's model; an auto-MagicMock
+                # would leak into the compressor's call.
+                tier_model=MagicMock(return_value="claude-sonnet-4-6"),
             ),
-        ),
-        # Pin the compaction-target resolvers: _compaction_target_tokens
-        # resolves through the same pin/pct functions as the subprocess,
-        # which would otherwise read auto-MagicMock attributes off the
-        # mocked service config. Values mirror the pre-pin behavior for
-        # the scenario model (catalog 200K window, override pct 0).
-        # Only the service's lazy import site sees these; env.py bound
-        # the real functions at import, so subprocess pinning is
-        # unaffected.
-        (
-            "backend.copilot.sdk.context_window.pinned_context_window",
-            dict(return_value=200_000),
-        ),
-        (
-            "backend.copilot.sdk.context_window.autocompact_pct",
-            dict(return_value=0),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         # Bypass dynamic budget resolution — the helper hits Redis via

@@ -1,10 +1,7 @@
-"""Unit tests for engine routing in the processor.
+"""Unit tests for the copilot processor.
 
-Nothing outside the server can name an engine, so the decision is one
-chain: the SDK kill switch, then a Claude Code subscription, then the
-``COPILOT_SDK`` flag, then the config default. The tests import the real
-production helper from ``processor.py`` so that chain has meaningful
-coverage.
+Nothing outside the server can name an engine: the platform route's row
+decides it (``platform_engine``), and a connected account brings its own.
 """
 
 import asyncio
@@ -19,7 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.config import ChatConfig
+from backend.copilot.engine import platform_engine
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
     CoPilotProcessor,
@@ -67,109 +65,23 @@ def no_trial_attribution(mocker):
     )
 
 
-class TestResolveUseSdk:
-    """Which engine runs a turn — entirely the server's call."""
+class TestPlatformEngine:
+    """Which engine runs a platform-route turn: the route's row, whatever
+    the request or the session's history asked for."""
 
-    @pytest.mark.asyncio
-    async def test_subscription_override_routes_to_sdk(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=True,
-                    config_default=False,
-                )
-                is True
-            )
-
-    @pytest.mark.asyncio
-    async def test_feature_flag_routes_to_sdk(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is True
-            )
-
-    @pytest.mark.asyncio
-    async def test_config_default_is_the_flag_fallback(self):
-        captured: dict[str, object] = {}
-
-        async def _flag(_flag_name, _user, default=False):
-            captured["default"] = default
-            return default
-
-        with patch("backend.copilot.engine.is_feature_enabled", new=_flag):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=True,
-                )
-                is True
-            )
-        assert captured["default"] is True
-
-    @pytest.mark.asyncio
-    async def test_everything_disabled_routes_to_baseline(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is False
-            )
-
-    @pytest.mark.asyncio
-    async def test_thinking_unavailable_forces_baseline(self):
-        """The kill switch wins over subscription and flag alike.
-
-        Set where the SDK transport simply cannot run — today
-        ``CHAT_USE_LOCAL=true``, since Ollama does not speak Anthropic's
-        wire protocol.
-        """
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=True),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    "user-1",
-                    use_claude_code_subscription=True,
-                    config_default=True,
-                    thinking_available=False,
-                )
-                is False
-            )
-
-    @pytest.mark.asyncio
-    async def test_anonymous_user_is_routable(self):
-        with patch(
-            "backend.copilot.engine.is_feature_enabled",
-            new=AsyncMock(return_value=False),
-        ):
-            assert (
-                await resolve_use_sdk(
-                    None,
-                    use_claude_code_subscription=False,
-                    config_default=False,
-                )
-                is False
-            )
+    @pytest.mark.parametrize(
+        "route, engine",
+        [
+            ("openrouter", "sdk"),
+            ("direct_anthropic", "sdk"),
+            ("subscription", "sdk"),
+            ("local", "baseline"),
+            # No platform model: the SDK turn refuses itself.
+            ("disabled", "sdk"),
+        ],
+    )
+    def test_the_route_decides_the_engine(self, route, engine):
+        assert platform_engine(ChatConfig(platform_route=route)) == engine
 
 
 class _TrackedStream:
@@ -1639,76 +1551,6 @@ class TestExecuteSafetyNet:
             assert finished.wait(timeout=5)
         finally:
             pool.shutdown(wait=True)
-
-
-class TestBuildingModeForcesSdk:
-    """Engine pinning: a session whose history shows building mode must run
-    on the SDK engine even when the request asked for Fast."""
-
-    @pytest.mark.asyncio
-    async def test_forces_sdk_when_history_shows_building_mode(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        session = MagicMock()
-        with (
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch(
-                "backend.copilot.tools.helpers.session_entered_building_mode",
-                return_value=True,
-            ),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is True
-
-    @pytest.mark.asyncio
-    async def test_no_force_without_building_history(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        session = MagicMock()
-        with (
-            patch(
-                "backend.copilot.model.get_chat_session",
-                new=AsyncMock(return_value=session),
-            ),
-            patch(
-                "backend.copilot.tools.helpers.session_entered_building_mode",
-                return_value=False,
-            ),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is False
-
-    @pytest.mark.asyncio
-    async def test_missing_session_does_not_force(self):
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-
-        with patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=None),
-        ):
-            assert await _building_mode_forces_sdk("sess-1") is False
-
-    @pytest.mark.asyncio
-    async def test_real_session_with_enter_call_forces_sdk(self):
-        """End-to-end through the real helper: a real ChatSession whose
-        history carries the enter_agent_building_mode call pins the engine."""
-        from backend.copilot.executor.processor import _building_mode_forces_sdk
-        from backend.copilot.model import ChatMessage, ChatSession
-
-        session = ChatSession.new(user_id="user-1", dry_run=False)
-        session.messages = [
-            ChatMessage(
-                role="assistant",
-                content="",
-                tool_calls=[{"function": {"name": "enter_agent_building_mode"}}],
-            )
-        ]
-        with patch(
-            "backend.copilot.model.get_chat_session",
-            new=AsyncMock(return_value=session),
-        ):
-            assert await _building_mode_forces_sdk(session.session_id) is True
 
 
 def test_a_chat_platform_session_promotes_its_envelope_to_tainted():

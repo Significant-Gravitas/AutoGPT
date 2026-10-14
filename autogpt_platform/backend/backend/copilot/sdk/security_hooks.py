@@ -237,7 +237,7 @@ def create_security_hooks(
 
         # Per-session tracking for sub-agent concurrency.
         # Set of tool_use_ids that consumed a slot — len() is the active count.
-        # Sub-agents run in the foreground (build_sdk_env sets
+        # Sub-agents run in the foreground (route_launch_env sets
         # CLAUDE_CODE_DISABLE_BACKGROUND_TASKS), so the Agent/Task call lasts
         # as long as the sub-agent and PostToolUse releases the slot when it
         # finishes.

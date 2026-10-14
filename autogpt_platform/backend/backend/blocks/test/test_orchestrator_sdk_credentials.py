@@ -94,7 +94,9 @@ async def test_anthropic_key_goes_direct_without_oauth():
 @pytest.mark.asyncio
 async def test_openrouter_key_goes_to_openrouter_without_oauth():
     env = await _launch_env("open_router", "sk-or-user-key")
+    # The chat's OpenRouter credential shape: the key as the bearer, the
+    # deployment's inherited key blanked.
     assert env["ANTHROPIC_AUTH_TOKEN"] == "sk-or-user-key"
-    assert env["ANTHROPIC_API_KEY"] == "sk-or-user-key"
-    assert env["ANTHROPIC_BASE_URL"] != _PARENT_ENV["ANTHROPIC_BASE_URL"]
+    assert env["ANTHROPIC_API_KEY"] == ""
+    assert env["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
     assert env["CLAUDE_CODE_OAUTH_TOKEN"] == ""

@@ -1022,8 +1022,8 @@ def _anthropic_api_key() -> str | None:
         from backend.copilot.config import ChatConfig
 
         cfg = ChatConfig()
-        if cfg.direct_anthropic_api_key:
-            return cfg.direct_anthropic_api_key
+        if cfg.batch_anthropic_api_key:
+            return cfg.batch_anthropic_api_key
     except Exception:
         logger.debug("ChatConfig unavailable during dream batch callback")
     try:

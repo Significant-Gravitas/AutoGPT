@@ -61,11 +61,8 @@ def direct_anthropic_env(api_key: str | None) -> dict[str, str]:
     """An Anthropic API key, sent as ``x-api-key`` to api.anthropic.com."""
     if not api_key:
         raise RuntimeError(
-            "No API key configured: the direct-Anthropic route has no API key. "
-            "Set CHAT_DIRECT_ANTHROPIC_API_KEY or ANTHROPIC_API_KEY, set "
-            "OPEN_ROUTER_API_KEY or CHAT_API_KEY to use OpenRouter, or set "
-            "CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true to use a Claude Code "
-            "subscription (requires `claude login`)."
+            "No API key configured: the direct_anthropic route needs "
+            "CHAT_ANTHROPIC_API_KEY."
         )
     return {
         "ANTHROPIC_API_KEY": api_key,
@@ -73,27 +70,3 @@ def direct_anthropic_env(api_key: str | None) -> dict[str, str]:
         "ANTHROPIC_BASE_URL": "",
         **CLAUDE_OAUTH_BLANK,
     }
-
-
-def openrouter_user_key_env(base_url: str, api_key: str) -> dict[str, str]:
-    """A user's own OpenRouter key against OpenRouter's Anthropic endpoint.
-
-    Both auth variables carry the key, so the CLI sends it as ``x-api-key``
-    and as a bearer and OpenRouter accepts either; neither can be inherited
-    from the parent environment.
-    """
-    if not api_key:
-        raise RuntimeError("An OpenRouter launch needs a non-empty API key.")
-    return {
-        "ANTHROPIC_BASE_URL": base_url,
-        "ANTHROPIC_AUTH_TOKEN": api_key,
-        "ANTHROPIC_API_KEY": api_key,
-        **CLAUDE_OAUTH_BLANK,
-    }
-
-
-def attribution_header_env(omit: bool) -> dict[str, str]:
-    """Drop the CLI's per-session billing-header system block when *omit*."""
-    if not omit:
-        return {}
-    return {"CLAUDE_CODE_ATTRIBUTION_HEADER": "0"}

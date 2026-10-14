@@ -6,9 +6,7 @@ import pytest
 
 from .route_credentials import (
     CLAUDE_OAUTH_BLANK,
-    attribution_header_env,
     direct_anthropic_env,
-    openrouter_user_key_env,
     require_local_oauth_base_url,
     require_loopback_http,
     subscription_env,
@@ -97,27 +95,5 @@ class TestDirectAnthropicEnv:
     def test_refuses_without_a_key(self, key):
         """With no key the CLI would fall back to a ``claude login``
         credentials file on the host."""
-        with pytest.raises(RuntimeError, match="direct-Anthropic route has no"):
+        with pytest.raises(RuntimeError, match="CHAT_ANTHROPIC_API_KEY"):
             direct_anthropic_env(key)
-
-
-class TestOpenrouterUserKeyEnv:
-    def test_key_in_both_auth_variables_and_no_oauth(self):
-        assert openrouter_user_key_env("https://openrouter.ai/api", "sk-or-u") == {
-            "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
-            "ANTHROPIC_AUTH_TOKEN": "sk-or-u",
-            "ANTHROPIC_API_KEY": "sk-or-u",
-            **CLAUDE_OAUTH_BLANK,
-        }
-
-    def test_refuses_without_a_key(self):
-        with pytest.raises(RuntimeError, match="non-empty API key"):
-            openrouter_user_key_env("https://openrouter.ai/api", "")
-
-
-class TestAttributionHeaderEnv:
-    def test_off_sets_nothing(self):
-        assert attribution_header_env(False) == {}
-
-    def test_on_disables_the_header(self):
-        assert attribution_header_env(True) == {"CLAUDE_CODE_ATTRIBUTION_HEADER": "0"}

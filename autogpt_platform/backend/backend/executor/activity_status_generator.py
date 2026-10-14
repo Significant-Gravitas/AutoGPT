@@ -41,9 +41,8 @@ _MAX_OUTPUT_TOKENS = 150
 
 # Sentinel for ``generate_activity_status_for_execution.model_name``. The
 # parameter defaults to this for cloud routing. Under the local transport
-# we only override to ``ChatConfig.title_model`` when the caller didn't
-# supply an explicit value — same pattern ``ChatConfig._apply_local_aux_models``
-# uses for ``title_model`` / ``simulation_model``.
+# we only override to the local server's standard tier when the caller didn't
+# supply an explicit value.
 _DEFAULT_MODEL_NAME = "gpt-4o-mini"
 INSUFFICIENT_BALANCE_GUIDANCE = "Please make more credits available and try again."
 INSUFFICIENT_BALANCE_SUMMARY = (
@@ -315,7 +314,7 @@ async def generate_activity_status_for_execution(
     # can record real USD cost in PlatformCostLog; without OpenRouter the
     # upstream platform cost would be tokens-only, so we skip rather than
     # fall back to direct-OpenAI which produces no provider_cost. Under
-    # ``CHAT_USE_LOCAL=true`` the helper instead returns a client pointed at
+    # ``CHAT_PLATFORM_ROUTE=local`` the helper instead returns a client pointed at
     # the operator's Ollama / vLLM / LiteLLM endpoint and we generate the
     # status off the local model — there's no provider_cost field on
     # local-stack usage chunks but the status itself is still useful.
@@ -380,15 +379,14 @@ async def generate_activity_status_for_execution(
             f"Sending prompt to LLM for graph execution {graph_exec_id}: {json.dumps(messages, indent=2)}"
         )
 
-        # Under the local OpenAI-compat transport (CHAT_USE_LOCAL=true) the
+        # Under the local OpenAI-compat transport (CHAT_PLATFORM_ROUTE=local) the
         # client is pointed at Ollama / vLLM / LiteLLM, not OpenRouter:
         #
         # - The hardcoded ``gpt-4o-mini`` default is meaningless against a
         #   local server, and the ``openai/`` prefix coercion would mangle
         #   bare Ollama tags (``qwen3:0.6b`` → ``openai/qwen3:0.6b``) into
-        #   404s. Use ``ChatConfig.title_model`` instead — it auto-derives
-        #   from the operator's chosen ``fast_standard_model`` under
-        #   ``use_local`` and is already shaped for the local backend.
+        #   404s. Use the local server's standard tier instead
+        #   (``CHAT_STANDARD_MODEL``), which the server serves by that name.
         # - ``extra_body={"usage": {"include": True}}`` is OpenRouter's
         #   piggybacked-cost extension; local backends don't implement it
         #   and may reject the request body. Local sends an empty
@@ -400,15 +398,12 @@ async def generate_activity_status_for_execution(
         # ``backend/executor/simulator.py`` — keep the three in sync.
         from backend.copilot.sdk.env import config as chat_cfg
 
-        is_local_transport = chat_cfg.transport.name == "local"
+        is_local_transport = chat_cfg.platform_route == "local"
         if is_local_transport:
-            # Only auto-override to ``chat_cfg.title_model`` when the caller
-            # left ``model_name`` at its cloud-routing default. An explicit
-            # caller-supplied value (e.g. an admin reroute or a test) wins
-            # — we mustn't silently discard it. Same pattern
-            # ``ChatConfig._apply_local_aux_models`` uses for the field defaults.
+            # The local server's standard tier, unless the caller named a
+            # model (an admin reroute or a test), which wins.
             or_model = (
-                chat_cfg.title_model
+                chat_cfg.tier_model("standard") or model_name
                 if model_name == _DEFAULT_MODEL_NAME
                 else model_name
             )

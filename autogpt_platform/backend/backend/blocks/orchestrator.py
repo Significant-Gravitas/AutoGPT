@@ -26,7 +26,10 @@ from backend.blocks._base import (
     BlockType,
 )
 from backend.blocks.agent import AgentExecutorBlock
-from backend.copilot.sdk.env import build_user_key_sdk_env
+from backend.copilot.route_profile import user_key_profile
+from backend.copilot.sdk.env import common_launch_options
+from backend.copilot.sdk.env import config as chat_config
+from backend.copilot.sdk.env import route_launch_env
 from backend.data.dynamic_fields import (
     extract_base_field_name,
     get_dynamic_field_description,
@@ -1618,6 +1621,10 @@ class OrchestratorBlock(Block):
             UserMessage,
         )
 
+        # Deferred like the SDK above: the hooks import the copilot's tool
+        # registry, which imports the blocks.
+        from backend.copilot.sdk.security_hooks import create_security_hooks
+
         # Build MCP server from graph-connected tools
         mcp_server = self._create_graph_mcp_server(
             tool_functions, execution_params, execution_processor
@@ -1645,15 +1652,22 @@ class OrchestratorBlock(Block):
                 ),
             )
             return
-        sdk_env = build_user_key_sdk_env(
-            credentials.provider, credentials.api_key.get_secret_value()
-        )
-
         # Use an execution-specific working directory to prevent concurrent
         # SDK executions from colliding.  tempfile.mkdtemp() respects TMPDIR
         # and works in containerised environments with read-only root filesystems.
         sdk_cwd = tempfile.mkdtemp(
             prefix=f"orchestrator-sdk-{execution_params.graph_exec_id}-"
+        )
+        # The copilot's launch on the same route: the same hardening, window
+        # and trigger. The user's own key goes to OpenRouter or Anthropic,
+        # never to a URL the deployment configured for its own chat.
+        sdk_env = route_launch_env(
+            user_key_profile(
+                credentials.provider,
+                credentials.api_key.get_secret_value(),
+                input_data.model.value or None,
+            ),
+            sdk_cwd=sdk_cwd,
         )
 
         # ``final_response_parts`` is the agent's *final answer* — only the
@@ -1689,6 +1703,13 @@ class OrchestratorBlock(Block):
                 cwd=sdk_cwd,
                 env=sdk_env,
                 model=input_data.model.value or None,
+                hooks=create_security_hooks(
+                    execution_params.user_id,
+                    sdk_cwd=sdk_cwd,
+                    max_subtasks=chat_config.claude_agent_max_subtasks,
+                    allowed_tools=allowed_tools,
+                ),
+                **common_launch_options(),
             )
 
             # Strip system messages from prompt — they're already passed via

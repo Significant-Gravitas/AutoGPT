@@ -28,25 +28,11 @@ from .prompt_origin import (
     split_prompt_origin,
     with_prompt_origin,
 )
+from .route_table import RoutingSource
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 
-
-# The routing layer that picked a turn's model. Defined here — on the
-# persistence model, the lowest layer — so ChatMessage can type its
-# stamped column and model_router / the SDK service import the ONE
-# definition instead of re-declaring the Literal. ("fallback" is stamped,
-# never routed: it marks a CLI 529-overload fallback to a different model.)
-RoutingSource = Literal[
-    "ld",
-    "catalog",
-    "env",
-    "fallback",
-    "preferred",
-    "account_default",
-    "account_available",
-]
 
 # Who opened a session. ``interactive`` means a human is typing into it (web
 # chat, a linked chat platform); ``automation`` means a graph block or a

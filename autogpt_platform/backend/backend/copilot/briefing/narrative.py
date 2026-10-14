@@ -104,7 +104,7 @@ async def compose_narrative(user_id: str, content: BriefingContent) -> str | Non
             break
         try:
             completion = await structured_completion(
-                model=config.title_model,
+                model=config.aux_model or "",
                 messages=[
                     {"role": "system", "content": system},
                     {"role": "user", "content": facts},

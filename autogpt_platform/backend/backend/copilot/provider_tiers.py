@@ -20,7 +20,7 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.engine import platform_engine
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
     ModelMode,
@@ -70,7 +70,7 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     about whether the user may use either provider.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
+    mode = resolve_engine_mode(config)
     platform = await platform_tier_models(mode, user_id, config)
     codex = codex_tier_models(mode)
     return [
@@ -87,19 +87,13 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
     ]
 
 
-async def resolve_engine_mode(user_id: str, config: ChatConfig) -> ModelMode:
-    """One engine decision per response.
+def resolve_engine_mode(config: ChatConfig) -> ModelMode:
+    """The platform route's engine, as the router's mode.
 
-    It is a property of the deployment and the user, not of which connection
-    they pick, so it is resolved once rather than per provider.
+    A property of the deployment, not of which connection a user picks,
+    so it is resolved once rather than per provider.
     """
-    use_sdk = await resolve_use_sdk(
-        user_id,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    return "thinking" if use_sdk else "fast"
+    return "thinking" if platform_engine(config) == "sdk" else "fast"
 
 
 async def platform_tier_models(

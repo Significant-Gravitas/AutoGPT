@@ -13,7 +13,6 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot import config as cfg_mod
 from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
-from backend.copilot.model_router import ResolvedModel
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
@@ -31,13 +30,11 @@ from .service import (
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
-    _normalize_model_name,
     _prepare_file_attachments,
     _raise_deferred_codex_cleanup_error,
     _record_result_usage,
     _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
-    _resolve_sdk_model_for_request,
     _safe_close_sdk_client,
     _strip_synthetic_reprompt_from_cli_jsonl,
 )
@@ -443,313 +440,6 @@ class TestCleanupSdkToolResults:
 # ---------------------------------------------------------------------------
 
 
-class TestNormalizeModelName:
-    """Tests for _normalize_model_name — shared provider-aware normalization."""
-
-    def test_strips_provider_prefix(self, monkeypatch, _clean_config_env):
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            # Pin SDK slugs to anthropic/* so the new
-            # _validate_sdk_model_vendor_compatibility allows construction.
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
-
-    def test_openrouter_keeps_full_slug(self, monkeypatch, _clean_config_env):
-        """OpenRouter routes by ``vendor/model`` slug — keep prefix and dots."""
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert (
-            _normalize_model_name("anthropic/claude-opus-4.6")
-            == "anthropic/claude-opus-4.6"
-        )
-        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
-
-    def test_no_prefix_no_dots(self, monkeypatch, _clean_config_env):
-        from backend.copilot import config as cfg_mod
-
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
-
-
-class TestResolveSdkModelForRequestLdFallback:
-    """``_resolve_sdk_model_for_request`` must fail soft when the LD value
-    can't be normalised for the active routing mode — flagged as MAJOR by
-    CodeRabbit + HIGH by Sentry when it was a hard ValueError."""
-
-    @pytest.mark.asyncio
-    async def test_explicit_claude_agent_model_skips_ld(
-        self, monkeypatch, _clean_config_env
-    ):
-        """``claude_agent_model`` is returned as-is, before any LD lookup."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-opus-4.6",
-            claude_agent_model="claude-sonnet-4-5-20250514",
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-        ld = AsyncMock()
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user", new=ld
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-abc", user_id="user-1"
-            )
-        assert resolved == ("claude-sonnet-4-5-20250514", "env")
-        ld.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_direct_anthropic_mode_rejects_kimi_ld_value_and_falls_back(
-        self, monkeypatch, _clean_config_env
-    ):
-        """LD serves ``moonshotai/kimi-k2.6`` but we're on direct-Anthropic
-        (no OpenRouter key).  ``_normalize_model_name`` raises; the
-        resolver must log + return the config-default path instead of
-        500-ing the turn."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-abc", user_id="user-1"
-            )
-
-        # Fallback == tier-specific config default (thinking_standard_model
-        # normalised to hyphen-form for direct-Anthropic mode) — an env
-        # fallback, so the routing source must NOT claim "ld".
-        assert resolved == ("claude-sonnet-4-6", "env")
-
-    @pytest.mark.asyncio
-    async def test_openrouter_mode_accepts_ld_kimi_value(
-        self, monkeypatch, _clean_config_env
-    ):
-        """On OpenRouter the Kimi slug is legitimate — no fallback,
-        value returned as-is."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-abc", user_id="user-1"
-            )
-        assert resolved == ("moonshotai/kimi-k2.6", "ld")
-
-    @pytest.mark.asyncio
-    async def test_advanced_tier_fallback_uses_advanced_default_not_standard(
-        self, monkeypatch, _clean_config_env
-    ):
-        """An LD-rejected ADVANCED slug must fall back to the advanced
-        config default (Opus) — not the standard default (Sonnet).
-        Falling back to the standard default silently
-        downgraded the user's chosen tier.  Flagged MAJOR by CodeRabbit
-        + HIGH by Sentry on the first fail-soft commit."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4.7",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="advanced", session_id="sess-adv", user_id="user-1"
-            )
-
-        # Direct-Anthropic normalises anthropic/claude-opus-4.7 → claude-opus-4-7
-        assert resolved == ("claude-opus-4-7", "env")
-
-    @pytest.mark.asyncio
-    async def test_standard_ld_override_wins_over_subscription(
-        self, monkeypatch, _clean_config_env
-    ):
-        """Bug reported in local test: subscription mode + LD serving Kimi
-        on ``copilot-model-routing[thinking][standard]`` returned
-        ``None`` (CLI picked subscription default Opus), silently
-        ignoring the LD override.  An LD value different from the
-        config default is an explicit admin decision and must win.
-
-        Subscription transport rejects non-Anthropic vendors (the CLI
-        subprocess can't talk to Moonshot), so the resolver fails soft
-        to the tier default normalised for the subscription transport
-        (``claude-sonnet-4-6``) — not ``None``, which would silently
-        re-introduce the old subscription-default bypass."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(return_value=ResolvedModel("moonshotai/kimi-k2.6", "ld")),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-std-sub", user_id="user-1"
-            )
-        # Kimi can't be served by the subscription CLI; fail-soft to
-        # the tier default normalised for the active transport (env source).
-        assert resolved == ("claude-sonnet-4-6", "env")
-
-    @pytest.mark.asyncio
-    async def test_standard_subscription_survives_trailing_whitespace_in_env(
-        self, monkeypatch, _clean_config_env
-    ):
-        """``_resolve_thinking_model_for_user`` strips whitespace from the LD
-        side; the config tier default must be stripped too, otherwise a
-        stray trailing space in ``CHAT_THINKING_STANDARD_MODEL`` makes
-        ``resolved == tier_default`` spuriously False and bypasses
-        subscription-default mode.  Sentry HIGH on L856."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6  ",  # trailing spaces
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=True,
-            direct_anthropic_api_key="sk-ant-test",
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-ws", user_id="user-1"
-            )
-        assert resolved == (None, "env"), (
-            "LD value semantically matches the whitespace-padded config "
-            "default — subscription mode must still win and return None"
-        )
-
-    @pytest.mark.asyncio
-    async def test_standard_subscription_default_honoured_when_ld_matches_config(
-        self, monkeypatch, _clean_config_env
-    ):
-        """When LD serves the SAME value as the config default (i.e. the
-        flag is effectively unset / no override), subscription mode still
-        wins and we return ``None`` so the CLI uses the subscription
-        default model."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=True,
-            direct_anthropic_api_key="sk-ant-test",
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "ld")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-std-nop", user_id="user-1"
-            )
-        assert resolved == (None, "env")
-
-    @pytest.mark.asyncio
-    async def test_advanced_tier_consults_ld_under_subscription(
-        self, monkeypatch, _clean_config_env
-    ):
-        """Subscription mode bypasses LD only on the standard tier —
-        the advanced tier always consults LD because the user explicitly
-        asked for the premium path.  A subscription + advanced request
-        with LD-served Opus must return Opus normalised for the
-        subscription CLI (``claude-opus-4-7``), not the OpenRouter slug
-        ``anthropic/claude-opus-4.7`` which the CLI subprocess rejects
-        even when ``CHAT_BASE_URL`` is set to the OpenRouter proxy."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4.7",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="advanced", session_id="sess-adv-sub", user_id="user-1"
-            )
-        assert resolved == ("claude-opus-4-7", "ld")
-
-
 # ---------------------------------------------------------------------------
 # _is_sdk_disconnect_error — classify client disconnect cleanup errors
 # ---------------------------------------------------------------------------
@@ -883,55 +573,21 @@ class TestSystemPromptValue:
         assert result == custom_prompt
 
     def test_default_config_sends_a_live_prompt(self, _clean_config_env):
-        cfg = cfg_mod.ChatConfig(
-            _env_file=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
+        cfg = cfg_mod.ChatConfig(_env_file=None)
         assert cfg.claude_agent_live_system_prompt is True
 
     def test_env_var_turns_the_live_prompt_off(self, _clean_config_env, monkeypatch):
         monkeypatch.setenv("CHAT_CLAUDE_AGENT_LIVE_SYSTEM_PROMPT", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
+        cfg = cfg_mod.ChatConfig()
         assert cfg.claude_agent_live_system_prompt is False
 
     def test_default_config_strips_prompt_snapshots(self, _clean_config_env):
-        cfg = cfg_mod.ChatConfig(
-            _env_file=None,
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
+        cfg = cfg_mod.ChatConfig(_env_file=None)
         assert cfg.claude_agent_strip_prompt_snapshots is True
 
     def test_env_var_turns_the_snapshot_strip_off(self, _clean_config_env, monkeypatch):
         monkeypatch.setenv("CHAT_CLAUDE_AGENT_STRIP_PROMPT_SNAPSHOTS", "false")
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            aux_api_key="or-aux-key",
-        )
+        cfg = cfg_mod.ChatConfig()
         assert cfg.claude_agent_strip_prompt_snapshots is False
 
     def test_configured_prompt_follows_the_live_switch(self, monkeypatch):

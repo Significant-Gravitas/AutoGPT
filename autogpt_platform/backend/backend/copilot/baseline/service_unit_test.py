@@ -34,6 +34,7 @@ from backend.copilot.baseline.service import (
     _supports_prompt_cache_markers,
     stream_chat_completion_baseline,
 )
+from backend.copilot.config import ChatConfig
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
 from backend.copilot.model import ChatMessage, ChatSession
@@ -51,6 +52,18 @@ from backend.copilot.token_tracking import _extract_cache_creation_tokens
 from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.util.prompt import CompressResult
 from backend.util.tool_call_loop import LLMLoopResponse, LLMToolCall, ToolCallResult
+
+
+def _route(name: str):
+    """Put the baseline engine on the *name* platform route."""
+    return patch(
+        "backend.copilot.baseline.service.config",
+        ChatConfig(
+            platform_route=name,
+            openrouter_api_key="or-key",
+            anthropic_api_key="ant-key",
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -904,10 +917,7 @@ class TestBaselineCostExtraction:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                False,
-            ),
+            _route("direct_anthropic"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1134,10 +1144,7 @@ class TestBaselineCostExtraction:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                False,
-            ),
+            _route("direct_anthropic"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1185,18 +1192,7 @@ class TestBaselineCostExtraction:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                True,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.api_key",
-                "or-key",
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -1547,20 +1543,15 @@ class TestApplyPromptCacheMarkers:
         assert not _is_anthropic_model("moonshotai/kimi-k2-thinking")
         assert not _is_anthropic_model("kimi-k2-instruct")
 
-    def test_cache_control_uses_configured_ttl(self, monkeypatch):
-        """TTL comes from ChatConfig.baseline_prompt_cache_ttl — defaults
-        to 1h so the static prefix (system + tools) stays warm across
-        workspace users past the 5-min default window."""
+    def test_cache_control_uses_the_hour_ttl(self):
+        """The static prefix (system + tools) is cached for an hour so it
+        stays warm across workspace users past the 5-min default window;
+        the cost rate card prices those writes at the hour rate."""
         from backend.copilot.baseline import service as bsvc
 
-        assert bsvc.config.baseline_prompt_cache_ttl == "1h"
+        assert bsvc._PROMPT_CACHE_TTL == "1h"
         cc = bsvc._fresh_ephemeral_cache_control()
         assert cc == {"type": "ephemeral", "ttl": "1h"}
-        monkeypatch.setattr(bsvc.config, "baseline_prompt_cache_ttl", "5m")
-        assert bsvc._fresh_ephemeral_cache_control() == {
-            "type": "ephemeral",
-            "ttl": "5m",
-        }
 
     def test_fresh_helpers_return_distinct_objects(self):
         """Regression guard: the `_fresh_*` helpers must return a NEW dict
@@ -1961,18 +1952,7 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                True,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.api_key",
-                "or-key",
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2001,10 +1981,7 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                False,
-            ),
+            _route("direct_anthropic"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2025,7 +2002,7 @@ class TestBaselineReasoningStreaming:
 
     @pytest.mark.asyncio
     async def test_thinking_budget_clamped_to_model_max_in_direct_mode(self):
-        """When the operator-configured thinking budget exceeds the model's
+        """When the route's thinking budget exceeds the model's
         ``max_output_tokens`` ceiling, both the ``thinking.budget_tokens``
         parameter and ``max_tokens`` must be clamped so the
         ``max_tokens > budget_tokens`` and ``max_tokens <= model_max``
@@ -2042,17 +2019,10 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                False,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
-                128_000,  # well above any current Claude max_output_tokens
-            ),
+            _route("direct_anthropic"),
             patch(
                 "backend.copilot.baseline.service.get_max_output_tokens",
-                return_value=32_000,  # opus-4-x published ceiling
+                return_value=4_096,  # below the route's thinking budget
             ),
         ):
             await _baseline_llm_caller(
@@ -2066,12 +2036,12 @@ class TestBaselineReasoningStreaming:
         budget = extra_body["thinking"]["budget_tokens"]
         max_tokens = call_kwargs["max_tokens"]
         # Both stay at/under the model ceiling — overflow would 400 Anthropic.
-        assert max_tokens <= 32_000
+        assert max_tokens <= 4_096
         assert budget < max_tokens
         # Budget is clamped to model_max - 1 so max_tokens=model_max satisfies
         # the strict ``max_tokens > budget`` requirement.
-        assert budget == 31_999
-        assert max_tokens == 32_000
+        assert budget == 4_095
+        assert max_tokens == 4_096
 
     @pytest.mark.asyncio
     async def test_max_tokens_absent_on_openrouter_thinking_route(self):
@@ -2090,18 +2060,7 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                True,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.api_key",
-                "or-key",
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2132,12 +2091,7 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", True),
-            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2169,18 +2123,7 @@ class TestBaselineReasoningStreaming:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch(
-                "backend.copilot.baseline.service.config.use_openrouter",
-                True,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.api_key",
-                "or-key",
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[
@@ -2259,50 +2202,6 @@ class TestBaselineReasoningStreaming:
         # No text was produced — no text events should be emitted.
         assert "StreamTextStart" not in types
         assert "StreamTextDelta" not in types
-
-    @pytest.mark.asyncio
-    async def test_reasoning_param_suppressed_when_thinking_tokens_zero(self):
-        """Operator kill switch: setting ``claude_agent_max_thinking_tokens``
-        to 0 removes both the OR ``reasoning`` and the Anthropic-native
-        ``thinking`` fragments from ``extra_body`` regardless of transport.
-        Restores the zero-disables behaviour the old
-        ``baseline_reasoning_max_tokens`` config used to provide."""
-        state = _BaselineStreamState(model="anthropic/claude-sonnet-4-6")
-
-        mock_client = MagicMock()
-        mock_client.chat.completions.create = AsyncMock(
-            return_value=_make_stream_mock()
-        )
-
-        # Pin the OpenRouter transport so ``extra_body`` is always built (and
-        # the kill switch's suppression is observable on a populated dict) —
-        # fork-PR CI has no LLM creds, which would otherwise drop the transport
-        # to direct_anthropic and omit ``extra_body``, KeyErroring the assert.
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_main_client",
-                return_value=mock_client,
-            ),
-            patch(
-                "backend.copilot.baseline.service.config.claude_agent_max_thinking_tokens",
-                0,
-            ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", True),
-            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
-        ):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
-
-        extra_body = mock_client.chat.completions.create.call_args[1]["extra_body"]
-        assert "reasoning" not in extra_body
-        assert "thinking" not in extra_body
 
     @pytest.mark.asyncio
     async def test_reasoning_persists_to_state_session_messages(self):
@@ -2515,9 +2414,7 @@ class TestStreamOptionsGating:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", False),
-            patch("backend.copilot.baseline.service.config.api_key", "ant-key"),
-            patch("backend.copilot.baseline.service.config.base_url", None),
+            _route("direct_anthropic"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2541,12 +2438,7 @@ class TestStreamOptionsGating:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", True),
-            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],
@@ -2565,6 +2457,18 @@ class TestDirectModeProviderLabel:
     """persist_and_record_usage must receive provider='anthropic' in direct mode
     and provider='open_router' in OR mode."""
 
+    @pytest.mark.parametrize(
+        "route, provider",
+        [
+            ("openrouter", "openrouter"),
+            ("direct_anthropic", "anthropic"),
+            ("subscription", "anthropic"),
+        ],
+    )
+    def test_the_route_decides_the_wire_dialect(self, route, provider):
+        cfg = ChatConfig(platform_route=route)
+        assert cfg.baseline_provider == provider
+
     @pytest.mark.asyncio
     async def test_provider_label_is_anthropic_in_direct_mode(self):
         state = _BaselineStreamState(model="claude-sonnet-4-6")
@@ -2580,9 +2484,7 @@ class TestDirectModeProviderLabel:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", False),
-            patch("backend.copilot.baseline.service.config.api_key", "ant-key"),
-            patch("backend.copilot.baseline.service.config.base_url", None),
+            _route("direct_anthropic"),
             patch(
                 "backend.copilot.baseline.service.persist_and_record_usage"
             ) as mock_persist,
@@ -2604,22 +2506,6 @@ class TestDirectModeProviderLabel:
         assert state.cost_usd is not None
         assert state.cost_usd > 0
 
-    @pytest.mark.asyncio
-    async def test_openrouter_active_false_when_no_base_url(self):
-        """Config.openrouter_active is False when base_url is None (direct mode),
-        so the provider='anthropic' branch is taken."""
-        from backend.copilot.config import ChatConfig
-
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key="ant-key",
-            base_url=None,
-            aux_api_key=None,
-            aux_base_url=None,
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        assert not cfg.openrouter_active
-
 
 class TestDirectModeCostRecoveryOnMissingUsageChunk:
     """When the stream ends without a usage chunk, direct mode must still
@@ -2640,9 +2526,7 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", False),
-            patch("backend.copilot.baseline.service.config.api_key", "ant-key"),
-            patch("backend.copilot.baseline.service.config.base_url", None),
+            _route("direct_anthropic"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hello world"}],
@@ -2673,12 +2557,7 @@ class TestDirectModeCostRecoveryOnMissingUsageChunk:
                 "backend.copilot.baseline.service._get_main_client",
                 return_value=mock_client,
             ),
-            patch("backend.copilot.baseline.service.config.use_openrouter", True),
-            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
-            patch(
-                "backend.copilot.baseline.service.config.base_url",
-                "https://openrouter.ai/api/v1",
-            ),
+            _route("openrouter"),
         ):
             await _baseline_llm_caller(
                 messages=[{"role": "user", "content": "hi"}],

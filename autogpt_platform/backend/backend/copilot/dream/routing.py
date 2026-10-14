@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from backend.copilot.config import TransportName
+from backend.copilot.route_table import PlatformRoute
 
 # Kept in sync with ``model_pricing.ExecutionPath`` so the discount
 # table in model_pricing.py reads our chosen path directly. If you add
@@ -30,7 +30,7 @@ ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
 # - ``"local"`` — local backends (Ollama, vLLM, …) don't expose batch
 #   endpoints; even if the operator set ``ANTHROPIC_API_KEY`` for some
 #   unrelated reason, the dream pass should stay on the local LLM that
-#   the rest of the install uses (and that ``CHAT_USE_LOCAL=true``
+#   the rest of the install uses (and that ``CHAT_PLATFORM_ROUTE=local``
 #   explicitly opted in to).
 # - ``"subscription"`` — the chat layer authenticates via Claude Code
 #   OAuth (no API key); dual-billing the user's Anthropic API key for
@@ -38,7 +38,7 @@ ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
 #   audit trail across two surfaces. Force sync so dream + chat
 #   continue to roll up under the same provider label
 #   (``cost_log_provider="anthropic"``).
-_TRANSPORTS_FORCE_SYNC: frozenset[TransportName] = frozenset({"local", "subscription"})
+_TRANSPORTS_FORCE_SYNC: frozenset[PlatformRoute] = frozenset({"local", "subscription"})
 
 
 def resolve_dream_execution_path(
@@ -46,7 +46,7 @@ def resolve_dream_execution_path(
     has_anthropic_key: bool,
     has_openai_key: bool = False,
     batch_processing_enabled: bool = False,
-    transport_name: TransportName | None = None,
+    transport_name: PlatformRoute | None = None,
 ) -> ExecutionPath:
     """Pick the dream pass execution path.
 

@@ -760,14 +760,14 @@ def _trusted_ollama_hostnames() -> list[str]:
     both are equally trusted:
 
       * ``Config.ollama_host`` — the block layer's Ollama setting.
-      * ``ChatConfig.base_url`` (``CHAT_BASE_URL``) — the copilot chat
+      * the local route's URL (``CHAT_LOCAL_BASE_URL``) — the copilot chat
         endpoint, which the dream pass normalizes into ``ollama_host``
         on the local transport.
 
     Deriving the allowlist from only the former made every local dream
     phase fail the SSRF check whenever the two were configured
     differently (e.g. backend in Docker with
-    ``CHAT_BASE_URL=http://host.docker.internal:11434/v1`` while
+    ``CHAT_LOCAL_BASE_URL=http://host.docker.internal:11434/v1`` while
     ``Config.ollama_host`` sat at its ``localhost:11434`` default).
     """
     trusted = [settings.config.ollama_host]
@@ -789,7 +789,7 @@ def _chat_config_base_url() -> str | None:
         return _read_chat_config_base_url()
     except Exception:
         logger.warning(
-            "Could not read ChatConfig.base_url for the Ollama trusted-host "
+            "Could not read the local route's URL for the Ollama trusted-host "
             "list; falling back to Config.ollama_host only.",
             exc_info=True,
         )
@@ -798,7 +798,7 @@ def _chat_config_base_url() -> str | None:
 
 @functools.lru_cache(maxsize=1)
 def _read_chat_config_base_url() -> str | None:
-    """Construct ``ChatConfig`` once and memoize its ``base_url``.
+    """Construct ``ChatConfig`` once and memoize the local route's URL.
 
     ``ChatConfig`` is a pydantic-settings class with ``env_file=".env"``,
     so each construction does synchronous dotenv disk I/O plus the full
@@ -811,7 +811,7 @@ def _read_chat_config_base_url() -> str | None:
     """
     from backend.copilot.config import ChatConfig
 
-    return ChatConfig().base_url
+    return ChatConfig().local_openai_base_url
 
 
 # ---------------------------------------------------------------------------

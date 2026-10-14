@@ -190,15 +190,19 @@ class TestMakeFlexGraphitiClient:
     async def test_returns_regular_openaiclient_when_flex_unsupported(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """``CHAT_USE_LOCAL=true`` → ``transport.supports_flex_tier``
-        is False → fall back to the cached non-flex client so the
-        rebuild runs at sync price instead of 404-ing."""
+        """``CHAT_PLATFORM_ROUTE=local`` → the route's
+        ``supports_flex_tier`` is False → fall back to the cached
+        non-flex client so the rebuild runs at sync price instead of
+        404-ing."""
         _patch_chat_cfg(
             monkeypatch,
             ChatConfig(
-                use_local=True,
-                api_key="ollama-placeholder",
-                base_url="http://localhost:11434/v1",
+                platform_route="local",
+                local_base_url="http://localhost:11434/v1",
+                local_adapter="openai_chat",
+                local_context_tokens=131_072,
+                standard_model="llama3.1:8b",
+                advanced_model="llama3.1:8b",
             ),
         )
         captured: dict = {}
@@ -234,7 +238,7 @@ class TestMakeFlexGraphitiClient:
         assert regular_sentinel.called, "expected fallback to regular OpenAIClient"
         assert (
             not flex_sentinel.called
-        ), "flex client must not be constructed under local transport"
+        ), "flex client must not be constructed on the local route"
         # And the constructed instance was passed into _build_graphiti.
         assert captured["llm_client"] is regular_sentinel.return_value
 
@@ -242,15 +246,11 @@ class TestMakeFlexGraphitiClient:
     async def test_returns_flex_client_when_transport_supports_flex(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """OpenRouter transport keeps the flex tier — the gate only
-        kicks in for non-flex-capable transports."""
+        """The OpenRouter route keeps the flex tier — the gate only
+        kicks in for routes that cannot honour it."""
         _patch_chat_cfg(
             monkeypatch,
-            ChatConfig(
-                use_openrouter=True,
-                api_key="or-key",
-                base_url="https://openrouter.ai/api/v1",
-            ),
+            ChatConfig(platform_route="openrouter", openrouter_api_key="or-key"),
         )
         captured: dict = {}
 

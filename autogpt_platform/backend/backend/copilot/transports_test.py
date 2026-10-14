@@ -7,6 +7,7 @@ import pytest_mock
 from pydantic import SecretStr
 
 from backend.copilot import transports
+from backend.copilot.config import ChatConfig
 from backend.copilot.transports import (
     DefaultChatRoute,
     InvalidDefaultChatRoute,
@@ -70,6 +71,11 @@ def transport_env(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(
         transports,
+        "config",
+        ChatConfig(platform_route="openrouter", openrouter_api_key="sk-or-test"),
+    )
+    mocker.patch.object(
+        transports,
         "has_codex_access_for_discovery",
         new=AsyncMock(return_value=True),
     )
@@ -103,11 +109,9 @@ def _saved(auth_provider: str | None, credential_id: str | None = None) -> None:
 
 def _self_hosted_without_deployment(mocker: pytest_mock.MockerFixture) -> None:
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.LOCAL)
-    chat_config = MagicMock()
-    chat_config.test_mode = False
-    chat_config.use_claude_code_subscription = False
-    chat_config.main_client_credentials = (None, "https://api.anthropic.com/v1/")
-    mocker.patch.object(transports, "config", chat_config)
+    mocker.patch.object(
+        transports, "config", ChatConfig(platform_route="disabled", test_mode=False)
+    )
 
 
 def _default_of(transport_list) -> tuple[str, str | None] | None:

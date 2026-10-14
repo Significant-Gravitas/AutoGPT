@@ -21,7 +21,7 @@ from backend.api.features.experts.roster import load_roster
 from backend.api.features.experts.roster_types import RosterEntry
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.engine import platform_engine
 from backend.copilot.expert_context import (
     render_account_standing_work_block,
     render_expert_computer_block,
@@ -175,13 +175,7 @@ async def resolve_chat_model(config: ChatConfig) -> RoutedModel:
     router's ``(mode, standard)`` cell. No user id, so LaunchDarkly is
     skipped and this is the catalog/env layer; a proposed LD value is
     checked by hand with ``--model``."""
-    use_sdk = await resolve_use_sdk(
-        None,
-        use_claude_code_subscription=config.use_claude_code_subscription,
-        config_default=config.use_claude_agent_sdk,
-        thinking_available=config.thinking_available,
-    )
-    mode: ModelMode = "thinking" if use_sdk else "fast"
+    mode: ModelMode = "thinking" if platform_engine(config) == "sdk" else "fast"
     route = await resolve_model_route(mode, "standard", None, config=config)
     return RoutedModel(
         mode=mode,

@@ -110,7 +110,7 @@ async def generate_embedding(text: str) -> list[float]:
     """
     client = get_openai_client()
     if not client:
-        # ``get_openai_client`` already honors ``CHAT_USE_LOCAL`` first, so
+        # ``get_openai_client`` already honors the local route first, so
         # reaching None here means *no* embedding backend is configured at
         # all. Hybrid search wraps this in try/except and degrades to
         # lexical-only — the raise is still useful so direct callers
@@ -119,7 +119,7 @@ async def generate_embedding(text: str) -> list[float]:
         raise RuntimeError(
             "No embedding-capable LLM client configured. Set ONE of: "
             "OPENAI_INTERNAL_API_KEY, OPEN_ROUTER_API_KEY, or "
-            "CHAT_USE_LOCAL=true with a CHAT_BASE_URL that exposes "
+            "CHAT_PLATFORM_ROUTE=local with a CHAT_LOCAL_BASE_URL that exposes "
             "/v1/embeddings (vLLM / LiteLLM proxy / Azure OpenAI / "
             "Ollama with an embedding model pulled). Override the model "
             "via STORE_EMBEDDING_MODEL (must emit 1536-dim vectors to "

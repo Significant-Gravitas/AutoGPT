@@ -18,7 +18,7 @@ from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import transports as chat_transports
-from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.config import ChatConfig, CopilotLlmAuthProvider
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
@@ -107,6 +107,12 @@ def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     )
     mocker.patch.object(chat_routes.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.CLOUD)
+    # The hosted deployment's own chat model.
+    mocker.patch.object(
+        chat_transports,
+        "config",
+        ChatConfig(platform_route="openrouter", openrouter_api_key="k"),
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -1361,13 +1367,10 @@ def _set_self_hosted_chat_config(
     configured: bool,
 ) -> None:
     mocker.patch.object(chat_transports.settings.config, "behave_as", BehaveAs.LOCAL)
-    self_hosted_config = MagicMock()
-    self_hosted_config.test_mode = False
-    self_hosted_config.use_claude_code_subscription = False
-    self_hosted_config.main_client_credentials = (
-        ("configured-key", "http://llm.example/v1")
+    self_hosted_config = (
+        ChatConfig(platform_route="openrouter", openrouter_api_key="configured-key")
         if configured
-        else (None, "https://api.anthropic.com/v1/")
+        else ChatConfig(platform_route="disabled", test_mode=False)
     )
     mocker.patch.object(chat_transports, "config", self_hosted_config)
 

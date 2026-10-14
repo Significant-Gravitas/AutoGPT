@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot import config as cfg_mod
 from backend.copilot.config import ChatConfig
+from backend.copilot.route_profile import RouteProfile, codex_profile, platform_profile
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     compress_context,
@@ -25,29 +25,35 @@ from backend.util.prompt import (
 
 from ..constants import COPILOT_ERROR_PREFIX
 from ..model import ChatMessage, ChatSession
-from ..model_router import ResolvedModel
 from ..transcript_builder import TranscriptBuilder
 from .compaction import CompactionStats, CompactionTracker
 from .conftest import build_test_transcript as _build_transcript
 from .service import (
     ReducedContext,
     _build_query_message,
-    _compaction_target_tokens,
     _compress_messages,
     _compression_model,
     _context_limit_without_compaction,
     _expect_pre_query_compaction,
     _is_prompt_too_long,
     _iter_sdk_messages,
-    _normalize_model_name,
     _reduce_context,
-    _resolve_sdk_model_for_request,
     _restore_cli_session_for_turn,
     _retry_reduced_context,
-    _retry_target_tokens,
     _TokenUsage,
     _will_compact,
 )
+
+
+def _profile(
+    model: str = "claude-sonnet-4-6", route: str = "direct_anthropic"
+) -> RouteProfile:
+    """A turn's route profile for *model* on the platform *route*."""
+    cfg = ChatConfig(
+        platform_route=route, anthropic_api_key="k", openrouter_api_key="k"
+    )
+    return platform_profile(cfg, model, "env")
+
 
 # ---------------------------------------------------------------------------
 # _is_prompt_too_long
@@ -148,7 +154,7 @@ class TestReduceContext:
                 return_value=True,
             ),
         ):
-            ctx = await _reduce_context(transcript, "[test]")
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert isinstance(ctx, ReducedContext)
         assert ctx.transcript_lost is False
@@ -161,7 +167,7 @@ class TestReduceContext:
         transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
         compacted = _build_transcript([("user", "hi"), ("assistant", "[summary]")])
         compact = AsyncMock(return_value=compacted)
-        model = "anthropic/claude-sonnet-5-5"
+        profile = _profile("anthropic/claude-sonnet-5-5", "openrouter")
 
         with (
             patch("backend.copilot.sdk.service.compact_transcript", new=compact),
@@ -170,10 +176,10 @@ class TestReduceContext:
                 return_value=True,
             ),
         ):
-            ctx = await _reduce_context(transcript, "[test]", runtime_model=model)
+            ctx = await _reduce_context(transcript, "[test]", profile=profile)
 
         assert ctx.transcript_lost is False
-        assert ctx.target_tokens == _compaction_target_tokens(model)
+        assert ctx.target_tokens == profile.compaction_target_tokens()
         assert ctx.target_tokens == compact.await_args.kwargs["target_tokens"]
 
     @pytest.mark.asyncio
@@ -185,7 +191,7 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(transcript, "[test]")
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
@@ -195,14 +201,16 @@ class TestReduceContext:
         compact = AsyncMock()
 
         with patch("backend.copilot.sdk.service.compact_transcript", new=compact):
-            ctx = await _reduce_context(transcript, "[test]", attempt=2)
+            ctx = await _reduce_context(
+                transcript, "[test]", profile=_profile(), attempt=2
+            )
 
         compact.assert_not_awaited()
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
     async def test_empty_transcript_drops(self) -> None:
-        ctx = await _reduce_context("", "[test]")
+        ctx = await _reduce_context("", "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
@@ -215,7 +223,7 @@ class TestReduceContext:
             new_callable=AsyncMock,
             return_value=transcript,  # same content
         ):
-            ctx = await _reduce_context(transcript, "[test]")
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
@@ -236,27 +244,104 @@ class TestReduceContext:
                 return_value=False,
             ),
         ):
-            ctx = await _reduce_context(transcript, "[test]")
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_1(self) -> None:
-        ctx = await _reduce_context("", "[t]", attempt=1)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=1)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _retry_target_tokens(None)[0]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[0]
 
     @pytest.mark.asyncio
     async def test_drop_returns_target_tokens_attempt_2(self) -> None:
-        ctx = await _reduce_context("", "[t]", attempt=2)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=2)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _retry_target_tokens(None)[1]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[1]
 
     @pytest.mark.asyncio
     async def test_drop_clamps_attempt_beyond_limits(self) -> None:
-        ctx = await _reduce_context("", "[t]", attempt=99)
+        ctx = await _reduce_context("", "[t]", profile=_profile(), attempt=99)
         assert ctx.transcript_lost is True
-        assert ctx.target_tokens == _retry_target_tokens(None)[-1]
+        assert ctx.target_tokens == _profile().retry_target_tokens()[-1]
+
+
+class TestCompactionTargetTokens:
+    """The retry's compaction target sits below the CLI's own threshold for
+    the turn's window and trigger, on every route."""
+
+    @pytest.mark.parametrize(
+        ("trigger", "expected"),
+        [
+            # 200K window with a 50% trigger -> CLI threshold 100K -> 80K
+            (50, 80_000),
+            # No trigger: the CLI's default (window - 13K = 187K) -> 167K
+            (None, 167_000),
+            # An aggressive 30% -> CLI threshold 60K -> 40K
+            (30, 40_000),
+        ],
+    )
+    def test_target_below_the_cli_threshold(self, trigger, expected) -> None:
+        profile = _profile().model_copy(
+            update={"window": 200_000, "trigger_pct": trigger}
+        )
+        assert profile.compaction_target_tokens() == expected
+
+    def test_openrouter_sonnet_compacts_at_half_its_window(self) -> None:
+        profile = _profile("anthropic/claude-sonnet-4-6", "openrouter")
+        assert (profile.window, profile.trigger_pct) == (200_000, 50)
+        assert profile.compaction_target_tokens() == 80_000
+
+    def test_moonshot_uses_the_cli_default_threshold(self) -> None:
+        # A Moonshot SKU keeps the CLI's own trigger on OpenRouter.
+        profile = _profile("moonshotai/kimi-k2.6", "openrouter")
+        assert profile.trigger_pct is None
+        assert profile.compaction_target_tokens() == profile.window - 13_000 - 20_000
+
+    @pytest.mark.parametrize("model", ["gpt-6-astra", "moonshotai/kimi-k2.6"])
+    def test_codex_compacts_at_its_engine_default(self, model) -> None:
+        # min(272000*90//100, 272000-13000) - 20000 = 224800, whatever the
+        # slug looks like: the Codex route keeps its own trigger.
+        profile = codex_profile(
+            model, effort=None, routing_source="env", codex_engine=None
+        )
+        assert profile.compaction_target_tokens() == 224_800
+
+    def test_floor_at_10k_for_an_extremely_aggressive_trigger(self) -> None:
+        # 1% of a 50K window -> CLI threshold 500 -> negative without the floor.
+        profile = _profile().model_copy(update={"window": 50_000, "trigger_pct": 1})
+        assert profile.compaction_target_tokens() == 10_000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "profile",
+        [
+            _profile("moonshotai/kimi-k2.6", "openrouter"),
+            codex_profile(
+                "gpt-6-astra", effort=None, routing_source="env", codex_engine=None
+            ),
+        ],
+        ids=["kimi", "codex"],
+    )
+    async def test_reduce_context_sizes_the_target_for_the_turns_route(
+        self, profile
+    ) -> None:
+        """The compactor LLM is fixed, but the target is sized for the route
+        the CLI is actually serving: its window and trigger."""
+        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
+        captured: dict = {}
+
+        async def fake_compact(content, *, model, log_prefix, target_tokens):
+            captured["target_tokens"] = target_tokens
+            return None
+
+        with patch(
+            "backend.copilot.sdk.service.compact_transcript", side_effect=fake_compact
+        ):
+            await _reduce_context(transcript, "[t]", profile=profile)
+
+        assert captured["target_tokens"] == profile.compaction_target_tokens()
 
 
 # ---------------------------------------------------------------------------
@@ -380,297 +465,15 @@ class TestIterSdkMessages:
 # ---------------------------------------------------------------------------
 
 
-class TestNormalizeModelName:
-    """Unit tests for the model-name normalisation helper.
-
-    The per-request model toggle calls _normalize_model_name with either
-    ``config.thinking_advanced_model`` (for 'advanced') or
-    ``config.thinking_standard_model`` (for 'standard').  These tests verify
-    the OpenRouter/direct-Anthropic split: OpenRouter routes by full
-    ``vendor/model`` slug, while direct-Anthropic strips the prefix and
-    converts dots to hyphens.
-    """
-
-    @pytest.fixture
-    def _direct_anthropic_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Force ``config.openrouter_active = False`` for prefix-strip tests.
-
-        Pins the SDK model fields to anthropic/* so the new
-        ``_validate_sdk_model_vendor_compatibility`` model_validator
-        permits ChatConfig construction.
-        """
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            # Aux key satisfies the new
-            # ``_validate_aux_client_for_direct_main`` validator — these
-            # tests target the SDK normalizer, not the aux check.
-            aux_api_key="or-aux-key",
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    @pytest.fixture
-    def _openrouter_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Force ``config.openrouter_active = True`` for slug-preservation tests."""
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    def test_strips_anthropic_prefix(self, _direct_anthropic_config):
-        assert _normalize_model_name("anthropic/claude-opus-4-6") == "claude-opus-4-6"
-
-    def test_rejects_non_anthropic_vendor_in_direct_mode(
-        self, _direct_anthropic_config
-    ):
-        """Direct-Anthropic mode must fail loudly on non-Anthropic vendor
-        slugs — silent strip would send e.g. ``gpt-4o`` to the Anthropic
-        API and produce an opaque model_not_found error."""
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("openai/gpt-4o")
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("moonshotai/kimi-k2.6")
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("google/gemini-2.5-flash")
-
-    def test_already_normalized_unchanged(self, _direct_anthropic_config):
-        assert _normalize_model_name("claude-sonnet-4-6") == "claude-sonnet-4-6"
-
-    def test_empty_string_unchanged(self, _direct_anthropic_config):
-        assert _normalize_model_name("") == ""
-
-    def test_opus_model_dot_to_hyphen(self, _direct_anthropic_config):
-        """Direct-Anthropic mode: dots in versions become hyphens."""
-        assert _normalize_model_name("anthropic/claude-opus-4.6") == "claude-opus-4-6"
-
-    def test_openrouter_keeps_anthropic_slug(self, _openrouter_config):
-        """OpenRouter routes by full slug — keep prefix and dots intact."""
-        assert (
-            _normalize_model_name("anthropic/claude-sonnet-4.6")
-            == "anthropic/claude-sonnet-4.6"
-        )
-
-    def test_openrouter_keeps_kimi_slug(self, _openrouter_config):
-        """Non-Anthropic vendors (Moonshot) require the prefix to route."""
-        assert _normalize_model_name("moonshotai/kimi-k2.6") == "moonshotai/kimi-k2.6"
-
-    @pytest.fixture
-    def _subscription_with_openrouter_config(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """Subscription mode with leftover OpenRouter base_url + api_key.
-
-        Reproduces the bug: ``CHAT_USE_CLAUDE_CODE_SUBSCRIPTION=true`` plus
-        a populated ``CHAT_BASE_URL`` (e.g. left over from an earlier
-        OpenRouter setup) used to incorrectly preserve the OpenRouter slug
-        because the gate checked config shape (``openrouter_active``) not
-        actual transport.  The CLI subprocess uses OAuth here and rejects
-        the OpenRouter format.
-        """
-        cfg = cfg_mod.ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-    def test_subscription_strips_anthropic_prefix_despite_openrouter_config(
-        self, _subscription_with_openrouter_config
-    ):
-        """Subscription transport must produce the CLI-friendly form even
-        when OpenRouter base_url + api_key are set — the CLI uses OAuth
-        and ignores those fields, so the OpenRouter slug would be rejected."""
-        assert _normalize_model_name("anthropic/claude-opus-4.7") == "claude-opus-4-7"
-
-    def test_subscription_rejects_non_anthropic_vendor(
-        self, _subscription_with_openrouter_config
-    ):
-        """The CLI subprocess can only talk to Anthropic models — Kimi via
-        Moonshot must raise so the resolver falls back to a tier default
-        instead of feeding an unroutable slug to the CLI."""
-        with pytest.raises(ValueError, match="requires an Anthropic model"):
-            _normalize_model_name("moonshotai/kimi-k2.6")
-
-
 # ---------------------------------------------------------------------------
 # ChatConfig.effective_transport — single source of truth for "which
 # transport will the SDK CLI actually use?"
 # ---------------------------------------------------------------------------
 
 
-class TestEffectiveTransport:
-    """Subscription mode wins over OpenRouter even when OpenRouter
-    base_url + api_key are set, because the CLI subprocess uses OAuth and
-    ignores ``CHAT_BASE_URL`` / ``CHAT_API_KEY`` (see ``build_sdk_env``
-    mode 1).  Picking the right transport here is what lets
-    ``_normalize_model_name`` produce the correct model-name format.
-    """
-
-    def test_subscription_wins_over_openrouter_config(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        assert cfg.effective_transport == "subscription"
-        # ``openrouter_active`` is still True (config-shape check) but
-        # the actual transport is subscription.
-        assert cfg.openrouter_active is True
-
-    def test_openrouter_when_subscription_disabled(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        assert cfg.effective_transport == "openrouter"
-
-    def test_direct_anthropic_when_no_openrouter_no_subscription(
-        self, _clean_config_env
-    ):
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=False,
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4-7",
-            # Aux key satisfies the aux-credential validator.
-            aux_api_key="or-aux-key",
-        )
-        assert cfg.effective_transport == "direct_anthropic"
-
-    def test_subscription_alone_is_subscription(self, _clean_config_env):
-        cfg = ChatConfig(
-            use_openrouter=False,
-            api_key=None,
-            base_url=None,
-            use_claude_code_subscription=True,
-            # ``_validate_aux_client_for_direct_main`` runs in subscription
-            # mode now (PR #13034 review): pin a direct key + Anthropic
-            # title model so the aux 401-trap validator is satisfied.
-            direct_anthropic_api_key="sk-ant-test",
-            title_model="anthropic/claude-haiku-4-5",
-        )
-        assert cfg.effective_transport == "subscription"
-
-
 # ---------------------------------------------------------------------------
 # _resolve_sdk_model_for_request — transport-aware LD-override normalisation
 # ---------------------------------------------------------------------------
-
-
-class TestResolveSdkModelForRequestTransportAware:
-    """When subscription mode is on but the deployment also has OpenRouter
-    config populated (e.g. ``CHAT_BASE_URL`` left over from a previous
-    setup), an LD-served override must be normalised for the **subscription
-    CLI**, not passed through as the OpenRouter slug.  The CLI subprocess
-    uses OAuth and rejects ``anthropic/claude-opus-4.7`` with the model
-    error reproduced in local debugging:
-
-        ``There's an issue with the selected model
-        (anthropic/claude-opus-4.7). It may not exist or you may not have
-        access to it.``
-    """
-
-    @pytest.mark.asyncio
-    async def test_subscription_advanced_override_normalised_for_cli(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            thinking_advanced_model="anthropic/claude-opus-4.7",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-opus-4.7", "ld")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="advanced", session_id="sess-adv", user_id="user-1"
-            )
-        # NOT the OpenRouter slug, NOT None — the CLI-friendly hyphenated
-        # form; and the LD routing source rides along for message stamping.
-        assert resolved == ("claude-opus-4-7", "ld")
-
-    @pytest.mark.asyncio
-    async def test_subscription_standard_no_override_returns_none(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """When LD agrees with the config default, subscription mode still
-        wins on the standard tier — returns ``None`` so the CLI picks the
-        subscription default model."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=True,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
-            ),
-        ):
-            resolved = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-std", user_id="user-1"
-            )
-        assert resolved == (None, "env")
-
-    @pytest.mark.asyncio
-    async def test_env_default_stamps_env_source(
-        self, monkeypatch: pytest.MonkeyPatch, _clean_config_env: None
-    ):
-        """No LD opinion, no subscription: the config default serves and the
-        routing source says so — this is the value persisted onto SDK-path
-        assistant messages."""
-        cfg = cfg_mod.ChatConfig(
-            thinking_standard_model="anthropic/claude-sonnet-4-6",
-            claude_agent_model=None,
-            use_openrouter=True,
-            api_key="or-key",
-            base_url="https://openrouter.ai/api/v1",
-            use_claude_code_subscription=False,
-        )
-        monkeypatch.setattr("backend.copilot.sdk.service.config", cfg)
-
-        with patch(
-            "backend.copilot.sdk.service._resolve_thinking_model_for_user",
-            new=AsyncMock(
-                return_value=ResolvedModel("anthropic/claude-sonnet-4-6", "env")
-            ),
-        ):
-            model, source = await _resolve_sdk_model_for_request(
-                model="standard", session_id="sess-env", user_id="user-1"
-            )
-        assert source == "env"
-        assert model is not None
 
 
 # ---------------------------------------------------------------------------
@@ -1214,186 +1017,6 @@ class TestRestoreCliSessionModeCheck:
         gap_asst = result.context_messages[3]
         assert gap_user.content == "GAP_USER_2"
         assert gap_asst.content == "GAP_ASSISTANT_3"
-
-
-# ---------------------------------------------------------------------------
-# _compaction_target_tokens — keeps our retry compaction below the CLI's
-# autocompact threshold so a compacted retry doesn't immediately re-trigger
-# the CLI's own autocompact on the next call.
-# ---------------------------------------------------------------------------
-
-
-class TestCompactionTargetTokens:
-    @pytest.mark.parametrize(
-        ("model", "window", "pct", "expected"),
-        [
-            # Sonnet 200K window with PCT=50 → CLI threshold 100K → target 80K
-            ("anthropic/claude-sonnet-4-6", 200_000, 50, 80_000),
-            # Sonnet 200K with PCT=0 → CLI uses ~93% (window-13K=187K) → 167K target
-            ("anthropic/claude-sonnet-4-6", 200_000, 0, 167_000),
-            # Aggressive PCT=30 on 200K window → CLI threshold 60K → target 40K
-            ("anthropic/claude-sonnet-4-6", 200_000, 30, 40_000),
-        ],
-    )
-    def test_anthropic_target_below_cli_threshold(
-        self, model, window, pct, expected
-    ) -> None:
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=window,
-            ),
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=pct,
-            ),
-        ):
-            assert _compaction_target_tokens(model) == expected
-
-    def test_moonshot_uses_cli_default_threshold(self) -> None:
-        # Moonshot routes ignore PCT override (config.gate skips the env var
-        # entirely), so our target should mirror the CLI's ~93% default
-        # regardless of the configured pct value.
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=262_144,
-            ),
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=50,  # ignored for moonshot
-            ),
-        ):
-            # 262144 - 13000 = 249144 (CLI default), minus 20K headroom = 229144
-            assert _compaction_target_tokens("moonshotai/kimi-k2.6") == 229_144
-
-    def test_unknown_model_uses_pin_not_flat_fallback(self) -> None:
-        # Regression: unknown models used to fall back to a flat 120K that
-        # had no relationship to the applied pin. Now the pin resolvers
-        # (which never return None) drive the target.
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=200_000,
-            ),
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=50,
-            ),
-        ):
-            assert _compaction_target_tokens("unknown/model") == 80_000
-
-    def test_codex_route_reaches_both_resolvers(self) -> None:
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=272_000,
-            ) as mock_pin,
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=90,
-            ) as mock_pct,
-        ):
-            # min(272000*90//100, 272000-13000) - 20000 = 224800
-            assert _compaction_target_tokens("gpt-6-astra", codex_route=True) == 224_800
-        assert mock_pin.call_args.kwargs["codex_route"] is True
-        assert mock_pct.call_args.kwargs["codex_route"] is True
-
-    def test_codex_route_keeps_pct_trigger_for_moonshot_shaped_slug(self) -> None:
-        # ``build_sdk_env`` runs the 90% trigger on the Codex route even for a
-        # moonshot-shaped slug (it still runs on Codex infra there), so the
-        # retry target must use the same threshold, not the CLI default.
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=272_000,
-            ),
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=90,
-            ),
-        ):
-            assert (
-                _compaction_target_tokens("moonshotai/kimi-k2.6", codex_route=True)
-                == 224_800
-            )
-
-    def test_floor_at_10k_for_extremely_aggressive_pct(self) -> None:
-        # PCT=1 on a 50K window → CLI threshold = 500 → target would be
-        # negative without the floor.
-        with (
-            patch(
-                "backend.copilot.sdk.context_window.pinned_context_window",
-                return_value=50_000,
-            ),
-            patch(
-                "backend.copilot.sdk.context_window.autocompact_pct",
-                return_value=1,
-            ),
-        ):
-            assert _compaction_target_tokens("anthropic/foo") == 10_000
-
-    @pytest.mark.asyncio
-    async def test_reduce_context_uses_runtime_model_for_target(self) -> None:
-        """Compactor LLM is fixed (Sonnet) but target must be sized for the
-        RUNTIME model that the CLI is actually serving — otherwise a Kimi
-        runtime gets a 200K-window-derived target while the CLI threshold
-        is computed against Kimi's 256K window.
-        """
-        from backend.copilot.sdk.service import _reduce_context
-
-        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
-        captured: dict = {}
-
-        async def fake_compact(content, *, model, log_prefix, target_tokens):
-            captured["target_tokens"] = target_tokens
-            captured["compactor_model"] = model
-            return None
-
-        with (
-            patch(
-                "backend.copilot.sdk.service.compact_transcript",
-                side_effect=fake_compact,
-            ),
-            patch(
-                "backend.copilot.sdk.service._compaction_target_tokens",
-                side_effect=lambda m, **kwargs: 12345 if "kimi" in m else 99999,
-            ),
-        ):
-            await _reduce_context(
-                transcript,
-                "[t]",
-                runtime_model="moonshotai/kimi-k2.6",
-            )
-
-        # Target derived from the RUNTIME model, not the compactor model.
-        assert captured["target_tokens"] == 12345
-
-    @pytest.mark.asyncio
-    async def test_reduce_context_forwards_codex_route(self) -> None:
-        """The retry target must resolve against the applied pin, so the
-        Codex route has to reach the target function."""
-        from backend.copilot.sdk.service import _reduce_context
-
-        transcript = _build_transcript([("user", "hi"), ("assistant", "hello")])
-        with (
-            patch(
-                "backend.copilot.sdk.service.compact_transcript",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            patch(
-                "backend.copilot.sdk.service._compaction_target_tokens",
-                return_value=11,
-            ) as mock_target,
-        ):
-            await _reduce_context(
-                transcript,
-                "[t]",
-                runtime_model="gpt-6-astra",
-                codex_route=True,
-            )
-        assert mock_target.call_args.kwargs["codex_route"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -2515,7 +2138,7 @@ class TestRetryReducedContext:
             new_callable=AsyncMock,
             return_value=None,
         ):
-            ctx = await _reduce_context(transcript, "[test]")
+            ctx = await _reduce_context(transcript, "[test]", profile=_profile())
 
         assert ctx.transcript_lost is True
         assert _retry_reduced_context(reduced=ctx, compaction_stats=None) is False

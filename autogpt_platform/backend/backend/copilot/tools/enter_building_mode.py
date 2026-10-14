@@ -13,6 +13,7 @@ later turns.
 from typing import Any
 
 from backend.copilot import engine_switch
+from backend.copilot.engine import platform_engine
 from backend.copilot.model import ChatSession
 from backend.copilot.sdk.env import config as chat_config
 
@@ -83,13 +84,12 @@ class EnterAgentBuildingModeTool(BaseTool):
                 ),
                 session_id=session_id,
             )
-        if chat_config.transport.supports_sdk:
+        if platform_engine(chat_config) == "sdk":
             # Baseline turn on an SDK-capable deployment: register the
             # switch — the baseline loop ends this turn at the next
             # iteration boundary and the processor dispatches an SDK
             # continuation turn. The tool call in message history also
-            # pins all later turns to SDK (see the building-mode pin in
-            # executor.processor, which resolve_use_sdk defers to).
+            # pins all later turns to SDK.
             engine_switch.request_switch(
                 session_id,
                 # The session owner is the authoritative identity — the

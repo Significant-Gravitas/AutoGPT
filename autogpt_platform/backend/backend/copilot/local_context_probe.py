@@ -1,6 +1,6 @@
 """Auto-detect the context window of a local OpenAI-compatible LLM backend.
 
-The local transport (``CHAT_USE_LOCAL=true``) talks to an operator-run backend
+The local transport (``CHAT_PLATFORM_ROUTE=local``) talks to an operator-run backend
 (Ollama, vLLM, LM Studio, llama.cpp server, …). That backend's *loaded* context
 window — not any AutoGPT-side config — is the real ceiling Otto must compact
 its conversation under. Rather than carry a second config value that has to be
@@ -91,13 +91,16 @@ def _server_root(base_url: str) -> str:
     return url.rstrip("/")
 
 
-async def probe_local_context_window(base_url: str, model: str) -> int:
+async def probe_local_context_window(
+    base_url: str, model: str, *, fallback: int | None = None
+) -> int:
     """Return the loaded context window (tokens) for ``model`` at ``base_url``.
 
     Cached per ``(base_url, model)`` for 5 minutes so it never fires on every
     turn. When a probe can't determine the window (e.g. the model isn't loaded
     yet), reuses the last successfully-detected window for that endpoint+model
-    if known — a far better estimate than the optimistic constant — and does
+    if known — else *fallback*, the window the operator configured
+    (``CHAT_LOCAL_CONTEXT_TOKENS``) — and does
     NOT cache the miss, so the next turn re-probes once a model is loaded. Logs
     a WARNING when a detected window is below ``_MINIMUM_SAFE_WINDOW``.
     """
@@ -108,7 +111,7 @@ async def probe_local_context_window(base_url: str, model: str) -> int:
 
     detected = await _detect_window(base_url, model)
     if detected is None:
-        return _last_window.get(key, LOCAL_CONTEXT_FALLBACK)
+        return _last_window.get(key, fallback or LOCAL_CONTEXT_FALLBACK)
 
     _last_window[key] = detected
     if detected < _MINIMUM_SAFE_WINDOW:

@@ -187,7 +187,7 @@ async def sdk_service_turn(
         "create_security_hooks": MagicMock(),
         "get_copilot_tool_names": MagicMock(return_value=[]),
         "get_sdk_disallowed_tools": MagicMock(return_value=[]),
-        "build_sdk_env": MagicMock(return_value={}),
+        "route_launch_env": MagicMock(return_value={}),
         "set_execution_context": MagicMock(),
         "get_user_tier": AsyncMock(return_value=None),
         "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
@@ -203,8 +203,8 @@ async def sdk_service_turn(
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
-                "api_key": UNSENT_MODEL_KEY,
-                "use_claude_code_subscription": False,
+                "platform_route": "openrouter",
+                "openrouter_api_key": UNSENT_MODEL_KEY,
                 "use_e2b_sandbox": False,
                 "claude_agent_max_transient_retries": 1,
             }

@@ -47,9 +47,9 @@ def baseline_offline(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
         "config",
         baseline.config.model_copy(
             update={
-                "api_key": UNSENT_MODEL_KEY,
+                "platform_route": "openrouter",
+                "openrouter_api_key": UNSENT_MODEL_KEY,
                 "use_e2b_sandbox": False,
-                "use_local": False,
             }
         ),
     )

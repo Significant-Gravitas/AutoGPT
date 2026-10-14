@@ -19,7 +19,7 @@ from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
-from backend.copilot.engine import resolve_use_sdk
+from backend.copilot.engine import platform_engine
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -176,24 +176,6 @@ def taint_for_source_platform(
 
 # Thread-local storage for processor instances
 _tls = threading.local()
-
-
-async def _building_mode_forces_sdk(session_id: str) -> bool:
-    """True when the session's history shows it entered agent-building mode.
-
-    Building-mode sessions are pinned to the SDK engine (guide-in-prompt +
-    in-turn restart live there) regardless of the requested mode — derived
-    from message history, so it survives stale frontend mode pickers.
-    ``get_chat_session`` is Redis-cached: one cache hit, not a DB round-trip.
-    """
-    # Lazy imports: pulling these at module level drags the full tools/model
-    # chain into processor import, which reconfigures logging at import time
-    # and breaks caplog in tests.
-    from backend.copilot.model import get_chat_session
-    from backend.copilot.tools.helpers import session_entered_building_mode
-
-    session = await get_chat_session(session_id)
-    return session is not None and session_entered_building_mode(session)
 
 
 async def _normalize_private_expert_session_tenancy(
@@ -696,8 +678,7 @@ class CoPilotProcessor:
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
-                # Choose service based on LaunchDarkly flag.
-                # Claude Code subscription forces SDK mode (CLI subprocess auth).
+                # The platform route decides the engine (``route_table.py``).
                 config = ChatConfig()
 
                 if config.test_mode:
@@ -705,24 +686,7 @@ class CoPilotProcessor:
                     engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
                 else:
-                    use_sdk = await resolve_use_sdk(
-                        entry.user_id,
-                        use_claude_code_subscription=(
-                            config.use_claude_code_subscription
-                        ),
-                        config_default=config.use_claude_agent_sdk,
-                        thinking_available=config.thinking_available,
-                    )
-                    # Building-mode sessions are pinned to the SDK engine
-                    # (guide-in-prompt + in-turn restart live there). Derived
-                    # from message history. get_chat_session is Redis-cached,
-                    # so this is one cache hit, not a DB round-trip.
-                    if not use_sdk and config.thinking_available:
-                        if await _building_mode_forces_sdk(entry.session_id):
-                            use_sdk = True
-                            log.info(
-                                "Forcing SDK engine: session is in agent building mode"
-                            )
+                    use_sdk = platform_engine(config) == "sdk"
                     stream_fn = (
                         sdk_service.stream_chat_completion_sdk
                         if use_sdk

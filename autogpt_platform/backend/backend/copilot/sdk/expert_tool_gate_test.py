@@ -34,6 +34,7 @@ from claude_agent_sdk import ResultMessage
 
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
+from backend.copilot.sdk.retry_scenarios_test import scenario_profile
 
 _SVC = "backend.copilot.sdk.service"
 _SYSTEM_PROMPT = "backend.copilot.sdk.system_prompt"
@@ -134,14 +135,17 @@ def _make_patches(*, hire_experts_enabled: bool):
         (f"{_SVC}.create_security_hooks", dict(return_value=MagicMock())),
         (f"{_SVC}.get_copilot_tool_names", dict(return_value=[])),
         (f"{_SVC}.get_sdk_disallowed_tools", dict(return_value=[])),
-        (f"{_SVC}.build_sdk_env", dict(return_value={})),
+        (f"{_SVC}.route_launch_env", dict(return_value={})),
+        (
+            f"{_SVC}.resolve_turn_profile",
+            dict(new_callable=AsyncMock, return_value=scenario_profile()),
+        ),
         (f"{_SVC}.set_execution_context", {}),
         (f"{_SVC}.is_feature_enabled", dict(new=is_feature_enabled_mock)),
         (
             f"{_SVC}.config",
             dict(
-                api_key="test-key",
-                use_claude_code_subscription=False,
+                platform_route="direct_anthropic",
                 claude_agent_max_buffer_size=100_000,
                 claude_agent_max_subtasks=5,
                 stream_lock_ttl=60,
@@ -150,15 +154,7 @@ def _make_patches(*, hire_experts_enabled: bool):
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
                 claude_agent_max_budget_usd=100.0,
-                claude_agent_max_thinking_tokens=0,
-                claude_agent_thinking_effort=None,
-                # The turn sizes its compression budgets from the pinned
-                # window (sdk/context_window.py); a mocked config has to
-                # hand those resolvers numbers, not MagicMocks.
-                claude_agent_context_window=200_000,
-                claude_agent_autocompact_pct_override=50,
-                claude_agent_model="claude-sonnet-4-6",
-                thinking_standard_model="anthropic/claude-sonnet-4-6",
+                tier_model=MagicMock(return_value="claude-sonnet-4-6"),
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),

@@ -43,6 +43,7 @@ from .model import (
     update_session_title,
     upsert_chat_session,
 )
+from .model_normalize import normalize_model_for_transport
 from .token_tracking import _extract_cache_creation_tokens, persist_and_record_usage
 
 logger = logging.getLogger(__name__)
@@ -74,26 +75,33 @@ _prompt_revalidation_lock = threading.Lock()
 
 _PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
 
+# Cache writes on a title call are priced at the hour-long rate, the costlier
+# of the two; a title prompt is rarely long enough to be cached at all.
+_TITLE_CACHE_TTL = "1h"
+
 
 def _get_main_client() -> LangfuseAsyncOpenAI:
     """Main OpenAI-compat client used by the baseline path.
 
-    Driven by ``config.main_client_credentials`` so a deployment can flip
-    ``CHAT_USE_OPENROUTER=false`` (+ ``ANTHROPIC_API_KEY``) to route the
-    main path straight to api.anthropic.com without disturbing aux
-    callers (title generation, builder helpers) that still need
-    OpenRouter for non-Anthropic models.
+    Driven by ``config.main_client_credentials``: the platform route's own
+    OpenAI-compatible API (the local server on the local route, which is
+    the only one the fast engine serves).
     """
     global _main_client
     if _main_client is None:
         api_key, base_url = config.main_client_credentials
+        if base_url is None:
+            raise RuntimeError(
+                f"The {config.platform_route} platform route has no API for "
+                "the fast engine"
+            )
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
         # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
         # many minutes for a single turn against Otto's heavy system
         # prompt. The OpenAI client default (600 s) is too short for that
         # case — extend it under the local transport. Cloud transports
         # keep the SDK default so genuine hangs still surface promptly.
-        if config.transport.name == "local":
+        if config.platform_route == "local":
             kwargs["timeout"] = config.local_request_timeout_s
         _main_client = LangfuseAsyncOpenAI(**kwargs)
     return _main_client
@@ -102,21 +110,25 @@ def _get_main_client() -> LangfuseAsyncOpenAI:
 def _get_aux_client() -> LangfuseAsyncOpenAI:
     """Auxiliary OpenAI-compat client.
 
-    Used for non-Anthropic helpers (title generation, builder helpers)
-    that need to keep talking to OpenRouter even when the main client is
-    pointed at Anthropic directly.  Defaults to OpenRouter; falls back
-    to the main client's creds when ``CHAT_AUX_API_KEY`` /
-    ``CHAT_AUX_BASE_URL`` are unset (preserves single-key deployments).
+    Used for side calls (title generation, gates, builder helpers). It is
+    the platform route's own API; a route without one (a Claude login,
+    connected accounts only) has no side-call client at all.
     """
     global _aux_client
     if _aux_client is None:
         api_key, base_url = config.aux_client_credentials
+        if base_url is None:
+            # Never an integration key the environment happens to hold.
+            raise RuntimeError(
+                f"The {config.platform_route} platform route has no API for "
+                "side calls"
+            )
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local transport routes aux through the same self-hosted backend
-        # (Ollama et al.) when ``CHAT_AUX_*`` are unset — extend the
+        # The local route sends side calls to the same self-hosted backend
+        # (Ollama et al.) — extend the
         # client timeout to match ``_get_main_client`` so title generation
         # on a CPU-only host doesn't surface as an opaque 600 s timeout.
-        if config.transport.name == "local":
+        if config.platform_route == "local":
             kwargs["timeout"] = config.local_request_timeout_s
         _aux_client = LangfuseAsyncOpenAI(**kwargs)
     return _aux_client
@@ -804,8 +816,8 @@ def _is_expert_kickoff_turn(session_messages: list[ChatMessage]) -> bool:
     return False
 
 
-def _normalize_title_model_for_aux() -> str:
-    """Return the title model in the form the aux client's transport expects.
+def _normalize_title_model_for_aux() -> str | None:
+    """The title model as the platform route sends it; None without one.
 
     OpenRouter routes by the full ``vendor/model`` slug, but Anthropic's
     OpenAI-compat endpoint rejects the ``anthropic/`` prefix and dot-separated
@@ -815,12 +827,10 @@ def _normalize_title_model_for_aux() -> str:
     Anthropic deployments fragment between normalized and unnormalized model
     names, breaking the admin dashboard's per-model rollups.
     """
-    title_model = config.title_model
-    if config.aux_provider_label == "anthropic":
-        if "/" in title_model:
-            title_model = title_model.split("/", 1)[1]
-        title_model = title_model.replace(".", "-")
-    return title_model
+    title_model = config.aux_model
+    if title_model is None or config.aux_client_credentials[1] is None:
+        return None
+    return normalize_model_for_transport(title_model, config)
 
 
 async def _generate_session_title(
@@ -878,6 +888,10 @@ async def _generate_session_title(
         # ``aux_client_credentials`` fallback) so the title model
         # ``anthropic/claude-haiku-4-5`` would 400 without this strip.
         title_model = _normalize_title_model_for_aux()
+        if title_model is None:
+            # No platform API (a Claude login, connected accounts only):
+            # the title comes from the message itself.
+            return _fallback_title_from_message(message), None
 
         # Route through the shared providers helper so future provider
         # work (flex tier, new SDK upgrades, etc.) propagates here
@@ -1032,7 +1046,7 @@ async def _record_title_generation_cost(
     # API call.  Without this the admin dashboard fragments between
     # ``anthropic/claude-haiku-4.5`` (raw config) and ``claude-haiku-4-5``
     # (the form the Anthropic OpenAI-compat endpoint actually saw).
-    model = _normalize_title_model_for_aux()
+    model = _normalize_title_model_for_aux() or ""
 
     # Direct-Anthropic responses don't carry an OpenRouter-style ``cost``
     # field on usage.model_extra, so ``_title_usage_from_response`` returns
@@ -1053,7 +1067,7 @@ async def _record_title_generation_cost(
             completion_tokens=completion_tokens,
             cache_read_tokens=cache_read_tokens,
             cache_creation_tokens=cache_creation_tokens,
-            cache_ttl=config.baseline_prompt_cache_ttl,
+            cache_ttl=_TITLE_CACHE_TTL,
         )
 
     # Nothing meaningful to record — skip the DB roundtrip entirely

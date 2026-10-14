@@ -1,54 +1,52 @@
-"""Tests for the route guards in ``build_sdk_env`` and ``build_user_key_sdk_env``:
-the billing-header switch and the orchestrator block's launch credentials."""
+"""Tests for the route guards in ``route_launch_env``: each route's
+billing-header choice, credential and window from one profile, and the
+orchestrator block's launch on a user's own key."""
 
 from unittest.mock import patch
 
 import pytest
 
-from .env_test import _make_config
-
-# ---------------------------------------------------------------------------
-# Billing-header switch
-# ---------------------------------------------------------------------------
+from backend.copilot.config import ChatConfig
+from backend.copilot.route_profile import (
+    codex_profile,
+    platform_profile,
+    user_key_profile,
+)
+from backend.copilot.sdk.env import GatewayEndpoint, route_launch_env
 
 _ROUTES = ("openrouter", "direct", "subscription", "codex")
+_GATEWAY = GatewayEndpoint(base_url="http://127.0.0.1:43210", auth_token="t")
 
 
-def _env_for_route(route: str, **switches) -> dict[str, str]:
-    """``build_sdk_env()`` for *route* with the given config switches."""
-    overrides = {
-        "openrouter": dict(
-            use_openrouter=True,
-            api_key="sk-or-test",
-            base_url="https://openrouter.ai/api/v1",
-        ),
-        "direct": dict(use_openrouter=False),
-        "subscription": dict(use_claude_code_subscription=True),
-        "codex": dict(use_openrouter=False),
-    }[route]
-    gateway = (
-        dict(codex_gateway_url="http://127.0.0.1:43210", codex_gateway_token="t")
-        if route == "codex"
-        else {}
-    )
-    cfg = _make_config(**overrides, **switches)
+def _env_for_route(route: str) -> dict[str, str]:
+    """``route_launch_env`` for *route*, with no parent environment."""
+    if route == "codex":
+        profile = codex_profile(
+            "gpt-5.6-terra", effort=None, routing_source="env", codex_engine=None
+        )
+    else:
+        cfg = {
+            "openrouter": ChatConfig(
+                platform_route="openrouter", openrouter_api_key="sk-or-test"
+            ),
+            "direct": ChatConfig(
+                platform_route="direct_anthropic",
+                anthropic_api_key="sk-ant-direct-key",
+            ),
+            "subscription": ChatConfig(platform_route="subscription"),
+        }[route]
+        profile = platform_profile(cfg, "claude-sonnet-4-6", "env")
     with (
-        patch("backend.copilot.sdk.env.config", cfg),
         patch("backend.copilot.sdk.env.validate_subscription"),
         patch.dict("backend.copilot.sdk.env.os.environ", {}, clear=True),
     ):
-        from backend.copilot.sdk.env import build_sdk_env
-
-        return build_sdk_env(**gateway)
+        return route_launch_env(profile, gateway=_GATEWAY if route == "codex" else None)
 
 
-class TestAttributionHeaderSwitch:
-    """``claude_agent_omit_attribution_header`` removes the billing-header
-    system block only where the CLI does not talk to Anthropic first-party."""
-
-    @pytest.mark.parametrize("route", _ROUTES)
-    def test_off_by_default(self, route):
-        assert "CLAUDE_CODE_ATTRIBUTION_HEADER" not in _env_for_route(route)
+class TestAttributionHeaderPerRoute:
+    """The CLI's billing-header system block stays where the CLI talks to
+    Anthropic first-party and goes everywhere else: the route decides, no
+    deployment switch."""
 
     @pytest.mark.parametrize(
         "route, expected",
@@ -59,14 +57,13 @@ class TestAttributionHeaderSwitch:
             ("subscription", None),
         ],
     )
-    def test_on_sets_env_on_non_first_party_routes(self, route, expected):
-        result = _env_for_route(route, claude_agent_omit_attribution_header=True)
-        assert result.get("CLAUDE_CODE_ATTRIBUTION_HEADER") == expected
+    def test_off_only_where_the_cli_is_not_first_party(self, route, expected):
+        assert _env_for_route(route).get("CLAUDE_CODE_ATTRIBUTION_HEADER") == expected
 
 
 class TestCredentialAndWindowComeFromOneRoute:
     """A launch's credential (``route_credentials``) and its window pin
-    (``context_window``) follow the same route decision: no route takes one
+    (``context_window``) follow the same route profile: no route takes one
     route's key with another route's window."""
 
     @pytest.mark.parametrize(
@@ -100,7 +97,7 @@ class TestCredentialAndWindowComeFromOneRoute:
 
 
 # ---------------------------------------------------------------------------
-# build_user_key_sdk_env — the orchestrator block's launch
+# A launch on a user's own key: the orchestrator block's
 # ---------------------------------------------------------------------------
 
 _PARENT_WITH_OAUTH = {
@@ -112,19 +109,16 @@ _PARENT_WITH_OAUTH = {
 }
 
 
-def _user_key_env(provider: str, user_key: str, **overrides) -> dict[str, str]:
+def _user_key_env(provider: str, user_key: str) -> dict[str, str]:
     """The env the CLI sees: the parent's, under the launch's own."""
-    cfg = _make_config(**overrides)
-    with (
-        patch("backend.copilot.sdk.env.config", cfg),
-        patch.dict("backend.copilot.sdk.env.os.environ", _PARENT_WITH_OAUTH, True),
-    ):
-        from backend.copilot.sdk.env import build_user_key_sdk_env
-
-        return {**_PARENT_WITH_OAUTH, **build_user_key_sdk_env(provider, user_key)}
+    with patch.dict("backend.copilot.sdk.env.os.environ", _PARENT_WITH_OAUTH, True):
+        launch = route_launch_env(
+            user_key_profile(provider, user_key, "claude-sonnet-4-6")
+        )
+    return {**_PARENT_WITH_OAUTH, **launch}
 
 
-class TestBuildUserKeySdkEnv:
+class TestUserKeyLaunch:
     """A launch on a user's own key carries that key and nothing else."""
 
     def test_anthropic_key_goes_direct(self):
@@ -135,33 +129,22 @@ class TestBuildUserKeySdkEnv:
         assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
         assert merged["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == ""
 
-    def test_openrouter_key_uses_the_deployment_base_url(self):
-        merged = _user_key_env(
-            "open_router",
-            "sk-or-user",
-            use_openrouter=True,
-            api_key="sk-or-deployment",
-            base_url="https://openrouter.ai/api/v1",
-        )
+    def test_openrouter_key_goes_to_openrouter(self):
+        merged = _user_key_env("open_router", "sk-or-user")
         assert merged["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
         assert merged["ANTHROPIC_AUTH_TOKEN"] == "sk-or-user"
-        assert merged["ANTHROPIC_API_KEY"] == "sk-or-user"
+        assert merged["ANTHROPIC_API_KEY"] == ""
         assert merged["CLAUDE_CODE_OAUTH_TOKEN"] == ""
         assert merged["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == ""
 
-    def test_openrouter_falls_back_to_openrouter_without_a_base_url(self):
-        merged = _user_key_env("open_router", "sk-or-user", base_url=None)
-        assert merged["ANTHROPIC_BASE_URL"] == "https://openrouter.ai/api"
-
-    def test_empty_key_is_refused(self):
+    @pytest.mark.parametrize("provider", ["anthropic", "open_router"])
+    def test_empty_key_is_refused(self, provider):
         with pytest.raises(RuntimeError):
-            _user_key_env("anthropic", "")
+            _user_key_env(provider, "")
 
     @pytest.mark.parametrize(
         "provider, expected", [("open_router", "0"), ("anthropic", None)]
     )
-    def test_attribution_switch_only_off_first_party(self, provider, expected):
-        merged = _user_key_env(
-            provider, "user-key", claude_agent_omit_attribution_header=True
-        )
+    def test_billing_header_off_only_off_first_party(self, provider, expected):
+        merged = _user_key_env(provider, "user-key")
         assert merged.get("CLAUDE_CODE_ATTRIBUTION_HEADER") == expected

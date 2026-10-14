@@ -90,7 +90,7 @@ async def get_connection_offers(user_id: str) -> list[AIConnectionOffer]:
     pick.
     """
     config = ChatConfig()
-    mode = await resolve_engine_mode(user_id, config)
+    mode = resolve_engine_mode(config)
     models = await platform_tier_models(mode, user_id, config)
     codex_models = codex_tier_models(mode)
     advanced_allowed = await advanced_tier_allowed(user_id)

@@ -47,12 +47,7 @@ from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot.model_router import (
-    ResolvedModel,
-    RoutingSource,
-    resolve_codex_model_route,
-    resolve_model_route,
-)
+from backend.copilot.model_router import RoutingSource
 from backend.copilot.budget_signal import build_turn_budget_block
 from backend.copilot.feedback_db import RATEABLE_ROLES
 from backend.copilot.graphiti.context import fetch_warm_context
@@ -61,7 +56,18 @@ from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
-from backend.copilot.sdk.env import describe_sdk_context
+from backend.copilot.route_profile import RouteProfile
+from backend.copilot.sdk.env import (
+    GatewayEndpoint,
+    common_launch_options,
+    describe_sdk_context,
+    route_launch_env,
+)
+from backend.copilot.sdk.turn_route import (
+    resolve_turn_profile,
+    start_route_gateway,
+    turn_route_name,
+)
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
@@ -70,7 +76,7 @@ from backend.copilot.sdk.cost_tracking import (
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
+from backend.integrations.codex.models import CodexTokenUsage
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
@@ -91,14 +97,7 @@ from backend.util.prompt import (
 )
 from backend.util.settings import Settings
 
-from backend.copilot.sdk.context_window import (
-    BARE_MESSAGE_TOKEN_FLOOR,
-    CodexEngineWindow,
-    compaction_target_tokens,
-    retry_target_tokens,
-    seed_target_tokens,
-    window_source,
-)
+from backend.copilot.sdk.context_window import BARE_MESSAGE_TOKEN_FLOOR
 
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
@@ -115,7 +114,6 @@ from ..constants import (
 from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
 from ..graphiti.config import is_enabled_for_user
-from ..model_normalize import normalize_model_for_transport
 from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 
 from ..model import (
@@ -240,7 +238,6 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
-from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .query_blocks import scan_context_blocks
 from .response_adapter import SDKResponseAdapter
@@ -570,7 +567,7 @@ async def _consume_sdk_until_done(
         refusal = _platform_out_of_credits_refusal(sdk_msg, ctx)
         if refusal is not None:
             report_provider_out_of_credits(
-                provider=config.effective_transport,
+                provider=_route_name(ctx),
                 model=state.observed_model or getattr(state.options, "model", None),
                 surface="copilot_sdk",
                 error=refusal,
@@ -1333,10 +1330,11 @@ def _platform_out_of_credits_refusal(
 
     The CLI reports a provider error as an ``AssistantMessage`` carrying
     ``error`` (content is the provider's wording) and/or an error
-    ``ResultMessage``. A Codex turn runs on the user's own subscription, whose
-    limit is theirs to hear about, so it is left to the gateway's envelope.
+    ``ResultMessage``. A turn on the user's own subscription (Codex, a
+    Claude login) has a limit that is theirs to hear about, so it is left
+    to the route's own envelope.
     """
-    if ctx.codex_gateway is not None:
+    if ctx.profile is not None and not ctx.profile.platform_pays:
         return None
     if isinstance(sdk_msg, AssistantMessage) and sdk_msg.error:
         text = f"{sdk_msg.error} {sdk_msg.content}"
@@ -1494,6 +1492,8 @@ class _StreamContext:
     # failed: by the time a provider failure reaches this layer it is CLI
     # text, and the gateway holds the last point at which it was typed.
     codex_gateway: "CodexAnthropicGateway | None" = None
+    # The route this turn runs on (``copilot/route_profile.py``).
+    profile: RouteProfile | None = None
     tool_display: SDKToolDisplayBridge | None = None
     # Index in ``session.messages`` of the stream's first row, for checkpoints.
     turn_start: int = 0
@@ -1508,36 +1508,6 @@ class _StreamContext:
 _BARE_MESSAGE_TOKEN_FLOOR: int = BARE_MESSAGE_TOKEN_FLOOR
 
 
-def _compaction_target_tokens(
-    model: str | None,
-    *,
-    codex_route: bool = False,
-    codex_engine: CodexEngineWindow | None = None,
-) -> int:
-    """Output budget for the copilot's own compressors on this turn.
-
-    Window and pct come from the SAME resolvers that pin the subprocess
-    (``sdk/context_window.py``), never from the catalog: a target derived
-    from a different window than the pin is a second threshold authority
-    and will either fire early forever or land over the pin.
-    """
-    return compaction_target_tokens(
-        config, model, codex_route=codex_route, codex_engine=codex_engine
-    )
-
-
-def _retry_target_tokens(
-    model: str | None,
-    *,
-    codex_route: bool = False,
-    codex_engine: CodexEngineWindow | None = None,
-) -> tuple[int, int]:
-    """Per-retry budgets for the no-transcript path, from the same pin."""
-    return retry_target_tokens(
-        config, model, codex_route=codex_route, codex_engine=codex_engine
-    )
-
-
 def _tail_budget_tokens(target_tokens: int | None, model: str) -> int:
     """Recent history kept verbatim when the copilot compresses: a quarter of
     the budget, never under 2K.  Sized in tokens, not messages, so eight 20K
@@ -1550,26 +1520,12 @@ def _tail_budget_tokens(target_tokens: int | None, model: str) -> int:
     return max(2_000, budget // 4)
 
 
-def _seed_target_tokens(
-    model: str | None,
-    *,
-    codex_route: bool = False,
-    codex_engine: CodexEngineWindow | None = None,
-) -> int:
-    """Transcript-seed budget for a turn with no CLI session, from the same pin."""
-    return seed_target_tokens(
-        config, model, codex_route=codex_route, codex_engine=codex_engine
-    )
-
-
 async def _reduce_context(
     transcript_content: str,
     log_prefix: str,
     *,
+    profile: RouteProfile,
     attempt: int = 1,
-    runtime_model: str | None = None,
-    codex_route: bool = False,
-    codex_engine: CodexEngineWindow | None = None,
 ) -> ReducedContext:
     """Prepare reduced context for retry *attempt* (1 is the first retry).
 
@@ -1585,14 +1541,11 @@ async def _reduce_context(
 
     ``transcript_lost`` is True when the transcript was dropped.
     """
-    # The compactor LLM is fixed (config.thinking_standard_model); every
-    # budget below is sized against the RUNTIME model, the one whose CLI
-    # autocompact threshold the retry has to land under.
-    target_model = runtime_model or config.thinking_standard_model
+    # The compactor LLM is fixed (``_compression_model``); every budget
+    # below comes from the launch's own window and trigger, the ones whose
+    # CLI autocompact threshold the retry has to land under.
     # Token budget for the DB fallback on this attempt (no-transcript path).
-    budgets = _retry_target_tokens(
-        target_model, codex_route=codex_route, codex_engine=codex_engine
-    )
+    budgets = profile.retry_target_tokens()
     retry_target = budgets[min(max(0, attempt - 1), len(budgets) - 1)]
 
     # First retry: try compacting our transcript builder state.
@@ -1600,12 +1553,10 @@ async def _reduce_context(
     # content (it would require emitting CLI-native JSONL format), so the
     # retry runs without --resume.
     if transcript_content and attempt <= 1:
-        compaction_target = _compaction_target_tokens(
-            target_model, codex_route=codex_route, codex_engine=codex_engine
-        )
+        compaction_target = profile.compaction_target_tokens()
         compacted = await compact_transcript(
             transcript_content,
-            model=config.thinking_standard_model,
+            model=_compression_model(),
             log_prefix=log_prefix,
             target_tokens=compaction_target,
         )
@@ -1867,7 +1818,8 @@ async def _apply_building_mode_restart(
     )
     # Fresh adapter, carrying over the same flags as a transient retry. Unlike
     # a transient retry, this relaunch keeps the CLI cost baseline: it is
-    # deliberate, so the interrupted run's spend is the user's.
+    # deliberate, so the interrupted run's spend is the user's (its tokens
+    # were charged from the session file before this relaunch).
     # NOTE: the transcript builder is NOT restored — its partial
     # entries are real; the relaunched run's `append_user` adds
     # the original message once more, which only surfaces in the
@@ -2275,138 +2227,12 @@ async def _iter_sdk_messages(
                     pass
 
 
-def _normalize_model_name(raw_model: str) -> str:
-    """Normalize per the SDK's own ``config`` reference.
-
-    Thin wrapper so ``backend.copilot.sdk.service.config`` (the
-    monkeypatch target used by every SDK-side test) drives the decision
-    instead of ``model_normalize``'s default config.
-    """
-    return normalize_model_for_transport(raw_model, config)
-
-
-async def _resolve_thinking_model_for_user(
-    tier: "CopilotLLMModel",
-    user_id: str | None,
-) -> ResolvedModel:
-    """LD-aware thinking-tier model pick for a specific user.
-
-    Consults ``copilot-model-routing[thinking][{tier}]`` and falls back
-    to the ``ChatConfig`` default on missing user / missing flag. Returns
-    the model together with which routing layer picked it, so persisted
-    assistant messages can be stamped for product-intelligence.
-    """
-    return await resolve_model_route("thinking", tier, user_id, config=config)
-
-
-async def _resolve_sdk_model_for_request(
-    model: "CopilotLLMModel | None",
-    session_id: str,
-    user_id: str | None = None,
-) -> tuple[str | None, RoutingSource]:
-    """Resolve the SDK model string for a turn, plus which layer picked it.
-
-    Priority (highest first):
-    1. ``config.claude_agent_model`` — unconditional override, bypasses LD.
-    2. LaunchDarkly ``copilot-model-routing[thinking][{tier}]`` if it
-       serves a value different from the config default for *user_id*.
-       An LD-served override wins over subscription mode so admins can
-       route specific users to a specific model without flipping
-       subscription on/off.
-    3. ``config.use_claude_code_subscription`` on the standard tier —
-       returns ``None`` so the CLI picks the subscription default (this
-       branch fires when LD has no opinion, i.e. the value equals the
-       config default).
-    4. ``ChatConfig`` static default for the tier.
-    """
-    if config.claude_agent_model:
-        return config.claude_agent_model, "env"
-
-    tier_name: "CopilotLLMModel" = "advanced" if model == "advanced" else "standard"
-    # Strip at read time so a stray trailing space in ``CHAT_*_MODEL`` (a
-    # common ``.env`` pitfall) doesn't make the ``resolved == tier_default``
-    # comparison below spuriously diverge — ``resolve_model`` already strips
-    # the LD side, so both halves must end up whitespace-normalised to stay
-    # equal when they're semantically equal.  Downstream ``_normalize_model_name``
-    # also benefits from the strip.
-    tier_default = (
-        config.thinking_advanced_model
-        if tier_name == "advanced"
-        else config.thinking_standard_model
-    ).strip()
-
-    resolved = await _resolve_thinking_model_for_user(tier_name, user_id)
-
-    # Subscription mode on standard tier only wins when LD has no opinion
-    # (value == config default ⇒ admin hasn't explicitly pointed this
-    # user somewhere).  Any LD override — even to the same value with
-    # stripped whitespace normalised — is an explicit admin choice that
-    # must be honoured.  Without this, a subscription-mode deployment
-    # silently ignores the ``copilot-model-routing[thinking][standard]``
-    # flag entirely, which defeats the point of cohort-based routing.
-    ld_overrides_default = resolved.model != tier_default
-    if (
-        not ld_overrides_default
-        and tier_name == "standard"
-        and config.use_claude_code_subscription
-    ):
-        logger.info(
-            "[SDK] [%s] Subscription default (tier=standard, LD unset)",
-            session_id[:12] if session_id else "?",
-        )
-        return None, "env"
-    try:
-        sdk_model = _normalize_model_name(resolved.model)
-    except ValueError as exc:
-        # The per-user LD value didn't pass ``_normalize_model_name``'s
-        # vendor check (most commonly: a ``moonshotai/kimi-*`` slug on a
-        # direct-Anthropic deployment that has no OpenRouter route).  Fail
-        # soft to the TIER-SPECIFIC config default, never to
-        # ``thinking_standard_model``: that would silently downgrade an
-        # advanced-tier user whenever LD misconfigures the advanced cell.
-        try:
-            sdk_model = _normalize_model_name(tier_default)
-        except ValueError:
-            # Config default is *also* invalid for the active routing
-            # mode — this is a deployment-level misconfig that the
-            # ``model_validator`` should catch at startup.  Re-raise the
-            # original LD error so the issue surfaces loudly rather than
-            # returning something misleading.
-            raise exc
-        logger.warning(
-            "[SDK] [%s] LD model %r rejected for tier=%s (%s); falling "
-            "back to tier default %s",
-            session_id[:12] if session_id else "?",
-            resolved.model,
-            tier_name,
-            exc,
-            sdk_model,
-        )
-        return sdk_model, "env"
-    logger.info(
-        "[SDK] [%s] Resolved model for tier=%s: %s",
-        session_id[:12] if session_id else "?",
-        tier_name,
-        sdk_model,
-    )
-    return sdk_model, resolved.source
-
-
 def _codex_gateway_usage(
     gateway: CodexAnthropicGateway,
 ) -> CodexTokenUsage | None:
     """Read authoritative aggregate usage from a completed Codex gateway."""
     result = gateway.result
     return result.usage if result is not None else None
-
-
-def _reconciles_openrouter_cost(is_codex_transport: bool) -> bool:
-    """Whether a turn's cost is read back from OpenRouter's ``/generation``."""
-    return (
-        not is_codex_transport
-        and config.openrouter_active
-        and config.sdk_reconcile_openrouter_cost
-    )
 
 
 def _cli_project_dir(sdk_cwd: str) -> str | None:
@@ -2963,6 +2789,10 @@ def _format_sdk_content_blocks(blocks: list) -> list[dict[str, Any]]:
     return result
 
 
+# The summarizer's model on a turn with no platform route (Codex alone).
+_COMPRESSION_FALLBACK_MODEL = "anthropic/claude-sonnet-5-5"
+
+
 def _compression_model() -> str:
     """The model whose context window governs pre-query compression.
 
@@ -2972,8 +2802,14 @@ def _compression_model() -> str:
     Opus 120K) and the compressor's model have different windows, so any
     call site that picks its own opens compaction rows for work the
     compressor won't do — or does the work with no row open at all.
+    The platform route's standard tier, as configured.
     """
-    return config.thinking_standard_model
+    return config.tier_model("standard") or _COMPRESSION_FALLBACK_MODEL
+
+
+def _route_name(ctx: "_StreamContext") -> str:
+    """The route a stream runs on, for provider-failure reports."""
+    return ctx.profile.name if ctx.profile is not None else config.platform_route
 
 
 def _to_compress_dict(msg: ChatMessage) -> dict[str, Any]:
@@ -5026,11 +4862,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # a pre-query row on ANY failure in this function, including ones raised
     # before that point, so it must tolerate ``compaction`` still being None.
     compaction: CompactionTracker | None = None
-    codex_effort: "CodexReasoningEffort | None" = None
+    profile: RouteProfile | None = None
     codex_gateway: CodexAnthropicGateway | None = None
     tool_display_bridge = SDKToolDisplayBridge()
     deferred_codex_cleanup_error: BaseException | None = None
-    is_codex_transport = credential_lease is not None
     turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
@@ -5282,74 +5117,44 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tool_display_bridge=tool_display_bridge,
         )
 
-        # Resolve model (request tier → LD per-user override → config default).
-        # Done BEFORE build_sdk_env so model-aware env vars (e.g. the
-        # Moonshot autocompact gate) can branch on the resolved slug.
-        if credential_lease is not None:
-            # The executor hands this engine a Codex lease only.
-            if not isinstance(credential_lease, CodexCredentialLease):
-                raise TypeError("The SDK engine takes only a Codex credential lease")
-            tier_name: "CopilotLLMModel" = (
-                "advanced" if model == "advanced" else "standard"
-            )
-            resolved_codex = await resolve_codex_model_route(
-                # This turn is on the SDK engine by definition.
-                "thinking",
-                tier_name,
-                credential_lease,
-            )
-            sdk_model, codex_effort, routing_source = (
-                resolved_codex.model,
-                resolved_codex.effort,
-                resolved_codex.source,
-            )
-            # The account's advertised window for this model, when it sent
-            # one: the pin and every budget derived from it follow the
-            # account rather than the engine constant.
-            codex_engine = (
-                CodexEngineWindow(
-                    context_window=resolved_codex.context_window,
-                    auto_compact_token_limit=(resolved_codex.auto_compact_token_limit),
-                )
-                if resolved_codex.context_window is not None
-                else None
-            )
-            codex_gateway = CodexAnthropicGateway(
-                agent_session=credential_lease,
-                model=sdk_model,
-                effort=codex_effort,
-                credential_id=credential_lease.credentials.id,
-            )
-            await codex_gateway.start()
-        else:
-            sdk_model, routing_source = await _resolve_sdk_model_for_request(
-                model, session_id, user_id
-            )
-            codex_engine = None
-
-        # sdk_cwd routes the CLI's temp dir into the per-session workspace
-        # so sub-agent output files land inside sdk_cwd (see build_sdk_env).
-        sdk_env = build_sdk_env(
+        # The route this turn runs on, built once: the model as the route
+        # writes it, the window and trigger, the credential. Retries and the
+        # building-mode restart reuse it.
+        profile = await resolve_turn_profile(
+            config,
+            model=model,
             session_id=session_id,
             user_id=user_id,
+            credential_lease=credential_lease,
+        )
+        sdk_model, routing_source = profile.model, profile.routing_source
+        codex_gateway = await start_route_gateway(profile, credential_lease)
+
+        # sdk_cwd routes the CLI's temp dir into the per-session workspace
+        # so sub-agent output files land inside sdk_cwd (see route_launch_env).
+        sdk_env = route_launch_env(
+            profile,
             sdk_cwd=sdk_cwd,
-            model=sdk_model,
-            codex_gateway_url=(codex_gateway.base_url if codex_gateway else None),
-            codex_gateway_token=(codex_gateway.auth_token if codex_gateway else None),
-            codex_engine=codex_engine,
+            gateway=(
+                GatewayEndpoint(
+                    base_url=codex_gateway.base_url,
+                    auth_token=codex_gateway.auth_token,
+                )
+                if codex_gateway is not None
+                else None
+            ),
+            session_id=session_id,
+            user_id=user_id,
         )
         # What this turn's subprocess was pinned to (window/trigger/flags —
         # never secrets). The turn summary reads the pin off the launch's env
         # and records this source; the context-limit alarm quotes the line.
-        sdk_window_source = window_source(
-            config, codex_route=codex_gateway is not None, codex_engine=codex_engine
-        )
-        turn_summary.note_window_source(sdk_window_source)
+        turn_summary.note_window_source(profile.window_source)
         context_summary = describe_sdk_context(
-            route="codex" if codex_gateway else config.transport.name,
+            route=profile.name,
             model=sdk_model,
             sdk_env=sdk_env,
-            window_source=sdk_window_source,
+            window_source=profile.window_source,
         )
 
         # Track SDK-internal compaction (PreCompact hook → start, next msg → end)
@@ -5395,39 +5200,23 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         sdk_options = ClaudeAgentOptions(
             system_prompt=system_prompt_value,
             mcp_servers={"copilot": mcp_server},
-            # Never load the host machine's ~/.claude settings (hooks,
-            # skills, plugins) or filesystem MCP servers into the CoPilot
-            # subprocess.  On developer machines a personal Claude Code
-            # setup can inject hundreds of MCP tool schemas, inflating the
-            # static prompt past the autocompact threshold and causing
-            # compaction thrash on the very first turn.  Prod containers
-            # have a clean HOME, so this is a no-op there.
-            setting_sources=[],
-            extra_args={"strict-mcp-config": None},
+            **common_launch_options(),
             **tool_options,
             hooks=security_hooks,
             cwd=sdk_cwd,
-            max_buffer_size=config.claude_agent_max_buffer_size,
             stderr=_on_stderr,
-            # max_turns: hard cap on agentic tool-use loops per query to
-            # prevent runaway execution from burning budget.
-            max_turns=config.agent_max_turns,
-            # effort: applies to models with extended thinking (Sonnet,
-            # Opus, Mythos) and Kimi K2.6 via OpenRouter's ``reasoning``
-            # extension (#12871).
-            effort=config.claude_agent_thinking_effort or "high",
         )
-        if not is_codex_transport:
-            # The Claude/OpenRouter paths use provider-USD controls. A Codex
-            # subscription consumes the connected account's allowance, so
-            # presenting a fabricated USD ceiling to the CLI would produce
-            # incorrect policy and accounting behavior.
+        if profile.row.usd_budget:
+            # A Codex subscription consumes the connected account's
+            # allowance; a USD ceiling there would be a fabricated policy.
             sdk_options.max_budget_usd = await _resolve_dynamic_max_budget_usd(user_id)
+        if profile.row.anthropic_thinking:
+            # Adaptive thinking at the route's effort, with the legacy budget
+            # for models that still read one. Kimi K2.6 takes it through
+            # OpenRouter's ``reasoning`` extension (#12871).
             sdk_options.thinking = {"type": "adaptive"}
-            if config.claude_agent_max_thinking_tokens > 0:
-                sdk_options.max_thinking_tokens = (
-                    config.claude_agent_max_thinking_tokens
-                )
+            sdk_options.effort = profile.thinking_effort
+            sdk_options.max_thinking_tokens = profile.thinking_budget
         if sdk_model:
             sdk_options.model = sdk_model
         if config.sdk_include_partial_messages:
@@ -5463,12 +5252,6 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # When --resume is active the session_id is already implied by
             # the resume file; passing it again would be rejected by the CLI.
             sdk_options.session_id = session_id
-        # Optional explicit Claude Code CLI binary path (decouples the
-        # bundled SDK version from the CLI version we run — needed because
-        # the CLI bundled in 0.1.46+ is broken against OpenRouter).  Falls
-        # back to the bundled binary when unset.
-        if config.claude_agent_cli_path:
-            sdk_options.cli_path = config.claude_agent_cli_path
 
         adapter = SDKResponseAdapter(
             message_id=message_id,
@@ -5677,9 +5460,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
 
         # One budget for the forecast and the build alike, sized from the
         # window this turn's subprocess is pinned to — never the catalog.
-        pre_query_target = _compaction_target_tokens(
-            sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
-        )
+        pre_query_target = profile.compaction_target_tokens()
         forecast = _expect_pre_query_compaction(
             session.messages,
             _compression_model(),
@@ -5772,9 +5553,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 transcript_msg_count,
                 log_prefix,
                 pre_compaction_msg_count,
-                _seed_target_tokens(
-                    sdk_model, codex_route=is_codex_transport, codex_engine=codex_engine
-                ),
+                profile.seed_target_tokens(),
             )
 
         # Build the per-request context carrier (shared across attempts).
@@ -5792,6 +5571,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             compaction=compaction,
             lock=lock,
             codex_gateway=codex_gateway,
+            profile=profile,
             tool_display=tool_display_bridge,
             turn_start=turn_start,
             turn_summary=turn_summary,
@@ -5815,12 +5595,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             transcript_msg_count=transcript_msg_count,
             adapter=adapter,
             transcript_builder=transcript_builder,
-            usage=_TokenUsage(),
+            usage=_TokenUsage(priced=profile.prices_tokens),
             # Subagent files are read only on a turn the reconcile bills.
             generations=TurnGenerations(
                 (
                     _cli_project_dir(sdk_cwd)
-                    if _reconciles_openrouter_cost(is_codex_transport)
+                    if profile.row.cost_source == "openrouter_reconcile"
                     else None
                 ),
                 session_id,
@@ -5874,10 +5654,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 ctx = await _reduce_context(
                     transcript_content,
                     log_prefix,
+                    profile=profile,
                     attempt=attempt,
-                    runtime_model=sdk_model,
-                    codex_route=is_codex_transport,
-                    codex_engine=codex_engine,
                 )
                 state.transcript_builder = ctx.builder
                 state.use_resume = False
@@ -6190,7 +5968,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 attempts_exhausted,
                 transient_exhausted,
                 stream_err,
-                platform_route=stream_ctx.codex_gateway is None,
+                platform_route=profile.platform_pays,
             )
             if (
                 failure is not None
@@ -6198,7 +5976,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 and interrupted.handled_error is None
             ):
                 report_provider_out_of_credits(
-                    provider=config.effective_transport,
+                    provider=profile.name,
                     model=state.observed_model if state is not None else None,
                     surface="copilot_sdk",
                     error=stream_err or "",
@@ -6356,7 +6134,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # The summary in the ``finally`` below reads these, so they are bound
         # before any cleanup step can raise.
         langfuse_trace_id: str | None = None
-        _use_openrouter_reconcile = False
+        _cost_reconciled = False
         # Why the CLI session upload below is skipped, or ``None``: the
         # upload and the summary read this one answer.
         upload_skip = upload_gate_reason(
@@ -6435,7 +6213,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # --- Persist token usage to session + rate-limit counters ---
             # Both must live in finally so they stay consistent even when an
             # exception interrupts the try block after StreamUsage was yielded.
-            effective_model = sdk_model or config.thinking_standard_model
+            effective_model = sdk_model or _compression_model()
             # ``state`` is populated lazily inside the retry loop; when the
             # turn exits before the first attempt runs (e.g. very early
             # validation error) it's still None, so it has no generations.
@@ -6445,11 +6223,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             absorbed_gen_ids: set[str] = (
                 state.generations.absorbed if state is not None else set()
             )
-            _use_openrouter_reconcile = bool(
-                _reconciles_openrouter_cost(is_codex_transport) and collected_gen_ids
+            _cost_reconciled = bool(
+                profile is not None
+                and profile.row.cost_source == "openrouter_reconcile"
+                and collected_gen_ids
             )
 
-            if is_codex_transport:
+            if profile is not None and profile.row.cost_source == "codex_gateway":
                 await persist_and_record_usage(
                     session=session,
                     user_id=user_id,
@@ -6460,11 +6240,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     log_prefix=log_prefix,
                     cost_usd=None,
                     model=effective_model,
-                    provider="codex",
+                    provider=profile.row.cost_log_provider,
                     credential_id_override=(
                         credential_lease.credentials.id if credential_lease else None
                     ),
-                    extra_metadata={"billing_mode": "user_subscription"},
+                    extra_metadata={"billing_mode": profile.row.payer},
                     execution_path="codex_claude_sdk",
                 )
                 # The gateway's own counts ride the turn summary beside the
@@ -6481,32 +6261,13 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         ),
                         boundary_peak_tokens=codex_gateway.peak_boundary_estimate,
                     )
-            elif _use_openrouter_reconcile:
-                # Defer the single cost-and-rate-limit write to a background
-                # task that queries OpenRouter's authoritative
-                # ``/generation?id=`` for every round in this turn.  Covers
-                # all vendors:
-                #
-                # * Non-Anthropic (Kimi et al): the CLI's ``total_cost_usd``
-                #   is computed from a static Anthropic rate table that
-                #   doesn't know the model — silently over-bills by ~5x.
-                #   The reconcile replaces it with OpenRouter's real bill.
-                # * Anthropic via OpenRouter: the CLI's number matches
-                #   Anthropic's own rates penny-for-penny in the common
-                #   case, but the reconcile catches any rate change the
-                #   CLI binary hasn't picked up and any OpenRouter-side
-                #   divergence (cache-discount accounting, promo pricing).
-                #
-                # The task calls ``persist_and_record_usage`` exactly once
-                # per turn — same method as the sync path, so append-only
-                # cost-log + rate-limit counter update together.  The sync
-                # path below is skipped entirely when the reconcile fires,
-                # so no double-counting.  Kill-switch:
-                # ``CHAT_SDK_RECONCILE_OPENROUTER_COST=false``.
-                #
-                # Brief window (~0.5-2s) where the rate-limit counter is
-                # unaware of this turn — back-to-back turns in that window
-                # see a stale counter.
+            elif _cost_reconciled and profile is not None:
+                # One background write, from OpenRouter's own bill for every
+                # generation of the turn (``/generation?id=``), covering every
+                # vendor. The rate-card price is only its fallback, for a turn
+                # whose lookups fail. The sync path below is skipped, so
+                # nothing is counted twice. Brief window (~0.5-2s) where the
+                # rate-limit counter is unaware of this turn.
                 cost_reconcile_task = asyncio.create_task(
                     record_turn_cost_from_openrouter(
                         session=session,
@@ -6521,7 +6282,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         cli_session_id=session_id,
                         turn_start_ts=turn_start_ts,
                         fallback_cost_usd=turn_cost_usd,
-                        api_key=config.api_key,
+                        api_key=(
+                            profile.api_key.get_secret_value()
+                            if profile.api_key
+                            else None
+                        ),
                         log_prefix=log_prefix,
                         langfuse_trace_id=langfuse_trace_id,
                         absorbed_generation_ids=absorbed_gen_ids,
@@ -6529,14 +6294,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 )
                 _background_tasks.add(cost_reconcile_task)
                 cost_reconcile_task.add_done_callback(_background_tasks.discard)
-            else:
-                # Reconcile disabled, OpenRouter inactive, or subscription
-                # path (no gen-IDs).  Record the SDK CLI's
-                # ``total_cost_usd`` synchronously: accurate for Anthropic
-                # (same rate card as billing); for a Moonshot model it's the
-                # rate-card estimate ``moonshot.override_cost_usd`` computes
-                # (still 1.5-2x off vs real OpenRouter bill, but much
-                # closer than the ~5x Sonnet-rate fallback).
+            elif profile is not None:
+                # Priced on the platform's rate card from the tokens the
+                # provider reported; the CLI's own figure is only logged.
+                # Where the user's subscription pays, nothing is charged.
+                if state is not None and turn_cost_usd is not None:
+                    logger.info(
+                        "%s Rate card $%.6f, CLI estimate $%.6f",
+                        log_prefix,
+                        turn_cost_usd,
+                        state.usage.cli_cost_usd,
+                    )
                 await persist_and_record_usage(
                     session=session,
                     user_id=user_id,
@@ -6545,15 +6313,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     cache_read_tokens=turn_cache_read_tokens,
                     cache_creation_tokens=turn_cache_creation_tokens,
                     log_prefix=log_prefix,
-                    cost_usd=turn_cost_usd,
+                    cost_usd=turn_cost_usd if profile.platform_pays else None,
                     model=effective_model,
-                    # ``provider`` labels the cost-analytics row; the cost
-                    # value still comes from the SDK-reported number.
-                    # Tracks the actual upstream so the row matches reality:
-                    # OpenRouter when ``openrouter_active``, Anthropic
-                    # otherwise.
-                    provider=(
-                        "open_router" if config.openrouter_active else "anthropic"
+                    provider=profile.row.cost_log_provider,
+                    extra_metadata=(
+                        None
+                        if profile.platform_pays
+                        else {
+                            "billing_mode": profile.row.payer,
+                            "estimated_cost_usd": turn_cost_usd,
+                        }
                     ),
                 )
 
@@ -6736,7 +6505,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 session=session,
                 options=state.options if state is not None else None,
                 compaction=compaction,
-                transport="codex" if is_codex_transport else config.effective_transport,
+                transport=turn_route_name(profile, credential_lease, config),
                 model_requested=sdk_model,
                 model_answered=state.observed_model if state is not None else None,
                 e2b=e2b_sandbox is not None,
@@ -6747,8 +6516,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     output_tokens=turn_completion_tokens,
                     cost_usd=turn_cost_usd,
                 ),
-                codex=is_codex_transport,
-                cost_reconcile=_use_openrouter_reconcile,
+                codex=turn_route_name(profile, credential_lease, config) == "codex",
+                cost_reconcile=_cost_reconciled,
                 upload_gate=upload_skip,
                 ended_with_stream_error=ended_with_stream_error,
             )

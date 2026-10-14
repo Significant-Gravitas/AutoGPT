@@ -72,10 +72,10 @@ class InvalidDefaultChatRoute(ValueError):
 
 
 def is_deployment_chat_available() -> bool:
-    if settings.config.behave_as == BehaveAs.CLOUD:
-        return True
-    api_key, _ = config.main_client_credentials
-    return bool(config.test_mode or config.use_claude_code_subscription or api_key)
+    """Whether the platform's own chat model is on: off only on a deployment
+    whose route is disabled (connected accounts still chat there). Every
+    route's key and URL were checked at startup."""
+    return config.test_mode or config.route_row is not None
 
 
 async def get_chat_transports(user_id: str) -> list[ChatTransportResponse]:

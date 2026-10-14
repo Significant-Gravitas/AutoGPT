@@ -7,6 +7,7 @@ tool access, and dangerous input patterns.
 
 import logging
 import os
+from typing import Any
 
 import pytest
 
@@ -847,7 +848,9 @@ async def test_post_tool_use_followup_is_cleaned_like_any_message(monkeypatch):
     hooks = create_security_hooks(
         user_id="u1", sdk_cwd=SDK_CWD, max_subtasks=2, allowed_tools=ALLOWED
     )
-    post = hooks["PostToolUse"][0].hooks[0]
+    # The hook's declared input is the CLI's full payload; this test sends
+    # the two fields the hook reads.
+    post: Any = hooks["PostToolUse"][0].hooks[0]
 
     result = await post(
         {"tool_name": "mcp__copilot__run_block", "tool_response": "ok"},
