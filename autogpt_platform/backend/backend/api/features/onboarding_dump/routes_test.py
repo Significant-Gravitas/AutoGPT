@@ -104,6 +104,12 @@ class DumpStore:
             self.statuses.append(status)
         return True
 
+    async def clear_audio_paths(self, audio_paths: list[str]) -> int:
+        if self.row is None or self.row.audioPath not in audio_paths:
+            return 0
+        self.row.audioPath = None
+        return 1
+
     async def claim_transition(
         self,
         user_id: str,
@@ -187,6 +193,7 @@ def dumps(mocker: MockerFixture) -> DumpStore:
     mocker.patch(f"{module}.mark_failed", new=store.mark_failed)
     mocker.patch(f"{module}.claim_transition", new=store.claim_transition)
     mocker.patch(f"{module}.mark_greeting_seen", new=store.mark_greeting_seen)
+    mocker.patch(f"{module}.clear_audio_paths", new=store.clear_audio_paths)
     return store
 
 
@@ -552,6 +559,8 @@ def test_recording_deleted_by_retention_is_404_not_a_dead_link(
     assert recording.status_code == 404
     assert recording.json()["detail"] == "Recording no longer available"
     storage_mocks["audio_download_url"].assert_not_awaited()
+    # The status stops offering a download that can only 404.
+    assert dumps.row is not None and dumps.row.audioPath is None
 
 
 def test_discard_clears_the_part_buffer_of_an_unfinished_take(
