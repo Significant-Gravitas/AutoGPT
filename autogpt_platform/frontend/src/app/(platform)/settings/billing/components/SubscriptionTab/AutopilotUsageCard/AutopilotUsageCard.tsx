@@ -52,18 +52,14 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
       {state.inactive || state.unlimited ? (
         <div className="my-auto py-8">
           <Text variant="large-medium" className="mb-2">
-            {state.paymentFailed
-              ? "Your payment needs attention."
-              : state.unlimited
-                ? "No usage limit"
-                : "Choose a plan to keep working"}
+            {state.unlimited
+              ? "No usage limit"
+              : "Choose a plan to keep working"}
           </Text>
           <Text variant="small" tone="secondary" className="leading-6">
-            {state.paymentFailed
-              ? "Review your payment details to continue. Your conversations and agents stay saved."
-              : state.unlimited
-                ? "Your plan has no daily or weekly usage limits."
-                : "Choose a plan to continue working with your saved conversations and agents."}
+            {state.unlimited
+              ? "Your plan has no daily or weekly usage limits."
+              : "Choose a plan to continue working with your saved conversations and agents."}
           </Text>
         </div>
       ) : (

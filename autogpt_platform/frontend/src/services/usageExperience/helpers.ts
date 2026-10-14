@@ -16,6 +16,21 @@ interface Trial {
   allowance_used_percent?: number | null;
   ends_at?: string | Date | null;
   usage_policy?: string | null;
+  payment_due?: {
+    amount_due: number;
+    currency: string;
+    payment_url: string;
+  } | null;
+}
+
+function getTrialPayment(trial?: Trial | null) {
+  const due = trial?.payment_due;
+  if (!due) return null;
+  return {
+    ...due,
+    plan: trial.offer?.tier ?? null,
+    startsOn: trial.ends_at ?? null,
+  };
 }
 
 export function getUsageExperience(
@@ -70,6 +85,8 @@ export function getUsageExperience(
       trial?.offer?.tier === "PRO",
     trialPercent,
     inactiveTrialStatus,
+    payment:
+      inactiveTrialStatus === "payment_failed" ? getTrialPayment(trial) : null,
     trialEndsAt: isActiveTrial ? (trial?.ends_at ?? null) : null,
     blocked: window !== null || !!inactiveTrialStatus,
     window,

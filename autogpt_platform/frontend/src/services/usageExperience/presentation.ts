@@ -6,6 +6,7 @@ import {
   formatUsageDate,
   type UsageExperience,
 } from "./helpers";
+import { formatPaymentDue } from "./payment";
 
 export function usagePresentation(
   experience: UsageExperience,
@@ -29,7 +30,8 @@ export function usagePresentation(
       title,
       noticeTitle: title,
       description: payment
-        ? "Review your billing details to continue. Your chats, agents and results are saved."
+        ? (formatPaymentDue(experience.payment)?.description ??
+          "Review your billing details to continue. Your chats, agents and results are saved.")
         : canceled
           ? "Your trial won’t turn into a paid subscription. Your chats, agents and results are saved whenever you’re ready to choose a plan."
           : "Your chats, agents and results are saved. Choose a plan to keep going.",

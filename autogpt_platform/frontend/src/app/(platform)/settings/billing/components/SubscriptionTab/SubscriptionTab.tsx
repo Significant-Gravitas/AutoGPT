@@ -3,6 +3,7 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { TrialCard } from "@/components/organisms/TrialCard/TrialCard";
 import { TrialCheckoutConfirmation } from "@/components/organisms/TrialCard/TrialCheckoutConfirmation";
+import { PaymentRecoveryCard } from "@/components/organisms/UsageExperience/PaymentRecoveryCard";
 
 import { BillingOffer } from "./BillingOffer";
 import { AutopilotUsageCard } from "./AutopilotUsageCard/AutopilotUsageCard";
@@ -24,11 +25,19 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
     isConfirmingPlan,
     isLoading,
     hasPlanChoices,
+    paymentFailed,
+    payment,
   } = useSubscriptionTab(isPlanCheckoutReturn);
   return (
     <div className="flex flex-col gap-4">
       <TrialCheckoutConfirmation />
       <div className="flex flex-col gap-3 empty:hidden">
+        {paymentFailed ? (
+          <PaymentRecoveryCard
+            payment={payment}
+            fallback="Update your payment method below to continue. Your chats, agents and results are saved."
+          />
+        ) : null}
         {showTrialCard ? <TrialCard /> : null}
         {isConfirmingPlan ? (
           <Text variant="small" tone="secondary" role="status" className="px-4">
@@ -40,7 +49,7 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
         ) : null}
       </div>
       {showPlan ? <YourPlanCard index={0} showUsage /> : null}
-      {!showPlan && !isLoading ? (
+      {!showPlan && !isLoading && !paymentFailed ? (
         <div
           className={
             hasPlanChoices

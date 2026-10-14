@@ -134,4 +134,29 @@ describe("usage experience", () => {
       });
     },
   );
+  it("carries the open invoice only for a failed first charge", () => {
+    const payment_due = {
+      amount_due: 5000,
+      currency: "usd",
+      payment_url: "https://invoice.stripe.com/i/acct_1/test_inv_1",
+    };
+    expect(
+      getUsageExperience(
+        { ...usage, tier: "NO_TIER" },
+        {
+          ...trial,
+          active: false,
+          status: "past_due",
+          offer: { tier: "PRO" },
+          payment_due,
+        },
+      ).payment,
+    ).toEqual({ ...payment_due, plan: "PRO", startsOn: trial.ends_at });
+    expect(
+      getUsageExperience(
+        { ...usage, tier: "NO_TIER" },
+        { ...trial, active: false, status: "expired", payment_due },
+      ).payment,
+    ).toBeNull();
+  });
 });

@@ -4,6 +4,7 @@ import type { SubscriptionTier } from "@/app/api/__generated__/models/subscripti
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { Dialog } from "@/components/molecules/Dialog/Dialog";
+import { PaymentDueAction } from "@/components/organisms/UsageExperience/PaymentDueAction";
 import { PlanOffer } from "@/components/organisms/UsageExperience/PlanOffer";
 import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
 import { UsageMeter } from "@/components/organisms/UsageExperience/UsageMeter";
@@ -12,6 +13,7 @@ import {
   getUsageOfferAction,
   type UsageExperience,
 } from "@/services/usageExperience/helpers";
+import { formatPaymentDue } from "@/services/usageExperience/payment";
 import { usagePresentation } from "@/services/usageExperience/presentation";
 import { useRouter } from "next/navigation";
 import type { ComponentProps } from "react";
@@ -62,6 +64,7 @@ export function RateLimitResetDialog({
       },
     });
   const copy = usagePresentation(model, offer?.usageMultiplier);
+  const payment = formatPaymentDue(model.payment);
   const fallbackTitle =
     failureWindow === "trial"
       ? "You’ve used your trial allowance"
@@ -127,6 +130,7 @@ export function RateLimitResetDialog({
           <>
             <Text
               variant="body"
+              unmask={!payment}
               className="mb-5 !text-sm !leading-6 !text-zinc-500"
             >
               {copy.description}
@@ -158,11 +162,17 @@ export function RateLimitResetDialog({
               />
             )}
             {isBillingEnabled &&
-              model.inactiveTrialStatus === "payment_failed" && (
+              model.inactiveTrialStatus === "payment_failed" &&
+              (payment ? (
+                <PaymentDueAction
+                  url={payment.url}
+                  label={payment.actionLabel}
+                />
+              ) : (
                 <Button className="w-full" onClick={upgrade}>
                   Review billing details
                 </Button>
-              )}
+              ))}
             {isBillingEnabled && model.isTopTier && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 p-4">
                 <div>

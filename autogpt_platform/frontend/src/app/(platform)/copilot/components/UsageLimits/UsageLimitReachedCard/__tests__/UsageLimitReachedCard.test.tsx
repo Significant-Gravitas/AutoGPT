@@ -181,4 +181,34 @@ describe("Usage notice", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("You’ve hit today’s limit")).toBeDefined();
   });
+  it("pays a failed first trial charge from the notice", async () => {
+    setTrialUser();
+    setup("NO_TIER");
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        HttpResponse.json(
+          trialResponse({
+            active: false,
+            status: "past_due",
+            ends_at: new Date(2026, 9, 12, 12),
+            payment_due: {
+              amount_due: 5000,
+              currency: "usd",
+              payment_url: "https://invoice.stripe.com/i/acct_1/test_inv_1",
+            },
+          }),
+        ),
+      ),
+    );
+    render(<UsageLimitReachedCard />);
+    const pay = await screen.findByRole("link", { name: "Pay $50 now" });
+    expect(pay.getAttribute("href")).toBe(
+      "https://invoice.stripe.com/i/acct_1/test_inv_1",
+    );
+    expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
+    for (const amount of screen.getAllByText(/\$50/)) {
+      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
+  });
 });

@@ -23,11 +23,6 @@ export function BillingOffer({ controller }: Props) {
   const { experience, trial, subscription, isError } = useUsageExperience();
   const activation = useProActivation();
   const isTrial = experience.isActiveTrial;
-  const paymentFailed =
-    experience.tier === "NO_TIER" &&
-    !trial?.active &&
-    !trial?.converted &&
-    ["past_due", "unpaid"].includes(trial?.status ?? "");
   const target = isTrial
     ? trial?.offer?.tier === "PRO"
       ? "Pro"
@@ -45,18 +40,6 @@ export function BillingOffer({ controller }: Props) {
         label="Back to your work"
         href="/copilot"
         ready
-      />
-    );
-  if (paymentFailed)
-    return (
-      <SupportOffer
-        eyebrow="Payment"
-        footer="Your conversations and agents stay saved."
-        title="Your payment didn’t go through"
-        description="Your trial payment needs attention. Review your payment details to continue with your saved work."
-        label="Update payment method"
-        onAction={controller?.onManage}
-        disabled={!controller?.canManagePortal}
       />
     );
   if (isError && experience.tier !== "NO_TIER")

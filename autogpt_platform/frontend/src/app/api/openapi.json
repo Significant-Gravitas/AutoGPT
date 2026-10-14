@@ -32979,6 +32979,16 @@
         ],
         "title": "TrialOfferResponse"
       },
+      "TrialPaymentDue": {
+        "properties": {
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "currency": { "type": "string", "title": "Currency" },
+          "payment_url": { "type": "string", "title": "Payment Url" }
+        },
+        "type": "object",
+        "required": ["amount_due", "currency", "payment_url"],
+        "title": "TrialPaymentDue"
+      },
       "TrialRejectionReason": {
         "type": "string",
         "enum": ["intro_offer_already_used", "card_verification_failed"],
@@ -33040,6 +33050,12 @@
             "type": "boolean",
             "title": "Onboarding Credits Previously Received",
             "default": false
+          },
+          "payment_due": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialPaymentDue" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",

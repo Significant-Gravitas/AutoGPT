@@ -5,7 +5,9 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { getUsageOfferAction } from "@/services/usageExperience/helpers";
+import { formatPaymentDue } from "@/services/usageExperience/payment";
 import { usagePresentation } from "@/services/usageExperience/presentation";
+import { PaymentDueAction } from "@/components/organisms/UsageExperience/PaymentDueAction";
 import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
 import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
@@ -17,6 +19,8 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
   const copy = usagePresentation(state.experience, state.offer.usageMultiplier);
   const isOffer =
     state.isBillingEnabled && state.experience.targetTier && !state.isError;
+  const due = formatPaymentDue(state.experience.payment);
+  const payment = state.isBillingEnabled && !state.isError ? due : null;
   return (
     <section
       role="status"
@@ -52,7 +56,11 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
             ? "We couldn’t check your usage."
             : copy.noticeTitle}
       </Text>
-      <Text variant="small" className="mt-2 !leading-5 !text-zinc-500">
+      <Text
+        variant="small"
+        unmask={!due}
+        className="mt-2 !leading-5 !text-zinc-500"
+      >
         {state.isRefreshing
           ? "Refreshing your plan and usage…"
           : state.isError
@@ -75,6 +83,16 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
               + tax. Review before you pay.
             </Text>
           )}
+        </div>
+      )}
+      {payment && (
+        <div className="mt-4">
+          <PaymentDueAction
+            url={payment.url}
+            label={payment.actionLabel}
+            size="small"
+            layout="inline"
+          />
         </div>
       )}
       {state.alternative && (

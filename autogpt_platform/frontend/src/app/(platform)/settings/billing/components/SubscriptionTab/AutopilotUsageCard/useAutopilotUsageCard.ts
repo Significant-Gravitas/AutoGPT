@@ -65,11 +65,6 @@ export function useAutopilotUsageCard() {
     lifetime: experience.isLifetimeTrial,
     blocked: experience.blocked,
     inactive: experience.tier === "NO_TIER",
-    paymentFailed:
-      experience.tier === "NO_TIER" &&
-      !trial?.active &&
-      !trial?.converted &&
-      ["past_due", "unpaid"].includes(trial?.status ?? ""),
     hasUsage: Boolean(featured || secondary),
     unlimited: Boolean(
       usage &&

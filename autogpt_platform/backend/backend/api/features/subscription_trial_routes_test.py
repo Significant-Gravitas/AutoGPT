@@ -14,6 +14,7 @@ from jwt.algorithms import ECAlgorithm
 from backend.api.features import subscription_trial_routes as routes
 from backend.data.subscription_trial import TrialState
 from backend.data.subscription_trial_config import AcceptedTrialOffer
+from backend.data.subscription_trial_invoice import TrialPaymentDue
 
 
 @pytest.fixture(autouse=True)
@@ -153,6 +154,41 @@ async def test_status_exposes_safe_rejection_reason(trial):
     ):
         status = await routes.get_trial_status(trial.user_id)
     assert status.model_dump().get("rejection_reason") == "intro_offer_already_used"
+
+
+@pytest.mark.asyncio
+async def test_past_due_status_carries_the_open_invoice(trial):
+    trial = trial.model_copy(update={"status": "past_due", "subscription_id": "sub_1"})
+    due = TrialPaymentDue(
+        amount_due=5000,
+        currency="usd",
+        payment_url="https://invoice.stripe.com/i/acct_1/test_inv_1",
+    )
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+        patch.object(
+            routes, "get_trial_payment_due", AsyncMock(return_value=due)
+        ) as lookup,
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.payment_due == due
+    lookup.assert_awaited_once_with(trial)
+
+
+@pytest.mark.asyncio
+async def test_status_without_a_failed_charge_has_no_payment_due(trial):
+    with (
+        patch.object(routes, "get_subscription_trial", AsyncMock(return_value=trial)),
+        patch.object(routes, "get_trial_offer", AsyncMock(return_value=None)),
+        patch.object(
+            routes, "has_received_onboarding_credit", AsyncMock(return_value=False)
+        ),
+    ):
+        status = await routes.get_trial_status(trial.user_id)
+    assert status.payment_due is None
 
 
 @pytest.mark.asyncio

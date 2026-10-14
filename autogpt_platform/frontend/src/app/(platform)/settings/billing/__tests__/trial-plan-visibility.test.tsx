@@ -18,7 +18,7 @@ vi.mock("@/hooks/useIsBillingEnabled", () => ({
 beforeEach(() => setTrialUser());
 afterEach(() => setTrialUser(null));
 
-it.each(["past_due", "unpaid", "incomplete_expired", "trialing", "canceled"])(
+it.each(["incomplete_expired", "trialing", "canceled"])(
   "keeps plan selection available for an inactive %s trial",
   async (status) => {
     server.use(
