@@ -33,6 +33,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
@@ -212,7 +213,6 @@ class TestExecuteAsyncScheduledTurnContext:
     async def _seen_by_the_turn(entry: CoPilotExecutionEntry) -> dict:
         from backend.copilot.context import is_unattended_turn
         from backend.copilot.credential_selection import turn_credential_pins
-        from backend.copilot.llm_attribution import is_turn_impersonated
 
         seen: dict = {}
 

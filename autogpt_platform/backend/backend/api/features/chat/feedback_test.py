@@ -12,6 +12,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from langfuse.api import ScoreDataType
 from prisma.models import ChatMessage as PrismaChatMessage
 
@@ -31,8 +32,6 @@ FEEDBACK_ID = "c3a1b2d4-e5f6-4789-8abc-def012345678"
 
 @pytest.fixture(autouse=True)
 def setup_app_auth(mock_jwt_user):
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     yield
     app.dependency_overrides.clear()
@@ -389,8 +388,6 @@ def test_rating_by_an_impersonating_admin_is_marked(
     score_create: AsyncMock,
     posthog_capture: MagicMock,
 ) -> None:
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
-
     app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
     _mock_message(mocker, _reply(trace_id=TRACE_ID))
 

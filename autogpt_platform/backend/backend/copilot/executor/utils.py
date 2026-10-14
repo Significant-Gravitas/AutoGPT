@@ -492,6 +492,7 @@ async def schedule_turn(
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     delegated: bool = False,
+    impersonated: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -563,6 +564,7 @@ async def schedule_turn(
             unattended=unattended,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            impersonated=impersonated,
         )
 
 
@@ -716,6 +718,7 @@ async def queue_spawned_turn(
     permissions: CopilotPermissions | None,
     spawn: SpawnRequest | None,
     message_metadata: dict[str, Any] | None,
+    impersonated: bool = False,
 ) -> None:
     """Queue a turn another session started, to begin when a slot frees.
 
@@ -748,6 +751,7 @@ async def queue_spawned_turn(
             tool_call_id=tool_call_id,
             tool_name=tool_name,
             only_if_idle=True,
+            impersonated=impersonated,
         )
     except BaseException:
         await release_turn(envelope)

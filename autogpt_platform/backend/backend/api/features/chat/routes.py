@@ -2078,6 +2078,7 @@ async def stream_chat_post(
                     else None
                 ),
                 request_arrival_at=request_arrival_at,
+                impersonated=is_impersonated_request(http_request),
             )
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()

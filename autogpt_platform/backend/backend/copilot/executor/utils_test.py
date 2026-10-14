@@ -427,3 +427,67 @@ async def test_dispatch_turn_puts_impersonation_on_the_queued_entry() -> None:
         queue.publish_message.await_args.kwargs["message"]
     )
     assert entry.impersonated is True
+
+
+@pytest.mark.asyncio
+async def test_schedule_turn_hands_impersonation_to_the_turn() -> None:
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    dispatch = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=0),
+        ),
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "dispatch_turn", new=dispatch),
+    ):
+        await utils.schedule_turn(
+            session_id="s1", user_id="u1", turn_id="t1", message="hi"
+        )
+        assert dispatch.await_args.kwargs["impersonated"] is False
+
+        await utils.schedule_turn(
+            session_id="s1",
+            user_id="u1",
+            turn_id="t2",
+            message="hi",
+            impersonated=True,
+        )
+        assert dispatch.await_args.kwargs["impersonated"] is True
+
+
+@pytest.mark.asyncio
+async def test_queue_spawned_turn_stores_impersonation_with_the_queued_row() -> None:
+    enqueue = AsyncMock()
+    with (
+        patch(
+            "backend.copilot.turn_queue.count_inflight_turns",
+            new=AsyncMock(return_value=0),
+        ),
+        patch.object(
+            utils,
+            "_admitted_turn_envelope",
+            new=AsyncMock(return_value=root_envelope("t1")),
+        ),
+        patch("backend.copilot.turn_queue.enqueue_turn", new=enqueue),
+    ):
+        await utils.queue_spawned_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hi",
+            tool_call_id="sub:parent",
+            tool_name="run_sub_session",
+            llm_auth_provider="platform",
+            llm_credential_id=None,
+            permissions=None,
+            spawn=None,
+            message_metadata=None,
+            impersonated=True,
+        )
+
+    assert enqueue.await_args.kwargs["impersonated"] is True
