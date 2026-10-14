@@ -61,6 +61,7 @@ class NodeRow:
 
     def __init__(self) -> None:
         self.status = ExecutionStatus.QUEUED
+        self.queue_time = None
         self.entry = NodeExecutionEntry(
             user_id=USER_ID,
             graph_exec_id=GRAPH_EXEC_ID,

@@ -25,12 +25,12 @@ def audit_thread(
     ledger: PlatformLedger,
     session: ChatSession,
     usage_by_turn: list[list[Usage]],
-    cli_resumed: list[bool] | None,
+    cli_resumed: list[tuple[int, bool]] | None,
 ) -> list[Finding]:
     """Every way the thread strayed from its invoice or its planned path.
 
-    ``cli_resumed`` says, for each CLI launch of an SDK thread, whether it
-    resumed the chat's session; None for engines without a CLI.
+    ``cli_resumed`` says, for each CLI launch of an SDK thread, its turn and
+    whether it resumed the chat's session; None for engines without a CLI.
     """
     findings = _audit_path(provider, cli_resumed, turns=len(usage_by_turn))
     findings += _audit_attribution(session, ledger)
@@ -61,7 +61,10 @@ def _audit_attribution(session: ChatSession, ledger: PlatformLedger) -> list[Fin
 
 
 def _audit_path(
-    provider: FakeProvider, cli_resumed: list[bool] | None, *, turns: int
+    provider: FakeProvider,
+    cli_resumed: list[tuple[int, bool]] | None,
+    *,
+    turns: int,
 ) -> list[Finding]:
     """Whether the thread took the path it meant to.
 
@@ -74,11 +77,13 @@ def _audit_path(
         messages.append(
             f"faults served {provider.faults_served}, planned {provider.faults}"
         )
-    # Every launch after the first, retries included, resumes the session.
+    # The first turn's launches start the session, retries included; every
+    # later turn's launches resume it.
     if cli_resumed is not None and (
-        len(cli_resumed) < turns or cli_resumed[0] or not all(cli_resumed[1:])
+        {turn for turn, _ in cli_resumed} != set(range(turns))
+        or any(resumed != (turn > 0) for turn, resumed in cli_resumed)
     ):
-        messages.append(f"CLI launches resumed the session: {cli_resumed}")
+        messages.append(f"CLI launches (turn, resumed): {cli_resumed}")
     return [Finding(check="path", message=message) for message in messages]
 
 
@@ -98,15 +103,35 @@ def _audit_turn(
                 message=f"turn {turn}: the provider billed {len(calls)} calls",
             )
         ]
-    findings = _audit_spend(scenario, turn, calls, ledger)
+    owed = scenario.owed_calls(turn, calls)
+    if not owed:
+        return _audit_unbilled(turn, ledger, session_usage)
+    findings = _audit_spend(scenario, turn, owed, ledger)
     rows = ledger.rows_in(turn)
     if len(rows) != 1:
         message = f"turn {turn}: {len(rows)} cost-log rows, expected 1"
         return [*findings, Finding(check="charge", message=message)]
     findings += _audit_row(scenario, turn, rows[0], ledger)
     if scenario.reports_usage:
-        findings += _audit_tokens(turn, calls, rows[0], session_usage)
+        findings += _audit_tokens(turn, owed, rows[0], session_usage)
     return findings
+
+
+def _audit_unbilled(
+    turn: int, ledger: PlatformLedger, session_usage: list[Usage]
+) -> list[Finding]:
+    """A turn that owes nothing leaves no charge, cost-log row or usage."""
+    spend = [charge.microdollars for charge in ledger.spend_in(turn)]
+    tree = [charge.microdollars for charge in ledger.tree_in(turn)]
+    rows = ledger.rows_in(turn)
+    if not (spend or tree or rows or session_usage):
+        return []
+    message = (
+        f"turn {turn} owes nothing, yet charged {spend} to spend and {tree} to "
+        f"the tree, logged {len(rows)} cost-log row(s) and recorded "
+        f"{len(session_usage)} session usage entries"
+    )
+    return [Finding(check="charge", message=message)]
 
 
 def _audit_spend(
@@ -129,7 +154,7 @@ def _audit_spend(
     messages = []
     if len(spend) != 1 or abs(spend[0] - (expected or 0)) > tolerance:
         messages.append(
-            f"turn {turn}: charged {spend} microdollars; the provider billed "
+            f"turn {turn}: charged {spend} microdollars; the turn owes "
             f"{expected} ({scenario.charge}) for {len(calls)} call(s)"
         )
     if tree != spend:
@@ -162,7 +187,7 @@ def _audit_row(
 def _audit_tokens(
     turn: int, calls: list[Call], row: PlatformCostEntry, session_usage: list[Usage]
 ) -> list[Finding]:
-    billed = (
+    owed = (
         sum(call.usage.input_tokens for call in calls),
         sum(call.usage.output_tokens for call in calls),
         sum(call.usage.cache_read_tokens for call in calls),
@@ -184,12 +209,8 @@ def _audit_tokens(
         for u in session_usage
     ]
     messages = []
-    if logged != billed:
-        messages.append(
-            f"turn {turn}: logged tokens {logged}, provider billed {billed}"
-        )
-    if recorded != [billed]:
-        messages.append(
-            f"turn {turn}: session usage {recorded}, provider billed {billed}"
-        )
+    if logged != owed:
+        messages.append(f"turn {turn}: logged tokens {logged}, the turn owes {owed}")
+    if recorded != [owed]:
+        messages.append(f"turn {turn}: session usage {recorded}, the turn owes {owed}")
     return [Finding(check="tokens", message=message) for message in messages]

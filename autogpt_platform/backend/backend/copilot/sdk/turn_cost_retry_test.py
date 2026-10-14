@@ -1,4 +1,9 @@
-"""Retrying a platform turn must retain spend from the failed attempt."""
+"""What a turn that retried is charged.
+
+A transient failure is ours to absorb: the turn is charged only the attempt
+that succeeded. A context retry also keeps the overflow result it was billed
+for, since that result was reported before the retry.
+"""
 
 import contextlib
 from datetime import UTC, datetime
@@ -20,10 +25,17 @@ from .turn_cost_test import _CALL_COST, _SDK_CWD, _SESSION_ID, _SVC, _result
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "failure", ["transient", "transient-assistant", "context-result", "context-zero"]
+    ("failure", "charged_calls"),
+    [
+        # The failed attempt spent one call and the retry one: only the retry.
+        ("transient", 1),
+        ("transient-assistant", 1),
+        ("context-result", 3),
+        ("context-zero", 2),
+    ],
 )
-async def test_retry_retains_failed_attempt_spend(
-    failure, tmp_path, monkeypatch, caplog
+async def test_retried_turn_charge(
+    failure, charged_calls, tmp_path, monkeypatch, caplog
 ):
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
     session_file = Path(cli_session_path(_SDK_CWD, _SESSION_ID))
@@ -122,7 +134,7 @@ async def test_retry_retains_failed_attempt_spend(
     ]
     assert not any(isinstance(event, StreamError) for event in events)
     persist.assert_awaited_once()
-    expected = (3 if failure == "context-result" else 2) * _CALL_COST
+    expected = charged_calls * _CALL_COST
     assert persist.await_args.kwargs["cost_usd"] == pytest.approx(expected)
     if failure.startswith("context"):
         assert persist.await_args.kwargs["prompt_tokens"] == (

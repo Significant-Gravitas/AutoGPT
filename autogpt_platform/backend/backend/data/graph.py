@@ -2,7 +2,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
-from collections.abc import Container
+from collections.abc import Container, Mapping
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -42,10 +42,15 @@ from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    GraphValidationError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
+from backend.util.text import split_camelcase
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
@@ -368,6 +373,10 @@ class BaseGraph(GraphBaseMeta):
     ) -> dict[str, Any]:
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
+            # An input or output without a name isn't part of the graph's
+            # interface yet; validate_graph reports the missing name.
+            if not str(input_default.get("name") or "").strip():
+                continue
             try:
                 schema_fields.append(type_class.model_construct(**input_default))
             except Exception as e:
@@ -792,10 +801,13 @@ class GraphModel(Graph, GraphMeta):
             if v[0].is_auto_credential
         }
 
-    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
+    def reassign_ids(
+        self, user_id: str, reassign_graph_id: bool = False
+    ) -> dict[str, str]:
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
+        Returns each new node ID mapped to the node ID it replaced.
         """
         if reassign_graph_id:
             graph_id_map = {
@@ -805,16 +817,17 @@ class GraphModel(Graph, GraphMeta):
         else:
             graph_id_map = {}
 
-        self._reassign_ids(self, user_id, graph_id_map)
+        replaced_node_ids = self._reassign_ids(self, user_id, graph_id_map)
         for sub_graph in self.sub_graphs:
-            self._reassign_ids(sub_graph, user_id, graph_id_map)
+            replaced_node_ids |= self._reassign_ids(sub_graph, user_id, graph_id_map)
+        return replaced_node_ids
 
     @staticmethod
     def _reassign_ids(
         graph: BaseGraph,
         user_id: str,
         graph_id_map: dict[str, str],
-    ):
+    ) -> dict[str, str]:
         # Reassign Graph ID
         if graph.id in graph_id_map:
             graph.id = graph_id_map[graph.id]
@@ -841,6 +854,8 @@ class GraphModel(Graph, GraphMeta):
                 graph_id := node.input_default.get("graph_id")
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
+
+        return {new_id: old_id for old_id, new_id in id_map.items()}
 
     def clear_auto_credentials(
         self, keep_ids: Container[str] = frozenset()
@@ -903,10 +918,9 @@ class GraphModel(Graph, GraphMeta):
             graph, for_run, nodes_input_masks
         )
         if errors:
-            # Just raise the first error for backward compatibility
-            first_error = next(iter(errors.values()))
-            first_field_error = next(iter(first_error.values()))
-            raise ValueError(first_field_error)
+            raise GraphValidationError(
+                _describe_node_errors(graph, errors), node_errors=errors
+            )
 
     def validate_graph_get_errors(
         self,
@@ -971,14 +985,18 @@ class GraphModel(Graph, GraphMeta):
 
             if block.disabled:
                 raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in graphs"
+                    f"Block {node.block_id} is disabled and cannot be used in workflows"
                 )
 
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize_pin_name(name) for name in node.input_default]
+                [
+                    sanitize_pin_name(name)
+                    for name, value in node.input_default.items()
+                    if not _is_blank_io_name(block, name, value)
+                ]
                 + [
                     sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
@@ -1106,10 +1124,10 @@ class GraphModel(Graph, GraphMeta):
                 if picker_format == "google-drive-picker":
                     remediation = (
                         f"Add an AgentGoogleDriveFileInputBlock node to the "
-                        f"graph and link its 'result' output to "
+                        f"workflow and link its 'result' output to "
                         f"{field_name!r} instead. That block renders a "
                         f"Google Drive picker at run time so whoever runs "
-                        f"the agent supplies their own credentials via the "
+                        f"the workflow supplies their own credentials via the "
                         f"picked file."
                     )
                 else:
@@ -1119,7 +1137,7 @@ class GraphModel(Graph, GraphMeta):
                         f"This field expects a picker-populated object "
                         f"containing a '_credentials_id'. Wire the matching "
                         f"input block for this provider into {field_name!r} "
-                        f"so whoever runs the agent supplies their own "
+                        f"so whoever runs the workflow supplies their own "
                         f"credentials at run time."
                     )
 
@@ -1297,6 +1315,44 @@ class GraphModel(Graph, GraphMeta):
         so all computed fields (e.g. `credentials_input_schema`) still work.
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
+
+
+def _describe_node_errors(
+    graph: BaseGraph, node_errors: Mapping[str, Mapping[str, str]]
+) -> str:
+    """The first problem in the builder's words, e.g. "Agent Output › Name:
+    This field is required", and how many more there are."""
+    nodes = {node.id: node for node in graph.nodes}
+    problems = [
+        f"{_node_title(nodes[node_id])} › {_field_title(nodes[node_id], field)}: "
+        f"{error}"
+        for node_id, field_errors in node_errors.items()
+        for field, error in field_errors.items()
+    ]
+    if len(problems) > 1:
+        return f"{problems[0]} (and {len(problems) - 1} more)"
+    return problems[0]
+
+
+def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
+    """An input or output named "" has no name, and the graph's interface needs
+    one; one wired in from a link still counts."""
+    return (
+        field == "name"
+        and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+        and not str(value or "").strip()
+    )
+
+
+def _node_title(node: Node) -> str:
+    if customized_name := node.metadata.get("customized_name"):
+        return str(customized_name)
+    return split_camelcase(node.block.name.removesuffix("Block"))
+
+
+def _field_title(node: Node, field: str) -> str:
+    properties = node.block.input_schema.jsonschema().get("properties", {})
+    return properties.get(field, {}).get("title") or field
 
 
 class GraphModelWithoutNodes(GraphModel):
@@ -1921,14 +1977,14 @@ async def validate_graph_execution_permissions(
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
-            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            f"You do not have access to workflow #{graph_id} v{graph_version}: "
             "it is not owned by you, not in your library as a submitted "
             "version, and not available in the Marketplace"
         )
     elif not (
         version_readable_from_library or owner_has_live_library_entry or is_sub_graph
     ):
-        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
+        raise GraphNotInLibraryError(f"Workflow #{graph_id} is not in your library")
 
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:

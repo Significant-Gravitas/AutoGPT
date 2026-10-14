@@ -39,6 +39,7 @@ import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
+import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
@@ -155,8 +156,8 @@ export function ChatInput({
     toast({
       title: next ? "Test mode enabled" : "Test mode disabled",
       description: next
-        ? "New chats will run agents in test mode."
-        : "New chats will run agents normally.",
+        ? "New chats will run workflows in test mode."
+        : "New chats will run workflows normally.",
     });
   }
 
@@ -356,6 +357,7 @@ export function ChatInput({
           onHighlight={mentions.setHighlightedIndex}
         />
       )}
+      <NoAIConnectionNotice enabled={!hasSession} />
       {/* GPT-style composer: a single pill row — plus on the left, textarea
           in the middle, quiet toggles + mic + send on the right. items-end
           keeps the controls pinned to the bottom edge as the textarea grows. */}

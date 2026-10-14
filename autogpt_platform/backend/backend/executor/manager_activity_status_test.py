@@ -217,7 +217,7 @@ def test_graph_start_credit_failure_records_structured_reason(credit_balance):
     assert status == ExecutionStatus.FAILED
     assert stats.failure_reason == ExecutionFailureReason.INSUFFICIENT_BALANCE
     assert stats.error == (
-        "At least 1 credit must be available to run this agent. "
+        "At least 1 credit must be available to run this workflow. "
         "Please make more credits available and try again."
     )
     db_client.get_org_credits.assert_called_once_with(org_id="org-1")
@@ -346,6 +346,7 @@ def _queued_node(node_exec_id: str, status: ExecutionStatus):
     )
     return SimpleNamespace(
         status=status,
+        queue_time=None,
         to_node_execution_entry=lambda execution_context: entry.model_copy(
             update={"execution_context": execution_context}
         ),
