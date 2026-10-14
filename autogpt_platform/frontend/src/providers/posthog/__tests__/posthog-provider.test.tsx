@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 interface InitConfig {
   loaded: (client: { setPersonPropertiesForFlags: unknown }) => void;
@@ -14,7 +14,6 @@ const posthog = vi.hoisted(() => ({
 const credentials = vi.hoisted(() => ({
   key: "phc_test" as string,
   host: "https://eu.i.posthog.com",
-  flagsKey: undefined as string | undefined,
 }));
 const flagBackend = vi.hoisted(() => ({ usesPostHog: true }));
 
@@ -34,7 +33,6 @@ vi.mock("@/services/environment", () => ({
     getPostHogCredentials: () => ({
       key: credentials.key,
       host: credentials.host,
-      flagsKey: credentials.flagsKey,
     }),
   },
 }));
@@ -67,8 +65,11 @@ describe("PostHogProvider", () => {
     posthog.register.mockClear();
     credentials.key = "phc_test";
     credentials.host = "https://eu.i.posthog.com";
-    credentials.flagsKey = undefined;
     flagBackend.usesPostHog = true;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("sends PostHog Cloud traffic through our own domain", async () => {
@@ -139,7 +140,7 @@ describe("PostHogProvider", () => {
       ["no flags key is set", undefined],
       ["the flags key is the analytics key", "phc_test"],
     ])("is the analytics project when %s", async (_, flagsKey) => {
-      credentials.flagsKey = flagsKey;
+      stubPostHogEnv({ key: "phc_test", flagsKey });
       const { PostHogProvider } = await import("../posthog-provider");
 
       render(<PostHogProvider>app</PostHogProvider>);
@@ -149,7 +150,7 @@ describe("PostHogProvider", () => {
 
     it("is read through a flags-only instance when the flags key names another project", async () => {
       credentials.key = "phc_dev";
-      credentials.flagsKey = "phc_prod";
+      stubPostHogEnv({ key: "phc_dev", flagsKey: "phc_prod" });
       const { PostHogProvider } = await import("../posthog-provider");
 
       render(<PostHogProvider>app</PostHogProvider>);
@@ -172,7 +173,7 @@ describe("PostHogProvider", () => {
     it("needs no flags-only instance while LaunchDarkly answers flags", async () => {
       flagBackend.usesPostHog = false;
       credentials.key = "phc_dev";
-      credentials.flagsKey = "phc_prod";
+      stubPostHogEnv({ key: "phc_dev", flagsKey: "phc_prod" });
       const { PostHogProvider } = await import("../posthog-provider");
 
       render(<PostHogProvider>app</PostHogProvider>);
@@ -181,3 +182,11 @@ describe("PostHogProvider", () => {
     });
   });
 });
+
+// The flags-only instance reads its project from the inlined env, like the
+// flag backend does, so it is there for a flag read in the first render.
+function stubPostHogEnv({ key, flagsKey }: { key: string; flagsKey?: string }) {
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", key);
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", credentials.host);
+  vi.stubEnv("NEXT_PUBLIC_POSTHOG_FLAGS_KEY", flagsKey ?? "");
+}

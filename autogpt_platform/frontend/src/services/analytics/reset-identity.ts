@@ -4,7 +4,7 @@ import {
   resetFlagsOnlyClient,
 } from "@/providers/posthog/posthog-flags-client";
 import posthog from "posthog-js";
-import { resetAnonymousID } from "./anonymous-id";
+import { getAnonymousID, resetAnonymousID } from "./anonymous-id";
 import { getPostHogBaseProperties } from "./posthog-base-properties";
 
 export function resetAnalyticsIdentity(): void {
@@ -20,8 +20,8 @@ export function resetAnalyticsIdentity(): void {
     anonymousID = undefined;
   }
   if (didReset) restoreBaseProperties();
-  resetFlagsIdentity();
   resetAnonymousID(anonymousID);
+  resetFlagsIdentity(getAnonymousID());
   // reset() also drops PostHog's own opt-in, which opts a consenting visitor
   // out until the next page load unless it is restored here.
   if (didReset) {
@@ -43,9 +43,9 @@ function restoreBaseProperties() {
   }
 }
 
-function resetFlagsIdentity() {
+function resetFlagsIdentity(anonymousID: string | null) {
   try {
-    resetFlagsOnlyClient();
+    resetFlagsOnlyClient(anonymousID);
   } catch {
     // Flags fall back to their defaults; never worth a broken logout.
   }

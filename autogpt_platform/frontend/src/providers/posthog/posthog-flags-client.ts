@@ -1,9 +1,12 @@
+import { getAnonymousID } from "@/services/analytics/anonymous-id";
 import { getPostHogBaseProperties } from "@/services/analytics/posthog-base-properties";
+import { usesPostHog } from "@/services/feature-flags/flag-backend";
 import posthog, {
   type PostHog,
   type PostHogConfig,
   type PostHogInterface,
 } from "posthog-js";
+import { getPostHogClientHosts } from "./posthog-proxy";
 
 // Dev reads prod's flag definitions (NEXT_PUBLIC_POSTHOG_FLAGS_KEY) while its
 // analytics stay in the dev project. posthog-js asks /flags of the project its
@@ -12,38 +15,53 @@ const FLAGS_INSTANCE_NAME = "flags";
 
 let flagsOnlyClient: PostHog | null = null;
 
-interface InitArgs {
-  flagsKey?: string;
-  analyticsKey: string;
-  hosts: Partial<PostHogConfig>;
-  anonymousID: string | null;
-}
-
-/** The instance flag reads go through: the analytics one, unless flags come from another project. */
+/**
+ * The instance flag reads go through: the analytics one, unless flags come
+ * from another project. That instance is created on the first read, not in
+ * the provider's effect, which React runs only after its children's: a flag
+ * read in the first render must already go to the flags project.
+ */
 export function getFlagsClient(): PostHog {
-  return flagsOnlyClient ?? posthog;
+  return ensureFlagsOnlyClient() ?? posthog;
 }
 
-/** Run after the analytics instance is initialised; a no-op unless flags come from another project. */
-export function initFlagsOnlyClient({
-  flagsKey,
-  analyticsKey,
-  hosts,
-  anonymousID,
-}: InitArgs) {
-  if (!flagsKey || flagsKey === analyticsKey || flagsOnlyClient) return;
+/** The flags-only instance, created on first use; null unless flags come from another project. */
+export function ensureFlagsOnlyClient(): PostHog | null {
+  if (flagsOnlyClient || typeof window === "undefined") return flagsOnlyClient;
+  const project = getFlagsOnlyProject();
+  if (!project) return null;
   flagsOnlyClient = posthog.init(
-    flagsKey,
+    project.flagsKey,
     {
-      ...hosts,
+      ...project.hosts,
       ...getFlagsOnlyConfig(),
-      ...(anonymousID && {
-        bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
-      }),
+      ...bootstrapAnonymousID(getAnonymousID()),
       loaded: applyFlagEnvironment,
     },
     FLAGS_INSTANCE_NAME,
   );
+  return flagsOnlyClient;
+}
+
+// Read as literals, which Next inlines into the client bundle, rather than
+// through `environment`, which the flag hooks' tests stub.
+function getFlagsOnlyProject() {
+  const analyticsKey = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  const flagsKey = process.env.NEXT_PUBLIC_POSTHOG_FLAGS_KEY;
+  if (!usesPostHog() || !analyticsKey || !flagsKey) return null;
+  if (flagsKey === analyticsKey) return null;
+  const hosts = getPostHogClientHosts({
+    key: analyticsKey,
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+  });
+  return { flagsKey, hosts };
+}
+
+// The first-party anonymous id the analytics instance and the backend also
+// use, so an anonymous rollout buckets the visitor the same everywhere.
+function bootstrapAnonymousID(anonymousID: string | null) {
+  if (!anonymousID) return {};
+  return { bootstrap: { distinctID: anonymousID, isIdentifiedID: false } };
 }
 
 /**
@@ -95,12 +113,23 @@ export function setFlagPersonProperties(properties: Record<string, string>) {
 }
 
 export function identifyFlagsOnlyClient(userID: string) {
-  flagsOnlyClient?.identify(userID);
+  ensureFlagsOnlyClient()?.identify(userID);
 }
 
-export function resetFlagsOnlyClient() {
+/**
+ * Called with the app's new anonymous id: reset() alone would mint a random
+ * one, and the flags project would bucket the signed-out visitor on an id
+ * nothing else uses. Re-seeded the way posthog-js applies a bootstrap id.
+ */
+export function resetFlagsOnlyClient(anonymousID: string | null) {
   if (!flagsOnlyClient) return;
   flagsOnlyClient.reset(true);
+  if (anonymousID) {
+    flagsOnlyClient.register({
+      distinct_id: anonymousID,
+      $device_id: anonymousID,
+    });
+  }
   applyFlagEnvironment(flagsOnlyClient);
   flagsOnlyClient.reloadFeatureFlags();
 }

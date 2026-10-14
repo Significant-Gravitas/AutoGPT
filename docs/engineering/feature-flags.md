@@ -38,7 +38,10 @@ the client logs a warning at startup. The analytics client
 **Frontend.** posthog-js asks `/flags` of the project its token names, so with a
 separate flags key the browser runs a second, flags-only posthog-js instance
 (`src/providers/posthog/posthog-flags-client.ts`) and `usePostHogFlag` reads
-from it. That instance is opted out of capturing, drops anything that still
+from it. The instance is created on the first flag read, during the first
+render, so no flag is ever answered from the analytics project first. It
+starts on, and after a logout returns to, the same first-party anonymous id as
+the analytics instance. It is opted out of capturing, drops anything that still
 reaches `capture()` in `before_send`, keeps its state in memory (no cookie or
 storage, with or without consent), loads no scripts, and records nothing. It is
 identified and handed the flag person properties only when the analytics

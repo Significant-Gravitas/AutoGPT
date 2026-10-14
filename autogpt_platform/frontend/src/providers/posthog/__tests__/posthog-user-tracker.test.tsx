@@ -55,6 +55,7 @@ describe("PostHogUserTracker", () => {
 
   afterEach(() => {
     removeCookiebot();
+    vi.unstubAllEnvs();
   });
 
   it.each([false, true])(
@@ -88,13 +89,8 @@ describe("PostHogUserTracker", () => {
 
   it("identifies a flags-only instance too, and hands it the flag properties", async () => {
     flags.usesPostHog = true;
-    const { initFlagsOnlyClient } = await import("../posthog-flags-client");
-    initFlagsOnlyClient({
-      flagsKey: "phc_prod",
-      analyticsKey: "phc_dev",
-      hosts: {},
-      anonymousID: null,
-    });
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_dev");
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_FLAGS_KEY", "phc_prod");
     const { PostHogUserTracker } = await import("../posthog-provider");
 
     render(<PostHogUserTracker />);

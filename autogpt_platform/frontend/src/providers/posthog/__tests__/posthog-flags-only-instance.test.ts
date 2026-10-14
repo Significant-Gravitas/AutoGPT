@@ -13,6 +13,12 @@ const FLAGS_HOST = "https://flags-project.posthog.test";
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 
+const anonymous = vi.hoisted(() => ({ id: "anon-1" }));
+
+vi.mock("@/services/analytics/anonymous-id", () => ({
+  getAnonymousID: () => anonymous.id,
+}));
+
 interface SentRequest {
   method: string;
   path: string;
@@ -21,7 +27,14 @@ interface SentRequest {
 
 describe("the flags-only PostHog instance", () => {
   beforeEach(() => {
+    // The instance is module state, and the flag backend is read at import.
+    vi.resetModules();
+    anonymous.id = "anon-1";
     vi.stubEnv("NEXT_PUBLIC_APP_ENV", "dev");
+    vi.stubEnv("NEXT_PUBLIC_FEATURE_FLAG_BACKEND", "posthog");
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_dev");
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", FLAGS_HOST);
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_FLAGS_KEY", "phc_prod");
     vi.spyOn(window.navigator, "userAgent", "get").mockReturnValue(
       BROWSER_USER_AGENT,
     );
@@ -35,15 +48,10 @@ describe("the flags-only PostHog instance", () => {
 
   it("reads flags from the flags project and sends it nothing else", async () => {
     const requests = recordFlagsProject();
-    const { getFlagsClient, identifyFlagsOnlyClient, initFlagsOnlyClient } =
-      await import("../posthog-flags-client");
+    const { getFlagsClient, identifyFlagsOnlyClient } = await import(
+      "../posthog-flags-client"
+    );
 
-    initFlagsOnlyClient({
-      flagsKey: "phc_prod",
-      analyticsKey: "phc_dev",
-      hosts: { api_host: FLAGS_HOST },
-      anonymousID: "anon-1",
-    });
     const client = getFlagsClient();
     const captured = vi.fn();
     client.on("eventCaptured", captured);
@@ -74,6 +82,26 @@ describe("the flags-only PostHog instance", () => {
           request.path !== "/flags/" && !request.path.startsWith("/array/"),
       ),
     ).toEqual([]);
+    expect(storedByPostHog()).toEqual([]);
+  });
+
+  it("takes the app's new anonymous id on sign-out, not one of its own", async () => {
+    const requests = recordFlagsProject();
+    const { getFlagsClient, identifyFlagsOnlyClient, resetFlagsOnlyClient } =
+      await import("../posthog-flags-client");
+    const client = getFlagsClient();
+    await waitFor(() => expect(client.featureFlags.hasLoadedFlags).toBe(true));
+    identifyFlagsOnlyClient("user-1");
+
+    resetFlagsOnlyClient("anon-2");
+
+    expect(client.get_distinct_id()).toBe("anon-2");
+    await waitFor(() =>
+      expect(flagsCalls(requests).at(-1)?.body).toMatchObject({
+        distinct_id: "anon-2",
+        person_properties: { environment: "dev" },
+      }),
+    );
     expect(storedByPostHog()).toEqual([]);
   });
 });

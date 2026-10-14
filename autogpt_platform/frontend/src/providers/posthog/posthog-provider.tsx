@@ -23,8 +23,8 @@ import {
 } from "./posthog-consent";
 import {
   applyFlagEnvironment,
+  ensureFlagsOnlyClient,
   identifyFlagsOnlyClient,
-  initFlagsOnlyClient,
   setFlagPersonProperties,
 } from "./posthog-flags-client";
 import { getPostHogClientHosts } from "./posthog-proxy";
@@ -58,14 +58,8 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         ...getConsentGatedConfig(),
       });
       posthog.register(getPostHogBaseProperties());
-      if (usesPostHog()) {
-        initFlagsOnlyClient({
-          flagsKey: postHogCredentials.flagsKey,
-          analyticsKey: postHogCredentials.key,
-          hosts,
-          anonymousID,
-        });
-      }
+      // Usually created already, by a flag read during the first render.
+      ensureFlagsOnlyClient();
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {
