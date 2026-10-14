@@ -108,8 +108,8 @@ export default function SharePage() {
           <Alert>
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>
-              This is a publicly shared agent run result. The person who shared
-              this link can disable access at any time.
+              This is a publicly shared workflow run result. The person who
+              shared this link can disable access at any time.
             </AlertDescription>
           </Alert>
         </div>

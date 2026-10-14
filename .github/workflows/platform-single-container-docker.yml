@@ -148,7 +148,7 @@ jobs:
       - name: Build image without publishing
         id: build-image
         background: true
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -339,7 +339,7 @@ jobs:
 
       - name: Build and push platform digest
         id: build
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
+        uses: docker/bake-action@018cb6412ab401ebaa809aa5f85966b74628600f # v7.4.0
         with:
           source: .
           files: autogpt_platform/single-container/docker-bake.hcl
@@ -444,7 +444,7 @@ jobs:
           persist-credentials: false
 
       - name: Download verified digests
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: platform-single-container-publish-digest-*
           path: ${{ runner.temp }}/platform-single-container-publish-digests

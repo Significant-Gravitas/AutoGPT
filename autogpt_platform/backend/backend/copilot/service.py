@@ -36,6 +36,7 @@ from .config import ChatConfig, CopilotLLMModel
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
 from .expert_kickoff import is_expert_kickoff_message
+from .llm_attribution import openrouter_attribution
 from .model import (
     ChatMessage,
     ChatSessionInfo,
@@ -827,24 +828,24 @@ async def _generate_session_title(
         ``create`` did not bill, so there is no cost to record.
     """
     try:
-        # Build extra_body for OpenRouter tracing and PostHog analytics.
+        # Build extra_body for OpenRouter cost and Broadcast attribution.
         # ``usage: {"include": True}`` asks OR to embed the real billed
         # cost into the final usage chunk — matches the baseline path's
         # ``_OPENROUTER_INCLUDE_USAGE_COST`` pattern, same read path.
         # Gated on the aux transport because Anthropic's OpenAI-compat
         # endpoint (and any non-OR endpoint) rejects unknown extra_body
         # fields with a 400 — the same gate the baseline path applies.
+        # Off OpenRouter, Broadcast never sees the call.
         extra_body: dict[str, Any] = {}
         if config.aux_uses_openrouter:
             extra_body["usage"] = {"include": True}
-            if user_id:
-                extra_body["user"] = user_id[:128]  # OpenRouter limit
-                extra_body["posthogDistinctId"] = user_id
-            if session_id:
-                extra_body["session_id"] = session_id[:128]  # OpenRouter limit
-            extra_body["posthogProperties"] = {
-                "environment": settings.config.app_env.value,
-            }
+            extra_body.update(
+                openrouter_attribution(
+                    user_id=user_id,
+                    session_id=session_id,
+                    generation_name="copilot-title",
+                )
+            )
 
         # Normalize the title model for the aux client's transport: OR
         # routes by full ``vendor/model`` slug, but Anthropic's

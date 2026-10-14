@@ -147,7 +147,7 @@ test("selfhost journey: a self-hoster's first hour has nothing hosted-only in it
 
   await test.step("the Library's briefing shows no spend", async () => {
     await page.goto("/library");
-    await expect(page.getByText("Agent Briefing")).toBeVisible();
+    await expect(page.getByText("Workflow Briefing")).toBeVisible();
     await expect.soft(page.getByText("Spent this month")).toHaveCount(0);
     await expect
       .soft(page.getByRole("button", { name: /costs breakdown/i }))
