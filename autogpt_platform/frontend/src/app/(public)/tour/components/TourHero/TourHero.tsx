@@ -34,7 +34,7 @@ export function TourHero() {
           className="mt-5 max-w-xl text-balance text-zinc-600"
         >
           Describe a goal in plain English and watch Otto build and run a
-          working AutoGPT agent for you, in seconds, right in your browser.
+          working AutoGPT workflow for you, in seconds, right in your browser.
         </Text>
 
         <div className="mt-10 flex w-full flex-col items-center justify-center gap-3 sm:w-auto sm:flex-row">
