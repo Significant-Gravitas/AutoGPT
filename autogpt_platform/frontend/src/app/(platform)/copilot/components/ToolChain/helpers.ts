@@ -310,7 +310,7 @@ const CATEGORY_SUMMARY: Record<ChainRow["category"], string> = {
   edit: "edited files",
   todo: "updated tasks",
   compaction: "summarized context",
-  agent: "ran workflows",
+  agent: "delegated work",
   "agent-build": "built workflows",
   plan: "planned the approach",
   block: "ran blocks",

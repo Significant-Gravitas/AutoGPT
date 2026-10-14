@@ -260,7 +260,7 @@ def build_run_health_warning(
         return (
             f"WARNING: {failed_node_count} node(s) FAILED despite the COMPLETED "
             "status. Treat this run as unsuccessful — inspect node_executions, "
-            "fix the agent, and re-verify before reporting success."
+            "fix the workflow, and re-verify before reporting success."
         )
     if not outputs:
         return (
