@@ -29,7 +29,6 @@ from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolPara
 from opentelemetry import trace as otel_trace
 
 from backend.blocks.desktop._common import workspace_volume_mounts
-from backend.copilot import engine_switch
 from backend.copilot.anthropic_rate_card import (
     compute_anthropic_cost_usd,
     get_max_output_tokens,
@@ -103,11 +102,9 @@ from backend.copilot.response_model import (
     StreamError,
     StreamFinish,
     StreamFinishStep,
-    StreamModeChanged,
     StreamProviderFailure,
     StreamStart,
     StreamStartStep,
-    StreamStatus,
     StreamTextDelta,
     StreamTextEnd,
     StreamTextStart,
@@ -2470,18 +2467,6 @@ async def stream_chat_completion_baseline(
                 last_iteration_message=_LAST_ITERATION_HINT,
             ):
                 loop_result_holder[0] = loop_result
-                # Engine switch requested (enter_agent_building_mode): end
-                # the loop at this iteration boundary — the round's tool
-                # results are already folded into the conversation, so the
-                # tool-call rows persist and the processor's derived
-                # building-mode signal holds. The processor dispatches the
-                # SDK continuation turn after the slot is released.
-                if engine_switch.is_pending(session_id):
-                    logger.info(
-                        f"[Baseline] Engine switch pending for "
-                        f"{session_id[:12]} — ending tool loop"
-                    )
-                    break
                 # Inject any messages the user queued while the turn was
                 # running.  ``tool_call_loop`` mutates ``openai_messages``
                 # in-place, so appending here means the model sees the new
@@ -2995,24 +2980,4 @@ async def stream_chat_completion_baseline(
             cache_creation_tokens=state.turn_cache_creation_tokens,
         )
 
-    for event in _engine_switch_finish_events(session_id):
-        yield event
     yield StreamFinish()
-
-
-def _engine_switch_finish_events(session_id: str) -> "list[StreamBaseResponse]":
-    """Terminal events for a turn that registered an engine switch.
-
-    Emitted right before StreamFinish so the frontend learns the engine
-    changed (StreamModeChanged) and narrates the handoff (StreamStatus)
-    exactly once, at the turn boundary where the baseline loop stopped.
-    There is no mode picker to flip any more — the client uses this only to
-    widen its post-finish refetch window, since a switch takes longer to
-    settle.
-    """
-    if not engine_switch.is_pending(session_id):
-        return []
-    return [
-        StreamModeChanged(mode="extended_thinking"),
-        StreamStatus(message="Switching engines for agent building…"),
-    ]
