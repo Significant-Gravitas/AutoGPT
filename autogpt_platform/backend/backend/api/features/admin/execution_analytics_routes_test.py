@@ -36,7 +36,7 @@ async def test_process_batch_allows_credit_failure_without_openai_key():
             new=AsyncMock(),
         ) as mock_update,
         patch(
-            "backend.executor.activity_status_generator.get_openai_client"
+            "backend.executor.activity_status_generator._platform_client"
         ) as mock_get_openai_client,
     ):
         results = await _process_batch([execution], request, AsyncMock())
@@ -74,7 +74,7 @@ async def test_process_batch_skips_non_credit_failure_without_llm_client():
             new=AsyncMock(),
         ) as mock_update,
         patch(
-            "backend.executor.activity_status_generator.get_openai_client",
+            "backend.executor.activity_status_generator._platform_client",
             return_value=None,
         ) as mock_get_openai_client,
     ):
@@ -86,7 +86,7 @@ async def test_process_batch_skips_non_credit_failure_without_llm_client():
     assert results[0].score is None
     assert results[0].error_message == "Activity generation returned None"
     mock_update.assert_not_awaited()
-    mock_get_openai_client.assert_called_once_with(prefer_openrouter=True)
+    mock_get_openai_client.assert_called_once_with()
     db_client.get_node_executions.assert_not_awaited()
     db_client.get_graph_metadata.assert_not_awaited()
     db_client.get_graph.assert_not_awaited()

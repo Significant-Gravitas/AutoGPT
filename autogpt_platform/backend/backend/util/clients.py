@@ -196,7 +196,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
 
     1. **Local transport** (``CHAT_PLATFORM_ROUTE=local``) wins unconditionally.
        Operators who opted into self-hosted shouldn't have platform helpers
-       (dry-run simulator, prompt compression, marketplace embeddings, …)
+       (onboarding extraction, prompt compression, marketplace embeddings, …)
        silently route to the cloud just because legacy cloud-key fallbacks
        happen to be present. Returns a client pointed at the same
        OpenAI-compatible endpoint Otto uses, with the same generous
@@ -211,7 +211,7 @@ def get_openai_client(*, prefer_openrouter: bool = False) -> "AsyncOpenAI | None
        back to ``open_router_api_key`` via OpenRouter.
 
     Returns ``None`` only when none of the above resolve — callers must
-    handle that branch (see e.g. ``executor/simulator._run_simulation_llm``).
+    handle that branch (see e.g. ``data/tally.py``).
     Note that under ``CHAT_PLATFORM_ROUTE=local`` this never returns ``None``,
     so callers that previously used a ``None`` return as a "skip cloud-only
     feature" sentinel will instead exercise the local path — that is the
@@ -264,26 +264,6 @@ def get_anthropic_client() -> "AsyncAnthropic | None":
     if anthropic_key:
         return AsyncAnthropic(api_key=anthropic_key)
     return None
-
-
-def openrouter_helper_cost_provider() -> str:
-    """Cost-log provider for a client from ``get_openai_client(prefer_openrouter=True)``.
-
-    Mirrors that function's routing so the ``PlatformCostLog`` row names the
-    endpoint the call physically hit, not the chat transport identity:
-
-    - **Local route** → ``"local"`` — the self-hosted endpoint
-      ``get_openai_client`` returns unconditionally under ``CHAT_PLATFORM_ROUTE=local``.
-    - **Every other transport** → ``"open_router"``. ``prefer_openrouter=True``
-      only ever returns an OpenRouter client or ``None`` — it never falls back
-      to direct Anthropic — so any call that actually billed went through
-      OpenRouter, even under ``subscription`` / ``direct_anthropic`` transport
-      with an ``OPEN_ROUTER_API_KEY`` present. Keying off
-      ``transport.cost_log_provider`` here would mislabel those as ``"anthropic"``.
-    """
-    from backend.copilot.sdk.env import config as chat_cfg
-
-    return "local" if chat_cfg.platform_route == "local" else "open_router"
 
 
 # ============ Notification Queue Helpers ============ #

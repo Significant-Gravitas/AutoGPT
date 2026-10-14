@@ -160,8 +160,8 @@ class TestPrepareDryRun:
 
         block = OrchestratorBlock()
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
-            return_value="sk-or-test-key",
+            "backend.executor.simulator._platform_dry_run_key",
+            return_value=("open_router", "sk-or-test-key"),
         ):
             result = prepare_dry_run(
                 block,
@@ -201,8 +201,8 @@ class TestPrepareDryRun:
         ``ValueError`` and aborts every Orchestrator dry-run."""
         with (
             patch(
-                "backend.executor.simulator._get_platform_openrouter_key",
-                return_value="sk-or-test-key",
+                "backend.executor.simulator._platform_dry_run_key",
+                return_value=("open_router", "sk-or-test-key"),
             ),
             patch(
                 "backend.executor.simulator._simulator_model",
@@ -242,8 +242,8 @@ class TestPrepareDryRun:
         Gemini doesn't)."""
         block = OrchestratorBlock()
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
-            return_value="sk-or-test-key",
+            "backend.executor.simulator._platform_dry_run_key",
+            return_value=("open_router", "sk-or-test-key"),
         ):
             # User explicitly picked EXTENDED_THINKING — the dry-run
             # still overrides to BUILT_IN.
@@ -286,8 +286,8 @@ class TestPrepareDryRun:
             "retry": 0,
         }
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
-            return_value="sk-or-test-key",
+            "backend.executor.simulator._platform_dry_run_key",
+            return_value=("open_router", "sk-or-test-key"),
         ):
             dry_input = prepare_dry_run(block, user_input)
         assert dry_input is not None
@@ -306,23 +306,23 @@ class TestPrepareDryRun:
 
         block = OrchestratorBlock()
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
-            return_value="sk-or-test-key",
+            "backend.executor.simulator._platform_dry_run_key",
+            return_value=("open_router", "sk-or-test-key"),
         ):
             result = prepare_dry_run(block, {"agent_mode_max_iterations": 0})
         assert result is not None
         assert result["agent_mode_max_iterations"] == 0
 
     def test_orchestrator_falls_back_without_key(self) -> None:
-        """Without platform OpenRouter key, OrchestratorBlock falls back
-        to LLM simulation (returns None)."""
+        """Where the platform route cannot run it, OrchestratorBlock falls
+        back to LLM simulation (returns None)."""
         from unittest.mock import patch
 
         from backend.blocks.orchestrator import OrchestratorBlock
 
         block = OrchestratorBlock()
         with patch(
-            "backend.executor.simulator._get_platform_openrouter_key",
+            "backend.executor.simulator._platform_dry_run_key",
             return_value=None,
         ):
             result = prepare_dry_run(block, {"agent_mode_max_iterations": 5})
@@ -789,7 +789,7 @@ class TestSimulatorCostTracking:
 
         with (
             patch(
-                "backend.executor.simulator.get_openai_client",
+                "backend.executor.simulator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -838,7 +838,7 @@ class TestSimulatorCostTracking:
 
         with (
             patch(
-                "backend.executor.simulator.get_openai_client",
+                "backend.executor.simulator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -870,7 +870,7 @@ class TestSimulatorCostTracking:
 
         with (
             patch(
-                "backend.executor.simulator.get_openai_client",
+                "backend.executor.simulator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -952,7 +952,7 @@ class TestSchemaConformantSimulation:
         )
         with (
             patch(
-                "backend.executor.simulator.get_openai_client",
+                "backend.executor.simulator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -980,7 +980,7 @@ class TestSchemaConformantSimulation:
         client, create_mock = self._client_with_responses([bad] * _MAX_JSON_RETRIES)
         with (
             patch(
-                "backend.executor.simulator.get_openai_client",
+                "backend.executor.simulator._platform_client",
                 return_value=client,
             ),
             patch(
@@ -996,3 +996,129 @@ class TestSchemaConformantSimulation:
 
         assert parsed == {"main_result": ["still wrong"], "response": "ok"}
         assert create_mock.call_count == _MAX_JSON_RETRIES
+
+
+@pytest.fixture
+def route(monkeypatch):
+    """Run on a given platform route; returns the setter."""
+    from backend.copilot.config import ChatConfig
+
+    def use(name: str, **settings) -> None:
+        monkeypatch.setattr(
+            "backend.copilot.sdk.env.config",
+            ChatConfig(platform_route=name, **settings),
+        )
+
+    return use
+
+
+class TestPlatformRoute:
+    """Dry runs follow the platform route: its own client and model, its
+    own key for the orchestrator, and no simulation without an API."""
+
+    @pytest.mark.asyncio
+    async def test_direct_simulates_on_a_native_claude_model(self, route):
+        route("direct_anthropic", anthropic_api_key="sk-ant-route")
+        client = MagicMock()
+        client.chat.completions.create = AsyncMock(
+            return_value=ChatCompletion(
+                id="c",
+                created=0,
+                model="m",
+                object="chat.completion",
+                choices=[
+                    Choice(
+                        index=0,
+                        finish_reason="stop",
+                        message=ChatCompletionMessage(
+                            role="assistant",
+                            content='```json\n{"result": "ok"}\n```',
+                        ),
+                    )
+                ],
+            )
+        )
+        with patch("backend.executor.simulator._platform_client", return_value=client):
+            parsed = await _call_llm_for_simulation("system", "user")
+
+        assert parsed == {"result": "ok"}
+        kwargs = client.chat.completions.create.await_args.kwargs
+        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["extra_body"] == {}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("name", ["subscription", "disabled"])
+    async def test_no_simulation_without_a_platform_api(self, route, name):
+        route(name)
+        with patch("backend.executor.simulator._platform_client", return_value=None):
+            with pytest.raises(RuntimeError, match="no.*own model|has none"):
+                await _call_llm_for_simulation("system", "user")
+
+    @pytest.mark.parametrize(
+        "name, settings, expected",
+        [
+            (
+                "openrouter",
+                {"openrouter_api_key": "sk-or-route"},
+                ("open_router", "sk-or-route"),
+            ),
+            (
+                "direct_anthropic",
+                {"anthropic_api_key": "sk-ant-route"},
+                ("anthropic", "sk-ant-route"),
+            ),
+            (
+                "openrouter",
+                {
+                    "openrouter_api_key": "sk-or-route",
+                    "openrouter_base_url": "https://or.proxy.example/api",
+                },
+                None,
+            ),
+            (
+                "direct_anthropic",
+                {
+                    "anthropic_api_key": "sk-ant-route",
+                    "anthropic_base_url": "https://anthropic.proxy.example",
+                },
+                None,
+            ),
+            ("subscription", {}, None),
+            ("disabled", {}, None),
+        ],
+        ids=[
+            "openrouter",
+            "direct",
+            "openrouter-proxy",
+            "direct-proxy",
+            "subscription",
+            "disabled",
+        ],
+    )
+    def test_the_orchestrator_dry_run_key_is_the_routes_own(
+        self, route, mocker, name, settings, expected
+    ):
+        """Never an integration key; and only where the block's LLM client
+        reaches the route's own URL."""
+        from backend.executor.simulator import _platform_dry_run_key
+        from backend.util.settings import Settings
+
+        secrets = Settings().secrets
+        mocker.patch.object(secrets, "open_router_api_key", "sk-or-integration")
+        mocker.patch.object(secrets, "anthropic_api_key", "sk-ant-integration")
+        route(name, **settings)
+        assert _platform_dry_run_key() == expected
+
+    def test_direct_runs_the_orchestrator_on_claude_with_anthropic_credentials(
+        self, route
+    ):
+        route("direct_anthropic", anthropic_api_key="sk-ant-route")
+        dry_input = prepare_dry_run(
+            OrchestratorBlock(), {"prompt": "p", "agent_mode_max_iterations": 1}
+        )
+        assert dry_input is not None
+        assert dry_input["model"] == LLMModel.CLAUDE_4_5_HAIKU.value
+        creds = get_dry_run_credentials(dry_input)
+        assert creds is not None
+        assert creds.provider == "anthropic"
+        assert creds.api_key.get_secret_value() == "sk-ant-route"

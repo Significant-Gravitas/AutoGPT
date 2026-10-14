@@ -147,7 +147,8 @@ ROUTES: dict[RouteName, RouteRow] = {
         dispatch_provider="anthropic",
         supports_flex_tier=False,
         aux_model=_HAIKU,
-        simulation_model=_FLASH_LITE,
+        # Sent as ``claude-haiku-4-5``; Anthropic serves no Gemini.
+        simulation_model=_HAIKU,
     ),
     "subscription": RouteRow(
         name="subscription",

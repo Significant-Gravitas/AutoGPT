@@ -88,13 +88,13 @@ async def test_simulate_block_basic():
     )
 
     with patch(
-        "backend.executor.simulator.get_openai_client", return_value=mock_client
+        "backend.executor.simulator._platform_client", return_value=mock_client
     ) as mock_get_client:
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
 
-    mock_get_client.assert_called_once_with(prefer_openrouter=True)
+    mock_get_client.assert_called_once_with()
     assert ("result", "simulated output") in outputs
     # Empty error pin should NOT be yielded — the simulator omits empty values
     assert ("error", "") not in outputs
@@ -113,9 +113,7 @@ async def test_simulate_block_json_retry():
         ]
     )
 
-    with patch(
-        "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    with patch("backend.executor.simulator._platform_client", return_value=mock_client):
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
@@ -135,9 +133,7 @@ async def test_simulate_block_all_retries_exhausted():
         return_value=make_openai_response("bad json !!!")
     )
 
-    with patch(
-        "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    with patch("backend.executor.simulator._platform_client", return_value=mock_client):
         outputs = []
         async for name, data in simulate_block(mock_block, {"query": "test"}):
             outputs.append((name, data))
@@ -166,9 +162,7 @@ async def test_simulate_block_missing_output_pins():
         return_value=make_openai_response('{"result": "hello"}')
     )
 
-    with patch(
-        "backend.executor.simulator.get_openai_client", return_value=mock_client
-    ):
+    with patch("backend.executor.simulator._platform_client", return_value=mock_client):
         outputs = {}
         async for name, data in simulate_block(mock_block, {"query": "hi"}):
             outputs[name] = data
@@ -184,7 +178,7 @@ async def test_simulate_block_no_client():
     """When no OpenAI client is available, yields SIMULATOR ERROR."""
     mock_block = make_mock_block()
 
-    with patch("backend.executor.simulator.get_openai_client", return_value=None):
+    with patch("backend.executor.simulator._platform_client", return_value=None):
         outputs = []
         async for name, data in simulate_block(mock_block, {}):
             outputs.append((name, data))
@@ -578,8 +572,8 @@ def test_prepare_dry_run_orchestrator_block():
     block = OrchestratorBlock()
     input_data = {"prompt": "hello", "model": "gpt-4o", "agent_mode_max_iterations": 10}
     with patch(
-        "backend.executor.simulator._get_platform_openrouter_key",
-        return_value="sk-or-test-key",
+        "backend.executor.simulator._platform_dry_run_key",
+        return_value=("open_router", "sk-or-test-key"),
     ):
         result = prepare_dry_run(block, input_data)
 

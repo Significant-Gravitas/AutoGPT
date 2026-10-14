@@ -135,6 +135,15 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
     return _aux_client
 
 
+def get_platform_aux_client() -> LangfuseAsyncOpenAI | None:
+    """The platform route's side-call client for work outside a chat turn
+    (dry-run simulation, activity text); None on a route without an API:
+    a Claude login, or a disabled route."""
+    if config.aux_client_credentials[1] is None:
+        return None
+    return _get_aux_client()
+
+
 def _get_langfuse():
     global _langfuse
     if _langfuse is None:
