@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 from uuid import uuid4
 
 from autogpt_libs import auth
-from fastapi import APIRouter, HTTPException, Query, Response, Security
+from fastapi import APIRouter, HTTPException, Query, Request, Response, Security
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -41,6 +41,7 @@ from backend.copilot.expert_kickoff import (
     expert_kickoff_metadata,
     scoped_client_message_id,
 )
+from backend.copilot.llm_attribution import is_impersonated_request
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
     CHAT_STATUS_RUNNING,
@@ -1750,6 +1751,8 @@ async def stream_chat_post(
     request: StreamChatRequest,
     user_id: str = Security(auth.get_user_id),
     ctx: auth.RequestContext = Security(auth.get_request_context),
+    *,
+    http_request: Request,
 ):
     """Start a new turn and return an AI SDK UI message stream.
 
@@ -2044,6 +2047,7 @@ async def stream_chat_post(
                 llm_credential_id=session.metadata.llm_credential_id,
                 permissions=builder_permissions,
                 request_arrival_at=request_arrival_at,
+                impersonated=is_impersonated_request(http_request),
             )
     except ConcurrentTurnLimitError as exc:
         if resume_persisted_kickoff:
@@ -2074,6 +2078,7 @@ async def stream_chat_post(
                     else None
                 ),
                 request_arrival_at=request_arrival_at,
+                impersonated=is_impersonated_request(http_request),
             )
         except turn_queue.InflightCapExceeded:
             await release_client_message_claim()
