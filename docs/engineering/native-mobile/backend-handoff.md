@@ -17,28 +17,28 @@ The foundation targets `dev` directly. Landing requires current-base checks and 
 
 ## Contract the client can use
 
-| Boundary | Client behavior |
-| --- | --- |
-| Email sign-in | Use the selected server's production `/api/auth/sign-in/email`. Store the signed `set-auth-token` response header in Keychain, partitioned by server and account. The unsigned token in the JSON body is not a bearer credential. |
-| Access token | Send the signed session credential only to that server's auth service. Exchange it at `GET /api/auth/token`; send the returned JWT to backend APIs. Renew through the auth service when needed. |
-| Sign-out and revocation | Sign out through the auth service. A revoked, expired, banned or mismatched session is rejected on subsequent backend authentication. Clear local credentials and account-scoped state. Existing streams are not forcibly terminated. |
-| Auth service unavailable | HTTP 503 with `Retry-After: 5` means retry authentication later, without treating the account as signed out. New WebSocket authentication closes with 1013 for this condition. |
-| Pending send identity | Generate one nonempty `message_id` of at most 64 characters per user send. Reuse it for retries of that send; a distinct send gets a new ID even when its text is identical. The server scopes it to the user and conversation. |
-| Pending send admission | `POST /api/chat/sessions/{session_id}/messages/pending` returns the queue response. A full queue is HTTP 429; no active turn is HTTP 409. HTTP 503 with `Retry-After` means the service could not establish admission. Preserve the send ID when retrying. |
-| Accepted retry | A successful repeated admission is an acknowledgement, not proof that the message is still in the queue or that a turn is currently running. Refresh persisted history and stream state. |
-| Ownership | Continue using the selected server, authenticated account and conversation together. Server authorization remains authoritative; a client ID does not grant access to a conversation. |
+| Boundary                 | Client behavior                                                                                                                                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Email sign-in            | Use the selected server's production `/api/auth/sign-in/email`. Store the signed `set-auth-token` response header in Keychain, partitioned by server and account. The unsigned token in the JSON body is not a bearer credential.                          |
+| Access token             | Send the signed session credential only to that server's auth service. Exchange it at `GET /api/auth/token`; send the returned JWT to backend APIs. Renew through the auth service when needed.                                                            |
+| Sign-out and revocation  | Sign out through the auth service. A revoked, expired, banned or mismatched session is rejected on subsequent backend authentication. Clear local credentials and account-scoped state. Existing streams are not forcibly terminated.                      |
+| Auth service unavailable | HTTP 503 with `Retry-After: 5` means retry authentication later, without treating the account as signed out. New WebSocket authentication closes with 1013 for this condition.                                                                             |
+| Pending send identity    | Generate one nonempty `message_id` of at most 64 characters per user send. Reuse it for retries of that send; a distinct send gets a new ID even when its text is identical. The server scopes it to the user and conversation.                            |
+| Pending send admission   | `POST /api/chat/sessions/{session_id}/messages/pending` returns the queue response. A full queue is HTTP 429; no active turn is HTTP 409. HTTP 503 with `Retry-After` means the service could not establish admission. Preserve the send ID when retrying. |
+| Accepted retry           | A successful repeated admission is an acknowledgement, not proof that the message is still in the queue or that a turn is currently running. Refresh persisted history and stream state.                                                                   |
+| Ownership                | Continue using the selected server, authenticated account and conversation together. Server authorization remains authoritative; a client ID does not grant access to a conversation.                                                                      |
 
 **Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and rollback requeue can fail after concurrent buffer refill. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
 
 ## Remaining backend slices
 
-| Slice | Required contract and evidence |
-| --- | --- |
-| Durable send/cancellation | Durable admission/cancellation authority, rollback recovery, delayed-request races and persistence failures; required before automatic outbox replay. |
-| Discovery and card actions | Versioned capabilities, complete card/event fixtures, stable question/review identity, stale/two-device rejection and exactly one accepted continuation. |
+| Slice                         | Required contract and evidence                                                                                                                                  |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Durable send/cancellation     | Durable admission/cancellation authority, rollback recovery, delayed-request races and persistence failures; required before automatic outbox replay.           |
+| Discovery and card actions    | Versioned capabilities, complete card/event fixtures, stable question/review identity, stale/two-device rejection and exactly one accepted continuation.        |
 | Google and connection handoff | Registered browser return destinations, account/server binding, cancellation and reconnect behavior; credential edits preserve identity, grants and references. |
-| Push | Authoritative session/device registration, revocation and minimal notification content; real provider delivery remains a separate test. |
-| Subscription entitlements | Verified provider events, account binding, retry/order handling and reconciliation of Stripe/App Store grants before native purchases are enabled. |
+| Push                          | Authoritative session/device registration, revocation and minimal notification content; real provider delivery remains a separate test.                         |
+| Subscription entitlements     | Verified provider events, account binding, retry/order handling and reconciliation of Stripe/App Store grants before native purchases are enabled.              |
 
 These are follow-up backend changes, not claims about functionality already present in #15384. The detailed product scope remains in the [implementation plan](implementation-plan.md) and [card catalog](card-catalog.md).
 
