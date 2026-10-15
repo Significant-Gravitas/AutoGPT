@@ -52,6 +52,7 @@ from backend.copilot.gate import active_mode
 from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.markers import append_error_marker
 from backend.copilot.model_router import (
     ResolvedModel,
@@ -4683,6 +4684,7 @@ async def _maybe_prepend_skills_update(
     try:
         notice = await build_skills_update_notice(
             user_id,
+            session_id=session.session_id,
             expert_id=session.expert_id,
             prior_contents=[
                 m.content or "" for m in session.messages if m.role == "user"
@@ -4953,6 +4955,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     turn_cost_usd: float | None = None
     graphiti_enabled = False
     pre_attempt_msg_count = 0
+    # Checkpoint turn_start can span auto-continues; capture only this call.
+    learning_turn_start = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
     # State of the latest failed attempt: rolled-back messages + any
     # _HandledStreamError info to emit on final-failure exit. The retry loop
     # mutates this via capture()/clear(); the post-loop block calls
@@ -6570,6 +6576,24 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti: a memory-service failure must not change
+        # what the nightly learner can consider. Fire-and-forget; the
+        # helper is flag-gated and never raises.
+        if expert_identity_validated and user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[learning_turn_start:]) if session else [],
+                    message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload CLI native session file for cross-pod --resume ---
         # The CLI writes its native session JSONL after each turn completes.

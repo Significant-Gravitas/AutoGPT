@@ -422,6 +422,7 @@ class NotificationManager(AppService):
             AudienceAction.CHECKOUT_OPENED: mailerlite.record_checkout_opened,
             AudienceAction.UNSUBSCRIBE: mailerlite.unsubscribe,
             AudienceAction.ONBOARDING_PROFILE: mailerlite.record_onboarding_profile,
+            AudienceAction.LIFECYCLE_FIELDS: mailerlite.record_lifecycle,
         }[event.action]
         try:
             await handler(event.email, event.fields or None)

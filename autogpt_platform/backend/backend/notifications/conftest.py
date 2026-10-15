@@ -107,3 +107,19 @@ def audience_consent(monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
         delivery, "get_database_manager_async_client", lambda **_: client
     )
     return client
+
+
+@pytest.fixture(autouse=True)
+def lifecycle_resync(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """A group join asks the database manager for one more lifecycle sync
+    (`lifecycle_audience.resync_after_group_change`). Stubbed so no test
+    reaches for the RPC; assert on the returned mock to check the request."""
+    from backend.notifications import lifecycle_audience
+
+    request = AsyncMock()
+    monkeypatch.setattr(
+        lifecycle_audience,
+        "posthog_lifecycle_db",
+        lambda: SimpleNamespace(request_posthog_lifecycle_sync=request),
+    )
+    return request

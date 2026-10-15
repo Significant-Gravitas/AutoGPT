@@ -12,8 +12,7 @@ submitter:
     P11 threat rehearsal land as additional submitters here
 
 Each submitter is fast to ENQUEUE (seconds) but may take up to ~1h to
-COMPLETE when running against a real batch provider (Anthropic /
-OpenAI batch API). The submitters fire in sequence at cron time; their
+COMPLETE when running against the Anthropic batch API. The submitters fire in sequence at cron time; their
 batch results land asynchronously via the separate
 ``copilot_batch_executor`` poller service that dispatches by
 ``custom_id`` to per-stage apply handlers.
@@ -43,6 +42,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+from backend.copilot.learning.dispositions import SkillLearningResult
+from backend.copilot.learning.nightly import run_skill_learning_pass
+from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .billing import check_dream_budget
 from .ratification import RatificationResult, run_ratification_pass
@@ -76,6 +79,7 @@ class NightlyBatchResult(BaseModel):
     # AgentProbe scorers) don't have to dispatch on runtime type.
     dream: DreamPassResult | None = None
     ratification: RatificationResult | None = None
+    learning: SkillLearningResult | None = None
 
     # True when the dream submitter took a provider batch path: the
     # submit pass only ENQUEUED phase 1, and the dream's apply step
@@ -198,6 +202,15 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
         # ratification failure both surface.
         prev = result.error or ""
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
+
+    try:
+        if await is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id):
+            result.learning = await run_skill_learning_pass(user_id, trigger="nightly")
+    except Exception as exc:
+        logger.exception("Nightly skill learning failed for user %s", user_id[:12])
+        result.error = " | ".join(
+            part for part in (result.error, f"learning: {exc}") if part
+        )
 
     completed_at = datetime.now(UTC)
     result.completed_at = completed_at
