@@ -8,6 +8,7 @@ import {
   type PendingUploadAttachment,
   type PendingUploadSend,
 } from "./copilotStreamStore";
+import type { ReplyTimingStart } from "./helpers/replyTiming";
 import { toastSendFailure } from "./helpers/sendFailureToast";
 import type { ExpertKickoffMetadata } from "./expertKickoff";
 import {
@@ -29,7 +30,10 @@ interface UploadedFile {
   mime_type: string;
 }
 
-type SendMessageFn = (message: SendInput) => Promise<void>;
+type SendMessageFn = (
+  message: SendInput,
+  timing?: ReplyTimingStart,
+) => Promise<void>;
 
 interface Args {
   sessionId: string | null;
@@ -113,6 +117,7 @@ export function useSendMessage({
     files: File[],
     prebuiltParts: StoredAttachmentPart[],
     metadata?: ExpertKickoffMetadata,
+    timing?: ReplyTimingStart,
   ) {
     // The per-click UUID that becomes the backend's ``ChatMessage.id``
     // is generated inside the transport's ``prepareSendMessagesRequest``
@@ -123,7 +128,7 @@ export function useSendMessage({
     // target and break the optimistic-render path that pushes the user
     // bubble into ``messages`` synchronously.
     if (files.length === 0) {
-      await sendMessage(messageInput(text, prebuiltParts, metadata));
+      await sendMessage(messageInput(text, prebuiltParts, metadata), timing);
       return;
     }
     // The bubble shows right away; the transcript reads "Uploading N files…"
@@ -147,12 +152,12 @@ export function useSendMessage({
         if (prebuiltParts.length === 0) {
           throw new Error("All file uploads failed");
         }
-        send = sendMessage(messageInput(text, prebuiltParts, metadata));
+        send = sendMessage(messageInput(text, prebuiltParts, metadata), timing);
       } else {
         // Merge already-stored workspace parts with the freshly uploaded ones so
         // a single message can mix both kinds of attachment.
         const allParts = [...prebuiltParts, ...buildFileParts(uploaded)];
-        send = sendMessage(messageInput(text, allParts, metadata));
+        send = sendMessage(messageInput(text, allParts, metadata), timing);
       }
     } finally {
       // `sendMessage` pushes the user bubble into `messages` synchronously,
@@ -205,7 +210,14 @@ export function useSendMessage({
     // dispatch failing. Recover here instead, or an all-uploads-failed first
     // send rejects with nobody listening and the user loses their message.
     void dispatchRef
-      .current(sessionId, send.text, send.files, parts, send.metadata)
+      .current(
+        sessionId,
+        send.text,
+        send.files,
+        parts,
+        send.metadata,
+        send.timing,
+      )
       .catch((error: unknown) => {
         recoverFailedDeferredSend(send.text, parts, error);
       });
@@ -216,6 +228,7 @@ export function useSendMessage({
     files?: File[],
     workspaceFiles?: WorkspaceAttachment[],
     metadata?: ExpertKickoffMetadata,
+    timing?: ReplyTimingStart,
   ) {
     const trimmed = message.trim();
     const hasWorkspaceFiles = !!workspaceFiles && workspaceFiles.length > 0;
@@ -263,6 +276,7 @@ export function useSendMessage({
         files ?? [],
         [...pendingFileParts, ...workspaceParts],
         metadata,
+        timing,
       );
       return;
     }
@@ -284,9 +298,12 @@ export function useSendMessage({
       const store = useCopilotStreamStore.getState();
       store.setPendingFileParts([...store.pendingFileParts, ...workspaceParts]);
     }
-    useCopilotStreamStore
-      .getState()
-      .setPendingFirstSend({ text: trimmed, files: files ?? [], metadata });
+    useCopilotStreamStore.getState().setPendingFirstSend({
+      text: trimmed,
+      files: files ?? [],
+      metadata,
+      timing,
+    });
     try {
       await createSession({
         expertKickoff: metadata?.kind === "expert_kickoff",
