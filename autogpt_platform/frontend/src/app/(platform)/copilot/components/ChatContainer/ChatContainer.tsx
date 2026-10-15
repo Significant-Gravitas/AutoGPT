@@ -467,6 +467,7 @@ export const ChatContainer = ({
                           disabled={isInputDisabled}
                           sendDisabled={isLimitReached}
                           isStreaming={isStreaming}
+                          isTurnStarting={status === "submitted"}
                           isUploadingFiles={isUploadingFiles}
                           onStop={onStop}
                           onEnqueue={onEnqueue}
