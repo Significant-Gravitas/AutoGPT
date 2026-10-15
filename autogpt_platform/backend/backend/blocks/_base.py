@@ -877,6 +877,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             chat_session_id=(
                 None if is_graph_execution else execution_context.session_id
             ),
+            block=self,
+            execution_context=execution_context,
         )
 
         if decision is None:

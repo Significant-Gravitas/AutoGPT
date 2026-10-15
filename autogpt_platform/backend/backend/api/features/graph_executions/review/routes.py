@@ -10,6 +10,12 @@ from backend.copilot.constants import legacy_chat_session_id, parse_node_id_from
 from backend.copilot.gate.chat_rules import set_answer_rules as set_chat_rules
 from backend.copilot.gate.held import subject_keys as held_subject_keys
 from backend.copilot.gate.held import wake as wake_for_held_calls
+from backend.copilot.gate.workflow import (
+    close_step_cards,
+    finish_step_cards,
+    is_step_card,
+    step_rule_keys,
+)
 from backend.data.execution import (
     ExecutionContext,
     ExecutionStatus,
@@ -263,10 +269,10 @@ async def process_review_action(
         auto_approve_requests[review.node_exec_id] = review.auto_approve_future
 
     # Read before the answer lands: a turn it wakes claims the held calls.
+    ruled = [r.node_exec_id for r in request.reviews if r.chat_rule]
     chat_rule_keys = (
-        await held_subject_keys(
-            chat_session_id, [r.node_exec_id for r in request.reviews if r.chat_rule]
-        )
+        await held_subject_keys(chat_session_id, ruled)
+        | step_rule_keys(reviews_map[node_exec_id] for node_exec_id in ruled)
         if chat_session_id is not None
         else {}
     )
@@ -366,49 +372,42 @@ async def process_review_action(
             {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
         )
 
-    # A held call finishes on its own: the answer starts the chat's next turn.
     if chat_session_id is not None and updated_reviews:
-        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
+        # A workflow step's card answers the step's own row; its run resumes
+        # below, so the card never wakes the chat.
+        steps = await finish_step_cards(user_id, updated_reviews.values())
+        for run in {step.graph_exec_id: step for step in steps}.values():
+            meta = await get_graph_execution_meta(
+                user_id=user_id, execution_id=run.graph_exec_id
+            )
+            if (
+                meta is not None
+                and meta.status in (ExecutionStatus.REVIEW, ExecutionStatus.INCOMPLETE)
+                and not await has_pending_reviews_for_graph_exec(run.graph_exec_id)
+            ):
+                await resume_reviewed_execution(
+                    user_id, run.graph_exec_id, run.graph_id, run.graph_version
+                )
+        # A held call finishes on its own: the answer starts the chat's next turn.
+        await wake_for_held_calls(
+            user_id,
+            chat_session_id,
+            [r for r in updated_reviews.values() if not is_step_card(r)],
+        )
 
     # Resume graph execution only for real graph executions; a chat is resumed
     # by the LLM calling resume_capability with the review_id
     if graph_exec_id is not None and updated_reviews:
-        still_has_pending = await has_pending_reviews_for_graph_exec(graph_exec_id)
-
-        if not still_has_pending:
+        await close_step_cards(user_id, updated_reviews)
+        if not await has_pending_reviews_for_graph_exec(graph_exec_id):
             first_review = next(iter(updated_reviews.values()))
             assert first_review.graph_id and first_review.graph_version is not None
-
-            try:
-                user = await get_user_by_id(user_id)
-                settings = await get_graph_settings(
-                    user_id=user_id,
-                    graph_id=first_review.graph_id,
-                    graph_version=first_review.graph_version,
-                )
-
-                user_timezone = (
-                    user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
-                )
-
-                workspace = await get_or_create_workspace(user_id)
-
-                execution_context = ExecutionContext(
-                    human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
-                    sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
-                    user_timezone=user_timezone,
-                    workspace_id=workspace.id,
-                )
-
-                await add_graph_execution(
-                    graph_id=first_review.graph_id,
-                    user_id=user_id,
-                    graph_exec_id=graph_exec_id,
-                    execution_context=execution_context,
-                )
-                logger.info(f"Resumed execution {graph_exec_id}")
-            except Exception as e:
-                logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")
+            await resume_reviewed_execution(
+                user_id,
+                graph_exec_id,
+                first_review.graph_id,
+                first_review.graph_version,
+            )
 
     # Build error message if auto-approvals failed
     error_message = None
@@ -424,3 +423,34 @@ async def process_review_action(
         failed_count=auto_approval_failed_count,
         error=error_message,
     )
+
+
+async def resume_reviewed_execution(
+    user_id: str, graph_exec_id: str, graph_id: str, graph_version: int
+) -> None:
+    """Re-queue a run whose reviews are all answered; its paused steps re-run
+    and find their answers."""
+    try:
+        user = await get_user_by_id(user_id)
+        settings = await get_graph_settings(
+            user_id=user_id, graph_id=graph_id, graph_version=graph_version
+        )
+        user_timezone = (
+            user.timezone if user.timezone != USER_TIMEZONE_NOT_SET else "UTC"
+        )
+        workspace = await get_or_create_workspace(user_id)
+        execution_context = ExecutionContext(
+            human_in_the_loop_safe_mode=settings.human_in_the_loop_safe_mode,
+            sensitive_action_safe_mode=settings.sensitive_action_safe_mode,
+            user_timezone=user_timezone,
+            workspace_id=workspace.id,
+        )
+        await add_graph_execution(
+            graph_id=graph_id,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            execution_context=execution_context,
+        )
+        logger.info(f"Resumed execution {graph_exec_id}")
+    except Exception as e:
+        logger.error(f"Failed to resume execution {graph_exec_id}: {str(e)}")

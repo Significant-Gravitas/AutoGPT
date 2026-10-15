@@ -64,6 +64,16 @@ class FieldLabel(BaseModel):
     format: str | None = None
 
 
+class WorkflowStep(BaseModel):
+    """The workflow step a card answers: its row is the step's own review."""
+
+    graph_exec_id: str
+    node_exec_id: str
+    graph_id: str
+    graph_version: int
+    name: str
+
+
 class GateReviewPayload(BaseModel):
     """What the approval card, Home and the channels render: never the raw call."""
 
@@ -88,6 +98,7 @@ class GateReviewPayload(BaseModel):
     headline: Headline
     # A money card's estimate, spend so far and ceiling.
     spend: dict[str, int] | None = None
+    workflow: WorkflowStep | None = None
 
 
 # An approval must not run a call long after the user gave it; the answered
@@ -131,6 +142,7 @@ def review_payload(
     tool_call_id: str = "",
     turn: int = 0,
     references: list[Reference] | None = None,
+    workflow: WorkflowStep | None = None,
 ) -> dict[str, Any]:
     """The subject is kept as decided when the card opened: what the user saw,
     not a recomputation over a tree that may have moved since."""
@@ -168,6 +180,7 @@ def review_payload(
             else headline_for(tool_name, args, references)
         ),
         spend=spend,
+        workflow=workflow,
     ).model_dump()
 
 

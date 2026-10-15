@@ -1,0 +1,322 @@
+"""A workflow step Otto started, parked on its card in the starting chat, against
+Postgres, Redis and the real review route.
+
+The step pauses through the block's own review; only the queue publish of the
+resume is captured, so everything a card answer touches is what ships.
+"""
+
+import uuid
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, patch
+
+import httpx
+import pytest
+import pytest_asyncio
+from prisma.enums import AgentExecutionStatus, ReviewStatus
+from prisma.models import AgentGraph, AgentGraphExecution, AgentNode, AgentNodeExecution
+
+from backend.api.rest_api import app
+from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+from backend.blocks.helpers.review import HITLReviewHelper
+from backend.copilot.constants import step_card_id
+from backend.copilot.gate import chat_rules, held
+from backend.copilot.model import (
+    ChatSession,
+    get_chat_session,
+    update_session_autopilot_mode,
+    upsert_chat_session,
+)
+from backend.data.execution import ExecutionContext
+from backend.data.human_review import (
+    cancel_pending_reviews_for_execution,
+    get_pending_reviews_for_user,
+    get_reviews_by_node_exec_ids,
+)
+from backend.util.exceptions import BlockExecutionError
+from backend.util.feature_flag import Flag
+
+_ROUTES = "backend.api.features.graph_executions.review.routes"
+_BLOCK = SendDiscordMessageBlock()
+_INPUT = {"channel_name": "general", "message_content": "The digest is out"}
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
+
+@pytest_asyncio.fixture(loop_scope="session")
+async def client(server, mock_jwt_user) -> AsyncGenerator[httpx.AsyncClient, None]:
+    from autogpt_libs.auth.jwt_utils import get_jwt_payload
+
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://test"
+    ) as http_client:
+        yield http_client
+    app.dependency_overrides.pop(get_jwt_payload, None)
+
+
+@pytest.fixture
+def flags():
+    """Auto mode on for this user; unified approvals as each test sets it."""
+    values = {Flag.COPILOT_AUTO_MODE: True, Flag.COPILOT_UNIFIED_APPROVALS: True}
+
+    async def read(flag, user_id, default=False):
+        return values[flag]
+
+    with patch("backend.copilot.gate.is_feature_enabled", AsyncMock(side_effect=read)):
+        yield values
+
+
+@pytest.fixture
+def resumed():
+    with patch(f"{_ROUTES}.add_graph_execution", AsyncMock()) as add:
+        yield add
+
+
+class _Run:
+    def __init__(self, user_id: str, chat_id: str | None) -> None:
+        self.user_id = user_id
+        self.graph_id = str(uuid.uuid4())
+        self.node_id = str(uuid.uuid4())
+        self.graph_exec_id = str(uuid.uuid4())
+        self.node_exec_id = str(uuid.uuid4())
+        self.chat_id = chat_id
+
+    @property
+    def card_id(self) -> str:
+        return step_card_id(self.user_id, self.node_exec_id)
+
+    async def create(self) -> "_Run":
+        await AgentGraph.prisma().create(
+            data={
+                "id": self.graph_id,
+                "version": 1,
+                "name": "Morning digest",
+                "description": "",
+                "userId": self.user_id,
+                "isActive": True,
+            }
+        )
+        await AgentNode.prisma().create(
+            data={
+                "id": self.node_id,
+                "agentBlockId": _BLOCK.id,
+                "agentGraphId": self.graph_id,
+                "agentGraphVersion": 1,
+            }
+        )
+        await AgentGraphExecution.prisma().create(
+            data={
+                "id": self.graph_exec_id,
+                "agentGraphId": self.graph_id,
+                "agentGraphVersion": 1,
+                "userId": self.user_id,
+                "executionStatus": AgentExecutionStatus.REVIEW,
+                "triggerSource": "copilot",
+                "triggerRef": self.chat_id,
+            }
+        )
+        await AgentNodeExecution.prisma().create(
+            data={
+                "id": self.node_exec_id,
+                "agentGraphExecutionId": self.graph_exec_id,
+                "agentNodeId": self.node_id,
+                "executionStatus": AgentExecutionStatus.RUNNING,
+            }
+        )
+        return self
+
+    async def step(self, stamped: bool = True) -> tuple[bool, dict]:
+        """The block's own review pause, as the executor reaches it."""
+        ctx = ExecutionContext(
+            user_id=self.user_id,
+            graph_id=self.graph_id,
+            graph_exec_id=self.graph_exec_id,
+            graph_version=1,
+            sensitive_action_safe_mode=True,
+            graph_sensitive_action_safe_mode=False,
+            approval_chat_id=self.chat_id if stamped else None,
+        )
+        return await _BLOCK.is_block_exec_need_review(
+            _INPUT,
+            user_id=self.user_id,
+            node_id=self.node_id,
+            node_exec_id=self.node_exec_id,
+            graph_exec_id=self.graph_exec_id,
+            graph_id=self.graph_id,
+            graph_version=1,
+            execution_context=ctx,
+        )
+
+    async def row(self, node_exec_id: str | None = None):
+        node_exec_id = node_exec_id or self.node_exec_id
+        rows = await get_reviews_by_node_exec_ids([node_exec_id], self.user_id)
+        return rows.get(node_exec_id)
+
+    async def card(self):
+        return await self.row(self.card_id)
+
+
+async def _chat(user_id: str) -> ChatSession:
+    session = await upsert_chat_session(ChatSession.new(user_id=user_id, dry_run=False))
+    await update_session_autopilot_mode(session.session_id, user_id, "ask_first")
+    reloaded = await get_chat_session(session.session_id, user_id)
+    assert reloaded is not None
+    return reloaded
+
+
+async def _parked(user_id: str) -> tuple[ChatSession, _Run]:
+    chat = await _chat(user_id)
+    run = await _Run(user_id, chat.session_id).create()
+    paused, _ = await run.step()
+    assert paused
+    return chat, run
+
+
+async def _answer(client: httpx.AsyncClient, node_exec_id: str, approved: bool):
+    response = await client.post(
+        "/api/review/action",
+        json={"reviews": [{"node_exec_id": node_exec_id, "approved": approved}]},
+    )
+    assert response.status_code == 200, response.text
+
+
+async def test_a_step_parks_on_its_card_and_the_card_resumes_the_run(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    chat, run = await _parked(test_user_id)
+
+    row, card = await run.row(), await run.card()
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert card is not None and card.status == ReviewStatus.WAITING
+    assert card.session_id == chat.session_id
+    assert card.payload["workflow"]["node_exec_id"] == run.node_exec_id
+    assert card.payload["tool_call_id"] == ""
+    node = await AgentNodeExecution.prisma().find_unique(where={"id": run.node_exec_id})
+    assert node is not None and node.executionStatus == AgentExecutionStatus.REVIEW
+    # One decision, one item on Home: the card.
+    home = {r.node_exec_id for r in await get_pending_reviews_for_user(test_user_id)}
+    assert run.card_id in home and run.node_exec_id not in home
+
+    await _answer(client, run.card_id, approved=True)
+
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.APPROVED
+    assert await run.card() is None
+    assert resumed.await_args.kwargs["graph_exec_id"] == run.graph_exec_id
+    # The card finished through the run's resume, not as a held call.
+    assert await held._held(chat.session_id) == {}
+    assert await run.step() == (False, _INPUT)
+
+
+async def test_a_card_declined_in_chat_rejects_the_step_and_asks_from_now_on(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    chat, run = await _parked(test_user_id)
+
+    await _answer(client, run.card_id, approved=False)
+
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.REJECTED
+    resumed.assert_awaited_once()
+    rule = await chat_rules.rule_for(
+        chat.session_id, f"block:{_BLOCK.id}", test_user_id, None
+    )
+    assert rule is not None and rule.rule == "ask"
+    with pytest.raises(BlockExecutionError):
+        await run.step()
+
+
+async def test_a_step_answered_on_the_run_page_closes_its_card(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    _, run = await _parked(test_user_id)
+
+    await _answer(client, run.node_exec_id, approved=True)
+
+    assert await run.card() is None
+    resumed.assert_awaited_once()
+
+
+async def test_a_stopped_run_closes_its_steps_cards(
+    setup_test_user, test_user_id, flags
+):
+    _, run = await _parked(test_user_id)
+
+    await cancel_pending_reviews_for_execution(run.graph_exec_id, test_user_id)
+
+    assert await run.card() is None
+
+
+async def test_an_allow_rule_runs_the_step_and_records_why(
+    setup_test_user, test_user_id, flags
+):
+    chat = await _chat(test_user_id)
+    run = await _Run(test_user_id, chat.session_id).create()
+    await chat_rules.set_rule(chat.session_id, f"block:{_BLOCK.id}", "allow")
+
+    assert await run.step() == (False, _INPUT)
+
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.APPROVED
+    assert row.review_message == (
+        "Allowed by Otto: you set Send Discord Message to run without asking."
+    )
+    assert await run.card() is None
+
+
+@pytest.mark.parametrize("failure", ["no stamp", "chat gone", "card fails"])
+async def test_a_step_the_gate_cannot_answer_is_an_alerted_human_review(
+    setup_test_user, test_user_id, flags, failure
+):
+    chat = await _chat(test_user_id)
+    run = await _Run(
+        test_user_id, str(uuid.uuid4()) if failure == "chat gone" else chat.session_id
+    ).create()
+    spy = AsyncMock(wraps=HITLReviewHelper.get_or_create_human_review)
+    open_row = AsyncMock(return_value=failure != "card fails")
+    with (
+        patch.object(HITLReviewHelper, "get_or_create_human_review", spy),
+        patch("backend.copilot.gate.review.open_review_row", open_row),
+    ):
+        paused, _ = await run.step(stamped=failure != "no stamp")
+
+    assert paused
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert await run.card() is None
+    # The last write of the row is the one that alerts.
+    assert spy.await_args.kwargs.get("alert", True) is True
+
+
+async def test_a_card_opened_before_the_flag_went_off_still_resumes_its_run(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    chat, run = await _parked(test_user_id)
+    flags[Flag.COPILOT_UNIFIED_APPROVALS] = False
+
+    await _answer(client, run.card_id, approved=True)
+
+    resumed.assert_awaited_once()
+    later = await _Run(test_user_id, chat.session_id).create()
+    paused, _ = await later.step()
+    assert paused and await later.card() is None
+
+
+async def test_a_card_approved_with_a_rule_rules_on_the_block_it_named(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    chat, run = await _parked(test_user_id)
+
+    response = await client.post(
+        "/api/review/action",
+        json={
+            "reviews": [
+                {"node_exec_id": run.card_id, "approved": True, "chat_rule": "allow"}
+            ]
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    rule = await chat_rules.rule_for(
+        chat.session_id, f"block:{_BLOCK.id}", test_user_id, None
+    )
+    assert rule is not None and rule.rule == "allow"

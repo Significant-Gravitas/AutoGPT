@@ -8,6 +8,7 @@ import json
 import os
 import shlex
 import subprocess
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
@@ -32,6 +33,7 @@ from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate import RUN_FILES_KEY
+from backend.copilot.gate.chat_rules import RuleHit
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.effects import block_effect, graph_effect
@@ -51,6 +53,7 @@ from backend.copilot.tools.run_agent import RunAgentTool
 from backend.copilot.tools.run_capability import RunCapabilityTool
 from backend.data.graph import BaseGraph, GraphModel, Link, Node, NodeModel
 from backend.util import sandbox_login
+from backend.util.feature_flag import Flag
 from backend.util.sandbox_login import READ_CAP
 from backend.util.sandbox_login_test import FakeRedis, FakeSandbox, stock_files
 
@@ -231,6 +234,117 @@ async def test_an_approved_irreversible_block_asks_once(gate):
     hitl.assert_not_awaited()
     execute.assert_awaited_once()
     gate.open_review.assert_not_awaited()
+
+
+def _block_run(hitl_answer):
+    """``run_block`` past its preparation: what its own review does, and the run."""
+    prep = MagicMock(
+        synthetic_node_id="node",
+        input_data={"channel_name": "general", "message_content": "hi"},
+        required_non_credential_keys=set(),
+        provided_input_keys=set(),
+    )
+    hitl = AsyncMock(return_value=hitl_answer or ("exec-id", prep.input_data))
+    execute = AsyncMock(return_value=MagicMock(type="block_output"))
+    patches = ExitStack()
+    for target, value in (
+        ("prepare_block_for_execution", AsyncMock(return_value=prep)),
+        ("check_spend_approval", AsyncMock(return_value=None)),
+        ("check_hitl_review", hitl),
+        ("execute_block", execute),
+    ):
+        patches.enter_context(patch(f"backend.copilot.tools.run_block.{target}", value))
+    return prep, hitl, execute, patches
+
+
+def _flags(unified: bool, auto_mode: bool = True):
+    values = {
+        Flag.COPILOT_UNIFIED_APPROVALS: unified,
+        Flag.COPILOT_AUTO_MODE: auto_mode,
+    }
+
+    async def read(flag, user_id, default=False):
+        return values[flag]
+
+    return patch(f"{_GATE}.is_feature_enabled", AsyncMock(side_effect=read))
+
+
+@pytest.mark.parametrize(
+    "mode, rule, unified, auto_mode, asks_again",
+    [
+        ("auto", "allow", True, True, False),
+        # Decision 1: Unsupervised's run is final for an irreversible block.
+        ("unsupervised", None, True, True, False),
+        ("auto", "allow", False, True, True),
+        ("unsupervised", None, False, True, True),
+        # Nothing decided: an inactive gate's yes is no review.
+        ("auto", None, True, False, True),
+    ],
+    ids=[
+        "rule, unified on",
+        "unsupervised, unified on",
+        "rule, unified off",
+        "unsupervised, unified off",
+        "gate inactive",
+    ],
+)
+async def test_a_gate_yes_is_the_irreversible_blocks_review(
+    gate, mode, rule, unified, auto_mode, asks_again
+):
+    """One layer: whatever the gate decided, the block's own review does not
+    ask after it, and with the flag off it does, as before."""
+    _, hitl, execute, patches = _block_run(None)
+    hit = RuleHit(rule=rule) if rule else None
+    with (
+        _flags(unified, auto_mode),
+        patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=hit)),
+        patches,
+    ):
+        await _run_capability(
+            _session(mode),
+            SendDiscordMessageBlock().id,
+            {"channel_name": "general", "message_content": "hi"},
+        )
+    assert hitl.await_count == int(asks_again)
+    execute.assert_awaited_once()
+    gate.open_review.assert_not_awaited()
+
+
+async def test_a_card_approval_still_skips_the_blocks_review_with_unified_off(gate):
+    gate.find_review.return_value = SimpleNamespace(
+        status=ReviewStatus.APPROVED, payload={}
+    )
+    _, hitl, execute, patches = _block_run(None)
+    with _flags(unified=False), patches:
+        await _run_capability(
+            _session(),
+            SendDiscordMessageBlock().id,
+            {"channel_name": "general", "message_content": "hi"},
+        )
+    hitl.assert_not_awaited()
+    execute.assert_awaited_once()
+
+
+async def test_the_model_cannot_forge_a_decision(gate):
+    _, hitl, _, patches = _block_run(None)
+    with _flags(unified=True, auto_mode=False), patches:
+        await _run_capability(
+            _session(),
+            SendDiscordMessageBlock().id,
+            {"channel_name": "general", "message_content": "hi"},
+            _gate_decided=True,
+        )
+    hitl.assert_awaited_once()
+
+
+async def test_a_workflow_run_keeps_its_forced_pause_when_the_gate_decided_without_a_card():
+    """Its steps' pauses go to the gate on their own; only a card lifts the pause."""
+    handle = AsyncMock(return_value=_answer())
+    with patch.object(RunAgentTool, "_handle_preset_run", handle):
+        await RunAgentTool()._execute(
+            "user-1", _session(), preset_id="preset-1", _gate_decided=True
+        )
+    assert handle.await_args.args[3] is False
 
 
 async def test_the_model_cannot_forge_an_approval(gate, ran):

@@ -14,7 +14,7 @@ a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -28,7 +28,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
-from .classifier import DecidedBy, supervise
+from .classifier import DecidedBy, Judgement, supervise
 from .headline import Headline
 from .policy import (
     DEFAULT_MODE,
@@ -80,6 +80,9 @@ _RULE_VERDICTS = {
     "ask": Verdict.ASK,
     "unreadable": Verdict.ASK,
 }
+# Decision 1 (OPEN-3592): the mode's table is final, so Unsupervised runs an
+# irreversible block without asking. False makes Unsupervised ask before one.
+UNSUPERVISED_RUNS_IRREVERSIBLE_BLOCKS = True
 
 
 class Decision(BaseModel):
@@ -94,9 +97,27 @@ class Decision(BaseModel):
     headline: Headline | None = None
     # The user approved this exact call on a card, so nothing downstream asks again.
     approved: bool = False
+    # An active gate reached a verdict on this call: a card, a rule, the mode
+    # or the supervisor. With unified approvals on, nothing downstream asks again.
+    decided: bool = False
+
+
+class Ruling(BaseModel):
+    """The user's rule, the mode or the supervisor on one subject."""
+
+    model_config = ConfigDict(frozen=True)
+
+    run: bool
+    # Why it asks, or what let it run: the audit line on an approved step.
+    reason: str = ""
+    reason_kind: review_store.ReasonKind = "mode"
+    by: Literal["rule", "mode", "supervisor"] = "mode"
+    decided_by: DecidedBy | None = None
+    spend: dict[str, int] | None = None
 
 
 ALLOW = Decision(allowed=True)
+DECIDED = Decision(allowed=True, decided=True)
 
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
@@ -107,6 +128,17 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
     if session.metadata.source_platform in CARDLESS_PLATFORMS:
         return False
     return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+
+
+async def unified_approvals(user_id: str) -> bool:
+    """On by decision, so a read that fails means on."""
+    try:
+        return await is_feature_enabled(
+            Flag.COPILOT_UNIFIED_APPROVALS, user_id, default=True
+        )
+    except Exception:
+        logger.warning("Unified approvals flag unreadable; on", exc_info=True)
+        return True
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
@@ -152,7 +184,7 @@ async def check_action(
         if await review_store.consume(review_id, user_id):
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
-            return Decision(allowed=True, approved=True)
+            return Decision(allowed=True, approved=True, decided=True)
         return Decision(allowed=False, reason=_CONSUMED)
     if review is not None and review.status == ReviewStatus.REJECTED:
         await review_store.consume(review_id, user_id)
@@ -173,56 +205,47 @@ async def check_action(
     if effect is Effect.UNGATED:
         return ALLOW
     rule_key = subject.key if subject is not None else tool_name
-    mode = resolve_mode(session)
-    # Only a subject that can be parked can carry a rule, so reads and
-    # workspace work skip the Redis round trip.
-    hit = (
-        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
-        if effect in PARKABLE
-        else None
-    )
-    rule = hit.rule if hit else None
-    # A judge rule covers irreversible subjects too: the user chose the supervisor.
-    verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
-    spend = spend_shown = None
-    if effect in METERED and estimate > 0 and mode != "unsupervised":
+    unsupervised = resolve_mode(session) == "unsupervised"
+
+    async def over_ceiling() -> Ruling | None:
+        if effect not in METERED or estimate <= 0 or unsupervised:
+            return None
         spend = await spent_past_ceiling(user_id)
-    reason_kind: review_store.ReasonKind
-    decided_by: DecidedBy | None = None
-    if hit and rule in ("ask", "unreadable"):
-        reason, reason_kind = hit.reason, "rule"
-    elif spend is not None:
-        spend_shown = _spend_shown(estimate, *spend)
-        reason = (
-            f"costs about {_dollars(estimate)}, and this chat has spent "
-            f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; approving "
-            f"adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
+        if spend is None:
+            return None
+        return Ruling(
+            run=False,
+            reason=(
+                f"costs about {_dollars(estimate)}, and this chat has spent "
+                f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; "
+                f"approving adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
+            ),
+            reason_kind="spend",
+            spend=_spend_shown(estimate, *spend),
         )
-        reason_kind = "spend"
-    elif verdict is Verdict.RUN:
-        return ALLOW
-    elif verdict is Verdict.ASK and subject is not None and subject.reason:
-        reason, reason_kind = subject.reason, "subject"
-    elif verdict is Verdict.ASK:
-        reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
-        reason_kind = "mode"
-    else:
-        reason_kind = "supervisor"
+
+    async def judge() -> Judgement:
         files = await context_of() if context_of is not None else None
         if unread := [path for path, text in (files or {}).items() if text is None]:
-            reason = (
-                f"Could not read {', '.join(unread)}, so this could not be checked."
+            return Judgement(
+                allowed=False,
+                reason=(
+                    f"Could not read {', '.join(unread)}, so this could not be "
+                    "checked."
+                ),
             )
-        else:
-            judgement = await supervise(
-                tool_name=tool_name,
-                args=_judged_args(args, files),
-                user_message=_last_user_message(session),
-            )
-            if judgement.allowed:
-                return ALLOW
-            reason, decided_by = judgement.reason, judgement.decided_by
+        return await supervise(
+            tool_name=tool_name,
+            args=_judged_args(args, files),
+            user_message=_last_user_message(session),
+        )
+
+    ruling = await rule_on(
+        session, user_id, rule_key, effect, subject, judge, over_ceiling
+    )
+    if ruling.run:
+        return DECIDED
     call = held.HeldCall(
         review_id=review_id,
         tool_name=tool_name,
@@ -233,7 +256,77 @@ async def check_action(
         cost_context=await capture_cost_context(user_id),
     )
     return await _park(
-        call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
+        call,
+        user_id,
+        session,
+        ruling.reason,
+        ruling.reason_kind,
+        subject,
+        ruling.decided_by,
+        ruling.spend,
+    )
+
+
+async def rule_on(
+    session: ChatSession,
+    user_id: str,
+    rule_key: str,
+    effect: Effect,
+    subject: Subject | None,
+    judge: Callable[[], Awaitable[Judgement]],
+    over_ceiling: Callable[[], Awaitable[Ruling | None]] | None = None,
+    *,
+    floor: bool = False,
+) -> Ruling:
+    """The user's rule on the subject in this chat, else the mode's verdict for
+    its effect, the supervisor deciding where either says judge. ``floor``
+    turns the mode's run into an ask; a rule still decides."""
+    mode = resolve_mode(session)
+    # Only a subject that can be parked can carry a rule, so reads and
+    # workspace work skip the Redis round trip.
+    hit = (
+        await chat_rules.rule_for(
+            session.session_id, rule_key, user_id, session.expert_id
+        )
+        if effect in PARKABLE
+        else None
+    )
+    if hit and hit.rule in ("ask", "unreadable"):
+        return Ruling(run=False, reason=hit.reason, reason_kind="rule", by="rule")
+    if over_ceiling is not None and (held_for_spend := await over_ceiling()):
+        return held_for_spend
+    # A judge rule covers irreversible subjects too: the user chose the supervisor.
+    verdict = _RULE_VERDICTS[hit.rule] if hit else verdict_for_effect(mode, effect)
+    if hit is None and verdict is Verdict.RUN and _mode_asks(mode, subject, floor):
+        verdict = Verdict.ASK
+    by = "rule" if hit else "mode"
+    if verdict is Verdict.RUN:
+        return Ruling(run=True, by=by)
+    if verdict is Verdict.ASK and subject is not None and subject.reason:
+        return Ruling(run=False, reason=subject.reason, reason_kind="subject", by=by)
+    if verdict is Verdict.ASK:
+        reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
+        return Ruling(run=False, reason=reason, by=by)
+    judgement = await judge()
+    return Ruling(
+        run=judgement.allowed,
+        reason=judgement.reason,
+        reason_kind="supervisor",
+        by="supervisor",
+        decided_by=judgement.decided_by,
+    )
+
+
+def _mode_asks(mode: AutopilotMode, subject: Subject | None, floor: bool) -> bool:
+    irreversible_block = (
+        subject is not None
+        and subject.irreversible
+        and subject.key.startswith("block:")
+    )
+    return floor or (
+        mode == "unsupervised"
+        and irreversible_block
+        and not UNSUPERVISED_RUNS_IRREVERSIBLE_BLOCKS
     )
 
 
@@ -310,11 +403,12 @@ def _judged_args(
     return judged
 
 
-def _last_user_message(session: ChatSession) -> str:
+def _last_user_message(session: ChatSession, upto: int | None = None) -> str:
+    """The latest typed message, among the first ``upto`` when given."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
-    for message in reversed(session.messages):
+    for message in reversed(session.messages[:upto]):
         if message.role == "user" and message.content:
             if held.is_answer_row(message):
                 continue
@@ -326,10 +420,13 @@ def _last_user_message(session: ChatSession) -> str:
 __all__ = [
     "RUN_FILES_KEY",
     "Decision",
+    "Ruling",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",
     "refusal_message",
     "resolve_mode",
+    "rule_on",
+    "unified_approvals",
 ]
