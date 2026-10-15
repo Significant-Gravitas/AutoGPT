@@ -561,9 +561,7 @@ def test_consolidate_budget_leaves_a_thinking_model_room_to_answer():
     """Regression pin: the consolidate budget covers a thinking model's
     reasoning as well as its answer, and the batch path asks for the same
     budgets as the sync one."""
-    assert (
-        orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
-    )
+    assert orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
     assert batch_submit.PHASE_MAX_TOKENS == {
         "consolidate": orchestrator_mod.CONSOLIDATE_MAX_TOKENS,
         "recombine": orchestrator_mod.RECOMBINE_MAX_TOKENS,
@@ -2022,6 +2020,22 @@ class TestNearDuplicateWriteDedup:
         kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
         assert dropped == 0
         assert len(kept) == 2
+
+    @pytest.mark.parametrize(
+        "negated",
+        ["User can't use vim", "User can’t use vim"],
+        ids=["apostrophe", "typographic_apostrophe"],
+    )
+    def test_a_contracted_negation_is_not_merged(self, negated):
+        """Split at its apostrophe, "can't" left only "t" between the two
+        facts, no marker, and their 3/4 overlap merged them."""
+        writes = [
+            ConsolidatedFact(content="User can use vim", confidence=0.7),
+            ConsolidatedFact(content=negated, confidence=0.7),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert [w.content for w in kept] == ["User can use vim", negated]
 
     def test_clamp_collapses_duplicate_writes(self):
         ops = DreamOperations(
