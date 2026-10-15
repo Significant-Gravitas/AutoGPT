@@ -1,6 +1,6 @@
 # AutoGPT Platform Load Tests
 
-[k6](https://grafana.com/docs/k6/latest/) tests that drive the platform's user-facing workload at a deployed target, a `!deploy` preview as a rule, and measure what users feel: time to first token in copilot, how long a graph run takes to start and finish, how fast the store, library and account pages answer. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) decides whether two builds differ.
+[k6](https://grafana.com/docs/k6/latest/) tests that drive the platform's user-facing workload at a deployed target, a `!deploy` preview as a rule, and measure what users feel: how long a graph run takes to start and finish, how fast the store, library, account and copilot pages answer, and, on a target that runs the dummy copilot engine, a turn's time to first token. The backend reports every request to Sentry, and the [perf-compare skill](../../../.claude/skills/perf-compare/SKILL.md) decides whether two builds differ.
 
 Run them on your own machine with Docker. Don't run them on Grafana Cloud k6: it bills every virtual-user hour (see [What it costs](#what-it-costs)).
 
@@ -25,7 +25,7 @@ Docker is the only requirement. `./k6.sh` runs k6 in a container with this direc
    LOAD_PROFILE=baseline ./k6.sh run tests/workload.js
    ```
 
-Each run prints a report and writes `results/<RUN_ID>.json` (see [The summary](#the-summary)); the log says why any journey skipped (`K6_LOG_OUTPUT=file=results/<RUN_ID>.log` keeps it). The run signs up its own accounts and seeds its own data. Previews paywall new accounts, so for graph runs and chat sessions export `STRIPE_TEST_SECRET_KEY`, a test-mode key of the Stripe account previews use: the run then subscribes its accounts in Stripe test mode and cancels the subscriptions at the end (see [Paywalled targets](#paywalled-targets)). Copilot turns also need the preview's dummy engine (see [Copilot and model spend](#copilot-and-model-spend)). Comment `!undeploy` when you are done with the preview.
+Each run prints a report and writes `results/<RUN_ID>.json` (see [The summary](#the-summary)); the log says why any journey skipped (`K6_LOG_OUTPUT=file=results/<RUN_ID>.log` keeps it). The run signs up its own accounts and seeds its own data. Previews paywall new accounts, so for graph runs and chat sessions export `STRIPE_TEST_SECRET_KEY`, a test-mode key of the Stripe account previews use: the run then subscribes its accounts in Stripe test mode and cancels the subscriptions at the end (see [Paywalled targets](#paywalled-targets)). Copilot turns are opt-in, for a target that runs the dummy engine; a preview does not, so `copilot_turn` skips there and chat latency comes from Sentry's `copilot.turn` traces instead (see [Copilot and model spend](#copilot-and-model-spend)). Comment `!undeploy` when you are done with the preview.
 
 ## The workload
 
@@ -99,7 +99,7 @@ The verdict comes from the backend's traces in Sentry through perf-compare, not 
      --candidate env=pr-<CANDIDATE> window=<START2>/<END2> window=<START3>/<END3>
    ```
 
-   For copilot, compare the executor's `copilot.turn` transaction and its span data: `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'` (also `copilot.turn.queue_wait_ms`, `copilot.turn.duration_ms`), and the route's `/api/chat/sessions/{session_id}/stream` with `--field 'tags[copilot.stream.ttft_ms,number]'`.
+   For copilot, compare the executor's `copilot.turn` transaction and its span data: `--transaction copilot.turn --field 'tags[copilot.turn.ttft_ms,number]'` (also `copilot.turn.queue_wait_ms`, `copilot.turn.duration_ms`), and the route's `/api/chat/sessions/{session_id}/stream` with `--field 'tags[copilot.stream.ttft_ms,number]'`. These come from real turns, so they need no load test: a window of normal use on dev or production does, with `--project autogpt-server` and the environment from the [Sentry](#sentry) table.
 
 4. `node scripts/diff-summaries.js results/<control>.json results/<candidate>.json` shows the two runs' client-side numbers side by side. It is a quick read: it reports the change, not whether the change is real.
 
@@ -107,9 +107,9 @@ perf-compare wants at least 200 samples from 30 traces per side and recommends 1
 
 ## Copilot and model spend
 
-The workload sends no turn to a model unless told to.
+The workload sends no turn to a model unless told to, and the turn journey is opt-in: it runs against a target that runs the dummy engine, such as a local stack with `CHAT_TEST_MODE=true` in its backend `.env`. Previews do not run it, so `copilot_turn` skips there. Chat latency on a deployed target is read from real turns instead: the copilot executor's `copilot.turn` transaction in Sentry carries the queue wait, the setup and the time to first text of every turn, and the perf-compare skill compares two builds on them (see [Comparing two builds](#comparing-two-builds)).
 
-- **The dummy engine.** The backend has a copilot engine that streams a fixed reply with no model behind it, chosen by `CHAT_TEST_MODE=true` on the copilot executor (it is read on every turn, so no restart of anything else is needed; the Sentry tag `copilot.engine` is `dummy`). It exercises the whole path users wait on: the route, the queue, the executor, the Redis relay and the stream. Nothing in this repository can set it on a preview; it is the infra repository's job, on the preview's copilot executor deployment.
+- **The dummy engine.** The backend has a copilot engine that streams a fixed reply with no model behind it, chosen by `CHAT_TEST_MODE=true` on the copilot executor (it is read on every turn, so no restart of anything else is needed; the Sentry tag `copilot.engine` is `dummy`). It exercises the whole path users wait on: the route, the queue, the executor, the Redis relay and the stream.
 - **`LOAD_TEST_COPILOT_ENGINE=dummy`** tells the run the target has it. `setup()` then sends one probe turn and checks the reply is the dummy's; if it is not, the copilot turn scenario is disabled for the run and the log says why. Without the variable, `copilot_turn` skips with a message and everything else runs.
 - **`tests/copilot-real-model.js`** sends a capped number of turns at the real engine, for a reading of what users feel with a model behind the chat. It needs `LOAD_TEST_COPILOT_ENGINE=real`, caps the turns with `COPILOT_REAL_TURNS` (default 5, one at a time), prints the estimated cost before it starts (`COPILOT_REAL_COST_PER_TURN_USD`, default $0.10) and how far the account's daily usage meter moved after.
 
@@ -229,7 +229,7 @@ Each route is a transaction named by its path, such as `/api/store/skills/{slug}
 - **`seed: ... refused: HTTP 402 A subscription is required`**, then `graph_run: skipped` and `copilot_turn: skipped`: the target paywalls new accounts; export `STRIPE_TEST_SECRET_KEY`, see [Paywalled targets](#paywalled-targets).
 - **`seed: subscribing account N in Stripe test mode failed: ...`**: the reason follows. `retrieving the checkout session failed` means the key belongs to another Stripe account than the target's; `the target reports tier NO_TIER` means the backend did not pick the subscription up, which happens when its reconcile already ran for that account within the last five minutes.
 - **`STRIPE_TEST_SECRET_KEY is not a Stripe test-mode key`**: only `sk_test_` and `rk_test_` keys are accepted, and none against `PROD`.
-- **`copilot_turn: skipped`**: set `LOAD_TEST_COPILOT_ENGINE=dummy` once the target runs `CHAT_TEST_MODE=true`; see [Copilot and model spend](#copilot-and-model-spend).
+- **`copilot_turn: skipped`**: the turn journey is opt-in, with `LOAD_TEST_COPILOT_ENGINE=dummy`, for a target that runs the dummy engine (`CHAT_TEST_MODE=true`); previews do not; see [Copilot and model spend](#copilot-and-model-spend).
 - **`copilot engine probe: the reply was not the dummy's`**: the target is not in test mode; the probe spent one real turn and the scenario is off for this run.
 - **Copilot turns time out with no `finish`**: the target's copilot executor is not running or not consuming the queue; the route answers 200 and heartbeats until the stream's TTL.
 - **`graph_run` never sees a completed run**: the executor is not running, or the WebSocket URL is wrong (`K6_WS_URL`); the journey falls back to polling and reports `graph_runs_failed`.

@@ -511,7 +511,7 @@ function decideCopilot(auth, data) {
   if (engine === "") {
     data.copilot.code = ENGINE_UNSET;
     data.copilot.reason =
-      "LOAD_TEST_COPILOT_ENGINE is not set; set it to dummy once the target runs CHAT_TEST_MODE=true on its copilot executor (README: Copilot and model spend)";
+      "LOAD_TEST_COPILOT_ENGINE is not set; the turn journey is opt-in for a target that runs the dummy engine, CHAT_TEST_MODE=true (README: Copilot and model spend)";
     return;
   }
   if (engine !== "dummy") {
