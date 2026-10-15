@@ -1338,7 +1338,36 @@ async def update_graph_execution_stats(
         ),
     )
 
+    if status == ExecutionStatus.REVIEW:
+        await _save_copilot_tree_ledger(graph_exec)
+
     return GraphExecution.from_db(graph_exec)
+
+
+async def _save_copilot_tree_ledger(execution: AgentGraphExecution) -> None:
+    """A run a copilot turn started keeps its tree's ledger while it waits for
+    review, which can outlast the ledger's TTL. Never raises: without the copy
+    a late resume opens a fresh ledger, as before."""
+    # Local import avoids circular: copilot.tree imports this module.
+    from backend.copilot.tree import TurnEnvelope, ledger_to_save
+
+    tree = execution.copilotTree
+    if not isinstance(tree, dict):
+        return
+    try:
+        saved = await ledger_to_save(TurnEnvelope.model_validate(tree).tree_id)
+        if saved is None:
+            return
+        await AgentGraphExecution.prisma().update(
+            where={"id": execution.id},
+            data={
+                "copilotTree": SafeJson(
+                    {**tree, "ledger": saved.model_dump(exclude_none=True)}
+                )
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Could not save run {execution.id}'s tree ledger: {e}")
 
 
 async def update_node_execution_status_batch(

@@ -15,7 +15,7 @@ from backend.blocks import get_block
 from backend.blocks._base import Block, BlockCostType, BlockSchema, BlockType
 from backend.blocks.autopilot import _spawner_envelope_from
 from backend.copilot.rate_limit import UserPaywalledError, is_user_paywalled
-from backend.copilot.tree import TurnEnvelope
+from backend.copilot.tree import TurnEnvelope, restore_tree_ledger
 from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data import human_review as human_review_db
@@ -1466,7 +1466,7 @@ async def _add_graph_execution(
         expert_id = graph_exec.expert_id
 
         # The context a re-queue builds cannot know the tree, so the row supplies it.
-        copilot_tree = await _persisted_copilot_tree(edb, user_id, graph_exec.id)
+        copilot_tree = await _resume_copilot_tree(edb, user_id, graph_exec.id)
 
         # A resumed expert execution respects the pause/budget gate too;
         # bypass_paywall marks admin recovery, which stays exempt.
@@ -1815,11 +1815,16 @@ async def _add_graph_execution(
     return graph_exec
 
 
-async def _persisted_copilot_tree(
+async def _resume_copilot_tree(
     edb, user_id: str, graph_exec_id: str
 ) -> Optional[TurnEnvelope]:
     raw = await edb.get_graph_execution_copilot_tree(user_id, graph_exec_id)
-    return TurnEnvelope.model_validate(raw) if raw is not None else None
+    if raw is None:
+        return None
+    tree = TurnEnvelope.model_validate(raw)
+    # A long pause can outlive the tree's ledger; the run saved a copy when it paused.
+    await restore_tree_ledger(tree.tree_id, raw.get("ledger"), run_id=graph_exec_id)
+    return tree
 
 
 def _serialise_copilot_tree(

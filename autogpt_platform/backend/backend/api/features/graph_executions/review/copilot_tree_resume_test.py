@@ -6,6 +6,7 @@ execution row. Driven end to end: real route, real ``add_graph_execution``,
 real database; only the queue publish is captured.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import AsyncGenerator
@@ -26,6 +27,7 @@ from backend.copilot.tools._test_data import make_session
 from backend.copilot.tools.run_agent import RunAgentTool
 from backend.copilot.tree import (
     MAX_DEPTH,
+    TreeLedger,
     TreeRefusal,
     TurnEnvelope,
     get_tree_ledger,
@@ -49,6 +51,8 @@ from backend.usecases.sample import create_test_graph
 from backend.util.clients import get_database_manager_async_client
 
 _INPUTS = {"input_1": "a", "input_2": "b"}
+_CEILING = 1_000_000
+_MAX_NODES = 8
 
 
 @pytest_asyncio.fixture(loop_scope="session")
@@ -143,13 +147,20 @@ async def test_a_resume_after_the_ledger_expired_keeps_the_trees_bounds(
     published: list[GraphExecutionEntry],
     setup_test_user,
     test_user_id: str,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Expiry restarts the tree's spend and node accounting (``admit_turn``
+    """A run that saved no ledger, as one paused before any spawn or before
+    runs saved one, restarts the tree's spend and node accounting (``admit_turn``
     opens a missing ledger), but depth, tools and taint come off the row."""
     tree = _child(["run_sub_session", "read_workspace_file"])
     graph_exec_id = await _park_a_run(test_user_id, tree, published)
-    resumed = await _approve(client, test_user_id, graph_exec_id, published)
+    stored = await get_graph_execution_copilot_tree(test_user_id, graph_exec_id)
+    assert stored is not None and "ledger" not in stored
 
+    with caplog.at_level(logging.INFO, logger="backend.copilot.tree"):
+        resumed = await _approve(client, test_user_id, graph_exec_id, published)
+
+    assert f"resumed tree {tree.tree_id} with no saved ledger" in caplog.text
     ledger = await get_tree_ledger()
     assert not await ledger.exists(tree.tree_id)
     child = await _nested_turn(resumed, test_user_id)
@@ -162,6 +173,93 @@ async def test_a_resume_after_the_ledger_expired_keeps_the_trees_bounds(
         assert child.tools <= tree.tools
     finally:
         await (await get_redis_async()).delete(ledger.key(tree.tree_id))
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_late_resume_continues_with_the_trees_remaining_budget(
+    client: httpx.AsyncClient,
+    published: list[GraphExecutionEntry],
+    setup_test_user,
+    test_user_id: str,
+) -> None:
+    """A run that paused after its tree spent its ceiling still cannot spawn
+    once a resume outlives the ledger: the copy the run saved comes back."""
+    tree = _child(["run_sub_session"])
+    ledger = await _live_ledger(tree, spent=_CEILING, nodes=3)
+    try:
+        graph_exec_id = await _park_a_run(test_user_id, tree, published)
+        await _let_expire(ledger, tree)
+        resumed = await _approve(client, test_user_id, graph_exec_id, published)
+
+        assert await ledger.snapshot(tree.tree_id) == {
+            "ceiling": _CEILING,
+            "spent": _CEILING,
+            "nodes": 3,
+            "max_nodes": _MAX_NODES,
+        }
+        with pytest.raises(TreeRefusal, match="Budget limit reached"):
+            await _nested_turn(resumed, test_user_id)
+    finally:
+        await _let_expire(ledger, tree)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_resume_leaves_a_live_ledger_alone(
+    client: httpx.AsyncClient,
+    published: list[GraphExecutionEntry],
+    setup_test_user,
+    test_user_id: str,
+) -> None:
+    """Other turns in the tree spend after the run pauses, so the live ledger
+    beats the run's older copy."""
+    tree = _child(["run_sub_session"])
+    ledger = await _live_ledger(tree, spent=100_000, nodes=2)
+    try:
+        graph_exec_id = await _park_a_run(test_user_id, tree, published)
+        await ledger.charge(tree.tree_id, 250_000)
+        await ledger.admit(tree)
+        await _approve(client, test_user_id, graph_exec_id, published)
+
+        stored = await get_graph_execution_copilot_tree(test_user_id, graph_exec_id)
+        assert stored is not None and stored["ledger"] == {
+            "ceiling": _CEILING,
+            "spent": 100_000,
+            "nodes": 2,
+            "max_nodes": _MAX_NODES,
+        }
+        snapshot = await ledger.snapshot(tree.tree_id)
+        assert (snapshot["spent"], snapshot["nodes"]) == (350_000, 3)
+    finally:
+        await _let_expire(ledger, tree)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_second_run_to_resume_leaves_the_rebuilt_ledger_alone(
+    client: httpx.AsyncClient,
+    published: list[GraphExecutionEntry],
+    setup_test_user,
+    test_user_id: str,
+) -> None:
+    """Two runs paused in one tree: the first late resume rebuilds the ledger,
+    and the second finds it live, even though its own copy shows more spend."""
+    tree = _child(["run_sub_session"])
+    ledger = await _live_ledger(tree, spent=100_000, nodes=2)
+    try:
+        first = await _park_a_run(test_user_id, tree, published)
+        await ledger.charge(tree.tree_id, 300_000)
+        second = await _park_a_run(test_user_id, tree, published)
+        await _let_expire(ledger, tree)
+
+        await _approve(client, test_user_id, first, published)
+        await ledger.charge(tree.tree_id, 50_000)
+        await _approve(client, test_user_id, second, published)
+
+        stored = await get_graph_execution_copilot_tree(test_user_id, second)
+        assert stored is not None and stored["ledger"]["spent"] == 400_000
+        snapshot = await ledger.snapshot(tree.tree_id)
+        assert (snapshot["spent"], snapshot["nodes"]) == (150_000, 2)
+    finally:
+        await _let_expire(ledger, tree)
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -319,3 +417,21 @@ async def _nested_turn(context: ExecutionContext, user_id: str) -> TurnEnvelope:
         kwargs["spawn"],
         kwargs["spawner_envelope"],
     )
+
+
+async def _live_ledger(tree: TurnEnvelope, *, spent: int, nodes: int) -> TreeLedger:
+    """The tree's ledger as its spawning turn left it, before the run pauses."""
+    ledger = await get_tree_ledger()
+    await ledger.open(
+        tree.tree_id,
+        ceiling_microdollars=_CEILING,
+        max_nodes=_MAX_NODES,
+        initial_nodes=nodes,
+    )
+    await ledger.charge(tree.tree_id, spent)
+    return ledger
+
+
+async def _let_expire(ledger: TreeLedger, tree: TurnEnvelope) -> None:
+    """What the ledger's TTL does while the run waits for review."""
+    await (await get_redis_async()).delete(ledger.key(tree.tree_id))
