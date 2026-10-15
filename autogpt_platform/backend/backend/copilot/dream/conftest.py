@@ -10,14 +10,31 @@ Without the server there is no Redis either, and ``get_redis_async`` retries
 for close to an hour before giving up, so every test in this directory gets an
 in-memory stand-in by default. Tests that need their own fake keep patching
 ``backend.data.redis_client.get_redis_async`` as before; a later patch wins.
+
+No Postgres either, and the DatabaseManager RPC client behind ``dream_db()``
+would stall a write until the store's deadline, so the dream store writes
+each pass's record to an in-memory ``FakeDreamDb`` that tests can read the
+transitions back from.
 """
 
 from __future__ import annotations
 
+import asyncio
+from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 
 import pytest
 import pytest_asyncio
+
+from backend.data.dream_pass_models import (
+    OPEN_STATUSES,
+    DreamPassDraft,
+    DreamPassOperations,
+    DreamPassRecord,
+    DreamPassUpdate,
+    DreamPhaseOutputs,
+)
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -162,6 +179,138 @@ class FakeAsyncRedis:
 
     async def aclose(self) -> None:
         return None
+
+
+class FakeDreamDb:
+    """In-memory stand-in for ``backend.data.dream_pass`` behind ``dream_db()``.
+
+    Applies an update by the rules of ``backend/data/dream_pass_update.py``:
+    a ``None`` field leaves its column, status and phase only move forward,
+    a batch id lands only while the row has not moved past the update's
+    phase, ``phase_outputs`` and ``operations`` merge one field at a time,
+    and a terminal row is final. ``writes`` holds every draft and update
+    that reached an open row, in order, as sent. ``fail`` makes every call
+    raise, as an unreachable database would.
+    """
+
+    def __init__(self) -> None:
+        self.rows: dict[str, dict[str, Any]] = {}
+        self.writes: list[tuple[str, DreamPassDraft | DreamPassUpdate]] = []
+        self.fail = False
+
+    async def create_dream_pass(self, draft: DreamPassDraft) -> None:
+        self._raise_if_down()
+        if draft.id in self.rows:
+            raise ValueError(f"duplicate dream pass {draft.id}")
+        self.writes.append((draft.id, draft))
+        self.rows[draft.id] = {**dict(draft), "phase_outputs": {}, "operations": {}}
+
+    async def update_dream_pass(self, pass_id: str, update: DreamPassUpdate) -> bool:
+        self._raise_if_down()
+        row = self.rows.get(pass_id)
+        if row is None or row["status"] not in OPEN_STATUSES:
+            return False
+        self.writes.append((pass_id, update))
+        if update.provider_batch_id is not None and _order(row["phase"]) <= _order(
+            update.phase
+        ):
+            row["provider_batch_id"] = update.provider_batch_id
+        if update.status is not None and _order(update.status) > _order(row["status"]):
+            row["status"] = update.status
+        if update.phase is not None and _order(update.phase) > _order(row["phase"]):
+            row["phase"] = update.phase
+        for field, value in dict(update).items():
+            if value is None or field in ("status", "phase", "provider_batch_id"):
+                continue
+            if field in ("phase_outputs", "operations"):
+                row[field].update(
+                    {k: v for k, v in dict(value).items() if v is not None}
+                )
+            else:
+                row[field] = value
+        return True
+
+    def seed(self, draft: DreamPassDraft) -> None:
+        """A row as an earlier step (another process) would have left it."""
+        self.rows[draft.id] = {**dict(draft), "phase_outputs": {}, "operations": {}}
+
+    def statuses(self, pass_id: str) -> list[Any]:
+        return [w.status for pid, w in self.writes if pid == pass_id and w.status]
+
+    def phases(self, pass_id: str) -> list[Any]:
+        """The steps the row went through, a step written twice in a row once."""
+        steps = [w.phase for pid, w in self.writes if pid == pass_id and w.phase]
+        return [s for i, s in enumerate(steps) if i == 0 or s != steps[i - 1]]
+
+    def record(self, pass_id: str) -> DreamPassRecord:
+        """The row as ``get_dream_pass`` would read it back."""
+        row = self.rows[pass_id]
+        stamp = row.get("started_at") or datetime.now(timezone.utc)
+        return DreamPassRecord.model_validate(
+            {
+                **{name: row.get(name) for name in DreamPassRecord.model_fields},
+                "cancel_generation": 0,
+                "created_at": stamp,
+                "updated_at": stamp,
+                "phase_outputs": DreamPhaseOutputs(**row["phase_outputs"]),
+                "operations": DreamPassOperations(**row["operations"]),
+            }
+        )
+
+    def _raise_if_down(self) -> None:
+        if self.fail:
+            raise ConnectionError("dream pass database unreachable")
+
+
+def _order(value: Enum | None) -> int:
+    """Where *value* sits in its enum's declared order, as Postgres compares
+    enums."""
+    assert value is not None
+    return list(type(value)).index(value)
+
+
+@pytest.fixture(autouse=True)
+def fake_dream_db(monkeypatch: pytest.MonkeyPatch) -> FakeDreamDb:
+    """Give every dream test an in-memory pass record behind the store."""
+    fake = FakeDreamDb()
+    monkeypatch.setattr("backend.copilot.dream.store.dream_db", lambda: fake)
+    return fake
+
+
+class StalledDreamDb:
+    """A DatabaseManager that never answers: every record write hangs until
+    the store's deadline gives up on it and cancels it."""
+
+    def __init__(self) -> None:
+        self.started = 0
+        self.cancelled = 0
+
+    async def create_dream_pass(self, draft: DreamPassDraft) -> None:
+        await self._hang()
+
+    async def update_dream_pass(self, pass_id: str, update: DreamPassUpdate) -> bool:
+        await self._hang()
+        return True
+
+    async def _hang(self) -> None:
+        self.started += 1
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled += 1
+            raise
+
+
+@pytest.fixture
+def stalled_dream_db(monkeypatch: pytest.MonkeyPatch) -> StalledDreamDb:
+    """Put a DatabaseManager that never answers behind the store, with a
+    short write deadline so a test sees it expire."""
+    stalled = StalledDreamDb()
+    monkeypatch.setattr("backend.copilot.dream.store.dream_db", lambda: stalled)
+    monkeypatch.setattr(
+        "backend.copilot.dream.store.RECORD_WRITE_TIMEOUT_SECONDS", 0.05
+    )
+    return stalled
 
 
 @pytest.fixture(autouse=True)
