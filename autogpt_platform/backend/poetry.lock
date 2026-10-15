@@ -2158,14 +2158,14 @@ httplib2 = ">=0.19.0,<1.0.0"
 
 [[package]]
 name = "google-auth-oauthlib"
-version = "1.4.1"
+version = "1.5.0"
 description = "Google Authentication Library"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "google_auth_oauthlib-1.4.1-py3-none-any.whl", hash = "sha256:a1be43ec69fe563ac9b2c4d6fc4334b323b21cbdc59a638b5fa34dd4d5a2a348"},
-    {file = "google_auth_oauthlib-1.4.1.tar.gz", hash = "sha256:1a83f5f2a8421dedadaa3caf25b3a710dddf85a33a63144be41c2fc79174b106"},
+    {file = "google_auth_oauthlib-1.5.0-py3-none-any.whl", hash = "sha256:71625fdea21c6c03217eb9ff13741c3096e6d257ebca0ad084dbd6e9f4aa4ef4"},
+    {file = "google_auth_oauthlib-1.5.0.tar.gz", hash = "sha256:b351107c7dd9017f426cbb0272ea1bc04f469020fd18f4443c7d40362e0b1510"},
 ]
 
 [package.dependencies]
