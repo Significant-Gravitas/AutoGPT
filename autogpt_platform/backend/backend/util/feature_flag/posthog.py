@@ -16,7 +16,12 @@ from posthog import Posthog
 
 from backend.util.settings import Settings
 
-from .definition_cache import get_flag_definition_cache, refresh_interval_seconds
+from .definition_cache import (
+    MemoryFlagDefinitionCache,
+    RedisFlagDefinitionCache,
+    get_flag_definition_cache,
+    refresh_interval_seconds,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +35,8 @@ _read_executor = ThreadPoolExecutor(
 )
 
 _client: Posthog | None = None
+# The provider _client loads through; it alone sees which loads succeeded.
+_definition_cache: RedisFlagDefinitionCache | MemoryFlagDefinitionCache | None = None
 # The executor evaluates flags from two event loops on two threads; a second
 # client built by a racing first read would leak its poller thread.
 _client_lock = threading.Lock()
@@ -142,9 +149,13 @@ def evaluate_flags_in_memory(
 
 
 def defined_flag_keys() -> frozenset[str] | None:
-    """Every flag the loaded definitions hold, or None before any have loaded."""
+    """Every flag the loaded definitions hold, or None while that is unknown."""
     client = get_flag_client()
-    if client is None or not client.feature_flags:
+    if client is None or client.feature_flags is None:
+        return None
+    # The SDK also empties its definitions on a rejected key or a quota limit;
+    # only a load that succeeded empty means the project has no flags.
+    if not client.feature_flags and not _loaded_empty():
         return None
     return frozenset(flag["key"] for flag in client.feature_flags)
 
@@ -171,10 +182,11 @@ def initialize_posthog_flags() -> None:
 
 
 def shutdown_posthog_flags() -> None:
-    global _client, _init_attempted, _shut_down
+    global _client, _definition_cache, _init_attempted, _shut_down
     with _client_lock:
         client = _client
         _client = None
+        _definition_cache = None
         # Clear the "did we try" gate even when no client was built, or an
         # unconfigured first attempt latches it shut for the life of the process.
         _init_attempted = False
@@ -206,7 +218,7 @@ def get_flag_client() -> Posthog | None:
 
 
 def _build_client() -> Posthog | None:
-    global _client, _init_attempted
+    global _client, _definition_cache, _init_attempted
     if not is_configured():
         _init_attempted = True
         logger.warning("PostHog API key not configured; flag reads will not resolve")
@@ -223,6 +235,7 @@ def _build_client() -> Posthog | None:
     # One shared refresher, so the definitions bill stops scaling with replica
     # count. Without a provider the SDK polls PostHog once per process.
     definition_cache = get_flag_definition_cache() if secret_key else None
+    _definition_cache = definition_cache
     _client = Posthog(
         _flag_project_key(),
         host=settings.secrets.posthog_host,
@@ -252,3 +265,8 @@ def _decoded(payload: Any, value: Any) -> Any:
         return json.loads(payload)
     except (TypeError, ValueError):
         return payload
+
+
+def _loaded_empty() -> bool:
+    last = _definition_cache.definitions if _definition_cache else None
+    return last is not None and not last.get("flags")
