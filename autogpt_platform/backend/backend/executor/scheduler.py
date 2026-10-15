@@ -2550,6 +2550,12 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.add_listener(job_missed_listener, EVENT_JOB_MISSED)
         self.scheduler.add_listener(job_max_instances_listener, EVENT_JOB_MAX_INSTANCES)
+        # Published before start: a system job overdue at start (the memory
+        # cron reconcile after a restart that outlasted its interval, the
+        # schedule index reconcile) runs at once, on the scheduler's thread,
+        # and reaches this instance only through _scheduler_instance.
+        global _scheduler_instance
+        _scheduler_instance = self
         self.scheduler.start()
         if self.register_system_tasks:
             # After start: until then get_job only sees pending jobs, not the
@@ -2557,9 +2563,6 @@ class Scheduler(AppService):
             self._register_posthog_lifecycle_sweep()
             self._register_memory_cron_reconcile()
         self._report_parked_jobs()
-
-        global _scheduler_instance
-        _scheduler_instance = self
         self._start_schedule_index_backfill()
 
         # Keep the service running since BackgroundScheduler doesn't block
