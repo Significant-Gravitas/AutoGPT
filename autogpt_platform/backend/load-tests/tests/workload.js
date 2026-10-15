@@ -23,7 +23,12 @@ import { buildThresholds, customMetricNames } from "../configs/thresholds.js";
 import { authSetupTimeout, setupAuth } from "../lib/auth.js";
 import { coverageReport } from "../lib/coverage.js";
 import { runSeed } from "../lib/random.js";
-import { seedRun, seedSetupTimeout, seedingReport } from "../lib/seed.js";
+import {
+  cancelRunSubscriptions,
+  seedRun,
+  seedSetupTimeout,
+  seedingReport,
+} from "../lib/seed.js";
 import { summaryOutputs } from "../lib/summary.js";
 import { accountReads as accountReadsJourney } from "../scenarios/account.js";
 import {
@@ -77,6 +82,10 @@ export function setup() {
     `workload: setup took ${Math.round((Date.now() - started) / 1000)}s`,
   );
   return data;
+}
+
+export function teardown(data) {
+  cancelRunSubscriptions(data);
 }
 
 export function copilotReads(data) {

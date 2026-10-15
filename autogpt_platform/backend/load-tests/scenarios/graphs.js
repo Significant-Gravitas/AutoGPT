@@ -53,6 +53,14 @@ export function graphRun(data, profile) {
   const graph = pick(random, account.graphs);
   if (!graph) return;
 
+  // The page shows the graph before it runs it.
+  api("GET", `/graphs/${graph.graphId}`, {
+    data,
+    route: "/graphs/{graph_id}",
+    endpoint: "graphs.graph_detail",
+    phase,
+  });
+
   const tags = { phase, endpoint: "graphs.run" };
   const run = {
     execId: null,

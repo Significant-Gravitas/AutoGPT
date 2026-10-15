@@ -51,7 +51,7 @@ export const JOURNEYS = {
   graph_run: {
     rate: 10,
     exec: "graphRun",
-    requests: 6,
+    requests: 4,
     why: "a deterministic graph run through the executor, watched over the WebSocket: 130 to 210 runs a day in production",
   },
 };

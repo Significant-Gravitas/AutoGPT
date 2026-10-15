@@ -9,10 +9,10 @@
 # first run builds it, in about two minutes; later runs reuse it. K6_IMAGE
 # names another image to run instead, and K6_REBUILD_IMAGE=true rebuilds.
 #
-# Settings and secrets travel by name: each K6_*, LOAD_TEST_*, RUN_* or test
-# setting (PR_NUMBER, LOAD_PROFILE, SCENARIOS, ...) exported in the calling
-# shell is passed into the container without its value appearing on a
-# command line.
+# Settings and secrets travel by name: each K6_*, LOAD_TEST_*, RUN_*,
+# STRIPE_TEST_SECRET_KEY or test setting (PR_NUMBER, LOAD_PROFILE, SCENARIOS,
+# ...) exported in the calling shell is passed into the container without its
+# value appearing on a command line.
 #
 # Grafana Cloud k6 bills every virtual-user hour, so these tests run locally.
 # A command that would use it (k6 cloud ..., --out cloud, K6_OUT=cloud) is
@@ -110,7 +110,8 @@ for name in $(compgen -e); do
       ;;
     K6_IMAGE | K6_REBUILD_IMAGE) ;;
     K6_* | LOAD_TEST_* | RUN_* | PR_NUMBER | LOAD_PROFILE | SCENARIOS | \
-      RATE_SCALE | WARMUP | DURATION | COPILOT_* | SEED_* | THRESHOLD_*)
+      RATE_SCALE | WARMUP | DURATION | COPILOT_* | GRAPH_* | SEED_* | \
+      THRESHOLD_* | STRIPE_TEST_SECRET_KEY)
       docker_args+=(-e "$name")
       ;;
   esac

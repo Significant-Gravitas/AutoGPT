@@ -5,7 +5,10 @@
 // library. The target's own store listings are discovered, not created.
 //
 // A new account on a target with credits enabled has none, and a graph run
-// needs some; the one-time onboarding rewards fund each account first.
+// needs some; the one-time onboarding rewards fund each account first. On a
+// target that paywalls new accounts, STRIPE_TEST_SECRET_KEY lets the seed
+// subscribe each account in Stripe test mode before anything else
+// (lib/stripe.js); teardown cancels those subscriptions.
 import { sleep } from "k6";
 import http from "k6/http";
 import { Counter, Gauge, Trend } from "k6/metrics";
@@ -25,9 +28,15 @@ import {
   NO_SESSIONS,
   PAYWALLED,
   SKILLS_UNAVAILABLE,
+  SUBSCRIBE_FAILED,
   recordCoverage,
 } from "./coverage.js";
 import { seedGraph } from "./graphs.js";
+import {
+  cancelSubscriptions,
+  stripeTestKey,
+  subscribeAccount,
+} from "./stripe.js";
 
 const config = getEnvironmentConfig();
 const API = config.API_BASE_URL;
@@ -60,11 +69,17 @@ function whole(raw, fallback, min, max) {
   return n;
 }
 
-// For options.setupTimeout: a request per seeded object, a wait for the
-// seed runs, and a probe turn.
+// For options.setupTimeout: a request per seeded object, the subscription
+// calls, a wait for the seed runs, and a probe turn.
+const SUBSCRIBE_REQUESTS = 8;
+
 export function seedSetupTimeout() {
   const perAccount =
-    2 + SEED_GRAPHS * (2 + SEED_RUNS) + SEED_SESSIONS + SEED_TURNS_PER_ACCOUNT;
+    2 +
+    SUBSCRIBE_REQUESTS +
+    SEED_GRAPHS * (2 + SEED_RUNS) +
+    SEED_SESSIONS +
+    SEED_TURNS_PER_ACCOUNT;
   return `${120 + Math.ceil((accountCount() * perAccount * 1500 + SEED_RUN_WAIT_MS) / 1000)}s`;
 }
 
@@ -122,6 +137,13 @@ export function seedRun(auth, journeys) {
       code: COVERED,
       turnTimeout: __ENV.COPILOT_TURN_TIMEOUT || "120s",
     },
+    stripe: {
+      enabled: stripeTestKey(config.NAME) !== null,
+      subscribed: 0,
+      failed: 0,
+      tier: null,
+      subscriptions: [],
+    },
   };
 
   const pendingRuns = [];
@@ -134,6 +156,23 @@ export function seedRun(auth, journeys) {
       sessionIds: [],
     };
     data.accounts.push(account);
+
+    // Before any request that would meet the paywall, and before any that
+    // reaches the backend's once-per-five-minutes Stripe reconcile.
+    if (data.stripe.enabled) {
+      const sub = subscribeAccount(config, headers, runId);
+      if (sub.subscriptionId)
+        data.stripe.subscriptions.push(sub.subscriptionId);
+      if (sub.ok) {
+        data.stripe.subscribed++;
+        data.stripe.tier = sub.tier;
+      } else {
+        data.stripe.failed++;
+        console.warn(
+          `seed: subscribing account ${i + 1} in Stripe test mode failed: ${sub.reason}`,
+        );
+      }
+    }
 
     if (wants("graph_run") || wants("library_browse")) {
       fundAccount(headers);
@@ -264,7 +303,12 @@ export function seedRun(auth, journeys) {
   }
 
   const off = recordRunCoverage(data, journeys);
-  const line = `seed: ${data.accounts.length} accounts; store agents ${data.store.agents.length}, skills ${
+  const subscriptions = data.stripe.enabled
+    ? `${data.stripe.subscribed} of ${data.accounts.length} subscribed in Stripe test mode${
+        data.stripe.tier ? ` (${data.stripe.tier})` : ""
+      }`
+    : "none (STRIPE_TEST_SECRET_KEY is not set)";
+  const line = `seed: ${data.accounts.length} accounts; subscriptions ${subscriptions}; store agents ${data.store.agents.length}, skills ${
     data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
   }; graph runs ${data.graphs.enabled ? "on" : `off (${data.graphs.reason})`}; copilot turns ${
     data.copilot.enabled
@@ -316,10 +360,29 @@ function recordRunCoverage(data, journeys) {
   };
   const off = [];
   for (const name of journeys) {
+    // A paywall that held although a key was given means the subscription
+    // step failed for an account; the log has the account and the reason.
+    if (codes[name] === PAYWALLED && data.stripe.enabled) {
+      codes[name] = SUBSCRIBE_FAILED;
+    }
     recordCoverage(name, codes[name]);
     if (codes[name] !== COVERED) off.push(name);
   }
   return off;
+}
+
+// For teardown(): cancels the subscriptions the run created.
+export function cancelRunSubscriptions(data) {
+  const ids = (data && data.stripe && data.stripe.subscriptions) || [];
+  if (ids.length === 0) return;
+  const result = cancelSubscriptions(ids);
+  console.log(
+    `teardown: cancelled ${result.cancelled} of ${ids.length} Stripe test-mode subscription(s)${
+      result.failed > 0
+        ? `; ${result.failed} failed, scripts/cancel-load-test-subscriptions.js cancels leftovers`
+        : ""
+    }`,
+  );
 }
 
 // The one-time onboarding rewards: 300 credits each for two steps, more
@@ -520,6 +583,8 @@ export function seedingReport(summaryData) {
     sessions: count("seed_sessions"),
     turns: count("seed_turns"),
     library_adds: count("seed_library_adds"),
+    subscriptions: count("seed_subscriptions"),
+    subscriptions_cancelled: count("seed_subscriptions_cancelled"),
     store_agents_found: gauge("seed_store_agents_found"),
     store_skills_found: gauge("seed_store_skills_found"),
     credits_per_account_avg:

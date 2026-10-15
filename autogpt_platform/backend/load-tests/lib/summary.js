@@ -148,7 +148,7 @@ export function buildSummary(data, meta) {
     else if (all) custom[name] = trendRow(all);
   }
 
-  return {
+  const summary = {
     run_id: runId(),
     profile: meta.profile,
     seed: meta.seed,
@@ -182,6 +182,8 @@ export function buildSummary(data, meta) {
     coverage: meta.coverage ? meta.coverage(data) : null,
     thresholds: { failed, results },
   };
+  if (meta.cost) summary.cost = meta.cost;
+  return summary;
 }
 
 function pad(text, width) {

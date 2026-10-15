@@ -19,10 +19,11 @@ export const SKILLS_UNAVAILABLE = 7;
 export const NO_SESSIONS = 8;
 export const NO_GRAPHS = 9;
 export const NO_CREDITS = 10;
+export const SUBSCRIBE_FAILED = 11;
 
 const REASONS = {
   [PAYWALLED]:
-    "the target paywalls new accounts (402 A subscription is required); see README, Paywalled targets",
+    "the target paywalls new accounts (402 A subscription is required); STRIPE_TEST_SECRET_KEY lets the run subscribe its accounts in Stripe test mode (README: Paywalled targets)",
   [ENGINE_UNSET]:
     "LOAD_TEST_COPILOT_ENGINE is not set; see README, Copilot and model spend",
   [ENGINE_PROBE_FAILED]:
@@ -38,6 +39,8 @@ const REASONS = {
     "no chat session exists for the run's accounts: the session list is empty and no session detail was read",
   [NO_GRAPHS]: "no graph could be seeded",
   [NO_CREDITS]: "the accounts have no credits for a run",
+  [SUBSCRIBE_FAILED]:
+    "subscribing an account in Stripe test mode failed, so the paywall held; the log says why",
 };
 
 // A code leaves these journeys with nothing to do; the others still make
