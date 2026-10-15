@@ -44,7 +44,8 @@ export function ExpertOverview({
       {expert.bio ? (
         <Text
           variant="body"
-          className="max-w-3xl !text-[15px] !leading-relaxed !text-zinc-600"
+          title={expert.bio}
+          className="line-clamp-2 max-w-3xl !text-[15px] !leading-relaxed !text-zinc-600"
         >
           {expert.bio}
         </Text>
