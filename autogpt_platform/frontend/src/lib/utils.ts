@@ -181,20 +181,18 @@ const applyExceptions = (str: string): string => {
 };
 
 export function exportAsJSONFile(obj: object, filename: string): void {
-  // Create downloadable blob
   const jsonString = JSON.stringify(obj, null, 2);
-  const blob = new Blob([jsonString], { type: "application/json" });
+  downloadFile(filename, new Blob([jsonString], { type: "application/json" }));
+}
+
+export function downloadFile(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
-
-  // Trigger the browser to download the blob to a file
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-
-  // Clean up
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
   URL.revokeObjectURL(url);
 }
 
