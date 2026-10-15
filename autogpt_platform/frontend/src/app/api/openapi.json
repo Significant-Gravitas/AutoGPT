@@ -4330,6 +4330,72 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/continue": {
+      "post": {
+        "tags": ["v2", "chat"],
+        "summary": "Continue Session",
+        "description": "Continue the chat's task from the checkpoint it paused at.",
+        "operationId": "postV2ContinueSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ContinueSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "A turn is already running in this chat (turn_in_progress), or the chat runs on a connection that can't continue a task (unsupported_connection)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": {
+            "description": "Usage limit or concurrent-turn limit reached"
+          },
+          "503": {
+            "description": "Chat service degraded; retry after Retry-After"
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/credential-selection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
@@ -21032,6 +21098,32 @@
           "CHAT_SESSION"
         ],
         "title": "ContentType"
+      },
+      "ContinueSessionRequest": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "advanced"] },
+              { "type": "null" }
+            ],
+            "title": "Model",
+            "description": "Model tier the continuation runs on, as for a message."
+          }
+        },
+        "type": "object",
+        "title": "ContinueSessionRequest"
+      },
+      "ContinueSessionResponse": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "The continuation turn; attach to its stream."
+          }
+        },
+        "type": "object",
+        "required": ["turn_id"],
+        "title": "ContinueSessionResponse"
       },
       "CopilotSkillDetail": {
         "properties": {
