@@ -355,10 +355,15 @@ async def charge_node_usage(node_exec: NodeExecutionEntry) -> tuple[int, int]:
     (``increment_execution_count``). Nested tool executions are sub-steps
     of a single block run from the user's perspective and should not push
     them into higher per-execution cost tiers.
+
+    Pins ``node_exec.pre_flight_charge`` to the block cost actually spent,
+    so the post-flight reconciliation settles against what the wallet paid
+    (as the main queue does), not against a re-derived catalogue estimate.
     """
 
     def _run():
-        total_cost, remaining, _ = charge_usage(node_exec, 0)
+        total_cost, remaining, block_pre_flight = charge_usage(node_exec, 0)
+        node_exec.pre_flight_charge = block_pre_flight
         if total_cost > 0:
             handle_low_balance(
                 get_db_client(), node_exec.user_id, remaining, total_cost
