@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
@@ -491,3 +492,6 @@ async def test_queue_spawned_turn_stores_impersonation_with_the_queued_row() -> 
         )
 
     assert enqueue.await_args.kwargs["impersonated"] is True
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
