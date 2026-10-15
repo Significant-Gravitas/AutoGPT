@@ -77,6 +77,7 @@ def _bounded_spans(
         key=lambda m: (message_ref(m) not in verifying, m.sequence not in context),
     )
     spans: list[EvidenceSpan] = []
+    full_texts: dict[str, str] = {}
     clipped: list[str] = []
     used = 0
     for message in prioritized:
@@ -91,12 +92,48 @@ def _bounded_spans(
             clipped.append(ref)
             continue
         used += len(body)
+        full_texts[ref] = text
         spans.append(
             EvidenceSpan(
                 ref=ref, role=message.role, text=body, outcome=outcomes.get(ref)
             )
         )
-    return spans, clipped
+    return _restore_clipped(spans, full_texts, clipped, max_chars - used)
+
+
+def _restore_clipped(
+    spans: list[EvidenceSpan],
+    full_texts: dict[str, str],
+    clipped: list[str],
+    spare: int,
+) -> tuple[list[EvidenceSpan], list[str]]:
+    """Spend the budget the per-span cap left unused on the spans it clipped.
+
+    The user's messages come first, since they state the task and its rules,
+    then the rest in their selection order. A real coding turn otherwise
+    reaches review with its request and code cut to the cap even when most
+    of the budget is unused, and the reviewer can't confirm what passed.
+    """
+    restored = {}
+    for span in sorted(spans, key=lambda s: s.role != "user"):
+        missing = len(full_texts[span.ref]) - len(span.text)
+        if spare <= 0 or missing <= 0:
+            continue
+        added = min(missing, spare)
+        spare -= added
+        restored[span.ref] = full_texts[span.ref][: len(span.text) + added]
+    whole = {ref for ref, text in restored.items() if text == full_texts[ref]}
+    return (
+        [
+            (
+                span.model_copy(update={"text": restored[span.ref]})
+                if span.ref in restored
+                else span
+            )
+            for span in spans
+        ],
+        [ref for ref in clipped if ref not in whole],
+    )
 
 
 def _message_text(message: ChatMessage) -> str:

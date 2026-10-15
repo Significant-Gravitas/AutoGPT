@@ -29,7 +29,7 @@ async def _processed_chat(fake_store, recent, *, large_old_result=False):
     old = _messages(3)
     if large_old_result:
         old[2].content = json.dumps(
-            {"type": "block_output", "success": True, "detail": "x" * 2500}
+            {"type": "block_output", "success": True, "detail": "x" * 30_000}
         )
     record = await record_chat_turn(USER, _session(), old, "import the csv")
     await fake_store.advance_source_cursor(USER, record.id, record.revision)
