@@ -23,7 +23,9 @@ from backend.copilot.response_model import (
     StreamFinish,
     StreamTextDelta,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
 )
+from backend.copilot.turn_pause import TurnPause
 from backend.data.redis_client import get_redis_async
 from backend.platform_linking.models import (
     MAX_BOT_MESSAGE_CHARS,
@@ -51,6 +53,7 @@ from backend.util.exceptions import (
 )
 
 from .adapters.base import InboundAttachment
+from .pauses import pause_note
 from .prompt import clamp_prompt
 
 # How long to wait for a single chunk from the copilot stream before giving
@@ -666,6 +669,12 @@ class BotBackend:
                     ):
                         cards_posted.add(review_id)
                         await on_approval_needed(handle.session_id, review_id)
+                elif isinstance(chunk, StreamTurnPaused):
+                    # The turn stopped at a limit on purpose; StreamFinish
+                    # follows. Say how to pick it up, after its checkpoint.
+                    if last_text_block_id is not None:
+                        yield "\n\n"
+                    yield pause_note(TurnPause.model_validate(chunk.pause))
                 elif isinstance(chunk, StreamFinish):
                     return
                 elif isinstance(chunk, StreamError):

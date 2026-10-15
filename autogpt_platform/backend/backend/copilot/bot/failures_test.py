@@ -19,10 +19,10 @@ from .bot_backend import BotStreamError
 @pytest.mark.parametrize(
     "exc, category",
     [
-        # 2026-09-15 12:29 UTC in Discord: the turn hit its LLM-call cap and
-        # the user was told only "AutoGPT ran into an error".
         (
-            BotStreamError("backend_stream_error", "cap", code="max_turns_exhausted"),
+            BotStreamError(
+                "backend_stream_error", "x", code="circuit_breaker_empty_tool_calls"
+            ),
             failures.STEP_LIMIT,
         ),
         (

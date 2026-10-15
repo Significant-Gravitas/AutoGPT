@@ -30,8 +30,8 @@ class TestFailureReply:
         adapter = _adapter()
         exc = BotStreamError(
             "backend_stream_error",
-            "The turn ended because it reached the maximum number of LLM calls.",
-            code="max_turns_exhausted",
+            "Unable to complete the tool call",
+            code="circuit_breaker_empty_tool_calls",
         )
         with _patch_redis():
             await TurnStreamer(_failing_api(exc)).stream_batch(

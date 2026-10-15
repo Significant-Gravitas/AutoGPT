@@ -555,7 +555,6 @@ class TestStreamChat:
         assert excinfo.value.error_kind == "subscribe_failed"
 
 
-@pytest.mark.xfail(strict=True, reason="a paused turn ends with no word on how to go on")
 class TestPausedTurn:
     """A turn at its budget or step limit now pauses instead of failing
     (#15388). The web chat offers a Keep going button; a chat user has none,

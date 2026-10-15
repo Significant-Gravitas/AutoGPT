@@ -109,8 +109,6 @@ _BY_CODE: dict[str, FailureCategory] = {
     PROVIDER_UNAVAILABLE_CODE: MODEL_UNAVAILABLE,
     "entitlement_required": NOT_IN_PLAN,
     "idle_timeout": TOO_LONG,
-    "max_turns_exhausted": STEP_LIMIT,
-    "max_budget_exhausted": STEP_LIMIT,
     "circuit_breaker_empty_tool_calls": STEP_LIMIT,
     "empty_completion": EMPTY_REPLY,
 }
