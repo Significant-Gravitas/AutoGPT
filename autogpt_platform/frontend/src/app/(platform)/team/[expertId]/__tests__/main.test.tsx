@@ -519,7 +519,7 @@ describe("ExpertDetailPage", () => {
     expect(await screen.findByTestId("schedule-row")).toBeDefined();
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search schedules" }),
+      screen.getByRole("textbox", { name: "Search schedules" }),
       "nothing-like-this",
     );
     expect(screen.getByText("No schedules match.")).toBeDefined();
@@ -829,15 +829,13 @@ describe("ExpertDetailPage", () => {
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(2);
 
     await user.type(
-      screen.getByRole("searchbox", { name: "Search workflows" }),
+      screen.getByRole("textbox", { name: "Search workflows" }),
       "seo",
     );
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(1);
     expect(screen.getByText("SEO Audit")).toBeDefined();
 
-    await user.clear(
-      screen.getByRole("searchbox", { name: "Search workflows" }),
-    );
+    await user.clear(screen.getByRole("textbox", { name: "Search workflows" }));
     await user.click(screen.getByRole("button", { name: "Filter workflows" }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Scheduled" }),

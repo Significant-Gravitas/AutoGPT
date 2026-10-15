@@ -186,9 +186,7 @@ describe("managing an expert's integrations", () => {
 
     const section = await screen.findByTestId("expert-integrations-section");
     expect(
-      await within(section).findByText(
-        /Nothing connected yet\. Add a tool and Maria can use it/,
-      ),
+      await within(section).findByText(/Connect a tool and Maria can use it/),
     ).toBeDefined();
   });
 

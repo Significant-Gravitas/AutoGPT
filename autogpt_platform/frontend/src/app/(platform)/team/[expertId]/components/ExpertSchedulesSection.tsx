@@ -13,7 +13,7 @@ import {
   RepeatIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { PanelEmptyState } from "@/app/(platform)/copilot/components/ContextPanel/components/PanelEmptyState/PanelEmptyState";
+import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { useState } from "react";
 import {
   filterExpertSchedules,
@@ -89,43 +89,41 @@ export function ExpertSchedulesSection({
         </div>
       </div>
       {schedules.length === 0 ? (
-        <div className="mt-4 rounded-2xl bg-white smooth-shadow-ring-sm">
-          <PanelEmptyState
-            tiles={[
-              <Icon
-                key="clock"
-                icon={Clock01Icon}
-                size={22}
-                className="text-sky-500"
-              />,
-              <Icon
-                key="repeat"
-                icon={RepeatIcon}
-                size={22}
-                className="text-emerald-500"
-              />,
-              <Icon
-                key="calendar"
-                icon={Calendar03Icon}
-                size={22}
-                className="text-violet-500"
-              />,
-            ]}
-            title="No schedules yet"
-            description={`Put a workflow on a schedule and ${expertName} runs it for you, on time, every time.`}
-          >
-            {expertId && workflows ? (
-              <Button
-                variant="primary"
-                size="small"
-                leadingIcon={PlusSignIcon}
-                onClick={() => setIsCreateOpen(true)}
-              >
-                Create schedule
-              </Button>
-            ) : null}
-          </PanelEmptyState>
-        </div>
+        <SectionEmptyState
+          tiles={[
+            <Icon
+              key="clock"
+              icon={Clock01Icon}
+              size={22}
+              className="text-sky-500"
+            />,
+            <Icon
+              key="repeat"
+              icon={RepeatIcon}
+              size={22}
+              className="text-emerald-500"
+            />,
+            <Icon
+              key="calendar"
+              icon={Calendar03Icon}
+              size={22}
+              className="text-violet-500"
+            />,
+          ]}
+          title="No schedules yet"
+          description={`Put a workflow on a schedule and ${expertName} runs it for you, on time, every time.`}
+        >
+          {expertId && workflows ? (
+            <Button
+              variant="primary"
+              size="small"
+              leadingIcon={PlusSignIcon}
+              onClick={() => setIsCreateOpen(true)}
+            >
+              Create schedule
+            </Button>
+          ) : null}
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted" className="pt-4">
           No schedules match.

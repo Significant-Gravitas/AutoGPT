@@ -128,7 +128,7 @@ export default function AutopilotPage() {
             workflows={workflows}
             accentClassName={AUTOPILOT_PILL_CLASS}
             coverColor={AUTOPILOT_HEX}
-            emptyMessage="No workflows yet. Workflows in your library that no expert owns show up here."
+            emptyMessage="Workflows in your library that no expert owns show up here."
           />
         </TabsLineContent>
 

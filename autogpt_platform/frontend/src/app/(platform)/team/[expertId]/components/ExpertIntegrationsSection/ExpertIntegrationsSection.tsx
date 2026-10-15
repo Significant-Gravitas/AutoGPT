@@ -15,6 +15,8 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
+import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { SectionEmptyState } from "../../../components/SectionEmptyState";
 import { ToolbarSearch } from "../../../components/ToolbarSearch";
 
 interface Props {
@@ -116,10 +118,34 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           onRetry={refetch}
         />
       ) : granted.length === 0 ? (
-        <Text variant="body" tone="muted">
-          Nothing connected yet. Add a tool and {expertName} can use it on your
-          behalf.
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <IntegrationLogo key="slack" provider="slack" size={24} />,
+            <IntegrationLogo key="notion" provider="notion" size={24} />,
+            <IntegrationLogo key="google" provider="google" size={24} />,
+          ]}
+          title="No integrations yet"
+          description={`Connect a tool and ${expertName} can use it on your behalf.`}
+        >
+          <Button
+            variant="primary"
+            size="small"
+            leadingIcon={PlusSignIcon}
+            onClick={openConnect}
+          >
+            Add integration
+          </Button>
+          {grantable.length > 0 && !isGrantableError ? (
+            <Button
+              variant="secondary"
+              size="small"
+              leadingIcon={Share01Icon}
+              onClick={openUseExisting}
+            >
+              Use existing
+            </Button>
+          ) : null}
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted" className="pt-4">
           No integrations match.

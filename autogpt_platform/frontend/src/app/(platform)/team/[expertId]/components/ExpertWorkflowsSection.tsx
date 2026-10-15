@@ -4,10 +4,14 @@ import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflow
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import {
+  Calendar03Icon,
   GridViewIcon,
   ListViewIcon,
+  PlayIcon,
   PlusSignIcon,
+  WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
 import { useState } from "react";
 import {
   filterExpertWorkflows,
@@ -19,6 +23,7 @@ import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
 import { useExpertWorkflowAgents } from "./useExpertWorkflowAgents";
 import { useExpertWorkflowsView } from "./useExpertWorkflowsView";
 import { ViewToggle } from "./ViewToggle";
+import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { ToolbarSearch } from "../../components/ToolbarSearch";
 import { PillFilterMenu } from "../../components/PillFilterMenu";
 
@@ -88,10 +93,44 @@ export function ExpertWorkflowsSection({
         </div>
       </div>
       {workflows.length === 0 ? (
-        <Text variant="body" tone="muted">
-          {emptyMessage ??
-            `No workflows yet. Install one to give ${expertName} something to run.`}
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <Icon
+              key="flow"
+              icon={WorkflowSquare01Icon}
+              size={22}
+              className="text-sky-500"
+            />,
+            <Icon
+              key="play"
+              icon={PlayIcon}
+              size={22}
+              className="text-orange-500"
+            />,
+            <Icon
+              key="calendar"
+              icon={Calendar03Icon}
+              size={22}
+              className="text-violet-500"
+            />,
+          ]}
+          title="No workflows yet"
+          description={
+            emptyMessage ??
+            `Install a workflow to give ${expertName} something to run.`
+          }
+        >
+          {onInstallWorkflow ? (
+            <Button
+              variant="primary"
+              size="small"
+              leadingIcon={PlusSignIcon}
+              onClick={onInstallWorkflow}
+            >
+              Install workflow
+            </Button>
+          ) : null}
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted">
           No workflows match.
