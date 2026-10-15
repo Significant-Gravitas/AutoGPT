@@ -62,7 +62,7 @@ class PineconeInitBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInitBlock.Input,
             output_schema=PineconeInitBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -206,7 +206,7 @@ class PineconeInsertBlock(Block):
             categories={BlockCategory.LOGIC},
             input_schema=PineconeInsertBlock.Input,
             output_schema=PineconeInsertBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

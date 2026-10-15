@@ -136,7 +136,7 @@ class BaasBotLeaveMeetingBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

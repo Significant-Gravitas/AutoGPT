@@ -84,7 +84,7 @@ class CreateCampaignBlock(Block):
                     created_at="2024-01-01T00:00:00Z",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

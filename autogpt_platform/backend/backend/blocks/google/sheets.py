@@ -588,7 +588,7 @@ class GoogleSheetsAppendRowBlock(Block):
                     "updatedRows": 1,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1731,7 +1731,7 @@ class GoogleSheetsFormatBlock(Block):
                 ),
             ],
             test_mock={"_format_cells": lambda *args, **kwargs: {"success": True}},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1918,7 +1918,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
                     "title": "Test Spreadsheet",
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -3609,7 +3609,7 @@ class GoogleSheetsInsertRowBlock(Block):
             test_mock={
                 "_insert_row": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -3785,7 +3785,7 @@ class GoogleSheetsAddColumnBlock(Block):
                     "column_index": 3,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -4931,7 +4931,7 @@ class GoogleSheetsCreateNamedRangeBlock(Block):
                     "named_range_id": "nr_12345",
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -5261,7 +5261,7 @@ class GoogleSheetsAddDropdownBlock(Block):
             test_mock={
                 "_add_dropdown": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -5439,7 +5439,7 @@ class GoogleSheetsCopyToSpreadsheetBlock(Block):
                     "new_sheet_name": "Copy of Sheet1",
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -5591,7 +5591,7 @@ class GoogleSheetsProtectRangeBlock(Block):
                     "protection_id": 12345,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -6040,7 +6040,7 @@ class GoogleSheetsAddNoteBlock(Block):
             test_mock={
                 "_add_note": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

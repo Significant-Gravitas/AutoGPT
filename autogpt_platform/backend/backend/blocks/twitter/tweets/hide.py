@@ -55,7 +55,7 @@ class TwitterHideReplyBlock(Block):
                 ("success", True),
             ],
             test_mock={"hide_reply": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -127,7 +127,7 @@ class TwitterUnhideReplyBlock(Block):
                 ("success", True),
             ],
             test_mock={"unhide_reply": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

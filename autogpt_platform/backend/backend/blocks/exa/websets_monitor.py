@@ -229,7 +229,7 @@ class ExaCreateMonitorBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -457,7 +457,7 @@ class ExaUpdateMonitorBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateMonitorBlock.Input,
             output_schema=ExaUpdateMonitorBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

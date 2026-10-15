@@ -258,7 +258,7 @@ class RemoveRedditPostBlock(Block):
             ],
             test_mock={"remove_post": lambda creds, post_id, spam, mod_note: True},
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -320,7 +320,7 @@ class ApproveRedditPostBlock(Block):
             ],
             test_mock={"approve_post": lambda creds, post_id: True},
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -374,7 +374,7 @@ class LockRedditPostBlock(Block):
             ],
             test_mock={"set_lock": lambda creds, post_id, lock: lock},
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -548,7 +548,7 @@ class UnbanSubredditUserBlock(Block):
             ],
             test_mock={"unban_user": lambda creds, subreddit, username: True},
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

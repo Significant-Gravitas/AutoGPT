@@ -22,6 +22,7 @@ from backend.copilot.config import ChatConfig
 from backend.util.llm.providers import call_provider_openai_compat_sync
 
 from . import jev
+from .judged_rubric import judged
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -29,6 +30,7 @@ config = ChatConfig()
 ACTION_RUBRIC = (Path(__file__).parent / "action_rubric.txt").read_text(
     encoding="utf-8"
 )
+JUDGED_ACTION_RUBRIC = judged(ACTION_RUBRIC, "llm")
 
 # The least of the request a call must leave room for; below it the judge cannot
 # tell what was asked, so the call is held as too long instead.
@@ -55,9 +57,14 @@ async def supervise(
     tool_name: str,
     args: dict[str, Any],
     user_message: str,
+    outward_judged: bool = False,
 ) -> Judgement:
     """Jev decides when it can; the LLM then only writes an ask's reason and
-    cannot turn it into an allow. Without Jev the LLM decides, as before."""
+    cannot turn it into an allow. Without Jev the LLM decides, as before.
+
+    ``outward_judged``: the call is an outward act cheap to get wrong, judged on
+    what it sends rather than on leaving the platform (``judged_rubric``)."""
+    rubric = JUDGED_ACTION_RUBRIC if outward_judged else ACTION_RUBRIC
     call = json.dumps(
         {"tool": tool_name, "arguments": args},
         indent=1,
@@ -68,15 +75,19 @@ async def supervise(
     # the ceiling even with Jev off: Haiku alone missed a buried `curl | sh` 1 in
     # 10 past it (40k chars), and caught it every time within it.
     try:
-        prompt, over = _fit(_utf8(user_message), fence("PROPOSED CALL", _utf8(call)))
+        prompt, over = _fit(
+            _utf8(user_message),
+            fence("PROPOSED CALL", _utf8(call)),
+            outward_judged,
+        )
     except Exception:
         logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
         return Judgement(allowed=False, reason=_FALLBACK_REASON)
     if over:
         return Judgement(allowed=False, reason=too_long_reason(over))
-    first = await jev.judge(prompt) if jev.enabled() else None
+    first = await jev.judge(prompt, outward_judged) if jev.enabled() else None
     if first is None:
-        allowed, reason = await _llm_verdict(prompt, tool_name)
+        allowed, reason = await _llm_verdict(prompt, tool_name, rubric)
         return Judgement(allowed=allowed, reason=reason, decided_by="llm")
     logger.info(
         f"Gate first stage {'ask' if first.ask else 'allow'} for {tool_name}: "
@@ -89,7 +100,7 @@ async def supervise(
             decided_by="jev",
             first_stage=first.probabilities,
         )
-    answer = await _judge(prompt + "\n\n" + jev.flag_line(first), tool_name)
+    answer = await _judge(prompt + "\n\n" + jev.flag_line(first), tool_name, rubric)
     # Jev's ask holds even when the LLM would allow: the card never waits on it.
     if answer is not None and answer[0] == "ask" and answer[1]:
         reason = answer[1]
@@ -103,15 +114,15 @@ async def supervise(
     )
 
 
-async def _llm_verdict(prompt: str, tool_name: str) -> tuple[bool, str]:
-    verdict = await _judge(prompt, tool_name)
+async def _llm_verdict(prompt: str, tool_name: str, rubric: str) -> tuple[bool, str]:
+    verdict = await _judge(prompt, tool_name, rubric)
     if verdict is None:
         return False, _FALLBACK_REASON
     allow = verdict[0] == "allow"
     return allow, verdict[1] or ("Allowed." if allow else "Needs your approval.")
 
 
-async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
+async def _judge(prompt: str, tool_name: str, rubric: str) -> tuple[str, str] | None:
     """The LLM's ``(word, reason)``; None on any failure."""
     # Deferred, and private: copilot.service imports the tool registry, whose
     # BaseTool imports this gate.
@@ -123,7 +134,7 @@ async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:
                 client=_get_aux_client(),
                 model=config.gate_model,
                 messages=[
-                    {"role": "system", "content": ACTION_RUBRIC},
+                    {"role": "system", "content": rubric},
                     {"role": "user", "content": prompt},
                 ],
                 max_tokens=200,
@@ -154,19 +165,19 @@ def _utf8(text: str) -> str:
     return text.encode("utf-8", "backslashreplace").decode("utf-8")
 
 
-def _fit(request: str, proposed: str) -> tuple[str, int]:
+def _fit(request: str, proposed: str, outward_judged: bool) -> tuple[str, int]:
     """The prompt with as much of ``request`` as Jev reads beside the whole call,
     and the bytes still over when even ``_MIN_REQUEST_CHARS`` of it does not fit."""
     whole = _prompt(request, proposed)
-    if not jev.overflow(whole):
+    if not jev.overflow(whole, outward_judged):
         return whole, 0
     low = min(len(request), _MIN_REQUEST_CHARS)
-    if over := jev.overflow(_prompt(_shorten(request, low), proposed)):
+    if over := jev.overflow(_prompt(_shorten(request, low), proposed), outward_judged):
         return whole, over
     high = len(request) - 1
     while low < high:
         middle = (low + high + 1) // 2
-        if jev.overflow(_prompt(_shorten(request, middle), proposed)):
+        if jev.overflow(_prompt(_shorten(request, middle), proposed), outward_judged):
             high = middle - 1
         else:
             low = middle

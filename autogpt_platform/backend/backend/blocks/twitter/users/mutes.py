@@ -72,7 +72,7 @@ class TwitterUnmuteUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"unmute_user": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -307,7 +307,7 @@ class TwitterMuteUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"mute_user": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

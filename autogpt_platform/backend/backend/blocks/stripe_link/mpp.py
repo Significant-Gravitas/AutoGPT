@@ -247,7 +247,7 @@ class StripeLinkGetPaymentChallengeBlock(Block):
                     + '", description="Test charge"',
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     # Instance method to match `_pay_with_token`, so both API seams patch

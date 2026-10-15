@@ -1113,7 +1113,7 @@ class EditRedditPostBlock(Block):
                     "https://reddit.com/r/test/comments/abc123/test_post/",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -2181,7 +2181,7 @@ class GetRedditInboxBlock(Block):
                     ),
                 ]
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

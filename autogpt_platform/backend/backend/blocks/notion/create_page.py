@@ -97,7 +97,7 @@ class NotionCreatePageBlock(Block):
                     "https://notion.so/Test-Page-12345678123412341234123456789012",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

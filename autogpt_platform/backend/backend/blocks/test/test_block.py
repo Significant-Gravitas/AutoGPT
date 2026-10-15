@@ -62,7 +62,7 @@ def test_block_declares_an_effect(block: Type[Block]):
         return
     assert instance.block_type in STRUCTURAL_TYPES or name in UNREADABLE_BLOCKS, (
         f"{name} declares no effect. Pass effect=BlockEffect.NONE, READ, "
-        f"WORKSPACE, PLATFORM or EXTERNAL (see BlockEffect)."
+        f"WORKSPACE, PLATFORM, EXTERNAL_JUDGED or EXTERNAL (see BlockEffect)."
     )
 
 
@@ -89,8 +89,9 @@ def test_irreversible_blocks_are_external(block: Type[Block]):
     instance = block()
     if not instance.is_irreversible_action:
         return
-    assert instance.effect is BlockEffect.EXTERNAL, (
-        f"{instance.name} is irreversible, so its effect must be EXTERNAL, not "
+    assert instance.effect in (BlockEffect.EXTERNAL_JUDGED, BlockEffect.EXTERNAL), (
+        f"{instance.name} is irreversible, so its effect must be EXTERNAL_JUDGED "
+        f"or EXTERNAL, not "
         f"{instance.effect.name if instance.effect else 'undeclared'}."
     )
 

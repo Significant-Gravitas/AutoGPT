@@ -58,7 +58,7 @@ class LinearCreateCommentBlock(Block):
                     "Test comment",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

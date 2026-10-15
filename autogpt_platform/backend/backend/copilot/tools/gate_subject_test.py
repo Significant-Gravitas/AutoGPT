@@ -31,7 +31,8 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
 from backend.copilot import usage_activation_fixtures
-from backend.copilot.gate import RUN_FILES_KEY
+from backend.copilot.gate import RUN_FILES_KEY, RUNS_KEY, chat_rules
+from backend.copilot.gate.chat_rules_test import _Redis
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.effects import block_effect, graph_effect
@@ -60,6 +61,11 @@ _BASH = "backend.copilot.tools.bash_exec"
 _CLASSIFIER = "backend.copilot.gate.classifier"
 _CAP = "backend.copilot.tools.run_capability"
 _AGENT_GRAPH = "backend.copilot.tools.run_agent._agent_graph"
+# The fixtures stub the rule store; the rule tests need the real one.
+_REAL_RULE_FOR = chat_rules.rule_for
+_REAL_SET_ASK = chat_rules.set_ask
+_POST = {"channel_name": "general", "message_content": "hi"}
+_EMAIL = {"to": ["sam@example.com"], "subject": "Hi", "body": "hi"}
 
 
 def _session(mode: AutopilotMode = "auto") -> ChatSession:
@@ -176,20 +182,111 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
     gate.open_review.assert_not_awaited()
 
 
-async def test_an_external_block_asks_and_the_card_names_it(gate, ran):
-    result = await _run_capability(
-        _session(),
-        SendDiscordMessageBlock().id,
-        {"channel_name": "general", "message_content": "hi"},
-    )
+async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(gate, ran):
+    judge = AsyncMock()
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(_session(), GmailSendBlock().id, _EMAIL)
     assert _is_held(result)
     ran.assert_not_awaited()
+    judge.assert_not_awaited()
     args = gate.open_review.await_args.args
     reason, subject = args[5], args[6]
-    assert subject.name == "Send Discord Message"
-    assert subject.key == f"block:{SendDiscordMessageBlock().id}"
-    assert reason == "Runs Send Discord Message, which reaches outside the platform."
+    assert subject.name == "Gmail Send"
+    assert subject.key == f"block:{GmailSendBlock().id}"
+    assert reason == "Runs Gmail Send, which reaches outside the platform."
     assert subject.irreversible
+
+
+@pytest.mark.parametrize("allowed", [True, False])
+async def test_a_judged_block_in_auto_is_the_supervisors_call(gate, ran, allowed):
+    judge = AsyncMock(return_value=Judgement(allowed=allowed, reason="not asked for"))
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(
+            _session(), SendDiscordMessageBlock().id, _POST, **{RUNS_KEY: "a read"}
+        )
+    judged = judge.await_args.kwargs
+    assert judged["outward_judged"] is True
+    # The call names only an id; the supervisor is told the block, not the model's word.
+    assert judged["args"][RUNS_KEY] == "Send Discord Message"
+    assert _is_held(result) is not allowed
+    assert ran.await_count == int(allowed)
+    if not allowed:
+        assert gate.open_review.await_args.args[5] == "not asked for"
+
+
+async def test_a_judged_block_asks_in_ask_first_mode(gate, ran):
+    judge = AsyncMock()
+    with patch(f"{_GATE}.supervise", judge):
+        result = await _run_capability(
+            _session("ask_first"), SendDiscordMessageBlock().id, _POST
+        )
+    assert _is_held(result)
+    judge.assert_not_awaited()
+    assert (
+        gate.open_review.await_args.args[5]
+        == "Runs Send Discord Message, which reaches outside the platform."
+    )
+
+
+@pytest.mark.parametrize("scope", ["chat", "expert", "team"])
+async def test_an_ask_first_block_runs_once_allowed_at_any_scope(gate, ran, scope):
+    """The card's "don't ask me again": its rule, at the scope the user picked."""
+    key = f"block:{GmailSendBlock().id}"
+    judge = AsyncMock()
+    with (
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+        patch(
+            f"{_GATE}.chat_rules.get_chat_session_metadata",
+            AsyncMock(return_value=SimpleNamespace(expert_id=None)),
+        ),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        # A wider rule is answered in another chat and must hold in this one.
+        await chat_rules.set_answer_rules(
+            "session-1" if scope == "chat" else "session-0",
+            "user-1",
+            {"r": SimpleNamespace(status=ReviewStatus.APPROVED)},
+            {"r": "allow"},
+            {"r": key},
+            {"r": scope},
+        )
+        result = await _run_capability(_session(), GmailSendBlock().id, _EMAIL)
+    assert not _is_held(result)
+    ran.assert_awaited_once()
+    judge.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "block, payload", [(SendDiscordMessageBlock, _POST), (GmailSendBlock, _EMAIL)]
+)
+async def test_after_a_rejection_the_block_asks_again(gate, ran, block, payload):
+    """Judged or not, a declined subject asks from then on; the supervisor
+    is never consulted to undo the user's no."""
+    key = f"block:{block().id}"
+    judge = AsyncMock(return_value=Judgement(allowed=True, reason=""))
+    with (
+        patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
+        patch(f"{_GATE}.chat_rules.set_ask", _REAL_SET_ASK),
+        patch(f"{_GATE}.chat_rules.get_redis_async", AsyncMock(return_value=_Redis())),
+        patch(
+            f"{_GATE}.held._held",
+            AsyncMock(return_value={"x": SimpleNamespace(rule_key=key)}),
+        ),
+        patch(f"{_GATE}.review_store.review_id_for", side_effect=["x", "y"]),
+        patch(f"{_GATE}.supervise", judge),
+    ):
+        gate.find_review.side_effect = [
+            SimpleNamespace(status=ReviewStatus.REJECTED, payload={}),
+            None,
+        ]
+        refused = await _run_capability(_session(), block().id, payload)
+        again = await _run_capability(_session(), block().id, payload)
+    assert "declined" in str(refused.output)
+    assert _is_held(again)
+    ran.assert_not_awaited()
+    judge.assert_not_awaited()
+    assert gate.open_review.await_args.args[5] == chat_rules.DECLINED
 
 
 async def test_the_chain_row_names_the_block_the_card_names(gate, ran):

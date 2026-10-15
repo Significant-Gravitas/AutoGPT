@@ -322,7 +322,7 @@ class GoogleDocsCreateBlock(Block):
                     "title": "My New Document",
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -451,7 +451,7 @@ class GoogleDocsAppendPlainTextBlock(Block):
                     "characters_added": 23,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -563,7 +563,7 @@ class GoogleDocsInsertPlainTextBlock(Block):
                     "characters_inserted": 20,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -920,7 +920,7 @@ class GoogleDocsInsertTableBlock(Block):
                     "cells_found": 4,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1179,7 +1179,7 @@ class GoogleDocsInsertPageBreakBlock(Block):
             test_mock={
                 "_insert_page_break": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1534,7 +1534,7 @@ class GoogleDocsFormatTextBlock(Block):
             test_mock={
                 "_format_text": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1980,7 +1980,7 @@ class GoogleDocsAppendMarkdownBlock(Block):
                     "requests_count": 5,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2229,7 +2229,7 @@ class GoogleDocsInsertMarkdownAtBlock(Block):
                     "requests_count": 3,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

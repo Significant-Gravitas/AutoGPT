@@ -218,7 +218,7 @@ class ExaCreateImportBlock(Block):
             ],
             test_credentials=TEST_CREDENTIALS,
             test_mock=self._create_test_mock(),
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

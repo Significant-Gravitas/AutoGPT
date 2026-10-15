@@ -251,7 +251,7 @@ class ExaCreateWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetBlock.Input,
             output_schema=ExaCreateWebsetBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -473,7 +473,7 @@ class ExaCreateOrFindWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateOrFindWebsetBlock.Input,
             output_schema=ExaCreateOrFindWebsetBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -551,7 +551,7 @@ class ExaUpdateWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateWebsetBlock.Input,
             output_schema=ExaUpdateWebsetBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -811,7 +811,7 @@ class ExaCancelWebsetBlock(Block):
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetBlock.Input,
             output_schema=ExaCancelWebsetBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

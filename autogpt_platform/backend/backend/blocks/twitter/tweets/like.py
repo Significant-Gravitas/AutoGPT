@@ -77,7 +77,7 @@ class TwitterLikeTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"like_tweet": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -551,7 +551,7 @@ class TwitterUnlikeTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"unlike_tweet": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

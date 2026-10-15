@@ -17,6 +17,8 @@ class Effect(str, Enum):
     WORKSPACE = "workspace"
     SHELL = "shell"
     PLATFORM = "platform"
+    # Outward, but cheap to get wrong: Auto lets the supervisor judge it.
+    EXTERNAL_JUDGED = "external_judged"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
     # review that is already open, or runs nothing.
@@ -24,7 +26,9 @@ class Effect(str, Enum):
 
 
 # What the gate can hold for an answer, and so what a rule can be set on.
-PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+PARKABLE = frozenset(
+    {Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL_JUDGED, Effect.EXTERNAL}
+)
 
 
 class Verdict(str, Enum):
@@ -170,13 +174,17 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
         Effect.WORKSPACE: Verdict.RUN,
         Effect.SHELL: Verdict.JUDGE,
         Effect.PLATFORM: Verdict.ASK,
+        Effect.EXTERNAL_JUDGED: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },
+    # An outward act asks until the user's rule on it says otherwise; one cheap
+    # to get wrong goes to the supervisor instead.
     "auto": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
         Effect.SHELL: Verdict.JUDGE,
         Effect.PLATFORM: Verdict.JUDGE,
+        Effect.EXTERNAL_JUDGED: Verdict.JUDGE,
         Effect.EXTERNAL: Verdict.ASK,
     },
     "unsupervised": {effect: Verdict.RUN for effect in Effect},

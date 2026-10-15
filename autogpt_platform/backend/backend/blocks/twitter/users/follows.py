@@ -72,7 +72,7 @@ class TwitterUnfollowUserBlock(Block):
                 ("success", True),
             ],
             test_mock={"unfollow_user": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -142,7 +142,7 @@ class TwitterFollowUserBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"follow_user": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

@@ -22,11 +22,14 @@ from backend.blocks.typesafe._client import call_jev
 from backend.copilot.config import ChatConfig
 from backend.util.settings import Settings
 
+from .judged_rubric import JEV_QUESTION_3, judged
+
 logger = logging.getLogger(__name__)
 config = ChatConfig()
 _api_key = Settings().secrets.typesafe_jev_api_key
 
 JEV_RUBRIC = (Path(__file__).parent / "jev_rubric.txt").read_text(encoding="utf-8")
+JUDGED_JEV_RUBRIC = judged(JEV_RUBRIC, "jev")
 
 # The words the LLM's flag line and the fallback reason use for each question.
 RUBRIC_QUESTIONS = {
@@ -75,6 +78,10 @@ QUESTIONS: dict[str, Choice | Score | Noul] = {
         " conversation data, a job or hook set up to send something later)?"
     ),
 }
+JUDGED_QUESTIONS: dict[str, Choice | Score | Noul] = {
+    **QUESTIONS,
+    "q3": Noul(instructions=JEV_QUESTION_3),
+}
 _NOULS = ("must_ask", "q1", "q2", "q3", "q4")
 
 FIRST_STAGE = Counter(
@@ -101,15 +108,15 @@ def enabled() -> bool:
     return config.gate_first_stage == "jev" and bool(_api_key)
 
 
-async def judge(prompt: str) -> JevVerdict | None:
+async def judge(prompt: str, outward_judged: bool = False) -> JevVerdict | None:
     """Ask when the choice is ask, or when a configured threshold is reached
     by ``must_ask``."""
     try:
         result = await asyncio.wait_for(
             call_jev(
                 _api_key,
-                _state(prompt),
-                QUESTIONS,
+                _state(prompt, outward_judged),
+                _questions(outward_judged),
                 model=config.gate_jev_model,
                 timeout=config.gate_jev_timeout_s,
             ),
@@ -137,11 +144,11 @@ async def judge(prompt: str) -> JevVerdict | None:
     return verdict
 
 
-def overflow(prompt: str) -> int:
+def overflow(prompt: str, outward_judged: bool = False) -> int:
     """Serialized bytes of ``prompt`` past what one Jev call reads whole; 0 when
     it fits."""
-    state = _state(prompt)
-    prepared = prepare_state(state, QUESTIONS)
+    state = _state(prompt, outward_judged)
+    prepared = prepare_state(state, _questions(outward_judged))
     if not prepared.truncated:
         return 0
     return len(serialize(state)) - len(serialize(prepared.state))
@@ -162,8 +169,12 @@ def unpinned_reason(verdict: JevVerdict) -> str:
     )
 
 
-def _state(prompt: str) -> str:
-    return JEV_RUBRIC + "\n\n" + prompt
+def _state(prompt: str, outward_judged: bool) -> str:
+    return (JUDGED_JEV_RUBRIC if outward_judged else JEV_RUBRIC) + "\n\n" + prompt
+
+
+def _questions(outward_judged: bool) -> dict[str, Choice | Score | Noul]:
+    return JUDGED_QUESTIONS if outward_judged else QUESTIONS
 
 
 def _read(answers: dict[str, dict[str, Any]]) -> JevVerdict | None:

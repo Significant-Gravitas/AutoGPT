@@ -72,7 +72,7 @@ class TwitterBookmarkTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"bookmark_tweet": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -349,7 +349,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
                 ("success", True),
             ],
             test_mock={"remove_bookmark_tweet": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

@@ -71,7 +71,7 @@ class LinearCreateIssueBlock(Block):
                     "Test issue",
                 )
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

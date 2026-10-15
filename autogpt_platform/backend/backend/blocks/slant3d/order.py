@@ -100,7 +100,7 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
             # EXTERNAL: the estimate POSTs an uncharged draft order to Slant3D.
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -158,7 +158,7 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
             ],
             test_mock={"_make_request": lambda *args, **kwargs: {"data": TEST_DRAFT}},
             # EXTERNAL: the estimate POSTs an uncharged draft order to Slant3D.
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

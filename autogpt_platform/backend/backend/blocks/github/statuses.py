@@ -118,7 +118,7 @@ class GithubCreateStatusBlock(Block):
                     "updated_at": "2024-01-21T10:00:00Z",
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

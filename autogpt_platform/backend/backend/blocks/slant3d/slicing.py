@@ -92,7 +92,7 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
                     "data": {"total": 8.23},
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

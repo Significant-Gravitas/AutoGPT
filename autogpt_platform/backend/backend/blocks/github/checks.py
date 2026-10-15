@@ -133,7 +133,7 @@ class GithubCreateCheckRunBlock(Block):
                     "status": "completed",
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -296,7 +296,7 @@ class GithubUpdateCheckRunBlock(Block):
                     "conclusion": "success",
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

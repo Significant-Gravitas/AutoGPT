@@ -90,7 +90,7 @@ class TodoistCreateCommentBlock(Block):
                     "project_id": None,
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -363,7 +363,7 @@ class TodoistUpdateCommentBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
             test_mock={"update_comment": lambda credentials, comment_id, content: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

@@ -58,7 +58,7 @@ class TwitterUnfollowListBlock(Block):
                 ("success", True),
             ],
             test_mock={"unfollow_list": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -121,7 +121,7 @@ class TwitterFollowListBlock(Block):
                 ("success", True),
             ],
             test_mock={"follow_list": lambda *args, **kwargs: True},
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
