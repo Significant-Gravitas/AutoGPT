@@ -34,6 +34,8 @@ from .policy import DEFAULT_MODE, PARKABLE, effect_for, is_irreversible
 from .references import Reference, listed_ids, resolve_references
 
 if TYPE_CHECKING:
+    from backend.copilot.tree import TurnEnvelope
+
     from .subject import Subject as GateSubject
 
 logger = logging.getLogger(__name__)
@@ -111,10 +113,58 @@ def review_id_for(
     otherwise share one row, and across users the second caller would upsert
     onto the first's row and then be unable to read it back, wedging the gate.
     """
-    canonical = json.dumps(args, sort_keys=True, default=str)
-    digest = hashlib.sha256(
-        "\x00".join((session_id, user_id, tool_name, canonical)).encode()
-    ).hexdigest()[:16]
+    return _review_id(tool_name, session_id, user_id, tool_name, _canonical(args))
+
+
+def action_review_id(
+    session_id: str,
+    user_id: str,
+    tool_name: str,
+    args: dict[str, Any],
+    envelope: "TurnEnvelope | None",
+) -> str:
+    """:func:`review_id_for`, bound also to the authority the call runs under,
+    so an approval is spent only by a call under that same authority: never
+    by a root for a delegated turn's call, nor by a turn of another tree or
+    depth. The roots of a chat share one authority, unless one carries a
+    deadline, and no envelope is a root's. The tools a turn may use are left
+    out: they only narrow, by the session's permissions, between the hold and
+    the run."""
+    return _review_id(
+        tool_name,
+        session_id,
+        user_id,
+        tool_name,
+        _canonical(args),
+        _authority(envelope),
+    )
+
+
+def _authority(envelope: "TurnEnvelope | None") -> str:
+    if envelope is None:
+        return "root:0:"
+    deadline = envelope.deadline_at
+    if envelope.depth == 0:
+        return (
+            f"root:{int(envelope.tainted)}:{deadline.isoformat() if deadline else ''}"
+        )
+    return _canonical(
+        {
+            "tree": envelope.tree_id,
+            "depth": envelope.depth,
+            "tainted": envelope.tainted,
+            "deadline": deadline.isoformat() if deadline else None,
+            "spend": envelope.spend_session_id,
+        }
+    )
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, default=str)
+
+
+def _review_id(tool_name: str, *parts: str) -> str:
+    digest = hashlib.sha256("\x00".join(parts).encode()).hexdigest()[:16]
     return f"{node_id_for(tool_name)}{COPILOT_NODE_EXEC_ID_SEPARATOR}{digest}"
 
 
@@ -197,10 +247,18 @@ async def find_review(
 ) -> PendingHumanReviewModel | None:
     """This session's row, or None; an approval past its TTL is burnt and None."""
     try:
-        reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
+        return await read_review(review_id, user_id, session_id)
     except Exception:
         logger.warning(f"Gate could not read review {review_id}", exc_info=True)
         return None
+
+
+async def read_review(
+    review_id: str, user_id: str, session_id: str
+) -> PendingHumanReviewModel | None:
+    """:func:`find_review`, raising when the row cannot be read: an unread card
+    is not an absent one, and treating it as absent would park the call over it."""
+    reviews = await review_db().get_reviews_by_node_exec_ids([review_id], user_id)
     review = reviews.get(review_id)
     if review is None or review.session_id != session_id:
         return None
@@ -226,6 +284,14 @@ async def consume(review_id: str, user_id: str) -> bool:
     except Exception:
         logger.warning(f"Gate could not consume review {review_id}", exc_info=True)
         return False
+
+
+async def invalidate(review_id: str, user_id: str) -> bool:
+    """Make sure an approval can no longer be spent: its row is gone. True when
+    this deleted it; False when it was gone before, perhaps spent by an
+    identical call. Raises when neither is known, so whoever is about to say
+    the call did not run can hold off until it is."""
+    return await review_db().delete_review_by_node_exec_id(review_id, user_id) == 1
 
 
 async def open_review(

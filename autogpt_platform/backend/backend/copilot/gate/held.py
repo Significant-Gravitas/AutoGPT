@@ -20,9 +20,19 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
+from backend.copilot.context import envelope_scope, get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.pending_messages import PendingMessage
-from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.session_permissions import resolve_session_permissions
+from backend.copilot.tree import (
+    MAX_DEPTH,
+    TreeRefusal,
+    TurnEnvelope,
+    narrowed_by,
+    readmit_turn,
+    root_envelope,
+)
+from backend.copilot.turn_queue import is_users_own_chat
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 from backend.util.encryption import JSONCryptor
@@ -58,6 +68,17 @@ _RESEND = (
     "Nothing ran: the approved action's details were lost before it could run. "
     "Tell the user, and ask them to send the request again if it is still needed."
 )
+# Why an approved call may not run under the envelope it was held under, each
+# read after "Nothing ran: ".
+_UNRECORDED = "what this action was allowed to do was not recorded."
+_UNREADABLE = "what this action was allowed to do could not be read back."
+_UNBOUND = "what this action was allowed to do does not match its approval."
+_NO_LONGER_OPEN = (
+    "Nothing ran from this card: it is no longer open. An identical call may "
+    "already have used its approval."
+)
+# A root's authority, untainted and tainted: all a card can be rebuilt under.
+_ROOTS = (root_envelope("card"), root_envelope("card", tainted=True))
 
 
 def is_answer_row(message: "ChatMessage") -> bool:
@@ -90,13 +111,17 @@ class HeldCall(BaseModel):
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
-    """False means the call cannot be finished on approval, so it must not park."""
+    """Record the call unless a record already stands under its review id,
+    which is never overwritten: the id binds the call, its arguments and the
+    authority it was held under, so a standing record is this call's own, and
+    a write over it could only swap the authority its approval runs under.
+    False means the call cannot be finished on approval, so it must not park."""
     try:
         redis = await get_redis_async()
         async with redis.pipeline(transaction=True) as pipe:
             # Encrypted: the arguments can hold a credential, and must stay exact
             # to match the approval, so they cannot be redacted like the card's.
-            pipe.hset(
+            pipe.hsetnx(
                 _key(session_id),
                 call.review_id,
                 JSONCryptor().encrypt(call.model_dump(mode="json")),
@@ -213,12 +238,10 @@ async def wake(
     )
     from backend.copilot.executor.utils import dispatch_turn
     from backend.copilot.model import ChatMessage, append_and_save_message
-    from backend.copilot.session_permissions import resolve_session_permissions
     from backend.copilot.turn_queue import (
         UNRECORDED_WAKE,
         WAKE_LATER,
         InflightCapExceeded,
-        is_users_own_chat,
         post_refusal,
         try_enqueue_turn,
         wakes_sub_work,
@@ -241,7 +264,10 @@ async def wake(
         if info is None or info.user_id != user_id:
             return
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
-        envelope = max(calls, key=lambda c: c.held_at).envelope
+        # Bounds only the turn that reads the results: each call runs under
+        # the envelope it was held under (``_own_envelope``), not this one.
+        newest = max(calls, key=lambda c: c.held_at).envelope
+        envelope = newest if newest is not None and _well_formed(newest) else None
         if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
@@ -400,7 +426,7 @@ async def _outcome(
     row: "PendingHumanReviewModel | None",
 ) -> tuple[Outcome, str]:
     if row is None or row.status == ReviewStatus.WAITING:
-        return "closed", "Nothing ran: this card is no longer open."
+        return "closed", _NO_LONGER_OPEN
     # Deferred: reads imports this package's __init__, which imports this module.
     from .reads import answered_read, is_held_read
 
@@ -420,25 +446,130 @@ async def _outcome(
         )
     approved_at = row.reviewed_at or row.updated_at or row.created_at
     if datetime.now(UTC) - approved_at > review_store.APPROVAL_TTL:
-        await review_store.consume(call.review_id, user_id)
-        return "expired", (
+        return await _invite_again(
+            user_id,
+            call,
+            "expired",
             "Nothing ran: the approval expired an hour after it was given. "
-            "Propose the call again if it is still needed."
+            "Propose the call again if it is still needed.",
         )
     if call.lost:
-        await review_store.consume(call.review_id, user_id)
-        return "closed", _RESEND
+        return await _invite_again(user_id, call, "closed", _RESEND)
     if tool is None:
         await review_store.consume(call.review_id, user_id)
         return "closed", "Nothing ran: this tool no longer exists."
-    # The gate finds the approval for exactly these arguments and spends it.
-    result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
+    try:
+        envelope = await _own_envelope(user_id, session, call)
+    except TreeRefusal as refused:
+        return await _invite_again(
+            user_id,
+            call,
+            "closed",
+            f"Nothing ran: {refused.message} Propose it again if it is still needed.",
+        )
+    with envelope_scope(envelope):
+        # The gate finds the approval for exactly these arguments and spends it.
+        result = await tool.execute(user_id, session, call.tool_call_id, **call.args)
     # With the flag switched off since, the gate ran it without spending the
     # approval; spend it here so no later identical call rides on it.
     await review_store.consume(call.review_id, user_id)
     if isinstance(result.output, str):
         return "approved", result.output
     return "approved", json.dumps(result.output, default=str)
+
+
+async def _invite_again(
+    user_id: str, call: HeldCall, outcome: Outcome, refusal: str
+) -> tuple[Outcome, str]:
+    """``refusal`` invites the call again, so it goes out only once this
+    spent the approval: one still live would be ridden by the call proposed
+    again. Gone already, an identical call may have used it, and nothing is
+    invited. When neither is known it raises, and the call waits for the next
+    turn."""
+    if not await review_store.invalidate(call.review_id, user_id):
+        return "closed", _NO_LONGER_OPEN
+    return outcome, refusal
+
+
+async def _own_envelope(
+    user_id: str, session: ChatSession, call: HeldCall
+) -> TurnEnvelope:
+    """The envelope an approved call runs under: the one it was held under,
+    re-checked now and narrowed by the session's permissions now, never the
+    one of whichever turn folds it. Raises :class:`TreeRefusal`."""
+    envelope = call.envelope
+    if envelope is None:
+        # Held before envelopes were kept, or rebuilt from its card. Every turn
+        # in the user's own chat is a root, so a root stands in there for the
+        # one that held it; anywhere else nothing says what it was allowed.
+        running = get_current_envelope()
+        if not is_users_own_chat(session) or (
+            running is not None and running.depth != 0
+        ):
+            raise TreeRefusal(_UNRECORDED)
+        envelope = running or root_envelope(
+            call.review_id, session_id=session.session_id
+        )
+    else:
+        await _readmitted(user_id, envelope)
+    envelope = narrowed_by(envelope, resolve_session_permissions(session))
+    if not envelope.permits(call.tool_name):
+        raise TreeRefusal(
+            f"{call.tool_name} is no longer allowed where it was proposed."
+        )
+    # The card was opened under the authority it was given for; a call that
+    # would run under another cannot spend it, a card from before approvals
+    # were bound among them.
+    bound = review_store.action_review_id(
+        session.session_id, user_id, call.tool_name, call.args, envelope
+    )
+    if bound != call.review_id:
+        raise TreeRefusal(_UNBOUND)
+    return envelope
+
+
+async def cannot_act(user_id: str, envelope: TurnEnvelope | None) -> str | None:
+    """Why an approval may not be spent under ``envelope`` now, if so: the
+    gate asks this of every approved call, wherever it comes from."""
+    if envelope is None:
+        return None
+    try:
+        await _readmitted(user_id, envelope)
+    except TreeRefusal as refused:
+        return f"The approval cannot be used now: {refused.message}"
+    return None
+
+
+async def _readmitted(user_id: str, envelope: TurnEnvelope) -> None:
+    """A recorded envelope that may still act: well formed, before its
+    deadline, its tree open and its ceiling unspent. Raises
+    :class:`TreeRefusal`."""
+    if not _well_formed(envelope):
+        raise TreeRefusal(_UNREADABLE)
+    if envelope.deadline_at is not None and envelope.deadline_at <= datetime.now(UTC):
+        raise TreeRefusal("the task that proposed it is past its deadline.")
+    if envelope.depth == 0:
+        # The per-user rate limit gates a root, never its tree, and admitting
+        # one would open its ledgers with every approved call.
+        return
+    try:
+        await readmit_turn(envelope, user_id=user_id)
+    except TreeRefusal as refused:
+        raise TreeRefusal(
+            f"the task that proposed it may no longer act. Its limits: {refused.message}"
+        ) from refused
+
+
+def _well_formed(envelope: TurnEnvelope) -> bool:
+    """Only what a root or a derived child can be: a tree, a depth within the
+    bound, a concrete tool set below the root, and a deadline, if any, that
+    can be compared with now."""
+    return (
+        bool(envelope.tree_id)
+        and 0 <= envelope.depth <= MAX_DEPTH
+        and (envelope.depth == 0 or envelope.tools is not None)
+        and (envelope.deadline_at is None or envelope.deadline_at.tzinfo is not None)
+    )
 
 
 async def _restore(
@@ -448,18 +579,36 @@ async def _restore(
     rows = [r for r in rows if r.node_exec_id.startswith(gate_prefix)]
     if not rows:
         return
-    held = await _held(session_id)
+    try:
+        held, unreadable = await _read_held(session_id)
+    except Exception:
+        # Unread, a record that is there looks gone, and one that no longer
+        # reads back would be rebuilt as runnable: rebuild nothing.
+        logger.warning(
+            f"Gate could not list held calls for session {session_id}", exc_info=True
+        )
+        return
     for row in rows:
-        if row.node_exec_id not in held:
-            logger.warning(f"Held call {row.node_exec_id} restored from its card")
-            await remember(session_id, _from_row(user_id, session_id, row))
+        if row.node_exec_id in held:
+            continue
+        logger.warning(f"Held call {row.node_exec_id} restored from its card")
+        call = _from_row(user_id, session_id, row)
+        if row.node_exec_id in unreadable:
+            # It may have bounded the call more than its card can say, so what
+            # replaces it never runs. Records are never written over, so the
+            # unreadable one goes first; a record written meanwhile stands.
+            call.lost = True
+            await _claim(session_id, row.node_exec_id)
+        await remember(session_id, call)
 
 
 def _from_row(
     user_id: str, session_id: str, row: "PendingHumanReviewModel"
 ) -> HeldCall:
     """The card stores a redacted, clipped copy; the review id is a hash of the
-    exact arguments, so only a copy that hashes back to it may run."""
+    exact arguments and the authority they were held under, so only a copy
+    that hashes back to it may run. No card records a delegated turn's tree,
+    so only a root's call can be rebuilt; the rest are lost."""
     tool_name = row.node_exec_id.removeprefix(review_store.node_id_for("")).rsplit(
         COPILOT_NODE_EXEC_ID_SEPARATOR, 1
     )[0]
@@ -467,9 +616,10 @@ def _from_row(
     args = payload.get("arguments")
     if not isinstance(args, dict):
         args = {}
-    intact = (
-        review_store.review_id_for(session_id, user_id, tool_name, args)
+    intact = any(
+        review_store.action_review_id(session_id, user_id, tool_name, args, root)
         == row.node_exec_id
+        for root in _ROOTS
     )
     return HeldCall(
         review_id=row.node_exec_id,
@@ -484,23 +634,32 @@ def _from_row(
 
 async def _held(session_id: str) -> dict[str, HeldCall]:
     try:
-        redis = await get_redis_async()
-        raw = await redis.hgetall(_key(session_id))
+        held, _ = await _read_held(session_id)
     except Exception:
         logger.warning(
             f"Gate could not list held calls for session {session_id}", exc_info=True
         )
         return {}
+    return held
+
+
+async def _read_held(session_id: str) -> tuple[dict[str, HeldCall], set[str]]:
+    """The held calls that read back, and the ids of those that do not. Raises
+    when Redis cannot be read."""
+    redis = await get_redis_async()
+    raw = await redis.hgetall(_key(session_id))
     held: dict[str, HeldCall] = {}
+    unreadable: set[str] = set()
     for key, value in raw.items():
         review_id = key.decode() if isinstance(key, bytes) else key
         stored = value.decode() if isinstance(value, bytes) else value
         try:
             held[review_id] = HeldCall.model_validate(JSONCryptor().decrypt(stored))
         except ValidationError:
-            # Unreadable is the same as gone: the answer restores it from its card.
+            # The answer rebuilds it from its card, and it does not run.
             logger.warning(f"Gate could not read held call {review_id}")
-    return held
+            unreadable.add(review_id)
+    return held, unreadable
 
 
 async def _claim(session_id: str, review_id: str) -> bool:

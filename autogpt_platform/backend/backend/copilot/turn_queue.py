@@ -79,7 +79,10 @@ _ENVELOPE_KEY = "envelope"
 _ENVELOPE_TREE_ID_KEY = "envelope_tree_id"
 # The assistant row that closes a queued turn the promotion could not start.
 _REFUSED_KEY = "queued_turn_refused"
-WAKE_LATER = "Your answer is kept and reaches the assistant with your next message."
+WAKE_LATER = (
+    "Your answer reaches the assistant with your next message. The action "
+    "itself runs only if what it was allowed to do still holds then."
+)
 TURN_CANCELLED = "This task was cancelled before it started."
 QUEUE_UNAVAILABLE = "Could not queue this task right now; try again shortly."
 UNREADABLE_SPAWN = (
@@ -87,8 +90,8 @@ UNREADABLE_SPAWN = (
     "Start it again."
 )
 UNRECORDED_WAKE = (
-    "The approved action could not be resumed: what it was allowed to do was "
-    f"not recorded. {WAKE_LATER}"
+    "The approved action will not run: what it was allowed to do was not "
+    "recorded. Your answer reaches the assistant with your next message."
 )
 
 

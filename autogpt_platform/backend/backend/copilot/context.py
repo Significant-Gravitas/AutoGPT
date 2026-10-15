@@ -7,6 +7,8 @@ without creating circular dependencies.
 
 import os
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import TYPE_CHECKING
 
@@ -189,6 +191,18 @@ def get_current_permissions() -> "CopilotPermissions | None":
 def get_current_envelope() -> "TurnEnvelope | None":
     """The running turn's tree envelope; None outside an executor turn."""
     return _current_envelope.get()
+
+
+@contextmanager
+def envelope_scope(envelope: "TurnEnvelope | None") -> Iterator[None]:
+    """Run the block under ``envelope`` instead of the running turn's: an
+    approved held call runs under the one it was held under, whichever turn
+    finishes it."""
+    token = _current_envelope.set(envelope)
+    try:
+        yield
+    finally:
+        _current_envelope.reset(token)
 
 
 def get_current_hidden_tools() -> frozenset[str]:

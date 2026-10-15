@@ -304,7 +304,7 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     with (
         patch("backend.copilot.executor.utils.dispatch_turn", dispatch),
         patch(
-            "backend.copilot.session_permissions.resolve_session_permissions",
+            "backend.copilot.gate.held.resolve_session_permissions",
             return_value=today,
         ),
     ):
@@ -347,7 +347,10 @@ async def test_a_wake_whose_tree_closed_is_not_started(
     """A sub-session's call answered after its tree expired: the reason goes in
     the chat and the answer waits for the next turn."""
     session = await _new_session(test_user_id)
-    sub_turn = TurnEnvelope(tree_id=f"tree-{session.session_id}", depth=1)
+    # A child always carries a concrete tool set; one without reads as malformed.
+    sub_turn = TurnEnvelope(
+        tree_id=f"tree-{session.session_id}", depth=1, tools=frozenset({_TOOL})
+    )
     ledger = await get_tree_ledger()
     await ledger.open(sub_turn.tree_id, ceiling_microdollars=1_000_000, max_nodes=10)
     review_id = await _hold(session, test_user_id, "after expiry", envelope=sub_turn)
@@ -377,7 +380,7 @@ async def test_a_tool_revoked_while_a_call_was_held_stays_revoked(
 
     with (
         patch(
-            "backend.copilot.session_permissions.resolve_session_permissions",
+            "backend.copilot.gate.held.resolve_session_permissions",
             return_value=revoked,
         ),
         patch("backend.copilot.executor.utils.enqueue_copilot_turn", enqueued),

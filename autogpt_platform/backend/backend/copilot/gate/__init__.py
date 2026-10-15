@@ -144,10 +144,21 @@ async def check_action(
         return ALLOW
 
     session_id = session.session_id
-    review_id = review_store.review_id_for(session_id, user_id, tool_name, args)
+    envelope = get_current_envelope()
+    # Bound to the authority the call runs under too: an approval given to
+    # one turn's call is never spent by the same call from another's.
+    review_id = review_store.action_review_id(
+        session_id, user_id, tool_name, args, envelope
+    )
 
-    review = await review_store.find_review(review_id, user_id, session_id)
+    # Raises when the card cannot be read: unread is not absent, and a call
+    # parked over a card that exists would take its answer.
+    review = await review_store.read_review(review_id, user_id, session_id)
     if review is not None and review.status == ReviewStatus.APPROVED:
+        if refusal := await held.cannot_act(user_id, envelope):
+            # Left for the fold, which spends it and says why: only this
+            # authority can spend it, and only once it may act again.
+            return Decision(allowed=False, reason=refusal)
         if await review_store.consume(review_id, user_id):
             if review_store.is_spend_card(review):
                 await raise_ceiling(CEILING_UNIT_MICRODOLLARS)
@@ -228,7 +239,7 @@ async def check_action(
         tool_call_id=tool_call_id,
         args=args,
         rule_key=rule_key,
-        envelope=get_current_envelope(),
+        envelope=envelope,
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown

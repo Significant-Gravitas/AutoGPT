@@ -114,14 +114,14 @@ def chat(redis):
 @pytest.fixture
 def gate(redis):
     store = SimpleNamespace(
-        find_review=AsyncMock(return_value=None),
+        read_review=AsyncMock(return_value=None),
         open_review=AsyncMock(return_value=Headline(ask="Run it")),
         consume=AsyncMock(return_value=True),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.review_store.find_review", store.find_review),
+        patch(f"{_GATE}.review_store.read_review", store.read_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
@@ -243,14 +243,14 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
         turn_2 = root_envelope("turn-2", session_id=_CHAT)
         await admit_turn(turn_2, user_id="user-1")
         _enter(turn_2)
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={"spend": {}}
     )
     assert (await _check(_PAID)).allowed
     assert (await chat.snapshot(_ledger_id()))["ceiling"] == 2 * 10**6
     assert (await ledger.snapshot("turn-2"))["ceiling"] == 10**7
 
-    gate.find_review.return_value = None
+    gate.read_review.return_value = None
     await charge_turn(turn_2, CEILING_UNIT_MICRODOLLARS - 1)
     assert (await _check(_PAID)).allowed
     await charge_turn(turn_2, 1)
@@ -259,7 +259,7 @@ async def test_the_approval_runs_next_turn_and_buys_the_chat_one_more_dollar(
 
 async def test_an_approval_of_any_other_card_raises_nothing(gate, chat):
     await _open(chat, ceiling=0)
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={}
     )
     assert (await _check(_SEND)).allowed

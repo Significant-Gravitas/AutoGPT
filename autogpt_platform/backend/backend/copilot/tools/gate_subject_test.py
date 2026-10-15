@@ -76,13 +76,13 @@ def _session(mode: AutopilotMode = "auto") -> ChatSession:
 def gate():
     """The gate on, no approval on record, nothing rejected in this chat."""
     store = SimpleNamespace(
-        find_review=AsyncMock(return_value=None),
+        read_review=AsyncMock(return_value=None),
         open_review=AsyncMock(side_effect=_opened),
         consume=AsyncMock(return_value=True),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
-        patch(f"{_GATE}.review_store.find_review", store.find_review),
+        patch(f"{_GATE}.review_store.read_review", store.read_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
         patch(f"{_GATE}.review_store.consume", store.consume),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
@@ -202,7 +202,7 @@ async def test_an_unclassified_block_asks(gate, ran):
 
 async def test_an_approved_irreversible_block_asks_once(gate):
     """The card was the question; the irreversible-action pause must not be a second."""
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.APPROVED, payload={}
     )
     prep = MagicMock(
@@ -242,14 +242,14 @@ async def test_the_model_cannot_forge_an_approval(gate, ran):
 
 
 async def test_a_rejection_asks_for_the_subject_not_the_tool(gate, ran):
-    gate.find_review.return_value = SimpleNamespace(
+    gate.read_review.return_value = SimpleNamespace(
         status=ReviewStatus.REJECTED, payload={}
     )
     call = SimpleNamespace(rule_key="block:abc")
     with (
         patch(f"{_GATE}.chat_rules.set_ask", AsyncMock()) as set_ask,
         patch(f"{_GATE}.held._held", AsyncMock(return_value={"x": call})),
-        patch(f"{_GATE}.review_store.review_id_for", return_value="x"),
+        patch(f"{_GATE}.review_store.action_review_id", return_value="x"),
     ):
         await _run_capability(_session(), GetWikipediaSummaryBlock().id, {"topic": "x"})
     set_ask.assert_awaited_once_with("session-1", "block:abc", "user-1", None)
@@ -370,7 +370,7 @@ async def test_an_external_workflow_asks_naming_it(gate):
 @pytest.mark.parametrize("approved", [True, False])
 async def test_only_an_approved_run_skips_the_irreversible_pause(gate, approved):
     if approved:
-        gate.find_review.return_value = SimpleNamespace(
+        gate.read_review.return_value = SimpleNamespace(
             status=ReviewStatus.APPROVED, payload={}
         )
     graph = _graph([_node("send", GmailSendBlock(), {})])
