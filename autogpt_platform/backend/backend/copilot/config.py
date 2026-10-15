@@ -2,7 +2,7 @@
 
 import logging
 import os
-from typing import Literal
+from typing import Annotated, Literal
 from urllib.parse import urlparse
 
 from pydantic import (
@@ -13,7 +13,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from backend.util.clients import OPENROUTER_BASE_URL
 from backend.util.llm.providers import ProviderLiteral
@@ -684,16 +684,17 @@ class ChatConfig(BaseSettings):
         "also requires the credentials to be valid — use the ``openrouter_active`` "
         "property for the final answer.",
     )
-    openrouter_provider_order: list[str] = Field(
+    openrouter_provider_order: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: ["google-vertex/global", "anthropic"],
-        description="OpenRouter providers the SDK path's model calls go to first, "
-        "in order (the provider tags in OpenRouter's endpoint list for a model). "
-        "The Claude providers on OpenRouter charge the same but differ in how "
-        "soon they start answering: on a cached prompt Google Vertex's first "
-        "token came about 0.7 s sooner than the default provider's (2026-10-15). "
-        "A call none of them can serve falls back to OpenRouter's other "
-        "providers. ``CHAT_OPENROUTER_PROVIDER_ORDER='[]'`` leaves the choice "
-        "to OpenRouter.",
+        description="OpenRouter providers the SDK path's Claude calls go to "
+        "first, in order (the provider tags in OpenRouter's endpoint list for a "
+        "model). The Claude providers on OpenRouter charge the same but differ "
+        "in how soon they start answering: on a cached prompt Google Vertex's "
+        "first token came about 0.7 s sooner than the default provider's "
+        "(2026-10-15). A call none of them can serve falls back to OpenRouter's "
+        "other providers. Set as a comma-separated list "
+        "(``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``); an "
+        "empty value leaves the choice to OpenRouter.",
     )
     use_claude_code_subscription: bool = Field(
         default=False,
@@ -1075,6 +1076,17 @@ class ChatConfig(BaseSettings):
             v = os.getenv("CHAT_DIRECT_ANTHROPIC_API_KEY") or os.getenv(
                 "ANTHROPIC_API_KEY"
             )
+        return v
+
+    @field_validator("openrouter_provider_order", mode="before")
+    @classmethod
+    def split_openrouter_provider_order(cls, v):
+        """Read the environment's comma-separated list. A JSON-style list
+        (``["a", "b"]``) reads the same, so neither spelling can stop the
+        backend from starting."""
+        if isinstance(v, str):
+            names = (name.strip().strip("\"'") for name in v.strip("[] ").split(","))
+            return [name for name in names if name]
         return v
 
     @field_validator("claude_agent_cli_path", mode="before")

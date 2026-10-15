@@ -37,6 +37,9 @@ def _not_impersonated():
     set_turn_impersonated(False)
 
 
+SONNET = "anthropic/claude-sonnet-5.5"
+
+
 def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
     with patch("backend.copilot.sdk.env.config", cfg or _config()):
         env = build_sdk_env(**kwargs)
@@ -44,7 +47,7 @@ def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
 
 
 def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
-    body = _extra_body(session_id="sess-1", user_id="user-1")
+    body = _extra_body(session_id="sess-1", user_id="user-1", model=SONNET)
 
     assert body == {
         "user": "user-1",
@@ -62,10 +65,11 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
     }
 
 
-def test_openrouter_mode_asks_for_the_configured_providers_first():
+@pytest.mark.parametrize("model", [SONNET, "claude-sonnet-5-5"])
+def test_a_claude_call_asks_for_the_configured_providers_first(model: str):
     cfg = _config(openrouter_provider_order=["provider-a/global", "provider-b"])
 
-    body = _extra_body(cfg, session_id="sess-1", user_id="user-1")
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1", model=model)
 
     assert body["provider"] == {
         "order": ["provider-a/global", "provider-b"],
@@ -73,15 +77,42 @@ def test_openrouter_mode_asks_for_the_configured_providers_first():
     }
 
 
+@pytest.mark.parametrize("model", ["moonshotai/kimi-k2.6", "google/gemini-3-pro", None])
+def test_another_vendors_model_keeps_openrouters_routing(model: str | None):
+    body = _extra_body(session_id="sess-1", user_id="user-1", model=model)
+
+    assert "provider" not in body
+
+
+@pytest.mark.parametrize(
+    "value, order",
+    [
+        ("google-vertex/global,anthropic", ["google-vertex/global", "anthropic"]),
+        (" google-vertex/global , anthropic ", ["google-vertex/global", "anthropic"]),
+        (
+            '["google-vertex/global", "anthropic"]',
+            ["google-vertex/global", "anthropic"],
+        ),
+        ("anthropic", ["anthropic"]),
+        ("", []),
+        ("[]", []),
+    ],
+)
+def test_the_provider_order_reads_from_the_environment_in_either_spelling(
+    monkeypatch: pytest.MonkeyPatch, value: str, order: list[str]
+):
+    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", value)
+
+    assert _config().openrouter_provider_order == order
+
+
 def test_an_empty_provider_order_leaves_routing_to_openrouter(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", "[]")
-    cfg = _config()
+    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", "")
 
-    body = _extra_body(cfg, session_id="sess-1", user_id="user-1")
+    body = _extra_body(_config(), session_id="sess-1", user_id="user-1", model=SONNET)
 
-    assert cfg.openrouter_provider_order == []
     assert "provider" not in body
 
 
