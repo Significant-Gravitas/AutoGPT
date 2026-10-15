@@ -116,6 +116,13 @@ jobs:
           BUILD_CACHE_ARCH: ${{ matrix.suffix }}
         run: python3 .github/scripts/single_container_cache.py
 
+      # A new APT_REFRESH re-runs the images' package installs instead of
+      # reusing cached ones, so Debian security fixes ship within a day.
+      - name: Set the daily OS package refresh
+        id: apt-refresh
+        shell: bash
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Test appliance runtime helpers
         shell: bash
         env:
@@ -148,6 +155,7 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
+            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.output=type=docker
@@ -324,6 +332,11 @@ jobs:
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      - name: Set the daily OS package refresh
+        id: apt-refresh
+        shell: bash
+        run: echo "date=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push platform digest
         id: build
         uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
@@ -333,6 +346,7 @@ jobs:
           targets: single-container
           set: |
             *.platform=${{ matrix.platform }}
+            *.args.APT_REFRESH=${{ steps.apt-refresh.outputs.date }}
             single-container.args.IMAGE_VERSION=sha-${{ github.sha }}
             single-container.args.VCS_REF=${{ github.sha }}
             single-container.tags=${{ env.DEPLOY_IMAGE }}

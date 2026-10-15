@@ -7,8 +7,7 @@ export function useUsageActions() {
   const state = useUsageExperience();
   const router = useRouter();
   const activation = useProActivation();
-  const acceptedProTrial =
-    state.experience.isActiveTrial && state.trial?.offer?.tier === "PRO";
+  const acceptedProTrial = state.experience.freshProUsage;
   const target = state.experience.targetTier;
   const cycle: "monthly" | "yearly" = acceptedProTrial
     ? (state.trial?.offer?.billing_cycle ?? "monthly")
@@ -21,11 +20,14 @@ export function useUsageActions() {
       : state.subscription?.tier_costs;
   const offer = {
     tier: target ?? ("PRO" as const),
-    price: acceptedProTrial
-      ? state.trial?.offer?.unit_amount
-      : target
-        ? prices?.[target]
-        : undefined,
+    price:
+      state.experience.isActiveTrial && state.trial?.cancel_at_period_end
+        ? undefined
+        : acceptedProTrial
+          ? state.trial?.offer?.unit_amount
+          : target
+            ? prices?.[target]
+            : undefined,
     currency: acceptedProTrial ? state.trial?.offer?.currency : "USD",
     cycle,
     freshUsage: acceptedProTrial,

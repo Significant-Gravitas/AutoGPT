@@ -195,25 +195,6 @@ async def test_reused_identity_cancels_trial_before_granting_access(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("changed_items", [False, True])
-async def test_scheduled_portal_cancellation_ends_trial_immediately(
-    trial, subscription, boundaries, changed_items
-):
-    subscription["cancel_at_period_end"] = True
-    if changed_items:
-        subscription["items"] = None
-    canceled = {**subscription, "status": "canceled", "cancel_at_period_end": False}
-    with patch.object(
-        fulfillment.stripe.Subscription,
-        "cancel_async",
-        AsyncMock(return_value=canceled),
-    ) as cancel:
-        result = await fulfillment._reconcile_locked(trial, "sub_1", boundaries)
-    assert result is not None and result[1] == SubscriptionTier.NO_TIER
-    cancel.assert_awaited_once()
-
-
-@pytest.mark.asyncio
 async def test_canceled_subscription_revokes_access_even_if_items_changed(
     trial, subscription, boundaries
 ):

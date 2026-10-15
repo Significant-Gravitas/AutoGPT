@@ -1,7 +1,8 @@
 # Trial conversion to Pro or Max and usage
 
 This backend change is stacked on allowance PR #15184, tested parent
-`223b3f1ac9937fb8ade0d87e792ae36a3357b204`. It gives an eligible trial's first settled
+`7a1b770438bd9315f685850ebadacedd09a27800`, rebased on dev
+`f62abe332b4e065815d55e56a2faa5d1915fb5bd`. It gives an eligible trial's first settled
 conversion to Pro or Max fresh daily and weekly consumption. Trial exhaustion
 never initiates a purchase. The trial's original accepted schedule can convert automatically;
 ending it early requires the separate explicit confirmation below.
@@ -26,6 +27,8 @@ counters. Configured Pro and Max limits and reset times stay the same. Work capt
 billing origin before execution and propagates it into background and child work.
 Database FIFO turns persist that snapshot when queued and restore it at promotion,
 even when activation happens while they wait for a running slot.
+Held approvals retain their original snapshot for both the resumed turn and each
+approved action, including actions held before conversion and answered afterward.
 Delayed trial costs update the original lifetime trial ledger and retain their
 original usage attribution. Neither conversion nor recovery clears trial history,
 credits, runs, conversations, or historical costs.
@@ -207,6 +210,8 @@ job errored, and release the original lock without billing under a new context.
 Legacy FIFO entries with missing, invalid, or foreign accounting snapshots remain
 queued without dispatch. Use the existing queue cancellation controls and submit
 a new turn; do not fabricate a snapshot from the user's current paid allowance.
+Held approvals without an owned accounting snapshot require a new request and
+cannot execute against the current paid allowance.
 These entries must still be drained before rollout. Mixed old/new usage writers must not account newly
 admitted work after activation. Keep the
 generation-aware accounting code during rollback for accounts already activated;

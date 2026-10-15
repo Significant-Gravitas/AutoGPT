@@ -28,8 +28,29 @@ describe("sanitizeAuthNext", () => {
   test("accepts same-origin relative paths verbatim", () => {
     expect(sanitizeAuthNext("/library")).toBe("/library");
     expect(sanitizeAuthNext("/onboarding?step=2")).toBe("/onboarding?step=2");
-    expect(sanitizeAuthNext("/copilot#section")).toBe("/copilot#section");
+    expect(sanitizeAuthNext("/library#section")).toBe("/library#section");
     expect(sanitizeAuthNext("/")).toBe("/");
+  });
+
+  // /copilot is only a server redirect to /home, and a client navigation into it
+  // from a (no-navbar) page crashes the App Router with React #310.
+  test.each([
+    ["/copilot", "/home"],
+    ["/copilot/", "/home"],
+    ["/copilot?sessionId=abc", "/home?sessionId=abc"],
+    ["/copilot#frag", "/home#frag"],
+    ["/copilot/?sessionId=abc#frag", "/home?sessionId=abc#frag"],
+  ])("maps %s to %s so the redirect hop is skipped", (value, expected) => {
+    expect(sanitizeAuthNext(value)).toBe(expected);
+  });
+
+  test.each([
+    "/copilots",
+    "/copilot/styleguide",
+    "/home",
+    "/home?sessionId=abc",
+  ])("leaves %s untouched", (value) => {
+    expect(sanitizeAuthNext(value)).toBe(value);
   });
 
   // Everything below resolves off-origin through the WHATWG URL parser, which

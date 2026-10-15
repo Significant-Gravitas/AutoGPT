@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  getFeaturedUsagePercent,
+  getUsageStatus,
+} from "@/services/usageExperience/helpers";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { formatRelativeReset, formatShortDate } from "../../../helpers";
 
@@ -45,13 +49,8 @@ export function useAutopilotUsageCard() {
       ? week
       : today;
   const secondary = showTrialWindow ? null : featured === week ? today : week;
-  const percent = featured?.percent ?? 0;
   const status =
-    percent >= 100
-      ? { label: "Allowance reached", className: "text-orange-700" }
-      : percent >= 80
-        ? { label: "Running low", className: "text-amber-700" }
-        : { label: "Plenty left", className: "text-zinc-500" };
+    USAGE_STATUS[getUsageStatus(getFeaturedUsagePercent(experience, usage))];
   return {
     status,
     featured,
@@ -65,11 +64,6 @@ export function useAutopilotUsageCard() {
     lifetime: experience.isLifetimeTrial,
     blocked: experience.blocked,
     inactive: experience.tier === "NO_TIER",
-    paymentFailed:
-      experience.tier === "NO_TIER" &&
-      !trial?.active &&
-      !trial?.converted &&
-      ["past_due", "unpaid"].includes(trial?.status ?? ""),
     hasUsage: Boolean(featured || secondary),
     unlimited: Boolean(
       usage &&
@@ -79,3 +73,9 @@ export function useAutopilotUsageCard() {
     ),
   };
 }
+
+const USAGE_STATUS = {
+  reached: { label: "Allowance reached", className: "text-orange-700" },
+  low: { label: "Running low", className: "text-amber-700" },
+  plenty: { label: "Plenty left", className: "text-zinc-500" },
+};

@@ -252,6 +252,7 @@ class CreateFeatureRequestTool(BaseTool):
                 "existing_issue_id": {
                     "type": "string",
                     "description": "Linear issue ID to add need to (from search results).",
+                    "entity": None,
                 },
             },
             "required": ["title", "description"],

@@ -14,9 +14,15 @@ const nextConfig = {
   // tag preview deployments as previews rather than as production.
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    // Sentry initialises in the browser too, so its kill switch must reach it.
+    DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
   },
   // Suppress the "X-Powered-By: Next.js" header (framework fingerprinting).
   poweredByHeader: false,
+  // PostHog's endpoints end in a slash (`/e/`, `/flags/`), so requests on the
+  // PostHog proxy path must reach middleware untouched. Middleware redoes the
+  // trailing-slash redirect for every other path (see src/middleware.ts).
+  skipTrailingSlashRedirect: true,
   async rewrites() {
     return [
       {
@@ -184,7 +190,7 @@ export default skipSentryPlugin
       // https://github.com/getsentry/sentry-webpack-plugin#options
 
       org: "significant-gravitas",
-      project: "builder",
+      project: process.env.SENTRY_PROJECT || "builder",
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,
@@ -200,11 +206,7 @@ export default skipSentryPlugin
         enabled: true,
       },
 
-      // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
-      // This can increase your server load as well as your hosting bill.
-      // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
-      // side errors will fail.
-      tunnelRoute: "/store",
+      // Browser Sentry envelopes use the tunnel in src/lib/sentry-tunnel.ts, relayed by src/middleware.ts.
 
       // No need to hide source maps from generated client bundles
       // since the source is public anyway :)

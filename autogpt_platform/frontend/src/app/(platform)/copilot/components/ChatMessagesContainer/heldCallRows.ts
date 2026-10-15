@@ -1,4 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { cardArguments } from "../ApprovalQueue/helpers";
 
 // Rows the server writes for a held call: the one that starts the turn when a
 // card is answered, and the call's late result, which the reply narrates.
@@ -60,7 +61,11 @@ export interface HeldOutcome {
   outcome: HeldOutcomeKind;
   // The run's own output, as the tool would have returned it directly.
   output: unknown;
+  // The arguments as the card showed them; the card itself is gone by now.
+  card?: HeldCard;
 }
+
+export type HeldCard = ReturnType<typeof cardArguments>;
 
 const OUTCOMES = new Set<string>([
   "approved",
@@ -103,6 +108,7 @@ export function getHeldOutcomes(
         held.outcome ??
         (body.startsWith("Nothing ran") ? "closed" : "approved"),
       output: parseOutput(body),
+      card: held.card,
     };
     outcomes.set(held.toolCallId, outcome);
     // The SDK engine records a stand-in id, not the model's; the review id
@@ -124,6 +130,7 @@ function heldCallMetadata(metadata: unknown) {
   if (!held || typeof held !== "object") return null;
   const { tool_call_id, review_id, outcome } = held as Record<string, unknown>;
   if (typeof tool_call_id !== "string" || !tool_call_id) return null;
+  const card = cardArguments(held as Record<string, unknown>);
   return {
     toolCallId: tool_call_id,
     reviewId: typeof review_id === "string" ? review_id : null,
@@ -131,6 +138,7 @@ function heldCallMetadata(metadata: unknown) {
       typeof outcome === "string" && OUTCOMES.has(outcome)
         ? (outcome as HeldOutcomeKind)
         : null,
+    card: Object.keys(card.args).length > 0 ? card : undefined,
   };
 }
 

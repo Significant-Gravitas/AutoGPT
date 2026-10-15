@@ -12,6 +12,11 @@ write the same values:
   then the browser's timezone. `country_source` says which.
 - `exclude_de_at`: "yes" when any signal points at Germany or Austria, whose
   stricter marketing rules GTM skips. Once yes it is never set back to no.
+- `role` and `role_other`: the role picked in the onboarding wizard, once
+  there is one (`role_fields`, `data/onboarding_role.py`).
+
+Anyone a signal places in Iran or Russia is not segmented at all: they are
+never written to MailerLite (`points_at_excluded_country`, `consent.py`).
 
 The timezone and country tables come from tzdata, which zoneinfo already
 depends on. A zone is looked up by the name the browser reported before any
@@ -26,12 +31,21 @@ from collections.abc import Iterable, Mapping
 from datetime import datetime
 
 from backend.data.notifications import SubscriberField, SubscriptionStatus
+from backend.data.onboarding_role import OnboardingRole
 from backend.notifications.subscriber_fields import Fields, mailerlite_date
 
 YES = "yes"
 NO = "no"
 
 DE_AT = frozenset({"DE", "AT"})
+
+# Nobody a signal places in these is written to MailerLite at all.
+EXCLUDED_COUNTRIES = frozenset({"IR", "RU"})
+# Their country-code domains, the internationalised ones in both forms. .su is
+# still Russia's.
+_EXCLUDED_DOMAINS = frozenset(
+    {"ir", "ایران", "xn--mgba3a4f16a", "ru", "su", "рф", "xn--p1ai"}
+)
 
 # Strongest first. A held country from a stronger source is never replaced by
 # a weaker one; a hand-typed one with no source ranks lowest.
@@ -190,6 +204,39 @@ def email_points_at_de_at(email: str) -> bool:
     return email_domain(email).rsplit(".", 1)[-1] in ("de", "at")
 
 
+def points_at_excluded_country(
+    *, email: str, timezone: str | None, countries: Iterable[str | None] = ()
+) -> bool:
+    """Whether any signal places the account in Iran or Russia: a country it
+    was seen in (the Stripe billing address, the visitor's IP country, the one
+    a checkout recorded on the account), the browser's timezone, or the
+    address's country-code domain. Any signal, as for exclude_de_at: a billing
+    address elsewhere does not outweigh a Moscow timezone."""
+    if excluded_country([*countries, timezone_country(timezone)]):
+        return True
+    return email_domain(email).rsplit(".", 1)[-1] in _EXCLUDED_DOMAINS
+
+
+def excluded_country(countries: Iterable[str | None]) -> str | None:
+    """The first of `countries` that MailerLite must never hold, as its code."""
+    return next(
+        (code for c in countries if (code := country_code(c)) in EXCLUDED_COUNTRIES),
+        None,
+    )
+
+
+def billing_country(session: dict) -> str | None:
+    """The billing address country a Stripe Checkout Session collected."""
+    address = (session.get("customer_details") or {}).get("address") or {}
+    return address.get("country")
+
+
+def role_fields(role: OnboardingRole) -> Fields:
+    """The label people saw, and what they typed after picking Other, which
+    is cleared for any other pick."""
+    return {SubscriberField.ROLE: role.label, SubscriberField.ROLE_OTHER: role.other}
+
+
 def signin_method(providers: Iterable[str]) -> str | None:
     """How the account signs in, from its auth provider ids: google wins over
     a password, since it proves the address."""
@@ -211,9 +258,11 @@ def checkout_fields(
     stripe_country: str | None = None,
     ip_country: str | None = None,
     status: str = SubscriptionStatus.SIGNED.value,
+    role: OnboardingRole | None = None,
 ) -> Fields:
     """Every field a checkout opener gets. Merge it with what MailerLite holds
-    (`merge_with_held`) before writing."""
+    (`merge_with_held`) before writing. Without a `role` picked yet, the role
+    MailerLite holds is left alone."""
     tz_country = timezone_country(timezone)
     candidates = {
         "stripe": country_code(stripe_country),
@@ -233,6 +282,8 @@ def checkout_fields(
     method = signin_method(signin_providers)
     if method:
         fields[SubscriberField.SIGNIN_METHOD] = method
+    if role:
+        fields.update(role_fields(role))
     for source in COUNTRY_SOURCES:
         code = candidates[source]
         if code:

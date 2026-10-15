@@ -9,6 +9,7 @@ from prisma.enums import SubscriptionTier
 from backend.data.credit import _get_active_subscription, get_subscription_price_id
 from backend.data.redis_client import get_redis_async
 from backend.data.stripe_client import stripe_call
+from backend.data.subscription_upgrade_cache import subscription_upgrade_preview_key
 from backend.data.subscription_upgrade_models import (
     StoredUpgradePreview,
     SubscriptionUpgradePreview,
@@ -30,7 +31,7 @@ async def preview_subscription_upgrade(
     quote = await _build_preview(user_id, request, int(time.time()), uuid4().hex)
     redis = await get_redis_async()
     await redis.setex(
-        _preview_key(user_id, quote.preview.preview_id),
+        subscription_upgrade_preview_key(user_id, quote.preview.preview_id),
         PREVIEW_TTL,
         quote.model_dump_json(),
     )
@@ -44,7 +45,7 @@ async def validate_subscription_upgrade_preview(
     proration_date: int,
 ) -> StoredUpgradePreview:
     redis = await get_redis_async()
-    raw = await redis.get(_preview_key(user_id, preview_id))
+    raw = await redis.get(subscription_upgrade_preview_key(user_id, preview_id))
     if not raw:
         raise UpgradePreviewUnavailable("This review expired. Review the charge again.")
     saved = StoredUpgradePreview.model_validate_json(raw)
@@ -62,10 +63,6 @@ async def validate_subscription_upgrade_preview(
             "Your billing details changed. Review the updated charge before paying."
         )
     return saved
-
-
-def _preview_key(user_id: str, preview_id: str) -> str:
-    return f"subscription-upgrade-preview:{user_id}:{preview_id}"
 
 
 async def _owned_subscription(user_id: str) -> UpgradeSubscription:

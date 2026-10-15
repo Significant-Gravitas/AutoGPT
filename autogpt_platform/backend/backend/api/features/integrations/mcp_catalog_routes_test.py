@@ -65,3 +65,28 @@ def test_provider_openapi_exposes_typed_mcp_metadata():
     assert metadata["auth_methods"]["minItems"] == 1
     assert "auth_methods" in schemas["MCPServerMetadata"]["required"]
     assert "mcp_server" in schemas["ProviderMetadata"]["properties"]
+
+
+def test_provider_listing_carries_the_service_identity():
+    with (
+        patch("backend.blocks.load_all_blocks"),
+        patch(
+            "backend.api.features.integrations.router.get_all_provider_names",
+            return_value=["linear", "google"],
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_provider_description",
+            return_value="Native integration",
+        ),
+        patch(
+            "backend.api.features.integrations.router.get_supported_auth_types",
+            return_value=["api_key"],
+        ),
+    ):
+        providers = {p["name"]: p for p in TestClient(app).get("/providers").json()}
+
+    assert providers["linear"]["service"] == "linear"
+    assert providers["linear"]["service_icon"] == "linear"
+    assert providers["mcp_linear"]["service"] == "linear"
+    assert providers["mcp_linear"]["service_name"] == "Linear"
+    assert providers["mcp_sentry"]["service"] == "sentry"
