@@ -63,7 +63,7 @@ export function AppSidebarHeader() {
           {isCollapsed ? (
             <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-7" />
           ) : (
-            <AutoGPTLogo className="-mt-1 ml-2.5 h-7 w-auto max-md:mt-2 max-md:h-9" />
+            <AutoGPTLogo className="ml-2.5 mt-2 h-8 w-auto max-md:h-9" />
           )}
         </Link>
         {isCollapsed ? toggleButton : null}
