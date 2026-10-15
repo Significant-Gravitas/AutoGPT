@@ -1,17 +1,10 @@
-"""Where each person stands with us, as MailerLite subscriber fields.
+"""Where each person stands with us, as MailerLite subscriber fields, and
+the queue that carries them.
 
 GTM segments on one status and five dates (see `SubscriberField`), plus the
-checkout opener's segmentation, which `audience_enrichment` works out. Each
-transition below sets the status and the date it is named for, from Stripe's
-own timestamp where the event carries one. The dates describe the current or
-most recent subscription: a new subscription clears the previous one's
-cancellation and end, and a resumed one clears its cancellation. The signup
-and trial start dates are never cleared.
-
-A trial that ends without its first payment clearing, whether it was cancelled
-or the payment failed, is `trial_canceled`: the person never had a paid
-subscription, so `subscription_ended` would count them as churned customers.
-`in_trial` is therefore exactly the trial group's membership.
+checkout opener's segmentation, which `audience_enrichment` works out. The
+status and dates come from the lifecycle snapshot PostHog gets too
+(`lifecycle_audience`), so only a paying subscriber is `subscribed` in either.
 """
 
 import logging
@@ -23,7 +16,6 @@ from backend.data.notifications import (
     AudienceAction,
     AudienceEventModel,
     SubscriberField,
-    SubscriptionStatus,
 )
 from backend.notifications.queue import queue_audience_change
 
@@ -32,12 +24,12 @@ logger = logging.getLogger(__name__)
 Fields = dict[SubscriberField, str | None]
 
 
-def mailerlite_date(value: datetime | int | float | None) -> str:
+def mailerlite_date(value: datetime | float | None) -> str:
     """A Stripe timestamp or a datetime as a MailerLite date, in UTC."""
     return utc_moment(value).strftime("%Y-%m-%d")
 
 
-def utc_moment(value: datetime | int | float | None) -> datetime:
+def utc_moment(value: datetime | float | None) -> datetime:
     """A Stripe timestamp or a datetime, in UTC. Only an event without a
     timestamp of its own falls back to now."""
     if value is None:
@@ -47,58 +39,6 @@ def utc_moment(value: datetime | int | float | None) -> datetime:
     else:
         moment = datetime.fromtimestamp(value, UTC)
     return moment.astimezone(UTC)
-
-
-def signed(created_at: datetime) -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.SIGNED.value,
-        SubscriberField.SIGNUP: mailerlite_date(created_at),
-    }
-
-
-def trial_started(trial_start: int | None) -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.IN_TRIAL.value,
-        SubscriberField.TRIAL_STARTED: mailerlite_date(trial_start),
-    }
-
-
-def trial_resumed() -> Fields:
-    return {SubscriberField.STATUS: SubscriptionStatus.IN_TRIAL.value}
-
-
-def trial_canceled() -> Fields:
-    return {SubscriberField.STATUS: SubscriptionStatus.TRIAL_CANCELED.value}
-
-
-def subscribed(started: int | None) -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
-        SubscriberField.SUBSCRIPTION_STARTED: mailerlite_date(started),
-        SubscriberField.SUBSCRIPTION_CANCELED: None,
-        SubscriberField.SUBSCRIPTION_ENDED: None,
-    }
-
-
-def subscription_resumed() -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
-        SubscriberField.SUBSCRIPTION_CANCELED: None,
-    }
-
-
-def subscription_canceled(canceled_at: int | None) -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_CANCELED.value,
-        SubscriberField.SUBSCRIPTION_CANCELED: mailerlite_date(canceled_at),
-    }
-
-
-def subscription_ended(ended_at: int | None) -> Fields:
-    return {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
-        SubscriberField.SUBSCRIPTION_ENDED: mailerlite_date(ended_at),
-    }
 
 
 def audience_event(

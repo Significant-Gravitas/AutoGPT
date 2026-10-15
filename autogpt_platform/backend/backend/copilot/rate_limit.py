@@ -67,7 +67,6 @@ from redis.exceptions import RedisClusterException, RedisError
 from backend.copilot.trial_cost_context import record_attributed_trial_cost
 from backend.copilot.trial_reads import shared_trial_read
 from backend.data.db_accessors import credit_db, user_db
-from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
 from backend.data.redis_client import AsyncRedisClient, get_redis_async
 from backend.data.subscription_trial import TrialState
 from backend.data.user import get_user_by_id
@@ -1139,7 +1138,6 @@ async def set_user_tier(user_id: str, tier: SubscriptionTier) -> None:
     )
     get_user_tier.cache_delete(user_id)  # type: ignore[attr-defined]
     get_user_by_id.cache_delete(user_id)  # type: ignore[attr-defined]
-    schedule_posthog_lifecycle_sync(user_id)
 
     # Fire-and-forget drift check so admin bulk ops don't wait on Stripe.
     asyncio.ensure_future(_drift_check_background(user_id, tier))
