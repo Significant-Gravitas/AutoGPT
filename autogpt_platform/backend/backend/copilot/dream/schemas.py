@@ -19,6 +19,8 @@ from pydantic import BaseModel, Field, model_validator
 
 from backend.copilot.graphiti.memory_model import MemoryKind
 
+from .routing import ExecutionPath
+
 logger = logging.getLogger(__name__)
 
 
@@ -305,7 +307,7 @@ class DreamPassUsage(BaseModel):
     """Sum of phase cost_usd values; ``None`` if any phase was unknown."""
     discount_applied: float = 0.0
     """Execution-path discount factor in [0, 1] — 0.0 for sync_baseline,
-    0.5 for anthropic_batch / openai_batch. The ``total_cost_usd``
+    0.5 for anthropic_batch. The ``total_cost_usd``
     above already has this factored in; recorded separately so the
     cost ledger can audit the savings."""
 
@@ -322,9 +324,7 @@ class DreamPassResult(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     elapsed_seconds: float | None = None
-    execution_path: Literal["sync_baseline", "anthropic_batch", "openai_batch"] = (
-        "sync_baseline"
-    )
+    execution_path: ExecutionPath = "sync_baseline"
 
     # Per-phase telemetry — null when the phase did not run.
     consolidated_count: int = 0

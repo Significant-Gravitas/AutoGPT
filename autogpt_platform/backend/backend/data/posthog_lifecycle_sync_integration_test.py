@@ -4,7 +4,6 @@ paging over more than one batch, and the billing-history filter."""
 import uuid
 
 import pytest
-from prisma.enums import SubscriptionTier
 from prisma.models import SubscriptionTrial, User
 
 from backend.data.posthog_lifecycle import LifecycleUser
@@ -28,11 +27,6 @@ async def lifecycle_users():
                 "id": user_id,
                 "email": f"{user_id}@example.com",
                 "stripeCustomerId": customers.get(user_id),
-                "subscriptionTier": (
-                    SubscriptionTier.PRO
-                    if user_id == ids[0]
-                    else SubscriptionTier.NO_TIER
-                ),
             }
         )
     await SubscriptionTrial.prisma().create(
@@ -73,7 +67,6 @@ async def test_batches_page_over_users_with_billing_history(lifecycle_users):
     ]
     first = batches[0][0]
     assert first.stripe_customer_id == f"cus_{prefix}1"
-    assert first.subscription_tier == SubscriptionTier.PRO
     assert first.created_at is not None
     assert batches[0][1].stripe_customer_id is None
 
@@ -89,4 +82,3 @@ async def test_all_users_includes_users_without_billing_history(lifecycle_users)
         ids[2:4],
         ids[4:5],
     ]
-    assert batches[0][1].subscription_tier == SubscriptionTier.NO_TIER

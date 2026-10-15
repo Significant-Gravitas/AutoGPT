@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -491,8 +491,3 @@ def _dict_to_input_bundle(data: dict) -> DreamInput:
         known_fact_uuids=set(data.get("known_fact_uuids") or []),
         known_episode_uuids=set(data.get("known_episode_uuids") or []),
     )
-
-
-def _dummy_now() -> datetime:
-    """Stub kept for symmetry with Step 4b; never called."""
-    return datetime.now(timezone.utc)
