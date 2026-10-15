@@ -74,6 +74,12 @@ DREAM_TEXT_FIELDS: tuple[str, ...] = (
     "summary_for_user",
 )
 ERASED_TEXT = "[forgotten]"
+# What a pass's read set holds when its writer did not state it: a pass from
+# before read sets were recorded, or one a release without them wrote during
+# its rollout. It may have read anything, so any hard forget in its scope
+# reaches it, and its narrative's session takes the mark with its read set
+# (``DreamPass.readUuids``'s default; never a graph uuid).
+UNKNOWN_READS = "*"
 
 
 class DreamPhaseOutputs(BaseModel):
@@ -258,7 +264,8 @@ class DreamPassRecord(BaseModel):
     error: str | None
     # Set by a hard forget that reached the pass, never cleared.
     erased_at: datetime | None = None
-    # Every fact and episode the pass gathered, never cleared.
+    # Every fact and episode the pass gathered, never cleared;
+    # ``[UNKNOWN_READS]`` for a pass from before read sets were recorded.
     read_uuids: list[str] = Field(default_factory=list)
     created_at: datetime
     started_at: datetime | None

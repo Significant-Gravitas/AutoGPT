@@ -34,6 +34,7 @@ from backend.data.dream_pass_models import (
     DREAM_TEXT_FIELDS,
     ERASED_TEXT,
     OPEN_STATUSES,
+    UNKNOWN_READS,
     DreamPassDraft,
     DreamPassOperations,
     DreamPassRecord,
@@ -297,8 +298,9 @@ class FakeDreamDb:
         self, user_id: str, scope_key: str, *, reached: list[str], named: list[str]
     ) -> list[str]:
         """Mark the user's passes of the scope a hard forget reached (one
-        that read a reached uuid, open, closed with a cleanup pending, named,
-        or marked before), blank those marked now and closed, and keep every
+        that read a reached uuid or may have read anything, open, closed with
+        a cleanup pending, named, or marked before), blank those marked now
+        and closed, and keep every
         error of the scope only as a fixed code; the ids marked, now or
         before. ``data/dream_pass.ERASE_SQL``."""
         self._raise_if_down()
@@ -313,6 +315,7 @@ class FakeDreamDb:
                 or row.get("cleanup_pending_at") is not None
                 or pass_id in named
                 or set(row["read_uuids"]) & set(reached)
+                or UNKNOWN_READS in row["read_uuids"]
             ):
                 continue
             marked.append(pass_id)

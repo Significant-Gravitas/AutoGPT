@@ -87,17 +87,6 @@ class ApplyLease(BaseModel):
         return await _renewed(extend, self.pass_id) is True
 
 
-def lock_lost_error(step: PassErrorStage) -> str:
-    """How a pass that lost its scope's lock before *step* ends."""
-    return pass_error(step, "lock_lost")
-
-
-def lease_unknown_error(step: PassErrorStage) -> str:
-    """How a pass ends whose lease could not be renewed before *step*, where
-    ownership unknown fails closed."""
-    return pass_error(step, "lease_unrenewed")
-
-
 async def checkpoint(run: DreamPassRun, step: PassErrorStage) -> None:
     """The sync pass's check before each phase: its row shows no stop, then
     its lease is renewed (``renew_sync_lease``); raises ``PassEnded`` when
@@ -149,7 +138,7 @@ async def renew_batch_lease(bp: BatchPass, next_step: PassErrorStage) -> bool:
         extend_dream_lock(scope, token, BATCH_LOCK_TTL_SECONDS), bp.pass_id
     )
     if renewed is False:
-        error = await stopped_error(bp.pass_id) or lock_lost_error(next_step)
+        error = await stopped_error(bp.pass_id) or pass_error(next_step, "lock_lost")
         logger.warning(f"Dream batch pass {bp.pass_id} stops: {error}")
         await fail_pass(bp, error, holds_lock=False)
         return False
@@ -214,8 +203,9 @@ async def _renew_sync(
 
 
 def _ended_error(step: PassErrorStage, renewed: bool | None) -> str:
-    """Why a pass's renewal ended it: its lock lost, or ownership unknown."""
-    return lock_lost_error(step) if renewed is False else lease_unknown_error(step)
+    """Why a pass's renewal ended it: its lock lost, or ownership unknown,
+    which fails closed."""
+    return pass_error(step, "lock_lost" if renewed is False else "lease_unrenewed")
 
 
 async def _renewed(extend: Awaitable[bool], pass_id: str) -> bool | None:

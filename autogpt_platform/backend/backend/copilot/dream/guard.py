@@ -154,12 +154,15 @@ async def _expire(run: DreamPassRun, row: DreamPassRecord, *, stale: bool) -> bo
     """Expire *row* and say whether it no longer holds the scope: expired now,
     closed by its own pass meanwhile, or unknown because the store did not
     answer in time (the pass goes on)."""
-    reason = _expiry_reason(run, row, stale=stale)
     unchanged_since = row.updated_at if stale else None
     error = pass_error("expired", _expiry_code(row, stale=stale))
     try:
         if await write_stop(row.id, expired(error, not_updated_since=unchanged_since)):
-            logger.warning(f"Dream pass {run.pass_id} expired pass {row.id}: {reason}")
+            logger.warning(
+                f"Dream pass {run.pass_id} expired pass {row.id} as {error} "
+                f"({row.status.value.lower()}, lease until {row.lease_expires_at}, "
+                f"last written {row.updated_at})"
+            )
             return True
         current = await read_pass(row.id)
     except Exception:
@@ -176,14 +179,3 @@ def _expiry_code(row: DreamPassRecord, *, stale: bool) -> PassErrorCode:
     if not stale:
         return "forced"
     return "lease_lapsed" if row.lease_expires_at is not None else "stalled"
-
-
-def _expiry_reason(run: DreamPassRun, row: DreamPassRecord, *, stale: bool) -> str:
-    """What happened, for the log."""
-    if not stale:
-        return f"forced by an admin-triggered dream pass {run.pass_id}"
-    if row.lease_expires_at is not None:
-        lapsed = f"lease lapsed at {row.lease_expires_at.isoformat()}"
-    else:
-        lapsed = f"no progress since {row.updated_at.isoformat()}"
-    return f"{lapsed}; expired by dream pass {run.pass_id}"

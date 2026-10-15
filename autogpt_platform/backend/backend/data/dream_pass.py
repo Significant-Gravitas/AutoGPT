@@ -38,6 +38,7 @@ from backend.data.dream_pass_models import (
     DREAM_TEXT_FIELDS,
     ERASED_TEXT,
     OPEN_STATUSES,
+    UNKNOWN_READS,
     DreamPassDraft,
     DreamPassRecord,
     DreamPassUpdate,
@@ -60,18 +61,20 @@ DELETE FROM {schema_prefix}"DreamPass" WHERE "id" IN (
 # A hard forget's marks, for one user's scope ($1, $2), in one statement
 # over every pass of the scope: no page or limit can leave one out. A pass is
 # marked when it read what the forget reached (its read set, matched against
-# the reached uuids, $4, by a hash join), may still be writing (it is open,
-# $5, or closed with its cleanup pending: a stop from outside closes the row
-# while the pass may still be applying), or wrote what the forget erased
-# ($3, the passes its erased dream writes name: a pass's own write is not in
-# its read set). A pass marked by an earlier forget is returned again, so a
-# forget repeated after its narratives' blank failed finishes it, but not
-# written again: it was blanked when marked closed, or as it closed. One
-# marked now that is closed as this statement writes it (its status read from
-# the row being written, so one closing meanwhile is not missed) is blanked
-# now; an open one when it closes (``dream_pass_update.py``). Every pass of
-# the scope keeps its error only when it is one of the fixed codes ($8, $9),
-# marked or not. Returns the ids marked, now or before.
+# the reached uuids, $4, by a hash join), may have read anything (its read
+# set holds UNKNOWN_READS, $10: a pass from before read sets were recorded),
+# may still be writing (it is open, $5, or closed with its cleanup pending: a
+# stop from outside closes the row while the pass may still be applying), or
+# wrote what the forget erased ($3, the passes its erased dream writes name:
+# a pass's own write is not in its read set). A pass marked by an earlier
+# forget is returned again, so a forget repeated after its narratives' blank
+# failed finishes it, but not written again: it was blanked when marked
+# closed, or as it closed. One marked now that is closed as this statement
+# writes it (its status read from the row being written, so one closing
+# meanwhile is not missed) is blanked now; an open one when it closes
+# (``dream_pass_update.py``). Every pass of the scope keeps its error only
+# when it is one of the fixed codes ($8, $9), marked or not. Returns the ids
+# marked, now or before.
 ERASE_SQL = """
 WITH reached AS (
     SELECT DISTINCT uuid FROM unnest($4::text[]) AS reached(uuid)
@@ -89,7 +92,8 @@ target AS (
             OR "status"::text = ANY($5::text[])
             OR "cleanupPendingAt" IS NOT NULL
             OR "id" IN (SELECT unnest($3::text[]))
-            OR "id" IN (SELECT "id" FROM read_reached)) AS reached
+            OR "id" IN (SELECT "id" FROM read_reached)
+            OR $10::text = ANY("readUuids")) AS reached
     FROM {schema_prefix}"DreamPass"
     WHERE "userId" = $1 AND "scopeKey" = $2
 ),
@@ -144,6 +148,8 @@ async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
             "startedAt": draft.started_at,
             "leaseToken": draft.lease_token,
             "leaseExpiresAt": draft.lease_expires_at,
+            # Nothing read yet: the column's default is UNKNOWN_READS.
+            "readUuids": [],
         }
     )
     return DreamPassRecord.from_db(row)
@@ -286,8 +292,9 @@ async def erase_dream_passes(
     user_id: str, scope_key: str, *, reached: list[str], named: list[str]
 ) -> list[str]:
     """Mark, for *user_id*'s hard forget, every pass of the scope that read
-    what it reached (*reached*, uuids), may still be writing, or wrote what it
-    erased (*named*, pass ids), blanking those already closed, and keep every
+    what it reached (*reached*, uuids) or may have read anything (from before
+    read sets were recorded), may still be writing, or wrote what it erased
+    (*named*, pass ids), blanking those already closed, and keep every
     error of the scope only as a fixed code (``ERASE_SQL``,
     ``copilot/dream/forget_copies.py``). The ids of the passes marked, now or
     by an earlier forget, the open ones included; repeating it writes nothing
@@ -305,6 +312,7 @@ async def erase_dream_passes(
             ERASED_TEXT,
             list(PASS_ERROR_STAGES),
             list(PASS_ERROR_CODES),
+            UNKNOWN_READS,
             client=tx,
         )
     return [row["id"] for row in rows]

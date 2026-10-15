@@ -203,7 +203,7 @@ def _recorded(error: str | None) -> str | None:
     if error is None or is_pass_error(error):
         return error
     logger.warning(
-        "A dream pass error that is not one of the fixed codes is recorded " "as %r",
+        "A dream pass error that is not one of the fixed codes is recorded as %r",
         UNRECORDED,
         stack_info=True,
     )

@@ -149,7 +149,11 @@ class TestOpenPasses:
         assert update.error == "expired: stalled"
         [record] = [r for r in caplog.records if "expired pass other" in r.getMessage()]
         assert record.levelno == logging.WARNING
-        assert "no progress since" in record.getMessage(), "the detail is logged"
+        message = record.getMessage()
+        assert f"Dream pass {run.pass_id} expired pass other as expired: stalled" in (
+            message
+        ), "the code and both passes are logged"
+        assert f"last written {stale.updated_at}" in message, "and when"
 
     async def test_a_lapsed_lease_is_stale_however_recently_written(self, db):
         leased = _row(

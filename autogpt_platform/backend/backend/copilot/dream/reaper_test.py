@@ -86,7 +86,10 @@ class TestAPassThatOutlivedItsLease:
         assert state_key("p1") not in fake_dream_redis.hashes
         assert input_bundle_key("p1") not in fake_dream_redis.store
         assert _LOCK_KEY not in fake_dream_redis.store
-        assert "Dream pass reaper: pass p1 expired (lease lapsed at " in caplog.text
+        assert "Dream pass reaper: pass p1 expired as recombine: reaped (" in (
+            caplog.text
+        )
+        assert ", lease until " in caplog.text
         assert "Dream pass reaper: 1 listed; expired=1" in caplog.text
 
     async def test_within_its_grace_is_left_open(self, fake_dream_db, provider_cancel):

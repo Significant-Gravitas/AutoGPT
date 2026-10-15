@@ -1265,8 +1265,9 @@ async def update_message_content_by_sequence(
 # only into the pass's own dream session (the pass's owner's, of kind dream,
 # naming the pass), which takes a copy of the pass's read set
 # (``DREAM_READ_UUIDS``), so a forget finds the narrative once the pass's row
-# has aged out. With no row for the pass, or a session that is not its own,
-# nothing is written.
+# has aged out; the read set of a pass from before read sets were recorded
+# holds ``*``, which the copy keeps. With no row for the pass, or a session
+# that is not its own, nothing is written.
 _DREAM_NARRATIVE_SQL = """
 WITH pass AS (
     SELECT "id", "userId", "erasedAt", "readUuids"
@@ -1301,16 +1302,20 @@ DREAM_READ_UUIDS = "dream_read_uuids"
 NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS = 9_000
 
 # The narrative of each of the user's dream sessions a hard forget reached
-# ($1): the session of a pass it marked or named ($2), or one whose pass read
+# ($1): the session of a pass it marked or named ($2), one whose pass read
 # what it reached ($3, matched against the session's copy of the read set by
-# a hash join, which outlives the pass's row). A narrative already blank is
-# not written again.
+# a hash join, which outlives the pass's row), or one of the forget's scope
+# (the account's when $6 is null, else that expert's) that may have read
+# anything: its session holds no read set (written before sessions kept
+# one) or one holding ``*`` (its pass's, from before read sets were
+# recorded: ``data/dream_pass_models.UNKNOWN_READS``). A narrative already
+# blank is not written again.
 _BLANK_NARRATIVES_SQL = """
 WITH reached AS (
     SELECT DISTINCT uuid FROM unnest($3::text[]) AS reached(uuid)
 ),
 dream AS (
-    SELECT s."id", s."metadata"
+    SELECT s."id", s."metadata", s."expertId"
     FROM {schema_prefix}"ChatSession" AS s
     WHERE s."userId" = $1 AND s."metadata"->>'kind' = 'dream'
 ),
@@ -1324,6 +1329,11 @@ hit AS (
             WHEN jsonb_typeof(dream."metadata"->$5::text) = 'array'
             THEN dream."metadata"->$5::text ELSE '[]'::jsonb END) AS read(uuid)
     WHERE read.uuid IN (SELECT uuid FROM reached)
+    UNION
+    SELECT "id" FROM dream
+    WHERE "expertId" IS NOT DISTINCT FROM $6::text
+        AND (jsonb_typeof("metadata"->$5::text) IS DISTINCT FROM 'array'
+            OR "metadata"->$5::text @> '["*"]'::jsonb)
 )
 UPDATE {schema_prefix}"ChatMessage" AS m SET "content" = $4
 WHERE m."sessionId" IN (SELECT "id" FROM hit)
@@ -1359,15 +1369,20 @@ async def add_dream_narrative(
 
 
 async def blank_dream_narratives(
-    user_id: str, pass_ids: list[str], reached: list[str], placeholder: str
+    user_id: str,
+    expert_id: str | None,
+    pass_ids: list[str],
+    reached: list[str],
+    placeholder: str,
 ) -> int:
-    """Replace with *placeholder*, for a hard forget
-    (``dream/forget_copies.py``), the narrative of each of *user_id*'s dream
-    sessions for *pass_ids* or whose pass read one of the *reached* uuids
-    (the assistant message a dream opens its session with,
-    ``dream/apply._write_dream_summary_message``); how many changed. The rest
-    of the session is the user's chat with it, which no forget reaches.
-    Raises when the statement runs past
+    """Replace with *placeholder*, for a hard forget in *user_id*'s scope of
+    *expert_id* (the account's when ``None``) (``dream/forget_copies.py``),
+    the narrative of each of the user's dream sessions for *pass_ids*, whose
+    pass read one of the *reached* uuids, or of the scope with no record of
+    what its pass read (the assistant message a dream opens its session
+    with, ``dream/apply._write_dream_summary_message``); how many changed.
+    The rest of the session is the user's chat with it, which no forget
+    reaches. Raises when the statement runs past
     ``NARRATIVE_BLANK_STATEMENT_TIMEOUT_MS``."""
     if not pass_ids and not reached:
         return 0
@@ -1379,6 +1394,7 @@ async def blank_dream_narratives(
             reached,
             sanitize_string(placeholder),
             DREAM_READ_UUIDS,
+            expert_id,
             client=tx,
         )
 

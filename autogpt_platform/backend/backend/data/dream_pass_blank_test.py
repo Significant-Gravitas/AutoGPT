@@ -1,6 +1,7 @@
 """A hard forget's writes to the DreamPass table against a real database
 (``copilot/dream/forget_copies.py``): which of a scope's passes
-``erase_dream_passes`` marks and blanks, never another user's or scope's,
+``erase_dream_passes`` marks and blanks (a pass from before read sets were
+recorded with any forget in its scope), never another user's or scope's,
 and returns again once marked; every error kept only as a fixed code; its
 statement timeout; its cost over 3,000 passes; and every transition that
 closes a marked pass blanking it in the same statement
@@ -48,6 +49,7 @@ from .dream_pass import (
 )
 from .dream_pass_models import (
     ERASED_TEXT,
+    UNKNOWN_READS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -133,6 +135,33 @@ async def _pass(
     return draft.id
 
 
+async def _legacy_pass(owner: str, scope_key: str) -> str:
+    """A closed pass written as a release without read sets wrote one: its
+    insert names no read set, so the column's default applies, as it does to
+    every row that existed when the column was added."""
+    pass_id = str(uuid.uuid4())
+    await db.execute_raw_with_schema(
+        'INSERT INTO {schema_prefix}"DreamPass" ("id", "userId", "scopeKey", '
+        '"route", "trigger", "status", "phase", "updatedAt") '
+        "VALUES ($1, $2, $3, 'SYNC', 'CRON', 'RUNNING', 'GATHER', now())",
+        pass_id,
+        owner,
+        scope_key,
+    )
+    assert await update_dream_pass(
+        pass_id,
+        DreamPassUpdate(
+            phase_outputs=_outputs(_SENTENCE, "fact-unrelated"),
+            operations=_operations(_SENTENCE),
+        ),
+    )
+    await DreamPass.prisma().update(
+        where={"id": pass_id},
+        data={"status": DreamPassStatus.COMPLETE, "phase": DreamPassPhase.DONE},
+    )
+    return pass_id
+
+
 async def _text(pass_id: str) -> str:
     row = await get_dream_pass(pass_id)
     assert row is not None
@@ -213,6 +242,75 @@ async def test_a_pass_not_reached_another_scopes_or_another_users_is_left(
         assert _SENTENCE in await _text(pass_id)
 
 
+async def test_a_pass_from_before_read_sets_goes_with_any_forget_in_its_scope(
+    make_user,
+):
+    """What such a pass read is unknown, so it may rest on anything: any hard
+    forget in its scope marks it and blanks its text, whatever it reached and
+    whatever its writes cite. One with a known read set holding none of it
+    is left, and so is an unknown one of another scope or user."""
+    owner, stranger = await make_user(), await make_user()
+    legacy = await _legacy_pass(owner, owner)
+    other_scope = await _legacy_pass(owner, f"{owner}:expert")
+    theirs = await _legacy_pass(stranger, stranger)
+    known = await _pass(
+        owner, owner, status=DreamPassStatus.COMPLETE, cites="fact-unrelated"
+    )
+    row = await get_dream_pass(legacy)
+    assert row is not None and row.read_uuids == [UNKNOWN_READS]
+
+    marked = await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[])
+
+    row = await get_dream_pass(legacy)
+    assert marked == [legacy] and row is not None and row.erased_at is not None
+    assert _SENTENCE not in await _text(legacy)
+    for pass_id in (other_scope, theirs, known):
+        row = await get_dream_pass(pass_id)
+        assert row is not None and row.erased_at is None
+        assert _SENTENCE in await _text(pass_id)
+
+
+async def test_a_row_whose_writer_names_no_read_set_may_have_read_anything(
+    make_user,
+):
+    """The column's default, which every row that existed when the column
+    was added reads, and every row a release without it writes during a
+    rollout: ``UNKNOWN_READS``."""
+    owner = await make_user()
+
+    row = await get_dream_pass(await _legacy_pass(owner, owner))
+
+    assert row is not None and row.read_uuids == [UNKNOWN_READS]
+
+
+async def test_a_pass_this_release_creates_has_read_nothing_until_it_gathers(
+    make_user,
+):
+    """Its create states its read set, so it never reads ``UNKNOWN_READS``:
+    gathering adds what it read, and only that reaches it once it closes."""
+    owner = await make_user()
+    draft = DreamPassDraft(
+        id=str(uuid.uuid4()),
+        user_id=owner,
+        scope_key=owner,
+        route=DreamPassRoute.SYNC,
+        trigger=DreamPassTrigger.CRON,
+        started_at=_NOW,
+    )
+
+    created = await create_dream_pass(draft)
+    assert created.read_uuids == []
+    assert await update_dream_pass(draft.id, DreamPassUpdate(read_uuids=["fact-a"]))
+    await DreamPass.prisma().update(
+        where={"id": draft.id},
+        data={"status": DreamPassStatus.COMPLETE, "phase": DreamPassPhase.DONE},
+    )
+
+    row = await get_dream_pass(draft.id)
+    assert row is not None and row.read_uuids == ["fact-a"]
+    assert await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[]) == []
+
+
 async def test_every_error_of_the_scope_is_kept_only_as_a_fixed_code(make_user):
     """An error the store did not write (it records codes only) may quote
     anything and names no uuid: every pass of the scope, reached or not and
@@ -281,6 +379,7 @@ async def test_every_pass_of_the_scope_is_reached_however_many(make_user):
                 "trigger": DreamPassTrigger.ADMIN,
                 "status": DreamPassStatus.SKIPPED,
                 "phase": DreamPassPhase.DONE,
+                "readUuids": [],
             }
             for _ in range(1000)
         ]

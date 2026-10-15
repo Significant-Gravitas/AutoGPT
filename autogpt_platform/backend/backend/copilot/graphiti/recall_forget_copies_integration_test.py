@@ -8,9 +8,12 @@ found the forgotten sentence kept by a pass still open when the forget
 landed, by a narrative a cancelled apply wrote after it, by a failed pass's
 error, and by a pass behind a thousand newer ones; round 2 by a pass whose
 insert failed, by a summary restating a fact no write cited, and by a
-narrative a failed blank left for a repeat that found no pass. Each now
-ends with the sentence gone, as does a narrative whose pass's row aged out
-and the pass of a dream write forgotten itself. A soft forget blanks
+narrative a failed blank left for a repeat that found no pass; round 3 by
+a pass from before read sets were recorded, its narrative written before
+the deploy or after it, its row kept or aged out. Each now ends with the
+sentence gone, as does a narrative whose pass's row aged out and the pass
+of a dream write forgotten itself, while a forget of what a pass with a
+known read set never read leaves it alone. A soft forget blanks
 nothing in Postgres, but a write it dropped still keeps the narrative out
 (``dream/apply.py``).
 
@@ -33,7 +36,7 @@ from prisma.enums import (
     DreamPassStatus,
     DreamPassTrigger,
 )
-from prisma.models import ChatMessage, ChatSession, DreamPass, User
+from prisma.models import ChatMessage, ChatSession, DreamPass, Expert, User
 from pytest_mock import MockerFixture
 
 from backend.copilot import db as chat
@@ -50,7 +53,11 @@ from backend.copilot.dream.schemas import (
     ProposedFinding,
 )
 from backend.data import db, dream_pass
-from backend.data.dream_pass_models import DreamPassDraft
+from backend.data.dream_pass_models import (
+    UNKNOWN_READS,
+    DreamPassDraft,
+    DreamPassUpdate,
+)
 from backend.util.json import SafeJson
 
 from . import recall_forget
@@ -351,6 +358,7 @@ async def test_an_affected_pass_behind_a_thousand_newer_ones_is_blanked(
                 "trigger": DreamPassTrigger.ADMIN,
                 "status": DreamPassStatus.SKIPPED,
                 "phase": DreamPassPhase.DONE,
+                "readUuids": [],
             }
             for _ in range(1000)
         ]
@@ -511,6 +519,163 @@ async def test_a_narrative_whose_pass_row_aged_out_is_found_by_what_it_read(
         where={"sessionId": stats["session_id"], "sequence": 0}
     )
     assert message is not None and message.content == FORGOTTEN_FACT
+
+
+async def _pass_before_read_sets(
+    scope_graph, build
+) -> tuple[str, str, DreamOperations, DreamInput]:
+    """``_cafe_pass``'s pass, written as a release before read sets wrote
+    one (the round-3 review's legacy pass): its create states no read set,
+    so it reads the column's default, as every row that existed when the
+    column was added does, and its gather records the window only."""
+    driver, scope = scope_graph
+    root = await _source(scope_graph, build)
+    _, other = await ingest_facts(
+        driver, scope, build, [CAFE], session_id="other-source"
+    )
+    pass_id = str(uuid.uuid4())
+    await DreamPass.prisma().create(
+        data={
+            "id": pass_id,
+            "userId": scope.owner_user_id,
+            "scopeKey": scope.scope_key,
+            "route": DreamPassRoute.ANTHROPIC_BATCH,
+            "trigger": DreamPassTrigger.CRON,
+            "status": DreamPassStatus.QUEUED,
+        }
+    )
+    read = await gather(scope)
+    assert {root, other[CAFE[2]]} <= read.known_fact_uuids
+    assert await dream_pass.update_dream_pass(
+        pass_id,
+        DreamPassUpdate(window_start=read.window_start, window_end=read.window_end),
+    )
+    write = ConsolidatedFact(
+        content=CAFE[2], confidence=0.9, source_fact_uuids=[other[CAFE[2]]]
+    )
+    await store.record_phase_output(
+        pass_id, "consolidate", ConsolidationOutput(facts=[write])
+    )
+    row = await dream_pass.get_dream_pass(pass_id)
+    assert row is not None and row.read_uuids == [UNKNOWN_READS]
+    return (
+        root,
+        pass_id,
+        DreamOperations(writes=[write], summary_for_user=_DERIVED),
+        read,
+    )
+
+
+async def _narrative_before_read_sets(
+    session_id: str, pass_id: str, content: str, erased: str
+) -> bool:
+    """The narrative as the release before read sets wrote it: the message
+    alone, nothing copied into its session."""
+    await chat.add_chat_message(session_id, "assistant", 0, content)
+    return True
+
+
+async def _narrative(session_id: str) -> str | None:
+    message = await ChatMessage.prisma().find_first(
+        where={"sessionId": session_id, "sequence": 0}
+    )
+    return message.content if message is not None else None
+
+
+@pytest.mark.parametrize("row", ["kept", "aged_out"])
+@pytest.mark.parametrize("narrative", ["before_the_deploy", "after_the_deploy"])
+async def test_a_pass_from_before_read_sets_keeps_none_of_a_hard_forgotten_fact(
+    scope_graph, stub_graphiti_client, mocker: MockerFixture, narrative, row
+):
+    """The round-3 review's two legacy reproductions, turned around. A pass
+    from before read sets were recorded gathered the source and an
+    unrelated cafe fact, wrote the cafe citing it and a summary restating
+    the source, citing nothing. Its narrative was written by the release
+    before (the message alone) or by this one, the pass in flight across
+    the deploy (its session takes the pass's unknown read set); its row is
+    kept or has aged out. What the pass read is unknown, so a hard forget of
+    the source, which no write of the pass cites, blanks the narrative and
+    the row."""
+    driver, scope = scope_graph
+    root, pass_id, ops, read = await _pass_before_read_sets(
+        scope_graph, stub_graphiti_client
+    )
+    if narrative == "before_the_deploy":
+        mocker.patch.object(chat, "add_dream_narrative", _narrative_before_read_sets)
+    await store.record_applying(pass_id, ops)
+    stats = await dream(driver, scope, stub_graphiti_client, ops, read, CAFE, pass_id)
+    await _complete(scope, pass_id, stats, ops)
+    assert await _kept(pass_id, stats["session_id"]) == ["operations", "narrative"]
+    if row == "aged_out":
+        await DreamPass.prisma().delete(where={"id": pass_id})
+
+    forgot = await recall_forget.retract(scope, [root], hard=True)
+
+    assert (forgot.deleted, forgot.failures) == ([root], [])
+    assert await _narrative(stats["session_id"]) == FORGOTTEN_FACT
+    if row == "kept":
+        kept = await dream_pass.get_dream_pass(pass_id)
+        assert kept is not None and kept.erased_at is not None
+        assert await _kept(pass_id, stats["session_id"]) == []
+
+
+async def _old_narrative(user_id: str, expert_id: str | None) -> str:
+    """A dream session of the user's scope of *expert_id* (the account's when
+    ``None``) with a narrative written before sessions kept a read set."""
+    session = await ChatSession.prisma().create(
+        data={
+            "userId": user_id,
+            "metadata": SafeJson({"kind": "dream", "dream_pass_id": "p-before"}),
+            **({"expertId": expert_id} if expert_id else {}),
+        }
+    )
+    await chat.add_chat_message(session.id, "assistant", 0, _DERIVED)
+    return session.id
+
+
+async def test_an_unrelated_forget_leaves_a_new_narrative_and_takes_old_ones(
+    scope_graph, stub_graphiti_client
+):
+    """A pass with a known read set is reached only by what it read: a hard
+    forget of a fact ingested after it gathered leaves its row and its
+    narrative. The same forget blanks a narrative of its scope from before
+    sessions kept a read set, and not one of the user's expert's scope."""
+    driver, scope = scope_graph
+    _, cafe = await ingest_facts(
+        driver, scope, stub_graphiti_client, [CAFE], session_id="cafe-source"
+    )
+    pass_id, read = await _gathered_pass(scope)
+    write = ConsolidatedFact(
+        content=CAFE[2], confidence=0.9, source_fact_uuids=[cafe[CAFE[2]]]
+    )
+    ops = DreamOperations(writes=[write], summary_for_user=_DERIVED)
+    await store.record_phase_output(
+        pass_id, "consolidate", ConsolidationOutput(facts=[write])
+    )
+    await store.record_applying(pass_id, ops)
+    stats = await dream(driver, scope, stub_graphiti_client, ops, read, CAFE, pass_id)
+    await _complete(scope, pass_id, stats, ops)
+    root = await _source(scope_graph, stub_graphiti_client)
+    expert = await Expert.prisma().create(
+        data={
+            "ownerUserId": scope.owner_user_id,
+            "name": "Scout",
+            "role": "Research",
+            "identity": "Finds things out.",
+        }
+    )
+    old_here = await _old_narrative(scope.owner_user_id, None)
+    old_there = await _old_narrative(scope.owner_user_id, expert.id)
+
+    forgot = await recall_forget.retract(scope, [root], hard=True)
+
+    assert (forgot.deleted, forgot.failures) == ([root], [])
+    row = await dream_pass.get_dream_pass(pass_id)
+    assert row is not None and row.erased_at is None
+    assert root not in row.read_uuids and UNKNOWN_READS not in row.read_uuids
+    assert await _kept(pass_id, stats["session_id"]) == ["operations", "narrative"]
+    assert await _narrative(old_here) == FORGOTTEN_FACT
+    assert await _narrative(old_there) == _DERIVED
 
 
 async def test_forgetting_a_dream_write_blanks_the_pass_that_wrote_it(

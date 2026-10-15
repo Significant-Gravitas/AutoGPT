@@ -597,8 +597,12 @@ model DreamPass {
   // Every fact and episode the pass gathered, recorded before its first
   // model call and never cleared: a hard forget marks a pass that read what
   // it reached however long ago the pass closed, and its narrative's session
-  // keeps a copy for once the row has aged out.
-  readUuids String[]  @default([])
+  // keeps a copy for once the row has aged out. A pass's create states it
+  // (empty until the pass gathers); a row whose writer did not (one from
+  // before this column, or written by a release without it during a rollout)
+  // holds "*": it may have read anything, and any hard forget in its scope
+  // reaches it (backend/data/dream_pass_models.UNKNOWN_READS).
+  readUuids String[]  @default(["*"])
 
   createdAt   DateTime  @default(now())
   startedAt   DateTime?

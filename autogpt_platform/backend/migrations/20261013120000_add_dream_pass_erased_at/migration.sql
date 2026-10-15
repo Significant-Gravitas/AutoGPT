@@ -10,13 +10,22 @@
 -- written blanked, and carries its pass's readUuids into its session's
 -- metadata, where a forget finds it once the pass's row has aged out
 -- (backend/copilot/db.py, add_dream_narrative).
+-- Nothing recorded what a pass from before this migration read, nor what a
+-- dream session from before it was written from. So every row that exists
+-- when it runs reads "*" in readUuids, as does a row a release without the
+-- column writes while it rolls out: it may have read anything, and any hard
+-- forget in its scope marks it. Its narrative's session takes the "*" with
+-- the rest of its read set, and a hard forget blanks every narrative of its
+-- scope whose session holds "*" or no read set at all (blank_dream_narratives).
+-- A pass this release creates states its read set (empty until it gathers),
+-- which never holds "*".
 -- A nullable column and an array with a constant default on an existing
 -- table: no row is rewritten.
 -- Prisma does not track functions, so the two below cause no drift.
 
 -- AlterTable
 ALTER TABLE "DreamPass" ADD COLUMN     "erasedAt" TIMESTAMP(3),
-ADD COLUMN     "readUuids" TEXT[] DEFAULT ARRAY[]::TEXT[];
+ADD COLUMN     "readUuids" TEXT[] DEFAULT ARRAY['*']::TEXT[];
 
 -- CreateFunction
 -- value, with every string held under one of fields, at any depth, replaced

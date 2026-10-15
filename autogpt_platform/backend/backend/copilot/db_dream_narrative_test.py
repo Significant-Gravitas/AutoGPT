@@ -1,9 +1,11 @@
 """The narrative a dream opens its session with, against a real database.
 ``blank_dream_narratives``: a hard forget blanks it (``dream/forget_copies.py``)
-for the user's passes it names, or whose pass read a uuid it reached (the
-session's copy of the read set, which outlives the pass's row), and nothing
-else: not the user's chat with the narrative, another pass's, another user's
-or an ordinary chat. ``add_dream_narrative``: written only into the pass's
+for the user's passes it names, whose pass read a uuid it reached (the
+session's copy of the read set, which outlives the pass's row), or, in the
+forget's scope only, whose session has no record of what its pass read (no
+read set, or one holding ``UNKNOWN_READS``), and nothing else: not the
+user's chat with the narrative, another pass's, another scope's, another
+user's or an ordinary chat. ``add_dream_narrative``: written only into the pass's
 own session and only while its row is there, blank once the pass is marked,
 in one statement holding the pass's row, so a mark landing on either side of
 the write leaves no narrative behind (the review's cancelled-apply race)."""
@@ -17,9 +19,10 @@ from datetime import datetime, timezone
 
 import pytest
 from prisma.enums import DreamPassRoute, DreamPassTrigger
-from prisma.models import ChatMessage, ChatSession, DreamPass, User
+from prisma.models import ChatMessage, ChatSession, DreamPass, Expert, User
 
 from backend.data import db
+from backend.data.dream_pass_models import UNKNOWN_READS
 from backend.util.json import SafeJson
 
 from . import db as chat
@@ -59,11 +62,18 @@ async def make_user() -> AsyncIterator[Callable[[], Awaitable[str]]]:
     await User.prisma().delete_many(where={"id": {"in": created}})
 
 
-async def _session(user_id: str, metadata: dict[str, object]) -> str:
-    """A session that opens with ``_NARRATIVE``, then the user's reply and the
+async def _session(
+    user_id: str, metadata: dict[str, object], expert_id: str | None = None
+) -> str:
+    """A session of the user's scope of *expert_id* (the account's when
+    ``None``) that opens with ``_NARRATIVE``, then the user's reply and the
     assistant's answer, which repeats it."""
     session = await ChatSession.prisma().create(
-        data={"userId": user_id, "metadata": SafeJson(metadata)}
+        data={
+            "userId": user_id,
+            "metadata": SafeJson(metadata),
+            **({"expertId": expert_id} if expert_id else {}),
+        }
     )
     for sequence, (role, content) in enumerate(
         [
@@ -92,12 +102,15 @@ async def _contents(session_id: str) -> list[str | None]:
 
 async def test_only_the_named_passes_narratives_are_blanked(make_user):
     owner, stranger = await make_user(), await make_user()
-    named = await _session(owner, {"kind": "dream", "dream_pass_id": "p1"})
-    unnamed = await _session(owner, {"kind": "dream", "dream_pass_id": "p2"})
+    read = {DREAM_READ_UUIDS: ["u9"]}
+    named = await _session(owner, {"kind": "dream", "dream_pass_id": "p1", **read})
+    unnamed = await _session(owner, {"kind": "dream", "dream_pass_id": "p2", **read})
     ordinary = await _session(owner, {"kind": "normal", "dream_pass_id": "p1"})
     theirs = await _session(stranger, {"kind": "dream", "dream_pass_id": "p1"})
 
-    blanked = await blank_dream_narratives(owner, ["p1", "p-gone"], [], "[forgotten]")
+    blanked = await blank_dream_narratives(
+        owner, None, ["p1", "p-gone"], [], "[forgotten]"
+    )
 
     assert blanked == 1
     assert await _contents(named) == ["[forgotten]", "Does she?", _NARRATIVE]
@@ -107,9 +120,10 @@ async def test_only_the_named_passes_narratives_are_blanked(make_user):
 
 async def test_no_passes_and_nothing_reached_writes_nothing(make_user):
     owner = await make_user()
-    await _session(owner, {"kind": "dream", "dream_pass_id": "p1"})
+    legacy = await _session(owner, {"kind": "dream", "dream_pass_id": "p1"})
 
-    assert await blank_dream_narratives(owner, [], [], "[forgotten]") == 0
+    assert await blank_dream_narratives(owner, None, [], [], "[forgotten]") == 0
+    assert await _contents(legacy) == [_NARRATIVE, "Does she?", _NARRATIVE]
 
 
 async def test_a_narrative_whose_pass_read_a_reached_uuid_is_blanked_once(make_user):
@@ -127,12 +141,97 @@ async def test_a_narrative_whose_pass_read_a_reached_uuid_is_blanked_once(make_u
         stranger, {"kind": "dream", "dream_pass_id": "p3", DREAM_READ_UUIDS: ["u2"]}
     )
 
-    assert await blank_dream_narratives(owner, [], ["u2"], "[forgotten]") == 1
-    assert await blank_dream_narratives(owner, [], ["u2"], "[forgotten]") == 0
+    assert await blank_dream_narratives(owner, None, [], ["u2"], "[forgotten]") == 1
+    assert await blank_dream_narratives(owner, None, [], ["u2"], "[forgotten]") == 0
 
     assert await _contents(read) == ["[forgotten]", "Does she?", _NARRATIVE]
     for session_id in (unread, theirs):
         assert await _contents(session_id) == [_NARRATIVE, "Does she?", _NARRATIVE]
+
+
+async def _expert(owner: str) -> str:
+    expert = await Expert.prisma().create(
+        data={
+            "ownerUserId": owner,
+            "name": "Scout",
+            "role": "Research",
+            "identity": "Finds things out.",
+        }
+    )
+    return expert.id
+
+
+@pytest.mark.parametrize("forget_in", ["account", "expert"])
+async def test_a_narrative_of_unknown_provenance_goes_with_any_forget_in_its_scope(
+    make_user, forget_in: str
+):
+    """A session written before sessions kept their pass's read set, or
+    whose read set holds ``UNKNOWN_READS`` (its pass's, from before read
+    sets were recorded), may rest on anything its pass read: any hard forget
+    in its scope blanks it, whatever it reached. One whose read set is known
+    and holds none of it is left, and so is every session of another scope,
+    of another user, or that is not a dream."""
+    owner, stranger = await make_user(), await make_user()
+    expert = await _expert(owner)
+    scope, other = (None, expert) if forget_in == "account" else (expert, None)
+
+    def dream(read: object = None) -> dict[str, object]:
+        known = {} if read is None else {DREAM_READ_UUIDS: read}
+        return {"kind": "dream", "dream_pass_id": str(uuid.uuid4()), **known}
+
+    no_read_set = await _session(owner, dream(), scope)
+    marked = await _session(owner, dream([UNKNOWN_READS, "u1"]), scope)
+    unreadable = await _session(owner, dream("u1"), scope)
+    known = await _session(owner, dream(["u3"]), scope)
+    other_scopes = await _session(owner, dream(), other)
+    other_scopes_marked = await _session(owner, dream([UNKNOWN_READS]), other)
+    theirs = await _session(stranger, dream())
+    ordinary = await _session(owner, {"kind": "normal"}, scope)
+
+    blanked = await blank_dream_narratives(owner, scope, [], ["u2"], "[forgotten]")
+
+    assert blanked == 3
+    for session_id in (no_read_set, marked, unreadable):
+        assert await _contents(session_id) == ["[forgotten]", "Does she?", _NARRATIVE]
+    for session_id in (known, other_scopes, other_scopes_marked, theirs, ordinary):
+        assert await _contents(session_id) == [_NARRATIVE, "Does she?", _NARRATIVE]
+    assert await blank_dream_narratives(owner, scope, [], ["u2"], "[forgotten]") == 0
+
+
+async def test_a_pass_from_before_read_sets_marks_its_narrative_as_unknown(make_user):
+    """A pass whose writer did not state its read set (one in flight across
+    the deploy) reads ``UNKNOWN_READS``; its narrative's session takes it,
+    and an unrelated forget in its scope blanks the narrative once the
+    pass's row is gone."""
+    owner = await make_user()
+    pass_id = str(uuid.uuid4())
+    await DreamPass.prisma().create(
+        data={
+            "id": pass_id,
+            "userId": owner,
+            "scopeKey": owner,
+            "route": DreamPassRoute.SYNC,
+            "trigger": DreamPassTrigger.CRON,
+        }
+    )
+    session = await ChatSession.prisma().create(
+        data={
+            "userId": owner,
+            "metadata": SafeJson({"kind": "dream", "dream_pass_id": pass_id}),
+        }
+    )
+    assert await add_dream_narrative(session.id, pass_id, _NARRATIVE, "[forgotten]")
+    stored = await ChatSession.prisma().find_unique(where={"id": session.id})
+    assert stored is not None
+    assert dict(stored.metadata)[DREAM_READ_UUIDS] == [UNKNOWN_READS]
+    await DreamPass.prisma().delete(where={"id": pass_id})
+
+    blanked = await blank_dream_narratives(
+        owner, None, [], ["unrelated"], "[forgotten]"
+    )
+
+    assert blanked == 1
+    assert await _contents(session.id) == ["[forgotten]"]
 
 
 async def _dream_session(
@@ -247,7 +346,8 @@ async def test_the_read_set_outlives_the_sessions_reads_and_merges(make_user):
     loaded = await get_chat_session_metadata(session_id)
 
     assert loaded is not None and loaded.metadata.kind == "dream"
-    assert await blank_dream_narratives(owner, [], ["fact-1"], "[forgotten]") == 1
+    blanked = await blank_dream_narratives(owner, None, [], ["fact-1"], "[forgotten]")
+    assert blanked == 1
     assert await _contents(session_id) == ["[forgotten]"]
 
 
@@ -304,7 +404,7 @@ async def test_a_write_that_lands_first_is_found_by_the_forgets_blank(make_user)
             }
         )
     await asyncio.wait_for(mark, 10)
-    await blank_dream_narratives(owner, [pass_id], [], "[forgotten]")
+    await blank_dream_narratives(owner, None, [pass_id], [], "[forgotten]")
 
     assert await _contents(session_id) == ["[forgotten]"]
 
@@ -342,11 +442,11 @@ async def test_the_blank_over_3000_dream_sessions_is_in_time(make_user):
     unread = [str(uuid.uuid4()) for _ in range(1000)]
 
     started = time.monotonic()
-    assert await blank_dream_narratives(owner, [], unread, "[forgotten]") == 0
+    assert await blank_dream_narratives(owner, None, [], unread, "[forgotten]") == 0
     selection = time.monotonic() - started
     started = time.monotonic()
     blanked = await blank_dream_narratives(
-        owner, [], [*unread[1:], shared], "[forgotten]"
+        owner, None, [], [*unread[1:], shared], "[forgotten]"
     )
     every = time.monotonic() - started
 

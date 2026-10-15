@@ -27,6 +27,7 @@ from backend.copilot.graphiti.recall import FORGOTTEN_FACT
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.dream_pass_models import (
     ERASED_TEXT,
+    UNKNOWN_READS,
     DreamPassApplied,
     DreamPassDraft,
     DreamPassOperations,
@@ -170,7 +171,7 @@ async def test_a_closed_pass_that_read_what_was_forgotten_is_blanked(
     [demoted] = snapshot.demotions
     assert (demoted.edge_uuid, demoted.new_status) == ("fact-other", "superseded")
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
+        "u1", None, ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
 
@@ -189,6 +190,44 @@ async def test_a_summary_citing_nothing_is_blanked_by_what_its_pass_read(
 
 
 @pytest.mark.asyncio
+async def test_a_pass_from_before_read_sets_goes_with_any_forget_in_its_scope(
+    fake_dream_db: FakeDreamDb, chat: MagicMock
+) -> None:
+    """The round-3 review's legacy pass: what it read is unknown, so a forget
+    of anything in its scope marks it; another scope's is left."""
+    _seed(fake_dream_db, "p1", cites="fact-unrelated", read_uuids=[UNKNOWN_READS])
+    expert = MemoryScope.for_expert("u1", "e1")
+    _seed(
+        fake_dream_db,
+        "p2",
+        cites="fact-unrelated",
+        read_uuids=[UNKNOWN_READS],
+        scope=expert,
+    )
+
+    marked = await blank_dream_copies(_SCOPE, reached={_FORGOTTEN}, dream_writes=[])
+
+    assert marked == ["p1"]
+    assert not any(_SENTENCE in text for text in _row_text(fake_dream_db, "p1"))
+    assert any(_SENTENCE in text for text in _row_text(fake_dream_db, "p2"))
+
+
+@pytest.mark.asyncio
+async def test_the_narratives_blank_is_held_to_the_forgets_scope(
+    fake_dream_db: FakeDreamDb, chat: MagicMock
+) -> None:
+    """An expert's forget blanks the narratives of unknown provenance of that
+    expert's scope only (``copilot/db.blank_dream_narratives``)."""
+    expert = MemoryScope.for_expert("u1", "e1")
+
+    await blank_dream_copies(expert, reached={_FORGOTTEN}, dream_writes=[])
+
+    chat.blank_dream_narratives.assert_awaited_once_with(
+        "u1", "e1", [], [_FORGOTTEN], FORGOTTEN_FACT
+    )
+
+
+@pytest.mark.asyncio
 async def test_a_pass_whose_write_was_erased_is_blanked_by_its_name(
     fake_dream_db: FakeDreamDb, chat: MagicMock
 ) -> None:
@@ -204,7 +243,7 @@ async def test_a_pass_whose_write_was_erased_is_blanked_by_its_name(
 
     assert not any(_SENTENCE in text for text in _row_text(fake_dream_db, "p1"))
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
+        "u1", None, ["p1"], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
 
@@ -224,7 +263,7 @@ async def test_a_pass_the_forget_did_not_reach_is_left_alone(
     assert {p: _row_text(fake_dream_db, p) for p in ("p1", "p2")} == before
     assert all(fake_dream_db.record(p).erased_at is None for p in ("p1", "p2"))
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", [], [_FORGOTTEN], FORGOTTEN_FACT
+        "u1", None, [], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
 
@@ -251,6 +290,7 @@ async def test_a_pass_marked_before_is_returned_to_every_later_forget(
     assert len(fake_dream_db.writes) == written
     assert chat.blank_dream_narratives.await_args.args == (
         "u1",
+        None,
         ["p1"],
         ["fact-other"],
         FORGOTTEN_FACT,
@@ -290,7 +330,11 @@ async def test_every_running_pass_of_the_scope_is_marked_and_blanked_as_it_ends(
     assert _row_text(fake_dream_db, "p-cites") == before
     assert not any(_SENTENCE in t for t in _row_text(fake_dream_db, "p-closed"))
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p-cites", "p-closed", "p-names-nothing"], [_FORGOTTEN], FORGOTTEN_FACT
+        "u1",
+        None,
+        ["p-cites", "p-closed", "p-names-nothing"],
+        [_FORGOTTEN],
+        FORGOTTEN_FACT,
     )
 
     await record_sync_outcome(
@@ -458,7 +502,7 @@ async def test_a_pass_whose_row_aged_out_keeps_only_its_narrative_to_blank(
     )
 
     chat.blank_dream_narratives.assert_awaited_once_with(
-        "u1", ["p-gone"], [_FORGOTTEN], FORGOTTEN_FACT
+        "u1", None, ["p-gone"], [_FORGOTTEN], FORGOTTEN_FACT
     )
 
 
