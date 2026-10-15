@@ -445,12 +445,13 @@ class TestPhaseChaining:
         mark_complete = AsyncMock()
         persist = AsyncMock()
         release_lock = AsyncMock()
-        with patch("backend.copilot.dream.apply.apply_operations", apply), patch(
-            "backend.copilot.dream.job_status.mark_complete", mark_complete
-        ), patch(
-            "backend.copilot.inference.record.persist_and_record_usage", persist
-        ), patch(
-            "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+        with (
+            patch("backend.copilot.dream.apply.apply_operations", apply),
+            patch("backend.copilot.dream.job_status.mark_complete", mark_complete),
+            patch("backend.copilot.inference.record.persist_and_record_usage", persist),
+            patch(
+                "backend.copilot.dream.batch_callbacks.release_dream_lock", release_lock
+            ),
         ):
             await handle_dream_batch_result(
                 _entry(phase="sanitize"),
@@ -869,10 +870,10 @@ class TestErrorPaths:
         submit_phase = AsyncMock()
         mark_errored = AsyncMock()
         persist = AsyncMock()
-        with patch(
-            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
-        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
-            "backend.copilot.inference.record.persist_and_record_usage", persist
+        with (
+            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
+            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
+            patch("backend.copilot.inference.record.persist_and_record_usage", persist),
         ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
