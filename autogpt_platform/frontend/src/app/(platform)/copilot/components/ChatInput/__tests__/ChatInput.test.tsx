@@ -281,36 +281,52 @@ describe("ChatInput composer row", () => {
   });
 });
 
-describe("ChatInput token devtool badge", () => {
-  it("renders the badge while the brain-dump tray is disabled", () => {
-    // The tray is brain-dump-only; the badge must not depend on that flag.
+describe("ChatInput token devtool entry", () => {
+  function openPlusMenu() {
+    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
+      button: 0,
+    });
+  }
+
+  it("lists Token usage in the + menu while the brain-dump tray is disabled", async () => {
+    // The tray is brain-dump-only; the entry must not depend on that flag.
     mockFlagValue = false;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+    openPlusMenu();
+    expect(
+      await screen.findByRole("menuitem", { name: "Token usage" }),
+    ).toBeDefined();
   });
 
-  it("renders the badge inside the tray when brain dump is enabled", () => {
+  it("lists Token usage in the + menu when brain dump is enabled", async () => {
     mockFlagValue = true;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+    openPlusMenu();
+    expect(
+      await screen.findByRole("menuitem", { name: "Token usage" }),
+    ).toBeDefined();
   });
 
-  it("stays hidden when the devtool gate is off", () => {
+  it("stays out of the menu when the devtool gate is off", async () => {
     mockTokenDevtoolEnabled = false;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+    openPlusMenu();
+    await screen.findByRole("menuitem", { name: /attach file/i });
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 
-  it("stays hidden before a session exists", () => {
+  it("stays out of the menu before a session exists", async () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
-    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+    openPlusMenu();
+    await screen.findByRole("menuitem", { name: /attach file/i });
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 });
 
