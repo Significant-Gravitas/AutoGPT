@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.copilot.context import get_current_permissions
 from backend.data.db_accessors import platform_linking_db
+from backend.util.clients import get_copilot_chat_bridge_client
 
 from .chat_platform import _any_chat_platform_configured
 from .models import ErrorResponse

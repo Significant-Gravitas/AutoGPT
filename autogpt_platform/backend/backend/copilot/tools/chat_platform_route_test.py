@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.bot.adapters.base import ChannelInfo
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.ranking import ConnectionState
 from backend.copilot.capabilities.registry import build_entries
@@ -41,10 +42,20 @@ def _block(name: str) -> MagicMock:
     return block
 
 
-def _links(*platforms: str, dm: tuple[str, ...] = ()) -> MagicMock:
+# The bot is in two Discord servers; the user linked only "Team".
+_GENERAL = ChannelInfo(id="111", name="general", server_id="1", server_name="Team")
+_DISCORD = {"channel_name": "#general", "message_content": "test"}
+
+
+def _links(
+    *platforms: str, dm: tuple[str, ...] = (), server_id: str = "1"
+) -> MagicMock:
     db = MagicMock()
     db.list_server_links = AsyncMock(
-        return_value=[SimpleNamespace(platform=p) for p in platforms]
+        return_value=[
+            SimpleNamespace(platform=p, platform_server_id=server_id)
+            for p in platforms
+        ]
     )
     db.list_user_links = AsyncMock(
         return_value=[SimpleNamespace(platform=p) for p in dm]
@@ -61,7 +72,16 @@ async def _prepare(
     permissions: CopilotPermissions | None = None,
     pins: dict | None = None,
     grant_hint: str = "",
+    input_data: dict | None = None,
+    channels: list[ChannelInfo] | Exception | None = None,
 ):
+    bridge = MagicMock()
+    if isinstance(channels, Exception):
+        bridge.list_channels = AsyncMock(side_effect=channels)
+    else:
+        bridge.list_channels = AsyncMock(
+            return_value=[_GENERAL] if channels is None else channels
+        )
     session = MagicMock()
     session.session_id = _SESSION
     session.expert_id = None
@@ -111,10 +131,11 @@ async def _prepare(
             "backend.copilot.tools.helpers.get_current_permissions",
             return_value=permissions,
         ),
+        patch(f"{_ROUTE}.get_copilot_chat_bridge_client", return_value=bridge),
     ):
         return await prepare_block_for_execution(
             block_id="blk-send",
-            input_data={"message_content": "test"},
+            input_data=_DISCORD if input_data is None else input_data,
             user_id=_USER,
             session=session,
             session_id=_SESSION,
@@ -139,6 +160,7 @@ async def test_a_linked_platform_sends_the_turn_to_post_to_chat_platform():
     assert result.error == "use_post_to_chat_platform"
     assert "tool:post_to_chat_platform" in result.message
     assert "platform='discord'" in result.message
+    assert "channel='#general'" in result.message
 
 
 @pytest.mark.asyncio
@@ -178,7 +200,7 @@ async def test_no_link_keeps_the_card_and_names_the_bot_as_the_other_way():
     result = await _prepare("SendDiscordMessageBlock", _links("SLACK"))
 
     assert isinstance(result, SetupRequirementsResponse)
-    assert "links Discord to the AutoGPT bot" in result.message
+    assert "links the Discord server that channel is in" in result.message
     assert "tool:post_to_chat_platform" in result.message
 
 
@@ -188,7 +210,7 @@ async def test_no_link_on_a_scheduled_turn_still_skips_and_names_the_bot():
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "missing_credentials"
-    assert "links Discord to the AutoGPT bot" in result.message
+    assert "links the Discord server that channel is in" in result.message
 
 
 @pytest.mark.asyncio
@@ -312,3 +334,224 @@ async def test_an_ungranted_discord_credential_keeps_the_grant_card():
     assert isinstance(result, SetupRequirementsResponse)
     assert hint in result.message
     links.list_server_links.assert_not_called()
+
+
+# The redirect says the user never needs a token, so it may fire only where
+# the bot can post what the block was asked to post. Anywhere else the card
+# stays, or the turn is left with no way to do the task.
+
+
+@pytest.mark.asyncio
+async def test_a_channel_in_a_server_the_user_did_not_link_keeps_the_card():
+    """Server "Team" is linked; channel 222 is in another server the bot is
+    in. The tool would answer channel_not_found."""
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        input_data={"channel_name": "222", "message_content": "test"},
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "links the Discord server that channel is in" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_channel_name_in_another_server_keeps_the_card():
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        input_data={
+            "channel_name": "general",
+            "server_name": "Other",
+            "message_content": "test",
+        },
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_a_linked_channel_by_id_and_server_goes_to_the_tool():
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        input_data={
+            "channel_name": "111",
+            "server_name": "team",
+            "message_content": "test",
+        },
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "use_post_to_chat_platform"
+    assert "channel='#general'" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_name_two_linked_channels_share_is_posted_by_id():
+    """The tool takes no server: an ambiguous name must go over as the ID."""
+    other = ChannelInfo(id="333", name="general", server_id="3", server_name="Ops")
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        input_data={
+            "channel_name": "general",
+            "server_name": "Ops",
+            "message_content": "test",
+        },
+        channels=[_GENERAL, other],
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert "channel='333'" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_cannot_list_channels_keeps_the_card():
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        channels=RuntimeError("bridge down"),
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_a_private_discord_thread_keeps_the_card_and_no_bot_hint():
+    """The bot opens public threads only."""
+    result = await _prepare(
+        "CreateDiscordThreadBlock",
+        _links("DISCORD"),
+        input_data={
+            "channel_name": "#general",
+            "thread_name": "Standup",
+            "is_private": True,
+        },
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_public_discord_thread_goes_to_the_tool_as_a_thread():
+    result = await _prepare(
+        "CreateDiscordThreadBlock",
+        _links("DISCORD"),
+        input_data={"channel_name": "#general", "thread_name": "Standup"},
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "use_post_to_chat_platform"
+    assert "mode='thread'" in result.message
+
+
+_SLACK_GENERAL = ChannelInfo(
+    id="T1|C0GENERAL1|", name="general", server_id="T1", server_name="Acme"
+)
+
+
+@pytest.mark.asyncio
+async def test_a_slack_dm_to_another_member_keeps_the_card_and_no_bot_hint():
+    """The bot DMs only the user, never another member."""
+    result = await _prepare(
+        "SendSlackMessageBlock",
+        _links("SLACK", server_id="T1"),
+        input_data={"channel": "U0MEMBER01", "text": "hi"},
+        channels=[_SLACK_GENERAL],
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_slack_reply_into_a_thread_keeps_the_card_and_no_bot_hint():
+    """The tool cannot reply into an existing thread."""
+    result = await _prepare(
+        "SendSlackMessageBlock",
+        _links("SLACK", server_id="T1"),
+        input_data={"channel": "#general", "text": "hi", "thread_ts": "171.5"},
+        channels=[_SLACK_GENERAL],
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_linked_slack_channel_by_id_goes_to_the_tool_by_name():
+    result = await _prepare(
+        "SendSlackMessageBlock",
+        _links("SLACK", server_id="T1"),
+        input_data={"channel": "C0GENERAL1", "text": "hi"},
+        channels=[_SLACK_GENERAL],
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "use_post_to_chat_platform"
+    assert "channel='#general'" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_telegram_chat_that_is_not_a_linked_group_keeps_the_card():
+    result = await _prepare(
+        "SendTelegramMessageBlock",
+        _links("TELEGRAM", server_id="-100"),
+        input_data={"chat_id": -200, "text": "hi"},
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "links the Telegram group" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_telegram_private_chat_keeps_the_card_and_no_bot_hint():
+    result = await _prepare(
+        "SendTelegramMessageBlock",
+        _links("TELEGRAM", server_id="-100"),
+        input_data={"chat_id": 4242, "text": "hi"},
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_linked_telegram_group_goes_to_the_tool():
+    links = _links("TELEGRAM", server_id="-100")
+    result = await _prepare(
+        "SendTelegramMessageBlock",
+        links,
+        input_data={"chat_id": -100, "text": "hi"},
+        channels=RuntimeError("Telegram cannot list chats"),
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert result.error == "use_post_to_chat_platform"
+    assert "channel='-100'" in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_telegram_reply_keeps_the_card():
+    result = await _prepare(
+        "SendTelegramMessageBlock",
+        _links("TELEGRAM", server_id="-100"),
+        input_data={"chat_id": -100, "text": "hi", "reply_to_message_id": 7},
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+    assert "post_to_chat_platform" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_no_target_yet_keeps_the_card():
+    """With no channel the target can't be known, so no redirect."""
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links("DISCORD"),
+        input_data={"message_content": "test"},
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
