@@ -30,9 +30,11 @@ pnpm lint
 pnpm types
 ```
 
-`.github/workflows/platform-native-ios-ci.yml` compiles both SwiftUI configurations on the standard free `macos-26` runner with Xcode 26.6. It runs the launch journey against Release, then native UI-protocol interaction fixtures against Debug. No dependency or DerivedData caches are restored. The entire job, including setup, compilation, journeys and artifact upload, keeps a ten-minute timeout. The independent Linux lane checks the reference TypeScript client.
+`.github/workflows/platform-native-ios-ci.yml` compiles both SwiftUI configurations on the standard free `macos-26-intel` runner with Xcode 26.6. CI builds universal arm64/x86_64 simulator apps so the Release artifact also works on Apple Silicon; local builds default to the host architecture. It runs the launch journey against Release, then native UI-protocol interaction fixtures against Debug. No dependency or DerivedData caches are restored. The entire job, including setup, compilation, journeys and artifact upload, keeps a ten-minute timeout. The independent Linux lane checks the reference TypeScript client.
 
 Successful runs retain the Release `AutoGPT-simulator.zip`, compiler/resource logs, JUnit reports and screenshots. Debug fixture routes are excluded from Release. Local compilation and journeys do not establish the free-runner timing gate; its first cold pass and subsequent measurement remain pending. The interaction fixtures do not certify production-server chat or provider integrations.
+
+The [first SwiftUI ARM run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38559995734/job/115838410189) compiled Release in 49.47s and Debug in 21.18s under Xcode 26.6. Simulator preparation took 6m03s, including 5m39s in boot; most boot time was spent in Apple's data migration. The job exceeded the ten-minute limit during the Release launch journey and skipped the Debug fixtures. Including cancellation and cleanup, the failed job lasted 12m37s. Its final process snapshot had 315 runnable processes on three CPUs; this suggests resource contention but does not establish its cause. The next measurement uses the standard Intel runner's four CPUs and 14 GB RAM, with resource sampling through boot and both journeys plus swap snapshots. The full cold/warm gate remains open until successful measured runs.
 
 ### Retired React Native build measurements
 

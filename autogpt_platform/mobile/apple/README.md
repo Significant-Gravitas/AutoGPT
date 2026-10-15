@@ -24,7 +24,7 @@ Local Mac, Xcode 27.0 and iOS 27, 2026-10-12:
 - The native server selector and nonlocal HTTP rejection journey passed in 22.6 seconds.
 - The native interaction fixture journey passed in 71 seconds, covering secure storage, long streaming, question answers, connection edit rejection and isolated HTML. The keyboard and switch interactions were reproduced failing before correction.
 - Email sign-in, a streamed Otto reply, hard relaunch and restored history passed through the production Better Auth/API/executor/persistence stack in an isolated local workspace. A separate API check verified exactly one user message and one assistant reply. Only the external model was scripted.
-- The SwiftUI workflow now builds the committed Xcode project and retains both launch and interaction reports. The first free-runner result, Xcode 26.6 compatibility, cold/warm timing gate and iOS 17 runtime remain unverified.
+- The first standard-runner SwiftUI job compiled Release and Debug under Xcode 26.6, then exceeded ten minutes during the Release launch journey after a 5m39s simulator boot. Debug interactions were skipped. The workflow now tries the standard Intel runner with universal simulator builds and boot/test resource sampling; the full cold/warm timing gate and iOS 17 runtime remain unverified. See the [build evidence](../README.md#checks-and-build-evidence).
 
 Revalidated on October 14 with Xcode 27 / iPhone 17: Debug and Release compile, Release onboarding and the production-server email/chat/relaunch journey pass, including the separate persisted-row assertions. The current Debug interaction journey also passes after correcting its Maestro swipe command. Manual large-text checking verifies that the introduction remains scrollable above the keyboard. These checks do not close the full accessibility, provider or standard-runner gates.
 
@@ -76,7 +76,7 @@ Run in the shared T3 Device simulator:
 
 ## Gaps and concerns
 
-- **Not yet proven:** the full interaction/accessibility/provider gate, free-runner timing, Xcode 26.6 compilation and the iOS 17 runtime. Short conversations align at the top on iOS 18+; iOS 17 retains the bottom alignment fallback.
+- **Not yet proven:** the full interaction/accessibility/provider gate, free-runner timing and the iOS 17 runtime. Xcode 26.6 Release and Debug compilation passed on the standard ARM runner. Short conversations align at the top on iOS 18+; iOS 17 retains the bottom alignment fallback.
 - **Keychain on CI:** the Debug native journey writes, reads and deletes a temporary credential through the real Keychain APIs. Its first run on the free runner remains pending; the local production-server sign-in also proved persistence across app termination.
 - **Question answers** reuse the ordinary send path. Without a server answer identity and stale-question contract, two devices (or a card reopened elsewhere) can both answer. The client-side guard is only "newest and idle". Draft answers are view state and can be lost if the card scrolls far offscreen.
 - **Connections:** no in-place update or rotation route that preserves credential identity, so editing exists only as fixture coverage. OAuth reconnect is described, not offered.

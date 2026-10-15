@@ -49,11 +49,12 @@ jobs:
 
   ios:
     name: iOS build and launch journey
-    runs-on: macos-26
+    runs-on: macos-26-intel
     timeout-minutes: 10
     env:
       CI: "1"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      NATIVE_SIMULATOR_ARCHS: "arm64 x86_64"
       MAESTRO_VERSION: "2.11.0"
       MAESTRO_CLI_NO_ANALYTICS: "true"
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true"
@@ -86,6 +87,10 @@ jobs:
       - name: Prepare simulator after compilation
         id: simulator
         run: |
+          top -l 0 -s 15 -n 20 -o cpu -F -R -stats pid,command,cpu,mem,threads \
+            > e2e/artifacts/simulator-resources.log &
+          echo "$!" > "$RUNNER_TEMP/native-ios-monitor.pid"
+          sysctl vm.swapusage > e2e/artifacts/swap-before-simulator.txt
           bash scripts/prepare-ios-e2e.sh > e2e/artifacts/device-setup.log 2>&1 \
             || { tail -100 e2e/artifacts/device-setup.log; exit 1; }
 
@@ -112,10 +117,16 @@ jobs:
       - name: Record measurement scope
         if: always()
         run: |
+          if [ -f "$RUNNER_TEMP/native-ios-monitor.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/native-ios-monitor.pid")" 2>/dev/null || true
+          fi
           df -h . | tee e2e/artifacts/disk-after.txt
+          sysctl vm.swapusage > e2e/artifacts/swap-after.txt
+          vm_stat > e2e/artifacts/vm-after.txt
           ps -axo pid,ppid,state,pcpu,rss,comm > e2e/artifacts/processes-after.txt
           {
-            echo 'Standard free macos-26 runner; Xcode 26.6; arm64 simulator.'
+            echo 'Standard free macos-26-intel runner; Xcode 26.6; x86_64 simulator.'
+            echo 'Universal arm64/x86_64 simulator builds retain Apple Silicon artifact compatibility.'
             echo 'SwiftUI and system frameworks; no dependency or DerivedData caches are restored.'
             echo 'Optimized Release launch journey; Debug-only interaction fixtures, excluded from Release.'
             echo 'Compilation finishes before simulator boot; selected runtime matches the SDK.'
