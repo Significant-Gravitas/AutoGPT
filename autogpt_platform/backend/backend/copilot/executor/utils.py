@@ -688,7 +688,13 @@ async def dispatch_turn(
     trace_headers = None if admitted_here and not root else {}
     if envelope is None:
         envelope = await _admitted_turn_envelope(
-            turn_id, session_id, user_id, permissions, spawn, root=root
+            turn_id,
+            session_id,
+            user_id,
+            permissions,
+            spawn,
+            root=root,
+            tainted=from_chat_platform,
         )
     else:
         await readmit_turn(envelope, user_id=user_id)
@@ -821,6 +827,7 @@ async def _admitted_turn_envelope(
     spawn: SpawnRequest | None,
     *,
     root: bool = False,
+    tainted: bool = False,
 ) -> TurnEnvelope:
     """Derive this turn's envelope from the running turn's (a child) or mint
     a root, then admit it against the tree ledger.
@@ -842,12 +849,16 @@ async def _admitted_turn_envelope(
             "This task's context was lost, so its limits cannot be carried "
             "over. Start it again from the top."
         )
+    # *tainted* goes on the envelope itself, not only on the queue entry: an
+    # executor older than the entry's field still runs the turn tainted.
     if spawner is None:
-        envelope = root_envelope(turn_id, session_id=session_id)
+        envelope = root_envelope(turn_id, session_id=session_id, tainted=tainted)
     else:
         envelope = derive_child_envelope(
             spawner, spawn or SpawnRequest(), spawner_permissions=permissions
         )
+        if tainted and not envelope.tainted:
+            envelope = envelope.model_copy(update={"tainted": True})
     await admit_turn(envelope, user_id=user_id)
     return envelope
 

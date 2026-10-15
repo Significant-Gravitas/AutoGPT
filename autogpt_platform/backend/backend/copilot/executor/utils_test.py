@@ -24,6 +24,7 @@ from backend.copilot.executor.utils import (
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
 from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
+from backend.copilot.trial_cost_context import TrialCostContext
 
 
 @pytest.mark.asyncio
@@ -223,6 +224,55 @@ class TestCoPilotLogMetadata:
             base_logger, session_id="s1", user_id=None, turn_id="t1"
         )
         assert log is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("from_chat_platform", [True, False])
+async def test_a_chat_platform_dispatch_queues_a_tainted_envelope(
+    from_chat_platform: bool,
+) -> None:
+    """The envelope carries the taint from dispatch, not only the entry's own
+    field: an executor that predates the field still runs a bot's prompt
+    tainted, in a chat started on the web as much as in the bot's own."""
+    slot = MagicMock(admitted=True)
+
+    @asynccontextmanager
+    async def acquire(*_args, **_kwargs):
+        yield slot
+
+    queue = MagicMock(publish_message=AsyncMock())
+    with (
+        patch.object(utils, "acquire_turn_slot", new=acquire),
+        patch.object(utils, "admit_turn", new=AsyncMock()),
+        patch.object(
+            utils,
+            "capture_cost_context",
+            new=AsyncMock(return_value=TrialCostContext(user_id="u1", trial_id=None)),
+        ),
+        patch(
+            "backend.copilot.model.append_and_save_message",
+            new=AsyncMock(return_value=MagicMock()),
+        ),
+        patch("backend.copilot.tracking.track_user_message", new=MagicMock()),
+        patch("backend.copilot.stream_registry.create_session", new=AsyncMock()),
+        patch(
+            "backend.util.clients.get_async_copilot_queue",
+            new=AsyncMock(return_value=queue),
+        ),
+    ):
+        await utils.schedule_chat_turn(
+            session_id="s1",
+            user_id="u1",
+            message="hi from the bot",
+            from_chat_platform=from_chat_platform,
+        )
+
+    call = queue.publish_message.await_args
+    assert call is not None
+    entry = utils.CoPilotExecutionEntry.model_validate_json(call.kwargs["message"])
+    assert entry.envelope is not None
+    assert entry.envelope.tainted is from_chat_platform
+    assert entry.from_chat_platform is from_chat_platform
 
 
 @pytest.mark.asyncio
