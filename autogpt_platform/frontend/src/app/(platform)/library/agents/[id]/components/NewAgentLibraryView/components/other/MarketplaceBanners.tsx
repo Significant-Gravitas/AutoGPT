@@ -35,8 +35,8 @@ export function MarketplaceBanners({
                 Update available
               </Text>
               <Text variant="body" className="text-gray-700 dark:text-gray-300">
-                You should update your agent in order to get the latest / best
-                results
+                You should update your workflow in order to get the latest /
+                best results
               </Text>
             </div>
             {onUpdate && (
@@ -47,7 +47,7 @@ export function MarketplaceBanners({
                   disabled={isUpdating}
                   className="bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:hover:bg-neutral-800"
                 >
-                  {isUpdating ? "Updating..." : "Update agent"}
+                  {isUpdating ? "Updating..." : "Update workflow"}
                 </Button>
               </div>
             )}
@@ -71,7 +71,7 @@ export function MarketplaceBanners({
                 Unpublished changes
               </Text>
               <Text variant="body" className="text-gray-700 dark:text-gray-300">
-                You&apos;ve made changes to this agent that aren&apos;t
+                You&apos;ve made changes to this workflow that aren&apos;t
                 published yet. Would you like to publish the latest version?
               </Text>
             </div>

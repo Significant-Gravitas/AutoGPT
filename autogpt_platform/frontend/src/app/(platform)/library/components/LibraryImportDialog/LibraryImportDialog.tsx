@@ -51,7 +51,7 @@ export default function LibraryImportDialog() {
       <Dialog.Content>
         <TabsLine defaultValue="agent">
           <TabsLineList>
-            <TabsLineTrigger value="agent">AutoGPT agent</TabsLineTrigger>
+            <TabsLineTrigger value="agent">AutoGPT workflow</TabsLineTrigger>
             <TabsLineTrigger value="platform">Another platform</TabsLineTrigger>
           </TabsLineList>
 

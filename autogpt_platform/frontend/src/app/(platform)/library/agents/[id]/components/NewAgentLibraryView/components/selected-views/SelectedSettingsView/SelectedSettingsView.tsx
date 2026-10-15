@@ -39,7 +39,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
           >
             <Icon icon={ArrowLeft02Icon} />
           </Button>
-          <Text variant="h2">Agent Settings</Text>
+          <Text variant="h2">Workflow Settings</Text>
         </div>
 
         <div className={`${AGENT_LIBRARY_SECTION_PADDING_X} space-y-6`}>
@@ -53,7 +53,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
                         Human-in-the-loop approval
                       </Text>
                       <Text variant="large" className="mt-1 text-zinc-900">
-                        The agent will pause at human-in-the-loop blocks and
+                        The workflow will pause at human-in-the-loop blocks and
                         wait for your review before continuing
                       </Text>
                     </div>
@@ -74,8 +74,8 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
                         Sensitive action approval
                       </Text>
                       <Text variant="large" className="mt-1 text-zinc-900">
-                        The agent will pause at sensitive action blocks and wait
-                        for your review before continuing
+                        The workflow will pause at sensitive action blocks and
+                        wait for your review before continuing
                       </Text>
                     </div>
                     <Switch
@@ -91,7 +91,7 @@ export function SelectedSettingsView({ agent, onClearSelectedRun }: Props) {
           ) : (
             <div className="rounded-xl border border-zinc-100 bg-white p-6">
               <Text variant="body" className="text-muted-foreground">
-                This agent doesn&apos;t have any configurable settings.
+                This workflow doesn&apos;t have any configurable settings.
               </Text>
             </div>
           )}
