@@ -13,6 +13,7 @@ credential and account limits into the profile the turn runs on.
 """
 
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict
 
@@ -227,3 +228,12 @@ def platform_row(route: PlatformRoute) -> RouteRow | None:
     if route == "disabled":
         return None
     return ROUTES[route]
+
+
+def is_openrouter_url(url: str) -> bool:
+    """Whether *url* is OpenRouter's own API. Only OpenRouter takes its extra
+    request fields (usage accounting, Broadcast attribution); another server
+    on the OpenRouter route, a proxy or a gateway, rejects fields it does not
+    know, so it gets plain requests."""
+    host = urlparse(url).hostname or ""
+    return host == "openrouter.ai" or host.endswith(".openrouter.ai")
