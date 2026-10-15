@@ -386,7 +386,9 @@ export class TurnRuntime {
 
   /** An answered approval starts the chat's next turn on the server; attach to it. */
   followBackendTurn() {
-    // Like a send, it asks for a turn, so an earlier Stop no longer holds.
+    // Like a send, it asks for a turn, so an earlier Stop no longer holds. A
+    // stopped send's turn may still run; the approval's starts after it ends.
+    if (this.stopped) this.followPending = true;
     this.stopped = false;
     this.suppressAttach = false;
     this.queueDeclined = false;
