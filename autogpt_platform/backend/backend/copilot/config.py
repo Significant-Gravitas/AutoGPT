@@ -23,6 +23,7 @@ from backend.copilot.route_table import (
     LocalAdapter,
     PlatformRoute,
     RouteRow,
+    is_openrouter_url,
     platform_row,
 )
 from backend.util.settings import BehaveAs, Settings
@@ -552,8 +553,11 @@ class ChatConfig(BaseSettings):
 
     @property
     def aux_uses_openrouter(self) -> bool:
-        """Whether side calls go to OpenRouter, which takes its extra fields."""
-        return self.platform_route == "openrouter"
+        """Whether side calls go to OpenRouter itself, which takes its extra
+        fields; another server on the OpenRouter route gets plain requests."""
+        return self.platform_route == "openrouter" and is_openrouter_url(
+            self.openrouter_base_url
+        )
 
     @property
     def aux_provider_label(self) -> str:

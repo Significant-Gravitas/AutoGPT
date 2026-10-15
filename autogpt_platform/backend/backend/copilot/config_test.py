@@ -144,6 +144,16 @@ class TestSideCalls:
         assert cfg.aux_provider_label == "open_router"
         assert cfg.aux_model == "anthropic/claude-haiku-4-5"
 
+    def test_another_server_on_the_openrouter_route_gets_plain_requests(self):
+        """OpenRouter's extra request fields go to OpenRouter only: another
+        OpenRouter-style server (a proxy, a gateway) rejects them."""
+        cfg = ChatConfig(
+            platform_route="openrouter",
+            openrouter_api_key="sk-or",
+            openrouter_base_url="https://gateway.example.test/api",
+        )
+        assert not cfg.aux_uses_openrouter
+
     def test_direct_uses_anthropics_openai_compatible_api(self):
         cfg = ChatConfig(platform_route="direct_anthropic", anthropic_api_key="sk-ant")
         assert cfg.main_client_credentials == (

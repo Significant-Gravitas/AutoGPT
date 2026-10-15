@@ -18,6 +18,7 @@ from backend.copilot.route_profile import (
     platform_profile,
     user_key_profile,
 )
+from backend.copilot.route_table import is_openrouter_url
 from backend.copilot.sdk.env import route_launch_env
 
 
@@ -91,6 +92,39 @@ def test_a_launch_on_a_users_own_openrouter_key_sends_no_broadcast_fields():
     env = route_launch_env(profile)
 
     assert "CLAUDE_CODE_EXTRA_BODY" not in env
+
+
+def test_another_server_on_the_openrouter_route_gets_no_broadcast_fields():
+    """An Anthropic-compatible server behind the OpenRouter route (a proxy,
+    a gateway) rejects body fields it does not know; Broadcast is OpenRouter's
+    own. The trace headers stay: a server ignores headers it does not know."""
+    cfg = ChatConfig(
+        platform_route="openrouter",
+        openrouter_api_key="sk-or-test-key",
+        openrouter_base_url="https://gateway.example.test/api",
+    )
+    profile = platform_profile(cfg, "claude-sonnet-4-6", "env")
+
+    env = route_launch_env(profile, session_id="sess-1", user_id="user-1")
+
+    assert "CLAUDE_CODE_EXTRA_BODY" not in env
+    assert "x-session-id: sess-1" in env["ANTHROPIC_CUSTOM_HEADERS"]
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://openrouter.ai/api", True),
+        ("https://openrouter.ai/api/v1", True),
+        ("https://eu.openrouter.ai/api", True),
+        ("https://gateway.example.test/api", False),
+        ("https://openrouter.ai.example.test/api", False),
+        ("http://localhost:8317", False),
+        ("", False),
+    ],
+)
+def test_only_openrouters_own_host_counts_as_openrouter(url, expected):
+    assert is_openrouter_url(url) is expected
 
 
 def test_direct_anthropic_route_sends_no_broadcast_fields():

@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.config import ChatConfig
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.route_profile import RouteProfile
+from backend.copilot.route_table import is_openrouter_url
 from backend.copilot.sdk.route_credentials import (
     CLAUDE_OAUTH_BLANK,
     LOOPBACK_HOSTS,
@@ -96,9 +97,11 @@ def route_launch_env(
         headers = _trace_headers(session_id, user_id)
         if headers:
             env["ANTHROPIC_CUSTOM_HEADERS"] = headers
-        if session_id or user_id:
+        if (session_id or user_id) and is_openrouter_url(profile.base_url):
             # The chat's launches only: the fields OpenRouter Broadcast
             # attributes a generation by, merged into every request body.
+            # Another server on this route rejects body fields it does not
+            # know, so it gets none.
             env["CLAUDE_CODE_EXTRA_BODY"] = _broadcast_extra_body(session_id, user_id)
     if not profile.row.attribution_header:
         # The CLI's billing-header system block carries per-session values;
