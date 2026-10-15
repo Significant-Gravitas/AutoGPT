@@ -1,5 +1,6 @@
 import type { ExpertIdentityMap } from "@/app/(platform)/copilot/useExpertMap";
 import { Text } from "@/components/atoms/Text/Text";
+import type { ReactNode } from "react";
 import { SCHEDULED, type ScheduleCardData } from "../../helpers";
 import { ScheduleCard } from "../ScheduleCard/ScheduleCard";
 import { StatusIcon } from "../StatusIcon/StatusIcon";
@@ -7,9 +8,11 @@ import { StatusIcon } from "../StatusIcon/StatusIcon";
 interface Props {
   schedules: ScheduleCardData[];
   expertsById: ExpertIdentityMap;
+  /** Rendered above the cards, e.g. the new-schedule card. */
+  leading?: ReactNode;
 }
 
-export function ScheduledColumn({ schedules, expertsById }: Props) {
+export function ScheduledColumn({ schedules, expertsById, leading }: Props) {
   return (
     <section
       aria-label="Scheduled"
@@ -25,6 +28,7 @@ export function ScheduledColumn({ schedules, expertsById }: Props) {
         </Text>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
+        {leading}
         {schedules.map((schedule) => (
           <ScheduleCard
             key={schedule.id}
@@ -34,7 +38,7 @@ export function ScheduledColumn({ schedules, expertsById }: Props) {
             }
           />
         ))}
-        {schedules.length === 0 && (
+        {schedules.length === 0 && !leading && (
           <div className="flex items-center justify-center rounded-lg border border-dashed border-zinc-300 py-8">
             <Text variant="small" tone="muted">
               Nothing scheduled

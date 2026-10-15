@@ -5,7 +5,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AddColumn } from "./components/AddColumn/AddColumn";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
 import { ScheduledColumn } from "./components/ScheduledColumn/ScheduledColumn";
-import { NewTaskCard } from "./components/NewTaskCard/NewTaskCard";
+import { NEW_SCHEDULED_TASK_PROMPT } from "@/components/contextual/guidedPrompts";
+import { ComposerCtaCard } from "./components/ComposerCtaCard/ComposerCtaCard";
 import { DONE, IN_PROGRESS, isDefaultColumn } from "./helpers";
 import { useTaskBoard } from "./useTaskBoard";
 
@@ -45,7 +46,17 @@ export function TaskBoard() {
           <BoardSkeleton />
         ) : (
           <div className="flex items-start gap-3 overflow-x-auto pb-2">
-            <ScheduledColumn schedules={schedules} expertsById={expertsById} />
+            <ScheduledColumn
+              schedules={schedules}
+              expertsById={expertsById}
+              leading={
+                <ComposerCtaCard
+                  title="New schedule"
+                  description="Ask Otto to run something on a schedule"
+                  prompt={NEW_SCHEDULED_TASK_PROMPT}
+                />
+              }
+            />
             {columns.map((column) => (
               <BoardColumn
                 key={column.id}
@@ -68,7 +79,14 @@ export function TaskBoard() {
                     : undefined
                 }
                 isClearing={isClearing}
-                leading={column.id === IN_PROGRESS ? <NewTaskCard /> : null}
+                leading={
+                  column.id === IN_PROGRESS ? (
+                    <ComposerCtaCard
+                      title="New task"
+                      description="Tell Otto or an expert what to do"
+                    />
+                  ) : null
+                }
               />
             ))}
             <AddColumn onAdd={addColumn} />

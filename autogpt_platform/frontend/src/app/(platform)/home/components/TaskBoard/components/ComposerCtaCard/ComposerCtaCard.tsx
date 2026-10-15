@@ -1,13 +1,24 @@
 import { HOME_COMPOSER_ID } from "@/app/(platform)/copilot/components/EmptySession/helpers";
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { Add01Icon } from "@hugeicons/core-free-icons";
 
-export function NewTaskCard() {
+interface Props {
+  title: string;
+  description: string;
+  /** Drafted into the Home composer; without it the composer just gets focus. */
+  prompt?: string;
+}
+
+export function ComposerCtaCard({ title, description, prompt }: Props) {
+  const setInitialPrompt = useCopilotUIStore((s) => s.setInitialPrompt);
+
   function handleClick() {
     const composer = document.getElementById(HOME_COMPOSER_ID);
     composer?.scrollIntoView({ behavior: "smooth", block: "center" });
-    composer?.focus({ preventScroll: true });
+    if (prompt) setInitialPrompt(prompt);
+    else composer?.focus({ preventScroll: true });
   }
 
   return (
@@ -21,10 +32,10 @@ export function NewTaskCard() {
       </span>
       <span className="min-w-0">
         <Text variant="body-medium" tone="primary" as="span" className="block">
-          New task
+          {title}
         </Text>
         <Text variant="small" tone="muted" as="span" className="block truncate">
-          Tell Otto or an expert what to do
+          {description}
         </Text>
       </span>
     </button>
