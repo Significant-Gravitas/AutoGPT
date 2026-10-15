@@ -47,6 +47,7 @@ from .recall_integration_fixtures import (
     rows,
     stop_ingestion_workers,
 )
+from .recall_marker_fixtures import saves_facts
 from .scope import MemoryScope
 
 _MARKERS = f"MATCH (m:{MARKER_LABEL}) RETURN count(m) AS c"
@@ -203,8 +204,7 @@ def _forget_while_saving(
     waited: list[bool] = []
 
     async def run(session: FalkorDriverSession, query: Any, **params: Any) -> Any:
-        text = query if isinstance(query, str) else " ".join(q for q, _ in query)
-        if not started and "SET r = edge" in text:
+        if not started and saves_facts(query):
             started.append(asyncio.ensure_future(retract(scope, [flour])))
             await asyncio.sleep(0.3)
             waited.append(not started[0].done())

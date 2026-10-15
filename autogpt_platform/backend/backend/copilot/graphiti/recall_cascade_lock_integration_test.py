@@ -50,6 +50,7 @@ from .recall_integration_fixtures import (
     patch_recall_boundaries,
     stop_ingestion_workers,
 )
+from .recall_marker_fixtures import saves_facts
 
 
 @pytest.fixture(autouse=True)
@@ -81,8 +82,7 @@ def _forget_while_saving(
     waited: list[bool] = []
 
     async def run(session: FalkorDriverSession, query: Any, **params: Any) -> Any:
-        text = query if isinstance(query, str) else " ".join(q for q, _ in query)
-        if not started and "SET r = edge" in text:
+        if not started and saves_facts(query):
             started.append(asyncio.ensure_future(forget()))
             await asyncio.sleep(0.6)
             waited.append(not started[0].done())

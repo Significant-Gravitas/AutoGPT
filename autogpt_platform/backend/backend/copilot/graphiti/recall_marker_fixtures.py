@@ -14,9 +14,12 @@ from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import patch
 
+from graphiti_core.driver.driver import GraphProvider
 from graphiti_core.driver.falkordb_driver import FalkorDriverSession
+from graphiti_core.models.edges.edge_db_queries import get_entity_edge_save_bulk_query
 from graphiti_core.nodes import EpisodeType
 
+from .fact_attributes import merging_save
 from .falkordb_driver import AutoGPTFalkorDriver
 from .memory_model import ForgetResult
 from .recall_derivation import MARKER_LABEL
@@ -26,6 +29,16 @@ from .scope import MemoryScope
 
 # Long past ``recall_reconcile.MARKER_EXPIRY_SECONDS``.
 LONG_AGO = "2000-01-01T00:00:00+00:00"
+# graphiti's bulk save of a write's facts (``add_episode``), as the driver
+# runs it: a merge of the map (``fact_attributes.merging_save``).
+FACT_SAVE = merging_save(get_entity_edge_save_bulk_query(GraphProvider.FALKORDB))
+
+
+def saves_facts(query: Any) -> bool:
+    """Whether ``query``, one statement or a transaction's, is graphiti's
+    bulk save of a write's facts."""
+    text = query if isinstance(query, str) else " ".join(q for q, _ in query)
+    return FACT_SAVE in text
 
 
 async def seed_root(driver: AutoGPTFalkorDriver, group_id: str, root: str) -> None:
@@ -126,8 +139,7 @@ def forget_mid_save(
     forgotten: list[ForgetResult] = []
 
     async def run(session: FalkorDriverSession, query: Any, **params: Any) -> Any:
-        text = query if isinstance(query, str) else " ".join(q for q, _ in query)
-        if not forgotten and "SET r = edge" in text:
+        if not forgotten and saves_facts(query):
             await unfence()
             forgotten.append(await retract(scope, [root], hard=hard))
         return await original(session, query, **params)

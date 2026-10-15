@@ -216,14 +216,17 @@ class TestInFlight:
     @pytest.mark.asyncio
     async def test_counts_the_pending_writes_citing_what_it_is_given(self) -> None:
         driver = _driver([{"count": 2}])
+        expiry = timedelta(seconds=recall_reconcile.MARKER_EXPIRY_SECONDS)
+        before = datetime.now(timezone.utc)
 
         count = await recall_reconcile.in_flight(driver, ["f1"], ["ep1"])
 
+        after = datetime.now(timezone.utc)
         assert count == 2
         [read] = driver.execute_query.await_args_list
         assert read.args[0] == recall_reconcile.IN_FLIGHT_QUERY
         cutoff = datetime.fromisoformat(read.kwargs["cutoff"])
-        assert timedelta(hours=23, minutes=59) < _NOW - cutoff < timedelta(hours=25)
+        assert before - expiry <= cutoff <= after - expiry
         assert (read.kwargs["facts"], read.kwargs["episodes"]) == (["f1"], ["ep1"])
         assert read.kwargs["state"] == "pending"
 
