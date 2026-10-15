@@ -460,6 +460,11 @@ class RunAgentTool(BaseTool):
                     graph_version=graph.version,
                 ).from_outside()
 
+            # Before the credential and input prompts: no setup card for a
+            # run that the ceiling refuses anyway.
+            if refusal := _provider_refusal(graph, session_id):
+                return refusal
+
             # Step 2: Check credentials and inputs
             graph_credentials, prereq_error = await self._check_prerequisites(
                 graph=graph,

@@ -1,6 +1,6 @@
 """An agent run is held to the run's ceiling on connected accounts."""
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -43,3 +43,38 @@ async def test_an_agent_acting_with_a_denied_provider_is_refused(scheduled):
     assert isinstance(response, ErrorResponse)
     assert "GitHub account" in response.message
     assert "not permitted" in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_refusal_comes_before_any_setup_card():
+    """A run the ceiling refuses asks the user for no credential or input."""
+    session = make_session(user_id="user-1")
+    graph = _graph(ProviderName.GITHUB)
+    graph.has_external_trigger = False
+    prerequisites = AsyncMock()
+    token = _current_permissions.set(
+        CopilotPermissions(providers=["github"], providers_exclude=True)
+    )
+    try:
+        with (
+            patch(
+                "backend.copilot.tools.run_agent._agent_graph",
+                new=AsyncMock(return_value=(graph, None)),
+            ),
+            patch(
+                "backend.copilot.tools.run_agent._bind_builder_graph", new=AsyncMock()
+            ),
+            patch(
+                "backend.copilot.tools.run_agent.require_installed_workflow",
+                new=AsyncMock(return_value=None),
+            ),
+            patch.object(RunAgentTool, "_check_prerequisites", prerequisites),
+        ):
+            response = await RunAgentTool()._execute(
+                user_id="user-1", session=session, username_agent_slug="ada/pr-helper"
+            )
+    finally:
+        _current_permissions.reset(token)
+    assert isinstance(response, ErrorResponse)
+    assert "GitHub account" in response.message
+    prerequisites.assert_not_awaited()
