@@ -28,6 +28,7 @@ from backend.copilot.pending_messages import (
     drain_pending_messages,
     push_pending_message,
 )
+from backend.copilot.transcript_builder import TranscriptBuilder
 from backend.data import db
 from backend.data.redis_client import get_redis_async
 
@@ -114,6 +115,9 @@ async def test_competing_writer_pk_collision_recovers_on_next_drain(
 ) -> None:
     session = persisted_session
     pending = PendingMessage(content="Racing writer")
+    transcript = TranscriptBuilder()
+    transcript.append_user("Earlier turn")
+    original_transcript = transcript.to_jsonl()
     real_reconcile = reconcile_pending_rows
 
     async def reconcile_then_compete(session, messages, content_of):
@@ -128,12 +132,26 @@ async def test_competing_writer_pk_collision_recovers_on_next_drain(
     with monkeypatch.context() as race:
         race.setattr(helpers, "reconcile_pending_rows", reconcile_then_compete)
         assert not await persist_pending_as_user_rows(
-            session, None, [pending], log_prefix="test"
+            session, transcript, [pending], log_prefix="test"
         )
     assert session.messages == []
+    assert transcript.to_jsonl() == original_transcript
     retry = await drain_pending_messages(session.session_id)
     assert [message.id for message in retry] == [pending.id]
-    assert await persist_pending_as_user_rows(session, None, retry, log_prefix="test")
+    assert await persist_pending_as_user_rows(
+        session, transcript, retry, log_prefix="test"
+    )
+    recovered_transcript = transcript.to_jsonl()
+    assert await persist_pending_as_user_rows(
+        session, transcript, retry, log_prefix="test"
+    )
+    assert transcript.to_jsonl() == recovered_transcript
+    resumed = TranscriptBuilder()
+    resumed.load_previous(recovered_transcript)
+    assert [entry.message["content"] for entry in resumed.snapshot()[0]] == [
+        "Earlier turn",
+        pending.content,
+    ]
     assert await drain_pending_messages(session.session_id) == []
     restored = await get_chat_session(session.session_id)
     assert restored is not None

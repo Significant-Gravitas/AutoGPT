@@ -614,7 +614,7 @@ async def persist_pending_as_user_rows(
                 session.messages[existing[row.id]] = row
             continue
         session.messages.append(row)
-        if transcript_builder is not None and row.sequence is None:
+        if transcript_builder is not None:
             transcript_builder.append_user(content=row.content or "")
 
     # ``persist_session_safe`` may return a ``model_copy`` of *session* (e.g.
