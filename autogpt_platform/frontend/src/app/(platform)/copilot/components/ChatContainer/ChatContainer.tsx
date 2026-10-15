@@ -25,6 +25,8 @@ import { ContextPanelToggle } from "../ContextPanel/ContextPanelToggle";
 import { useShareChatExpert } from "../ContextPanel/useShareChatExpert";
 import { ArchivedExpertNotice } from "./components/ArchivedExpertNotice";
 import { SessionNotFound } from "./components/SessionNotFound";
+import { cn } from "@/lib/utils";
+import { useIsMobile } from "../../useIsMobile";
 import { ComposerPanelTab } from "./components/ComposerPanelTab";
 import { SharedChatNotice } from "./components/SharedChatNotice";
 import { useAutoOpenArtifacts } from "./useAutoOpenArtifacts";
@@ -243,6 +245,11 @@ export const ChatContainer = ({
   // insufficient-credits state, usage-bar layout) so a fixed value would
   // either waste space or clip.
   const usageCardRef = useRef<HTMLDivElement>(null);
+  const isMobileLayout = useIsMobile();
+  const hasComposerTab = floatingControls === "newLayout";
+  // The composer tab overlaps the list's last 41px on small screens, so the
+  // list keeps that much more room at the bottom.
+  const composerTabInset = hasComposerTab && isMobileLayout ? 41 : 0;
   const [usageCardHeight, setUsageCardHeight] = useState(0);
   useEffect(() => {
     if (!isLimitReached) {
@@ -391,7 +398,7 @@ export const ChatContainer = ({
                   turnStats={turnStats}
                   queuedMessages={queuedMessages}
                   pendingSend={pendingSend}
-                  bottomContentPadding={usageCardHeight}
+                  bottomContentPadding={usageCardHeight + composerTabInset}
                   expertIdentity={expertIdentity}
                   isResolvingExpertIdentity={isResolvingExpertIdentity}
                   floatingControls={floatingControls}
@@ -407,7 +414,10 @@ export const ChatContainer = ({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
-                  className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+                  className={cn(
+                    "relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2",
+                    hasComposerTab && "max-lg:pt-0",
+                  )}
                 >
                   {isLimitReached && (
                     <div
@@ -428,9 +438,7 @@ export const ChatContainer = ({
                     </div>
                   )}
                   <SharedChatNotice sessionId={sessionId} />
-                  {floatingControls === "newLayout" && (
-                    <ComposerPanelTab expert={chatExpert} />
-                  )}
+                  {hasComposerTab && <ComposerPanelTab expert={chatExpert} />}
                   {isTaskBarEnabled && (
                     <div className="relative z-10">
                       <TaskProgressBar
