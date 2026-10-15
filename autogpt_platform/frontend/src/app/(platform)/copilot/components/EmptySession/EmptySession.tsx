@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import type { ReactNode } from "react";
 import {
+  HOME_COMPOSER_ID,
   getExpertInputPlaceholder,
   getGreetingName,
   getIntroLine,
@@ -168,7 +169,7 @@ export function EmptySession({
                 )}
               >
                 <ChatInput
-                  inputId="chat-input-empty"
+                  inputId={HOME_COMPOSER_ID}
                   stacked
                   voiceToggle={voiceToggle}
                   modeSelector={modeSelector}

@@ -5,7 +5,8 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AddColumn } from "./components/AddColumn/AddColumn";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
 import { ScheduledColumn } from "./components/ScheduledColumn/ScheduledColumn";
-import { DONE, isDefaultColumn } from "./helpers";
+import { NewTaskCard } from "./components/NewTaskCard/NewTaskCard";
+import { DONE, IN_PROGRESS, isDefaultColumn } from "./helpers";
 import { useTaskBoard } from "./useTaskBoard";
 
 export function TaskBoard() {
@@ -67,6 +68,7 @@ export function TaskBoard() {
                     : undefined
                 }
                 isClearing={isClearing}
+                leading={column.id === IN_PROGRESS ? <NewTaskCard /> : null}
               />
             ))}
             <AddColumn onAdd={addColumn} />

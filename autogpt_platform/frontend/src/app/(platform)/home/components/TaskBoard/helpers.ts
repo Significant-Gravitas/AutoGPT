@@ -3,7 +3,6 @@ import type { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graph
 import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sessionSummaryResponse";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 
-export const TODO = "todo";
 export const IN_PROGRESS = "in-progress";
 export const DONE = "done";
 export const TASK_CARD_MIME = "application/x-task-card";
@@ -28,7 +27,6 @@ export interface BoardState {
 }
 
 export const DEFAULT_COLUMNS: BoardColumnDef[] = [
-  { id: TODO, name: "To do" },
   { id: IN_PROGRESS, name: "In progress" },
   { id: DONE, name: "Done" },
 ];
@@ -76,7 +74,6 @@ export function getCardColumnId(
   ) {
     return placement.columnId;
   }
-  if (!session.last_message) return TODO;
   if (now - new Date(session.updated_at).getTime() > STALE_AFTER_MS) {
     return DONE;
   }

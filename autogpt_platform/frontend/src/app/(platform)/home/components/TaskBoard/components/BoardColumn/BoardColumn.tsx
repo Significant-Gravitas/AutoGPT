@@ -11,6 +11,7 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
 import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import type { ReactNode } from "react";
 import type { BoardColumnDef } from "../../helpers";
 import { StatusIcon } from "../StatusIcon/StatusIcon";
 import { TaskCard } from "../TaskCard/TaskCard";
@@ -25,6 +26,8 @@ interface Props {
   onRemove?: () => void;
   onClear?: () => void;
   isClearing?: boolean;
+  /** Rendered above the cards, e.g. the new-task card. */
+  leading?: ReactNode;
 }
 
 export function BoardColumn({
@@ -36,6 +39,7 @@ export function BoardColumn({
   onRemove,
   onClear,
   isClearing,
+  leading,
 }: Props) {
   const { isOver, handleDragOver, handleDragLeave, handleDrop } =
     useBoardColumn({ columnId: column.id, onMoveCard });
@@ -94,6 +98,7 @@ export function BoardColumn({
         </div>
       </header>
       <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
+        {leading}
         {column.sessions.map((session) => (
           <TaskCard
             key={session.id}
@@ -107,7 +112,7 @@ export function BoardColumn({
             onMove={(columnId) => onMoveCard(session.id, columnId)}
           />
         ))}
-        {column.sessions.length === 0 && (
+        {column.sessions.length === 0 && !leading && (
           <div className="flex items-center justify-center rounded-lg border border-dashed border-zinc-300 py-8">
             <Text variant="small" tone="muted">
               Drop a card here

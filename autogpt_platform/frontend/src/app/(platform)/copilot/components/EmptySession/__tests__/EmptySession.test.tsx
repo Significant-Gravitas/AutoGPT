@@ -144,7 +144,7 @@ it("shows the task board below the prompt", async () => {
   expect(
     prompt.compareDocumentPosition(board) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  for (const name of ["To do", "In progress", "Done"]) {
+  for (const name of ["Scheduled", "In progress", "Done"]) {
     expect(await screen.findByRole("region", { name })).toBeDefined();
   }
   expect(screen.queryByRole("heading", { name: "Your recap" })).toBeNull();
