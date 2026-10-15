@@ -5,6 +5,7 @@ import pytest
 import pytest_asyncio
 from dotenv import load_dotenv
 
+import backend.conftest_stubs  # noqa: F401
 from backend.util.logging import configure_logging
 
 load_dotenv()
@@ -79,7 +80,11 @@ async def setup_admin_user(admin_user_id):
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)
 async def graph_cleanup(server):
     created_graph_ids = []
-    original_create_graph = server.agent_server.test_create_graph
+    try:
+        original_create_graph = server.agent_server.test_create_graph
+    except AttributeError:
+        yield
+        return
 
     async def create_graph_wrapper(*args, **kwargs):
         created_graph = await original_create_graph(*args, **kwargs)
@@ -92,7 +97,10 @@ async def graph_cleanup(server):
         server.agent_server.test_create_graph = create_graph_wrapper
         yield  # This runs the test function
     finally:
-        server.agent_server.test_create_graph = original_create_graph
+        try:
+            server.agent_server.test_create_graph = original_create_graph
+        except AttributeError:
+            pass
 
         # Delete the created graphs and assert they were deleted
         for graph_id, user_id in created_graph_ids:

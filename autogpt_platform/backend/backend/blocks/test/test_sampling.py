@@ -1,5 +1,6 @@
 import pytest
 
+from backend import conftest_stubs  # noqa: F401
 from backend.blocks.sampling import DataSamplingBlock, SamplingMethod
 
 
