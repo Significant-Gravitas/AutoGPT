@@ -212,9 +212,12 @@ def _deny_reason(result: dict) -> str | None:
 @pytest.mark.asyncio
 async def test_pre_tool_hook_refuses_every_tool_once_landing():
     governor = _governor(meter=_Meter(spent=1.0))
-    hooks = create_security_hooks(user_id="u1", sdk_cwd="/tmp/w", governor=governor)
+    tools = ("mcp__copilot__run_block", "Agent", "WebSearch")
+    hooks = create_security_hooks(
+        user_id="u1", sdk_cwd="/tmp/w", governor=governor, allowed_tools=tools
+    )
     pre = hooks["PreToolUse"][0].hooks[0]
-    for tool in ("mcp__copilot__run_block", "Agent", "WebSearch"):
+    for tool in tools:
         result = await pre(
             {"tool_name": tool, "tool_input": {"prompt": "x"}},
             tool_use_id=f"tu-{tool}",
@@ -227,7 +230,12 @@ async def test_pre_tool_hook_refuses_every_tool_once_landing():
 @pytest.mark.asyncio
 async def test_pre_tool_hook_lets_tools_run_below_the_limits():
     governor = _governor(meter=_Meter(spent=0.1, last=0.01))
-    hooks = create_security_hooks(user_id="u1", sdk_cwd="/tmp/w", governor=governor)
+    hooks = create_security_hooks(
+        user_id="u1",
+        sdk_cwd="/tmp/w",
+        governor=governor,
+        allowed_tools=("mcp__copilot__run_block",),
+    )
     pre = hooks["PreToolUse"][0].hooks[0]
     result = await pre(
         {"tool_name": "mcp__copilot__run_block", "tool_input": {}},
