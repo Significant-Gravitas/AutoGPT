@@ -7,11 +7,17 @@ system and the network need from it, plus its own variables: every other
 parent variable is blanked in ``options.env``. The blanks are worked out
 from ``os.environ`` at each launch, so a variable the backend gains later is
 blanked too, without a list of names to keep up to date.
+
+Two things fall outside it: a variable added to ``os.environ`` between
+``launch_options`` and the spawn, which the SDK merges in as it spawns, and
+the SDK's own ``claude -v`` version check, which runs on the parent
+environment (AutoPilot's workers skip it). The backend writes no secret to
+``os.environ`` after import.
 """
 
 from __future__ import annotations
 
-import dataclasses
+import copy
 import os
 from collections.abc import Mapping
 from typing import TYPE_CHECKING
@@ -92,5 +98,8 @@ def isolated_launch_env(env: Mapping[str, str]) -> dict[str, str]:
 
 
 def launch_options(options: ClaudeAgentOptions) -> ClaudeAgentOptions:
-    """*options* with the environment a launch starts from, worked out now."""
-    return dataclasses.replace(options, env=isolated_launch_env(options.env))
+    """A copy of *options* with the environment a launch starts from, worked
+    out now."""
+    launched = copy.copy(options)
+    launched.env = isolated_launch_env(options.env)
+    return launched
