@@ -60,8 +60,9 @@ return 1
 #   KEYS[1]  key
 #   ARGV[1]  expected current value
 #   ARGV[2]  new value, or "" to delete the key
-#   ARGV[3]  TTL in seconds for the new value
+#   ARGV[3]  expiry value for the new value
 #   ARGV[4]  "1" to also swap when the key is missing
+#   ARGV[5]  "EX" for relative seconds or "PXAT" for an absolute millisecond deadline
 _STRING_CAS_LUA = """
 local current = redis.call('GET', KEYS[1])
 if current ~= ARGV[1] and not (current == false and ARGV[4] == '1') then
@@ -70,7 +71,7 @@ end
 if ARGV[2] == '' then
     redis.call('DEL', KEYS[1])
 else
-    redis.call('SET', KEYS[1], ARGV[2], 'EX', ARGV[3])
+    redis.call('SET', KEYS[1], ARGV[2], ARGV[5], ARGV[3])
 end
 return 1
 """
@@ -530,13 +531,15 @@ async def string_compare_and_set(
     new: str | None,
     ttl_seconds: int = 0,
     or_missing: bool = False,
+    expires_at_ms: int | None = None,
 ) -> bool:
     """Atomically replace *key* with *new* (``None`` deletes it) iff it still
     holds *expected*, or is missing and *or_missing* is set.
 
     Returns ``True`` if the swap happened.  Use it when a value names its
     owner, so a holder whose key expired and was taken over cannot overwrite
-    or delete its successor's value.
+    or delete its successor's value. An absolute ``expires_at_ms`` overrides
+    ``ttl_seconds`` without extending the deadline by the request latency.
     """
     result = await cast(
         "Any",
@@ -546,8 +549,9 @@ async def string_compare_and_set(
             key,
             expected,
             new or "",
-            ttl_seconds,
+            expires_at_ms if expires_at_ms is not None else ttl_seconds,
             "1" if or_missing else "0",
+            "PXAT" if expires_at_ms is not None else "EX",
         ),
     )
     return int(result) == 1

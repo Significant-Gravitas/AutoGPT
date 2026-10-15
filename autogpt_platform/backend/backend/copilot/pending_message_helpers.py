@@ -335,7 +335,9 @@ async def queue_pending_for_http(
             detail="Session has no active turn. Start a new turn with POST /stream.",
         )
     if client_message_id is not None:
-        await accept_client_message(session_id, client_message_id, claim_owner)
+        await accept_client_message(
+            session_id, client_message_id, claim_owner, pending=True
+        )
 
     # Push landed — now charge the rate counter.  If this tick crosses the
     # limit we still keep the queued message (next drain will pick it up)
@@ -366,7 +368,7 @@ async def _settle_claim_of_cancelled_push(
         await release_client_message(session_id, client_message_id, owner)
         return
     if response.turn_in_flight:
-        await accept_client_message(session_id, client_message_id, owner)
+        await accept_client_message(session_id, client_message_id, owner, pending=True)
     else:
         await release_client_message(session_id, client_message_id, owner)
 

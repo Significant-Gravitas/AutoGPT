@@ -359,7 +359,7 @@ async def test_queue_pending_keeps_the_claim_once_the_push_lands(
     await _queue_with_client_id()
 
     claim.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
-    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY, pending=True)
     release.assert_not_awaited()
 
 
@@ -463,7 +463,7 @@ async def test_queue_pending_settles_the_claim_by_the_push_when_cancelled(
         await request
 
     if landed:
-        accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+        accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY, pending=True)
         release.assert_not_awaited()
     else:
         release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
@@ -502,7 +502,7 @@ async def test_queue_pending_settles_the_claim_when_cancelled_again_while_settli
     with pytest.raises(asyncio.CancelledError):
         await request
 
-    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY, pending=True)
     release.assert_not_awaited()
 
 

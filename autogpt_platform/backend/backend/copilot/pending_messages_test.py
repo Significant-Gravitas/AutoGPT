@@ -128,7 +128,7 @@ class _FakeRedis:
             return length
         if script != _STRING_CAS_LUA:
             raise NotImplementedError("Unsupported Redis script")
-        key, expected, new, ttl_seconds, or_missing = args
+        key, expected, new, ttl_seconds, or_missing = args[:5]
         current = self.strings.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0

@@ -200,15 +200,18 @@ async def finish_despite_cancellation(work: "asyncio.Future[T]") -> T:
                 return work.result()
 
 
-async def accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+async def accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool = False
+) -> None:
     """Mark a claimed send as taken, so its retransmits are skipped.  Also
     when the reservation has lapsed, unless another request holds it now.
 
     Finishes even if the caller is cancelled midway: the send has already
     landed, and a reservation left to lapse would let a retry send it again.
+    Pending sends inherit their receipt's deadline instead of starting a new TTL.
     """
     accept = asyncio.ensure_future(
-        _accept_client_message(session_id, message_id, owner)
+        _accept_client_message(session_id, message_id, owner, pending=pending)
     )
     try:
         await asyncio.shield(accept)
@@ -217,9 +220,24 @@ async def accept_client_message(session_id: str, message_id: str, owner: str) ->
         raise
 
 
-async def _accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+async def _accept_client_message(
+    session_id: str, message_id: str, owner: str, *, pending: bool
+) -> None:
     try:
         redis = await get_redis_async()
+        expires_at_ms = None
+        if pending:
+            expires_at_ms = int(
+                await cast(
+                    "Any",
+                    redis.pexpiretime(
+                        pending_message_receipt_key(session_id, message_id)
+                    ),
+                )
+            )
+            if expires_at_ms < 0:
+                await release_client_message(session_id, message_id, owner)
+                return
         await string_compare_and_set(
             redis,
             _client_message_key(session_id, message_id),
@@ -227,6 +245,7 @@ async def _accept_client_message(session_id: str, message_id: str, owner: str) -
             new=_CLIENT_MESSAGE_ACCEPTED,
             ttl_seconds=_PENDING_TTL_SECONDS,
             or_missing=True,
+            expires_at_ms=expires_at_ms,
         )
     except Exception as e:
         logger.warning(

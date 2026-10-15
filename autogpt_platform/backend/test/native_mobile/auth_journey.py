@@ -14,11 +14,13 @@ from uuid import uuid4
 import pytest
 import pytest_asyncio
 from autogpt_libs.auth import config as auth_config
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from prisma.models import AuthSession, AuthUser, User
 from starlette.websockets import WebSocket
 
 from backend.api import session_auth, ws_api
+from backend.api.features.store import skill_routes
 from backend.api.rest_api import app
 from backend.data import db
 
@@ -253,3 +255,54 @@ async def test_native_session_bearer_requires_its_signature(
             "/api/auth/token", headers={"Authorization": f"Bearer {unsigned}"}
         )
     ).status_code == 401
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "path,lookup_target",
+    [
+        (
+            "/api/store/search?query=private&content_types=CHAT_SESSION",
+            "backend.api.features.store.routes.search_engine.unified_hybrid_search",
+        ),
+        (
+            "/api/store/skills/test-skill/files/SKILL.md?version_id=pending",
+            "backend.api.features.store.skill_routes.skill_db.find_readable_version",
+        ),
+    ],
+)
+async def test_optional_routes_recheck_identity_after_signout(
+    auth_service: tuple[AsyncClient, str],
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    lookup_target: str,
+) -> None:
+    monkeypatch.setattr(app, "dependency_overrides", {})
+    monkeypatch.setattr(
+        skill_routes, "is_feature_enabled", AsyncMock(return_value=True)
+    )
+    lookup = AsyncMock(side_effect=HTTPException(status_code=404))
+    monkeypatch.setattr(lookup_target, lookup)
+    client, prefix = auth_service
+    email = f"{prefix}@example.test"
+    bearer = await sign_in_native(client, email)
+    token = await access_token(client, bearer)
+    user = await AuthUser.prisma().find_unique(where={"email": email})
+    assert user is not None
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://backend"
+    ) as backend:
+        for expected_user in (user.id, None):
+            response = await backend.get(
+                path, headers={"Authorization": f"Bearer {token}"}
+            )
+            assert response.status_code == 404
+            assert lookup.await_args is not None
+            assert lookup.await_args.kwargs["user_id"] == expected_user
+            if expected_user is not None:
+                response = await client.post(
+                    "/api/auth/sign-out",
+                    headers={"Authorization": f"Bearer {bearer}"},
+                    json={},
+                )
+                assert response.status_code == 200
