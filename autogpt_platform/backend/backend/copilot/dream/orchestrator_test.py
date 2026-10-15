@@ -2072,9 +2072,10 @@ class TestNearDuplicateWriteDedup:
 @pytest.mark.asyncio
 async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     """If the dream lock cannot be extended to the batch window, the
-    just-submitted batch must never be applied: the pending entry is
-    removed (poller never dispatches callbacks), the input bundle is
-    dropped, the lock is NOT disowned, and the pass reports failure."""
+    just-submitted batch must never be applied: it is taken back (stopped at
+    the provider, then its pending entry removed so the poller never
+    dispatches callbacks, and the bundle dropped), the lock is NOT disowned,
+    and the pass reports failure."""
     submission = mocker.MagicMock(provider_batch_id="batch-xyz")
     mocker.patch(
         "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
@@ -2087,11 +2088,15 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         "backend.copilot.dream.batch_handoff.submit_phase",
         AsyncMock(return_value=submission),
     )
+    cancel = mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     remove_pending = mocker.patch(
         "backend.copilot.dream.batch_handoff.remove_pending", AsyncMock()
     )
-    delete_bundle = mocker.patch(
-        "backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock()
+    cleanup = mocker.patch(
+        "backend.copilot.dream.batch_handoff.best_effort_cleanup", AsyncMock()
     )
     handle = mocker.MagicMock()
     handle.extend = AsyncMock(return_value=False)
@@ -2110,8 +2115,9 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         lock_handle=handle,
     )
 
+    cancel.assert_awaited_once_with("batch-xyz")
     remove_pending.assert_awaited_once_with("batch-xyz")
-    delete_bundle.assert_awaited_once_with(run.pass_id)
+    cleanup.assert_awaited_once_with(run.pass_id)
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
 
@@ -2376,8 +2382,11 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
     mocker, fake_dream_db
 ):
     _batch_route(mocker, lock_extends=False)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     mocker.patch("backend.copilot.dream.batch_handoff.remove_pending", AsyncMock())
-    mocker.patch("backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock())
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
     )
@@ -2390,8 +2399,8 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
         DreamPassStatus.ERRORED,
     ]
     assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]
-    # The revoked batch still runs and bills at the provider, unread: what
-    # the pass used is unknown, not zero.
+    # The batch taken back may have run, and billed, at the provider before
+    # its cancel: what the pass used is unknown, not zero.
     assert result.usage is None
     assert "usage" not in fake_dream_db.rows[result.pass_id]
 
