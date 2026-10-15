@@ -1186,23 +1186,6 @@ BLOCKED_TOOLS = {
 # Write and Edit are NOT included: they are fully replaced by MCP equivalents.
 WORKSPACE_SCOPED_TOOLS = {"Glob", "Grep", "Read"}
 
-# Dangerous patterns in tool inputs
-DANGEROUS_PATTERNS = [
-    r"sudo",
-    r"rm\s+-rf",
-    r"dd\s+if=",
-    r"/etc/passwd",
-    r"/etc/shadow",
-    r"chmod\s+777",
-    r"curl\s+.*\|.*sh",
-    r"wget\s+.*\|.*sh",
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"__import__",
-    r"os\.system",
-    r"subprocess",
-]
-
 # Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
 # Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
 # keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
