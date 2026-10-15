@@ -1,5 +1,6 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import type { FloatingControls } from "./components/ChatMessagesContainer/components/ThreadHeader";
 import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
@@ -10,9 +11,9 @@ import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports. */
+  floatingControls?: FloatingControls;
 }
 
 /**
@@ -35,7 +36,7 @@ export function CopilotChatHost(props: Props) {
 function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
-  hasFloatingControls,
+  floatingControls,
   isStreamRuntime,
 }: Props & { isStreamRuntime: boolean }) {
   const {
@@ -88,7 +89,7 @@ function ChatHostBody({
       {sessionId && sessionDryRun && (
         <div className="flex items-center justify-center gap-1.5 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800">
           <Icon icon={FlaskConicalIcon} size={13} />
-          Test mode — this session runs agents as simulation
+          Test mode — this session runs workflows as simulation
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-hidden">
@@ -128,7 +129,7 @@ function ChatHostBody({
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       </div>
       <RateLimitGate

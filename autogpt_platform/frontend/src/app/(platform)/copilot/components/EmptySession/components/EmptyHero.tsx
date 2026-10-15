@@ -28,7 +28,7 @@ export function EmptyHero({
 }: Props) {
   return (
     <>
-      <div className="mb-1 flex items-center justify-center gap-3">
+      <div className="mb-1 flex items-center justify-center gap-3 pt-8 md:pt-0">
         <Text variant="h4" tone="primary">
           Hey, <span className="text-zinc-900">{name}</span>
           <EditNameDialog currentName={name} />

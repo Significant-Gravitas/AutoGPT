@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const { initMock, reportingObserverIntegrationMock } = vi.hoisted(() => ({
   initMock: vi.fn(),
@@ -25,6 +25,10 @@ vi.mock("@sentry/nextjs", () => {
     replayCanvasIntegration: stubIntegration("ReplayCanvas"),
     captureRouterTransitionStart: vi.fn(),
   };
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe("Sentry client instrumentation", () => {
@@ -95,5 +99,68 @@ describe("Sentry client instrumentation", () => {
     expect(beforeSend).toBeTypeOf("function");
     expect(beforeSend(rscFallback, {})).toBeNull();
     expect(beforeSend(fetchError, {})).toBe(fetchError);
+  });
+
+  it("drops a browser-injected script's iframe probe but keeps our own frame errors", async () => {
+    await import("../../instrumentation-client");
+
+    const { beforeSend } = initMock.mock.calls[0][0];
+    const blocked = {
+      exception: {
+        values: [
+          {
+            type: "SecurityError",
+            value:
+              'Blocked a frame with origin "https://platform.agpt.co" from accessing a cross-origin frame.',
+          },
+        ],
+      },
+    };
+    // As HeyTap Browser's injected script logs it on /onboarding (BUILDER-943).
+    const injectedProbe = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: ["无法访问 iframe 的内容:", { name: "SecurityError" }],
+      },
+    };
+    const ourWarning = {
+      ...blocked,
+      logger: "console",
+      extra: {
+        arguments: [
+          "Could not read the checkout frame",
+          { name: "SecurityError" },
+        ],
+      },
+    };
+
+    expect(beforeSend(injectedProbe, {})).toBeNull();
+    expect(beforeSend(blocked, {})).toBe(blocked);
+    expect(beforeSend(ourWarning, {})).toBe(ourWarning);
+  });
+
+  it("tags events with the environment the deployment names for itself", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", "pr-123");
+    await import("../../instrumentation-client");
+
+    expect(initMock.mock.calls[0][0].environment).toBe("pr-123");
+  });
+
+  it("tags events with the computed environment when none is named", async () => {
+    vi.resetModules();
+    initMock.mockClear();
+    vi.stubEnv("NEXT_PUBLIC_SENTRY_ENVIRONMENT", undefined);
+    vi.stubEnv("NEXT_PUBLIC_APP_ENV", "local");
+    vi.stubEnv("NEXT_PUBLIC_BEHAVE_AS", "LOCAL");
+    vi.stubEnv("NEXT_PUBLIC_VERCEL_ENV", "");
+    vi.stubEnv("VERCEL_ENV", "");
+    await import("../../instrumentation-client");
+
+    expect(initMock.mock.calls[0][0].environment).toBe(
+      "app:local-behave:local",
+    );
   });
 });

@@ -43,7 +43,7 @@ type NavLink = {
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Workflows", href: "/library", icon: GridViewIcon },
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];

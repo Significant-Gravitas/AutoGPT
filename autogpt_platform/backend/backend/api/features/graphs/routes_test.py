@@ -14,7 +14,9 @@ from pytest_snapshot.plugin import Snapshot
 from backend.api.features.graphs.routes import router
 from backend.api.rest_api import app as real_app
 from backend.api.rest_api import handle_internal_http_error
+from backend.blocks.basic import StoreValueBlock
 from backend.blocks.google.sheets import GoogleSheetsReadBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data import execution as execution_db
 from backend.data.execution import ExecutionStatus
 from backend.data.graph import GraphModel
@@ -693,6 +695,107 @@ def test_create_new_graph_reassigns_ids_and_persists_in_order(
     assert response.status_code == 200
     assert calls == ["graph", "library"]
     assert response.json()["id"] != "submitted-id"
+
+
+def _unnamed_output_graph() -> dict:
+    """Store Value wired into an Agent Output whose required Name is empty."""
+    return {
+        "name": "Unnamed output",
+        "description": "",
+        "nodes": [
+            {
+                "id": "value",
+                "block_id": StoreValueBlock().id,
+                "input_default": {"input": "hi"},
+            },
+            {"id": "output", "block_id": AgentOutputBlock().id, "input_default": {}},
+        ],
+        "links": [
+            {
+                "source_id": "value",
+                "sink_id": "output",
+                "source_name": "output",
+                "sink_name": "value",
+            }
+        ],
+    }
+
+
+def test_create_new_graph_names_the_missing_field_on_the_submitted_node(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Saving used to answer "'Input' object has no attribute 'name'". The
+    builder needs the field, keyed by the node id it sent rather than the
+    fresh one the graph is given, to mark it on the canvas."""
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+
+    response = client.post("/graphs", json={"graph": _unnamed_output_graph()})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "type": "validation_error",
+        "message": "Agent Output › Name: This field is required",
+        "node_errors": {"output": {"name": "This field is required"}},
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "block,title",
+    [(AgentInputBlock, "Agent Input"), (AgentOutputBlock, "Agent Output")],
+    ids=["input", "output"],
+)
+@pytest.mark.parametrize("name", [None, "", "   "], ids=["null", "empty", "whitespace"])
+def test_create_new_graph_refuses_a_blank_input_or_output_name(
+    mocker: pytest_mock.MockFixture, block: type, title: str, name: str | None
+) -> None:
+    """A name that is there but blank names nothing either; it would add a
+    nameless field to the graph's inputs or outputs."""
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+    graph = {
+        "name": "Blank name",
+        "description": "",
+        "nodes": [
+            {"id": "io", "block_id": block().id, "input_default": {"name": name}}
+        ],
+        "links": [],
+    }
+
+    response = client.post("/graphs", json={"graph": graph})
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "type": "validation_error",
+        "message": f"{title} › Name: This field is required",
+        "node_errors": {"io": {"name": "This field is required"}},
+    }
+    create_graph_mock.assert_not_awaited()
+
+
+def test_update_graph_names_the_missing_field_on_the_submitted_node(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.get_graph_all_versions",
+        new=AsyncMock(return_value=[Mock(version=1, is_active=True)]),
+    )
+    create_graph_mock = mocker.patch(
+        "backend.api.features.graphs.routes.graph_db.create_graph", new=AsyncMock()
+    )
+
+    response = client.put(
+        "/graphs/graph-1", json={"id": "graph-1", **_unnamed_output_graph()}
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"]["node_errors"] == {
+        "output": {"name": "This field is required"}
+    }
+    create_graph_mock.assert_not_awaited()
 
 
 def _sheets_read_graph(credentials_id: str) -> dict:
