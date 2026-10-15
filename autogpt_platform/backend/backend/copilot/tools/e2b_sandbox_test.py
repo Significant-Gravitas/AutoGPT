@@ -20,6 +20,7 @@ from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
 import pytest
 from e2b import SandboxState
 from e2b.exceptions import SandboxNotFoundException
+from redis.crc import key_slot
 
 from backend.blocks.desktop._api import _STOP_STREAM, SHARED_PATH, WORKSPACE_PATH
 from backend.blocks.desktop._common import (
@@ -642,7 +643,7 @@ class TestKillSandbox:
             f"copilot:e2b:sandbox:{_SESSION_ID}:display",
             f"copilot:e2b:sandbox:{_SESSION_ID}:stream",
             f"copilot:e2b:sandbox:{_SESSION_ID}:active",
-            f"copilot:e2b:sandbox:{_SESSION_ID}:ceilings",
+            f"{{copilot:e2b:sandbox:{_SESSION_ID}:active}}:ceilings",
             f"copilot:e2b:desktop:{_SESSION_ID}",
         }
 
@@ -1667,8 +1668,10 @@ class TestExpertPause:
         # that starts in between to lose its count.
         script, _, key, ceilings = redis.eval.await_args.args
         assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
-        # The ceilings pinned while turns shared the box go with the last one.
-        assert ceilings == f"{_EXPERT_SHELL_KEY}:ceilings"
+        # The ceilings pinned while turns shared the box go with the last one,
+        # in the counter's cluster slot: one script may touch only one slot.
+        assert ceilings == f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings"
+        assert key_slot(ceilings.encode()) == key_slot(key.encode())
 
     def test_concurrent_turn_keeps_the_box_running(self):
         """Pausing under another session of the same expert would sever its
@@ -1736,7 +1739,7 @@ class TestExpertKill:
             _EXPERT_DISPLAY_KEY,
             _EXPERT_STREAM_KEY,
             _EXPERT_ACTIVE_KEY,
-            f"{_EXPERT_SHELL_KEY}:ceilings",
+            f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings",
             _EXPERT_LEGACY_DESKTOP_KEY,
         }
         # The cached id was enough; no lookup for the shell box.
@@ -1792,7 +1795,7 @@ class TestKillSandboxForgetsScreen:
             f"copilot:e2b:sandbox:{_SESSION_ID}:display",
             f"copilot:e2b:sandbox:{_SESSION_ID}:stream",
             f"copilot:e2b:sandbox:{_SESSION_ID}:active",
-            f"copilot:e2b:sandbox:{_SESSION_ID}:ceilings",
+            f"{{copilot:e2b:sandbox:{_SESSION_ID}:active}}:ceilings",
             f"copilot:e2b:desktop:{_SESSION_ID}",
         }
 
@@ -2271,7 +2274,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
         self._pin(redis, ("slack",))
         asyncio.run(
             redis.eval(
-                "decr del", 2, _EXPERT_ACTIVE_KEY, f"{_EXPERT_SHELL_KEY}:ceilings"
+                "decr del", 2, _EXPERT_ACTIVE_KEY, f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings"
             )
         )
         assert self._pin(redis, None) is None
