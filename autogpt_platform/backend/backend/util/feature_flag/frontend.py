@@ -55,6 +55,7 @@ class FrontendFlag(str, Enum):
     GRAPHITI_COMMUNITIES_ENABLED = Flag.GRAPHITI_COMMUNITIES_ENABLED.value
     DREAM_PASS_ENABLED = Flag.DREAM_PASS_ENABLED.value
     DREAM_PASS_INVALIDATE_ENTITY = Flag.DREAM_PASS_INVALIDATE_ENTITY.value
+    DREAM_SKILL_LEARNING_ENABLED = Flag.DREAM_SKILL_LEARNING_ENABLED.value
     # Platform key -> visible on the Bots settings page; only an explicit false hides one.
     COPILOT_BOT_PLATFORMS = "copilot-bot-platforms"
     COPILOT_VOICE_MODE = Flag.COPILOT_VOICE_MODE.value

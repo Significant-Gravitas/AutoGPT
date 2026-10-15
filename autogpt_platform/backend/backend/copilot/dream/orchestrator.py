@@ -46,7 +46,6 @@ from .llm import (
 from .locks import (
     BATCH_LOCK_TTL_SECONDS,
     DEFAULT_LOCK_TTL_SECONDS,
-    LOCAL_LOCK_TTL_SECONDS,
     DreamLockHandle,
     DreamLockHeld,
     dream_lock,
@@ -155,10 +154,6 @@ MAX_ENTITY_INVALIDATIONS_PER_PASS = 2
 # this marker yet — batch users simply never benefit from the skip.
 LAST_COMPLETED_KEY_PREFIX = "dream:last_completed:"
 LAST_COMPLETED_TTL_SECONDS = 35 * 24 * 60 * 60
-
-
-def _resolve_lock_ttl(transport_is_local: bool) -> int:
-    return LOCAL_LOCK_TTL_SECONDS if transport_is_local else DEFAULT_LOCK_TTL_SECONDS
 
 
 # High-precision filter for "transient intent" facts — content that
@@ -741,7 +736,6 @@ async def _execute_dream_pass_async(
     user_id: str,
     *,
     expert_id: str | None = None,
-    transport_is_local: bool = False,
     config: ChatConfig | None = None,
     status_id: str | None = None,
 ) -> DreamPassResult:
@@ -772,7 +766,7 @@ async def _execute_dream_pass_async(
         transport_name=config.transport.name,
     )
 
-    ttl = _resolve_lock_ttl(transport_is_local)
+    ttl = DEFAULT_LOCK_TTL_SECONDS
     try:
         lock_context = dream_lock(user_id, ttl_seconds=ttl, expert_id=expert_id)
         async with lock_context as dream_lock_handle:
