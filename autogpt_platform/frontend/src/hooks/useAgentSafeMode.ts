@@ -218,7 +218,7 @@ function handleToggleError(
     toast({
       title: "Safe mode not available",
       description:
-        "To configure safe mode, please save this graph to your library first.",
+        "To configure safe mode, please save this workflow to your library first.",
       variant: "destructive",
     });
   } else {

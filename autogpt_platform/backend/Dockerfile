@@ -11,6 +11,13 @@ WORKDIR /app
 
 RUN echo 'Acquire::http::Pipeline-Depth 0;\nAcquire::http::No-Cache true;\nAcquire::BrokenProxy true;\n' > /etc/apt/apt.conf.d/99fixbadproxy
 
+# APT_REFRESH is part of the cache key of every RUN after it, so a new value
+# re-runs the package installs below and security fixes reach the images
+# instead of staying behind a cached layer. CI passes the UTC date, which
+# refreshes them once a day. Every stage that installs packages declares it
+# before its first install.
+ARG APT_REFRESH
+
 # Install Node.js repository key and setup
 RUN apt-get update --allow-releaseinfo-change --fix-missing \
     && apt-get install -y curl ca-certificates gnupg \
@@ -67,6 +74,9 @@ WORKDIR /app/autogpt_platform/backend
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# APT_REFRESH re-runs the package install below; see the builder stage.
+ARG APT_REFRESH
+
 # Install only what's needed for prisma migrate: Node.js and minimal Python for prisma-python
 # libatomic1: debian:13-slim no longer ships it, but the Prisma CLI's bundled
 # Node (copied from the builder, which had it via build-essential) dynamically
@@ -112,6 +122,10 @@ FROM debian:13-slim AS server-base
 WORKDIR /app
 
 ENV DEBIAN_FRONTEND=noninteractive
+
+# APT_REFRESH re-runs the package installs below, Chromium included; see the
+# builder stage.
+ARG APT_REFRESH
 
 # Install Python, FFmpeg, ImageMagick, and CLI tools for agent use.
 # bubblewrap provides OS-level sandbox (whitelist-only FS + no network)
@@ -184,5 +198,10 @@ RUN POETRY_VIRTUALENVS_CREATE=true POETRY_VIRTUALENVS_IN_PROJECT=true \
     poetry install --no-ansi --only-root
 
 ENV PORT=8000
+
+# The commit Sentry reports as the release. Declared after every layer so a new
+# sha only changes image metadata and leaves the cached layers above intact.
+ARG SENTRY_RELEASE=""
+ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 
 CMD ["rest"]
