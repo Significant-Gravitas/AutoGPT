@@ -1,7 +1,7 @@
 """Shared helpers for draining and injecting pending messages.
 
-Used by both the baseline and SDK copilot paths to avoid duplicating
-the try/except drain, format, insert, and persist patterns.
+Shared by the engine's drain points to avoid duplicating the
+try/except drain, format, insert, and persist patterns.
 
 Also provides the call-rate-limit check for the queue endpoint so
 routes.py stays free of Redis/Lua details.
@@ -529,7 +529,7 @@ async def persist_pending_as_user_rows(
     each pending here as well would triple-count them in the next
     turn's ``--resume`` context).
 
-    Differs across baseline/SDK paths only in (a) how the displayed
+    Callers differ only in (a) how the displayed
     string is derived from a ``PendingMessage`` and (b) what extra
     per-path state (e.g. ``openai_messages``) needs trimming on
     rollback.  Those variance points are exposed as ``content_of`` and

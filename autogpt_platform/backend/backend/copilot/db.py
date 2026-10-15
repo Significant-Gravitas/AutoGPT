@@ -54,9 +54,9 @@ class PaginatedMessages(BaseModel):
 # Cap on messages eagerly loaded with a session. Set above the realistic p99
 # of any actual copilot conversation (typical: 10-100 msgs; power user: a few
 # hundred; cap engages only on pathological multi-thousand-message sessions).
-# Older history beyond the cap relies on the GCS transcript checkpoint via
-# ``extract_context_messages`` — if a session somehow exceeds this cap WITHOUT
-# a transcript, the cap-hit warning below makes the case observable in logs.
+# Older history beyond the cap relies on the CLI session the turn resumes
+# from storage — if a session somehow exceeds this cap WITHOUT one, the
+# cap-hit warning below makes the case observable in logs.
 MAX_LOADED_CHAT_MESSAGES = 1000
 
 

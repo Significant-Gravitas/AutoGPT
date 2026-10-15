@@ -24,7 +24,6 @@ from backend.util.truncate import truncate
 from .tool_adapter import (
     _MCP_MAX_CHARS,
     _STRIP_FROM_LLM,
-    BASELINE_ONLY_MCP_TOOLS,
     BLOCKED_TOOLS,
     SDK_DISALLOWED_TOOLS,
     _make_truncating_wrapper,
@@ -1428,18 +1427,17 @@ class TestCreateCopilotMcpServerHidden:
             assert short in registered
 
     @pytest.mark.asyncio
-    async def test_baseline_only_tools_never_registered(self):
-        """Baseline-only MCP wrappers (TodoWrite) must not register on the
-        SDK server. They are excluded from ``allowed_tools`` (SDK mode uses
-        the CLI-native built-ins), so advertising them makes the model call
-        a tool the CLI can never approve — it answers "Claude requested
-        permissions to use mcp__copilot__TodoWrite, but you haven't granted
-        it yet" and the model silently abandons the checklist."""
-        assert "TodoWrite" in BASELINE_ONLY_MCP_TOOLS
+    async def test_no_mcp_checklist_shadows_the_cli_built_in(self):
+        """The checklist is the CLI's own ``TodoWrite``. An MCP wrapper of the
+        same name would be advertised to the model but never approved — it
+        answers "Claude requested permissions to use mcp__copilot__TodoWrite,
+        but you haven't granted it yet" and the model silently abandons the
+        checklist."""
+        assert "TodoWrite" not in TOOL_REGISTRY
         for use_e2b in (False, True):
             server = create_copilot_mcp_server(use_e2b=use_e2b)
             registered = await self._registered_tool_names(server)
-            assert not BASELINE_ONLY_MCP_TOOLS & registered
+            assert "TodoWrite" not in registered
 
     @pytest.mark.asyncio
     async def test_builder_blocked_tools_hidden(self):
@@ -1543,9 +1541,7 @@ class TestCreateCopilotMcpServerHidden:
         return {
             name
             for name, tool in TOOL_REGISTRY.items()
-            if name not in BASELINE_ONLY_MCP_TOOLS
-            and name not in DEFERRED_TOOL_NAMES
-            and tool.is_available
+            if name not in DEFERRED_TOOL_NAMES and tool.is_available
         }
 
     @staticmethod

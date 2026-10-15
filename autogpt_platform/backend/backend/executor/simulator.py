@@ -69,8 +69,8 @@ _NO_PLATFORM_API = (
 )
 
 # OpenRouter-specific extra_body flag that embeds the real generation cost on
-# the response usage object.  Same shape used by the baseline copilot service
-# and web_search tool — keep the three aligned.
+# the response usage object.  Same shape the web_search tool uses; keep the
+# two aligned.
 _OPENROUTER_INCLUDE_USAGE_COST: dict[str, Any] = {"usage": {"include": True}}
 
 
@@ -300,9 +300,8 @@ def _extract_cost_usd(usage: CompletionUsage | None) -> float | None:
     when the request body includes ``usage: {"include": True}``.  The typed
     ``CompletionUsage`` does not declare it, so we read it off ``model_extra``
     (pydantic v2's container for extras) to keep access fully typed — no
-    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``
-    and ``backend.copilot.baseline.service._extract_usage_cost``; keep the
-    three in sync.
+    ``getattr``.  Mirrors ``backend.copilot.tools.web_search._extract_cost_usd``;
+    keep the two in sync.
     """
     if usage is None:
         return None

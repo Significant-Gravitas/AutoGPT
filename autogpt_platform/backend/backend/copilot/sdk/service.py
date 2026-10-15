@@ -222,8 +222,8 @@ from ..transcript import (
     cli_session_path,
     compact_transcript,
     download_transcript,
-    extract_context_messages,
     next_uncovered_sequence,
+    prior_context_messages,
     projects_base,
     read_compacted_entries,
     read_compacted_entries_detailed,
@@ -878,7 +878,7 @@ async def _consume_sdk_until_done(
             if dispatched is not None:
                 # The envelope goes out just ahead of the error it explains,
                 # so a client acting on it has it in hand before the turn is
-                # reported failed. Same contract as the baseline path.
+                # reported failed.
                 if isinstance(dispatched, StreamError):
                     codex_failure = _provider_failure_for(ctx)
                     if codex_failure is not None:
@@ -1641,9 +1641,9 @@ def _append_error_marker(
 ) -> None:
     """Append a copilot error marker to *session* so it persists across refresh.
 
-    Delegates to the shared writer so both engines produce the same row: the
+    Delegates to the shared writer so every route produces the same row: the
     frontend's rendering contract lives in one place, and a failure recorded
-    on a Codex turn carries the same envelope a baseline turn would.
+    on a Codex turn carries the same envelope a platform turn would.
     """
     append_error_marker(session, display_msg, retryable=retryable, failure=failure)
 
@@ -4415,7 +4415,6 @@ class _RestoreResult:
     use_resume: bool = False
     resume_file: str | None = None
     transcript_msg_count: int = 0
-    baseline_download: "TranscriptDownload | None" = None
     context_messages: "list[ChatMessage] | None" = None
     download_bytes: int | None = None
 
@@ -4458,17 +4457,17 @@ async def _restore_cli_session_for_turn(
     if cli_restore is not None:
         result.download_bytes = len(cli_restore.content)
 
-    # Only attempt --resume for SDK-written transcripts.
-    # Baseline-written transcripts use TranscriptBuilder format (synthetic IDs,
-    # stripped fields) that may not be valid for --resume.
+    # Only SDK-written transcripts resume. One the old fast path wrote
+    # (mode="baseline": a local chat from before the one-engine upgrade) is
+    # treated as no transcript, so the turn rebuilds its context from the
+    # chat's rows.
     if cli_restore is not None and cli_restore.mode != "sdk":
         logger.info(
-            "%s Transcript written by mode=%r — skipping --resume, "
-            "will use transcript content + gap for context",
+            "%s Transcript written by mode=%r is not resumed; rebuilding "
+            "context from the chat's rows",
             log_prefix,
             cli_restore.mode,
         )
-        result.baseline_download = cli_restore  # keep for extract_context_messages
         cli_restore = None
 
     # Validate, strip, and write to disk — delegate to helper to reduce
@@ -4498,61 +4497,20 @@ async def _restore_cli_session_for_turn(
         result.transcript_msg_count = cli_restore.message_count
         return result
 
-    # No valid --resume source (mode="baseline" or no GCS file).
-    # Build context from transcript content + gap, falling back to full DB.
-    # extract_context_messages handles both: non-None baseline_download uses
-    # the compacted transcript + gap; None falls back to all prior DB messages.
-    # It treats the last row as the current message, so the rows past
-    # *history_ceiling* (an auto-continue turn's other queued messages, all
-    # part of its current message) are left out first.
+    # No valid --resume source: build the context from the chat's rows. The
+    # last row is the current message, so the rows past *history_ceiling*
+    # (an auto-continue turn's other queued messages, all part of its current
+    # message) are left out first.
     history = session.messages[:history_ceiling]
-    context_msgs = await extract_context_messages(
-        result.baseline_download,
-        history,
-        session_id=session.session_id,
-    )
+    context_msgs = prior_context_messages(history)
     result.context_messages = context_msgs
-    result.transcript_msg_count = (
-        result.baseline_download.message_count
-        if result.baseline_download is not None
-        and result.baseline_download.message_count > 0
-        else len(history) - 1
-    )
+    result.transcript_msg_count = len(history) - 1
     logger.info(
-        "%s Context built from %s: %d messages (transcript watermark=%d, "
-        "will inject as <conversation_history>)",
+        "%s Context built from the chat's rows: %d messages (will inject "
+        "as <conversation_history>)",
         log_prefix,
-        (
-            "baseline transcript + gap"
-            if result.baseline_download is not None
-            else "DB fallback"
-        ),
         len(context_msgs),
-        result.transcript_msg_count,
     )
-
-    # Load baseline transcript content into builder so the upload path has accurate state.
-    # Also sets result.transcript_content so the _seed_transcript guard in the caller
-    # (``not transcript_content``) does not overwrite this builder state with a DB
-    # reconstruction — which would duplicate entries since load_previous appends.
-    if result.baseline_download is not None:
-        try:
-            raw_for_builder = result.baseline_download.content
-            if isinstance(raw_for_builder, bytes):
-                raw_for_builder = raw_for_builder.decode("utf-8")
-            stripped = strip_for_upload(raw_for_builder)
-            if validate_transcript(stripped):
-                transcript_builder.load_previous(stripped, log_prefix=log_prefix)
-                result.transcript_content = stripped
-        except (UnicodeDecodeError, ValueError, OSError) as _load_err:
-            # UnicodeDecodeError: non-UTF-8 content; ValueError: malformed JSONL in
-            # strip_for_upload; OSError: encode/decode I/O failure.  Unexpected
-            # exceptions propagate so programming errors are not silently masked.
-            logger.debug(
-                "%s Could not load baseline transcript into builder: %s",
-                log_prefix,
-                _load_err,
-            )
 
     return result
 

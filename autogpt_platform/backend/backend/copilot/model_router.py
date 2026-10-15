@@ -21,9 +21,8 @@ operator's custom model). An EMPTY registry never gates anything either;
 production processes always load it (fail-hard boot), so that branch is
 defense-in-depth for exotic embedders only.
 
-Matrix (the SDK engine, which the OpenRouter and Anthropic routes run,
-reads the ``thinking`` row; the baseline engine, the local route's, reads
-``fast``):
+Matrix (every platform route runs the SDK engine, which reads the
+``thinking`` row; nothing reads ``fast`` any more):
 
     +----------+----------+----------+
     |          | standard | advanced |

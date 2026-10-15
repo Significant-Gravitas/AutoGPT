@@ -1,8 +1,6 @@
 """Tests for the resumed-session gap helpers."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, MagicMock
 
 from backend.copilot.constants import (
     COPILOT_ERROR_PREFIX,
@@ -16,7 +14,6 @@ from backend.copilot.sdk.resume_gap import (
     missing_range,
     sendable_gap,
     uncovered_rows,
-    unseen_rows,
 )
 
 
@@ -127,63 +124,3 @@ def _db_returning(rows: list[ChatMessage]) -> MagicMock:
     db = MagicMock()
     db.get_chat_messages_paginated = AsyncMock(return_value=MagicMock(messages=rows))
     return db
-
-
-@pytest.mark.asyncio
-async def test_unseen_rows_claims_nothing_for_a_transcript_without_a_watermark():
-    assert (
-        await unseen_rows(_rows("user", "assistant"), 0, session_id="s", log_prefix="")
-        == []
-    )
-
-
-@pytest.mark.asyncio
-async def test_unseen_rows_fetches_the_hole_before_a_capped_window():
-    window = _rows("user", "assistant", start=5)
-    hole = _rows("user", "reasoning", "assistant", start=2)
-    db = _db_returning(hole)
-    with patch("backend.copilot.sdk.resume_gap.chat_db", return_value=db):
-        rows = await unseen_rows(window, 2, session_id="sess-1", log_prefix="[t]")
-
-    assert [m.content for m in rows] == [
-        "user-2",
-        "assistant-4",
-        "user-5",
-        "assistant-6",
-    ]
-    db.get_chat_messages_paginated.assert_awaited_once_with(
-        "sess-1", limit=3, after_sequence=2, before_sequence=5
-    )
-
-
-@pytest.mark.asyncio
-async def test_unseen_rows_sends_the_loaded_rows_when_the_hole_fetch_fails():
-    db = MagicMock()
-    db.get_chat_messages_paginated = AsyncMock(side_effect=RuntimeError("db down"))
-    with patch("backend.copilot.sdk.resume_gap.chat_db", return_value=db):
-        rows = await unseen_rows(
-            _rows("user", "assistant", start=5), 2, session_id="s", log_prefix=""
-        )
-
-    assert [m.content for m in rows] == ["user-5", "assistant-6"]
-
-
-@pytest.mark.asyncio
-async def test_unseen_rows_without_a_session_id_does_not_fetch():
-    with patch("backend.copilot.sdk.resume_gap.chat_db") as chat_db:
-        rows = await unseen_rows(
-            _rows("user", "assistant", start=5), 2, session_id=None, log_prefix=""
-        )
-
-    chat_db.assert_not_called()
-    assert [m.content for m in rows] == ["user-5", "assistant-6"]
-
-
-@pytest.mark.asyncio
-async def test_unseen_rows_leaves_out_markers():
-    prior = _rows("user", "assistant") + [
-        ChatMessage(role="assistant", content=f"{COPILOT_ERROR_PREFIX} x", sequence=2),
-        ChatMessage(role="user", content="u3", sequence=3),
-    ]
-    rows = await unseen_rows(prior, 2, session_id=None, log_prefix="")
-    assert [m.content for m in rows] == ["u3"]

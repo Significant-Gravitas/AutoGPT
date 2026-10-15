@@ -1,4 +1,4 @@
-"""CoPilot service — shared helpers used by both SDK and baseline paths.
+"""CoPilot service — helpers shared by the SDK engine and the side calls.
 
 This module contains:
 - System prompt building (Langfuse + static fallback, cache-optimised)
@@ -61,7 +61,6 @@ _TITLE_TRUNCATED_MAX_CHARS = _TITLE_MAX_CHARS - len(_TITLE_ELLIPSIS)
 _TITLE_TIMEOUT_SECONDS = 30
 
 
-_main_client: LangfuseAsyncOpenAI | None = None
 _aux_client: LangfuseAsyncOpenAI | None = None
 _langfuse = None
 
@@ -81,33 +80,6 @@ _PROMPT_REVALIDATION_TIMEOUT_SECONDS = 5
 _TITLE_CACHE_TTL = "1h"
 
 
-def _get_main_client() -> LangfuseAsyncOpenAI:
-    """Main OpenAI-compat client used by the baseline path.
-
-    Driven by ``config.main_client_credentials``: the platform route's own
-    OpenAI-compatible API (the local server on the local route, which is
-    the only one the fast engine serves).
-    """
-    global _main_client
-    if _main_client is None:
-        api_key, base_url = config.main_client_credentials
-        if base_url is None:
-            raise RuntimeError(
-                f"The {config.platform_route} platform route has no API for "
-                "the fast engine"
-            )
-        kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # Local-LLM backends (Ollama et al.) on CPU-only hosts can take
-        # many minutes for a single turn against Otto's heavy system
-        # prompt. The OpenAI client default (600 s) is too short for that
-        # case — extend it under the local transport. Cloud transports
-        # keep the SDK default so genuine hangs still surface promptly.
-        if config.platform_route == "local":
-            kwargs["timeout"] = config.local_request_timeout_s
-        _main_client = LangfuseAsyncOpenAI(**kwargs)
-    return _main_client
-
-
 def _get_aux_client() -> LangfuseAsyncOpenAI:
     """Auxiliary OpenAI-compat client.
 
@@ -125,10 +97,10 @@ def _get_aux_client() -> LangfuseAsyncOpenAI:
                 "side calls"
             )
         kwargs: dict = {"api_key": api_key, "base_url": base_url}
-        # The local route sends side calls to the same self-hosted backend
-        # (Ollama et al.) — extend the
-        # client timeout to match ``_get_main_client`` so title generation
-        # on a CPU-only host doesn't surface as an opaque 600 s timeout.
+        # The local route sends side calls to the self-hosted backend
+        # (Ollama et al.); extend the client timeout to the route's own so
+        # title generation on a CPU-only host doesn't surface as an opaque
+        # 600 s timeout.
         if config.platform_route == "local":
             kwargs["timeout"] = config.local_request_timeout_s
         _aux_client = LangfuseAsyncOpenAI(**kwargs)
@@ -167,9 +139,9 @@ MEMORY_CONTEXT_TAG = "memory_context"
 # without polluting the cacheable system prompt.  Server-injected only.
 ENV_CONTEXT_TAG = "env_context"
 
-# Tag name for the baseline engine's first-turn budget hint block.  Kept as
-# a distinct tag so it does not nest inside ``<env_context>``.
-# Server-injected only.
+# Tag of the first-turn budget hint the old fast path wrote.  Nothing writes
+# it now, but stored first messages still carry it, so the display strip
+# and the sanitizer keep the name.
 BUDGET_CONTEXT_TAG = "budget_context"
 
 # Tag name for the per-session follow-up awareness block injected into the
@@ -585,7 +557,6 @@ async def inject_user_context(
     session_messages: list[ChatMessage],
     warm_ctx: str = "",
     env_ctx: str = "",
-    budget_ctx: str = "",
     session_ctx: str = "",
     skills_ctx: str = "",
     user_id: str | None = None,
@@ -674,7 +645,6 @@ async def inject_user_context(
             understanding,
             warm_ctx=warm_ctx,
             env_ctx=env_ctx,
-            budget_ctx=budget_ctx,
             session_ctx=session_ctx,
             skills_ctx=skills_ctx,
             user_id=user_id,
@@ -711,7 +681,6 @@ async def build_injected_context_prefix(
     *,
     warm_ctx: str = "",
     env_ctx: str = "",
-    budget_ctx: str = "",
     session_ctx: str = "",
     skills_ctx: str = "",
     user_id: str | None = None,
@@ -761,21 +730,9 @@ async def build_injected_context_prefix(
     # block is never stripped by sanitize_user_supplied_context.
     if env_ctx:
         prefix = f"<{ENV_CONTEXT_TAG}>\n{env_ctx}\n</{ENV_CONTEXT_TAG}>\n\n" + prefix
-    # Prepend budget context as its own block so the per-turn USD hint does
-    # NOT nest inside ``<env_context>`` (whose system-prompt contract says
-    # it carries the working directory only).  Server-injected — sanitised
-    # against user spoofing in ``sanitize_user_supplied_context``.  The
-    # cacheable system prompt is intentionally NOT updated to describe this
-    # tag: doing so would invalidate the cross-user prompt cache for an
-    # informational hint with negligible spoof-impact.
-    if budget_ctx:
-        prefix = (
-            f"<{BUDGET_CONTEXT_TAG}>\n{budget_ctx}\n</{BUDGET_CONTEXT_TAG}>\n\n"
-            + prefix
-        )
-    # Prepend the per-session follow-up awareness block.  Sits between
-    # budget_context and memory_context so memory still ends up at the very
-    # top of the message (highest-priority context).  Like env/budget, this
+    # Prepend the per-session follow-up awareness block.  Sits below
+    # memory_context so memory still ends up at the very top of the
+    # message (highest-priority context).  Like env_context, this
     # is server-injected so the sanitizer ran before this prepend; user-typed
     # ``<session_context>`` blocks were stripped above.
     if session_ctx:
@@ -807,8 +764,8 @@ async def build_injected_context_prefix(
     # Prepend the per-user skill index as the OUTERMOST <available_skills>
     # block.  The cache breakpoint regex matches at
     # ``</available_skills>\n\n`` so ONLY the skill index sits on the
-    # cached side; memory_context / session_context / budget_context /
-    # env_context / user_context / user text all land on the variable side
+    # cached side; memory_context / session_context / env_context /
+    # user_context / user text all land on the variable side
     # (correct — they're per-turn dynamic).
     if skills_ctx:
         prefix = (

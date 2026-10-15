@@ -35,7 +35,6 @@ def real_catalog():
 
 @pytest.fixture(autouse=True)
 def engine(mocker: pytest_mock.MockerFixture):
-    mocker.patch.object(provider_tiers, "platform_engine", return_value="baseline")
     mocker.patch.object(
         provider_tiers,
         "resolve_model_route",

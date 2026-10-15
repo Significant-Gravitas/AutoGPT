@@ -592,7 +592,7 @@ async def drain_and_format_for_injection(
     """Drain the pending buffer and produce a ``<user_follow_up>`` block.
 
     Shared entry point for every mid-turn injection site (``PostToolUse``
-    hook for MCP + built-in tools, baseline between-rounds drain, etc.).
+    hook for MCP + built-in tools, etc.).
     Also stashes the drained messages on the persist queue so the service
     layer appends a real user row after the tool_result it rode in on —
     giving the UI a correctly-ordered bubble.
@@ -627,9 +627,8 @@ async def drain_and_format_for_injection(
 def format_pending_as_user_message(message: PendingMessage) -> dict[str, Any]:
     """Shape a ``PendingMessage`` into the OpenAI-format user message dict.
 
-    Used by the baseline tool-call loop when injecting the buffered
-    message into the conversation.  Context/file metadata (if any) is
-    embedded into the content so the model sees everything in one block.
+    Context/file metadata (if any) is embedded into the content so the
+    model sees everything in one block.
     """
     parts: list[str] = [message.text_for_model()]
     if message.context:

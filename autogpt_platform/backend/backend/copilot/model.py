@@ -469,11 +469,10 @@ class ChatSession(ChatSessionInfo):
     # In-flight tool-call names for the CURRENT turn.  Not persisted to
     # DB and not serialised on the wire — ``PrivateAttr`` keeps this a
     # process-local scratch buffer that's invisible to ``model_dump`` /
-    # ``model_dump_json`` / the redis cache path.  Populated by the
-    # baseline tool executor the moment a tool is dispatched so in-turn
-    # guards (e.g. ``require_guide_read``) can see the call before it
-    # lands in ``messages`` at turn-end.  Cleared when the turn
-    # completes.
+    # ``model_dump_json`` / the redis cache path.  Populated the moment a
+    # tool is dispatched so in-turn guards (e.g. ``require_guide_read``)
+    # can see the call before it lands in ``messages`` at turn-end.
+    # Cleared when the turn completes.
     _inflight_tool_calls: set[str] = PrivateAttr(default_factory=set)
 
     # Optional argument capture for in-flight tool calls.  Some guards
@@ -495,9 +494,9 @@ class ChatSession(ChatSessionInfo):
 
     sdk_turn_active: bool = Field(default=False, exclude=True)
     """Per-turn runtime flag: True while the SDK service is running this
-    turn (set at turn start, never persisted). Lets shared tools branch on
-    the execution path — e.g. enter_agent_building_mode restarts in-turn on
-    SDK but degrades gracefully on the baseline path."""
+    turn (set at turn start, never persisted). Lets shared tools tell a
+    running turn from a call outside one — e.g. enter_agent_building_mode
+    restarts the turn only when there is one to restart."""
 
     building_mode_requested: bool = Field(default=False, exclude=True)
     """Per-turn runtime flag set by ``enter_agent_building_mode``: asks the

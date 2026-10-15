@@ -290,17 +290,24 @@ the model as available tools.
 """
 
 # SDK built-in tool names — tools provided by the Claude Code CLI that our
-# code does not implement directly.  ``TodoWrite`` is DELIBERATELY excluded:
-# baseline mode ships an MCP-wrapped platform version
-# (``tools/todo_write.py``), while SDK mode still uses the CLI-native
-# original via ``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py`` — the
-# MCP copy is never registered there (``BASELINE_ONLY_MCP_TOOLS``).
+# code does not implement directly.  ``TodoWrite`` is the CLI's own
+# checklist, always on (``_SDK_BUILTIN_ALWAYS`` in ``sdk/tool_adapter.py``).
 # ``Agent``/``Task`` (the CLI sub-agent tool) stay accepted for saved graphs
 # and routines but are off on the SDK path unless an operator enables them
 # (``claude_agent_extra_builtin_tools``); ``run_sub_session`` is the
 # delegation path on both engines.
 SDK_BUILTIN_TOOL_NAMES: frozenset[str] = frozenset(
-    {"Agent", "Edit", "Glob", "Grep", "Read", "Task", "WebSearch", "Write"}
+    {
+        "Agent",
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Task",
+        "TodoWrite",
+        "WebSearch",
+        "Write",
+    }
 )
 
 # Platform tool names — everything that isn't an SDK built-in or a gate.
@@ -630,7 +637,6 @@ def apply_tool_permissions(
     """
     from backend.copilot.sdk.tool_adapter import (
         _READ_TOOL_NAME,
-        BASELINE_ONLY_MCP_TOOLS,
         MCP_TOOL_PREFIX,
         get_copilot_tool_names,
         get_sdk_disallowed_tools,
@@ -675,14 +681,7 @@ def apply_tool_permissions(
     # keeping only those present in the original base_allowed list.
     def to_sdk_names(short: str) -> list[str]:
         names: list[str] = []
-        if short in BASELINE_ONLY_MCP_TOOLS:
-            # Baseline ships an MCP version of TodoWrite for
-            # model-flexibility parity, but SDK mode uses the CLI-native
-            # original. Permissions target the CLI built-in here so
-            # ``base_allowed`` (which excludes the MCP wrapper) still
-            # matches.
-            names.append(short)
-        elif short in TOOL_REGISTRY:
+        if short in TOOL_REGISTRY:
             names.append(f"{MCP_TOOL_PREFIX}{short}")
         elif short in _SDK_TO_MCP:
             # Offer BOTH spellings and let the ``base_allowed`` filter below

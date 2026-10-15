@@ -1,9 +1,8 @@
 """Centralized prompt building logic for CoPilot.
 
 This module contains all prompt construction functions and constants,
-handling the distinction between:
-- SDK mode vs Baseline mode (tool documentation needs)
-- Local mode vs E2B mode (storage/filesystem differences)
+handling the distinction between local mode and E2B mode
+(storage/filesystem differences).
 """
 
 from functools import cache
@@ -11,8 +10,8 @@ from functools import cache
 from backend.blocks.desktop._api import DISPLAY
 
 # Workflow rules appended to the system prompt on every copilot turn
-# (baseline appends directly; SDK appends via the storage-supplement
-# template).  These are cross-tool rules (file sharing, @@agptfile: refs,
+# (via the storage-supplement template).  These are cross-tool rules
+# (file sharing, @@agptfile: refs,
 # tool-discovery priority, sub-agent etiquette) that don't belong on any
 # individual tool schema.
 SHARED_TOOL_NOTES = """\
@@ -712,7 +711,7 @@ browser the user should watch or take over.
 
 
 # The SDK path declares AutoPilot's tools as ``mcp__copilot__<name>``, while
-# the texts it shares with the baseline engine (these notes, the skills index,
+# the texts it shares with other surfaces (these notes, the skills index,
 # tool results) write the short name, and the CLI refuses an undeclared name.
 _SDK_TOOL_NAMES_NOTE = """
 
@@ -890,7 +889,7 @@ the whole chat.
 def get_graphiti_supplement() -> str:
     """Get the memory system instructions to append when Graphiti is enabled.
 
-    Appended after the SDK/baseline supplement in both execution paths.
+    Appended after the SDK supplement.
     """
     return """
 

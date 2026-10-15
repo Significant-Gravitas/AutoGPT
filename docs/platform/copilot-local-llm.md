@@ -43,11 +43,11 @@ never configure the chat. With `CHAT_PLATFORM_ROUTE=local`:
 
 | Behaviour | Local route |
 | --- | --- |
-| Where turns go | `CHAT_LOCAL_BASE_URL`; every turn runs on the baseline engine |
+| Where turns go | `CHAT_LOCAL_BASE_URL`; every turn runs on the same engine as every other route, through AutoPilot's built-in model gateway (`CHAT_LOCAL_ADAPTER` says how it speaks to your server) |
 | Key | `CHAT_LOCAL_API_KEY`, only if your server checks one; never `OPENAI_API_KEY` or `OPEN_ROUTER_API_KEY` |
 | Models | `CHAT_STANDARD_MODEL` and `CHAT_ADVANCED_MODEL`, both required, sent to the server verbatim |
 | Titles, dry runs and other side calls | the standard tier, on the same server |
-| Context window | `CHAT_LOCAL_CONTEXT_TOKENS` (required), or the server's own report when it gives one |
+| Context window | `CHAT_LOCAL_CONTEXT_TOKENS` (required): the window the server has loaded |
 
 On the managed cloud platform (`BEHAVE_AS=cloud`), the route's two
 tiers are the *bottom* layer of model resolution: LaunchDarkly per-user
@@ -81,6 +81,14 @@ values. Moving an existing local install over:
 Delete the old lines rather than emptying them. The `--with-ollama`
 installers write the new block for you.
 
+**Existing local chats.** Before this version, local turns ran on a
+separate, simpler engine. Chats started there keep working: their next
+turn runs on the one engine every route uses. It does not resume the old
+engine's saved transcript; it rebuilds the conversation from the chat's
+stored messages instead, so the first turn of a long chat re-sends its
+history and may compact it. That turn saves the chat's new session, which
+later turns resume. No message is lost.
+
 ## Required environment variables
 
 In `autogpt_platform/backend/.env`:
@@ -96,10 +104,11 @@ CHAT_PLATFORM_ROUTE=local
 CHAT_LOCAL_BASE_URL=http://192.168.1.42:11434/v1
 
 # How AutoPilot speaks to the server. openai_chat: an OpenAI-compatible
-# server, and CHAT_LOCAL_BASE_URL is its /v1 URL (as above).
+# server, and CHAT_LOCAL_BASE_URL is its /v1 URL (as above); AutoPilot's
+# model gateway translates each turn to /v1/chat/completions.
 # anthropic_passthrough: a server that also speaks Anthropic's Messages
-# API, and CHAT_LOCAL_BASE_URL is its root (http://192.168.1.42:11434).
-# Today chat turns use the server's OpenAI-compatible /v1 API either way.
+# API (llama.cpp's llama-server does), and CHAT_LOCAL_BASE_URL is its root
+# (http://192.168.1.42:11434); turns go to its /v1/messages as they are.
 CHAT_LOCAL_ADAPTER=openai_chat
 
 # The model's context window as the server has it loaded; see "Context
@@ -146,12 +155,10 @@ are incoherent or 500 outright.
 
 Set the window **on the server**, via `OLLAMA_CONTEXT_LENGTH`, and put the
 same number in `CHAT_LOCAL_CONTEXT_TOKENS`: AutoPilot compacts the
-conversation to fit it. When the server reports the window it actually
-loaded — Ollama `/api/ps`, llama.cpp `/props`, vLLM / LM Studio
-`/v1/models` — AutoPilot follows that report; backends that don't report
-one (LiteLLM proxy, Jan, text-generation-webui) are taken at
-`CHAT_LOCAL_CONTEXT_TOKENS`. So the setting has to be the real window: a
-number too high overflows the model, one too low throws history away.
+conversation to fit it. AutoPilot takes the window from this setting
+alone; it does not read the server's own report (Ollama `/api/ps`,
+llama.cpp `/props`). So the setting has to be the real window: a number
+too high overflows the model, one too low throws history away.
 
 The default Ornith model has a 262,144-token native window, so the installer
 sets `OLLAMA_CONTEXT_LENGTH=262144`, loads the model, and writes the window
@@ -333,11 +340,13 @@ docker exec autogpt_platform-copilot_executor-1 env | grep ^CHAT_
 #   CHAT_LOCAL_BASE_URL=http://192.168.1.42:11434/v1
 #   ...
 
-# 2. Send a turn from the UI, then confirm baseline routing in the log
+# 2. Send a turn from the UI, then confirm it ran in the log
 docker logs autogpt_platform-copilot_executor-1 | grep -E "Using.*service"
-#   [CoPilotExecutor|...] Using baseline service
+#   [CoPilotExecutor|...] Using SDK service
 
-# 3. Confirm Ollama saw the request — per platform:
+# 3. Confirm Ollama saw the request — per platform (POST /v1/chat/completions
+#    with CHAT_LOCAL_ADAPTER=openai_chat, /v1/messages with
+#    anthropic_passthrough):
 
 # Linux (systemd-managed Ollama):
 journalctl -u ollama --since "1 minute ago" | grep "POST"
@@ -352,7 +361,7 @@ tail -F ~/.ollama/logs/server.log | grep "POST"
 powershell -Command "Get-Content $env:LOCALAPPDATA\Ollama\server.log -Wait | Select-String POST"
 ```
 
-If `Using baseline service` appears and Ollama logs a 200, the
+If `Using SDK service` appears and Ollama logs a 200, the
 end-to-end path is working — any remaining errors are model / RAM /
 quantization concerns rather than config-routing bugs.
 

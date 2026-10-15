@@ -20,7 +20,6 @@ from pathlib import Path
 
 import pytest
 
-from backend.copilot.baseline import service as baseline_service
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import ChatMessage, ChatSession, Usage
 from backend.copilot.sdk import service as sdk_service
@@ -30,7 +29,6 @@ from backend.copilot.sdk.cli_openrouter_compat_test import (
 )
 
 from .audit import audit_thread
-from .baseline_turns import BaselineTurns
 from .ledger import PlatformLedger
 from .m365_turns import MICROSOFT_365_CREDENTIAL_ID, Microsoft365Turns
 from .provider import FakeProvider
@@ -78,7 +76,7 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         scenario, provider, ledger, session, usage_by_turn, cli_resumed
     )
     cli_path = _resolve_cli_path()
-    if scenario.needs_cli and not scenario.codex and cli_path is not None:
+    if scenario.needs_cli and not scenario.through_gateway and cli_path is not None:
         assert_pinned_cli(provider.user_agents, cli_path)
     gap = scenario.known_gap
     unexplained = [f.message for f in findings if gap is None or f.check != gap.check]
@@ -95,16 +93,9 @@ def _turn_runner(
     provider: FakeProvider,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> SdkTurns | BaselineTurns | Microsoft365Turns:
+) -> SdkTurns | Microsoft365Turns:
     if scenario.engine == "microsoft_365":
         return Microsoft365Turns(monkeypatch, provider)
-    if scenario.engine == "baseline":
-        return BaselineTurns(
-            monkeypatch,
-            _config(baseline_service.config, scenario, provider),
-            base_url=f"{provider.url}{scenario.client_path}",
-            model=scenario.model,
-        )
     return SdkTurns(
         tmp_path,
         monkeypatch,

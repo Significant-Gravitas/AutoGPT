@@ -9,9 +9,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from claude_agent_sdk import Message
-from openai.types.chat import ChatCompletionChunk
 
-from backend.copilot.baseline import service as baseline
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamBaseResponse, StreamStart
@@ -31,57 +29,6 @@ def session_with_prompt(prompt: str) -> ChatSession:
     session.title = "Drift fixture"
     session.messages.append(ChatMessage(role="user", content=prompt))
     return session
-
-
-async def baseline_turn(
-    session: ChatSession, turn_id: str
-) -> AsyncGenerator[StreamBaseResponse, None]:
-    """The baseline engine; its provider and I/O come from the ``baseline_io`` fixture."""
-    async for event in baseline.stream_chat_completion_baseline(
-        session.session_id,
-        user_id=session.user_id,
-        session=session,
-        is_user_message=False,
-        envelope=root_envelope(turn_id, session_id=session.session_id),
-    ):
-        yield event
-
-
-def provider_round(
-    deltas: list[str],
-    *,
-    tool_call: dict[str, str] | None = None,
-    reasoning: list[str] | None = None,
-) -> MagicMock:
-    """One scripted OpenAI-compatible response: reasoning deltas, text
-    deltas, then a tool call."""
-    chunks = [_chunk({"reasoning": delta}) for delta in reasoning or []]
-    chunks += [_chunk({"content": delta}) for delta in deltas]
-    if tool_call:
-        chunks.append(
-            _chunk(
-                {
-                    "tool_calls": [
-                        {
-                            "index": 0,
-                            "id": tool_call["id"],
-                            "type": "function",
-                            "function": {
-                                "name": tool_call["name"],
-                                "arguments": f'{{"url": "{tool_call["url"]}"}}',
-                            },
-                        }
-                    ]
-                }
-            )
-        )
-    chunks.append(
-        _chunk({}, finish_reason="tool_calls" if tool_call else "stop", usage=True)
-    )
-    stream = MagicMock()
-    stream.__aiter__.return_value = chunks
-    stream.close = AsyncMock()
-    return stream
 
 
 async def sdk_turn(
@@ -224,28 +171,3 @@ async def sdk_service_turn(
             envelope=root_envelope(turn_id, session_id=session.session_id),
         ):
             yield event
-
-
-def _chunk(
-    delta: dict[str, Any], *, finish_reason: str | None = None, usage: bool = False
-) -> ChatCompletionChunk:
-    return ChatCompletionChunk.model_validate(
-        {
-            "id": "round",
-            "object": "chat.completion.chunk",
-            "created": 0,
-            "model": "anthropic/claude-sonnet-4-6",
-            "choices": [{"index": 0, "finish_reason": finish_reason, "delta": delta}],
-            **(
-                {
-                    "usage": {
-                        "prompt_tokens": 100,
-                        "completion_tokens": 20,
-                        "total_tokens": 120,
-                    }
-                }
-                if usage
-                else {}
-            ),
-        }
-    )

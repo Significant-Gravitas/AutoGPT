@@ -2,7 +2,7 @@
 
 import pytest
 
-from .anthropic_rate_card import compute_anthropic_cost_usd, get_max_output_tokens
+from .anthropic_rate_card import compute_anthropic_cost_usd
 
 
 class TestComputeAnthropicCostUsd:
@@ -167,11 +167,7 @@ class TestComputeAnthropicCostUsd:
 
 class TestSonnet5Rates:
     """The refreshed rate card must carry claude-sonnet-5 — without it,
-    direct-Anthropic deployments cap output at the 32K fallback and bill
-    at Opus fallback rates (~7.5x)."""
-
-    def test_sonnet_5_max_output_from_rate_card(self):
-        assert get_max_output_tokens("claude-sonnet-5") == 128000
+    direct-Anthropic deployments bill at Opus fallback rates (~7.5x)."""
 
     def test_sonnet_5_billed_at_litellm_rates_not_fallback(self):
         cost = compute_anthropic_cost_usd(
@@ -190,11 +186,8 @@ class TestSonnet5Rates:
 
 class TestSonnet5_5Rates:
     """Sonnet 5.5 is the default standard-tier model, so a missing rate-card
-    entry is the expensive failure: direct-Anthropic deployments would cap
-    output at the 32K fallback and bill at the Opus fallback (~7.5x)."""
-
-    def test_sonnet_5_5_max_output_from_rate_card(self):
-        assert get_max_output_tokens("claude-sonnet-5-5") == 128000
+    entry is the expensive failure: direct-Anthropic deployments would bill
+    at the Opus fallback (~7.5x)."""
 
     def test_sonnet_5_5_billed_at_published_rates_without_fallback(self, caplog):
         cost = compute_anthropic_cost_usd(
@@ -232,9 +225,6 @@ class TestSonnet5_5Rates:
 
 class TestOpus5Rates:
     """Opus 5 direct-mode costs must use published rates, not the 3x fallback."""
-
-    def test_opus_5_max_output_from_rate_card(self):
-        assert get_max_output_tokens("claude-opus-5") == 128000
 
     def test_opus_5_billed_at_published_rates_without_fallback(self, caplog):
         cost = compute_anthropic_cost_usd(

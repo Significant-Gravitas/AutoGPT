@@ -44,11 +44,11 @@ def test_attribution_names_the_user_chat_and_environment(mocker):
 
 def test_attribution_without_a_user_or_chat_still_tags_the_environment():
     body = openrouter_attribution(
-        user_id=None, session_id=None, generation_name="copilot-baseline"
+        user_id=None, session_id=None, generation_name="copilot-title"
     )
 
     assert set(body) == {"trace"}
-    assert body["trace"]["generation_name"] == "copilot-baseline"
+    assert body["trace"]["generation_name"] == "copilot-title"
 
 
 def test_attribution_marks_an_impersonated_turn():

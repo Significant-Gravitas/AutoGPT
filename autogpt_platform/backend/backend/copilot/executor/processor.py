@@ -15,11 +15,9 @@ from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Callable, cast
 
 from backend.copilot import stream_registry
-from backend.copilot.baseline import stream_chat_completion_baseline
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
 from backend.copilot.credential_selection import set_turn_credential_pins
-from backend.copilot.engine import platform_engine
 from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
@@ -529,8 +527,9 @@ class CoPilotProcessor:
         """Async execution logic for a CoPilot turn, run as one Sentry
         ``copilot.turn`` transaction.
 
-        Calls the chat completion service (SDK or baseline) and publishes
-        results to the stream registry.
+        Calls the chat completion service (the SDK engine, or Microsoft 365
+        for a connected Microsoft account) and publishes results to the
+        stream registry.
 
         Args:
             entry: The turn payload
@@ -681,22 +680,16 @@ class CoPilotProcessor:
             else:
                 if entry.llm_credential_id is not None:
                     raise RuntimeError("codex_session_route_mismatch")
-                # The platform route decides the engine (``route_table.py``).
-                config = ChatConfig()
-
-                if config.test_mode:
+                # Every platform route runs on the SDK engine; the local
+                # route reaches its server through the shared model gateway.
+                if ChatConfig().test_mode:
                     stream_fn = stream_chat_completion_dummy
                     engine = "dummy"
                     log.warning("Using DUMMY service (CHAT_TEST_MODE=true)")
                 else:
-                    use_sdk = platform_engine(config) == "sdk"
-                    stream_fn = (
-                        sdk_service.stream_chat_completion_sdk
-                        if use_sdk
-                        else stream_chat_completion_baseline
-                    )
-                    engine = "sdk" if use_sdk else "baseline"
-                    log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
+                    stream_fn = sdk_service.stream_chat_completion_sdk
+                    engine = "sdk"
+                    log.info("Using SDK service")
 
             await cost_context_stack.enter_async_context(
                 trial_cost_context(entry.user_id)

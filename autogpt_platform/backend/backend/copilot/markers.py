@@ -2,8 +2,8 @@
 
 A stream error lives only on the wire. When the SSE connection ends the
 message is gone, and a reloaded chat shows the user's question followed by
-nothing at all -- no answer, no error, no sign anything happened. The SDK
-path solved this by appending a marker row; the baseline path never did.
+nothing at all -- no answer, no error, no sign anything happened. The
+engine solves this by appending a marker row.
 
 The prefixes are a frontend rendering contract, not decoration:
 ``COPILOT_ERROR_PREFIX`` renders an error card, and

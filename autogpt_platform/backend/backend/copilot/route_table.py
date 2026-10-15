@@ -3,8 +3,8 @@
 An operator picks the platform route (``CHAT_PLATFORM_ROUTE``) and gives it a
 key, a URL and two model tiers; a user may instead connect a ChatGPT account,
 which serves their turns over the ``codex`` row. Everything else about a route
-is a row here: the engine, the context window and compaction trigger, the CLI
-timeout, how model names are written, where a turn's cost comes from and who
+is a row here: the context window and compaction trigger, the CLI timeout,
+how model names are written, where a turn's cost comes from and who
 pays it, whether the CLI's attribution header and Anthropic thinking go out,
 and which gateway adapter carries the turn.
 
@@ -62,8 +62,6 @@ class RouteRow(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: RouteName
-    # ``baseline`` only on ``local`` until the shared gateway carries it.
-    engine: Literal["sdk", "baseline"]
     # Tokens; None where the turn supplies it (local: the operator's real
     # window; Codex: what the account advertises, else the default above).
     window: int | None
@@ -106,7 +104,6 @@ _FLASH_LITE = "google/gemini-2.5-flash-lite"
 ROUTES: dict[RouteName, RouteRow] = {
     "openrouter": RouteRow(
         name="openrouter",
-        engine="sdk",
         window=200_000,
         trigger_pct=50,
         sonnet_5_trigger_scaling=True,
@@ -128,7 +125,6 @@ ROUTES: dict[RouteName, RouteRow] = {
     ),
     "direct_anthropic": RouteRow(
         name="direct_anthropic",
-        engine="sdk",
         # The CLI clamps a pin above its own model table, so 1M lets the
         # table decide.
         window=1_000_000,
@@ -153,7 +149,6 @@ ROUTES: dict[RouteName, RouteRow] = {
     ),
     "subscription": RouteRow(
         name="subscription",
-        engine="sdk",
         # Held to 200K: the turns draw on the subscriber's own plan, and a
         # chat resending 700K a turn drains a usage window in a few messages.
         # Within it the route fills the window rather than compacting at half.
@@ -178,7 +173,6 @@ ROUTES: dict[RouteName, RouteRow] = {
     ),
     "local": RouteRow(
         name="local",
-        engine="sdk",
         window=None,
         trigger_pct=90,
         sonnet_5_trigger_scaling=False,
@@ -200,7 +194,6 @@ ROUTES: dict[RouteName, RouteRow] = {
     ),
     "codex": RouteRow(
         name="codex",
-        engine="sdk",
         window=None,
         trigger_pct=CODEX_DEFAULT_TRIGGER_PCT,
         sonnet_5_trigger_scaling=False,

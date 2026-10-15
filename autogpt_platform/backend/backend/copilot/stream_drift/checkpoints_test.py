@@ -5,7 +5,6 @@ Both engines run their real persist paths with the DB swapped for
 so a checkpoint must equal the one the latest save before it describes.
 """
 
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock
 
@@ -20,15 +19,11 @@ from claude_agent_sdk import (
     UserMessage,
 )
 
-from backend.copilot import pending_message_helpers
-from backend.copilot.baseline import service as baseline
 from backend.copilot.model import ChatSession
-from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import (
     ResponseType,
     StreamBaseResponse,
     StreamCheckpoint,
-    StreamToolOutputAvailable,
 )
 from backend.copilot.sdk import service as sdk
 from backend.copilot.stream_checkpoint import turn_checkpoint
@@ -39,7 +34,7 @@ from .recording import (
     load_fixture,
     saving_into,
 )
-from .scripted import baseline_turn, provider_round, sdk_turn, session_with_prompt
+from .scripted import sdk_turn, session_with_prompt
 
 # The prompt is row 0, so every turn's rows start at 1.
 TURN_START = 1
@@ -72,39 +67,6 @@ async def test_the_sdk_engine_publishes_no_checkpoint_for_a_failed_flush(
         await timeline.run(
             sdk_turn(session_with_prompt("List the files"), _sdk_script())
         )
-
-    assert timeline.checkpoints() == []
-
-
-async def test_the_baseline_engine_checkpoints_the_tool_round_and_the_turn(
-    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
-) -> None:
-    timeline = Timeline()
-    monkeypatch.setattr(baseline, "upsert_chat_session", timeline.save)
-    monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", timeline.save)
-    _script_baseline_tool_turn(monkeypatch)
-
-    await timeline.run(
-        baseline_turn(session_with_prompt("What does example.com say?"), "t")
-    )
-
-    # After round one: its assistant and tool rows plus the drained follow-up.
-    assert [c.rows for c in timeline.checkpoints()] == [3, 4]
-
-
-async def test_the_baseline_engine_publishes_no_checkpoint_for_a_failed_persist(
-    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
-) -> None:
-    timeline = Timeline()
-    failing = AsyncMock(side_effect=ConnectionError("db down"))
-    monkeypatch.setattr(baseline, "upsert_chat_session", failing)
-    monkeypatch.setattr(pending_message_helpers, "upsert_chat_session", failing)
-    monkeypatch.setattr(pending_message_helpers, "push_pending_message", AsyncMock())
-    _script_baseline_tool_turn(monkeypatch)
-
-    await timeline.run(
-        baseline_turn(session_with_prompt("What does example.com say?"), "t")
-    )
 
     assert timeline.checkpoints() == []
 
@@ -195,27 +157,3 @@ def _sdk_script() -> list:
             session_id="drift",
         ),
     ]
-
-
-def _script_baseline_tool_turn(monkeypatch: pytest.MonkeyPatch) -> None:
-    rounds = [
-        provider_round(
-            ["Let me ", "fetch that."],
-            tool_call={"id": "call-fetch", "name": "web_fetch", "url": "example.com"},
-        ),
-        provider_round(["It says ", "Example Domain."]),
-    ]
-    monkeypatch.setattr(baseline, "call_provider_stream", AsyncMock(side_effect=rounds))
-
-    async def execute(*, tool_call_id: str, **_: object) -> StreamToolOutputAvailable:
-        return StreamToolOutputAvailable(
-            toolCallId=tool_call_id, toolName="web_fetch", output="Example Domain"
-        )
-
-    monkeypatch.setattr(baseline, "execute_tool", AsyncMock(side_effect=execute))
-    follow_up = PendingMessage(id=str(uuid.uuid4()), content="and in French?")
-    monkeypatch.setattr(
-        baseline,
-        "drain_pending_messages",
-        AsyncMock(side_effect=[[follow_up], [], [], []]),
-    )

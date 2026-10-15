@@ -43,14 +43,12 @@ class KnownGap(BaseModel):
 
 class Scenario(BaseModel):
     id: str
-    engine: Literal["sdk", "baseline", "microsoft_365"]
+    engine: Literal["sdk", "microsoft_365"]
     model: str
     charge: ChargeBasis
     cost_log_provider: str
     # ChatConfig fields; ``{provider}`` in a string is the fake's base URL.
     config: dict[str, Any] = {}
-    # Where the baseline's OpenAI client points, under the fake's base URL.
-    client_path: str = ""
     codex: bool = False
     generation_lookups_fail: bool = False
     # Calls the provider bills per turn: one, a tool round of two, one.
@@ -84,6 +82,12 @@ class Scenario(BaseModel):
     @property
     def needs_cli(self) -> bool:
         return self.engine == "sdk"
+
+    @property
+    def through_gateway(self) -> bool:
+        """Whether the CLI reaches the provider through the model gateway, so
+        the provider sees the gateway's requests rather than the CLI's."""
+        return self.codex or self.config.get("platform_route") == "local"
 
     @property
     def reports_usage(self) -> bool:
@@ -214,39 +218,11 @@ SCENARIOS = [
         config=_DIRECT,
         codex=True,
     ),
+    # The local route runs on the SDK engine through the shared model
+    # gateway: the operator's server is never charged, through either adapter.
     Scenario(
-        id="baseline-openrouter",
-        engine="baseline",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config=_OPENROUTER,
-        client_path="/openrouter/api/v1",
-    ),
-    Scenario(
-        # The OpenAI client retries the refused request itself: the turn
-        # completes, and the retry is billed once.
-        id="baseline-openrouter-overloaded-once",
-        engine="baseline",
-        model=f"anthropic/{SONNET}",
-        charge="invoice",
-        cost_log_provider="open_router",
-        config=_OPENROUTER,
-        client_path="/openrouter/api/v1",
-        fault=PlannedFault(kind="overloaded", turn=1, request=2),
-    ),
-    Scenario(
-        id="baseline-anthropic",
-        engine="baseline",
-        model=SONNET,
-        charge="invoice",
-        cost_log_provider="anthropic",
-        config=_DIRECT,
-        client_path="/anthropic/v1",
-    ),
-    Scenario(
-        id="baseline-ollama",
-        engine="baseline",
+        id="sdk-local-openai-chat",
+        engine="sdk",
         model="llama3.1:8b",
         charge="none",
         cost_log_provider="local",
@@ -258,7 +234,21 @@ SCENARIOS = [
             "standard_model": "llama3.1:8b",
             "advanced_model": "llama3.1:8b",
         },
-        client_path="/ollama/v1",
+    ),
+    Scenario(
+        id="sdk-local-anthropic-passthrough",
+        engine="sdk",
+        model="llama3.1:8b",
+        charge="none",
+        cost_log_provider="local",
+        config={
+            "platform_route": "local",
+            "local_base_url": "{provider}/ollama",
+            "local_adapter": "anthropic_passthrough",
+            "local_context_tokens": 131_072,
+            "standard_model": "llama3.1:8b",
+            "advanced_model": "llama3.1:8b",
+        },
     ),
     Scenario(
         id="microsoft-365-copilot",

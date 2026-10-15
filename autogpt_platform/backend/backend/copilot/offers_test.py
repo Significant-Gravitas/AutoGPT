@@ -50,7 +50,6 @@ def advanced_allowed(mocker: pytest_mock.MockerFixture):
 def hosted(mocker: pytest_mock.MockerFixture):
     mocker.patch.object(offers.settings.config, "behave_as", BehaveAs.CLOUD)
     mocker.patch.object(transports.settings.config, "behave_as", BehaveAs.CLOUD)
-    mocker.patch.object(provider_tiers, "platform_engine", return_value="baseline")
     mocker.patch.object(
         provider_tiers,
         "resolve_model_route",
@@ -177,8 +176,8 @@ async def test_a_chatgpt_tier_names_the_model_the_catalog_pins(
     ][0]
 
     assert [t.display_model for t in codex.tiers] == [
-        "copilot_codex:fast:standard",
-        "copilot_codex:fast:advanced",
+        "copilot_codex:thinking:standard",
+        "copilot_codex:thinking:advanced",
     ]
 
 
@@ -209,22 +208,6 @@ async def test_tiers_name_the_model_they_resolve_to(
     (offer,) = await get_connection_offers(USER_ID)
 
     assert [tier.label for tier in offer.tiers] == ["Balanced", "Advanced"]
-    assert [tier.display_model for tier in offer.tiers] == [
-        "fast-standard-model",
-        "fast-advanced-model",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_tiers_follow_the_engine_the_user_will_actually_run_on(
-    mocker: pytest_mock.MockerFixture,
-) -> None:
-    """The engine is the platform route's, so it is knowable before a turn."""
-    mocker.patch.object(provider_tiers, "platform_engine", return_value="sdk")
-    _mock_transports(mocker, [_transport(default=True)])
-
-    (offer,) = await get_connection_offers(USER_ID)
-
     assert [tier.display_model for tier in offer.tiers] == [
         "thinking-standard-model",
         "thinking-advanced-model",
@@ -474,10 +457,10 @@ async def test_a_locked_chatgpt_offer_still_names_the_models(
 
     locked = _locked(await get_connection_offers("user"))[0]
 
-    # The fixture pins the engine to the baseline, so the cells are "fast".
+    # Every platform turn runs on the SDK engine, so the cells are "thinking".
     assert [t.display_model for t in locked.tiers] == [
-        "fast-standard",
-        "fast-advanced",
+        "thinking-standard",
+        "thinking-advanced",
     ]
     # Naming them must not read as offering them.
     assert all(t.selectable is False for t in locked.tiers)

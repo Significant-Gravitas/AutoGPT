@@ -960,7 +960,6 @@ def create_copilot_mcp_server(
         # tools on a box with no agent-browser binary.
         if (
             tool_name in hidden
-            or tool_name in BASELINE_ONLY_MCP_TOOLS
             or tool_name in DEFERRED_TOOL_NAMES
             or not base_tool.is_available
         ):
@@ -1203,27 +1202,12 @@ DANGEROUS_PATTERNS = [
     r"subprocess",
 ]
 
-# Platform-tool names whose MCP wrappers must NOT be exposed to SDK mode.
-# Baseline ships an MCP ``TodoWrite`` for model-flexibility parity; SDK mode
-# keeps using the CLI-native built-in listed in ``_SDK_BUILTIN_ALWAYS`` so
-# there is no double exposure.  These names are both excluded from
-# ``allowed_tools`` (see ``_registry_mcp_tools``) AND skipped during MCP
-# server registration in ``create_copilot_mcp_server`` — filtering the
-# allowed list alone still advertises the tool to the model, which then
-# calls it and hits an unapprovable permission prompt.  Public (no leading
-# underscore) so a future refactor renaming it is visible at both call
-# sites — ``permissions.apply_tool_permissions`` maps short tool names back
-# to the CLI built-in form for SDK mode.
-BASELINE_ONLY_MCP_TOOLS: frozenset[str] = frozenset({"TodoWrite"})
-
 
 def _registry_mcp_tools(*, hidden: frozenset[str] = frozenset()) -> list[str]:
     return [
         f"{MCP_TOOL_PREFIX}{name}"
         for name in TOOL_REGISTRY.keys()
-        if name not in BASELINE_ONLY_MCP_TOOLS
-        and name not in DEFERRED_TOOL_NAMES
-        and name not in hidden
+        if name not in DEFERRED_TOOL_NAMES and name not in hidden
     ]
 
 

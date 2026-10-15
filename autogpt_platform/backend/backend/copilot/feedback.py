@@ -7,8 +7,8 @@ to Langfuse as a score named after the rating ("user-feedback": 1 = up,
 - on the trace of the SDK turn that wrote the reply, which the turn stamps
   on its assistant rows (``ChatMessage.langfuseTraceId``);
 - otherwise on the chat's Langfuse session, with the message in the score's
-  metadata: baseline turns have no turn-level trace, and replies written
-  before the stamp existed have none recorded.
+  metadata: turns the old fast path ran have no turn-level trace, and
+  replies written before the stamp existed have none recorded.
 
 The score reuses the rating's id, so rating a reply again updates its score
 instead of adding one. A Langfuse failure is logged and shows in the

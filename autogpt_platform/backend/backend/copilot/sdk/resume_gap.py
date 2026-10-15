@@ -106,28 +106,3 @@ async def fetch_missing_rows(
     if not page:
         return []
     return [m for m in page.messages if m.role != "reasoning"]
-
-
-async def unseen_rows(
-    prior: list[ChatMessage],
-    watermark: int,
-    *,
-    session_id: str | None,
-    log_prefix: str,
-) -> list[ChatMessage]:
-    """The history a stored transcript with *watermark* has not seen, ready to
-    send: the rows between the watermark and a capped window's first row
-    (from the DB, when there is a *session_id* and the fetch works), then
-    the loaded rows at or above it, without markers, notices and compaction
-    rows.
-
-    *prior* is the loaded history before the current message.  A watermark
-    of 0 is a transcript stored without one: nothing is known to be missing.
-    """
-    if watermark <= 0:
-        return []
-    missing = missing_range(prior, watermark)
-    hole = None
-    if missing is not None and session_id:
-        hole = await fetch_missing_rows(session_id, missing, log_prefix)
-    return sendable_gap((hole or []) + uncovered_rows(prior, watermark))

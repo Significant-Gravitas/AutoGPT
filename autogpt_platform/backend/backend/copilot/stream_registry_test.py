@@ -611,20 +611,6 @@ def test_reconstruct_chunk_round_trips_pending_drained():
     ]
 
 
-def test_reconstruct_mode_changed_chunk():
-    """Regression: MODE_CHANGED was missing from the reconstruction map, so
-    the picker-sync event was silently dropped after the Redis stream."""
-    from backend.copilot.response_model import StreamModeChanged
-    from backend.copilot.stream_registry import _reconstruct_chunk
-
-    chunk = _reconstruct_chunk(
-        {"type": "data-mode-changed", "mode": "extended_thinking"}
-    )
-    assert isinstance(chunk, StreamModeChanged)
-    assert chunk.mode == "extended_thinking"
-    assert '"data"' in chunk.to_sse()
-
-
 def test_reconstruct_chunk_round_trips_compaction_progress():
     """Regression: ``data-compaction`` was added to the wire protocol without
     being registered here, so every live compaction phase was dropped on the

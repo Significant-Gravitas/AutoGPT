@@ -134,6 +134,19 @@ class TestPlatformProfile:
         assert profile.pins_max_context
         assert profile.thinking_effort is None
 
+    def test_local_records_no_price_for_the_operators_model(self):
+        """No rate card knows a self-hosted model, so its turns carry no
+        estimate rather than one at the fallback rates."""
+        cfg = ChatConfig(
+            platform_route="local",
+            local_base_url="http://ollama:11434/v1",
+            local_adapter="openai_chat",
+            local_context_tokens=131_072,
+        )
+        profile = platform_profile(cfg, "qwen3:8b", "env")
+        assert not profile.platform_pays
+        assert not profile.prices_tokens
+
     def test_disabled_has_no_platform_profile(self):
         with pytest.raises(RuntimeError, match="CHAT_PLATFORM_ROUTE=disabled"):
             platform_profile(ChatConfig(), "anthropic/claude-sonnet-5", "env")

@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import backend.copilot.tools.skills as skills
-from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
 from backend.copilot.tools.models import ErrorResponse
@@ -1519,7 +1518,7 @@ async def test_skills_update_notice_empty_when_flag_disabled():
 
 
 # ---------------------------------------------------------------------------
-# Engine prepend wiring (SDK helper + baseline helper)
+# Engine prepend wiring (the SDK helper)
 # ---------------------------------------------------------------------------
 
 
@@ -1592,25 +1591,6 @@ async def test_sdk_prepend_noop_for_non_user_message():
     session = _session_with_user_history(["hello"])
     result = await _maybe_prepend_skills_update(session, "user-1", False, "raw")
     assert result == "raw"
-
-
-def test_baseline_prepend_targets_current_user_message():
-    """With drained pending rows around, the notice lands on the latest turn."""
-    messages = [
-        {"role": "user", "content": "first"},
-        {"role": "assistant", "content": "ack"},
-        {"role": "user", "content": "live"},
-    ]
-    _prepend_skills_notice_to_current_message(messages, "<skills_update>\nnew\n")
-    assert messages[0]["content"] == "first"
-    assert messages[2]["content"] == "<skills_update>\nnew\nlive"
-
-
-def test_baseline_prepend_empty_notice_noop():
-    """No drift means the live model input is left byte-identical."""
-    messages = [{"role": "user", "content": "live"}]
-    assert _prepend_skills_notice_to_current_message(messages, "") is None
-    assert messages == [{"role": "user", "content": "live"}]
 
 
 # ---------------------------------------------------------------------------

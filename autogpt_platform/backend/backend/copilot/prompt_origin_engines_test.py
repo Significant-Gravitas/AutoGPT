@@ -1,4 +1,4 @@
-"""Each engine writes a scheduled turn's prompt row itself; these pin that the
+"""The engine writes a scheduled turn's prompt row itself; these pin that the
 row it writes carries the stamp the executor handed over, on a schedule's
 first fire and on a later fire of the same prompt."""
 
@@ -7,8 +7,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from backend.copilot.baseline.service import stream_chat_completion_baseline
-from backend.copilot.constants import COPILOT_ERROR_PREFIX
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.prompt_origin import PromptOrigin, with_prompt_origin
 from backend.copilot.sdk.service import stream_chat_completion_sdk
@@ -25,7 +23,7 @@ FIRES = pytest.mark.parametrize(
 
 
 class _StopAfterPromptRow(Exception):
-    """Raised by the first dependency each engine touches after the append."""
+    """Raised by the first dependency the engine touches after the append."""
 
 
 def _session_mid_conversation(after_a_fire: bool) -> ChatSession:
@@ -60,8 +58,10 @@ def _assert_stamped_prompt_row(session: ChatSession, rows_before: int) -> None:
 @pytest.mark.asyncio
 async def test_sdk_engine_stamps_the_scheduled_prompt_row(after_a_fire: bool):
     session = _session_mid_conversation(after_a_fire)
-    rows_before = len(session.messages)
+    await _run_sdk_to_the_prompt_row(session, rows_before=len(session.messages))
 
+
+async def _run_sdk_to_the_prompt_row(session: ChatSession, *, rows_before: int) -> None:
     with (
         patch(
             "backend.copilot.sdk.service.build_expert_identity_suffix",
@@ -74,56 +74,6 @@ async def test_sdk_engine_stamps_the_scheduled_prompt_row(after_a_fire: bool):
         pytest.raises(_StopAfterPromptRow),
     ):
         async for _ in stream_chat_completion_sdk(
-            session_id=session.session_id,
-            message=PROMPT,
-            is_user_message=False,
-            user_id="user-1",
-            session=session,
-            message_metadata=with_prompt_origin(None, ORIGIN),
-        ):
-            pass
-
-    _assert_stamped_prompt_row(session, rows_before)
-
-
-@FIRES
-@pytest.mark.asyncio
-async def test_baseline_engine_stamps_the_scheduled_prompt_row(after_a_fire: bool):
-    session = _session_mid_conversation(after_a_fire)
-    await _run_baseline_to_the_prompt_row(session, rows_before=len(session.messages))
-
-
-@pytest.mark.asyncio
-async def test_baseline_engine_writes_the_row_after_a_failed_identical_fire():
-    """The previous fire of the same prompt failed and left only an error
-    marker after its prompt; the next fire still writes its own row."""
-    session = _session_mid_conversation(after_a_fire=False)
-    session.messages += [
-        ChatMessage(role="assistant", content=PROMPT, sequence=2),
-        ChatMessage(
-            role="assistant",
-            content=f"{COPILOT_ERROR_PREFIX} The assistant stopped unexpectedly.",
-            sequence=3,
-        ),
-    ]
-    await _run_baseline_to_the_prompt_row(session, rows_before=len(session.messages))
-
-
-async def _run_baseline_to_the_prompt_row(
-    session: ChatSession, *, rows_before: int
-) -> None:
-    with (
-        patch(
-            "backend.copilot.baseline.service.build_expert_identity_suffix",
-            new=AsyncMock(return_value=""),
-        ),
-        patch(
-            "backend.copilot.baseline.service.drain_pending_safe",
-            new=AsyncMock(side_effect=_StopAfterPromptRow),
-        ),
-        pytest.raises(_StopAfterPromptRow),
-    ):
-        async for _ in stream_chat_completion_baseline(
             session_id=session.session_id,
             message=PROMPT,
             is_user_message=False,

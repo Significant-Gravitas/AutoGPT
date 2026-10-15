@@ -988,87 +988,6 @@ def _extract_openai_compat_cache_tokens(response: Any) -> tuple[int, int]:
 #   callers (eval scripts, integration tests) need no extra wiring.
 
 
-# Wider than ``ProviderResponse`` because the caller picks up chunks
-# directly. Typed as ``Any`` to avoid importing the SDK's private
-# stream typevars across the helper boundary — the openai SDK is the
-# source of truth for chunk shape and callers are already openai-shape
-# aware (they came here from a direct SDK call).
-StreamResponse = Any
-
-
-async def call_provider_stream(
-    *,
-    model: str,
-    messages: list[dict],
-    client: openai.AsyncOpenAI | None = None,
-    base_url: str | None = None,
-    api_key: str | None = None,
-    extra_body: dict[str, Any] | None = None,
-    extra_headers: dict[str, str] | None = None,
-    stream_options: dict[str, Any] | None = None,
-    tools: list[dict] | None = None,
-    max_tokens: int | openai.Omit = openai.omit,
-    timeout: float | openai.Omit = openai.omit,
-    client_factory: type[openai.AsyncOpenAI] = openai.AsyncOpenAI,
-) -> StreamResponse:
-    """Open an OpenAI-compatible streaming chat completion and return
-    the raw ``AsyncStream`` for the caller to iterate.
-
-    Used by the chat baseline path. The non-streaming sync helper
-    (``call_provider``) is the right choice for everything else — only
-    consumers that need chunk-level deltas (tool partials, incremental
-    SSE tokens) belong here.
-
-    Either pass a pre-built ``client`` (the chat layer caches its
-    Langfuse-wrapped client at module level) OR pass
-    ``base_url`` + ``api_key`` and the helper builds one via
-    ``client_factory``. The chat layer prefers the pre-built path so
-    TCP connections stay pooled across turns; tests pass a mocked
-    client. Default factory is ``openai.AsyncOpenAI`` — callers
-    needing Langfuse spans pass the wrapped subclass.
-
-    Does NOT wrap the call in ``asyncio.wait_for`` and defaults
-    ``timeout`` to ``openai.omit`` so the SDK / client's own per-request
-    default applies. A streaming chat request can legitimately run
-    minutes (long reasoning, large tool-call payloads) and the
-    streaming protocol already exposes keepalive failures via chunk
-    timeouts; the caller's outer cancel scope is the right place to
-    bound total time. Pass an explicit ``timeout`` only when you
-    really mean per-request inter-chunk read timeout.
-    """
-    sanitize_messages_for_utf8(messages)
-    if client is None:
-        if base_url is None or api_key is None:
-            raise ValueError(
-                "call_provider_stream: pass either `client` or both "
-                "`base_url` and `api_key`."
-            )
-        client = client_factory(base_url=base_url, api_key=api_key)
-    create_kwargs: dict[str, Any] = {
-        "model": model,
-        "messages": cast(list[ChatCompletionMessageParam], messages),
-        "stream": True,
-    }
-    if not isinstance(timeout, openai.Omit):
-        create_kwargs["timeout"] = timeout
-    # Only set ``max_tokens`` when the caller passed a real value. Some
-    # transports (OpenRouter on thinking routes) inject their own
-    # default and 400 on a redundant client-side limit, so the chat
-    # baseline path passes ``openai.omit`` to skip the field
-    # entirely.
-    if not isinstance(max_tokens, openai.Omit):
-        create_kwargs["max_tokens"] = max_tokens
-    if extra_body:
-        create_kwargs["extra_body"] = extra_body
-    if extra_headers:
-        create_kwargs["extra_headers"] = extra_headers
-    if stream_options:
-        create_kwargs["stream_options"] = stream_options
-    if tools:
-        create_kwargs["tools"] = cast(list[ChatCompletionToolParam], list(tools))
-    return await client.chat.completions.create(**create_kwargs)
-
-
 async def call_provider_openai_compat_sync(
     *,
     model: str,
@@ -1091,9 +1010,9 @@ async def call_provider_openai_compat_sync(
     SDK-specific extraction logic should prefer ``call_provider``
     which normalizes into ``ProviderResponse``.
 
-    Either pass a pre-built ``client`` OR ``base_url`` + ``api_key``
-    + (optionally) ``client_factory``. See ``call_provider_stream``
-    for rationale.
+    Either pass a pre-built ``client`` (the chat layer's cached,
+    Langfuse-wrapped one, so TCP connections stay pooled; tests pass a
+    mock) OR ``base_url`` + ``api_key`` + (optionally) ``client_factory``.
     """
     if timeout_seconds is None:
         timeout_seconds = DEFAULT_REQUEST_TIMEOUT_SECONDS

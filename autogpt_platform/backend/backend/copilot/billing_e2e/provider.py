@@ -67,10 +67,12 @@ class FakeProvider:
             app.router.add_post(
                 f"{prefix}/v1/chat/completions", partial(self._chat, route=route)
             )
+            # A local server (llama.cpp, Ollama) answers Anthropic's Messages
+            # API too: the local route's pass-through adapter sends it there.
+            app.router.add_post(
+                f"{prefix}/v1/messages", partial(self._messages, route=route)
+            )
             if route != "ollama":
-                app.router.add_post(
-                    f"{prefix}/v1/messages", partial(self._messages, route=route)
-                )
                 # The CLI lists models when it starts; the list is not billed.
                 app.router.add_get(f"{prefix}/v1/models", self._model_list)
         app.router.add_post("/codex/responses", self._responses)

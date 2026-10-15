@@ -20,7 +20,6 @@ import logging
 from pydantic import BaseModel
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel
-from backend.copilot.engine import platform_engine
 from backend.copilot.model_router import (
     ROUTE_SURFACE_CODEX,
     ModelMode,
@@ -63,14 +62,13 @@ class ProviderTiersResponse(BaseModel):
 
 
 async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
-    """What every provider's tiers resolve to for this user's engine.
+    """What every provider's tiers resolve to for this user.
 
-    User-scoped only because the engine is: which models a tier maps to
-    depends on whether the turn will run on the SDK path. It says nothing
-    about whether the user may use either provider.
+    User-scoped because per-user flag targeting can move a tier's model.
+    It says nothing about whether the user may use either provider.
     """
     config = ChatConfig()
-    mode = resolve_engine_mode(config)
+    mode: ModelMode = "thinking"
     platform = await platform_tier_models(mode, user_id, config)
     codex = codex_tier_models(mode)
     return [
@@ -85,15 +83,6 @@ async def describe_provider_tiers(user_id: str) -> list[ProviderTiers]:
             tiers=_as_tiers(codex),
         ),
     ]
-
-
-def resolve_engine_mode(config: ChatConfig) -> ModelMode:
-    """The platform route's engine, as the router's mode.
-
-    A property of the deployment, not of which connection a user picks,
-    so it is resolved once rather than per provider.
-    """
-    return "thinking" if platform_engine(config) == "sdk" else "fast"
 
 
 async def platform_tier_models(

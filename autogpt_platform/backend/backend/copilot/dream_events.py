@@ -88,7 +88,7 @@ async def emit_dream_operations_event(
     """Push a :class:`StreamDreamOperations` event onto the active stream.
 
     The orchestrator / daydream path passes its own ``emit`` closure (the
-    same one baseline / sdk use for ``StreamStatus``) so the event lands
+    same one the SDK engine uses for ``StreamStatus``) so the event lands
     on the user's open SSE subscription and gets persisted via the Redis
     snapshot pipeline alongside every other turn event.
     """

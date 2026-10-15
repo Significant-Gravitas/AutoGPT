@@ -57,7 +57,7 @@ _FLAG_LINE = (
 _MAX_TOKENS = 1024
 _CHUNK_OVERLAP = 2_000
 # Past this a read goes to the LLM whole: a 70k-character read of three-byte text
-# takes 9, so only an uncapped read (the baseline engine's) reaches the cap.
+# takes 9, so only an uncapped read reaches the cap.
 _MAX_JEV_CHUNKS = 10
 _JEV_CONCURRENCY = 4
 _JEV_NOULS = ("must_hold", "q1", "q2", "q3")

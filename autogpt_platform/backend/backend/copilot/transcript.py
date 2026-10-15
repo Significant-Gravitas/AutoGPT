@@ -37,7 +37,6 @@ from backend.util.workspace_storage import GCSWorkspaceStorage, get_workspace_st
 
 from .config import ChatConfig
 from .model import ChatMessage
-from .sdk.resume_gap import unseen_rows
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -63,6 +62,8 @@ STRIPPABLE_TYPES = frozenset(
 STRIPPABLE_ATTACHMENT_TYPES = frozenset({"prompt_snapshot"})
 
 
+# "sdk": the Claude CLI's own session. "baseline": written by the old fast
+# path; stored metas still carry it, and the SDK does not resume them.
 TranscriptMode = Literal["sdk", "baseline"]
 
 
@@ -70,7 +71,6 @@ TranscriptMode = Literal["sdk", "baseline"]
 class TranscriptDownload:
     content: bytes | str
     message_count: int = 0
-    # "sdk" = Claude CLI native, "baseline" = TranscriptBuilder
     mode: TranscriptMode = "sdk"
 
 
@@ -673,92 +673,16 @@ def next_uncovered_sequence(session_messages: list[ChatMessage]) -> int:
     return max(seqs) + 1 if seqs else 0
 
 
-def _decode_transcript_content(content: bytes | str) -> str | None:
-    """Return decoded transcript content, or ``None`` on UTF-8 errors."""
-    if isinstance(content, str):
-        return content
-    try:
-        return content.decode("utf-8")
-    except UnicodeDecodeError:
-        return None
-
-
-def _parse_transcript_to_messages(
-    download: TranscriptDownload,
-) -> list[ChatMessage] | None:
-    """Decode + parse a transcript download into ``ChatMessage`` rows, or
-    ``None`` if the download is empty / malformed."""
-    if not download.content:
-        return None
-    content_str = _decode_transcript_content(download.content)
-    if content_str is None:
-        return None
-    raw = _transcript_to_messages(content_str)
-    if not raw:
-        return None
-    return [ChatMessage(role=m["role"], content=m.get("content") or "") for m in raw]
-
-
-async def extract_context_messages(
-    download: TranscriptDownload | None,
+def prior_context_messages(
     session_messages: "list[ChatMessage]",
-    *,
-    session_id: str | None = None,
 ) -> "list[ChatMessage]":
-    """Return context messages for the current turn: transcript + (hole-fill) + gap.
-
-    Shared primitive used by both SDK (``use_resume=False`` →
-    ``<conversation_history>`` injection) and baseline (OpenAI messages array)
-    paths.
-
-    Layered structure:
-    - **Transcript**: GCS-cached compaction (preserves ``isCompactSummary=True``).
-      Tool-use blocks are flattened to text via ``_flatten_assistant_content``.
-    - **Gap**: the rows the transcript has not seen, from
-      :func:`~backend.copilot.sdk.resume_gap.unseen_rows` (the same rows the
-      SDK's resumed turn sends: a capped window's hole fetched from the DB
-      when ``session_id`` is given, error markers, notices and compaction
-      rows left out), preserving structured ``tool_calls``.  A tool result
-      whose call is in the transcript part, which is flattened to text, is
-      left out too: a structured history has no call for it to answer.
-
-    Falls back to full prior messages (``session_messages[:-1]``) when no
-    transcript is available.  Excludes ``role="reasoning"`` rows.  The
-    current user turn at ``session_messages[-1]`` is excluded — callers append
-    it themselves.
-    """
-    # Drop reasoning rows — their content lives in transcript paths,
-    # not the public turn list.  Queue lifecycle is tracked on the
-    # owning ChatSession, not per message, so no per-row filtering
-    # for queued/running rows is needed here.
-    session_messages = [m for m in session_messages if m.role != "reasoning"]
-    prior = session_messages[:-1]
-
-    if download is None:
-        return prior
-    transcript_msgs = _parse_transcript_to_messages(download)
-    if transcript_msgs is None:
-        return prior
-
-    gap = await unseen_rows(
-        prior,
-        download.message_count,
-        session_id=session_id,
-        log_prefix="[transcript]",
-    )
-    return transcript_msgs + _answerable(gap)
-
-
-def _answerable(rows: list[ChatMessage]) -> list[ChatMessage]:
-    """*rows* without a tool result whose call is not among them."""
-    calls = {
-        call.get("id")
-        for message in rows
-        if message.role == "assistant"
-        for call in message.tool_calls or []
-        if isinstance(call, dict)
-    }
-    return [m for m in rows if m.role != "tool" or m.tool_call_id in calls]
+    """The context a turn with no CLI session to resume re-sends as
+    ``<conversation_history>``: every row before the current turn's own
+    message (``session_messages[-1]``, which callers append themselves),
+    without ``role="reasoning"`` rows, whose content lives in the CLI's own
+    session. Queue lifecycle is tracked on the owning ChatSession, not per
+    message, so no row is filtered for being queued or running."""
+    return [m for m in session_messages if m.role != "reasoning"][:-1]
 
 
 async def delete_transcript(user_id: str, session_id: str) -> None:

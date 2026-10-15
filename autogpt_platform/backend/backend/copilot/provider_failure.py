@@ -183,25 +183,6 @@ def classify(
     )
 
 
-# HTTP status the compat gateway should answer with for each kind, so the
-# CLI upstream of it can tell "stop asking" from "try again". A blanket 502
-# reads as a server fault and invites a retry that cannot succeed.
-_STATUS_BY_KIND: dict[ProviderFailureKind, int] = {
-    ProviderFailureKind.AUTH_EXPIRED: 401,
-    ProviderFailureKind.INVALID_CREDENTIAL: 401,
-    ProviderFailureKind.ENTITLEMENT_REQUIRED: 402,
-    ProviderFailureKind.POLICY_DENIED: 403,
-    ProviderFailureKind.MODEL_UNAVAILABLE: 404,
-    ProviderFailureKind.USAGE_LIMIT: 429,
-    ProviderFailureKind.TRANSIENT: 503,
-}
-
-
-def status_for(failure: "ProviderFailure") -> int:
-    """The status a gateway should return for this failure."""
-    return _STATUS_BY_KIND.get(failure.kind, 502)
-
-
 def _kind_of(exc: BaseException) -> ProviderFailureKind | None:
     if isinstance(exc, UserPaywalledError):
         return ProviderFailureKind.ENTITLEMENT_REQUIRED

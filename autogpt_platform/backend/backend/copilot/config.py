@@ -519,15 +519,6 @@ class ChatConfig(BaseSettings):
         return base
 
     @property
-    def baseline_provider(self) -> Literal["local", "openrouter", "anthropic"]:
-        """The wire dialect the fast engine's OpenAI-compatible client speaks."""
-        if self.platform_route == "local":
-            return "local"
-        if self.platform_route == "openrouter":
-            return "openrouter"
-        return "anthropic"
-
-    @property
     def main_client_credentials(self) -> tuple[str | None, str | None]:
         """``(api_key, base_url)`` of the platform route's OpenAI-compatible API.
 

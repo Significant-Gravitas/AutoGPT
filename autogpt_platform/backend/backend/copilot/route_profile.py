@@ -78,8 +78,9 @@ class RouteProfile(BaseModel):
 
     @property
     def prices_tokens(self) -> bool:
-        """Whether a rate card prices this route's tokens (Codex has none)."""
-        return self.row.cost_source != "codex_gateway"
+        """Whether a rate card prices this route's tokens: Codex has none, and
+        neither does the operator's own model server."""
+        return self.row.cost_source != "codex_gateway" and self.row.payer != "self_host"
 
     @property
     def gateway_adapter(self) -> GatewayAdapter | None:

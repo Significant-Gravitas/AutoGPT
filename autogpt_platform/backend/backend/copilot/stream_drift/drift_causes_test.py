@@ -14,18 +14,15 @@ import time
 import uuid
 from collections.abc import AsyncGenerator
 from concurrent.futures import Future
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import MagicMock, call
 
 import pytest
 
 from backend.copilot import stream_heartbeat, stream_registry
-from backend.copilot.baseline import service as baseline
 from backend.copilot.executor.manager import CoPilotExecutor
 from backend.copilot.executor.utils import CoPilotExecutionEntry, get_session_lock_key
-from backend.copilot.model import ChatSession
 from backend.copilot.response_model import (
     StreamBaseResponse,
-    StreamError,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -38,8 +35,6 @@ from backend.copilot.response_model import (
 from backend.data import redis_client
 from backend.data.redis_client import get_redis_async
 from backend.util.testing import is_tcp_port_reachable
-
-from .scripted import baseline_turn, provider_round, session_with_prompt
 
 requires_redis = pytest.mark.skipif(
     not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
@@ -239,35 +234,6 @@ async def test_a_turn_the_executor_drops_is_not_left_running(
     assert not (
         dropped and await _reads_running(session_id)
     ), "the executor dropped the turn and it still reads running"
-
-
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason=(
-        "W8: the baseline engine logs and swallows a failed final persist, so "
-        "the turn finishes as a success and the streamed reply is not in the "
-        "rows the client hydrates from"
-    ),
-)
-async def test_a_reply_that_failed_to_persist_ends_the_turn_in_error(
-    monkeypatch: pytest.MonkeyPatch, baseline_io: list[ChatSession]
-) -> None:
-    monkeypatch.setattr(
-        baseline,
-        "call_provider_stream",
-        AsyncMock(return_value=provider_round(["The answer ", "is 42."])),
-    )
-    persist = AsyncMock(side_effect=ConnectionError("database unavailable"))
-    monkeypatch.setattr(baseline, "upsert_chat_session", persist)
-
-    turn = baseline_turn(session_with_prompt("Why?"), str(uuid.uuid4()))
-    events = [event async for event in turn]
-
-    streamed = "".join(e.delta for e in events if isinstance(e, StreamTextDelta))
-    if streamed != "The answer is 42." or not persist.await_count:
-        pytest.fail("harness: the reply should stream and its persist should run")
-    assert any(isinstance(event, StreamError) for event in events)
 
 
 async def _reads_running(session_id: str) -> bool:
