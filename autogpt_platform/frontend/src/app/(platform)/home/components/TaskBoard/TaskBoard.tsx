@@ -37,9 +37,12 @@ export function TaskBoard() {
           >
             Task board
           </Text>
-          <Text variant="body" tone="secondary" className="mt-0.5">
-            Every chat is a task. Drag cards between columns to sort them.
-          </Text>
+          <div className="mt-0.5 flex items-center justify-between gap-4">
+            <Text variant="body" tone="secondary">
+              Every chat is a task. Drag cards between columns to sort them.
+            </Text>
+            {!isLoading && <AddColumn onAdd={addColumn} />}
+          </div>
         </header>
 
         {isLoading ? (
@@ -89,7 +92,6 @@ export function TaskBoard() {
                 }
               />
             ))}
-            <AddColumn onAdd={addColumn} />
           </div>
         )}
       </div>

@@ -35,7 +35,7 @@ export function AddColumn({ onAdd }: Props) {
       <Button
         variant="ghost"
         size="small"
-        className="h-11 shrink-0 rounded-xl text-zinc-500"
+        className="shrink-0 text-zinc-500"
         onClick={() => setIsEditing(true)}
         leftIcon={<Icon icon={Add01Icon} size={16} />}
       >
@@ -45,7 +45,7 @@ export function AddColumn({ onAdd }: Props) {
   }
 
   return (
-    <div className="w-[18rem] shrink-0 rounded-xl bg-zinc-100/80 p-2">
+    <div className="w-56 shrink-0">
       <Input
         id="task-board-new-column"
         label="Column name"
