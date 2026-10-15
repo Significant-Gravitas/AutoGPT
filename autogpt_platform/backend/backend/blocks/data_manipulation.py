@@ -201,6 +201,14 @@ class FindInDictionaryBlock(Block):
                 yield "output", []
             elif isinstance(obj[0], dict) and key in obj[0]:
                 yield "output", [item[key] for item in obj if key in item]
+            elif key.strip().isdigit():
+                # Builder inputs send `str | int` keys as strings by default,
+                # so treat a numeric string as a list index.
+                index = int(key.strip())
+                if index < len(obj):
+                    yield "output", obj[index]
+                else:
+                    yield "missing", input_data.input
             else:
                 yield "output", [getattr(val, key) for val in obj if hasattr(val, key)]
         elif isinstance(obj, object) and isinstance(key, str) and hasattr(obj, key):
