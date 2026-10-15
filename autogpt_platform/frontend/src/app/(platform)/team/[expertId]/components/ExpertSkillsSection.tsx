@@ -51,7 +51,7 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         <Text variant="large-medium" tone="primary">
           {expert.name}&apos;s Skills
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button
             variant="secondary"
             size="small"

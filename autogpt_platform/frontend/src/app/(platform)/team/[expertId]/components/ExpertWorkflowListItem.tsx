@@ -55,7 +55,7 @@ export function ExpertWorkflowListItem({
   return (
     <div
       data-testid="expert-workflow-row"
-      className="group relative flex items-center gap-4 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50"
+      className="group relative flex flex-col items-stretch gap-3 rounded-2xl bg-white px-3.5 py-2.5 transition-colors smooth-shadow-ring-sm hover:bg-zinc-50 sm:flex-row sm:items-center sm:gap-4"
     >
       {libraryHref ? (
         <NextLink
@@ -106,7 +106,7 @@ export function ExpertWorkflowListItem({
         ) : null}
       </div>
 
-      <div className="pointer-events-auto relative z-10 flex shrink-0 items-center gap-1">
+      <div className="pointer-events-auto relative z-10 flex shrink-0 items-center justify-end gap-1">
         <ExpertWorkflowActions
           workflow={workflow}
           expertId={expertId}

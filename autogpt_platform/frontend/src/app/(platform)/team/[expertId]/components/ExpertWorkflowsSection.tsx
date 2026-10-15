@@ -63,7 +63,7 @@ export function ExpertWorkflowsSection({
         <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Workflows
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {onInstallWorkflow ? (
             <Button
               variant="secondary"

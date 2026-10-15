@@ -23,7 +23,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
   const topic = expert.categories?.[0];
 
   return (
-    <header>
+    <header className="relative flex flex-col">
       <div className="relative">
         <ExpertCover className="h-36" color={cover.color} art={cover.art} />
         {topic ? (
@@ -33,11 +33,6 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             className="absolute left-4 top-4 h-7 px-2.5 text-[13px]"
           />
         ) : null}
-        <ExpertBudgetSection
-          expert={expert}
-          color={cover.color}
-          className="absolute right-4 top-4 w-48 gap-2 rounded-xl bg-white/75 px-3.5 py-2.5 shadow-sm ring-1 ring-black/5 backdrop-blur-md sm:w-64"
-        />
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -79,6 +74,11 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
           </Button>
         </div>
       </div>
+      <ExpertBudgetSection
+        expert={expert}
+        color={cover.color}
+        className="order-last mt-4 gap-2 rounded-xl bg-white/75 px-3.5 py-2.5 shadow-sm ring-1 ring-black/5 backdrop-blur-md sm:absolute sm:right-4 sm:top-4 sm:order-none sm:mt-0 sm:w-64"
+      />
     </header>
   );
 }

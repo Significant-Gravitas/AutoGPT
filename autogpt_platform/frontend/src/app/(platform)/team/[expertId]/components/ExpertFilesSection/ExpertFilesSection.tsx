@@ -39,7 +39,7 @@ export function ExpertFilesSection({ expertId, expertName }: Props) {
         <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Files
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <ToolbarSearch
             id="expert-files-search"
             label="Search files"

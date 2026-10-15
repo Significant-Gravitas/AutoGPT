@@ -431,4 +431,4 @@ export const PROFILE_TABS_LIST_CLASS =
 export const PROFILE_TABS_INDICATOR_CLASS =
   "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-white shadow-sm ring-1 ring-zinc-200/70";
 export const PROFILE_TABS_TRIGGER_CLASS =
-  "z-20 rounded-full px-3.5 py-1.5 text-[15px] text-zinc-500 transition-colors hover:text-zinc-900 data-[state=active]:text-zinc-900 [&_svg]:!size-4";
+  "z-20 rounded-full px-3.5 py-1.5 text-[15px] max-sm:px-2 text-zinc-500 transition-colors hover:text-zinc-900 data-[state=active]:text-zinc-900 [&_svg]:!size-4";

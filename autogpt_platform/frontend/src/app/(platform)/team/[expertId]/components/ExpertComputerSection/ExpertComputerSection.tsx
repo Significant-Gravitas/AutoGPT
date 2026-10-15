@@ -100,7 +100,7 @@ export function ExpertComputerSection({
             {desktopStreamRenderer.render(stream)}
           </div>
         ) : (
-          <div className="relative flex aspect-[16/7] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 text-center">
+          <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">
             <div
               aria-hidden
               className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(255,255,255,0.08),transparent_60%)]"

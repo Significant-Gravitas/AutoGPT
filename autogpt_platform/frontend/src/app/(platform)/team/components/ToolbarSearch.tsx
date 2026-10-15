@@ -28,7 +28,12 @@ export function ToolbarSearch({
   }
 
   return (
-    <div className={cn("relative flex w-full items-center sm:w-64", className)}>
+    <div
+      className={cn(
+        "relative flex w-full items-center max-sm:order-first sm:w-64",
+        className,
+      )}
+    >
       <Icon
         icon={Search01Icon}
         size={16}

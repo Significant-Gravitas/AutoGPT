@@ -52,7 +52,7 @@ import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
 const MAIN_CLASS =
-  "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
+  "container min-h-screen max-w-[1180px] space-y-5 px-4 pb-16 pt-6 sm:px-8 md:px-12";
 
 const TABS = [
   { value: "basics", label: "Overview", icon: DashboardSquare01Icon },
@@ -175,7 +175,7 @@ export default function ExpertDetailPage() {
                 value={tab.value}
                 icon={tab.icon}
               >
-                {tab.label}
+                <span className="max-sm:sr-only">{tab.label}</span>
               </TabsLineTrigger>
             ))}
           </TabsLineList>
