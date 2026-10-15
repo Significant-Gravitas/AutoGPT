@@ -143,7 +143,6 @@ export function ExpertWorkflowsSection({
               workflow={workflow}
               libraryAgent={agentsByID.get(workflow.library_agent_id ?? "")}
               expertId={expertId}
-              accentClassName={accentClassName}
               onAsk={onAskWorkflow}
             />
           ))}

@@ -6,15 +6,8 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { safeHumanizeCronExpression } from "@/lib/cron-expression-utils";
 import { cn } from "@/lib/utils";
-import {
-  Activity01Icon,
-  WorkflowSquare01Icon,
-} from "@hugeicons/core-free-icons";
-import { isRenderableImageUrl } from "@/lib/next-image";
-import Image from "next/image";
-import { isLocalStoreMediaUrl } from "@/lib/store-media";
+import { Activity01Icon } from "@hugeicons/core-free-icons";
 import NextLink from "next/link";
-import { useState } from "react";
 import { ExpertWorkflowActions } from "./ExpertWorkflowActions";
 import { ExpertWorkflowRunButton } from "./ExpertWorkflowRunButton";
 import { useExpertWorkflowCard } from "./useExpertWorkflowCard";
@@ -24,7 +17,6 @@ interface Props {
   workflow: ExpertWorkflowRef;
   libraryAgent: LibraryAgent | undefined;
   expertId?: string;
-  accentClassName: string;
   onAsk?: (prompt: string) => void;
 }
 
@@ -32,7 +24,6 @@ export function ExpertWorkflowListItem({
   workflow,
   libraryAgent,
   expertId,
-  accentClassName,
   onAsk,
 }: Props) {
   const {
@@ -52,7 +43,6 @@ export function ExpertWorkflowListItem({
     libraryAgent,
     expertId,
   });
-  const [hasImageError, setHasImageError] = useState(false);
   const meta = [
     workflow.schedule_cron
       ? safeHumanizeCronExpression(workflow.schedule_cron)
@@ -74,30 +64,6 @@ export function ExpertWorkflowListItem({
           className="absolute inset-0 z-0 rounded-lg"
         />
       ) : null}
-
-      {/* A square as tall as the text column, title through meta line. */}
-      {isRenderableImageUrl(libraryAgent?.image_url) && !hasImageError ? (
-        <div className="pointer-events-none relative aspect-square shrink-0 self-stretch overflow-hidden rounded-lg bg-zinc-100">
-          <Image
-            src={libraryAgent.image_url}
-            unoptimized={isLocalStoreMediaUrl(libraryAgent.image_url)}
-            alt=""
-            fill
-            sizes="96px"
-            onError={() => setHasImageError(true)}
-            className="object-cover"
-          />
-        </div>
-      ) : (
-        <div
-          className={cn(
-            accentClassName,
-            "pointer-events-none flex aspect-square shrink-0 items-center justify-center self-stretch rounded-lg border-0",
-          )}
-        >
-          <Icon icon={WorkflowSquare01Icon} size={20} aria-hidden="true" />
-        </div>
-      )}
 
       <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
