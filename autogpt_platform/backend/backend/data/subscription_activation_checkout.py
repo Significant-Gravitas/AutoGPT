@@ -21,6 +21,7 @@ from backend.data.subscription_activation_models import (
     ActivationPlan,
     ActivationResponse,
     ActivationUnavailable,
+    BillingInvoice,
 )
 from backend.data.subscription_activation_return import activation_return_to
 from backend.data.subscription_activation_stripe import (
@@ -34,6 +35,7 @@ from backend.data.subscription_activation_stripe import (
     subscription_item_update,
 )
 from backend.data.subscription_checkout import subscription_checkout_lock
+from backend.data.subscription_trial_conversion import PENDING_UPDATE_API_VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -180,14 +182,20 @@ async def _submit_confirmed(attempt: ActivationAttempt) -> ActivationResponse:
             ):
                 return attempt.response("processing", error_code="terms_changed")
             try:
+                # Stripe applies a pending update only once its invoice is
+                # paid, so a declined card or an unfinished bank check leaves
+                # the trial running, and the invoice page takes another card.
+                # allow_incomplete ended the trial before the charge went
+                # through. The pending update's metadata needs the newer API.
                 await stripe_call(
                     stripe.Subscription.modify_async,
                     attempt.subscription_id,
                     trial_end="now",
                     proration_behavior="none",
-                    payment_behavior="allow_incomplete",
+                    payment_behavior="pending_if_incomplete",
                     metadata={"pro_activation_attempt_id": attempt.id},
                     idempotency_key=f"pro-activation:{attempt.id}",
+                    stripe_version=PENDING_UPDATE_API_VERSION,
                     **subscription_item_update(sub, attempt.terms.price_id),
                 )
             finally:
@@ -215,6 +223,9 @@ async def _payment_status(
         response.error_code = "payment_canceled"
         response.retry_after_seconds = None
         return response
+    if sub.pending_update and invoice and invoice.status == "open":
+        # The trial runs on until this invoice is paid.
+        return await _open_invoice_status(sub, invoice, response)
     if (
         sub.status == "trialing"
         and response.terms
@@ -272,25 +283,29 @@ async def _payment_status(
             response.activation_id = result.activation_id
         return response
     if invoice and invoice.status == "open":
-        response.hosted_invoice_url = invoice.hosted_invoice_url
-        response.status = "payment_required"
-        response.retry_after_seconds = None
-        payment_intent_id = await invoice_payment_intent(invoice)
-        if payment_intent_id:
-            intent = await stripe_call(
-                stripe.PaymentIntent.retrieve_async,
-                payment_intent_id,
-            )
-            if intent.customer != sub.customer:
-                raise ActivationUnavailable(
-                    "Payment ownership could not be established"
-                )
-            if intent.status == "requires_action":
-                response.status = "action_required"
-            elif intent.status in ("processing", "succeeded"):
-                response.status = "processing"
-                response.retry_after_seconds = 3
-        return response
+        return await _open_invoice_status(sub, invoice, response)
+    return response
+
+
+async def _open_invoice_status(
+    sub: BillingSubscription, invoice: BillingInvoice, response: ActivationResponse
+) -> ActivationResponse:
+    response.hosted_invoice_url = invoice.hosted_invoice_url
+    response.status = "payment_required"
+    response.retry_after_seconds = None
+    payment_intent_id = await invoice_payment_intent(invoice)
+    if payment_intent_id:
+        intent = await stripe_call(
+            stripe.PaymentIntent.retrieve_async,
+            payment_intent_id,
+        )
+        if intent.customer != sub.customer:
+            raise ActivationUnavailable("Payment ownership could not be established")
+        if intent.status == "requires_action":
+            response.status = "action_required"
+        elif intent.status in ("processing", "succeeded"):
+            response.status = "processing"
+            response.retry_after_seconds = 3
     return response
 
 

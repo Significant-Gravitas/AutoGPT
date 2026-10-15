@@ -20,12 +20,14 @@ from backend.data.subscription_activation_models import (
     ActivationUnavailable,
     PaidActivationResult,
 )
+from backend.data.subscription_trial_conversion import PENDING_UPDATE_API_VERSION
 
 pytest_plugins = ("backend.data.subscription_trial_fixtures",)
 
 attempt = fixtures.attempt
 boundaries = fixtures.boundaries
 live_subscription = fixtures.live_subscription
+max_attempt = fixtures.max_attempt
 
 
 @pytest.mark.parametrize("confirmation", [False, 1, "true", None])
@@ -63,9 +65,10 @@ async def test_confirm_persists_intent_before_idempotent_existing_subscription_u
         assert kwargs == {
             "trial_end": "now",
             "proration_behavior": "none",
-            "payment_behavior": "allow_incomplete",
+            "payment_behavior": "pending_if_incomplete",
             "metadata": {"pro_activation_attempt_id": attempt.id},
             "idempotency_key": f"pro-activation:{attempt.id}",
+            "stripe_version": PENDING_UPDATE_API_VERSION,
         }
 
     boundaries.stripe_call.side_effect = stripe_update
@@ -208,6 +211,39 @@ async def test_payment_and_authentication_required_never_activate(
     response = await checkout.get_activation(attempt.user_id, attempt.id)
     assert response.status == expected
     assert response.hosted_invoice_url == "https://invoice.stripe.com/pay/in_open"
+    boundaries.reconcile_paid_activation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payment_status, expected",
+    [
+        ("requires_payment_method", "payment_required"),
+        ("requires_action", "action_required"),
+    ],
+)
+async def test_unpaid_conversion_keeps_the_trial_and_offers_its_invoice_page(
+    max_attempt, boundaries, live_subscription, payment_status, expected
+):
+    # A declined card or a bank check leaves Stripe's pending update
+    # unapplied: the subscription still trials on its old price, and the open
+    # invoice takes another card.
+    max_attempt.confirmed_at = datetime.now(UTC)
+    live_subscription.pending_update = {"expires_at": 1}
+    live_subscription.latest_invoice = billing.BillingInvoice(
+        id="in_pending",
+        customer="cus_1",
+        status="open",
+        payment_intent="pi_1",
+        hosted_invoice_url="https://invoice.stripe.com/pay/in_pending",
+    )
+    boundaries.stripe_call.return_value = SimpleNamespace(
+        customer="cus_1", status=payment_status
+    )
+    response = await checkout.get_activation(max_attempt.user_id, max_attempt.id)
+    assert live_subscription.status == "trialing"
+    assert response.status == expected
+    assert response.hosted_invoice_url == "https://invoice.stripe.com/pay/in_pending"
     boundaries.reconcile_paid_activation.assert_not_awaited()
 
 
