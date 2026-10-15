@@ -308,8 +308,11 @@ async def rule_on(
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
         return Ruling(run=False, reason=reason, by=by)
     judgement = await judge()
+    # Only an ask carries the supervisor's words onto a card.
+    if judgement.allowed:
+        return Ruling(run=True, by="supervisor")
     return Ruling(
-        run=judgement.allowed,
+        run=False,
         reason=judgement.reason,
         reason_kind="supervisor",
         by="supervisor",
