@@ -93,6 +93,21 @@ async def test_a_review_without_a_provider_cost_is_priced_and_recorded(route):
 
 
 @pytest.mark.asyncio
+async def test_a_review_that_reported_no_usage_writes_no_row(route):
+    """No tokens and no provider cost: the cost is unknown, not a known $0,
+    so nothing is charged or logged and the run's ledger keeps no figure."""
+    persist = AsyncMock()
+    usage = _usage(None).model_copy(update={"input_tokens": 0, "output_tokens": 0})
+    with patch("backend.copilot.inference.record.persist_and_record_usage", persist):
+        micro = await reviewer.record_review_cost(
+            user_id="user-1", run_id="run-1", usage=usage
+        )
+
+    persist.assert_not_awaited()
+    assert micro is None
+
+
+@pytest.mark.asyncio
 async def test_a_ledger_failure_never_fails_the_review(route):
     persist = AsyncMock(side_effect=RuntimeError("ledger down"))
     with patch("backend.copilot.inference.record.persist_and_record_usage", persist):
