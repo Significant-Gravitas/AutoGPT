@@ -94,10 +94,9 @@ async def idempotent_run(
     claim.holds_key = True
     try:
         yield claim
-    except Exception:
-        # No run came of it, so the key must not stay claimed against a retry.
-        # A run that started and then failed to serialise keeps its key: the
-        # charge already happened, and a retry must find it rather than repeat it.
+    except BaseException:
+        # No run came of it (a cancelled request included), so free the key for a
+        # retry. A run that started keeps it, so a retry finds it, not a second run.
         await claim.release()
         raise
 
