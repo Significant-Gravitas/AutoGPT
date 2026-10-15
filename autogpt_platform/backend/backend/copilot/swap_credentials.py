@@ -59,9 +59,8 @@ def _host_is_bound(host: str, allowed_hosts: list[str]) -> bool:
 
 def _bound_hosts(entry: ProviderEntry) -> list[str]:
     """Every host the proxy opens for a provider: where its value may go and
-    where it may come back from."""
-    if not entry["swap_hosts"]:
-        return []
+    where it may come back from.  A provider whose token is never swapped in
+    still has its content hosts scrubbed."""
     return [*entry["swap_hosts"], *entry["content_hosts"]]
 
 

@@ -28,7 +28,9 @@ class ProviderEntry(TypedDict):
             text response from one is turned back into its placeholder, so a
             token a user once committed or pasted cannot be read back through
             them; nothing is ever swapped into a request to one.  Same syntax
-            as *swap_hosts*, and no host may be in both.
+            as *swap_hosts*.  No content host may name a swap host exactly
+            (it would take the token); a suffix may cover one, which stays a
+            swap host.
 
     Both lists are the provider's whole footprint as far as the proxy is
     concerned: a host in neither is passed through unread.  They are declared

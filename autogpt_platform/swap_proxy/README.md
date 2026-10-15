@@ -331,7 +331,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   other host passes through unread: a mirror, a CDN the provider does not
   declare, a third party the value was copied to, or an archive
   (`codeload.github.com` is not bound, as it serves only binary archives,
-  which are never scrubbed wherever they come from). The name is the box's to
+  which are never scrubbed wherever they come from). GitHub Pages
+  (`*.github.io`) is not bound either, though it serves back what a repository
+  publishes: a token committed to a Pages branch can be read back from it. The
+  name is the box's to
   choose: TLS to a provider's address under an SNI that is not bound, or plain
   http with such a `Host`, is the same case. For a box that gets swaps, TLS
   with no SNI at all and plain http to a bare address are refused
