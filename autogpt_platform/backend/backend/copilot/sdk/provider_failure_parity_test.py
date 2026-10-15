@@ -25,8 +25,9 @@ class _Gateway:
 
 
 class _Ctx:
-    def __init__(self, gateway=None):
-        self.codex_gateway = gateway
+    def __init__(self, gateway=None, credential_id=None):
+        self.route_gateway = gateway
+        self.credential_id = credential_id
 
 
 def _session() -> ChatSession:
@@ -45,6 +46,11 @@ class TestReadingTheGateway:
     def test_a_named_codex_failure_is_found(self) -> None:
         failure = classify(CodexCredentialIntegrityError("bad"), auth_provider="codex")
         assert _provider_failure_for(_Ctx(_Gateway(failure))) is failure
+
+    def test_the_failure_names_the_connected_account(self) -> None:
+        failure = classify(CodexCredentialIntegrityError("bad"), auth_provider="codex")
+        named = _provider_failure_for(_Ctx(_Gateway(failure), "cred-7"))
+        assert named is not None and named.credential_id == "cred-7"
 
     def test_the_platform_route_has_no_gateway_to_ask(self) -> None:
         assert _provider_failure_for(_Ctx(None)) is None

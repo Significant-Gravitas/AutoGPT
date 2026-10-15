@@ -76,7 +76,7 @@ class TestPlatformEngine:
             ("openrouter", "sdk"),
             ("direct_anthropic", "sdk"),
             ("subscription", "sdk"),
-            ("local", "baseline"),
+            ("local", "sdk"),
             # No platform model: the SDK turn refuses itself.
             ("disabled", "sdk"),
         ],

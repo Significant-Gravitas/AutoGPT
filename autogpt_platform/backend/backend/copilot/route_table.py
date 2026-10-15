@@ -177,7 +177,7 @@ ROUTES: dict[RouteName, RouteRow] = {
     ),
     "local": RouteRow(
         name="local",
-        engine="baseline",
+        engine="sdk",
         window=None,
         trigger_pct=90,
         sonnet_5_trigger_scaling=False,

@@ -55,7 +55,8 @@ from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.model_gateway.front import ModelGateway
+from backend.copilot.sdk.model_gateway.usage import GatewayUsage
 from backend.copilot.route_profile import RouteProfile
 from backend.copilot.sdk.env import (
     GatewayEndpoint,
@@ -79,7 +80,6 @@ from backend.copilot.sdk.cost_tracking import (
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
-from backend.integrations.codex.models import CodexTokenUsage
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
@@ -1510,11 +1510,13 @@ class _StreamContext:
     attachments: "PreparedAttachments"
     compaction: CompactionTracker
     lock: AsyncClusterLock
-    # The Codex gateway for this turn, when the route is a ChatGPT
-    # subscription. Carried here so the error path can ask it what actually
+    # The shared model gateway this turn launches behind (Codex, the local
+    # route). Carried here so the error path can ask it what actually
     # failed: by the time a provider failure reaches this layer it is CLI
     # text, and the gateway holds the last point at which it was typed.
-    codex_gateway: "CodexAnthropicGateway | None" = None
+    route_gateway: "ModelGateway | None" = None
+    # The connected account the turn runs on, which a failure names.
+    credential_id: str | None = None
     # The route this turn runs on (``copilot/route_profile.py``).
     profile: RouteProfile | None = None
     tool_display: SDKToolDisplayBridge | None = None
@@ -1657,8 +1659,19 @@ def _provider_failure_for(ctx: "_StreamContext") -> ProviderFailure | None:
     ``None`` on the platform route, and on a Codex turn whose failure the
     gateway declined to name -- the caller keeps its existing behaviour.
     """
-    gateway = ctx.codex_gateway
-    return gateway.last_failure if gateway is not None else None
+    return _attributed_failure(ctx.route_gateway, ctx.credential_id)
+
+
+def _attributed_failure(
+    gateway: ModelGateway | None, credential_id: str | None
+) -> ProviderFailure | None:
+    """The gateway's last failure, naming the connected account it happened
+    on: the switch-connection dialog offers the user's other accounts by
+    it."""
+    failure = gateway.last_failure if gateway is not None else None
+    if failure is None or failure.credential_id or not credential_id:
+        return failure
+    return failure.model_copy(update={"credential_id": credential_id})
 
 
 def _is_error_marker(msg: ChatMessage) -> bool:
@@ -2250,12 +2263,12 @@ async def _iter_sdk_messages(
                     pass
 
 
-def _codex_gateway_usage(
-    gateway: CodexAnthropicGateway,
-) -> CodexTokenUsage | None:
-    """Read authoritative aggregate usage from a completed Codex gateway."""
-    result = gateway.result
-    return result.usage if result is not None else None
+def _gateway_usage(gateway: ModelGateway) -> GatewayUsage | None:
+    """What the upstream reported for the gateway's successful requests;
+    None before any. A failed attempt's usage is metered apart
+    (``failed_usage``) and logged per request by the gateway."""
+    usage = gateway.usage
+    return usage if usage.prompt_tokens or usage.output_tokens else None
 
 
 def _cli_project_dir(sdk_cwd: str) -> str | None:
@@ -2383,8 +2396,8 @@ def _redact_cli_stderr(line: str, *, secrets: tuple[str, ...] = ()) -> str:
     return redacted
 
 
-async def _close_codex_gateway_for_finally(
-    gateway: CodexAnthropicGateway,
+async def _close_route_gateway_for_finally(
+    gateway: ModelGateway,
     log_prefix: str,
 ) -> BaseException | None:
     """Finish gateway checkpointing and return any error for deferred raising."""
@@ -2395,16 +2408,16 @@ async def _close_codex_gateway_for_finally(
         try:
             await close_task
         except BaseException as cleanup_error:
-            logger.exception("%s Codex gateway cleanup failed", log_prefix)
+            logger.exception("%s Route gateway cleanup failed", log_prefix)
             return cleanup_error
         return cancellation
     except Exception as cleanup_error:
-        logger.exception("%s Codex gateway cleanup failed", log_prefix)
+        logger.exception("%s Route gateway cleanup failed", log_prefix)
         return cleanup_error
     return None
 
 
-def _raise_deferred_codex_cleanup_error(
+def _raise_deferred_gateway_cleanup_error(
     cleanup_error: BaseException | None,
     turn_error: BaseException | None,
 ) -> None:
@@ -4884,9 +4897,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # before that point, so it must tolerate ``compaction`` still being None.
     compaction: CompactionTracker | None = None
     profile: RouteProfile | None = None
-    codex_gateway: CodexAnthropicGateway | None = None
+    route_gateway: ModelGateway | None = None
     tool_display_bridge = SDKToolDisplayBridge()
-    deferred_codex_cleanup_error: BaseException | None = None
+    deferred_gateway_cleanup_error: BaseException | None = None
     turn_segment = _sdk_serving_segment(credential_lease)
     # Wall-clock timestamp captured before the CLI runs so the
     # OpenRouter reconcile can filter subagent JSONLs by mtime — only
@@ -5149,7 +5162,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             credential_lease=credential_lease,
         )
         sdk_model, routing_source = profile.model, profile.routing_source
-        codex_gateway = await start_route_gateway(profile, credential_lease)
+        route_gateway = await start_route_gateway(profile, credential_lease)
 
         # sdk_cwd routes the CLI's temp dir into the per-session workspace
         # so sub-agent output files land inside sdk_cwd (see route_launch_env).
@@ -5158,10 +5171,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             sdk_cwd=sdk_cwd,
             gateway=(
                 GatewayEndpoint(
-                    base_url=codex_gateway.base_url,
-                    auth_token=codex_gateway.auth_token,
+                    base_url=route_gateway.base_url,
+                    auth_token=route_gateway.auth_token,
                 )
-                if codex_gateway is not None
+                if route_gateway is not None
                 else None
             ),
             session_id=session_id,
@@ -5210,7 +5223,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         def _on_stderr(line: str) -> None:
             """Log a stderr line emitted by the Claude CLI subprocess."""
             sid = session_id[:12] if session_id else "?"
-            capability = codex_gateway.auth_token if codex_gateway is not None else ""
+            capability = route_gateway.auth_token if route_gateway is not None else ""
             safe_line = _redact_cli_stderr(line, secrets=(capability,))
             logger.info("[SDK] [%s] CLI stderr: %s", sid, safe_line.rstrip())
 
@@ -5591,7 +5604,12 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             attachments=attachments,
             compaction=compaction,
             lock=lock,
-            codex_gateway=codex_gateway,
+            route_gateway=route_gateway,
+            credential_id=(
+                credential_lease.credentials.id
+                if credential_lease is not None
+                else None
+            ),
             profile=profile,
             tool_display=tool_display_bridge,
             turn_start=turn_start,
@@ -6125,8 +6143,17 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 display_msg,
                 retryable=is_transient,
                 failure=(
-                    codex_gateway.last_failure.as_part()
-                    if codex_gateway and codex_gateway.last_failure
+                    gateway_failure.as_part()
+                    if (
+                        gateway_failure := _attributed_failure(
+                            route_gateway,
+                            (
+                                credential_lease.credentials.id
+                                if credential_lease is not None
+                                else None
+                            ),
+                        )
+                    )
                     else None
                 ),
             )
@@ -6174,21 +6201,22 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             # nothing to clean up here — any message pushed after that
             # point belongs to the next turn.
 
-            if codex_gateway is not None:
-                deferred_codex_cleanup_error = await _close_codex_gateway_for_finally(
-                    codex_gateway,
+            if route_gateway is not None:
+                deferred_gateway_cleanup_error = await _close_route_gateway_for_finally(
+                    route_gateway,
                     log_prefix,
                 )
 
+                # The gateway read the upstream's own usage on every request:
+                # on a gateway route it is the turn's count, and nothing
+                # prices it (Codex is the account's, local the operator's).
                 turn_cost_usd = None
-                codex_usage = _codex_gateway_usage(codex_gateway)
-                if codex_usage is not None:
-                    turn_prompt_tokens = max(
-                        0, codex_usage.input_tokens - codex_usage.cached_input_tokens
-                    )
-                    turn_completion_tokens = codex_usage.output_tokens
-                    turn_cache_read_tokens = codex_usage.cached_input_tokens
-                    turn_cache_creation_tokens = 0
+                gateway_usage = _gateway_usage(route_gateway)
+                if gateway_usage is not None:
+                    turn_prompt_tokens = gateway_usage.input_tokens
+                    turn_completion_tokens = gateway_usage.output_tokens
+                    turn_cache_read_tokens = gateway_usage.cache_read_tokens
+                    turn_cache_creation_tokens = gateway_usage.cache_write_tokens
 
             # --- Close OTEL context (with cost attributes) ---
             # Captured before __exit__ so the reconcile task (launched below,
@@ -6275,16 +6303,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # The gateway's own counts ride the turn summary beside the
                 # CLI's. Re-derived (not reused from above): on early exits the
                 # gateway was never built and that local is unbound.
-                if codex_gateway is not None:
-                    gateway_usage = _codex_gateway_usage(codex_gateway)
+                if route_gateway is not None:
+                    gateway_usage = _gateway_usage(route_gateway)
                     turn_summary.note_codex_usage(
                         input_tokens=(
-                            gateway_usage.input_tokens if gateway_usage else None
+                            gateway_usage.prompt_tokens if gateway_usage else None
                         ),
                         cached_input_tokens=(
-                            gateway_usage.cached_input_tokens if gateway_usage else None
+                            gateway_usage.cache_read_tokens if gateway_usage else None
                         ),
-                        boundary_peak_tokens=codex_gateway.peak_boundary_estimate,
+                        boundary_peak_tokens=route_gateway.peak_prompt_tokens,
                     )
             elif _cost_reconciled and profile is not None:
                 # One background write, from OpenRouter's own bill for every
@@ -6517,8 +6545,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # Release stream lock to allow new streams for this session
                 await lock.release()
 
-            _raise_deferred_codex_cleanup_error(
-                deferred_codex_cleanup_error,
+            _raise_deferred_gateway_cleanup_error(
+                deferred_gateway_cleanup_error,
                 turn_error,
             )
         finally:

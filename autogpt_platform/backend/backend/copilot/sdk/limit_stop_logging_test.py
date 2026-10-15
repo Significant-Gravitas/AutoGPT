@@ -45,7 +45,9 @@ def test_a_limit_stop_reaches_the_user_without_an_error_log(
         started_at=_NOW,
         updated_at=_NOW,
     )
-    ctx = MagicMock(session=session, codex_gateway=None, log_prefix="[test]")
+    ctx = MagicMock(
+        session=session, route_gateway=None, credential_id=None, log_prefix="[test]"
+    )
     acc = _StreamAccumulator(
         assistant_response=ChatMessage(role="assistant", content=""),
         accumulated_tool_calls=[],

@@ -16,9 +16,9 @@ Engine = Literal["sdk", "baseline"]
 def platform_engine(config: ChatConfig) -> Engine:
     """The engine the platform route's turns run on: its row's.
 
-    Only the local route runs on the fast engine, until the shared gateway
-    carries it; every other route runs on the Claude Agent SDK. A disabled
-    route has no engine of its own, and its SDK turn refuses itself.
+    Every route runs on the Claude Agent SDK; the local route reaches its
+    server through the shared model gateway. A disabled route has no engine
+    of its own, and its SDK turn refuses itself.
     Connected accounts pick their own engine in the processor.
     """
     row = config.route_row

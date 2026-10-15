@@ -3,19 +3,28 @@
 :func:`resolve_turn_profile` builds the turn's route profile once: a
 connected ChatGPT account's lease routes the turn to Codex, anything else
 runs on the operator's platform route. :func:`start_route_gateway` is the one
-place a route's loopback gateway is started; the shared model gateway plugs in
-there.
+place a route's loopback gateway is started: the shared model gateway, for the
+routes whose row or profile names an adapter (Codex, and the local route).
 """
 
 import logging
+
+from pydantic import SecretStr
 
 from backend.copilot.config import ChatConfig, CopilotLLMModel
 from backend.copilot.model_normalize import normalize_model_for_transport
 from backend.copilot.model_router import resolve_codex_model_route, resolve_model_route
 from backend.copilot.route_profile import RouteProfile, codex_profile, platform_profile
 from backend.copilot.route_table import RoutingSource
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
 from backend.copilot.sdk.context_window import CodexEngineWindow
+from backend.copilot.sdk.model_gateway.front import ModelGateway
+from backend.copilot.sdk.model_gateway.route import (
+    ApiKeyCredential,
+    CodexLeaseCredential,
+    GatewayCredential,
+    GatewayRoute,
+    NoCredential,
+)
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 
@@ -62,27 +71,39 @@ async def resolve_turn_profile(
 async def start_route_gateway(
     profile: RouteProfile,
     credential_lease: CredentialLease | CodexCredentialLease | None,
-) -> CodexAnthropicGateway | None:
-    """Start the loopback gateway *profile* launches behind, or return None.
+) -> ModelGateway | None:
+    """Start the shared model gateway *profile* launches behind, or None.
 
-    Codex runs behind today's Codex compatibility gateway. The shared model
-    gateway takes over here: the local route's adapters and Codex's
-    Responses adapter start from this function.
+    Codex reaches the connected account's Responses backend on its lease;
+    the local route reaches the operator's server through the adapter it
+    names (``CHAT_LOCAL_ADAPTER``), with the server's key when it takes one.
+    The other routes speak the CLI's own protocol and launch direct.
     """
-    if profile.gateway_adapter is None:
+    adapter = profile.gateway_adapter
+    if adapter is None:
         return None
-    if profile.gateway_adapter != "codex_responses" or not isinstance(
-        credential_lease, CodexCredentialLease
-    ):
-        raise RuntimeError(
-            f"No gateway serves the {profile.name} route's "
-            f"{profile.gateway_adapter} adapter yet"
+    credential: GatewayCredential
+    if adapter == "codex_responses":
+        if not isinstance(credential_lease, CodexCredentialLease):
+            raise RuntimeError(
+                "The Codex route needs the connected account's credential lease"
+            )
+        credential = CodexLeaseCredential(lease=credential_lease)
+        base_url = None
+    else:
+        key = profile.api_key.get_secret_value() if profile.api_key else ""
+        credential = ApiKeyCredential(api_key=SecretStr(key)) if key else NoCredential()
+        base_url = profile.base_url
+    gateway = ModelGateway(
+        GatewayRoute(
+            adapter=adapter,
+            model=profile.model,
+            base_url=base_url,
+            credential=credential,
+            context_window=profile.window,
+            effort=profile.codex_effort,
+            timeout_seconds=profile.row.api_timeout_ms / 1000,
         )
-    gateway = CodexAnthropicGateway(
-        agent_session=credential_lease,
-        model=profile.model,
-        effort=profile.codex_effort,
-        credential_id=credential_lease.credentials.id,
     )
     await gateway.start()
     return gateway

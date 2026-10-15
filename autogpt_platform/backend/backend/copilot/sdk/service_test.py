@@ -20,22 +20,22 @@ from backend.copilot.builder_context import BUILDER_BLOCKED_TOOLS
 from backend.copilot.permissions import CopilotPermissions, all_known_tool_names
 from backend.data.sharing.workspace_refs import extract_workspace_file_ids
 
-from .codex_compat_gateway import CodexAnthropicGateway
 from .cost_tracking import TokenUsage
+from .model_gateway.front import ModelGateway
 from .service import (
     _HUNG_TOOL_CAP_SECONDS,
     _IDLE_TIMEOUT_SECONDS,
     _MAX_BUDGET_USD_FLOOR,
     _THINKING_ONLY_REPROMPT,
     _build_system_prompt_value,
-    _close_codex_gateway_for_finally,
+    _close_route_gateway_for_finally,
     _configured_system_prompt_value,
     _hidden_short_names_for_permissions,
     _humanise_tool_list,
     _idle_timeout_threshold,
     _is_sdk_disconnect_error,
     _prepare_file_attachments,
-    _raise_deferred_codex_cleanup_error,
+    _raise_deferred_gateway_cleanup_error,
     _record_result_usage,
     _redact_cli_stderr,
     _resolve_dynamic_max_budget_usd,
@@ -86,16 +86,16 @@ class TestCliStderrRedaction:
         assert _redact_cli_stderr(line) == line
 
 
-class TestCodexGatewayCleanup:
+class TestRouteGatewayCleanup:
     @pytest.mark.asyncio
     async def test_returns_checkpoint_failure_for_deferred_raise(self):
         failure = RuntimeError("credential checkpoint failed")
         gateway = cast(
-            CodexAnthropicGateway,
+            ModelGateway,
             SimpleNamespace(close=AsyncMock(side_effect=failure)),
         )
 
-        result = await _close_codex_gateway_for_finally(gateway, "[test]")
+        result = await _close_route_gateway_for_finally(gateway, "[test]")
 
         assert result is failure
         gateway.close.assert_awaited_once()
@@ -105,7 +105,7 @@ class TestCodexGatewayCleanup:
         cleanup_error = RuntimeError("credential checkpoint failed")
 
         with pytest.raises(RuntimeError, match="checkpoint failed") as raised:
-            _raise_deferred_codex_cleanup_error(cleanup_error, turn_error)
+            _raise_deferred_gateway_cleanup_error(cleanup_error, turn_error)
 
         assert raised.value is cleanup_error
         assert raised.value.__cause__ is turn_error

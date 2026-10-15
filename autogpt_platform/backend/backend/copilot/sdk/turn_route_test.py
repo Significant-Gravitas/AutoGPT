@@ -4,11 +4,17 @@ serves for a tier, and the gateway a route launches behind."""
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.route_profile import codex_profile, platform_profile
 from backend.copilot.route_table import RoutingSource
+from backend.copilot.sdk.model_gateway.route import (
+    ApiKeyCredential,
+    CodexLeaseCredential,
+    NoCredential,
+)
 from backend.copilot.sdk.turn_route import (
     resolve_platform_model,
     resolve_turn_profile,
@@ -138,9 +144,9 @@ class TestResolveTurnProfile:
 
 
 class TestStartRouteGateway:
-    """The seam the shared model gateway plugs into: a route with no gateway
-    adapter launches without one, and an adapter nobody serves yet is
-    refused rather than launched without its gateway."""
+    """The seam that starts the shared model gateway: Codex on the account's
+    lease, the local route on the operator's server through its adapter, and
+    no gateway for the routes that speak the CLI's own protocol."""
 
     @pytest.mark.asyncio
     async def test_a_route_without_an_adapter_needs_no_gateway(self):
@@ -158,26 +164,69 @@ class TestStartRouteGateway:
         gateway = MagicMock()
         gateway.start = AsyncMock()
         with patch(
-            "backend.copilot.sdk.turn_route.CodexAnthropicGateway",
-            return_value=gateway,
+            "backend.copilot.sdk.turn_route.ModelGateway", return_value=gateway
         ) as gateway_class:
             started = await start_route_gateway(profile, lease)
         assert started is gateway
         gateway.start.assert_awaited_once()
-        assert gateway_class.call_args.kwargs == {
-            "agent_session": lease,
-            "model": "gpt-5.6-terra",
-            "effort": "medium",
-            "credential_id": "cred-1",
-        }
+        [route] = gateway_class.call_args.args
+        assert route.adapter == "codex_responses"
+        assert (route.model, route.effort, route.base_url) == (
+            "gpt-5.6-terra",
+            "medium",
+            None,
+        )
+        assert route.credential == CodexLeaseCredential(lease=lease)
+        assert route.context_window == profile.window
+        assert route.timeout_seconds == profile.row.api_timeout_ms / 1000
 
     @pytest.mark.asyncio
-    async def test_an_adapter_nobody_serves_is_refused(self):
+    async def test_codex_without_its_lease_is_refused(self):
         profile = codex_profile(
             "gpt-5.6-terra", effort=None, routing_source="env", codex_engine=None
         )
-        with pytest.raises(RuntimeError, match="No gateway serves"):
+        with pytest.raises(RuntimeError, match="credential lease"):
             await start_route_gateway(profile, None)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "adapter, base_url, key",
+        [
+            ("openai_chat", "http://127.0.0.1:8080/v1", "sk-local"),
+            ("anthropic_passthrough", "http://127.0.0.1:8080", None),
+        ],
+    )
+    async def test_the_local_route_starts_its_gateway_on_the_operators_server(
+        self, adapter, base_url, key
+    ):
+        cfg = ChatConfig(
+            platform_route="local",
+            local_base_url=base_url,
+            local_adapter=adapter,
+            local_api_key=key,
+            local_context_tokens=131_072,
+            standard_model="qwen3.6-35b",
+            advanced_model="qwen3.6-35b",
+        )
+        profile = platform_profile(cfg, "qwen3.6-35b", "env")
+        gateway = MagicMock()
+        gateway.start = AsyncMock()
+        with patch(
+            "backend.copilot.sdk.turn_route.ModelGateway", return_value=gateway
+        ) as gateway_class:
+            started = await start_route_gateway(profile, None)
+        assert started is gateway
+        [route] = gateway_class.call_args.args
+        assert (route.adapter, route.model, route.base_url) == (
+            adapter,
+            "qwen3.6-35b",
+            base_url,
+        )
+        assert route.credential == (
+            ApiKeyCredential(api_key=SecretStr(key)) if key else NoCredential()
+        )
+        assert route.context_window == 131_072
+        assert route.timeout_seconds == 1800
 
 
 def test_turn_route_name():

@@ -24,6 +24,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
 from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.model_gateway.adapters import codex_responses
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
 from backend.data.llm_registry.llm_models import LLMModel
@@ -57,6 +58,10 @@ class SdkTurns:
         self._config = config
         self._transcripts: dict[str, TranscriptDownload] = {}
         self._lease = _codex_lease(provider) if codex else None
+        if codex:
+            # The model gateway's Codex endpoint is fixed; the suite moves it
+            # to the fake provider so no request leaves the machine.
+            monkeypatch.setattr(codex_responses, "API_BASE", f"{provider.url}/codex")
         # The turn of each launch, and the CLI session it resumed (None for a
         # fresh one).
         self.resumed: list[tuple[int, str | None]] = []
