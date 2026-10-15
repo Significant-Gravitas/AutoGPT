@@ -71,6 +71,7 @@ box through the E2B API if the cache is ever lost.
 
 import asyncio
 import contextlib
+import json
 import logging
 import math
 import time
@@ -216,8 +217,18 @@ _ACQUIRE_TURN_SCRIPT = (
 # can never have its count wiped.
 _RELEASE_TURN_SCRIPT = (
     'local n = redis.call("decr", KEYS[1]) '
-    'if n <= 0 then redis.call("del", KEYS[1]) return 0 end '
+    'if n <= 0 then redis.call("del", KEYS[1], KEYS[2]) return 0 end '
     "return n"
+)
+
+# Every provider ceiling a turn pinned an expert's box with since the box was
+# last free of turns; a pin keeps only what all of them allow.  Recorded and
+# read in one script at the pin itself, so two turns pinning at once see each
+# other even before either is counted.  The last turn's release clears it.
+_PIN_CEILING_SCRIPT = (
+    'redis.call("rpush", KEYS[1], ARGV[1]) '
+    'redis.call("expire", KEYS[1], ARGV[2]) '
+    'return redis.call("lrange", KEYS[1], 0, -1)'
 )
 
 # One more reconnect attempt before a transient error surfaces: a box that
@@ -402,11 +413,8 @@ async def _connect_pinned(
     """Connect to *sandbox_id*, which *info* already showed to be *owner*'s."""
     if isinstance(providers, _KeepCeiling):
         providers = await recorded_providers(sandbox_id) if pin_egress else None
-    elif pin_egress and await _has_active_turns(owner):
-        # Another turn is live on the box, and its processes egress under
-        # whatever this pin sets: the pin may narrow the box's ceiling, never
-        # widen it.  Once the box is free of turns, a pin sets its own.
-        providers = _narrowest(providers, await recorded_providers(sandbox_id))
+    elif pin_egress:
+        providers = await _shared_ceiling(owner, providers, sandbox_id)
     stamped = info.metadata or {}
     # Whose credentials the proxy may swap in is the box's own record too,
     # not the caller's word: processes of the user it was created for may
@@ -432,6 +440,45 @@ async def _connect_pinned(
     if pin_egress and swap_user_id is not None:
         await _keep_grants(sandbox_id)
     return sandbox
+
+
+async def _shared_ceiling(
+    owner: SandboxOwner,
+    providers: tuple[str, ...] | None,
+    sandbox_id: str | None,
+) -> tuple[str, ...] | None:
+    """The ceiling a turn pins *owner*'s box with.
+
+    Turns share an expert's box and its egress, so a pin keeps only what every
+    ceiling pinned since the box was last free of turns allows: a turn may
+    narrow another's, never lift it.  A plain session's box is its own.  If
+    the record cannot be used, the box's current ceiling narrows it instead.
+    """
+    if not owner.is_expert:
+        return providers
+    try:
+        redis = await get_redis_async()
+        pinned = await redis.eval(
+            _PIN_CEILING_SCRIPT,
+            1,
+            _pin_ceilings_key(owner),
+            json.dumps(list(providers) if providers is not None else None),
+            _ACTIVE_TURN_TTL,
+        )
+        ceiling = providers
+        for raw in pinned:
+            entry = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
+            ceiling = _narrowest(ceiling, None if entry is None else tuple(entry))
+        return ceiling
+    except Exception:
+        logger.warning(
+            "[E2B] Could not record the ceiling for %s; narrowing by the box's",
+            owner,
+            exc_info=True,
+        )
+        if sandbox_id is None:
+            return providers
+        return _narrowest(providers, await recorded_providers(sandbox_id))
 
 
 def _narrowest(
@@ -702,6 +749,10 @@ def _active_turns_key(owner: SandboxOwner) -> str:
     return f"{owner.key()}:active"
 
 
+def _pin_ceilings_key(owner: SandboxOwner) -> str:
+    return f"{owner.key()}:ceilings"
+
+
 async def _acquire_turn(owner: SandboxOwner) -> None:
     """Count this turn on an expert's box so another turn's end can't pause it.
 
@@ -733,7 +784,9 @@ async def _release_turn(owner: SandboxOwner) -> bool:
     try:
         redis = await get_redis_async()
         key = _active_turns_key(owner)
-        remaining = int(await redis.eval(_RELEASE_TURN_SCRIPT, 1, key))
+        remaining = int(
+            await redis.eval(_RELEASE_TURN_SCRIPT, 2, key, _pin_ceilings_key(owner))
+        )
         if remaining <= 0:
             return True
         logger.info(
@@ -914,7 +967,12 @@ async def get_or_create_owner_sandbox(
             # leak per incident.
             mounts = await _resolve_volume_mounts(volume_mounts, api_key)
             egress_owner = owner.egress_owner(
-                user_id, None if isinstance(providers, _KeepCeiling) else providers
+                user_id,
+                (
+                    None
+                    if isinstance(providers, _KeepCeiling)
+                    else await _shared_ceiling(owner, providers, None)
+                ),
             )
             box_grants = await _placeholder_grants(egress_owner)
             box_env = placeholder_env(box_grants) if box_grants else {}
@@ -1375,7 +1433,10 @@ async def _forget_owner_state(owner: SandboxOwner) -> None:
     with contextlib.suppress(Exception):
         redis = await get_redis_async()
         await redis.delete(
-            owner.display_key(), owner.stream_key(), _active_turns_key(owner)
+            owner.display_key(),
+            owner.stream_key(),
+            _active_turns_key(owner),
+            _pin_ceilings_key(owner),
         )
 
 
