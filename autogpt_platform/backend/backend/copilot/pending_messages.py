@@ -102,12 +102,14 @@ def _decode_redis_item(item: Any) -> str:
 async def push_pending_message(
     session_id: str,
     message: PendingMessage,
+    *,
+    ttl_seconds: int = _PENDING_TTL_SECONDS,
 ) -> int:
     """Append a pending message to the session's buffer, capped at
     ``MAX_PENDING_MESSAGES`` (oldest trimmed). Returns the new buffer length.
 
-    The buffer survives consumer crashes until ``_PENDING_TTL_SECONDS``
-    expires; messages not drained within that window are dropped.
+    The buffer survives consumer crashes until ``ttl_seconds`` expires;
+    messages not drained within that window are dropped.
     """
     redis = await get_redis_async()
     key = _buffer_key(session_id)
@@ -118,7 +120,7 @@ async def push_pending_message(
         key,
         payload,
         max_len=MAX_PENDING_MESSAGES,
-        ttl_seconds=_PENDING_TTL_SECONDS,
+        ttl_seconds=ttl_seconds,
     )
 
     # Fire-and-forget wake-up hint via sharded pub/sub (SPUBLISH routes to

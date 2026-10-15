@@ -38,6 +38,7 @@ from backend.copilot.pending_message_helpers import (
     queue_user_message,
 )
 from backend.copilot.response_model import StreamError, StreamFinish
+from backend.copilot.result_waiters import awaiting_result
 from backend.copilot.tree import SpawnRequest, TreeRefusal
 from backend.copilot.turn_queue import SessionNotIdle, queued_turn_refusal
 from backend.data.db_accessors import chat_db
@@ -106,48 +107,50 @@ async def wait_for_session_result(
     result). Cleans up the subscriber listener on every exit path so
     long-running polls don't leak listeners (sentry r3105348640).
     """
-    queue = await stream_registry.subscribe_to_session(
-        session_id=session_id,
-        user_id=user_id,
-    )
-    result = SessionResult()
-    if queue is None:
-        # Session meta not in Redis yet, or the caller doesn't own it.
-        # ``subscribe_to_session`` already retried with backoff before
-        # returning None.
-        return "running", result
-
-    acc = EventAccumulator()
-    outcome: SessionOutcome = "running"
-    try:
-        loop = asyncio.get_event_loop()
-        deadline = loop.time() + max(timeout, 0)
-        while True:
-            remaining = deadline - loop.time()
-            if remaining <= 0:
-                break
-            _, event = await asyncio.wait_for(queue.get(), timeout=remaining)
-            process_event(event, acc)
-            if isinstance(event, StreamFinish):
-                outcome = "completed"
-                break
-            if isinstance(event, StreamError):
-                outcome = "failed"
-                break
-    except asyncio.TimeoutError:
-        pass
-    finally:
-        await stream_registry.unsubscribe_from_session(
+    # Before subscribing, so a turn ending in between still sees the waiter.
+    async with awaiting_result(session_id, timeout):
+        queue = await stream_registry.subscribe_to_session(
             session_id=session_id,
-            subscriber_queue=queue,
+            user_id=user_id,
         )
+        result = SessionResult()
+        if queue is None:
+            # Session meta not in Redis yet, or the caller doesn't own it.
+            # ``subscribe_to_session`` already retried with backoff before
+            # returning None.
+            return "running", result
 
-    result.response_text = "".join(acc.response_parts)
-    result.tool_calls = list(acc.tool_calls)
-    result.prompt_tokens = acc.prompt_tokens
-    result.completion_tokens = acc.completion_tokens
-    result.total_tokens = acc.total_tokens
-    return outcome, result
+        acc = EventAccumulator()
+        outcome: SessionOutcome = "running"
+        try:
+            loop = asyncio.get_event_loop()
+            deadline = loop.time() + max(timeout, 0)
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    break
+                _, event = await asyncio.wait_for(queue.get(), timeout=remaining)
+                process_event(event, acc)
+                if isinstance(event, StreamFinish):
+                    outcome = "completed"
+                    break
+                if isinstance(event, StreamError):
+                    outcome = "failed"
+                    break
+        except asyncio.TimeoutError:
+            pass
+        finally:
+            await stream_registry.unsubscribe_from_session(
+                session_id=session_id,
+                subscriber_queue=queue,
+            )
+
+        result.response_text = "".join(acc.response_parts)
+        result.tool_calls = list(acc.tool_calls)
+        result.prompt_tokens = acc.prompt_tokens
+        result.completion_tokens = acc.completion_tokens
+        result.total_tokens = acc.total_tokens
+        return outcome, result
 
 
 async def run_copilot_turn_via_queue(

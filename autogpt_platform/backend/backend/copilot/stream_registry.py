@@ -994,6 +994,17 @@ async def mark_session_completed(
     if not turn_id:
         turn_id = _parse_session_meta(meta, session_id).turn_id if meta else session_id
 
+    # Before the swap: a waiter's listener lets go once the status flips, and a
+    # report made after that could no longer see it waiting. Claimed per turn.
+    reporting_user = meta.get("user_id") or ""
+    if reporting_user and error_message != CANCELLED_MESSAGE:
+        # Deferred like the gate below: the report reaches back through the tools.
+        from backend.copilot.delegation_report import report_to_delegator
+
+        await report_to_delegator(
+            reporting_user, session_id, turn_id, failed=bool(error_message)
+        )
+
     # Atomic compare-and-swap: only update if status is "running". A turn's end
     # can wake the next one, so its late safety-net call must not close that.
     swapped = await hash_compare_and_set(
