@@ -320,7 +320,6 @@ class TestPostHogBackend:
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         posthog_client = _posthog_with_a_split_on_is_anonymous()
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
-        frontend._visitor_flags_cache.clear()
         frontend._anonymous_flags.cache_clear()
         try:
             anonymous = await frontend.evaluate_frontend_flags(None)
@@ -329,7 +328,6 @@ class TestPostHogBackend:
                 for i in range(200)
             ]
         finally:
-            frontend._visitor_flags_cache.clear()
             frontend._anonymous_flags.cache_clear()
             posthog_client.shutdown()
 

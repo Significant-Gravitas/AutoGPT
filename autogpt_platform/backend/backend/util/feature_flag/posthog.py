@@ -6,6 +6,7 @@ module dispatches to this one, so a back-import would be a cycle.
 
 import asyncio
 import functools
+import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -111,6 +112,35 @@ async def evaluate_flag(
     return (payload if payload is not None else value), True
 
 
+def evaluate_flags_in_memory(
+    flag_keys: list[str], distinct_id: str, person_properties: dict[str, Any]
+) -> dict[str, Any]:
+    """The flags the loaded definitions answer for *distinct_id*, on this thread.
+
+    Never fetches definitions, never asks ``/flags`` and fires no
+    ``$feature_flag_called``; a flag the definitions cannot decide is left out.
+    """
+    client = get_flag_client()
+    # With no definitions loaded the SDK would fetch them before evaluating.
+    if client is None or not client.feature_flags:
+        return {}
+    try:
+        result = client.get_all_flags_and_payloads(
+            distinct_id,
+            person_properties=person_properties,
+            only_evaluate_locally=True,
+            flag_keys_to_evaluate=flag_keys,
+        )
+    except Exception as e:
+        logger.warning(f"PostHog in-memory flag evaluation failed: {e}")
+        return {}
+    payloads = result.get("featureFlagPayloads") or {}
+    return {
+        key: value if value is False else _decoded(payloads.get(key), value)
+        for key, value in (result.get("featureFlags") or {}).items()
+    }
+
+
 def initialize_posthog_flags() -> None:
     """Build the flag client and load its definitions before any read needs them."""
     global _shut_down
@@ -204,3 +234,13 @@ def _build_client() -> Posthog | None:
         f"definition cache: {type(definition_cache).__name__ if definition_cache else 'off'})"
     )
     return _client
+
+
+def _decoded(payload: Any, value: Any) -> Any:
+    """A matched flag's payload, which definitions hold as JSON text, else *value*."""
+    if not payload:
+        return value
+    try:
+        return json.loads(payload)
+    except (TypeError, ValueError):
+        return payload

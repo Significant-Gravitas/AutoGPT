@@ -5,7 +5,6 @@ import re
 from enum import Enum
 from typing import Any
 
-from cachetools import TTLCache
 from pydantic import BaseModel, Field, GetJsonSchemaHandler
 from pydantic.json_schema import JsonSchemaValue
 from pydantic_core import CoreSchema
@@ -15,15 +14,17 @@ from backend.util.cache import cached
 from . import (
     ANONYMOUS_USER,
     Flag,
+    _env_flag_override,
     _evaluate_boolean_flag,
     _evaluate_flag_value,
     _flag_backend_configured,
+    evaluate_flags_in_memory,
 )
 
 # A consenting visitor's analytics id (a UUID); anything else counts as no id.
 VISITOR_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
-# Past this many visitors the oldest entry goes, so a flood of fresh ids cannot grow memory.
-VISITOR_CACHE_SIZE = 4096
+# A visitor's flag key; no user id has a colon, so it can never target a user.
+VISITOR_KEY = "visitor:{}"
 
 
 class FrontendFlag(str, Enum):
@@ -71,10 +72,6 @@ class FrontendFlag(str, Enum):
         return schema
 
 
-_visitor_flags_cache = TTLCache[str, dict[FrontendFlag, Any]](
-    maxsize=VISITOR_CACHE_SIZE, ttl=30
-)
-
 # Served as payloads, so an env override (a bare true/false) never stands in for them.
 PAYLOAD_FLAGS = frozenset(
     {
@@ -100,7 +97,8 @@ async def evaluate_frontend_flags(
     """The frontend's flags for the caller, read exactly as the backend reads them.
 
     A signed-out caller is bucketed by *visitor_id*, the analytics id its page sends
-    only with consent, or else as `ANONYMOUS_USER`. A signed-in caller ignores it.
+    only with consent, wherever the vendor answers in memory; otherwise it reads as
+    `ANONYMOUS_USER`. A signed-in caller ignores it.
     """
     if user_id is not None:
         flags = await _evaluate(user_id)
@@ -118,18 +116,20 @@ async def _anonymous_flags() -> dict[FrontendFlag, Any]:
 
 
 async def _visitor_flags(visitor_id: str) -> dict[FrontendFlag, Any]:
-    if (flags := _visitor_flags_cache.get(visitor_id)) is not None:
-        return flags
-    # Anonymous whatever its shape: a user's id sent here unlocks nothing of theirs.
-    flags = await _evaluate(visitor_id, anonymous=True)
-    _visitor_flags_cache[visitor_id] = flags
+    # The caller picks the id, so its own bucket is only what the vendor answers in
+    # memory; everything else is the one shared signed-out read.
+    own = evaluate_flags_in_memory(
+        [flag.value for flag in FrontendFlag], VISITOR_KEY.format(visitor_id)
+    )
+    flags = dict(await _anonymous_flags())
+    for flag in FrontendFlag:
+        if _takes_own_answer(flag, own.get(flag.value)):
+            flags[flag] = own[flag.value]
     return flags
 
 
-async def _evaluate(user_id: str, anonymous: bool = False) -> dict[FrontendFlag, Any]:
-    results = await asyncio.gather(
-        *(_read(flag, user_id, anonymous) for flag in FrontendFlag)
-    )
+async def _evaluate(user_id: str) -> dict[FrontendFlag, Any]:
+    results = await asyncio.gather(*(_read(flag, user_id) for flag in FrontendFlag))
     return {
         flag: value
         for flag, (value, answered) in zip(FrontendFlag, results)
@@ -137,7 +137,14 @@ async def _evaluate(user_id: str, anonymous: bool = False) -> dict[FrontendFlag,
     }
 
 
-async def _read(flag: FrontendFlag, user_id: str, anonymous: bool) -> tuple[Any, bool]:
+async def _read(flag: FrontendFlag, user_id: str) -> tuple[Any, bool]:
     if flag in PAYLOAD_FLAGS:
-        return await _evaluate_flag_value(flag.value, user_id, anonymous=anonymous)
-    return await _evaluate_boolean_flag(flag.value, user_id, anonymous=anonymous)
+        return await _evaluate_flag_value(flag.value, user_id)
+    return await _evaluate_boolean_flag(flag.value, user_id)
+
+
+def _takes_own_answer(flag: FrontendFlag, value: Any) -> bool:
+    # A switch forced by env stays forced, as in the shared read; a payload never is.
+    return value is not None and (
+        flag in PAYLOAD_FLAGS or _env_flag_override(flag.value) is None
+    )

@@ -1,4 +1,6 @@
 import os
+import uuid
+from typing import Any, ClassVar
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -8,22 +10,24 @@ from autogpt_libs.auth import get_optional_user_id
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.integrations.test_data import TestData
+from ldclient.interfaces import EventProcessor
+from posthog import Posthog
+from posthog.types import FeatureFlag
 
 import backend.util.feature_flag as ff
-from backend.util.feature_flag import (
-    Flag,
-    frontend,
-    get_feature_flag_value,
-    is_feature_enabled,
-)
+from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import posthog as ph
 from backend.util.feature_flag.frontend import FrontendFlag, _anonymous_flags
 from backend.util.settings import FeatureFlagBackend
 
 from .routes import router
 
 SEARCH_TERMS = ["Research", "Marketing"]
+VISITOR_TERMS = ["Sales"]
 VISITOR = "0b6c1f3e-visitor-0001"
+USER_ID = "3f2b8c1e-7a4d-4e9b-9c2a-5d6e7f8a9b0c"
 PINNING = FrontendFlag.CHAT_PINNING.value
+HIRE_EXPERTS = FrontendFlag.HIRE_EXPERTS.value
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/api")
@@ -31,7 +35,10 @@ app.include_router(router, prefix="/api")
 
 @pytest.fixture(autouse=True)
 def launchdarkly(mocker, monkeypatch: pytest.MonkeyPatch):
-    """A real LaunchDarkly client serving fixed targeting, and no env overrides."""
+    """A real LaunchDarkly client serving fixed targeting, and no env overrides.
+
+    Yields every analytics event the client would have sent LaunchDarkly.
+    """
     for name in list(os.environ):
         if name.startswith(
             ("FORCE_FLAG_", "NEXT_PUBLIC_FORCE_FLAG_", "FORCE_ALL_FLAGS")
@@ -49,21 +56,26 @@ def launchdarkly(mocker, monkeypatch: pytest.MonkeyPatch):
     )
     td.update(
         td.flag(FrontendFlag.MARKETPLACE_SEARCH_TERMS.value)
-        .variations(SEARCH_TERMS)
+        .variations(SEARCH_TERMS, VISITOR_TERMS)
+        .variation_for_user(f"visitor:{VISITOR}", 1)
         .fallthrough_variation(0)
     )
     td.update(
         td.flag(PINNING)
         .boolean_flag()
-        .variation_for_user(VISITOR, True)
-        .variation_for_user("v" * 65, True)
-        .variation_for_user("visitor:bad$id", True)
+        .variation_for_user(f"visitor:{VISITOR}", True)
+        .variation_for_user(f"visitor:{'v' * 65}", True)
+        .variation_for_user("visitor:visitor:bad$id", True)
+        .variation_for_user(USER_ID, True)
         .if_match("email_domain", "agpt.co")
         .then_return(True)
         .fallthrough_variation(False)
     )
+    _RecordedEvents.sent.clear()
     client = LDClient(
-        LDConfig("sdk-test", update_processor_class=td, send_events=False)
+        LDConfig(
+            "sdk-test", update_processor_class=td, event_processor_class=_RecordedEvents
+        )
     )
     mocker.patch.object(
         ff.settings.config, "feature_flag_backend", FeatureFlagBackend.LAUNCHDARKLY
@@ -72,10 +84,8 @@ def launchdarkly(mocker, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(ff, "_init_attempted", True)
     mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     _anonymous_flags.cache_clear()
-    frontend._visitor_flags_cache.clear()
-    yield
+    yield _RecordedEvents.sent
     _anonymous_flags.cache_clear()
-    frontend._visitor_flags_cache.clear()
     app.dependency_overrides.clear()
     client.close()
 
@@ -113,14 +123,20 @@ async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(moc
     assert body["configured"] is False
 
 
-async def test_an_env_override_forces_a_switch_but_never_a_payload(monkeypatch):
+@pytest.mark.parametrize(
+    "user_id,visitor_id,terms",
+    [("u-other", None, SEARCH_TERMS), (None, VISITOR, VISITOR_TERMS)],
+)
+async def test_an_env_override_forces_a_switch_but_never_a_payload(
+    monkeypatch, user_id, visitor_id, terms
+):
     monkeypatch.setenv("FORCE_FLAG_COPILOT_VOICE_MODE", "true")
     monkeypatch.setenv("FORCE_FLAG_MARKETPLACE_SEARCH_TERMS", "true")
 
-    flags = (await _get_flags("u-other"))["flags"]
+    flags = (await _get_flags(user_id, visitor_id))["flags"]
 
     assert flags[FrontendFlag.COPILOT_VOICE_MODE.value] is True
-    assert flags[FrontendFlag.MARKETPLACE_SEARCH_TERMS.value] == SEARCH_TERMS
+    assert flags[FrontendFlag.MARKETPLACE_SEARCH_TERMS.value] == terms
 
 
 async def test_a_consenting_visitor_is_bucketed_by_their_own_id():
@@ -154,19 +170,124 @@ async def test_a_users_id_sent_as_a_visitor_id_is_never_looked_up_as_that_user(
         AsyncMock(return_value=(employee, True)),
     )
 
-    flags = (await _get_flags(None, "3f2b8c1e-7a4d-4e9b-9c2a-5d6e7f8a9b0c"))["flags"]
+    flags = (await _get_flags(None, USER_ID))["flags"]
 
     assert flags[PINNING] is False
-    lookup.assert_not_awaited()
+    assert USER_ID not in [call.args[0] for call in lookup.await_args_list]
 
 
-async def test_fresh_visitor_ids_cannot_grow_the_cache_past_its_bound(mocker):
-    mocker.patch.object(frontend, "_evaluate", AsyncMock(return_value={}))
+async def test_a_users_id_sent_as_a_visitor_id_never_matches_that_users_targets(
+    mocker,
+):
+    mocker.patch(
+        "backend.util.feature_flag._fetch_user_context_status",
+        AsyncMock(return_value=(Context.builder(USER_ID).build(), True)),
+    )
 
-    for i in range(frontend.VISITOR_CACHE_SIZE + 10):
-        await frontend.evaluate_frontend_flags(None, f"{i:08d}-visitor")
+    as_user = (await _get_flags(USER_ID))["flags"]
+    as_visitor = (await _get_flags(None, USER_ID))["flags"]
 
-    assert len(frontend._visitor_flags_cache) <= frontend.VISITOR_CACHE_SIZE
+    assert (as_user[PINNING], as_visitor[PINNING]) == (True, False)
+
+
+async def test_fresh_visitor_ids_send_launchdarkly_nothing(launchdarkly):
+    await _get_flags(None)
+    launchdarkly.clear()
+
+    for _ in range(20):
+        await _get_flags(None, str(uuid.uuid4()))
+
+    assert launchdarkly == []
+
+
+async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
+    """No billed event, no remote /flags call and no turn on the executor every
+    flag read shares: the id is the caller's to pick, so a new one must be free."""
+    mocker.patch.object(
+        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
+    )
+    client = _posthog_splitting_pinning_and_gating_hire_on_email()
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
+    remote = mocker.patch.object(
+        client,
+        "_get_flags_decision",
+        return_value={
+            "flags": {
+                HIRE_EXPERTS: FeatureFlag.from_value_and_payload(
+                    HIRE_EXPERTS, True, None
+                )
+            }
+        },
+    )
+    events = mocker.patch.object(client, "capture")
+    executor = mocker.patch.object(
+        ph._read_executor, "submit", wraps=ph._read_executor.submit
+    )
+    try:
+        await _get_flags(None)
+        for spy in (remote, events, executor):
+            spy.reset_mock()
+        visitors = [
+            (await _get_flags(None, str(uuid.uuid4())))["flags"] for _ in range(40)
+        ]
+    finally:
+        client.shutdown()
+
+    assert (remote.call_count, events.call_count, executor.call_count) == (0, 0, 0)
+    # Each is still bucketed by their own id where the definitions decide it, and
+    # takes the shared signed-out answer where only PostHog's servers could.
+    assert {v.get(PINNING) for v in visitors} == {True, False}
+    assert all(v.get(HIRE_EXPERTS) is True for v in visitors)
+
+
+class _RecordedEvents(EventProcessor):
+    sent: ClassVar[list[Any]] = []
+
+    def __init__(self, config: LDConfig):
+        pass
+
+    def send_event(self, event: Any) -> None:
+        self.sent.append(event)
+
+    def flush(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+
+def _posthog_splitting_pinning_and_gating_hire_on_email() -> Posthog:
+    """Local definitions: pinning is a 50% split, hire-experts needs an email."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": PINNING,
+            "active": True,
+            "filters": {"groups": [{"properties": [], "rollout_percentage": 50}]},
+        },
+        {
+            "id": 2,
+            "key": HIRE_EXPERTS,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "email",
+                                "type": "person",
+                                "operator": "regex",
+                                "value": r"@agpt\.co$",
+                            }
+                        ],
+                        "rollout_percentage": 100,
+                    }
+                ]
+            },
+        },
+    ]
+    return client
 
 
 async def _get_flags(user_id: str | None, visitor_id: str | None = None) -> dict:

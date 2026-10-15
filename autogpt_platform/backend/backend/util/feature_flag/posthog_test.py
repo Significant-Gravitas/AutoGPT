@@ -275,6 +275,48 @@ class TestASeparateFlagProjectThroughTheRealSDK:
         assert not any(upload.called for upload in uploads)
 
 
+class TestInMemoryRead:
+    def test_definitions_not_loaded_yet_are_never_fetched(self, mocker):
+        """Fetching them first is the SDK's default, and a network call per read."""
+        client = Posthog(
+            "phc-test", secret_key="phx-test", enable_local_evaluation=False
+        )
+        fetch = mocker.patch.object(client, "load_feature_flags")
+        remote = mocker.patch.object(client, "_get_flags_decision")
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+        try:
+            values = ph.evaluate_flags_in_memory(["hire-experts"], "visitor:v-1", {})
+        finally:
+            client.shutdown()
+
+        assert (values, fetch.call_count, remote.call_count) == ({}, 0, 0)
+
+    def test_a_matched_payload_is_served_decoded(self, mocker):
+        client = Posthog(
+            "phc-test", secret_key="phx-test", enable_local_evaluation=False
+        )
+        client.feature_flags = [
+            _rolled_out("marketplace-search-terms", 100, payload='["Research"]'),
+            _rolled_out("hire-experts", 100),
+            _rolled_out("chat-search", 0, payload='["unused"]'),
+        ]
+        mocker.patch.object(ph, "get_flag_client", return_value=client)
+        try:
+            values = ph.evaluate_flags_in_memory(
+                ["marketplace-search-terms", "hire-experts", "chat-search"],
+                "visitor:v-1",
+                {},
+            )
+        finally:
+            client.shutdown()
+
+        assert values == {
+            "marketplace-search-terms": ["Research"],
+            "hire-experts": True,
+            "chat-search": False,
+        }
+
+
 class TestRawRead:
     @pytest.mark.asyncio
     async def test_an_unconfigured_client_returns_the_default(self, mocker):
@@ -427,3 +469,10 @@ def _real_client(mocker, *, flags_key: str):
         client, "_get_flags_decision", side_effect=ConnectionError("offline")
     )
     return client, remote
+
+
+def _rolled_out(key: str, percentage: int, payload: str | None = None) -> dict:
+    filters: dict = {"groups": [{"properties": [], "rollout_percentage": percentage}]}
+    if payload is not None:
+        filters["payloads"] = {"true": payload}
+    return {"id": 1, "key": key, "active": True, "filters": filters}

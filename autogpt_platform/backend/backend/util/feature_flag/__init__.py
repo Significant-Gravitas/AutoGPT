@@ -462,24 +462,40 @@ async def get_feature_flag_value(
     return value
 
 
+def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
+    """Each of *flag_keys* the vendor answers in memory for the anonymous *key*.
+
+    No network, no analytics event and no executor, so a caller may pick *key*:
+    a new one costs only the hashing. A flag that needs more is left out.
+    """
+    context = _anonymous_context(key)
+    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
+        values = posthog.evaluate_flags_in_memory(
+            flag_keys, key, _person_properties(context)
+        )
+    else:
+        values = _launchdarkly_flags_in_memory(context)
+    return {
+        flag_key: values[flag_key]
+        for flag_key in flag_keys
+        if values.get(flag_key) is not None
+    }
+
+
 async def _evaluate_flag_value(
     flag_key: str,
     user_id: str,
     default: Any = None,
     *,
     attributes: dict[str, str] | None = None,
-    anonymous: bool = False,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` for one raw flag read, from the configured vendor.
 
     ``evaluated`` is False whenever *default* is standing in for an answer the
-    vendor could not give. ``anonymous`` buckets by *user_id* without ever
-    looking it up as a user, for an id the caller did not authenticate.
+    vendor could not give.
     """
     context = None
-    if anonymous:
-        context = (_anonymous_context(user_id), True)
-    elif attributes:
+    if attributes:
         # Layered once, so every vendor evaluates the same per-request facts.
         user_context, context_resolved = await _fetch_user_context_status(user_id)
         context = (_with_request_attributes(user_context, attributes), context_resolved)
@@ -674,6 +690,18 @@ async def _evaluate_launchdarkly(
         return default, False
 
 
+def _launchdarkly_flags_in_memory(context: Context) -> dict[str, Any]:
+    # all_flags_state, unlike variation, sends LaunchDarkly no event per context.
+    if not is_configured():
+        return {}
+    try:
+        state = get_client().all_flags_state(context)
+    except Exception as e:
+        logger.warning(f"LaunchDarkly in-memory flag evaluation failed: {e}")
+        return {}
+    return state.to_values_map() if state.valid else {}
+
+
 def _person_properties(context: Context) -> dict[str, Any]:
     """PostHog person properties for one read: the user's, plus ``environment``.
 
@@ -855,17 +883,13 @@ async def _evaluate_boolean_flag(
     flag_key: str,
     user_id: str,
     default: bool = False,
-    *,
-    anonymous: bool = False,
 ) -> tuple[bool, bool]:
     override = _env_flag_override(flag_key)
     if override is not None:
         logger.debug(f"Feature flag {flag_key} overridden by env: {override}")
         return override, True
 
-    result, evaluated = await _evaluate_flag_value(
-        flag_key, user_id, default, anonymous=anonymous
-    )
+    result, evaluated = await _evaluate_flag_value(flag_key, user_id, default)
 
     # If the result is already a boolean, return it
     if isinstance(result, bool):
