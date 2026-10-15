@@ -76,6 +76,11 @@ from backend.integrations.oauth import (
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
+from backend.integrations.service_identity import (
+    service_for_catalog_entry,
+    service_for_credential,
+    service_for_provider,
+)
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
 from backend.util.exceptions import (
@@ -249,6 +254,9 @@ class CredentialsMetaResponse(BaseModel):
         description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
+    service: str = ""
+    service_name: str | None = None
+    service_icon: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -290,6 +298,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         if stored_scheme in get_args(MCPAuthScheme):
             mcp_auth_scheme = stored_scheme
 
+    identity = service_for_credential(cred)
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -300,6 +309,9 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         host=CredentialsMetaResponse.get_host(cred),
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
+        service=identity.service,
+        service_name=identity.name,
+        service_icon=identity.icon,
     )
 
 
@@ -2048,21 +2060,32 @@ async def list_providers(
     all_providers = get_all_provider_names()
     if user_id is None or not await has_codex_access_for_discovery(user_id):
         all_providers = [name for name in all_providers if name != ProviderName.CODEX]
-    return [
-        ProviderMetadata(
+
+    def _native(name: str) -> ProviderMetadata:
+        identity = service_for_provider(name)
+        return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
             supported_auth_types=get_supported_auth_types(name),
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
         )
-        for name in all_providers
-    ] + [
-        ProviderMetadata(
+
+    def _catalog(entry) -> ProviderMetadata:
+        identity = service_for_catalog_entry(entry)
+        return ProviderMetadata(
             name=entry.name,
             display_name=entry.display_name,
             description=entry.description,
             mcp_server=entry.mcp_server,
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
         )
-        for entry in get_mcp_catalog()
+
+    return [_native(name) for name in all_providers] + [
+        _catalog(entry) for entry in get_mcp_catalog()
     ]
 
 

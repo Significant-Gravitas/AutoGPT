@@ -30,6 +30,7 @@ from backend.blocks.http import SendWebRequestBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.search import GetWikipediaSummaryBlock
 from backend.blocks.sql_query_block import SQLQueryBlock
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.gate import RUN_FILES_KEY
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
@@ -53,6 +54,7 @@ from backend.util import sandbox_login
 from backend.util.sandbox_login import READ_CAP
 from backend.util.sandbox_login_test import FakeRedis, FakeSandbox, stock_files
 
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 _GATE = "backend.copilot.gate"
 _BASH = "backend.copilot.tools.bash_exec"
 _CLASSIFIER = "backend.copilot.gate.classifier"
@@ -822,6 +824,9 @@ class _LocalSandbox:
         cmd: str,
         envs: dict[str, str] | None = None,
         cwd: str = "/home/user",
+        background: bool = False,
+        on_stdout: Any = None,
+        on_stderr: Any = None,
         **_: Any,
     ) -> SimpleNamespace:
         user_home = (envs or {}).get("HOME", "/home/user")
@@ -833,11 +838,18 @@ class _LocalSandbox:
             text=True,
             timeout=10,
         )
-        return SimpleNamespace(
+        result = SimpleNamespace(
             exit_code=done.returncode,
             stdout=done.stdout.replace(self.home, "/home/user"),
             stderr=done.stderr,
         )
+        if not background:
+            return result
+        # bash_exec follows its command through E2B's background handle.
+        for emit, text in ((on_stdout, result.stdout), (on_stderr, result.stderr)):
+            if emit and text:
+                emit(text)
+        return SimpleNamespace(pid=1, wait=AsyncMock(return_value=result))
 
 
 @pytest.fixture

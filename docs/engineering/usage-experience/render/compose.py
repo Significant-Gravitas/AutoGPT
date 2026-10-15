@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -11,6 +12,10 @@ if len(sys.argv) != 4:
     )
 BEFORE, AFTER, OUT = [Path(p).resolve() for p in sys.argv[1:]]
 OUT.mkdir(exist_ok=True)
+full_output = os.environ.get("USAGE_COMPARISON_FULL_OUTPUT")
+FULL_OUT = Path(full_output).resolve() if full_output else None
+if FULL_OUT:
+    FULL_OUT.mkdir(parents=True, exist_ok=True)
 cases = json.loads((Path(__file__).parent / "comparison-cases.json").read_text())
 font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 bold = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -105,6 +110,8 @@ for case in cases:
     fy = top + int(max(bh, ah, 300)) + 22
     d.line((pad, fy - 10, width - pad, fy - 10), fill="#dedee3", width=1)
     write(d, footer, (pad, fy), F(13), width - 2 * pad, "#666670")
+    if FULL_OUT:
+        canvas.save(FULL_OUT / f"{identifier}.png", optimize=True)
     scale = min(1, 1000 / width, 760 / height)
     compact = canvas.resize(
         (round(width * scale), round(height * scale)), Image.Resampling.LANCZOS

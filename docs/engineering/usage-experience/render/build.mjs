@@ -37,14 +37,19 @@ const result = await esbuild.build({
         build.onResolve(
           {
             filter:
-              /(^@sentry\/nextjs$|^next\/(link|navigation)$|\/(useUsageExperience|useProActivation|useWorkspaceStorage|useTrialStatus|useTrialCheckoutReturn|useTrialCard|usePaymentMethodCard|useInvoicesCard|useYourPlanCard|usePaywallModal|AutomationCreditsTab|monetization-analytics)$|__generated__\/endpoints\/credits\/credits$)/,
+              /(^@sentry\/nextjs$|^next\/(link|navigation)$|\/(useUsageExperience|useProActivation|useWorkspaceStorage|useTrialStatus|useTrialCheckoutReturn|useTrialCard|usePaymentMethodCard|useInvoicesCard|useYourPlanCard|usePaywallModal|AutomationCreditsTab|monetization-analytics)$|__generated__\/endpoints\/(credits\/credits|trials\/trials|chat\/chat)$|lib\/autogpt-server-api\/helpers$)/,
           },
           () => ({ path: mocks }),
         );
       },
     },
   ],
-  define: { "process.env.NODE_ENV": '"production"' },
+  define: {
+    "process.env.NODE_ENV": '"production"',
+    "process.env.NEXT_PUBLIC_BEHAVE_AS": '"CLOUD"',
+    "process.env.NEXT_PUBLIC_APP_ENV": '"prod"',
+    "process.env": "{}",
+  },
   alias: {
     "@": path.join(frontend, "src"),
     react: path.dirname(require.resolve("react/package.json")),
@@ -106,7 +111,12 @@ const inputs = [
       ...[
         ...Object.keys(result.metafile.inputs),
         ...Object.keys(tailwindResult.metafile.inputs),
-      ].filter((file) => path.resolve(file).startsWith(repo)),
+      ].filter(
+        (file) =>
+          !file.startsWith("<") &&
+          path.resolve(file).startsWith(repo) &&
+          !path.resolve(file).split(path.sep).includes("node_modules"),
+      ),
       path.join(frontend, "src/app/globals.css"),
       path.join(frontend, "tailwind.config.ts"),
       path.join(frontend, "package.json"),

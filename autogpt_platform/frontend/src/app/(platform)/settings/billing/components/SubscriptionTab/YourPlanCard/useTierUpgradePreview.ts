@@ -80,14 +80,15 @@ export function useTierUpgradePreview(
     error,
     isLoading: enabled && !preview && !error,
     retry: () => setAttempt((value) => value + 1),
-    invalidate: () => {
+    invalidate: (
+      message = "Your billing details changed. Review the updated charge before paying.",
+    ) => {
       setState((value) =>
         value
           ? {
               ...value,
               preview: undefined,
-              error:
-                "Your billing details changed. Review the updated charge before paying.",
+              error: message,
             }
           : value,
       );

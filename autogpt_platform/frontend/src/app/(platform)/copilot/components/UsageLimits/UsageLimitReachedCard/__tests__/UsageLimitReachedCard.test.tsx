@@ -77,6 +77,11 @@ describe("Usage notice", () => {
     expect(
       await screen.findByRole("button", { name: "Start Pro now · $50.13" }),
     ).toBeDefined();
+    expect(
+      screen
+        .getByRole("button", { name: "Start Pro now · $50.13" })
+        .closest(".sentry-unmask, [data-sentry-unmask]"),
+    ).toBeNull();
     expect(screen.getByText("You’ve used your trial allowance")).toBeDefined();
     expect(
       screen.getByText(
@@ -175,5 +180,55 @@ describe("Usage notice", () => {
     setup();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("You’ve hit today’s limit")).toBeDefined();
+  });
+  it("pays a failed first trial charge from the notice", async () => {
+    setTrialUser();
+    setup("NO_TIER");
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        HttpResponse.json(
+          trialResponse({
+            active: false,
+            status: "past_due",
+            ends_at: new Date(2026, 9, 12, 12),
+            payment_due: {
+              amount_due: 5000,
+              currency: "usd",
+              payment_url: "https://invoice.stripe.com/i/acct_1/test_inv_1",
+            },
+          }),
+        ),
+      ),
+    );
+    render(<UsageLimitReachedCard />);
+    const pay = await screen.findByRole("link", { name: "Pay $50 now" });
+    expect(pay.getAttribute("href")).toBe(
+      "https://invoice.stripe.com/i/acct_1/test_inv_1",
+    );
+    expect(screen.getByText("Your payment didn’t go through")).toBeDefined();
+    for (const amount of screen.getAllByText(/\$50/)) {
+      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
+    }
+    expect(screen.queryByRole("button", { name: /^Start/ })).toBeNull();
+  });
+  it("asks a cancel-pending trial to subscribe instead of starting Pro", async () => {
+    setTrialUser();
+    setup("TRIAL");
+    server.use(
+      http.get("*/api/credits/trial", () =>
+        HttpResponse.json(
+          trialResponse({
+            allowance_used_percent: 100,
+            usage_policy: "lifetime",
+            cancel_at_period_end: true,
+          }),
+        ),
+      ),
+    );
+    render(<UsageLimitReachedCard />);
+    expect(
+      await screen.findByRole("button", { name: "Subscribe now" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /^Start Pro/ })).toBeNull();
   });
 });

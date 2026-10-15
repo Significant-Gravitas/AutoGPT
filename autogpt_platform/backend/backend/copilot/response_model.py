@@ -62,6 +62,9 @@ class ResponseType(str, Enum):
     # buffer at a tool boundary. Lets the client promote queued chips to
     # bubbles immediately instead of waiting for its backstop poll.
     PENDING_DRAINED = "data-pending-drained"
+    # Written by the stream route when a send joins a running turn's pending
+    # queue, so the client can tell it from a turn that never started.
+    FOLLOW_UP_QUEUED = "data-follow-up-queued"
     MODE_CHANGED = "data-mode-changed"
     # Live context-compaction progress — phase transitions plus token/message
     # deltas.  Transient (never persisted); the durable record is the
@@ -427,9 +430,9 @@ class StreamStatus(StreamBaseResponse):
     Emitted when the backend is about to enter a phase that would otherwise
     leave the user staring at a silent "Thinking…" bubble — e.g. the first
     LLM call, the continuation after a tool result, compacting conversation
-    context on retry, or activating a fallback model. The frontend reads
-    the latest `data-status` part on the current assistant message and uses
-    its `message` in place of the generic "Thinking…" copy.
+    context on retry, or activating a fallback model. The copilot UI does
+    not show `message` (it describes plumbing, not anything the user needs);
+    it shows a plain "Thinking…" instead.
     """
 
     type: ResponseType = ResponseType.STATUS
@@ -567,4 +570,17 @@ class StreamCheckpoint(StreamBaseResponse):
             },
             "transient": True,
         }
+        return f"data: {json.dumps(data)}\n\n"
+
+
+class StreamFollowUpQueued(StreamBaseResponse):
+    """The send was queued as a follow-up to the session's running turn.
+
+    Transient: the AI SDK hands it to ``onData`` and stores nothing.
+    """
+
+    type: ResponseType = ResponseType.FOLLOW_UP_QUEUED
+
+    def to_sse(self) -> str:
+        data = {"type": self.type.value, "data": {}, "transient": True}
         return f"data: {json.dumps(data)}\n\n"

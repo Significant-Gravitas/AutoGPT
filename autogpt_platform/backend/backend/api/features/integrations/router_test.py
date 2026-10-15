@@ -362,6 +362,35 @@ class TestManagedCredentials:
         assert managed_cred["is_managed"] is True
         assert regular_cred["is_managed"] is False
 
+    def test_list_credentials_carries_the_service_identity(self):
+        from backend.integrations.mcp_catalog import get_mcp_catalog
+
+        linear = next(e for e in get_mcp_catalog() if e.name == "mcp_linear")
+        api_key = APIKeyCredentials(
+            id="key-1", provider="openai", title="My Key", api_key=SecretStr("sk")
+        )
+        mcp = OAuth2Credentials(
+            id="mcp-1",
+            provider="mcp",
+            title="MCP: mcp.linear.app",
+            access_token=SecretStr("t"),
+            scopes=[],
+            metadata={"mcp_server_url": linear.mcp_server.server_url},
+        )
+        with patch(
+            "backend.api.features.integrations.router.creds_manager"
+        ) as mock_mgr:
+            mock_mgr.store.get_all_creds = AsyncMock(return_value=[api_key, mcp])
+            resp = client.get("/credentials")
+
+        assert resp.status_code == 200
+        by_id = {c["id"]: c for c in resp.json()}
+        assert by_id["key-1"]["service"] == "openai"
+        assert by_id["key-1"]["service_icon"] == "openai"
+        assert by_id["mcp-1"]["service"] == "linear"
+        assert by_id["mcp-1"]["service_name"] == "Linear"
+        assert by_id["mcp-1"]["service_icon"] == linear.mcp_server.icon_id
+
 
 # ---------------------------------------------------------------------------
 # Managed credential provisioning infrastructure
