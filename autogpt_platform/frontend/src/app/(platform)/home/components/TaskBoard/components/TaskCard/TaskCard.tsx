@@ -43,6 +43,7 @@ export function TaskCard({
   const title = session.title || "Untitled chat";
   const isRunning = isSessionRunning(session);
   const name = expert?.name ?? AUTOPILOT_NAME;
+  const jobTitle = expert ? expert.jobTitle || expert.role : "Head of AI";
 
   function handleDragStart(e: DragEvent<HTMLElement>) {
     e.dataTransfer.setData(TASK_CARD_MIME, session.id);
@@ -75,9 +76,14 @@ export function TaskCard({
               className="rounded-full border border-zinc-200"
             />
           )}
-          <Text variant="small" tone="muted" className="truncate">
+          <Text variant="small-medium" tone="secondary" className="shrink-0">
             {name}
           </Text>
+          {jobTitle && (
+            <Text variant="small" tone="muted" className="truncate">
+              · {jobTitle}
+            </Text>
+          )}
         </div>
         <div className="mt-1 flex items-start gap-2">
           <StatusIcon columnId={columnId} className="mt-[0.2rem]" />
