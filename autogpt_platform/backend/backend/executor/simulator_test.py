@@ -21,6 +21,7 @@ from openai.types.chat.chat_completion_message import ChatCompletionMessage
 
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
+from backend.copilot import usage_activation_fixtures
 from backend.executor.simulator import (
     _DEFAULT_SIMULATOR_MODEL,
     _MAX_JSON_RETRIES,
@@ -1128,3 +1129,6 @@ class TestPlatformRoute:
         assert creds is not None
         assert creds.provider == "anthropic"
         assert creds.api_key.get_secret_value() == "sk-ant-route"
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

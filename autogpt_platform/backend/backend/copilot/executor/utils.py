@@ -39,6 +39,7 @@ from backend.copilot.tree import (
     release_turn,
     root_envelope,
 )
+from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -355,6 +356,11 @@ class CoPilotExecutionEntry(BaseModel):
     turn. Marks the turn's LLM analytics rather than dropping them; see
     ``llm_attribution.set_turn_impersonated``."""
 
+    voice: bool = False
+    """The user spoke this turn's message (voice mode). The engine adds the
+    platform's ``<voice_turn>`` instruction to what the model reads; the
+    stored row keeps the user's words."""
+
     credential_pins: CredentialPins = Field(default_factory=dict)
     """``{provider: pin}``: the accounts the schedule that fired this turn was
     set up to run on. They win over the chat's own picks, and a pinned account
@@ -369,6 +375,8 @@ class CoPilotExecutionEntry(BaseModel):
     chronologically.  Defaults to ``0.0`` for backward compatibility with
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
+
+    cost_context: TrialCostContext | None = None
 
     scheduled: ScheduledTurnOrigin | None = None
     """Set when the scheduler fired this turn. ``None`` for every other
@@ -420,6 +428,7 @@ async def enqueue_copilot_turn(
     envelope: TurnEnvelope,
     unattended: bool = False,
     impersonated: bool = False,
+    voice: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     trace_headers: Mapping[str, str] | None = None,
@@ -470,6 +479,7 @@ async def enqueue_copilot_turn(
         envelope=envelope,
         unattended=unattended,
         impersonated=impersonated,
+        voice=voice,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
         trace_headers=(
@@ -478,6 +488,7 @@ async def enqueue_copilot_turn(
             else tracing.trace_propagation_headers()
         ),
         enqueued_at=time.time(),
+        cost_context=await capture_cost_context(user_id),
     )
 
     queue_client = await get_async_copilot_queue()
@@ -615,6 +626,7 @@ async def dispatch_turn(
     root: bool = False,
     envelope: TurnEnvelope | None = None,
     impersonated: bool = False,
+    voice: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -705,6 +717,7 @@ async def dispatch_turn(
             envelope=envelope,
             unattended=unattended,
             impersonated=impersonated,
+            voice=voice,
             credential_pins=credential_pins,
             scheduled=scheduled,
             trace_headers=trace_headers,
@@ -890,20 +903,19 @@ async def schedule_chat_turn(
     # Deferred so the executor module stays a leaf for the queue dataclasses
     # (only the chat HTTP path persists user messages this way).
     from backend.copilot.model import ChatMessage, append_and_save_message
-    from backend.copilot.prompting import VOICE_TURN_PREFIX
     from backend.copilot.service import strip_server_injected_tags
     from backend.copilot.tracking import track_user_message
 
-    # Prefix before persistence, not after: the services dedup the incoming
-    # message against the row saved here, and a prefix applied later fails
-    # that match and saves the turn a second time. Display strips it again.
+    # A voice turn's text is sanitised before it is saved, as the engine
+    # sanitises what it receives: the two must match, or the engine's
+    # duplicate check saves the turn a second time. The platform's own
+    # <voice_turn> instruction travels on the turn (``voice``) and the engine
+    # adds it to the query after its own strip, so the row keeps the user's
+    # words.
     raw_message_length = len(message)
-    if message and voice and is_user_message and not message_already_persisted:
-        # Sanitise here, not in the engines: they strip inbound tags at their
-        # own entry points, which is after this function has already saved the
-        # row. A forged </voice_turn> would close the server's block, and the
-        # display stripper would take the user's own text with it.
-        message = VOICE_TURN_PREFIX + strip_server_injected_tags(message)
+    spoken = voice and is_user_message
+    if message and spoken and not message_already_persisted:
+        message = strip_server_injected_tags(message)
 
     async with acquire_turn_slot(user_id, session_id) as slot:
         if message_already_persisted and not slot.admitted:
@@ -950,6 +962,7 @@ async def schedule_chat_turn(
             permissions=permissions,
             request_arrival_at=request_arrival_at,
             impersonated=impersonated,
+            voice=spoken,
         )
         return turn_id
 

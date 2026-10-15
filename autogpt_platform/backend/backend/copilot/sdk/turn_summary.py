@@ -22,7 +22,6 @@ from langfuse import get_client
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import CopilotPermissions
-from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.copilot.sdk.compaction import CompactionTracker
 from backend.copilot.sdk.query_blocks import scan_context_blocks
 from backend.copilot.sdk.turn_summary_model import (
@@ -62,13 +61,13 @@ class TurnSummaryCollector:
         self,
         session_id: str = "",
         *,
-        message: str | None = None,
+        voice: bool = False,
         is_user_message: bool | None = None,
     ) -> None:
         self.summary = TurnSummary(
             session_id=session_id or None,
             user_message=is_user_message,
-            voice=bool(message) and message.startswith(f"<{VOICE_TURN_TAG}>"),
+            voice=voice,
         )
         self._call_ids: set[str] = set()
         self._launch_calls = 0

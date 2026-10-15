@@ -692,7 +692,7 @@ class CoPilotProcessor:
                     log.info("Using SDK service")
 
             await cost_context_stack.enter_async_context(
-                trial_cost_context(entry.user_id)
+                trial_cost_context(entry.user_id, entry.cost_context)
             )
 
             # Stream chat completion and publish chunks to Redis.
@@ -716,6 +716,7 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,
+                voice=entry.voice,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id

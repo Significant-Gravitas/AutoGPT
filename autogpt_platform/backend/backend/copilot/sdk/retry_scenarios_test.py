@@ -675,6 +675,9 @@ def _make_sdk_patches(
             f"{_SVC}.build_skills_context",
             dict(new_callable=AsyncMock, return_value=""),
         ),
+        # The same holds for the skill-version baseline a query carrying the
+        # index starts: it reads the registry, through Prisma once connected.
+        (f"{_SVC}.start_session_skill_versions", dict(new_callable=AsyncMock)),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (
             f"{_SVC}.AsyncClusterLock",

@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.credential_selection import CredentialPin
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import (
@@ -22,7 +23,6 @@ from backend.copilot.executor.utils import (
 )
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.prompt_origin import PromptOrigin, split_prompt_origin
-from backend.copilot.prompting import VOICE_TURN_TAG
 from backend.copilot.tree import ALL_TOOL_NAMES, root_envelope
 
 
@@ -226,10 +226,10 @@ class TestCoPilotLogMetadata:
 
 
 @pytest.mark.asyncio
-async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> None:
-    # The services dedup the dispatched message against the row saved here.
-    # When the two diverged, the turn was saved twice — once with the prefix
-    # and once without.
+async def test_schedule_chat_turn_saves_the_spoken_words_it_dispatches() -> None:
+    # The engine dedups the dispatched message against the row saved here,
+    # so the two must match; when they diverged the turn was saved twice.
+    # The voice instruction travels on the turn, not in either of them.
     slot = MagicMock(admitted=True)
 
     @asynccontextmanager
@@ -253,8 +253,8 @@ async def test_schedule_chat_turn_persists_the_voice_prefix_it_dispatches() -> N
 
     persisted = append.await_args.args[1].content
     assert persisted == dispatch.await_args.kwargs["message"]
-    assert persisted.startswith(f"<{VOICE_TURN_TAG}>")
-    assert persisted.endswith("what did I run yesterday")
+    assert persisted == "what did I run yesterday"
+    assert dispatch.await_args.kwargs["voice"] is True
 
 
 @pytest.mark.asyncio
@@ -344,8 +344,9 @@ async def test_schedule_chat_turn_tracks_the_session_channel() -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_chat_turn_leaves_an_already_saved_message_alone() -> None:
-    # The row was saved by an earlier call; prefixing now would put the two
-    # out of step again, which is the duplicate this guard exists to prevent.
+    # The row was saved by an earlier call; changing the text now would put
+    # the two out of step, which is the duplicate this guard exists to
+    # prevent.
     slot = MagicMock(admitted=True)
 
     @asynccontextmanager
@@ -540,3 +541,6 @@ async def test_queue_spawned_turn_stores_impersonation_with_the_queued_row() -> 
         )
 
     assert enqueue.await_args.kwargs["impersonated"] is True
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

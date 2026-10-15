@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
 from . import orchestrator as orchestrator_mod
@@ -1842,3 +1843,6 @@ async def test_a_route_without_a_platform_api_skips_before_any_call(mocker):
     complete.assert_not_called()
     gather.assert_not_called()
     lock.assert_not_called()
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
