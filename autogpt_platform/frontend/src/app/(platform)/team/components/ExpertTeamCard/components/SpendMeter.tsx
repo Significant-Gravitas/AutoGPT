@@ -32,18 +32,18 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
       style={
         color
           ? ({
-              "--meter-track": `color-mix(in srgb, ${color} 40%, white)`,
+              "--meter-track": `color-mix(in srgb, ${color} 45%, white)`,
               "--meter-fill": `color-mix(in srgb, ${color} 60%, #18181b)`,
             } as CSSProperties)
           : undefined
       }
       className={cn(
         "h-1.5 w-full bg-zinc-100",
-        color && "bg-[var(--meter-track)]",
+        color && "h-2 ![background-color:var(--meter-track)]",
         isOverBudget
           ? "[&>div]:bg-red-400"
           : color
-            ? "[&>div]:bg-[var(--meter-fill)]"
+            ? "[&>div]:![background-color:var(--meter-fill)]"
             : "[&>div]:bg-zinc-400",
         muted && "opacity-50",
       )}
