@@ -5,7 +5,7 @@ import {
   ArrowDown01Icon,
   Calendar03Icon,
   PauseIcon,
-  UserGroupIcon,
+  ConferenceIcon,
 } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 import type { TeamFilter } from "../../helpers";
 
 const OPTIONS = [
-  { value: "all", label: "All experts", icon: UserGroupIcon },
+  { value: "all", label: "All experts", icon: ConferenceIcon },
   { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
   { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
   { value: "paused", label: "Paused", icon: PauseIcon },
