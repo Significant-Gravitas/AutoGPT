@@ -39,11 +39,11 @@ describe("agent display names", () => {
     ]);
     const rows = parts.flatMap((part, index) => toChainRow(part, index) ?? []);
     expect(rows.map((row) => row.text)).toEqual([
-      'Running agent "Daily briefing"…',
-      'Running agent "Second workflow"…',
+      'Running workflow "Daily briefing"…',
+      'Running workflow "Second workflow"…',
     ]);
     expect(getChainHeading(rows, true)).toBe(
-      'Running agent "Second workflow"…',
+      'Running workflow "Second workflow"…',
     );
     expect(parts[0]).toMatchObject({
       input: { library_agent_id: "b71fd24c-7623-4a73-a000-000000000000" },
@@ -63,12 +63,12 @@ describe("agent display names", () => {
       { agent_name: "Untrusted argument" },
     ]) {
       expect(toChainRow({ ...runPart(), input } as Part, 0)?.text).toBe(
-        "Running agent…",
+        "Running workflow…",
       );
       expect(
         toChainRow({ ...runPart(), input, state: "input-streaming" } as Part, 0)
           ?.text,
-      ).toBe("Running agent…");
+      ).toBe("Running workflow…");
     }
   });
 
@@ -104,7 +104,7 @@ describe("agent display names", () => {
         runPart(),
         displayPart("call-one", displayName),
       ]);
-      expect(toChainRow(parts[0], 0)?.text).toBe("Running agent…");
+      expect(toChainRow(parts[0], 0)?.text).toBe("Running workflow…");
       expect(
         getAgentDisplayName(displayName, { graph_name: "Result fallback" }),
       ).toBe("Result fallback");
@@ -128,7 +128,7 @@ describe("agent display names", () => {
         } as Part,
         0,
       )?.text,
-    ).toBe('Ran agent "Canonical name"');
+    ).toBe('Ran workflow "Canonical name"');
     expect(
       toChainRow(
         {
@@ -138,7 +138,7 @@ describe("agent display names", () => {
         } as Part,
         0,
       )?.text,
-    ).toBe('Failed while running agent "Canonical name"');
+    ).toBe('Failed while running workflow "Canonical name"');
   });
 
   it.each([
@@ -168,7 +168,7 @@ describe("agent display names", () => {
         { extraToolOutputs: new Map([["call-one", output]]) },
       );
       expect(toChainRow(messages[0].parts[0], 0)?.text).toBe(
-        'Ran agent "Historical workflow"',
+        'Ran workflow "Historical workflow"',
       );
     },
   );
@@ -207,8 +207,8 @@ describe("agent display names", () => {
       });
       expect(toChainRow(messages[0].parts[0], 0)?.text).toBe(
         isComplete
-          ? 'Ran agent "Daily briefing"'
-          : 'Running agent "Daily briefing"…',
+          ? 'Ran workflow "Daily briefing"'
+          : 'Running workflow "Daily briefing"…',
       );
     },
   );
@@ -253,7 +253,7 @@ describe("agent display names", () => {
     ).toHaveLength(1);
     const parts = withToolDisplayNames(latest?.parts ?? []);
     expect(toChainRow(parts[0], 0)?.text).toBe(
-      'Ran agent "Daily briefing updated"',
+      'Ran workflow "Daily briefing updated"',
     );
   });
 });

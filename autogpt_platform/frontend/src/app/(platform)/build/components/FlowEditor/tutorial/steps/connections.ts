@@ -296,7 +296,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
             <p class="text-[0.75rem] text-green-500 m-0 mt-2 text-center italic">The result of Calculator 1 flows into Calculator 2's input A</p>
           </div>
           
-          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Now let's save and run your agent!</p>
+          <p class="text-sm font-normal leading-[1.375rem] text-zinc-800 m-0" style="margin-top: 0.75rem;">Now let's save and run your workflow!</p>
         </div>
       `,
       beforeShowPromise: async () => {
@@ -305,7 +305,7 @@ export const createConnectionSteps = (tour: any): StepOptions[] => {
       },
       buttons: [
         {
-          text: "Save My Agent",
+          text: "Save My Workflow",
           action: () => tour.next(),
         },
       ],

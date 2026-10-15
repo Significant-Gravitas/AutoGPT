@@ -23,7 +23,7 @@ import {
   RECENT_FACTS_LIMIT,
 } from "./helpers";
 
-export function useMemoryPage() {
+export function useMemoryPage(memoryEnabled = true) {
   // The Soul drawer's learned-notes panel links here with ?expert=<id>, so
   // the link opens on that expert. Read once — the dropdown owns it after.
   const [scopeExpertID, setScopeExpertID] = useState<string | null>(
@@ -50,22 +50,22 @@ export function useMemoryPage() {
 
   const accountFacts = useListMyMemoryFacts(
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID === null } },
+    { query: { enabled: memoryEnabled && scopeExpertID === null } },
   );
   const expertFacts = useListMyExpertMemoryFacts(
     scopeExpertID ?? "",
     { limit: RECENT_FACTS_LIMIT },
-    { query: { enabled: scopeExpertID !== null } },
+    { query: { enabled: memoryEnabled && scopeExpertID !== null } },
   );
   const factsQuery = scopeExpertID === null ? accountFacts : expertFacts;
   const facts =
     factsQuery.data?.status === 200 ? factsQuery.data.data.items : [];
 
   const accountOverview = useGetMyMemoryOverview({
-    query: { enabled: scopeExpertID === null },
+    query: { enabled: memoryEnabled && scopeExpertID === null },
   });
   const expertOverview = useGetMyExpertMemoryOverview(scopeExpertID ?? "", {
-    query: { enabled: scopeExpertID !== null },
+    query: { enabled: memoryEnabled && scopeExpertID !== null },
   });
   const overviewQuery =
     scopeExpertID === null ? accountOverview : expertOverview;

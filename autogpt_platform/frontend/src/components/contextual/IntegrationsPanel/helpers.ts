@@ -149,7 +149,7 @@ function toCredentialView(
     isSignIn,
     blocksNote:
       isSignIn && hasBlocks
-        ? `${serviceLabel} blocks in agents need their own connection.`
+        ? `${serviceLabel} blocks in workflows need their own connection.`
         : null,
   };
 }

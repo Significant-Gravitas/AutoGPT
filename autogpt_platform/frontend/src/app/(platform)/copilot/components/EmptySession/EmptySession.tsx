@@ -169,6 +169,7 @@ export function EmptySession({
               >
                 <ChatInput
                   inputId="chat-input-empty"
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
                   voiceToggle={voiceToggle}
                   modeSelector={modeSelector}
@@ -180,11 +181,10 @@ export function EmptySession({
                       ? getExpertInputPlaceholder(selectedExpert.name)
                       : inputPlaceholder
                   }
-                  className={
-                    isBrainDumpEnabled
-                      ? "w-full [&_textarea]:min-h-[4.5rem]"
-                      : "w-full"
-                  }
+                  className={cn(
+                    "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
+                    isBrainDumpEnabled && "[&_textarea]:min-h-[4.5rem]",
+                  )}
                   droppedFiles={droppedFiles}
                   onDroppedFilesConsumed={onDroppedFilesConsumed}
                   expertId={expertId}

@@ -1,3 +1,12 @@
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  Calendar04Icon,
+  Clock01Icon,
+  PlayIcon,
+  Time04Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
@@ -327,10 +336,10 @@ export function getAutopilotSummary({
 }
 
 export const WORKFLOW_FILTERS = [
-  { value: "all", label: "All workflows" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "manual", label: "Manual" },
-  { value: "needs-setup", label: "Needs setup" },
+  { value: "all", label: "All workflows", icon: WorkflowSquare01Icon },
+  { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
+  { value: "manual", label: "Manual", icon: PlayIcon },
+  { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
 ] as const;
 
 export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number]["value"];
@@ -356,10 +365,10 @@ export function filterExpertWorkflows(
 }
 
 export const SCHEDULE_FILTERS = [
-  { value: "all", label: "All schedules" },
-  { value: "today", label: "Next 24 hours" },
-  { value: "week", label: "Next 7 days" },
-  { value: "later", label: "Later" },
+  { value: "all", label: "All schedules", icon: Calendar03Icon },
+  { value: "today", label: "Next 24 hours", icon: Clock01Icon },
+  { value: "week", label: "Next 7 days", icon: Calendar04Icon },
+  { value: "later", label: "Later", icon: Time04Icon },
 ] as const;
 
 export type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number]["value"];
@@ -412,3 +421,14 @@ export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
   }
   return chunks;
 }
+
+// The expert and Otto pages' tabs: a segmented control with a white pill
+// that slides to the active tab (TabsLine's indicator, restyled). The list
+// sets no z-index, so its grey track paints first, the pill (z-10) over it
+// and the labels (z-20) on top.
+export const PROFILE_TABS_LIST_CLASS =
+  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-zinc-100/80 p-1 [&>button]:flex-1";
+export const PROFILE_TABS_INDICATOR_CLASS =
+  "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-white shadow-sm ring-1 ring-zinc-200/70";
+export const PROFILE_TABS_TRIGGER_CLASS =
+  "z-20 rounded-full px-3.5 py-1.5 text-[15px] max-sm:px-2 text-zinc-500 transition-colors hover:text-zinc-900 data-[state=active]:text-zinc-900 [&_svg]:!size-4";
