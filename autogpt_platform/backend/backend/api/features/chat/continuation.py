@@ -57,7 +57,11 @@ class ContinueSessionResponse(BaseModel):
     responses={
         402: {"description": "Subscription required (NO_TIER user, paywall on)"},
         404: {"description": "Session not found or access denied"},
-        409: {"description": "A turn is already running in this chat"},
+        409: {
+            "description": "A turn is already running in this chat "
+            "(turn_in_progress), or the chat runs on a connection that can't "
+            "continue a task (unsupported_connection)"
+        },
         429: {"description": "Usage limit or concurrent-turn limit reached"},
         503: {"description": "Chat service degraded; retry after Retry-After"},
     },
@@ -114,6 +118,11 @@ async def _admit(session: ChatSessionInfo, user_id: str) -> None:
         await enforce_platform_allowance(user_id)
     elif route == "codex":
         await enforce_codex_access_http(user_id)
+    elif route == "microsoft_365_copilot":
+        # Microsoft 365 Copilot answers plain messages: it has none of
+        # AutoPilot's tools and never saw the task, so it has nothing to pick
+        # up, and the note would reach Microsoft as the user's message.
+        raise HTTPException(status_code=409, detail="unsupported_connection")
 
 
 async def _refuse_if_busy(session_id: str) -> None:

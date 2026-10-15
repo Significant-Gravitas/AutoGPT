@@ -4511,7 +4511,9 @@
             "description": "Subscription required (NO_TIER user, paywall on)"
           },
           "404": { "description": "Session not found or access denied" },
-          "409": { "description": "A turn is already running in this chat" },
+          "409": {
+            "description": "A turn is already running in this chat (turn_in_progress), or the chat runs on a connection that can't continue a task (unsupported_connection)"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
