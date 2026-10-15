@@ -162,7 +162,7 @@ export default function ExpertDetailPage() {
           enabled={Boolean(enabled) && ready}
         />
 
-        <TabsLine variant="compact" defaultValue="basics">
+        <TabsLine data-profile-tabs variant="compact" defaultValue="basics">
           <TabsLineList
             flush={false}
             className={PROFILE_TABS_LIST_CLASS}
@@ -192,7 +192,6 @@ export default function ExpertDetailPage() {
 
           <TabsLineContent value="soul">
             <ExpertSoulSection
-              expertName={expert.name}
               identity={expert.identity}
               voicePreferences={expert.voice_preferences}
               boundaries={expert.boundaries}
