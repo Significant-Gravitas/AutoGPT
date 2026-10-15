@@ -166,6 +166,18 @@ describe("§1.7 — every disconnect cause is expected but one", () => {
     expect(snapshot().stopped).toBe(true);
   });
 
+  it("an approval answered after a stop follows the turn it starts", async () => {
+    void runtime.send({ text: PROMPT }, undefined);
+    await advance(0);
+    runtime.stop();
+    backend.beginRunning();
+    backend.publish(FIRST_BLOCK_DONE);
+    runtime.followBackendTurn();
+    await advance(2_000);
+    expect(snapshot().phase).toBe("live");
+    expect(snapshot().stopped).toBe(false);
+  });
+
   it("a connection silent for 30 s is replaced without a toast", async () => {
     await sendAndPublish(FIRST_BLOCK_DONE);
     backend.connections[0].silence();
