@@ -95,7 +95,7 @@ export function TaskCard({
             {title}
           </Text>
         </div>
-        <Text variant="small" tone="secondary" className="mt-1 truncate pl-5">
+        <Text variant="small" tone="secondary" className="mt-1 truncate">
           {session.last_message
             ? getPreviewLine(session.last_message)
             : "Not started yet"}
