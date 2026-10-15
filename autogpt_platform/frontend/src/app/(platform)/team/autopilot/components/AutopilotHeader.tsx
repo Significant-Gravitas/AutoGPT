@@ -25,7 +25,7 @@ export function AutopilotHeader() {
         <AutopilotAvatar
           size={96}
           transparent={false}
-          className="relative z-10 -mt-12 ml-14 rounded-full"
+          className="relative z-10 -mt-12 ml-14 rounded-full border border-[#e3e3e3]"
         />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-3">

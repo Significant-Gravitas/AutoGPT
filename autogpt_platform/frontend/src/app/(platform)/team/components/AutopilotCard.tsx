@@ -51,7 +51,7 @@ export function AutopilotCard({
           <AutopilotAvatar
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
-            className="relative z-10 -mt-12 ml-1 rounded-full ring-4 ring-background"
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
           />
         </div>
 

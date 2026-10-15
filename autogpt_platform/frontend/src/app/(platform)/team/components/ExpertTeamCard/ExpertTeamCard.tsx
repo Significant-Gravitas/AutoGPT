@@ -110,7 +110,7 @@ export function ExpertTeamCard({
               color={expert.color}
               backgroundColor={cover.color}
               size={88}
-              className="rounded-full ring-4 ring-background"
+              className="rounded-full border border-[#e3e3e3] ring-4 ring-background"
             />
           </span>
 
