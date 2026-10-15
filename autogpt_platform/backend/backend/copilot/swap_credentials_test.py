@@ -138,6 +138,40 @@ async def test_a_lookup_that_fails_is_an_error_not_a_user_without_a_token():
 
 
 @pytest.mark.asyncio
+async def test_one_failing_account_does_not_take_down_the_boxs_others():
+    """A revoked account left granted to the box is never swapped in, so it
+    has no value to scrub: the box's healthy account still resolves."""
+
+    async def token(user_id, name, credential_id=None, strict=False, lock=False):
+        if credential_id == "cred-a":
+            raise ProviderTokenUnavailable("github")
+        return "ghp_b"
+
+    with (
+        _token("unused", granted=["cred-a", "cred-b"]),
+        patch(f"{_M}.get_provider_token", AsyncMock(side_effect=token)),
+    ):
+        credential = await resolve_swap_credential(
+            "user-1", "github", "github.com", _BOX
+        )
+    assert credential is not None
+    assert credential.values == {"cred-b": "ghp_b"}
+
+
+@pytest.mark.asyncio
+async def test_every_granted_account_failing_is_still_an_outage():
+    with (
+        _token("unused", granted=["cred-a", "cred-b"]),
+        patch(
+            f"{_M}.get_provider_token",
+            AsyncMock(side_effect=ProviderTokenUnavailable("github")),
+        ),
+        pytest.raises(ProviderTokenUnavailable),
+    ):
+        await resolve_swap_credential("user-1", "github", "github.com", _BOX)
+
+
+@pytest.mark.asyncio
 async def test_grants_that_cannot_be_read_are_an_error_too():
     with (
         patch(f"{_M}.granted_to_box", AsyncMock(side_effect=ConnectionError())),
