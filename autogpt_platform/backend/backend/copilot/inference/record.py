@@ -100,8 +100,8 @@ async def record(
     A call with no tokens in any bucket and no provider cost writes no row,
     charges nothing and comes back unpriced: the provider reported no usage
     (OpenRouter can omit it), so the cost is unknown, not a known zero. This
-    is the guard ``persist_and_record_usage`` applies, checked before the
-    catalog would price zero tokens at $0.
+    is the guard ``persist_and_record_usage`` applies; ``price`` leaves such
+    a call unpriced too, so a caller that prices first gets the same answer.
     """
     if _reported_no_usage(usage):
         return usage
@@ -134,8 +134,11 @@ def price(usage: InferenceUsage, route: RouteDecision) -> InferenceUsage:
     """*usage* with its cost read off the catalog price card when the
     provider reported none: each token bucket at the model's list rate, less
     the route's discount. A local backend's calls stay unpriced; they bill
-    nobody."""
+    nobody. So does a call that reported no usage at all: its cost is unknown,
+    and the catalog would make a known $0 of it."""
     if usage.cost_usd is not None or route.payer == "local":
+        return usage
+    if _reported_no_usage(usage):
         return usage
     card = price_for(usage.model)
     if card is None:
