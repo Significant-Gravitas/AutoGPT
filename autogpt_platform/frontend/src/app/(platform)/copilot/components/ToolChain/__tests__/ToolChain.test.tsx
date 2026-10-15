@@ -225,10 +225,10 @@ describe("ToolChain", () => {
       />,
     );
 
-    expect(getChainHeader(/running agent "Daily briefing"/i)).toBeDefined();
-    expect(screen.getAllByText('Running agent "Daily briefing"…')).toHaveLength(
-      2,
-    );
+    expect(getChainHeader(/running workflow "Daily briefing"/i)).toBeDefined();
+    expect(
+      screen.getAllByText('Running workflow "Daily briefing"…'),
+    ).toHaveLength(2);
     expect(container.textContent).not.toContain("b71fd24c");
   });
 

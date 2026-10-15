@@ -17,6 +17,7 @@ from backend.copilot.context import (
 )
 from backend.copilot.pending_messages import drain_and_format_for_injection
 
+from .governor import TurnGovernor
 from .tool_adapter import (
     BLOCKED_TOOLS,
     MCP_TOOL_PREFIX,
@@ -69,6 +70,21 @@ def _deny(reason: str) -> dict[str, Any]:
             "permissionDecisionReason": reason,
         }
     }
+
+
+def _landing_refusal(governor: TurnGovernor | None) -> str | None:
+    """The governor's refusal for the next tool call, if it is landing the turn.
+
+    A governor failure lets the call run: the CLI's own budget and turn limits
+    still stop the turn, and failing every tool call would strand it instead.
+    """
+    if governor is None:
+        return None
+    try:
+        return governor.refusal()
+    except Exception:
+        logger.warning("[SDK] Turn governor could not decide a refusal", exc_info=True)
+        return None
 
 
 def _validate_workspace_path(
@@ -196,6 +212,7 @@ def create_security_hooks(
     max_subtasks: int = 3,
     on_compact: Callable[[str], None] | None = None,
     tool_display_bridge: SDKToolDisplayBridge | None = None,
+    governor: TurnGovernor | None = None,
     *,
     allowed_tools: Iterable[str],
 ) -> dict[HookEvent, list[HookMatcher]]:
@@ -215,6 +232,9 @@ def create_security_hooks(
         max_subtasks: Maximum concurrent sub-agent spawns allowed per session
         on_compact: Callback invoked when SDK starts compacting context.
             Receives the transcript_path from the hook input.
+        governor: The turn's spend and step governor. Once it is landing the
+            turn, every tool call -- the main agent's and its sub-agents' --
+            is refused with a reason that asks for a checkpoint.
         allowed_tools: The ``allowed_tools`` passed to ``ClaudeAgentOptions``;
             every other tool is denied.
 
@@ -243,6 +263,16 @@ def create_security_hooks(
             _ = context  # unused but required by signature
             tool_name = cast(str, input_data.get("tool_name", ""))
             tool_input = cast(dict[str, Any], input_data.get("tool_input", {}))
+
+            refusal = _landing_refusal(governor)
+            if governor is not None and refusal is not None:
+                logger.info(
+                    "[SDK] Refusing %s: turn is landing (%s), user=%s",
+                    tool_name,
+                    governor.landing,
+                    user_id,
+                )
+                return cast(SyncHookJSONOutput, _deny(refusal))
 
             # Rate-limit sub-agent spawns per session.
             # The SDK CLI renamed "Task" → "Agent" in v2.x; handle both.

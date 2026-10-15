@@ -190,7 +190,7 @@ class ListSchedulesTool(BaseTool):
                 )
             except NotFoundError as e:
                 return ErrorResponse(
-                    message=f"Library agent not found: {e}",
+                    message=f"Library workflow not found: {e}",
                     error="library_agent_not_found",
                     session_id=session_id,
                 )
@@ -255,6 +255,7 @@ class DeleteScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],
@@ -355,6 +356,7 @@ class _ToggleScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],

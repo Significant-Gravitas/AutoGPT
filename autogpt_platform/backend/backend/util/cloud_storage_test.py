@@ -26,6 +26,14 @@ class TestCloudStorageHandler:
         """Create a test handler."""
         return CloudStorageHandler(config)
 
+    @patch("backend.util.cloud_storage.Config")
+    def test_cloud_storage_config_uses_private_bucket(self, mock_config):
+        mock_config.return_value.resolved_private_user_data_bucket = "private-data"
+
+        config = CloudStorageConfig()
+
+        assert config.gcs_bucket_name == "private-data"
+
     def test_parse_cloud_path_gcs(self, handler):
         """Test parsing GCS paths."""
         provider, path = handler.parse_cloud_path("gcs://bucket/path/to/file.txt")
@@ -72,7 +80,10 @@ class TestCloudStorageHandler:
         assert call_args[0][0] == "test-bucket"  # bucket name
         assert call_args[0][1].startswith("uploads/system/")  # blob name
         assert call_args[0][2] == content  # file content
-        assert "metadata" in call_args[1]  # metadata argument
+        # Top level on purpose: see the comment in store_file.
+        upload_metadata = call_args.kwargs["metadata"]
+        assert upload_metadata["expires_at"]
+        assert "metadata" not in upload_metadata
 
     @patch("backend.util.cloud_storage.async_gcs_storage.Storage")
     @pytest.mark.asyncio
@@ -153,6 +164,22 @@ class TestCloudStorageHandler:
 
         assert result == "https://signed-url.example.com"
         mock_blob.generate_signed_url.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retrieve_rejects_a_different_bucket(self, handler):
+        with pytest.raises(PermissionError, match="configured private bucket"):
+            await handler.retrieve_file(
+                "gcs://other-bucket/uploads/users/user123/id/file.txt",
+                user_id="user123",
+            )
+
+    @pytest.mark.asyncio
+    async def test_signed_url_rejects_a_different_bucket(self, handler):
+        with pytest.raises(PermissionError, match="configured private bucket"):
+            await handler.generate_signed_url(
+                "gcs://other-bucket/uploads/users/user123/id/file.txt",
+                user_id="user123",
+            )
 
     @pytest.mark.asyncio
     async def test_unsupported_provider(self, handler):

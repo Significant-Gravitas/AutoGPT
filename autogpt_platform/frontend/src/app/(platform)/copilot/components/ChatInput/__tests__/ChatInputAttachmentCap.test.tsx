@@ -12,6 +12,7 @@ import { ChatInput } from "../ChatInput";
 // the cap notice stay real, because the cap is a claim about what the user
 // ends up seeing and being able to click.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({
+  useGetV2ListChatTransports: () => ({ data: undefined }),
   useGetV2ListChatConnections: () => ({
     data: { status: 200, data: { offers: [] } },
     isLoading: false,

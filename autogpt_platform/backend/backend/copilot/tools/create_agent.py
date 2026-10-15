@@ -51,6 +51,8 @@ class CreateAgentTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs as building blocks.",
+                    "title": "Building blocks",
+                    "entity": "library_agent",
                 },
                 "save": {
                     "type": "boolean",
@@ -60,6 +62,7 @@ class CreateAgentTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID to save into (default: root).",
+                    "entity": "library_folder",
                 },
                 "is_hidden": {
                     "type": "boolean",
@@ -70,11 +73,13 @@ class CreateAgentTool(BaseTool):
                         "from AgentExecutorBlock usage in the graph)."
                     ),
                     "default": False,
+                    "title": "Hidden from your library",
                 },
                 "library_check_ack": {
                     "type": "boolean",
                     "description": "Bypass library-similarity gate after user declined.",
                     "default": False,
+                    "title": "Skips the library check",
                 },
             },
             "required": [],
@@ -117,9 +122,9 @@ class CreateAgentTool(BaseTool):
             session=session,
             session_id=session_id,
             missing_message=(
-                "Please provide agent_json with the complete agent graph "
+                "Please provide agent_json with the complete workflow "
                 '(inline or as an "@@agptfile:<path>" string), or '
-                "agent_json_ref pointing at the workspace agent file. "
+                "agent_json_ref pointing at the workspace workflow file. "
                 'Use find_capability(context="graph") to discover blocks, then generate the JSON.'
             ),
         )
@@ -134,7 +139,8 @@ class CreateAgentTool(BaseTool):
         if not nodes:
             return ErrorResponse(
                 message=(
-                    "The agent JSON has no nodes. " "An agent needs at least one block."
+                    "The agent JSON has no nodes. "
+                    "A workflow needs at least one block."
                 ),
                 error="empty_agent",
                 session_id=session_id,
@@ -157,7 +163,7 @@ class CreateAgentTool(BaseTool):
             session_id=session_id,
             save=save,
             is_update=False,
-            default_name="Generated Agent",
+            default_name="Generated Workflow",
             library_agents=library_agents,
             folder_id=folder_id,
             is_hidden=is_hidden,

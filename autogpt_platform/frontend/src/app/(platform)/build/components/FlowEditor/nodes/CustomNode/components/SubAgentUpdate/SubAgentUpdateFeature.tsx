@@ -35,7 +35,7 @@ export function SubAgentUpdateFeature({
     handleConfirmIncompatibleUpdate,
   } = useSubAgentUpdateState({ nodeID: nodeID, nodeData: nodeData });
 
-  const agentName = nodeData.title || "Agent";
+  const agentName = nodeData.title || "Workflow";
 
   if (!updateInfo.hasUpdate && !isInResolutionMode) {
     return null;

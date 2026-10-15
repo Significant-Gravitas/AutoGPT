@@ -37,14 +37,18 @@ export function ApprovalFields({
   referenceTotals = {},
 }: Props) {
   const [showAll, setShowAll] = useState(false);
-  const labels = new Map(fields.map((f) => [f.key, f.label]));
+  const specs = new Map(fields.map((f) => [f.key, f]));
   const ordered = visibleKeys({
     keys: [...fields.map((f) => f.key), ...Object.keys(values)],
     values,
     hiddenKeys,
     idsWhenAlone,
     references,
-  }).map((key) => ({ key, label: labels.get(key) ?? humanize(key) }));
+  }).map((key) => ({
+    key,
+    label: specs.get(key)?.label ?? humanize(key),
+    format: specs.get(key)?.format,
+  }));
 
   if (ordered.length === 0) return null;
   const shown = showAll ? ordered : ordered.slice(0, MAX_FIELDS);
@@ -60,6 +64,7 @@ export function ApprovalFields({
               <FieldOrReference
                 name={field.key}
                 value={values[field.key]}
+                format={field.format}
                 clipped={clipped.includes(field.key)}
                 references={references}
                 total={referenceTotals[field.key]}
@@ -85,6 +90,7 @@ export function ApprovalFields({
 interface FieldOrReferenceProps {
   name: string;
   value: unknown;
+  format?: string | null;
   clipped: boolean;
   references: Reference[];
   total?: number;
@@ -93,13 +99,16 @@ interface FieldOrReferenceProps {
 function FieldOrReference({
   name,
   value,
+  format,
   clipped,
   references,
   total,
 }: FieldOrReferenceProps) {
   const refs = references.filter((ref) => ref.key === name);
   if (!refs.some((ref) => ref.name))
-    return <FieldValue name={name} value={value} clipped={clipped} />;
+    return (
+      <FieldValue name={name} value={value} format={format} clipped={clipped} />
+    );
   const counted = Array.isArray(value)
     ? value.filter((v) => typeof v === "string" && v.trim()).length
     : refs.length;

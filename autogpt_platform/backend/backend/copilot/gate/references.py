@@ -41,68 +41,6 @@ Entity = Literal[
     "soul_change",
 ]
 
-# (tool, argument) -> what its id names. None is a decision: not a platform id.
-REFERENCES: dict[tuple[str, str], Entity | None] = {
-    ("create_agent", "folder_id"): "library_folder",
-    ("create_agent", "library_agent_ids"): "library_agent",
-    ("customize_agent", "folder_id"): "library_folder",
-    ("customize_agent", "library_agent_ids"): "library_agent",
-    ("edit_agent", "agent_id"): "agent_or_graph",
-    ("edit_agent", "library_agent_ids"): "library_agent",
-    ("create_folder", "parent_id"): "library_folder",
-    ("create_folder", "icon"): None,
-    ("update_folder", "folder_id"): "library_folder",
-    ("update_folder", "icon"): None,
-    ("move_folder", "folder_id"): "library_folder",
-    ("move_folder", "target_parent_id"): "library_folder",
-    ("delete_folder", "folder_id"): "library_folder",
-    ("move_agents_to_folder", "folder_id"): "library_folder",
-    ("move_agents_to_folder", "agent_ids"): "library_agent",
-    ("update_preset", "preset_id"): "preset",
-    ("delete_preset", "preset_id"): "preset",
-    ("pause_schedule", "schedule_id"): "schedule",
-    ("resume_schedule", "schedule_id"): "schedule",
-    ("delete_schedule", "schedule_id"): "schedule",
-    ("schedule_followup", "session_id"): "chat_session",
-    ("schedule_routine", "routine_id"): "routine",
-    ("schedule_routine", "session_id"): "chat_session",
-    ("schedule_routine", "expert_id"): "expert",
-    ("setup_agent_webhook_trigger", "library_agent_id"): "library_agent",
-    ("setup_agent_webhook_trigger", "graph_id"): "graph",
-    ("hire_expert", "template_id"): "expert_template",
-    ("update_expert", "expert_id"): "expert",
-    ("confirm_expert_change", "confirmation_id"): "team_change",
-    ("confirm_expert_soul_update", "confirmation_id"): "soul_change",
-    ("install_expert_workflow", "library_agent_id"): "library_agent",
-    ("install_expert_workflow", "store_listing_version_id"): "store_listing",
-    ("install_expert_workflow", "expert_id"): "expert",
-    ("remove_expert_workflow", "workflow_id"): "expert_workflow",
-    ("remove_expert_workflow", "library_agent_id"): "library_agent",
-    ("remove_expert_workflow", "expert_id"): "expert",
-    ("grant_expert_credential", "credential_id"): "credential",
-    ("grant_expert_credential", "expert_id"): "expert",
-    ("revoke_expert_credential", "credential_id"): "credential",
-    ("revoke_expert_credential", "expert_id"): "expert",
-    ("delegate_to_expert", "expert_id"): "expert_or_name",
-    ("delegate_to_expert", "delegated_session_id"): "chat_session",
-    ("handoff_to_expert", "expert_id"): "expert",
-    ("message_session", "session_id"): "chat_session",
-    ("run_sub_session", "sub_autopilot_session_id"): "chat_session",
-    ("delete_skill", "expert_id"): "expert",
-    ("delete_workspace_file", "file_id"): "workspace_file",
-    ("run_agent", "library_agent_id"): "agent_or_graph",
-    ("run_agent", "preset_id"): "preset",
-    # Another system's ids, or not ids at all though described as one.
-    ("create_feature_request", "existing_issue_id"): None,
-    ("edit_chat_platform_message", "channel_id"): None,
-    ("edit_chat_platform_message", "ref_id"): None,
-    ("memory_forget_confirm", "uuids"): None,
-    ("browser_act", "target"): None,
-    ("post_to_chat_platform", "channel"): None,
-    # A block or MCP server; the card's subject already names it.
-    ("run_capability", "id"): None,
-}
-
 LOOKUP_SECONDS = 1.0
 CARD_SECONDS = 2.0
 # Ids of a list resolved for the card; the rest read "+N more".
@@ -165,16 +103,25 @@ async def resolve_references(
 
 
 def wanted_references(tool_name: str, args: dict[str, Any]) -> list[Reference]:
+    """The ids whose schema names the entity; ``"entity": None`` is not ours."""
     refs: list[Reference] = []
-    for (tool, key), entity in REFERENCES.items():
-        if tool != tool_name or entity is None:
+    for key, entity in declared_entities(tool_name).items():
+        if entity is None:
             continue
-        value = args.get(key)
         refs.extend(
             Reference(key=key, entity=entity, id=id)
-            for id in listed_ids(value)[:MAX_LISTED]
+            for id in listed_ids(args.get(key))[:MAX_LISTED]
         )
     return refs
+
+
+def declared_entities(tool_name: str) -> dict[str, Entity | None]:
+    """Each argument whose schema says what platform thing its id names."""
+    from backend.copilot.tools import get_tool  # the tools package imports the gate
+
+    tool = get_tool(tool_name)
+    props = (tool.parameters.get("properties") or {}) if tool else {}
+    return {key: spec["entity"] for key, spec in props.items() if "entity" in spec}
 
 
 def listed_ids(value: Any) -> list[str]:
@@ -242,7 +189,7 @@ async def _library_folder(folder_id: str, call: _Call) -> _Found | None:
         name=folder.name,
         href=f"/library?{urlencode({'folder': folder.id})}",
         meta=[
-            _count(folder.agent_count, "agent"),
+            _count(folder.agent_count, "workflow"),
             _count(folder.subfolder_count, "subfolder"),
             f"In {parent.name}" if parent else None,
         ],
@@ -282,7 +229,7 @@ async def _preset(preset_id: str, call: _Call) -> _Found | None:
         href=_agent_href(agent.id, activeTab=tab, activeItem=item) if agent else None,
         description=preset.description,
         meta=[
-            f"Agent: {agent.name}" if agent else None,
+            f"Workflow: {agent.name}" if agent else None,
             None if preset.is_active else "Inactive",
         ],
     )
@@ -312,7 +259,7 @@ async def _schedule(schedule_id: str, call: _Call) -> _Found | None:
         meta=[
             _cron(job.cron) if job.cron else "Runs once",
             _when("Next run", when) if when else "Paused",
-            f"Agent: {agent.name}" if agent else None,
+            f"Workflow: {agent.name}" if agent else None,
         ],
     )
 
@@ -409,7 +356,7 @@ async def _routine(routine_id: str, call: _Call) -> _Found | None:
 async def _store_listing(version_id: str, call: _Call) -> _Found | None:
     agent = await store_db().get_store_agent_by_version_id(version_id)
     return _Found(
-        kind="Marketplace agent",
+        kind="Marketplace workflow",
         name=agent.agent_name,
         href=f"/marketplace/agent/{quote(agent.creator, safe='')}/"
         f"{quote(agent.slug, safe='')}",
@@ -534,7 +481,7 @@ async def _parent_folder(parent_id: str, call: _Call) -> LibraryFolder | None:
 
 def _agent(agent: LibraryAgent) -> _Found:
     return _Found(
-        kind="Agent",
+        kind="Workflow",
         name=agent.name,
         href=_agent_href(agent.id),
         description=agent.description,

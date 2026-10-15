@@ -23,6 +23,7 @@ vi.mock("../tokenDevtool/usageTap", () => ({
     createUsageCapturingFetch(sessionId),
 }));
 
+import { ApiError } from "@/lib/autogpt-server-api/helpers";
 import { createCopilotTransport } from "../copilotStreamTransport";
 import { buildKickoffMessage } from "../expertKickoff";
 
@@ -70,6 +71,45 @@ describe("copilotStreamTransport devtool wiring", () => {
     createCopilotTransport({ sessionId: "s-1", ...makeRefs() });
 
     expect(createUsageCapturingFetch).not.toHaveBeenCalled();
+  });
+});
+
+describe("copilotStreamTransport refusals", () => {
+  it("keeps a 402's status, so the chat can offer plans", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            detail:
+              "A subscription is required to use this feature. Upgrade to continue.",
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+    try {
+      const transport = createCopilotTransport({
+        sessionId: "sess-no-plan",
+        ...makeRefs(),
+      });
+      const sent = transport.sendMessages({
+        trigger: "submit-message",
+        chatId: "sess-no-plan",
+        messageId: undefined,
+        messages: lastMessage("one more thing"),
+        abortSignal: undefined,
+      });
+
+      await expect(sent).rejects.toBeInstanceOf(ApiError);
+      await expect(sent).rejects.toMatchObject({
+        status: 402,
+        message:
+          "A subscription is required to use this feature. Upgrade to continue.",
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
