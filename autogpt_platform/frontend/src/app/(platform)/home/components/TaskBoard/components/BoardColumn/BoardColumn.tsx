@@ -45,7 +45,7 @@ export function BoardColumn({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex h-[calc(100dvh-8rem)] min-h-[32rem] w-[20rem] shrink-0 flex-col rounded-xl bg-zinc-100/80 transition-colors",
+        "flex h-[calc(100dvh-8rem)] min-h-[32rem] min-w-[18rem] max-w-[26rem] flex-1 basis-0 flex-col rounded-xl bg-zinc-100/80 transition-colors",
         isOver && "bg-zinc-200/70",
       )}
     >

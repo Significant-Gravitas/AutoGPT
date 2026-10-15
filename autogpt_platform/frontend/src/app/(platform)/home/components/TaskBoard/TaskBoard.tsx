@@ -21,8 +21,8 @@ export function TaskBoard() {
   } = useTaskBoard();
 
   return (
-    <section className="relative mt-10 px-4 pb-8 pt-6 text-left sm:px-6">
-      <div className="relative mx-auto w-full max-w-[1120px]">
+    <section className="relative mt-10 px-4 pb-8 pt-6 text-left md:px-0">
+      <div className="relative w-full">
         <header className="px-1 pb-5 pt-1">
           <Text
             variant="lead-semibold"
@@ -78,7 +78,7 @@ function BoardSkeleton() {
       {[0, 1, 2].map((index) => (
         <Skeleton
           key={index}
-          className="h-[calc(100dvh-8rem)] min-h-[32rem] w-[20rem] shrink-0 rounded-xl"
+          className="h-[calc(100dvh-8rem)] min-h-[32rem] min-w-[18rem] max-w-[26rem] flex-1 basis-0 rounded-xl"
         />
       ))}
     </div>

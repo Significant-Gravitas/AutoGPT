@@ -108,7 +108,7 @@ export function EmptySession({
       <motion.div
         className={cn(
           "relative z-10 w-full text-center",
-          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
+          isExpertsEnabled ? "max-w-none" : "max-w-[52rem]",
           // The whole greeting flow reads top-down like a letter, so it
           // anchors to the top from its first visible frame; the regular
           // hero centers itself. `my-auto` rather than the parent's

@@ -45,7 +45,7 @@ export function AddColumn({ onAdd }: Props) {
   }
 
   return (
-    <div className="w-[20rem] shrink-0 rounded-xl bg-zinc-100/80 p-2">
+    <div className="w-[18rem] shrink-0 rounded-xl bg-zinc-100/80 p-2">
       <Input
         id="task-board-new-column"
         label="Column name"
