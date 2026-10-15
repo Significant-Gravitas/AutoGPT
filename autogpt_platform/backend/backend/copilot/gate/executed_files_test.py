@@ -89,6 +89,15 @@ def test_a_direct_run_names_the_file(command, paths):
         "bash <<'EOF'\necho hi\nEOF",
         "bash -s",
         "bash -s <<'EOF'\necho hi\nEOF",
+        # A version or help print runs no file.
+        "python3 --version",
+        "python -V",
+        "node -v",
+        "./bin/node --version",
+        "tsx --version",
+        "bash --version",
+        "ruby --help",
+        "which nvm; id; ls ~/.nvm 2>&1 | head -2; python3 --version",
         # A heredoc inside `"$(...)"` is still one: its body is data.
         'git commit -m "$(cat <<\'EOF\'\nFits a 5" screen.\n./deploy.sh is fixed\nEOF\n)"',
         # Not a run.

@@ -59,13 +59,14 @@ def _opts(
 
 _SHELL = _opts(
     flags="-a -b -e -f -h -i -k -l -m -n -p -r -t -u -v -x -B -C -E -H -P -T "
-    "--login --norc --noprofile --posix --restricted --verbose --noediting",
+    "--login --norc --noprofile --posix --restricted --verbose --noediting "
+    "--version --help",
     valued="-o +o -O +O --rcfile --init-file",
     inline="-c",
     stdin="-s",
 )
 _NODE = _opts(
-    flags="--inspect --inspect-brk --no-warnings --no-deprecation --enable-source-maps "
+    flags="-v --version -h --help --inspect --inspect-brk --no-warnings --no-deprecation --enable-source-maps "
     "--trace-warnings --trace-uncaught --throw-deprecation --preserve-symlinks "
     "--expose-gc --abort-on-uncaught-exception --watch --no-addons --check -c "
     "--transpile-only -T --files --swc --esm --skip-project --no-cache",
@@ -81,13 +82,13 @@ _INTERPRETERS = {
     "tsx": _NODE.model_copy(update={"subcommands": frozenset({"watch"})}),
     "ts-node": _NODE,
     "python": _opts(
-        flags="-b -B -d -E -I -i -O -OO -P -q -s -S -u -v -x",
+        flags="-b -B -d -E -I -i -O -OO -P -q -s -S -u -v -x -V -h --version --help",
         valued="-W -X --check-hash-based-pycs",
         inline="-c -m",
         stdin="-",
     ),
     "ruby": _opts(
-        flags="-a -c -d -l -n -p -s -v -w -W -y --verbose",
+        flags="-a -c -d -l -n -p -s -v -w -W -y -h --verbose --version --help",
         valued="-r -I -C -E -F",
         inline="-e",
         stdin="-",
