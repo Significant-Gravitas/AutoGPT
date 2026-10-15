@@ -8,12 +8,7 @@ import { getGetV1ListExecutionSchedulesForAUserMockHandler } from "@/app/api/__g
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
 import { server } from "@/mocks/mock-server";
-import {
-  fireEvent,
-  render,
-  screen,
-  within,
-} from "@/tests/integrations/test-utils";
+import { render, screen, within } from "@/tests/integrations/test-utils";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, test, vi } from "vitest";
 import TeamPage from "../page";
@@ -161,14 +156,14 @@ describe("TeamRoster toolbar", () => {
     });
     server.use(getListExpertsMockHandler([maria, pausedLee]));
 
+    const user = userEvent.setup();
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    fireEvent.keyDown(
-      screen.getByRole("combobox", { name: "Filter experts" }),
-      { key: "ArrowDown" },
+    await user.click(screen.getByRole("button", { name: "Filter experts" }));
+    await user.click(
+      await screen.findByRole("menuitemradio", { name: "Paused" }),
     );
-    fireEvent.click(await screen.findByRole("option", { name: "Paused" }));
 
     expect(screen.getByText("Lee")).toBeDefined();
     expect(screen.queryByText("Maria")).toBeNull();
