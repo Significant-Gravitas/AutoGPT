@@ -162,13 +162,9 @@ export function ExpertPage() {
             skills={expert.bundled_skills ?? []}
             category={expert.categories?.[0]}
           />
-          <ExpertWorkflowList
-            name={expert.name}
-            workflows={expert.workflows}
-            accent={accent}
-          />
           <ExpertAccess name={firstName} providers={accessProviders} />
           <ExpertProtectedRules rules={expert.protected_soul_rules ?? []} />
+          <ExpertWorkflowList name={expert.name} workflows={expert.workflows} />
         </div>
       </div>
 
