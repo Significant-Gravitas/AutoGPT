@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
 import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
+import { usePwFlagOverrides } from "./pw-flag-overrides";
 
 export enum Flag {
   MARKETPLACE_SEARCH_TERMS = "marketplace-search-terms",
@@ -47,8 +48,11 @@ export enum Flag {
   GRAPHITI_MEMORY = "graphiti-memory",
   GRAPHITI_COMMUNITIES_ENABLED = "graphiti-communities-enabled",
   DREAM_PASS_ENABLED = "dream-pass-enabled",
-  DREAM_PASS_WEB_FACT_CHECK = "dream-pass-web-fact-check",
   DREAM_PASS_INVALIDATE_ENTITY = "dream-pass-invalidate-entity",
+  // Nightly skill learning (versioned, evidence-linked skill updates and
+  // their Memory/Expert/chat surfaces). Mirror of the backend flag;
+  // independent of the dream pass. Fail-closed.
+  DREAM_SKILL_LEARNING_ENABLED = "dream-skill-learning-enabled",
   // JSON flag mapping copilot-bot platform key (lowercase) -> visible on the
   // Bots settings page. Lets ops hide a platform (e.g. Slack while its
   // Marketplace review is pending) without a deploy. Missing keys default to
@@ -96,8 +100,8 @@ const defaultFlags = {
   [Flag.GRAPHITI_MEMORY]: false,
   [Flag.GRAPHITI_COMMUNITIES_ENABLED]: false,
   [Flag.DREAM_PASS_ENABLED]: false,
-  [Flag.DREAM_PASS_WEB_FACT_CHECK]: false,
   [Flag.DREAM_PASS_INVALIDATE_ENTITY]: false,
+  [Flag.DREAM_SKILL_LEARNING_ENABLED]: false,
   [Flag.COPILOT_BOT_PLATFORMS]: {} as Record<string, boolean>,
   [Flag.COPILOT_VOICE_MODE]: false,
   [Flag.COPILOT_AUTO_MODE]: false,
@@ -162,10 +166,10 @@ function readEnvOverride(flag: Flag): string | undefined {
       return process.env.NEXT_PUBLIC_FORCE_FLAG_GRAPHITI_COMMUNITIES_ENABLED;
     case Flag.DREAM_PASS_ENABLED:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_ENABLED;
-    case Flag.DREAM_PASS_WEB_FACT_CHECK:
-      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_WEB_FACT_CHECK;
     case Flag.DREAM_PASS_INVALIDATE_ENTITY:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_PASS_INVALIDATE_ENTITY;
+    case Flag.DREAM_SKILL_LEARNING_ENABLED:
+      return process.env.NEXT_PUBLIC_FORCE_FLAG_DREAM_SKILL_LEARNING_ENABLED;
     case Flag.COPILOT_VOICE_MODE:
       return process.env.NEXT_PUBLIC_FORCE_FLAG_COPILOT_VOICE_MODE;
     case Flag.COPILOT_AUTO_MODE:
@@ -223,9 +227,19 @@ export function envFlagOverride<T extends Flag>(
   return isForceAllFlags ? (true as FlagValues[T]) : undefined;
 }
 
+// A Playwright journey's runtime override wins over the build-time env one.
+function pwFlagOverride<T extends Flag>(
+  overrides: Record<string, unknown> | null,
+  flag: T,
+): FlagValues[T] | undefined {
+  if (!overrides || !(flag in overrides)) return undefined;
+  return resolveFlagValue(flag, overrides[flag]);
+}
+
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   const { value } = useFlagSource(flag);
-  const override = envFlagOverride(flag);
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
   const served = override ?? servedFlagValue(flag, value);
   recordFlagForSentry(flag, override === undefined ? served : undefined);
   return served;
@@ -250,7 +264,8 @@ export function useFlagStatus<T extends Flag>(
 ): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
   const { value, resolved } = useFlagSource(flag);
   const areFlagsEnabled = areFeatureFlagsEnabled();
-  const override = envFlagOverride(flag);
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
 
   const resolutionStarted = useFlagResolutionStarted();
   const [timedOut, setTimedOut] = useState(false);
@@ -266,6 +281,11 @@ export function useFlagStatus<T extends Flag>(
   const served = override ?? servedFlagValue(flag, value);
   recordFlagForSentry(flag, override === undefined ? served : undefined);
 
+  // Until hydration ends a Playwright override can't be read yet, so a route
+  // gate must not act on the default it would replace.
+  if (isPwMockEnabled && pwOverrides === null) {
+    return { enabled: served, ready: false, answered: false };
+  }
   if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
     return { enabled: served, ready: true, answered: true };
   }

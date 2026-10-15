@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
@@ -37,6 +38,7 @@ from sentry_sdk.api import capture_exception as _sentry_capture_exception
 import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
+from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
@@ -91,6 +93,30 @@ def expose(func: C) -> C:
     func = getattr(func, "__func__", func)
     setattr(func, EXPOSED_FLAG, True)
     return func
+
+
+def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
+    """Type hints of ``func`` evaluated in its *defining* module.
+
+    Exposed service functions are plain functions from other modules (or
+    stubs wrapping them via ``update_wrapper``), and those modules may use
+    ``from __future__ import annotations``. ``inspect.signature`` then yields
+    string annotations such as ``"SomeRecord | None"`` that neither
+    ``create_model`` nor ``TypeAdapter`` can resolve from here — the request
+    model would reject model-valued arguments and the client would hand
+    back raw dicts. Unwrapping to the original function and using
+    ``typing.get_type_hints`` evaluates the strings where the names live.
+    Falls back to the raw annotations when evaluation is impossible.
+    """
+    target = inspect.unwrap(func)
+    target = getattr(target, "__func__", target)
+    try:
+        return typing.get_type_hints(target, include_extras=True)
+    except Exception:
+        try:
+            return typing.get_type_hints(func, include_extras=True)
+        except Exception:
+            return {}
 
 
 # --------------------------------------------------
@@ -316,6 +342,7 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+        hints = resolve_type_hints(func)
         fields = {}
 
         is_bound_method = False
@@ -324,9 +351,18 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Use the resolved annotation or fallback to str if not specified.
+            # ``resolve_type_hints`` evaluates string annotations (modules
+            # using ``from __future__ import annotations``) in the defining
+            # module's namespace; the raw signature would leave model names
+            # as strings that a dynamic model created here cannot resolve.
+            annotation = hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -602,6 +638,16 @@ def _usable_adapter(annotation: Any) -> TypeAdapter | None:
         return None
 
 
+def _send_trace_headers(request: httpx.Request) -> None:
+    """Carry the caller's trace to the service, whose request transaction then
+    continues it. Runs inside the HTTP client span, which becomes the parent."""
+    request.headers.update(tracing.trace_propagation_headers())
+
+
+async def _send_trace_headers_async(request: httpx.Request) -> None:
+    _send_trace_headers(request)
+
+
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_client_type: Type[ASC],
@@ -614,24 +660,28 @@ def get_service_client(
         if not request_retry:
             return fn
 
-        # Use preconfigured retry decorator for service communication
-        return create_retry_decorator(
-            max_attempts=api_comm_retry,
-            max_wait=api_comm_max_wait,
-            context="Service communication",
-            exclude_exceptions=(
-                # Don't retry these specific exceptions that won't be fixed by retrying
-                ValueError,  # Invalid input/parameters
-                DataError,  # Prisma data integrity errors (foreign key, unique constraints)
-                UniqueViolationError,  # Unique constraint violations
-                KeyError,  # Missing required data
-                TypeError,  # Wrong data types
-                AttributeError,  # Missing attributes
-                asyncio.CancelledError,  # Task was cancelled
-                concurrent.futures.CancelledError,  # Future was cancelled
-                HTTPClientError,  # HTTP 4xx client errors - don't retry
-            ),
-        )(fn)
+        # Use preconfigured retry decorator for service communication. It keeps
+        # fn's sync/async shape, which its overloads can't express.
+        return cast(
+            Callable[..., R],
+            create_retry_decorator(
+                max_attempts=api_comm_retry,
+                max_wait=api_comm_max_wait,
+                context="Service communication",
+                exclude_exceptions=(
+                    # Don't retry these specific exceptions that won't be fixed by retrying
+                    ValueError,  # Invalid input/parameters
+                    DataError,  # Prisma data integrity errors (foreign key, unique constraints)
+                    UniqueViolationError,  # Unique constraint violations
+                    KeyError,  # Missing required data
+                    TypeError,  # Wrong data types
+                    AttributeError,  # Missing attributes
+                    asyncio.CancelledError,  # Task was cancelled
+                    concurrent.futures.CancelledError,  # Future was cancelled
+                    HTTPClientError,  # HTTP 4xx client errors - don't retry
+                ),
+            )(fn),
+        )
 
     class DynamicClient:
         def __init__(self) -> None:
@@ -653,6 +703,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers]},
             )
 
         def _create_async_client(self) -> httpx.AsyncClient:
@@ -664,6 +715,7 @@ def get_service_client(
                     max_connections=500,  # High limit for burst handling
                     keepalive_expiry=30.0,  # Keep connections alive longer
                 ),
+                event_hooks={"request": [_send_trace_headers_async]},
             )
 
         @property
@@ -887,7 +939,9 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
+            ret_ann = resolve_type_hints(original_func).get(
+                "return", sig.return_annotation
+            )
             expected_return = (
                 None
                 if ret_ann is inspect.Signature.empty

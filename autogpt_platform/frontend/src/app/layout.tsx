@@ -17,7 +17,6 @@ import {
   COOKIEBOT_SCRIPT_URL,
 } from "@/services/consent/cookiebot";
 import { environment } from "@/services/environment";
-import AgentationDevtool from "@/components/AgentationDevtool";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { headers } from "next/headers";
 import Script from "next/script";
@@ -25,6 +24,7 @@ import { getSiteUrl } from "@/lib/metadata";
 
 const isDev = environment.isDev();
 const isLocal = environment.isLocal();
+const isCloud = environment.isCloud();
 
 const faviconPath = isDev
   ? "/favicon-dev.ico"
@@ -117,7 +117,7 @@ export default async function RootLayout({
             />
             <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
               {children}
-              <TallyPopupSimple />
+              {isCloud && <TallyPopupSimple />}
               <VercelAnalyticsWrapper />
 
               {/* React Query DevTools is only available in development */}
@@ -130,7 +130,6 @@ export default async function RootLayout({
             </div>
             <Toaster />
             <ConsentWithdrawalReload />
-            {(isLocal || isDev) && <AgentationDevtool />}
           </Providers>
         </ErrorBoundary>
       </body>

@@ -468,3 +468,88 @@ async def test_apply_never_writes_an_opted_out_customer(
     ]
     assert sum(result.succeeded.values()) == 1
     assert sum(result.failed.values()) == 0
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "customer",
+    [
+        _customer("a@x.io", "active").model_copy(update={"timezone": "Asia/Tehran"}),
+        _customer("a@firma.ru", "active"),
+        _customer("a@x.io", "canceled").model_copy(
+            update={"timezone": "Europe/Moscow"}
+        ),
+        _customer("a@x.io", "active").model_copy(update={"billing_country": "RU"}),
+        _customer("a@x.io", "trialing").model_copy(update={"excluded_country": "IR"}),
+    ],
+    ids=[
+        "paying-in-tehran",
+        "russian-address",
+        "churned-in-moscow",
+        "billed-to-russia",
+        "recorded-by-a-checkout",
+    ],
+)
+def test_a_customer_placed_in_iran_or_russia_is_only_ever_skipped(customer):
+    audience = _audience(changelog=[customer.email])
+    change = mailerlite_backfill.decide(customer, audience, trial_enabled=True)
+    assert change.decisions == [Decision.SKIP_EXCLUDED_COUNTRY]
+    assert Decision.SKIP_EXCLUDED_COUNTRY not in mailerlite_backfill.CHANGES
+
+
+@pytest.mark.asyncio
+async def test_apply_drops_anyone_who_may_no_longer_be_written(
+    configured, no_sleep, monkeypatch
+):
+    """The plan is old by the last batch: someone who opted out or was seen
+    in Iran or Russia since then is checked out right before the write."""
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience()
+    changes = mailerlite_backfill.plan(
+        [_customer("in@x.io", "active"), _customer("out@x.io", "active")], audience
+    )
+
+    async def kept_out(user_id: str) -> bool:
+        return user_id == "u-out@x.io"
+
+    result = await mailerlite_backfill.apply(changes, audience, kept_out=kept_out)
+
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert result.succeeded[Decision.ADD_CHANGELOG] == 1
+    assert result.skipped == 1
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_cannot_be_read_fails_alone_and_the_run_goes_on(
+    configured, no_sleep, monkeypatch, caplog
+):
+    client = MagicMock()
+    client.post = AsyncMock(
+        side_effect=lambda url, **kw: _batch_ok(kw["json"]["requests"])
+    )
+    monkeypatch.setattr(mailerlite_backfill, "_client", lambda: client)
+    audience = _audience()
+    changes = mailerlite_backfill.plan(
+        [_customer("in@x.io", "active"), _customer("gone@x.io", "active")], audience
+    )
+
+    async def kept_out(user_id: str) -> bool:
+        if user_id == "u-gone@x.io":
+            raise RuntimeError("db down")
+        return False
+
+    result = await mailerlite_backfill.apply(changes, audience, kept_out=kept_out)
+
+    (batch,) = [c.kwargs["json"]["requests"] for c in client.post.await_args_list]
+    assert [r["body"]["email"] for r in batch] == ["in@x.io"]
+    assert result.succeeded[Decision.ADD_CHANGELOG] == 1
+    assert result.failed[Decision.ADD_CHANGELOG] == 1
+    assert result.skipped == 0
+    assert "gone@x.io" not in caplog.text

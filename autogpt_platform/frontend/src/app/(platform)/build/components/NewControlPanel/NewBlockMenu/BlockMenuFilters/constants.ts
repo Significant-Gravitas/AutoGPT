@@ -9,7 +9,7 @@ export const categories: Array<{ key: CategoryKey; name: string }> = [
   },
   {
     key: SearchEntryFilterAnyOfItem.marketplace_agents,
-    name: "Marketplace agents",
+    name: "Marketplace workflows",
   },
-  { key: SearchEntryFilterAnyOfItem.my_agents, name: "My agents" },
+  { key: SearchEntryFilterAnyOfItem.my_agents, name: "My workflows" },
 ];

@@ -27,8 +27,8 @@ export function SchedulesPanel({ onGuidedPrompt, withHeading = true }: Props) {
           {withHeading && <Text variant="h2">Scheduled</Text>}
           <Text variant="body" className="!text-zinc-500">
             Every automated job in one place — your experts&apos; scheduled
-            follow-ups and recurring agent runs from the builder. Open an item
-            to view its chat or agent, or cancel one you no longer need.
+            follow-ups and recurring workflow runs from the builder. Open an
+            item to view its chat or workflow, or cancel one you no longer need.
           </Text>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
