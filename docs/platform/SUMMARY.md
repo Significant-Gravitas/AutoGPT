@@ -59,6 +59,7 @@
 ## Changelog
 
 * [What's New](changelog/README.md)
+  * [A bigger roster, Clay & Rock avatars, folders in your workspace](changelog/september-24-september-30-2026.md)
   * [Meet your Experts: hire a specialist and put it to work](changelog/september-19-2026.md)
   * [A cleaner chat that shows its work, clickable answers, emails worth opening](changelog/august-21-september-4-2026.md)
   * [Paste screenshots into chat, talk through onboarding, self-host in one container](changelog/july-29-august-13-2026.md)
