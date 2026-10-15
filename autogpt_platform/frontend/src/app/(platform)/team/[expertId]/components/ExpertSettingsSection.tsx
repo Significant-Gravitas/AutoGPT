@@ -102,7 +102,7 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
           tag="Kept"
           title={
             fileCount > 0
-              ? `${hasMoreFiles ? `${fileCount}+ files` : plural(fileCount, "file")} from its chats stay in your workspace`
+              ? `${hasMoreFiles ? `${fileCount}+ files` : plural(fileCount, "file")} from its chats ${fileCount === 1 && !hasMoreFiles ? "stays" : "stay"} in your workspace`
               : "Files from its chats stay in your workspace"
           }
         />
