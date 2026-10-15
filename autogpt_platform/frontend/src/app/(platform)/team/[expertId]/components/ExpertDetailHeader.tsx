@@ -41,7 +41,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <span className="relative z-10 -mt-12 ml-14 block shrink-0">
+        <span className="relative z-10 -mt-12 ml-4 block shrink-0">
           <ExpertAvatarButton expert={expert} />
         </span>
         <div className="min-w-0 flex-1">
