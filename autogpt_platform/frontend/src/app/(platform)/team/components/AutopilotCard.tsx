@@ -67,7 +67,7 @@ export function AutopilotCard({
           {/* Not a category, but it sits in the same row as the experts'
               topic tags and should not read as a different kind of thing. */}
           <span
-            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-6 max-w-full")}
+            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
             style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
             <Icon icon={SparklesIcon} size={12} className="shrink-0" />

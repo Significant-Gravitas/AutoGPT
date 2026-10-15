@@ -40,7 +40,7 @@ export function CategoryTag({ category, size = "small", className }: Props) {
         CHIP_SHAPE,
         CHIP_SIZE[size],
         // A label, not a button: shorter than the clickable chip.
-        size === "small" && "h-6",
+        size === "small" && "h-[22px]",
         "max-w-full",
         accent.icon,
         className,
