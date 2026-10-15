@@ -21,7 +21,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
   return (
     <TabsLineContent value="agent">
       <p className="mb-4 text-sm text-neutral-500">
-        Upload a previously exported AutoGPT agent file (.json).
+        Upload a previously exported AutoGPT workflow file (.json).
       </p>
       <Form
         form={upload.form}
@@ -37,7 +37,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                 <Input
                   {...field}
                   id={field.name}
-                  label="Agent name"
+                  label="Workflow name"
                   className="w-full rounded-[10px]"
                 />
               </FormControl>
@@ -54,7 +54,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                 <Input
                   {...field}
                   id={field.name}
-                  label="Agent description"
+                  label="Workflow description"
                   type="textarea"
                   className="w-full rounded-[10px]"
                 />
@@ -74,7 +74,7 @@ export default function AgentUploadTab({ upload }: AgentUploadTabProps) {
                   value={field.value}
                   onChange={field.onChange}
                   accept=".json,application/json"
-                  placeholder="Agent file"
+                  placeholder="Workflow file"
                   maxFileSize={10 * 1024 * 1024}
                   showStorageNote={false}
                   className="mb-8 mt-4"

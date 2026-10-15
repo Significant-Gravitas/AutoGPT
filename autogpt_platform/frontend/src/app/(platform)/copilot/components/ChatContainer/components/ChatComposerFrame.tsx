@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import type { ReactNode, Ref } from "react";
+import { cn } from "@/lib/utils";
 import { PausedDraftNote } from "./PausedDraftNote";
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
   notice?: ReactNode;
   noticeRef?: Ref<HTMLDivElement>;
   paused?: boolean;
+  className?: string;
 }
 
 /** Shared composer spacing keeps the floating notice outside the input row. */
@@ -15,13 +17,17 @@ export function ChatComposerFrame({
   notice,
   noticeRef,
   paused = false,
+  className,
 }: Props) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
-      className="relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2"
+      className={cn(
+        "relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2",
+        className,
+      )}
     >
       {notice && (
         <div

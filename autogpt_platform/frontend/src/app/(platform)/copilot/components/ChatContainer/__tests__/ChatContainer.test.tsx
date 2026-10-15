@@ -301,6 +301,36 @@ describe("ChatContainer", () => {
     expect(screen.queryByTestId("usage-limit-backdrop")).toBeNull();
   });
 
+  it("still sends a retry while the limit pauses the composer, so the server can refuse it", () => {
+    mockIsUsageLimitReached.mockReturnValue(true);
+    const onSend = vi.fn();
+    render(
+      <ChatContainer
+        {...baseProps}
+        onSend={onSend}
+        messages={[
+          {
+            id: "question",
+            role: "user",
+            parts: [{ type: "text", text: "Summarize the launch notes" }],
+          },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByTestId("chat-input").getAttribute("data-send-disabled"),
+    ).toBe("true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry message" }));
+
+    expect(onSend).toHaveBeenCalledWith(
+      "Summarize the launch notes",
+      undefined,
+      undefined,
+      undefined,
+    );
+  });
+
   it("does not render the usage-limit backdrop while usage is still available", () => {
     render(<ChatContainer {...baseProps} />);
 
