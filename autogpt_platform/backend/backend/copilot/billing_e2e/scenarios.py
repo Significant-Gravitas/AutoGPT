@@ -26,8 +26,9 @@ from .provider import PlannedFault
 
 ChargeBasis = Literal["invoice", "rate_card", "moonshot_estimate", "none"]
 # What a finding is about: whether the thread took its planned path, what the
-# turn was charged, or the tokens recorded against it.
-Check = Literal["path", "charge", "tokens"]
+# turn was charged, the tokens recorded against it, or the live spend the SDK
+# turn's governor lands tasks on.
+Check = Literal["path", "charge", "tokens", "meter"]
 
 
 class KnownGap(BaseModel):

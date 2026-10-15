@@ -47,6 +47,7 @@ from backend.copilot.builder_context import (
 from backend.copilot.capabilities.dispatch import resolve_tool_dispatch
 from backend.copilot.config import CopilotLlmAuthProvider, CopilotLLMModel
 from backend.copilot.context import get_workspace_manager, set_execution_context
+from backend.copilot.continuation import send_trailing_note_as_user
 from backend.copilot.expert_context import build_expert_identity_suffix
 from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.gate import active_mode
@@ -2042,6 +2043,9 @@ async def stream_chat_completion_baseline(
             )
         elif msg.role == "user" and msg.content:
             openai_messages.append({"role": msg.role, "content": msg.content})
+    # Before anything is appended below: this reads the last entry, and the
+    # per-turn blocks then land on the note as they would on a typed message.
+    send_trailing_note_as_user(openai_messages)
 
     # Inject user context into the first user message on first turn.
     # Done before attachment/URL injection so the context prefix lands at

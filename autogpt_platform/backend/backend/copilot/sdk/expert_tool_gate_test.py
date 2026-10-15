@@ -35,6 +35,7 @@ from claude_agent_sdk import ResultMessage
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
 from backend.copilot.sdk.retry_scenarios_test import scenario_profile
+from backend.copilot.turn_budget import TurnBudget
 
 _SVC = "backend.copilot.sdk.service"
 _SYSTEM_PROMPT = "backend.copilot.sdk.system_prompt"
@@ -156,14 +157,18 @@ def _make_patches(*, hire_experts_enabled: bool):
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 tier_model=MagicMock(return_value="claude-sonnet-4-6"),
             ),
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
-            f"{_SVC}._resolve_dynamic_max_budget_usd",
-            dict(new_callable=AsyncMock, return_value=100.0),
+            f"{_SVC}.resolve_turn_budget",
+            dict(
+                new_callable=AsyncMock,
+                return_value=TurnBudget(usd=100.0, limiting="task"),
+            ),
         ),
         (f"{_SVC}.drain_pending_safe", dict(new_callable=AsyncMock, return_value=[])),
     ]

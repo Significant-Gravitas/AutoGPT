@@ -68,6 +68,7 @@ from .response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
     StreamUsage,
 )
 
@@ -978,6 +979,7 @@ async def mark_session_completed(
     session_id: str,
     error_message: str | None = None,
     *,
+    error_code: str | None = None,
     skip_error_publish: bool = False,
     turn_id: str = "",
 ) -> bool:
@@ -995,6 +997,9 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
+        error_code: The machine-readable code of that error. Republished
+            with it so the client can tell, say, a usage limit from a crash
+            without matching on the message text.
         skip_error_publish: If True, still marks the session as "failed" but
             does NOT publish a StreamError event. Use this for a user-initiated
             cancel, which the frontend would otherwise render as "the assistant
@@ -1083,7 +1088,9 @@ async def mark_session_completed(
 
     if error_message and not skip_error_publish:
         try:
-            await publish_chunk(turn_id, StreamError(errorText=error_message))
+            await publish_chunk(
+                turn_id, StreamError(errorText=error_message, code=error_code)
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to publish error event for session {session_id}: {e}"
@@ -1310,6 +1317,7 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
+    ResponseType.TURN_PAUSED.value: StreamTurnPaused,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
     ResponseType.CHECKPOINT.value: StreamCheckpoint,
 }

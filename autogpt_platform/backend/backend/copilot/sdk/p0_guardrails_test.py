@@ -126,6 +126,12 @@ class TestConfigDefaults:
         cfg = _make_config()
         assert cfg.agent_max_turns == 100
 
+    def test_sdk_step_checkin_default(self):
+        # The SDK path checks in after a long run instead of stopping at
+        # ``agent_max_turns``; "Keep going" starts a fresh count.
+        cfg = _make_config()
+        assert cfg.sdk_step_checkin == 450
+
     def test_max_budget_usd_default(self):
         cfg = _make_config()
         assert cfg.claude_agent_max_budget_usd == 10.0

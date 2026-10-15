@@ -74,8 +74,9 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         if isinstance(run_turn, SdkTurns)
         else None
     )
+    metered = run_turn.metered if isinstance(run_turn, SdkTurns) else None
     findings = audit_thread(
-        scenario, provider, ledger, session, usage_by_turn, cli_resumed
+        scenario, provider, ledger, session, usage_by_turn, cli_resumed, metered
     )
     cli_path = _resolve_cli_path()
     if scenario.needs_cli and not scenario.codex and cli_path is not None:
