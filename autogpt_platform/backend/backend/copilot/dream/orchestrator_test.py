@@ -519,9 +519,7 @@ def test_consolidate_budget_leaves_a_thinking_model_room_to_answer():
     """Regression pin: the consolidate budget covers a thinking model's
     reasoning as well as its answer, and the batch path asks for the same
     budgets as the sync one."""
-    assert (
-        orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
-    )
+    assert orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
     assert batch_submit.PHASE_MAX_TOKENS == {
         "consolidate": orchestrator_mod.CONSOLIDATE_MAX_TOKENS,
         "recombine": orchestrator_mod.RECOMBINE_MAX_TOKENS,
