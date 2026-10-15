@@ -65,6 +65,15 @@ from backend.data.subscription_trial_conversion import (
     get_cancel_pending_trial,
     is_trial_plan,
 )
+from backend.data.subscription_upgrade import (
+    preview_subscription_upgrade,
+    validate_subscription_upgrade_preview,
+)
+from backend.data.subscription_upgrade_models import (
+    SubscriptionUpgradePreview,
+    SubscriptionUpgradePreviewRequest,
+    UpgradePreviewUnavailable,
+)
 from backend.data.user import get_user_by_id
 from backend.notifications import lifecycle
 from backend.notifications.queue import queue_pass_work
@@ -87,6 +96,8 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
+    proration_date: int | None = Field(default=None, gt=0)
+    preview_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$")
     surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
         default=None,
         description="Where the plan was picked; analytics only.",
@@ -356,6 +367,35 @@ async def get_subscription_status(
 
 
 @router.post(
+    path="/credits/subscription/preview",
+    summary="Review the prorated charge for a paid Pro-to-Max upgrade",
+    operation_id="previewSubscriptionUpgrade",
+    dependencies=[
+        Security(requires_user),
+        Depends(enforce_subscription_status_rate_limit),
+    ],
+)
+async def preview_tier_upgrade(
+    request: SubscriptionUpgradePreviewRequest,
+    user_id: Annotated[str, Security(get_user_id)],
+) -> SubscriptionUpgradePreview:
+    enabled, _ = await evaluate_feature_flag(
+        Flag.ENABLE_PLATFORM_PAYMENT, user_id, default=False
+    )
+    if not enabled:
+        raise HTTPException(422, "Subscription upgrades are unavailable.")
+    try:
+        return await preview_subscription_upgrade(user_id, request)
+    except UpgradePreviewUnavailable as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except (stripe.StripeError, ValueError) as exc:
+        logger.exception("Could not preview subscription upgrade for user %s", user_id)
+        raise HTTPException(
+            502, "Unable to review the charge. Please try again."
+        ) from exc
+
+
+@router.post(
     path="/credits/subscription",
     summary="Update subscription tier or start a Stripe Checkout session",
     operation_id="updateSubscriptionTier",
@@ -512,12 +552,38 @@ async def update_subscription_tier(
                 tier,
                 None if converts_trial else target_price_id,
             )
-        if await modify_stripe_subscription_for_tier(
-            user_id, tier, request.billing_cycle
-        ):
+        if request.preview_id is not None or request.proration_date is not None:
+            if (
+                request.preview_id is None
+                or request.proration_date is None
+                or tier != SubscriptionTier.MAX
+            ):
+                raise HTTPException(422, "A complete Max upgrade review is required.")
+            quote = await validate_subscription_upgrade_preview(
+                user_id,
+                SubscriptionUpgradePreviewRequest(
+                    tier="MAX", billing_cycle=request.billing_cycle
+                ),
+                request.preview_id,
+                request.proration_date,
+            )
+            modified = await modify_stripe_subscription_for_tier(
+                user_id,
+                tier,
+                request.billing_cycle,
+                proration_date=request.proration_date,
+                upgrade_preview=quote,
+            )
+        else:
+            modified = await modify_stripe_subscription_for_tier(
+                user_id, tier, request.billing_cycle
+            )
+        if modified:
             return await get_subscription_status(user_id)
     except TrialConversionRefused as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except UpgradePreviewUnavailable as exc:
+        raise HTTPException(409, str(exc)) from exc
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except stripe.CardError as e:
