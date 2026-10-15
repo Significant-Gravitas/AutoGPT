@@ -20,7 +20,12 @@ import { notFound } from "next/navigation";
 import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedulesSection";
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
-import { AUTOPILOT_PILL_CLASS } from "../helpers";
+import {
+  AUTOPILOT_PILL_CLASS,
+  PROFILE_TABS_INDICATOR_CLASS,
+  PROFILE_TABS_LIST_CLASS,
+  PROFILE_TABS_TRIGGER_CLASS,
+} from "../helpers";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
@@ -82,9 +87,18 @@ export default function AutopilotPage() {
       </Text>
 
       <TabsLine variant="compact" value={activeTab} onValueChange={onTabChange}>
-        <TabsLineList className="overflow-x-auto">
+        <TabsLineList
+          flush={false}
+          className={PROFILE_TABS_LIST_CLASS}
+          indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
+        >
           {TABS.map((tab) => (
-            <TabsLineTrigger key={tab.value} value={tab.value} icon={tab.icon}>
+            <TabsLineTrigger
+              className={PROFILE_TABS_TRIGGER_CLASS}
+              key={tab.value}
+              value={tab.value}
+              icon={tab.icon}
+            >
               {tab.label}
             </TabsLineTrigger>
           ))}

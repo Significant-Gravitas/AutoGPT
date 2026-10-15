@@ -30,7 +30,13 @@ import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawe
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
-import { getExpertCover, getLastRunLabel } from "../helpers";
+import {
+  getExpertCover,
+  getLastRunLabel,
+  PROFILE_TABS_INDICATOR_CLASS,
+  PROFILE_TABS_LIST_CLASS,
+  PROFILE_TABS_TRIGGER_CLASS,
+} from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
@@ -167,9 +173,14 @@ export default function ExpertDetailPage() {
         />
 
         <TabsLine variant="compact" defaultValue="basics">
-          <TabsLineList className="overflow-x-auto">
+          <TabsLineList
+            flush={false}
+            className={PROFILE_TABS_LIST_CLASS}
+            indicatorClassName={PROFILE_TABS_INDICATOR_CLASS}
+          >
             {TABS.map((tab) => (
               <TabsLineTrigger
+                className={PROFILE_TABS_TRIGGER_CLASS}
                 key={tab.value}
                 value={tab.value}
                 icon={tab.icon}

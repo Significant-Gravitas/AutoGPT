@@ -37,9 +37,13 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             size="page"
             nameAlign="baseline"
             areaColor={getCategoryHex(topic)}
+            nameAccessory={
+              topic ? (
+                <CategoryTag category={topic} className="self-center" />
+              ) : null
+            }
           />
           <div className="mt-2 flex items-center gap-2 empty:hidden">
-            {topic ? <CategoryTag category={topic} /> : null}
             <IntegrationIcons
               expertName={expert.name}
               providers={expert.credential_providers ?? []}

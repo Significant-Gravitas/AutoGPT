@@ -88,6 +88,7 @@ export function ExpertIdentityDetails({
                   className={cn(
                     "bg-clip-text font-medium text-transparent",
                     size === "card" && "text-[15px]",
+                    size === "page" && "text-lg",
                   )}
                   style={{
                     backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, #18181b), color-mix(in srgb, ${areaColor} 85%, #18181b))`,
