@@ -717,4 +717,4 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
     with patch("backend.copilot.gate.supervise", supervisor):
         await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
 
-    assert supervisor.await_args.kwargs["user_message"] == request
+    assert supervisor.await_args.kwargs["user_messages"] == [request]

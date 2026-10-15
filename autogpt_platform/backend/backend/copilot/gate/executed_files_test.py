@@ -35,6 +35,8 @@ _W = f"{_HOME}/workspace"
         ("ts-node -P tsconfig.json x.ts", [f"{_HOME}/x.ts"]),
         ("ruby -I lib -rjson x.rb", [f"{_HOME}/x.rb"]),
         ("perl -Mstrict -w x.pl", [f"{_HOME}/x.pl"]),
+        # Ruby's `-v` turns on warnings and still runs the script.
+        ("ruby -v x.rb", [f"{_HOME}/x.rb"]),
         ("php -d display_errors=1 -f x.php", [f"{_HOME}/x.php"]),
         # Prefixes and their options.
         ("sudo -u root bash x.sh", [f"{_HOME}/x.sh"]),
@@ -98,6 +100,11 @@ def test_a_direct_run_names_the_file(command, paths):
         "bash --version",
         "ruby --help",
         "which nvm; id; ls ~/.nvm 2>&1 | head -2; python3 --version",
+        # The interpreter exits after printing, so a file named after it never runs.
+        "python --version app.py",
+        "bash --help x.sh",
+        "node -v app.js",
+        "ruby --version x.rb",
         # A heredoc inside `"$(...)"` is still one: its body is data.
         'git commit -m "$(cat <<\'EOF\'\nFits a 5" screen.\n./deploy.sh is fixed\nEOF\n)"',
         # Not a run.
