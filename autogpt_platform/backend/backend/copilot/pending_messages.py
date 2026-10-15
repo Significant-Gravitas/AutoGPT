@@ -21,18 +21,25 @@ A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
 buffer is trimmed to the latest ``MAX_PENDING_MESSAGES`` on every push.
 """
 
+import asyncio
 import json
 import logging
 import time
 import uuid
-from typing import Any, cast
+from typing import Any, Literal, TypeVar, cast
 
 from pydantic import BaseModel, Field, ValidationError
 
 from backend.data.redis_client import get_redis_async
-from backend.data.redis_helpers import capped_rpush, capped_rpush_if_hash_field
+from backend.data.redis_helpers import (
+    capped_rpush,
+    capped_rpush_if_hash_field,
+    string_compare_and_set,
+)
 
 logger = logging.getLogger(__name__)
+
+T = TypeVar("T")
 
 # Per-session cap; typing faster than the copilot drains is already unusual.
 MAX_PENDING_MESSAGES = 10
@@ -50,6 +57,24 @@ _PERSIST_QUEUE_KEY_PREFIX = "copilot:pending-persist:"
 # Payload sent on the pub/sub notify channel.  Subscribers treat any
 # message as a wake-up hint; the value itself is not meaningful.
 _NOTIFY_PAYLOAD = "1"
+
+# Client idempotency keys (``StreamChatRequest.message_id``, already scoped to
+# user + session) of sends the chat API has accepted.  A buffered message has
+# no ``ChatMessage`` row until a turn drains it, and the drained row gets a
+# fresh id, so the PK that dedupes a turn-start send cannot catch a
+# retransmit of a queued one: without this claim every copy was buffered
+# again and ran as another follow-up.
+_CLIENT_MESSAGE_KEY_PREFIX = "copilot:pending:client-msg:"
+# A reservation names the request holding it, so one that outlived its TTL
+# cannot accept or release the claim of the request that took over.
+_CLIENT_MESSAGE_RESERVED = "reserved:"
+_CLIENT_MESSAGE_ACCEPTED = "accepted"
+# A reservation covers scheduling a turn or pushing to the buffer, which takes
+# well under a second; the TTL only matters when the request dies midway.
+_CLIENT_MESSAGE_RESERVE_TTL_SECONDS = 30
+# How long a copy waits for the first copy's outcome before it gives up.
+_CLIENT_MESSAGE_WAIT_SECONDS = 10.0
+_CLIENT_MESSAGE_POLL_SECONDS = 0.1
 
 
 class PendingMessageContext(BaseModel):
@@ -92,6 +117,165 @@ def _buffer_key(session_id: str) -> str:
 
 def _notify_channel(session_id: str) -> str:
     return f"{_PENDING_CHANNEL_PREFIX}{session_id}"
+
+
+def _client_message_key(session_id: str, message_id: str) -> str:
+    return f"{_CLIENT_MESSAGE_KEY_PREFIX}{session_id}:{message_id}"
+
+
+ClientMessageClaim = Literal["claimed", "accepted", "reserved"]
+
+
+async def _settled_client_message(redis: Any, key: str, deadline: float) -> str | None:
+    """The key's state once no other request is still scheduling its send,
+    or ``"reserved"`` if that has not happened by *deadline*."""
+    while True:
+        state = await redis.get(key)
+        if not _is_reservation(state) or time.monotonic() >= deadline:
+            return state
+        await asyncio.sleep(_CLIENT_MESSAGE_POLL_SECONDS)
+
+
+def _is_reservation(state: str | None) -> bool:
+    return state is not None and state.startswith(_CLIENT_MESSAGE_RESERVED)
+
+
+async def claim_client_message(
+    session_id: str, message_id: str, owner: str
+) -> ClientMessageClaim:
+    """Reserve *message_id* for the request carrying it, identified by the
+    unique *owner* token it passes to accept or release the claim.
+
+    ``"claimed"``: the caller owns the send.  It must call
+    :func:`accept_client_message` once the send is scheduled or queued, or
+    :func:`release_client_message` when it is refused.  The reservation
+    expires on its own within seconds, so a request that dies midway
+    cannot block the id.
+
+    ``"accepted"``: the caller holds a retransmit of a message that is
+    queued, drained or persisted, and must not act on it again.
+
+    ``"reserved"``: another copy was still being scheduled when the wait ran
+    out, so the caller should tell the client to retry.  A copy waits for
+    that outcome rather than being told it was accepted: the first copy can
+    still be refused, and then the send was never taken.
+
+    Fails open to ``"claimed"`` on a Redis error so dedup can never block a
+    send.
+    """
+    key = _client_message_key(session_id, message_id)
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
+    try:
+        redis = await get_redis_async()
+        while True:
+            if await redis.set(
+                key,
+                _CLIENT_MESSAGE_RESERVED + owner,
+                nx=True,
+                ex=_CLIENT_MESSAGE_RESERVE_TTL_SECONDS,
+            ):
+                return "claimed"
+            state = await _settled_client_message(redis, key, deadline)
+            if _is_reservation(state):
+                return "reserved"
+            if state is not None:
+                return "accepted"
+            # The first copy was refused and gave the id back: take it.
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message claim failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return "claimed"
+
+
+async def finish_despite_cancellation(work: "asyncio.Future[T]") -> T:
+    """Wait for shielded cleanup *work* however many times the caller is
+    cancelled meanwhile; the caller re-raises its own cancellation after."""
+    while True:
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            if work.done():
+                return work.result()
+
+
+async def accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+    """Mark a claimed send as taken, so its retransmits are skipped.  Also
+    when the reservation has lapsed, unless another request holds it now.
+
+    Finishes even if the caller is cancelled midway: the send has already
+    landed, and a reservation left to lapse would let a retry send it again.
+    """
+    accept = asyncio.ensure_future(
+        _accept_client_message(session_id, message_id, owner)
+    )
+    try:
+        await asyncio.shield(accept)
+    except asyncio.CancelledError:
+        await finish_despite_cancellation(accept)
+        raise
+
+
+async def _accept_client_message(session_id: str, message_id: str, owner: str) -> None:
+    try:
+        redis = await get_redis_async()
+        await string_compare_and_set(
+            redis,
+            _client_message_key(session_id, message_id),
+            expected=_CLIENT_MESSAGE_RESERVED + owner,
+            new=_CLIENT_MESSAGE_ACCEPTED,
+            ttl_seconds=_PENDING_TTL_SECONDS,
+            or_missing=True,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message accept failed for session=%s: %s",
+            session_id,
+            e,
+        )
+
+
+async def client_message_state(
+    session_id: str, message_id: str
+) -> Literal["accepted", "reserved"] | None:
+    """Whether a send carrying *message_id* was taken, waiting as
+    :func:`claim_client_message` does while another copy is scheduling it."""
+    deadline = time.monotonic() + _CLIENT_MESSAGE_WAIT_SECONDS
+    try:
+        redis = await get_redis_async()
+        state = await _settled_client_message(
+            redis, _client_message_key(session_id, message_id), deadline
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message lookup failed for session=%s: %s",
+            session_id,
+            e,
+        )
+        return None
+    if state is None:
+        return None
+    return "reserved" if _is_reservation(state) else "accepted"
+
+
+async def release_client_message(session_id: str, message_id: str, owner: str) -> None:
+    """Drop a claim whose send was refused, so a genuine retry can land."""
+    try:
+        redis = await get_redis_async()
+        await string_compare_and_set(
+            redis,
+            _client_message_key(session_id, message_id),
+            expected=_CLIENT_MESSAGE_RESERVED + owner,
+            new=None,
+        )
+    except Exception as e:
+        logger.warning(
+            "pending_messages: client message release failed for session=%s: %s",
+            session_id,
+            e,
+        )
 
 
 def _decode_redis_item(item: Any) -> str:
