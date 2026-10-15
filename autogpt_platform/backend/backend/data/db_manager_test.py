@@ -88,6 +88,7 @@ def test_memory_schedule_methods_registered() -> None:
         "forget_scope_job",
         "record_scope_run",
         "list_user_scope_schedules",
+        "list_scope_schedules",
     ):
         assert hasattr(DatabaseManager, method)
         assert hasattr(DatabaseManagerAsyncClient, method)

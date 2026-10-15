@@ -16,9 +16,9 @@ lists every scope whose registration, recording or pause failed, with the
 cron and the reason, and the command exits 1 when there is any.
 
 Needs what the backend services need: Postgres (Prisma connects directly),
-Redis (registration markers), FalkorDB, the scheduler service for the
-registration RPCs, and the feature flag backend, since crons are only
-registered for owners whose flags are on.
+FalkorDB, the scheduler service for the registration RPCs, and the feature
+flag backend, since crons are only registered for owners whose flags are
+on.
 """
 
 import argparse

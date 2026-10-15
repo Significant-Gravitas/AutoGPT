@@ -20,9 +20,8 @@ from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import ScopeRunKind
 
 from .deadline import within_deadline
-from .registry import restore_if_resumed
-from .scheduling import DreamSystemJob, clear_registration_marker
-from .scope_jobs import remove_scope_jobs, scope_label
+from .scheduling import DreamSystemJob
+from .scope_jobs import scope_label
 
 if TYPE_CHECKING:
     from .nightly_batch import NightlyBatchResult
@@ -42,11 +41,11 @@ async def memory_scope_may_fire(
     The registry must let it: an ACTIVE row, or an account with no row
     (crons from before the registry). Any other row's crons are stragglers
     (a pause or archive whose removal failed), and an expert with no row was
-    deleted: either way the scope's crons are removed (and given back if a
-    resume landed meanwhile). An expert scope's expert must also be active;
-    archived, paused or unavailable only skips the run, since its crons are
-    the lifecycle hooks' to manage. The whole check runs under the registry
-    deadline, and a slow or failed answer skips the run.
+    deleted: either way the run is skipped, and the reconcile pass
+    (``scope_reconcile.py``) removes the crons. An expert scope's expert must
+    also be active; archived, paused or unavailable only skips the run, since
+    its crons are the lifecycle hooks' to manage. The whole check runs under
+    the registry deadline, and a slow or failed answer skips the run.
     """
     try:
         return await within_deadline(_may_fire(scope, expert_status))
@@ -74,10 +73,10 @@ async def record_scope_run(scope: MemoryScope, kind: ScopeRunKind) -> bool:
         return False
 
 
-async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
-    """After ``job`` was deleted outside the registry, drop its id from the
-    row and its Redis marker so the next ensure registers it again."""
-    await clear_registration_marker(scope, job.registration_key_prefix)
+async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> bool:
+    """Before ``job`` is deleted outside the registry, drop its id from the
+    row, so the reconcile does not restore it and the next ensure registers
+    it again; whether the row's write went through."""
     try:
         await within_deadline(
             memory_schedule_db().forget_scope_job(
@@ -88,6 +87,8 @@ async def forget_registration(scope: MemoryScope, job: DreamSystemJob) -> None:
         logger.warning(
             f"Could not forget {job.name} of {scope_label(scope)}", exc_info=True
         )
+        return False
+    return True
 
 
 def nightly_error_parts(result: "NightlyBatchResult") -> list[str]:
@@ -198,9 +199,7 @@ async def _may_fire(scope: MemoryScope, expert_status: ExpertStatusLookup) -> bo
 
 async def _schedule_active(scope: MemoryScope) -> bool:
     """Whether the scope's row lets its crons run. A cron that fires under a
-    row that says otherwise is a straggler (a pause or archive whose removal
-    failed): the scope's crons are removed, and given back only if a resume
-    landed meanwhile."""
+    row that says otherwise is a straggler, for the reconcile pass to remove."""
     row = await memory_schedule_db().get_scope_schedule(
         scope.owner_user_id, scope.scope_key
     )
@@ -209,7 +208,5 @@ async def _schedule_active(scope: MemoryScope) -> bool:
     if row is None and not scope.is_expert:
         return True
     state = row.state.value.lower() if row is not None else "without a registry row"
-    logger.warning(f"Memory cron of {scope_label(scope)} fired {state}; removing")
-    if await remove_scope_jobs(scope):
-        await restore_if_resumed(scope)
+    logger.info(f"Memory cron of {scope_label(scope)} skipped: fired {state}")
     return False

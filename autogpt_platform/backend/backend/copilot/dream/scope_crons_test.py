@@ -51,17 +51,21 @@ async def test_the_gate_follows_the_row_state(env):
 
 
 @pytest.mark.asyncio
-async def test_a_cron_that_outlived_its_scopes_pause_is_removed_when_it_fires(
+async def test_a_cron_that_outlived_its_scopes_pause_is_skipped_then_reconciled(
     env, monkeypatch
 ):
-    """A pause whose removal failed left the crons behind a PAUSED row: the
-    first one to fire is skipped and takes the scope's crons down."""
+    """A pause whose removal failed left the crons behind a PAUSED row: one
+    that fires is skipped, removes nothing (no takedown to race a resume),
+    and the reconcile pass removes them."""
     await registry.ensure_scope_scheduled(EXPERT)
     monkeypatch.setattr(registry, "remove_scope_jobs", AsyncMock(return_value=False))
     assert not await registry.pause_scope(EXPERT)
     assert env.scheduler.jobs  # the pause's removal failed
 
     assert not await scope_crons.memory_scope_may_fire(EXPERT, _status("active"))
+    assert env.scheduler.jobs, "the gate only skips"
+
+    await env.reconcile()
 
     assert env.scheduler.jobs == {}
     assert env.db.rows[EXPERT.scope_key].state.value == "PAUSED"
@@ -78,10 +82,19 @@ async def test_a_legacy_account_without_row_still_fires(env):
 
 
 @pytest.mark.asyncio
-async def test_an_expert_without_row_is_orphaned_and_its_crons_removed(env):
-    assert not await scope_crons.memory_scope_may_fire(EXPERT, _status("active"))
+async def test_an_expert_without_row_is_skipped_and_reconciled_away(env):
+    """A deleted expert's crons fire with no row: skipped, and the reconcile
+    pass removes them."""
+    await env.scheduler.add_scope_nightly_batch_schedule(
+        scope=EXPERT, user_timezone="UTC"
+    )
 
-    env.scheduler.remove_scope_memory_jobs.assert_awaited_once_with(scope=EXPERT)
+    assert not await scope_crons.memory_scope_may_fire(EXPERT, _status("active"))
+    env.scheduler.remove_scope_memory_jobs.assert_not_awaited()
+
+    await env.reconcile()
+
+    assert env.scheduler.jobs == {}
 
 
 @pytest.mark.asyncio
@@ -175,7 +188,7 @@ async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
 ):
     await registry.ensure_scope_scheduled(ACCOUNT)
 
-    await scope_crons.forget_registration(
+    assert await scope_crons.forget_registration(
         ACCOUNT, dream_system_job("dream_nightly_batch")
     )
 
@@ -185,6 +198,21 @@ async def test_forgetting_a_deleted_cron_lets_ensure_register_it_again(
     again = await registry.ensure_scope_scheduled(ACCOUNT)
     assert again["community_rebuild"] is None
     assert again["dream_nightly_batch"]["id"] == f"dream_nightly_batch_{USER}"
+
+
+@pytest.mark.asyncio
+async def test_a_forget_that_cannot_write_the_row_says_so(env, monkeypatch):
+    """The delete it serves then keeps its cron (``executor/scheduler.py``):
+    a row still recording it would have the reconcile restore it."""
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    monkeypatch.setattr(
+        env.db, "forget_scope_job", AsyncMock(side_effect=ConnectionError("down"))
+    )
+
+    assert not await scope_crons.forget_registration(
+        ACCOUNT, dream_system_job("dream_nightly_batch")
+    )
+    assert env.db.rows[USER].nightly_job_id == f"dream_nightly_batch_{USER}"
 
 
 def test_job_kwargs_keep_the_accounts_legacy_shape():

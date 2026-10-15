@@ -590,6 +590,7 @@ class DatabaseManager(AppService):
     forget_scope_job = _(memory_schedule_db.forget_scope_job)
     record_scope_run = _(memory_schedule_db.record_scope_run)
     list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
+    list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
 
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
@@ -1061,6 +1062,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     forget_scope_job = d.forget_scope_job
     record_scope_run = d.record_scope_run
     list_user_scope_schedules = d.list_user_scope_schedules
+    list_scope_schedules = d.list_scope_schedules
 
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event
