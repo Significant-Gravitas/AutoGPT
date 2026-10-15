@@ -386,7 +386,7 @@ async def test_sweep_promotes_a_tentative_edge_that_earned_a_hit(dream_graph) ->
     """Promote leg of the SWEEP: distinct from the warm-context hook.
 
     ``try_ratify_on_hit`` promotes via ``_promote_if_tentative``; the sweep
-    reaches ``_promote_edge`` only through ``_process_edge``'s ``hits >= 1``
+    reaches that same write only through ``_process_edge``'s ``hits >= 1``
     branch, keyed off the Redis counter — this is the test that makes the
     ``_FakeRedis`` counter load-bearing.
     """
