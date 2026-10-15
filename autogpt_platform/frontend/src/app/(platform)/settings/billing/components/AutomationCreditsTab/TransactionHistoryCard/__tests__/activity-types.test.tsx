@@ -59,12 +59,12 @@ describe("Transaction history activity and states", () => {
     );
     render(<TransactionHistoryCard />);
     expect(await screen.findByText("Direct block usage")).toBeDefined();
-    expect(screen.getByText("Outside an agent run")).toBeDefined();
+    expect(screen.getByText("Outside a workflow run")).toBeDefined();
     fireEvent.click(
       screen.getByRole("button", { name: /details for Direct block usage/i }),
     );
     expect(
-      screen.getByText("A paid block call without an associated agent run."),
+      screen.getByText("A paid block call without an associated workflow run."),
     ).toBeDefined();
   });
 

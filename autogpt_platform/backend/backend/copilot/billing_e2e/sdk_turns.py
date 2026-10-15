@@ -7,6 +7,8 @@ resolution, the CLI environment, retries, resume and every cost decision run
 as in production.
 """
 
+import base64
+import json
 import shutil
 import uuid
 from collections.abc import AsyncGenerator
@@ -208,7 +210,14 @@ def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
 
 def _codex_credentials() -> OAuth2Credentials:
     # An unsigned JWT: the platform reads its claims, never its signature.
-    token = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ.sig"
+    claims = ({"alg": "none"}, {"exp": 9999999999, "email": "a@b.c"})
+    encoded = [
+        base64.urlsafe_b64encode(json.dumps(part, separators=(",", ":")).encode())
+        .decode()
+        .rstrip("=")
+        for part in claims
+    ]
+    token = ".".join([*encoded, "sig"])
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
             id_token=SecretStr(token),

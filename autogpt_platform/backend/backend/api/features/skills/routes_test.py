@@ -43,10 +43,13 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.record_registry_write", AsyncMock()
+    )
     yield
     app.dependency_overrides.clear()
 

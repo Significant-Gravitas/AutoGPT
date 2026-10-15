@@ -208,8 +208,8 @@ export function PendingReviewsList({
           {emptyMessage}
         </Text>
         <Text variant="body" className="mt-2 max-w-md text-muted-foreground">
-          When agents have human-in-the-loop blocks, they will appear here for
-          your review and approval.
+          When workflows have human-in-the-loop blocks, they will appear here
+          for your review and approval.
         </Text>
       </div>
     );
