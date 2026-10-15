@@ -16,7 +16,10 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from graphiti_core.llm_client import LLMConfig
 
-from backend.copilot.graphiti.reranker import CompatOpenAIRerankerClient
+from backend.copilot.graphiti.reranker import (
+    MAX_PARALLEL_SCORES,
+    CompatOpenAIRerankerClient,
+)
 
 
 def _logprob_response(token: str, logprob: float) -> SimpleNamespace:
@@ -106,10 +109,15 @@ async def test_rank_handles_empty_logprobs_without_desync():
     assert dict(ranked)["no_response"] == 0.0
 
 
+@pytest.mark.parametrize(
+    "candidates, peak",
+    [(40, 40), (MAX_PARALLEL_SCORES + 36, MAX_PARALLEL_SCORES)],
+)
 @pytest.mark.asyncio
-async def test_rank_scores_every_candidate_at_once():
+async def test_rank_scores_every_candidate_at_once_up_to_the_cap(candidates, peak):
     """Forty candidates are scored in one wave, not two of twenty: a second
-    wave adds a classifier round trip to the chat's first turn."""
+    wave adds a classifier round trip to the chat's first turn. Past the cap,
+    the rest wait for a free slot."""
     in_flight = 0
     most_in_flight = 0
 
@@ -127,10 +135,10 @@ async def test_rank_scores_every_candidate_at_once():
         config=LLMConfig(api_key="k", model="gpt-4.1-nano"), client=client
     )
 
-    ranked = await reranker.rank("query", [f"passage {n}" for n in range(40)])
+    ranked = await reranker.rank("query", [f"passage {n}" for n in range(candidates)])
 
-    assert len(ranked) == 40
-    assert most_in_flight == 40
+    assert len(ranked) == candidates
+    assert most_in_flight == peak
 
 
 def test_build_graphiti_uses_compat_reranker(mocker):
