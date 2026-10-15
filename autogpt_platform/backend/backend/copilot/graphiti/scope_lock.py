@@ -2,11 +2,14 @@
 ingestion.
 
 graphiti's ``add_episode`` saves the edges and entities it read when it
-began (``SET r = edge``, ``SET n = node``): a forget that landed while it
-ran would be written over by the older copy. So these writers hold this
-lock: the ingestion worker around ``add_episode`` and what it writes after
-it (``ingest.py``), ``recall_forget.retract`` around the whole forget, and
-the legacy-forget backfill around each graph's restamp
+began, so a forget that landed while it ran would be written over by the
+older copy. The driver saves nothing on a soft-forgotten fact but its
+episode list (``fact_attributes.py``); graphiti still saves the fact's
+entities whole (``SET n = node``), their summaries back, and a
+hard-forgotten fact again, live. So these writers hold this lock: the
+ingestion worker around ``add_episode`` and what it writes after it
+(``ingest.py``), ``recall_forget.retract`` around the whole forget, and the
+legacy-forget backfill around each graph's restamp
 (``migrations/backfill_legacy_forgets.py``); the weekly community rebuild
 and the settings page's erase-all do not (``graphiti/AGENTS.md``). It is one
 Redis key per graph (``MemoryScope.redis_key("write_lock")``), set NX with a

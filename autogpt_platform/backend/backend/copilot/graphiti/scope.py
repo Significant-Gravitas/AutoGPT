@@ -21,7 +21,6 @@ RedisKeyFamily = Literal[
     "last_completed",
     "hits",
     "rebuild_lock",
-    "registration",
     "write_lock",
 ]
 
@@ -92,24 +91,14 @@ class MemoryScope(BaseModel):
     def is_expert(self) -> bool:
         return self.expert_id is not None
 
-    def redis_key(
-        self,
-        family: RedisKeyFamily,
-        *,
-        edge_uuid: str | None = None,
-        registration_prefix: str | None = None,
-    ) -> str:
+    def redis_key(self, family: RedisKeyFamily, *, edge_uuid: str | None = None) -> str:
         """This scope's Redis key for ``family``, exactly as it was keyed
         before this class existed.
 
         Every family keys on ``scope_key`` (the raw user id for the account,
         the group id for an expert) except ``rebuild_lock`` and ``write_lock``,
-        which keep their ``group_id`` layout. ``registration`` is per scope
-        because the dream crons are registered per scope
-        (``dream/registry.py``); the account's key is unchanged from when they
-        were registered per user. ``hits`` needs the counted ``edge_uuid``;
-        ``registration`` needs the cron's marker prefix (see
-        ``dream/scheduling.py``).
+        which keep their ``group_id`` layout. ``hits`` needs the counted
+        ``edge_uuid``.
         """
         match family:
             case "dream_lock":
@@ -124,10 +113,6 @@ class MemoryScope(BaseModel):
                 return f"{REBUILD_LOCK_KEY_PREFIX}{self.group_id}"
             case "write_lock":
                 return write_lock_key(self.group_id)
-            case "registration":
-                if registration_prefix is None:
-                    raise ValueError("the registration key needs a prefix")
-                return f"{registration_prefix}:{self.scope_key}"
 
     @model_validator(mode="after")
     def _ids_match_derivation(self) -> "MemoryScope":

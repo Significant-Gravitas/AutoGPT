@@ -5,13 +5,14 @@ import re
 from collections.abc import Awaitable
 from typing import Any, cast
 
-from graphiti_core.driver.driver import GraphDriver
+from graphiti_core.driver.driver import GraphDriver, GraphDriverSession
 from graphiti_core.driver.falkordb import STOPWORDS
 from graphiti_core.driver.falkordb_driver import FalkorDriver
 from graphiti_core.helpers import validate_group_ids
 from graphiti_core.utils.datetime_utils import convert_datetimes_to_strings
 
 from .config import graphiti_config
+from .fact_attributes import EdgeMergingSession, merging_save
 from .scope import MemoryScope
 
 logger = logging.getLogger(__name__)
@@ -109,7 +110,7 @@ def _is_pending_queue_overflow(exc: Exception) -> bool:
 
 
 class AutoGPTFalkorDriver(FalkorDriver):
-    """FalkorDriver subclass with three AutoGPT-specific tweaks.
+    """FalkorDriver subclass with four AutoGPT-specific tweaks.
 
     1. ``build_fulltext_query`` adds the per-user ``group_id`` filter so
        multi-tenant searches don't cross user graphs.
@@ -137,6 +138,13 @@ class AutoGPTFalkorDriver(FalkorDriver):
        exceeded" backpressure with bounded jittered backoff, so a load
        spike degrades into a slightly slower memory op instead of a
        dropped one plus a Sentry alert. (SENTRY-1384.)
+
+    4. graphiti's two saves of a fact, run through ``execute_query`` or
+       ``session()`` (``add_episode``'s bulk save), merge graphiti's map
+       into the stored properties instead of replacing them, so what
+       the platform wrote on a fact survives graphiti saving it again,
+       and save nothing on a forgotten fact but its episode list
+       (``fact_attributes.py``).
     """
 
     def __init__(self, *args, build_indices: bool = False, **kwargs):
@@ -213,7 +221,9 @@ class AutoGPTFalkorDriver(FalkorDriver):
 
         Reimplemented rather than delegating to ``super()`` so per-attempt
         logging is under our control; the result-shaping mirrors upstream.
+        graphiti's saves of a fact run as merges (``merging_save``).
         """
+        cypher_query_ = merging_save(cypher_query_)
         graph = self._get_graph(self._database)
         # falkordb's async ``Graph.query`` is typed as its sync counterpart in
         # the stubs (returns a bare ``QueryResult``, params typed narrowly);
@@ -293,6 +303,11 @@ class AutoGPTFalkorDriver(FalkorDriver):
                 )
                 raise
         raise AssertionError("unreachable: loop returns or raises on every path")
+
+    def session(self, database: str | None = None) -> GraphDriverSession:
+        """graphiti's FalkorDB session, running its saves of a fact as
+        merges (``fact_attributes.EdgeMergingSession``)."""
+        return EdgeMergingSession(self._get_graph(database))
 
     @staticmethod
     async def _dispatch(graph, cypher_query_, params, read_only: bool) -> Any:

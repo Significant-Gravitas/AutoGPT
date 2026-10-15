@@ -28,6 +28,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 
+from graphiti_core.driver.driver import GraphDriver
 from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver, open_driver
@@ -364,9 +365,7 @@ async def try_ratify_on_hit(
     return result
 
 
-async def _promote_if_tentative(
-    driver: AutoGPTFalkorDriver, edge_uuid: str
-) -> WriteOutcome:
+async def _promote_if_tentative(driver: GraphDriver, edge_uuid: str) -> WriteOutcome:
     """Flip a still-tentative, unexpired edge to ``status='active'`` with a
     ``ratified_at`` stamp: ``CHANGED`` when it did, ``UNMATCHED`` when the
     edge is no longer one to promote, and ``UNKNOWN`` when the write raised

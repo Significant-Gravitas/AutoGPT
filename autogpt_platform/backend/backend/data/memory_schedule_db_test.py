@@ -176,12 +176,11 @@ async def test_a_paused_expert_still_resumes(
 
 
 def _lifecycle_boundaries(monkeypatch: pytest.MonkeyPatch) -> FakeScheduler:
-    """Everything but Postgres: the scheduler, flags, Redis markers, the
-    timezone lookup and the triggers the lifecycle functions touch."""
+    """Everything but Postgres: the scheduler, flags, the timezone lookup
+    and the triggers the lifecycle functions touch."""
     scheduler = FakeScheduler()
     monkeypatch.setattr(scope_jobs, "is_feature_enabled", AsyncMock(return_value=True))
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: scheduler)
-    monkeypatch.setattr(scope_jobs, "write_registration_marker", AsyncMock())
     monkeypatch.setattr(
         registry, "resolve_user_timezone", AsyncMock(return_value="UTC")
     )

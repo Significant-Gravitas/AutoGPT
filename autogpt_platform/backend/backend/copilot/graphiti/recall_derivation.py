@@ -45,11 +45,14 @@ graph still holds, before every forget's cascade (``recall_forget.py``),
 from the dream reaper (``provenance_pending.py``) and in the derivation
 backfill.
 
-graphiti rewrites a fact's attributes whenever its model merges a new
-statement into it (``SET r = edge``), which drops the record. A later dream
-write merging into a derived fact therefore rebuilds the union from the
-episodes' records; a user's statement merging into one leaves it without a
-record, as it should be once the user has said it themselves.
+A statement merged into a fact leaves its attributes as they were
+(``fact_attributes.py``), the record among them. A later dream write merging
+into a derived fact whose sources are all the dream's rebuilds the union
+from the episodes' records. A user's statement merging into one leaves the
+record in place, but the fact then names an episode with no record, so the
+cascade passes it over (``recall_cascade_queries.py``) as one the user has
+said themselves. No extraction writes a record
+(``types.POLICY_EDGE_FIELDS``).
 
 A forget retracts the live facts whose record names a fact it forgot or an
 episode it hid, and hides the dream episodes whose record does

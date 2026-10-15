@@ -26,6 +26,7 @@ from backend.copilot.tools.graphiti_forget import (
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
+    _timestamp,
 )
 from backend.copilot.tools.models import (
     MemoryForgetCandidatesResponse,
@@ -216,15 +217,15 @@ class TestForgetSearchForgottenCandidates:
             {
                 "uuid": "e2",
                 "fact": FORGOTTEN_FACT,
-                "stored_at": "2025-01-01 00:00:00+00:00",
+                "stored_at": "2025-01-01T00:00:00+00:00",
                 "forgotten_at": "2026-01-01T00:00:00+00:00",
                 "forgotten": "true",
             },
             {
                 "uuid": "e3",
                 "fact": FORGOTTEN_FACT,
-                "stored_at": "2025-01-01 00:00:00+00:00",
-                "forgotten_at": "2025-06-01 00:00:00+00:00",
+                "stored_at": "2025-01-01T00:00:00+00:00",
+                "forgotten_at": "2025-06-01T00:00:00+00:00",
                 "forgotten": "true",
             },
         ]
@@ -233,6 +234,45 @@ class TestForgetSearchForgottenCandidates:
         for said in ("secret", "Carol", "budget", "Orion", "2024-03-09"):
             assert said not in seen, said
         assert "hard_delete=true" in response.message
+
+    @pytest.mark.asyncio
+    async def test_their_dates_are_only_ever_timestamps(self) -> None:
+        """Codex's probe: a ``forgotten_at`` that is not a timestamp (one an
+        extraction invented before attribute answers were filtered) reads
+        "unknown", and what it held reaches no part of the response. A real
+        one is written out anew, in UTC to the second."""
+        secret = "Alice works on the secret Atlas plan"
+        gone = [
+            self._edge("e2", FORGOTTEN_FACT, forgotten_at=secret),
+            self._edge(
+                "e3", FORGOTTEN_FACT, forgotten_at="2026-01-01T07:30:15.25+02:00"
+            ),
+            self._edge("e4", FORGOTTEN_FACT, forgotten_at="0001-01-01T00:00:00+05:00"),
+        ]
+
+        response, _ = await self._search(True, [], gone)
+
+        assert [c["forgotten_at"] for c in response.candidates] == [
+            "unknown",
+            "2026-01-01T05:30:15+00:00",
+            "unknown",
+        ]
+        assert secret not in response.model_dump_json()
+
+    def test_a_date_that_is_not_one_reads_unknown(self) -> None:
+        naive = datetime(2025, 3, 4, 5, 6, 7)
+
+        assert [
+            _timestamp(value)
+            for value in (None, "", "yesterday", 12, naive, "2025-03-04")
+        ] == [
+            "unknown",
+            "unknown",
+            "unknown",
+            "unknown",
+            "2025-03-04T05:06:07+00:00",
+            "2025-03-04T00:00:00+00:00",
+        ]
 
     @pytest.mark.asyncio
     async def test_are_offered_when_nothing_live_matches(self) -> None:

@@ -9,12 +9,13 @@ ownership rules (``registry_fakes_test.py``). Lifecycle changes are in
 from __future__ import annotations
 
 import logging
+from unittest.mock import AsyncMock
 
 import pytest
 
 from backend.util.feature_flag import Flag
 
-from . import registry, scope_jobs
+from . import registry, scope_crons, scope_jobs
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -205,15 +206,12 @@ async def test_a_scheduler_side_flag_skip_is_not_recorded(env, caplog):
 
 
 @pytest.mark.asyncio
-async def test_registration_writes_the_redis_marker(env, fake_dream_redis):
-    await registry.ensure_scope_scheduled(EXPERT)
-
-    marker = f"dream_nightly_batch_registered:{EXPERT.scope_key}"
-    assert fake_dream_redis.store[marker] == PARIS
-
-
-@pytest.mark.asyncio
-async def test_a_pause_that_lands_mid_registration_takes_the_new_jobs_down(env):
+async def test_a_pause_that_lands_mid_registration_leaves_its_crons_to_the_reconcile(
+    env,
+):
+    """The registration finds the scope paused when it records its crons: it
+    reports ``scope_changed`` and takes nothing down. The fire gate holds
+    the paused scope, and the next reconcile pass removes its crons."""
     add = env.scheduler.add_scope_nightly_batch_schedule
     adder = add.side_effect
 
@@ -225,10 +223,18 @@ async def test_a_pause_that_lands_mid_registration_takes_the_new_jobs_down(env):
     add.side_effect = add_then_archive
     result = await registry.ensure_scope_scheduled(EXPERT)
 
-    env.scheduler.remove_scope_memory_jobs.assert_awaited_once_with(scope=EXPERT)
-    assert env.scheduler.jobs == {}
     # Not a failure: the scope simply stopped wanting its crons.
     assert {r["reason"] for r in result.values()} == {"scope_changed"}
+    env.scheduler.remove_scope_memory_jobs.assert_not_awaited()
+    assert set(env.scheduler.jobs) == job_ids(EXPERT)
+    assert not await scope_crons.memory_scope_may_fire(
+        EXPERT, AsyncMock(return_value="active")
+    )
+
+    report = await env.reconcile()
+
+    assert report.removed == [EXPERT.scope_key]
+    assert env.scheduler.jobs == {}
 
 
 @pytest.mark.asyncio

@@ -24,9 +24,10 @@ fact's envelope (its text, ``status``, ``expired_at``, ``forgotten_at``,
 ``expiration_reason``), and only on an edge that is live when the write runs
 (one FalkorDB query runs whole), so it can neither write over a forget nor
 bring a forgotten fact back. An ingestion that read the edge before the stamp
-saves its older copy after it (graphiti's ``SET e = edge``) and so puts the
-older usage values back: one recall is lost, which leaves the dream pass no
-more destructive than if that recall had never happened.
+saves its older copy after it, and so puts the older usage values back: one
+recall is lost, which leaves the dream pass no more destructive than if that
+recall had never happened. A statement merged into the fact keeps its stamps
+(graphiti's saves run as merges, ``fact_attributes.py``).
 
 Every stamp time is written by ``stamp_time``: a UTC string of one width, so
 stamps compare by time as plain strings in Cypher, in the dedupe below and in

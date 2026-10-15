@@ -16,9 +16,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
@@ -50,6 +52,7 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
 )
 from backend.util.exceptions import (
@@ -1676,6 +1679,7 @@ class _StartupRun(NamedTuple):
     add_job_calls: list
     embedding_backfill: MagicMock
     backfill_calls_at_readiness: int
+    scheduler_calls: list
 
 
 def _registered_jobs(
@@ -1719,7 +1723,10 @@ def _registered_jobs(
     ):
         Scheduler(register_system_tasks=True).run_service()
     return _StartupRun(
-        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+        mock_scheduler.add_job.call_args_list,
+        embedding_backfill,
+        at_readiness[0],
+        mock_scheduler.mock_calls,
     )
 
 
@@ -1738,6 +1745,31 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_memory_cron_reconcile_registered_after_start_on_its_interval(
+    monkeypatch,
+):
+    """The level-triggered backstop of the memory registry runs every
+    ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
+    coalesced. It is registered once the scheduler has started, so an
+    unchanged persisted job, and its next run, can be left alone
+    (``scheduler_memory_reconcile_test.TestRegistration``)."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job" and args and args[0] is reconcile_memory_scope_crons
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert str(args[1]) == str(IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES))
+    assert RECONCILE_INTERVAL_MINUTES == 30
+    assert kwargs["id"] == "reconcile_memory_scope_crons"
+    assert kwargs["max_instances"] == 1
+    assert kwargs["coalesce"] is True
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):

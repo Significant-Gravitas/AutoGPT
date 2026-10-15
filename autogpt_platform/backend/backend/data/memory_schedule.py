@@ -9,8 +9,10 @@ no Prisma client and reach it through ``db_accessors.memory_schedule_db()``.
 
 Ownership: every function that names a scope also takes its owner's user id
 and matches on both, so a caller only ever reaches rows of the user it names.
-The two backfill listings at the bottom are unscoped on purpose and are not
-exposed over the DatabaseManager RPC.
+The listings at the bottom are unscoped on purpose: the scheduler's cron
+reconcile pages through every row over the DatabaseManager RPC
+(``list_scope_schedules``), and the backfill's own listings are not exposed
+there.
 """
 
 from collections.abc import Sequence
@@ -129,8 +131,14 @@ async def record_scope_jobs(
 ) -> bool:
     """Record the scope's job ids and the timezone they run in.
 
-    Writes only an ACTIVE row. False means the scope was paused, wiped or
-    deleted meanwhile, and the caller must take down what it just registered.
+    Writes only an ACTIVE row: False means the write was refused, the row
+    being paused, wiped or deleted meanwhile. The caller reports
+    ``scope_changed`` and takes nothing down
+    (``copilot/dream/scope_jobs._record``): the fire gate skips a run under a
+    PAUSED or WIPED row or an expert with no row, and the scheduler's
+    reconcile removes those crons (``copilot/dream/scope_reconcile.py``). An
+    account with no row is the exception: it is not gated, and the reconcile
+    leaves the crons its registration made (untagged) where they are.
     """
     updated = await prisma.models.MemoryScopeSchedule.prisma().update_many(
         where={
@@ -209,6 +217,21 @@ async def list_user_scope_schedules(user_id: str) -> list[MemoryScopeSchedule]:
     """Every scope row the user owns: the account's and each expert's."""
     rows = await prisma.models.MemoryScopeSchedule.prisma().find_many(
         where={"userId": user_id}, order={"scopeKey": "asc"}
+    )
+    return [MemoryScopeSchedule.from_db(row) for row in rows]
+
+
+async def list_scope_schedules(
+    *, after: str | None = None, limit: int = 500
+) -> list[MemoryScopeSchedule]:
+    """One page of every row, whatever its state, across all users, by scope
+    key; pass the last key of a page as ``after`` for the next. For the
+    scheduler's cron reconcile (``copilot/dream/scope_reconcile.py``)."""
+    where: prisma.types.MemoryScopeScheduleWhereInput = {}
+    if after is not None:
+        where["scopeKey"] = {"gt": after}
+    rows = await prisma.models.MemoryScopeSchedule.prisma().find_many(
+        where=where, order={"scopeKey": "asc"}, take=limit
     )
     return [MemoryScopeSchedule.from_db(row) for row in rows]
 
