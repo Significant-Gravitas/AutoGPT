@@ -54,6 +54,7 @@ export function ExpertAttentionCard({ item, isProcessing, onDecision }: Props) {
             name={item.expert.name}
             avatarUrl={item.expert.avatar_url}
             size={32}
+            className="rounded-full border border-[#e3e3e3]"
           />
         ) : (
           <Icon

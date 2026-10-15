@@ -378,7 +378,11 @@ async def get_shared_chat_file(share_token: str, file_id: str) -> str | None:
     SharedChatFile row so subsequent downloads short-circuit.
     """
     record = await SharedChatFile.prisma().find_first(
-        where={"shareToken": share_token, "fileId": file_id}
+        where={
+            "shareToken": share_token,
+            "fileId": file_id,
+            "Session": {"is": {"shareToken": share_token, "isShared": True}},
+        }
     )
     if record is not None:
         return record.sessionId
@@ -773,7 +777,7 @@ async def _resolve_linked_executions(
     session_id: str,
 ) -> list[SharedChatLinkedExecution]:
     rows = await ChatLinkedShare.prisma().find_many(
-        where={"sessionId": session_id},
+        where={"sessionId": session_id, "Execution": {"is": {"isDeleted": False}}},
         include={"Execution": {"include": {"AgentGraph": True}}},
     )
     out: list[SharedChatLinkedExecution] = []

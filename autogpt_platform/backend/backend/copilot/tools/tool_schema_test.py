@@ -258,7 +258,16 @@ from ._test_data import make_session
 # The margin is deliberate and is the same exception the wire budget's #14476
 # note names: this is queued while dev is still moving, and a measured-plus-one
 # ceiling reds the queue's merge ref on the next reworded description.
-_CHAR_BUDGET = 77_014
+# Bumped 77_014 -> 77_176 for connect_integration's managed `ayrshare`
+# provider (SECRT-2878): the enum entry, its place in the supported list, one
+# sentence telling the model it returns the account-linking link (never a key
+# field), and scoping the sandbox-failure-only rule to the other providers so
+# it no longer forbids the ayrshare call. No tool was added (89 either side).
+# Measured on the branch, whose merge with dev 0cddeafd8d is unchanged here:
+#     dev 583fc0bb4e                              76,975 (89 tools)
+#     + this PR's connect_integration  +200       77,175 (89 tools)
+# Plus one.
+_CHAR_BUDGET = 77_176
 
 
 @pytest.fixture(scope="module")

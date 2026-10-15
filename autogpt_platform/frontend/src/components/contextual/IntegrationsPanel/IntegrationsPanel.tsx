@@ -55,7 +55,7 @@ export function IntegrationsPanel({
           id="tool-connections-heading"
           className="pb-3 pl-4 uppercase tracking-[0.06em] text-[#505057]"
         >
-          Tools your agents use
+          Tools your experts and workflows use
         </Text>
         <IntegrationsList
           query={query}

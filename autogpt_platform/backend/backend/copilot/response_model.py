@@ -502,6 +502,9 @@ class StreamPendingDrainedMessage(BaseModel):
 
     id: str = Field(description="Stable id of the drained pending message")
     content: str = Field(description="Raw text the user typed mid-turn")
+    metadata: dict[str, Any] | None = Field(
+        default=None, description="The metadata persisted on the row's user message"
+    )
 
 
 class StreamPendingDrained(StreamBaseResponse):
@@ -540,7 +543,7 @@ class StreamPendingDrained(StreamBaseResponse):
             "type": self.type.value,
             "data": {
                 "drainedCount": self.drainedCount,
-                "messages": [m.model_dump() for m in self.messages],
+                "messages": [m.model_dump(exclude_none=True) for m in self.messages],
             },
         }
         return f"data: {json.dumps(data)}\n\n"
