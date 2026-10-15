@@ -231,7 +231,6 @@ async def _submit_ratification(result: NightlyBatchResult) -> None:
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
 
 
-
 async def _submit_learning(result: NightlyBatchResult) -> None:
     """Skill learning, when its own flag is on for the user: the dream pass
     never implies it. A failure stays isolated, as the other submitters' do."""
