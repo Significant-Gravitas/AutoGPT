@@ -23,7 +23,9 @@ future cron (P8 cross-scope insight, ...) is a row in
 Three layers of flag gating, all on the scope owner's flags:
 
   1. **Registry** — the cheapest gate; runs before any database read, so
-     a flag-off user costs neither a query nor a scheduler RPC.
+     an owner whose flags cannot be read costs neither a query nor a
+     scheduler RPC, and one whose flags are all off costs one row read, and
+     a scheduler RPC only to remove a cron its row still records.
   2. **Scheduler ``@expose`` method** — defense-in-depth for direct
      callers (admin endpoint, ad-hoc scripts) that bypass the registry.
   3. **Job body** — if the flag flips off after registration, the job

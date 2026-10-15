@@ -11,8 +11,9 @@ Ownership: every function that names a scope also takes its owner's user id
 and matches on both, so a caller only ever reaches rows of the user it names.
 The listings at the bottom are unscoped on purpose: the scheduler's cron
 reconcile pages through every row over the DatabaseManager RPC
-(``list_scope_schedules``), and the backfill's own listings are not exposed
-there.
+(``list_scope_schedules``) and asks which owners of an account cron with no
+row still exist (``existing_user_ids``), and the backfill's own listings are
+not exposed there.
 """
 
 from collections.abc import Sequence
@@ -288,8 +289,27 @@ async def list_live_expert_scopes(
     ]
 
 
+async def list_learning_account_ids(
+    *, after: str | None = None, limit: int = 500
+) -> list[str]:
+    """One page of the users with skill-learning sources, by user id; pass
+    the last id of a page as ``after`` for the next. Backfill only: an
+    account can learn without a memory graph, and its learning cron was
+    registered when its first source landed."""
+    where: prisma.types.SkillLearningSourceWhereInput = {}
+    if after is not None:
+        where["userId"] = {"gt": after}
+    rows = await prisma.models.SkillLearningSource.prisma().group_by(
+        by=["userId"], where=where, order={"userId": "asc"}, take=limit
+    )
+    return [row["userId"] for row in rows]
+
+
 async def existing_user_ids(user_ids: list[str]) -> set[str]:
-    """The subset of ``user_ids`` that still have a User row. Backfill only."""
+    """The subset of ``user_ids`` that still have a User row: the backfill's
+    check of the owners it found, and the reconcile's and the cron gate's of
+    an account cron with no row (``copilot/dream/scope_reconcile.py``,
+    ``scope_crons.py``). One query; callers page their ids."""
     if not user_ids:
         return set()
     rows = await prisma.models.User.prisma().find_many(where={"id": {"in": user_ids}})

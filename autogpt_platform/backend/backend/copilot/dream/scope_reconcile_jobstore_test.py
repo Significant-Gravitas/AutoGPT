@@ -10,7 +10,9 @@ the same scope. Round 4's: that restore cut short after its stale add, by
 a failed or locked write or a cancellation. A stale add is tagged as the
 reconcile's, and the next pass takes it back. Round 5's: a sibling's repair
 that keeps failing on every pass kept that stray running; the stray now
-goes first, whatever the repair does.
+goes first, whatever the repair does. The learning fit's review: a
+take-back racing a new registration of the same cron removes it, a known
+limit the next pass repairs.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from sqlalchemy import create_engine, text
 
 from backend.executor import scheduler as sm
 from backend.executor.jobstore import ResilientSQLAlchemyJobStore
+from backend.util.feature_flag import Flag
 
 from . import registry, scope_reconcile
 from .registry_fakes_test import (
@@ -45,7 +48,9 @@ from .registry_fakes_test import (
     RegistryEnv,
     install_registry_env,
     job_ids,
+    learning_job_id,
 )
+from .scheduling import SKILL_LEARNING_JOB_PREFIX, dream_system_job
 
 _EXECUTION = sm.Jobstores.EXECUTION.value
 TIMEOUT = 5
@@ -573,3 +578,72 @@ async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
     finally:
         if locker is not None:
             locker.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("backend", ["sqlite", "postgres"])
+async def test_a_take_back_racing_a_new_registration_is_repaired_next_pass(
+    env, monkeypatch, tmp_path, backend: str
+):
+    """The learning fit review's probe, kept as a test of eventual repair
+    (the known limit in ``scope_reconcile.py``): a pass takes back a tagged
+    learning cron its row stopped recording, and after the pass's re-read a
+    real ensure registers it again, untagged, in a new timezone, and records
+    it. The take-back removes the new cron; the next pass restores it from
+    the row, in the row's timezone."""
+    if backend == "postgres" and _postgres_url() is None:
+        pytest.skip("needs the PostgreSQL test DB")
+    env.flags = {Flag.DREAM_SKILL_LEARNING_ENABLED: True}
+    learning = learning_job_id(ACCOUNT)
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, learning)
+    monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
+    monkeypatch.setattr(
+        "backend.util.feature_flag.is_feature_enabled", AsyncMock(return_value=True)
+    )
+    name = f"memcore_learning_{uuid.uuid4().hex[:8]}"
+    url = _postgres_url()
+    store = (
+        ResilientSQLAlchemyJobStore(url=url, tablename=name)
+        if backend == "postgres" and url is not None
+        else _sqlite(tmp_path)
+    )
+    job = dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+    with _scheduler(store) as service:
+        service._add_memory_job(
+            *sm._MEMORY_CRONS[SKILL_LEARNING_JOB_PREFIX], job, ACCOUNT, PARIS, True
+        )
+
+        async def register(**kwargs) -> dict:
+            return await asyncio.to_thread(
+                service.add_scope_skill_learning_schedule, **kwargs
+            )
+
+        env.scheduler.add_scope_skill_learning_schedule.side_effect = register
+        crons = sm._SchedulerCrons(service)
+        take_back = crons.drop
+
+        async def raced(dropped, scope) -> None:
+            env.timezone = TOKYO
+            await registry.ensure_scope_scheduled(ACCOUNT, force_refresh=True)
+            assert env.db.rows[USER].learning_job_id == learning
+            replaced = _job(service, learning)
+            assert not replaced.name.endswith(scope_reconcile.RECONCILED_SUFFIX)
+            await take_back(dropped, scope)
+
+        monkeypatch.setattr(crons, "drop", raced)
+        report = await asyncio.wait_for(scope_reconcile.reconcile(crons), TIMEOUT)
+
+        assert report.dropped == [learning]
+        assert _job(service, learning) is None, "the known limit"
+        monkeypatch.setattr(crons, "drop", take_back)
+
+        report = await asyncio.wait_for(scope_reconcile.reconcile(crons), TIMEOUT)
+
+        assert report.restored == [learning]
+        restored = _job(service, learning)
+        assert str(restored.trigger.timezone) == TOKYO
+        assert env.db.rows[USER].learning_job_id == learning
+        if backend == "postgres":
+            with store.engine.begin() as connection:
+                connection.execute(text(f"DROP TABLE IF EXISTS {name}"))

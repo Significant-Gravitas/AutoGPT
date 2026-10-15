@@ -20,10 +20,13 @@ listing shows out of step, on the row as read again just before:
     partway, was cancelled or finished after its pass, leaves at worst a
     tagged cron that the next pass reaching the scope takes away, even
     while the scope's repair keeps failing;
-  * every cron of a PAUSED or WIPED row, or of an expert with no row, is
-    removed. An untagged cron no row records (an account's from before the
-    registry, a registration whose record failed) is the registry's, and
-    stays.
+  * every cron of a PAUSED or WIPED row, of an expert with no row, or of an
+    account with no row whose user is gone, is removed. Which of those
+    accounts are gone is asked once per pass, in pages, each under the
+    registry deadline; when that cannot be answered, their crons wait for a
+    later pass. An untagged cron no row records (a live account's from
+    before the registry, a registration whose record failed) is the
+    registry's, and stays.
 
 No flag is read here. Every change is idempotent, so two schedulers (a
 rollout's overlap) each walk on their own and converge. A pass takes a scope
@@ -31,6 +34,13 @@ as its place before it works it, so a pass cut off at its ceiling hands the
 rest of the ring to the next: a lost, stale or stray cron is put right once
 the walk next reaches its scope. A pass that cannot list the crons or the rows
 changes nothing.
+
+Known limit: a pass's changes are not fenced against the registry's. An
+ensure or a resume that registers and records a cron after the pass's
+re-read can lose it to the pass's take-back or removal, and the next pass
+that reaches the scope restores it from the row. For the nightly learning
+cron that can cost one night's run; its sources persist, so the next
+night's run reviews them.
 """
 
 import bisect
@@ -116,13 +126,43 @@ async def reconcile(store: CronStore) -> ReconcileReport:
     held: dict[str, list[ListedCron]] = {}
     for cron in listed:
         held.setdefault(cron.scope.scope_key, []).append(cron)
+    gone = await _gone_accounts(rows, held)
     for key in _ring(sorted(rows.keys() | held.keys())):
         row, crons = rows.get(key), held.get(key, [])
-        if not _out_of_step(row, crons):
+        if not _out_of_step(row, crons, gone):
             continue
         _Place.last = key
-        await _settle(_scope_of(row) if row else crons[0].scope, crons, store, report)
+        scope = _scope_of(row) if row else crons[0].scope
+        await _settle(scope, crons, store, report, gone)
     return report
+
+
+async def _gone_accounts(
+    rows: dict[str, MemoryScopeSchedule], held: dict[str, list[ListedCron]]
+) -> set[str]:
+    """The owners of account crons with no row whose user is gone, asked in
+    pages under the registry deadline. Empty when the answer cannot be had:
+    those crons wait for a later pass rather than go on a guess."""
+    owners = sorted(
+        {
+            crons[0].scope.owner_user_id
+            for key, crons in held.items()
+            if key not in rows and not crons[0].scope.is_expert
+        }
+    )
+    live: set[str] = set()
+    try:
+        for start in range(0, len(owners), PAGE_SIZE):
+            page = owners[start : start + PAGE_SIZE]
+            live |= await within_deadline(memory_schedule_db().existing_user_ids(page))
+    except Exception:
+        logger.warning(
+            "Memory cron reconcile could not tell which accounts are gone; "
+            "their crons wait for a later pass",
+            exc_info=True,
+        )
+        return set()
+    return set(owners) - live
 
 
 def _ring(keys: list[str]) -> list[str]:
@@ -143,14 +183,16 @@ class _Place:
     last: ClassVar[str | None] = None
 
 
-def _out_of_step(row: MemoryScopeSchedule | None, crons: list[ListedCron]) -> bool:
+def _out_of_step(
+    row: MemoryScopeSchedule | None, crons: list[ListedCron], gone: set[str]
+) -> bool:
     """Whether the listing shows the scope out of step: an ACTIVE row's
     recorded crons missing or elsewhere, a tagged cron it does not record,
     or crons that must go."""
     if row is not None and row.state == _ACTIVE:
         scope = _scope_of(row)
         return bool(_off(row, scope, _zones(crons))) or bool(_stray(row, crons))
-    if crons and _straggling(crons[0].scope, row):
+    if crons and _straggling(crons[0].scope, row, gone):
         return True
     return bool(_stray(row, crons))
 
@@ -160,6 +202,7 @@ async def _settle(
     crons: list[ListedCron],
     store: CronStore,
     report: ReconcileReport,
+    gone: set[str],
 ) -> None:
     """Settle the scope on its row as read now: remove the crons of a scope
     that must have none; else take back the tagged crons the row does not
@@ -171,7 +214,7 @@ async def _settle(
     except Exception:
         logger.warning(f"Could not read {scope_label(scope)} again", exc_info=True)
         return
-    if _straggling(scope, row):
+    if _straggling(scope, row, gone):
         await _step(scope, report, _remove(scope, store, report))
         return
     await _step(scope, report, _drop(scope, _stray(row, crons), store, report))
@@ -266,11 +309,14 @@ def _stray(
     ]
 
 
-def _straggling(scope: MemoryScope, row: MemoryScopeSchedule | None) -> bool:
+def _straggling(
+    scope: MemoryScope, row: MemoryScopeSchedule | None, gone: set[str]
+) -> bool:
     """Whether crons of ``scope`` must go: its row says PAUSED or WIPED, or it
-    is an expert's and has no row. An account with no row keeps its crons."""
+    has no row and is an expert's or a gone account's. A live account with
+    no row keeps its crons until the registry adopts them."""
     if row is None:
-        return scope.is_expert
+        return scope.is_expert or scope.owner_user_id in gone
     return row.state != _ACTIVE
 
 
