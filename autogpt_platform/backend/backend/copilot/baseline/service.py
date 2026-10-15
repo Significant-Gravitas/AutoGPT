@@ -55,6 +55,7 @@ from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
@@ -1803,6 +1804,8 @@ async def stream_chat_completion_baseline(
     # Capture count *before* the pending drain so is_first_turn and the
     # transcript staleness check are not skewed by queued messages.
     _pre_drain_msg_count = len(session.messages)
+    learning_initiating_user = find_initiating_user_row(session, message)
+    learning_initiating_text = message
     # The stream's rows start after the message that triggered it; the rows
     # appended before the turn's first yield are announced once it opens.
     turn_start = _pre_drain_msg_count
@@ -2115,7 +2118,6 @@ async def stream_chat_completion_baseline(
             user_message_for_transcript = prefixed
         else:
             logger.warning("[Baseline] No user message found for context injection")
-
     # Now that ``inject_user_context`` has wrapped + persisted the
     # original turn-starting send into its row, fold pending into the
     # model's current-turn input AND persist each pending message as
@@ -2212,6 +2214,7 @@ async def stream_chat_completion_baseline(
         try:
             skills_notice = await build_skills_update_notice(
                 user_id,
+                session_id=session.session_id,
                 expert_id=session.expert_id,
                 prior_contents=[
                     m.content or "" for m in session.messages if m.role == "user"
@@ -2956,6 +2959,22 @@ async def stream_chat_completion_baseline(
             )
             _background_tasks.add(_ingest_task)
             _ingest_task.add_done_callback(_background_tasks.discard)
+
+        # --- Skill learning: record this turn as a learning source ---
+        # Independent of Graphiti; flag-gated and never raises.
+        if user_id and message and is_user_message:
+            _capture_task = asyncio.create_task(
+                capture_chat_turn(
+                    user_id,
+                    session,
+                    list(session.messages[turn_start:]),
+                    message,
+                    initiating_user=learning_initiating_user,
+                    initiating_text=learning_initiating_text,
+                )
+            )
+            _background_tasks.add(_capture_task)
+            _capture_task.add_done_callback(_background_tasks.discard)
 
         # --- Upload transcript for next-turn continuity ---
         # Backfill partial assistant text that wasn't recorded by the
