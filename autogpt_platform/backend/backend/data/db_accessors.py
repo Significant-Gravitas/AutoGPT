@@ -382,6 +382,16 @@ def bot_installs_db():
     return bot_installs_db
 
 
+def pro_activation_db():
+    if db.is_connected():
+        from backend.data import pro_activation
+
+        return pro_activation
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
 def posthog_lifecycle_db():
     if db.is_connected():
         from backend.data import posthog_lifecycle_sync as _posthog_lifecycle_db

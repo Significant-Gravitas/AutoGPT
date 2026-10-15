@@ -85,7 +85,10 @@ import backend.data.user
 import backend.integrations.webhooks.utils
 import backend.util.service
 import backend.util.settings
-from backend.api.features import subscription_trial_routes
+from backend.api.features import (
+    subscription_activation_routes,
+    subscription_trial_routes,
+)
 from backend.api.features.library.exceptions import (
     FolderAlreadyExistsError,
     FolderValidationError,
@@ -390,6 +393,7 @@ app.include_router(
     backend.api.features.desktop_preview.router, tags=["v1"], prefix="/api"
 )
 app.include_router(subscription_trial_routes.router, prefix="/api")
+app.include_router(subscription_activation_routes.router, prefix="/api")
 app.include_router(
     api_keys_routes.router,
     tags=["v1", "api-keys"],

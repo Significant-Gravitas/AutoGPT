@@ -165,6 +165,7 @@ from backend.data.posthog_lifecycle_sync import (
     request_posthog_lifecycle_sync,
     start_posthog_lifecycle_sweep,
 )
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -394,6 +395,7 @@ class DatabaseManager(AppService):
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
@@ -892,6 +894,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
