@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
 from backend.copilot.graphiti.falkordb_driver import AutoGPTFalkorDriver
+from backend.copilot.hidden_rows import visible_to_model
 from backend.data.db_accessors import chat_db
 
 logger = logging.getLogger(__name__)
@@ -306,7 +307,7 @@ async def _fetch_recent_sessions(
                 session_id=sid, limit=20, user_id=user_id
             )
             if paginated is not None:
-                messages = list(getattr(paginated, "messages", []) or [])
+                messages = visible_to_model(getattr(paginated, "messages", []) or [])
         except Exception:
             logger.debug(
                 "Failed to fetch messages for session %s — body left empty",
