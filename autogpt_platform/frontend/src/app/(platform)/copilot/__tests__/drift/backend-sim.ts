@@ -81,7 +81,7 @@ export function createBackendSim(plans: TurnPlan[]) {
     state.startedAt = new Date().toISOString();
     state.trimmedBefore = 0;
     state.running = true;
-    state.current = leadingUserRows(plans[index].turn.rows);
+    state.current = rowsBeforeTurn(plans[index].turn, turns[index]);
     published.set(index, 0);
   }
 
@@ -358,9 +358,20 @@ function frameData(frame: { sse: string }) {
   return line ? line.slice("data: ".length) : null;
 }
 
-function leadingUserRows(rows: Row[]) {
-  const firstOther = rows.findIndex((row) => row.role !== "user");
-  return firstOther === -1 ? rows : rows.slice(0, firstOther);
+// What the GET holds as the turn starts: everything before the rows its
+// checkpoints name, history and wake row included, else its leading prompt.
+function rowsBeforeTurn(
+  turn: RecordedTurn,
+  { recordedCheckpoints }: ReturnType<typeof simulatedTurn>,
+) {
+  const [first] = recordedCheckpoints.values();
+  if (first) {
+    return turn.rows.filter(
+      (row) => Number(row.sequence ?? 0) < first.sequence,
+    );
+  }
+  const firstOther = turn.rows.findIndex((row) => row.role !== "user");
+  return firstOther === -1 ? turn.rows : turn.rows.slice(0, firstOther);
 }
 
 function numbered(rows: Row[]): Row[] {

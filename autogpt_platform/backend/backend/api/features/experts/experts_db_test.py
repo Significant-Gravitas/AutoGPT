@@ -5197,7 +5197,7 @@ def test_to_expert_run_falls_back_when_workflow_unresolved():
     run = experts_db._to_expert_run(
         _run_execution(), None, "unknown", None, needs_review=False
     )
-    assert run.agent_name == "Agent task"
+    assert run.agent_name == "Workflow task"
     assert run.library_agent_id is None
     assert run.output_key is None
     assert run.link is None

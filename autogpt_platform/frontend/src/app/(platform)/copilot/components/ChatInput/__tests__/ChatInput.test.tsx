@@ -204,14 +204,28 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: ({
     onClearGuidedPrompt,
+    extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
+    extraItems?: { key: string; label: string; onSelect: () => void }[];
   }) => (
-    <button
-      type="button"
-      data-testid="attachment-menu"
-      onClick={() => onClearGuidedPrompt?.()}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="attachment-menu"
+        onClick={() => onClearGuidedPrompt?.()}
+      />
+      {extraItems.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="menuitem"
+          onClick={item.onSelect}
+        >
+          {item.label}
+        </button>
+      ))}
+    </>
   ),
 }));
 vi.mock("../components/FileChips", () => ({
@@ -281,36 +295,36 @@ describe("ChatInput composer row", () => {
   });
 });
 
-describe("ChatInput token devtool badge", () => {
-  it("renders the badge while the brain-dump tray is disabled", () => {
-    // The tray is brain-dump-only; the badge must not depend on that flag.
+describe("ChatInput token devtool entry", () => {
+  it("lists Token usage in the + menu while the brain-dump tray is disabled", () => {
+    // The tray is brain-dump-only; the entry must not depend on that flag.
     mockFlagValue = false;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("renders the badge inside the tray when brain dump is enabled", () => {
+  it("lists Token usage in the + menu when brain dump is enabled", () => {
     mockFlagValue = true;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.getByRole("button", { name: /Token devtool/ })).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("stays hidden when the devtool gate is off", () => {
+  it("stays out of the menu when the devtool gate is off", () => {
     mockTokenDevtoolEnabled = false;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 
-  it("stays hidden before a session exists", () => {
+  it("stays out of the menu before a session exists", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
-    expect(screen.queryByRole("button", { name: /Token devtool/ })).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 });
 

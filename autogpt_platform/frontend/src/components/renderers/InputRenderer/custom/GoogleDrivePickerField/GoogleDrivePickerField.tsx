@@ -29,7 +29,7 @@ export const GoogleDrivePickerField = (props: FieldProps) => {
       <div className="flex flex-col gap-2">
         {!isConnected && (
           <div className="rounded-3xl border border-gray-200 p-2 pl-4 text-xs text-gray-500 hover:cursor-not-allowed">
-            Select files when you run the graph
+            Select files when you run the workflow
           </div>
         )}
       </div>
