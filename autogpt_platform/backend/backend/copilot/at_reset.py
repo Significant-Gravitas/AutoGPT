@@ -192,7 +192,10 @@ async def _blocking_reset(user_id: str) -> datetime:
         raise NoResetAhead("no_reset")
     if tier == SubscriptionTier.TRIAL and await _trial_allowance_spent(user_id):
         raise NoResetAhead("no_reset")
-    status = await get_usage_status(user_id, daily_limit, weekly_limit, tier=tier)
+    # No usage, read off a Redis failure, would say the budget is already back.
+    status = await get_usage_status(
+        user_id, daily_limit, weekly_limit, tier=tier, fail_closed=True
+    )
     # As in ``check_rate_limit``: a negative limit means no cap at all.
     exhausted = [w for w in (status.daily, status.weekly) if 0 <= w.limit <= w.used]
     if not exhausted:

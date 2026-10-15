@@ -183,6 +183,25 @@ def test_setting_it_again_replaces_the_earlier_job(live_scheduler):
     assert jobs[0].next_run_time == first + timedelta(days=1)
 
 
+def test_cancel_drops_the_jobs_schedule_index_row(live_scheduler):
+    # Otherwise the schedule list shows it until the next reconcile.
+    live_scheduler._schedule_index = MagicMock()
+    live_scheduler.add_copilot_turn_schedule(
+        user_id=USER,
+        session_id=SESSION,
+        message="Resume.",
+        run_at=datetime.now(UTC) + timedelta(hours=3),
+        user_timezone="UTC",
+        purpose="resume",
+        schedule_id=at_reset_schedule_id("resume", SESSION),
+    )
+
+    assert live_scheduler.cancel_at_reset_turn(USER, SESSION, "resume") is True
+    live_scheduler._schedule_index.delete_many.assert_called_once_with(
+        [at_reset_schedule_id("resume", SESSION)]
+    )
+
+
 def test_cancel_removes_only_the_owners_job_and_is_idempotent(live_scheduler):
     live_scheduler.add_copilot_turn_schedule(
         user_id=USER,
@@ -394,6 +413,19 @@ def test_a_send_put_back_joins_one_written_while_it_ran(live_scheduler):
         "draft the launch post",
         created_at=datetime.now(UTC) - timedelta(minutes=1),
     )
+    args = _job_args(live_scheduler, "send")
+    assert args.message == "draft the launch post\n\nalso the changelog"
+
+
+def test_a_put_back_repeated_after_its_first_try_landed_adds_nothing(
+    live_scheduler,
+):
+    # The put-back call is retried when its answer is lost in transit, which
+    # can happen after the scheduler already put it back.
+    _add(live_scheduler, "send", "also the changelog")
+    set_at = datetime.now(UTC) - timedelta(minutes=1)
+    for _ in range(2):
+        _add(live_scheduler, "send", "draft the launch post", created_at=set_at)
     args = _job_args(live_scheduler, "send")
     assert args.message == "draft the launch post\n\nalso the changelog"
 
