@@ -4,9 +4,7 @@ This module provides security hooks that validate tool calls before execution,
 ensuring multi-user isolation and preventing unauthorized operations.
 """
 
-import json
 import logging
-import re
 from collections.abc import Callable, Collection, Iterable
 from typing import Any, cast
 
@@ -21,7 +19,6 @@ from backend.copilot.pending_messages import drain_and_format_for_injection
 
 from .tool_adapter import (
     BLOCKED_TOOLS,
-    DANGEROUS_PATTERNS,
     MCP_TOOL_PREFIX,
     WORKSPACE_SCOPED_TOOLS,
     stash_pending_tool_output,
@@ -151,20 +148,6 @@ def _validate_tool_access(
     if tool_name not in allowed_tools:
         return _deny_unlisted(tool_name)
 
-    # Check for dangerous patterns in tool input
-    # Use json.dumps for predictable format (str() produces Python repr)
-    input_str = json.dumps(tool_input) if tool_input else ""
-
-    for pattern in DANGEROUS_PATTERNS:
-        if re.search(pattern, input_str, re.IGNORECASE):
-            logger.warning(
-                f"Blocked dangerous pattern in tool input: {pattern} in {tool_name}"
-            )
-            return _deny(
-                "[SECURITY] Input contains a blocked pattern. "
-                "This is enforced by the platform and cannot be bypassed."
-            )
-
     return {}
 
 
@@ -282,8 +265,8 @@ def create_security_hooks(
             is_copilot_tool = tool_name.startswith(MCP_TOOL_PREFIX)
             clean_name = tool_name.removeprefix(MCP_TOOL_PREFIX)
 
-            # Our MCP tools sandbox themselves, so they skip the path and
-            # pattern checks — but not the allowed set.
+            # Our MCP tools sandbox themselves, so they skip the path checks —
+            # but not the allowed set.
             if not is_copilot_tool:
                 result = _validate_tool_access(
                     clean_name, tool_input, sdk_cwd, allowed_tools=allowed
