@@ -20955,6 +20955,29 @@
             "title": "Reset Cost",
             "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
             "default": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "low", "exhausted"],
+            "title": "State",
+            "description": "'exhausted' when a turn can't start now (a capped window or the trial allowance is used up), 'low' from 80% of the tightest window (where the meters turn amber), otherwise 'ok'.",
+            "default": "ok"
+          },
+          "limiting_window": {
+            "anyOf": [
+              { "type": "string", "enum": ["daily", "weekly", "trial"] },
+              { "type": "null" }
+            ],
+            "title": "Limiting Window",
+            "description": "The limit behind a 'low' or 'exhausted' state: the used-up window that refills last, 'trial' for the trial allowance, or the fullest window when 'low'. Null when 'ok'."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When the limiting window refills. Null when 'ok', for the trial allowance, and for a window that allows nothing (no plan), none of which refill."
           }
         },
         "type": "object",

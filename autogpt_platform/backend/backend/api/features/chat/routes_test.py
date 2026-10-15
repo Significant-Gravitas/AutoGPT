@@ -1644,6 +1644,34 @@ def test_usage_uses_config_limits(
     )
 
 
+def test_usage_reports_the_limit_that_blocks_the_next_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Both windows used up: the client is told which one it waits for and
+    when that refills, computed server-side from the meters' own status."""
+    _mock_usage(mocker, daily_used=10000, weekly_used=50000)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "exhausted"
+    assert data["limiting_window"] == "weekly"
+    assert data["resets_at"] == data["weekly"]["resets_at"]
+
+
+def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> None:
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+
+    data = client.get("/usage").json()
+
+    assert (data["state"], data["limiting_window"], data["resets_at"]) == (
+        "ok",
+        None,
+        None,
+    )
+
+
 def test_usage_rejects_unauthenticated_request() -> None:
     """GET /usage should return 401 when no valid JWT is provided."""
     unauthenticated_app = fastapi.FastAPI()

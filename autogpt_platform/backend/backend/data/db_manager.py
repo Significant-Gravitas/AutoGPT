@@ -296,6 +296,11 @@ async def _get_org_credits(org_id: str) -> int:
     return await _get_org_credits_raw(org_id)
 
 
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_org_credits = _get_org_credits
+spend_org_credits = _spend_org_credits
+
+
 class DatabaseManager(AppService):
     """Database connection pooling service.
 
