@@ -83,6 +83,30 @@ def _when(body: dict) -> datetime:
     return datetime.fromisoformat(body["run_at"])
 
 
+@pytest.mark.parametrize(
+    "method, path, body",
+    [
+        ("GET", f"/sessions/{SESSION}/at-reset", None),
+        ("POST", f"/sessions/{SESSION}/at-reset", {"kind": "send", "message": "x"}),
+        ("DELETE", f"/sessions/{SESSION}/at-reset/send", None),
+    ],
+)
+def test_every_scheduler_call_is_repeated_if_lost_in_transit(
+    method, path, body, scheduler, session, run_at, mocker: pytest_mock.MockerFixture
+):
+    # A chat lists these turns each time it opens. In e2e, a pooled connection
+    # the scheduler had just closed failed that load with a 500.
+    factory = mocker.patch.object(
+        at_reset_routes, "get_scheduler_client", return_value=scheduler
+    )
+
+    response = client.request(method, path, json=body)
+
+    assert response.status_code < 300
+    assert factory.call_args_list
+    assert all(c.kwargs == {"should_retry": True} for c in factory.call_args_list)
+
+
 def test_resume_at_reset(scheduler, session, run_at, test_user_id):
     response = client.post(
         f"/sessions/{SESSION}/at-reset", json={"kind": "resume", "message": "x"}

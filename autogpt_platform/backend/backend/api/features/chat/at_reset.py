@@ -25,7 +25,7 @@ from backend.copilot.at_reset import (
 from backend.copilot.continuation import RESUMED_AT_RESET_NOTE, as_model_prompt
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.rate_limit import RateLimitUnavailable
-from backend.executor.scheduler import CopilotTurnJobInfo
+from backend.executor.scheduler import CopilotTurnJobInfo, SchedulerClient
 from backend.util.clients import get_scheduler_client
 
 router = APIRouter(tags=["chat"])
@@ -111,7 +111,7 @@ async def schedule_at_reset(
         if request.kind == "send" and request.message
         else None
     )
-    await get_scheduler_client().add_copilot_turn_schedule(
+    await _scheduler().add_copilot_turn_schedule(
         user_id=user_id,
         session_id=session_id,
         message=message or _RESUME_DESCRIPTION,
@@ -159,7 +159,7 @@ async def cancel_at_reset(
     """Cancel the chat's resume or send at the budget reset; one that isn't
     set is already cancelled."""
     await _validate_and_get_session(session_id, user_id)
-    await get_scheduler_client().cancel_at_reset_turn(
+    await _scheduler().cancel_at_reset_turn(
         user_id=user_id, session_id=session_id, kind=kind
     )
     return Response(status_code=204)
@@ -204,10 +204,17 @@ async def _joined_with_waiting_send(user_id: str, session_id: str, message: str)
 
 
 async def _chat_turns(user_id: str, session_id: str) -> list[CopilotTurnJobInfo]:
-    schedules = await get_scheduler_client().get_execution_schedules(
+    schedules = await _scheduler().get_execution_schedules(
         user_id=user_id, session_id=session_id, kind="copilot_turn"
     )
     return [s for s in schedules if isinstance(s, CopilotTurnJobInfo)]
+
+
+def _scheduler() -> SchedulerClient:
+    # Every call here is safe to repeat: a read, a job set again under the
+    # chat's own id, a cancel. A chat lists its turns each time it opens, so a
+    # call lost on a connection the scheduler had just closed failed the load.
+    return get_scheduler_client(should_retry=True)
 
 
 def _as_turn(job: CopilotTurnJobInfo) -> AtResetTurn | None:
