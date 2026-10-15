@@ -1099,7 +1099,9 @@ async def _readd_at_reset_turn(
         )
         return
     try:
-        await get_scheduler_client().add_copilot_turn_schedule(
+        # Under its own id this is safe to repeat, and a put-back lost on a
+        # connection the scheduler had just closed would drop the user's turn.
+        await get_scheduler_client(should_retry=True).add_copilot_turn_schedule(
             user_id=args.user_id,
             session_id=args.session_id,
             message=args.message,
