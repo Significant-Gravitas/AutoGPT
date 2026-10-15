@@ -2171,12 +2171,70 @@ class TestProviderCeilingIsPinned:
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
                 AsyncMock(return_value=MagicMock()),
             ) as connect,
+            patch(
+                "backend.copilot.tools.e2b_sandbox._has_active_turns",
+                AsyncMock(return_value=False),
+            ),
         ):
             mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
             asyncio.run(
                 connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=())
             )
         assert connect.await_args.args[2].providers == ()
+
+
+class TestALiveTurnOnlyLetsTheCeilingNarrow:
+    """Turns share an expert's box and its egress: while one is live, another
+    turn's re-pin may narrow the box's ceiling, never lift it."""
+
+    def _reconnect(
+        self, providers, recorded_ceiling, *, live: bool
+    ) -> tuple[MagicMock, AsyncMock]:
+        owner = SandboxOwner(kind="expert", id=_EXPERT_ID)
+        stamp = owner.creation_metadata(user_id="user-a")
+        with (
+            _patch_sdk() as mock_cls,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.connect_sandbox",
+                AsyncMock(return_value=MagicMock()),
+            ) as connect,
+            patch(
+                "backend.copilot.tools.e2b_sandbox._has_active_turns",
+                AsyncMock(return_value=live),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.recorded_providers",
+                AsyncMock(return_value=recorded_ceiling),
+            ) as recorded,
+        ):
+            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
+            asyncio.run(
+                connect_owned(
+                    "sb-1", owner, _API_KEY, user_id="user-a", providers=providers
+                )
+            )
+        return connect, recorded
+
+    @pytest.mark.parametrize(
+        "providers, recorded_ceiling, pinned",
+        [
+            (None, ("slack",), ("slack",)),  # an unrestricted turn joins
+            (("github", "slack"), ("slack",), ("slack",)),
+            (("github",), None, ("github",)),  # a restricted turn joins
+            (("github",), ("slack",), ()),
+            (None, None, None),
+        ],
+    )
+    def test_with_another_turn_live_the_pin_keeps_what_both_allow(
+        self, providers, recorded_ceiling, pinned
+    ):
+        connect, _ = self._reconnect(providers, recorded_ceiling, live=True)
+        assert connect.await_args.args[2].providers == pinned
+
+    def test_with_no_other_turn_the_pin_sets_its_own(self):
+        connect, recorded = self._reconnect(None, ("slack",), live=False)
+        recorded.assert_not_awaited()
+        assert connect.await_args.args[2].providers is None
 
 
 class TestNoCeilingGivenKeepsTheBoxs:

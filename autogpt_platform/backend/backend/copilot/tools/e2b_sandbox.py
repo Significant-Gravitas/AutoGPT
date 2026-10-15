@@ -402,6 +402,11 @@ async def _connect_pinned(
     """Connect to *sandbox_id*, which *info* already showed to be *owner*'s."""
     if isinstance(providers, _KeepCeiling):
         providers = await recorded_providers(sandbox_id) if pin_egress else None
+    elif pin_egress and await _has_active_turns(owner):
+        # Another turn is live on the box, and its processes egress under
+        # whatever this pin sets: the pin may narrow the box's ceiling, never
+        # widen it.  Once the box is free of turns, a pin sets its own.
+        providers = _narrowest(providers, await recorded_providers(sandbox_id))
     stamped = info.metadata or {}
     # Whose credentials the proxy may swap in is the box's own record too,
     # not the caller's word: processes of the user it was created for may
@@ -427,6 +432,17 @@ async def _connect_pinned(
     if pin_egress and swap_user_id is not None:
         await _keep_grants(sandbox_id)
     return sandbox
+
+
+def _narrowest(
+    a: tuple[str, ...] | None, b: tuple[str, ...] | None
+) -> tuple[str, ...] | None:
+    """The providers both ceilings allow; ``None`` is every provider."""
+    if a is None:
+        return b
+    if b is None:
+        return a
+    return tuple(p for p in a if p in b)
 
 
 async def _keep_grants(sandbox_id: str) -> None:
