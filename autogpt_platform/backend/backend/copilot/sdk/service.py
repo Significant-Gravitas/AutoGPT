@@ -199,7 +199,11 @@ from ..tools import (
     origin_disabled_tools,
     tool_names_in_groups,
 )
-from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
+from ..tools.e2b_sandbox import (
+    forget_turn_ceiling,
+    get_or_create_sandbox,
+    pause_sandbox_direct,
+)
 from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
@@ -5060,6 +5064,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     e2b_err,
                     exc_info=True,
                 )
+                await forget_turn_ceiling(session_id, owner_expert_id)
                 return None
 
             return sandbox

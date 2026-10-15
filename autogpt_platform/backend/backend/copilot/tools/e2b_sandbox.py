@@ -769,6 +769,18 @@ def _active_turns_key(owner: SandboxOwner) -> str:
     return f"{owner.key()}:active"
 
 
+async def forget_turn_ceiling(session_id: str, expert_id: str | None) -> None:
+    """Drop the ceiling a turn of *session_id* recorded on its expert's box,
+    for a turn whose box never came up: its release will not run, and the
+    entry would hold every other session's pin down until it expires."""
+    owner = SandboxOwner.for_session(session_id, expert_id)
+    if not owner.is_expert:
+        return
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.hdel(_pin_ceilings_key(owner), session_id)
+
+
 def _pin_ceilings_key(owner: SandboxOwner) -> str:
     # Tagged with the whole turn-counter key, so on Redis Cluster both hash to
     # one slot: the release script touches the two together.
@@ -890,7 +902,8 @@ async def get_or_create_owner_sandbox(
     *providers* is the turn's ceiling on the user's connected accounts
     (``permissions.allowed_providers``), recorded when the box's egress is
     pinned; ``None`` leaves every provider usable.  Left out, a reconnect
-    keeps the ceiling the box already has, and a new box gets none.
+    keeps the ceiling the box already has, and a new box (opened from the UI,
+    outside any turn) gets every provider; a turn always passes its own.
 
     Raises :class:`SandboxLookupError` when E2B cannot say whether an expert
     already has a box: a fresh box would fork the expert's durable state.

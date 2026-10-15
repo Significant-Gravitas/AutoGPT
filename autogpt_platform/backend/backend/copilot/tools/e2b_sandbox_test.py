@@ -2365,6 +2365,31 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
         assert redis.hashes == {}
 
 
+class TestATurnWhoseBoxNeverCameUp:
+    """Its release will not run, so its ceiling entry is dropped at once
+    rather than holding every other session's pin down until it expires."""
+
+    def test_its_sessions_entry_goes_and_no_other(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, _EXPERT_ID))
+        redis.hdel.assert_awaited_once_with(
+            f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings", _SESSION_ID
+        )
+
+    def test_a_chats_own_box_has_none_to_drop(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, None))
+        redis.hdel.assert_not_awaited()
+
+
 class TestNoCeilingGivenKeepsTheBoxs:
     """``start_desktop`` and the UI screen-on re-pin a box without a ceiling of
     their own: that must keep the turn's, not widen it to every provider."""
