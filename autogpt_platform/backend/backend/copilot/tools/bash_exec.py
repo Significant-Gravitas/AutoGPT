@@ -395,12 +395,14 @@ class BashExecTool(BaseTool):
                 envs.update(integration_env)
 
             # Set git author/committer identity from the user's GitHub profile
-            # so commits made in the sandbox are attributed correctly.
-            git_identity = await get_github_user_git_identity(
-                user_id, selected.get("github")
-            )
-            if git_identity:
-                envs.update(git_identity)
+            # so commits made in the sandbox are attributed correctly; not for
+            # a run whose ceiling leaves GitHub out, which may not use it.
+            if providers is None or "github" in providers:
+                git_identity = await get_github_user_git_identity(
+                    user_id, selected.get("github")
+                )
+                if git_identity:
+                    envs.update(git_identity)
 
         # The box's running-time limit was armed when this turn connected;
         # E2B pauses the box at it, breaking the command's stream mid-run.
