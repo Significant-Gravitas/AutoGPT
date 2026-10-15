@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import pytest_asyncio
 import uvicorn
-from fastapi import HTTPException
+from fastapi import HTTPException, WebSocket
 from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosedError
 
@@ -88,6 +88,59 @@ async def test_auth_failure_reaches_the_client_as_a_close_frame(
     assert not manager._ws_subs
     assert not manager._ws_notifications
     track_connection.assert_not_called()
+
+
+@pytest.mark.parametrize("disconnect_on", ["accept", "close"])
+async def test_disconnected_auth_failure_does_not_register_socket(
+    monkeypatch: pytest.MonkeyPatch, disconnect_on: str
+) -> None:
+    monkeypatch.setattr(ws_api.settings.config, "enable_auth", True)
+    send = AsyncMock(
+        side_effect=(
+            [BrokenPipeError()]
+            if disconnect_on == "accept"
+            else [None, BrokenPipeError()]
+        )
+    )
+    websocket = WebSocket(
+        {"type": "websocket", "query_string": b""},
+        receive=AsyncMock(return_value={"type": "websocket.connect"}),
+        send=send,
+    )
+    manager = ConnectionManager()
+    connect_socket = AsyncMock()
+    monkeypatch.setattr(manager, "connect_socket", connect_socket)
+    track_connection = Mock()
+    monkeypatch.setattr(ws_api, "update_websocket_connections", track_connection)
+
+    await ws_api.websocket_router(websocket, manager)
+
+    assert send.await_count == (1 if disconnect_on == "accept" else 2)
+    connect_socket.assert_not_awaited()
+    assert not manager.active_connections
+    assert not manager._ws_subs
+    assert not manager._ws_notifications
+    track_connection.assert_not_called()
+
+
+@pytest.mark.parametrize("fail_on", ["accept", "close"])
+@pytest.mark.parametrize("error_type", [RuntimeError, asyncio.CancelledError])
+async def test_auth_failure_propagates_unrelated_errors(
+    fail_on: str, error_type: type[BaseException]
+) -> None:
+    failure = error_type("send failed")
+    websocket = WebSocket(
+        {"type": "websocket"},
+        receive=AsyncMock(return_value={"type": "websocket.connect"}),
+        send=AsyncMock(
+            side_effect=[failure] if fail_on == "accept" else [None, failure]
+        ),
+    )
+
+    with pytest.raises(error_type, match="send failed"):
+        await ws_api._close_authentication_failure(
+            websocket, code=4001, reason="Missing authentication token"
+        )
 
 
 @pytest.mark.parametrize("enable_auth", [True, False])

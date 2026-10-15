@@ -115,8 +115,11 @@ async def _close_authentication_failure(
     websocket: WebSocket, *, code: int, reason: str
 ) -> None:
     """Complete the handshake so the client receives the close frame."""
-    await websocket.accept()
-    await websocket.close(code=code, reason=reason)
+    try:
+        await websocket.accept()
+        await websocket.close(code=code, reason=reason)
+    except (WebSocketDisconnect, OSError):
+        logger.debug("WebSocket client disconnected during authentication rejection")
 
 
 # ===================== Message Handlers ===================== #
