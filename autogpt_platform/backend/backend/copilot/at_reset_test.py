@@ -328,11 +328,13 @@ async def test_a_trials_spent_day_waits_for_tomorrow(limits, chat_reads, trial):
 @pytest.mark.asyncio
 async def test_cancelling_a_resume_runs_in_the_background_and_spares_a_send():
     client = MagicMock(cancel_at_reset_turn=AsyncMock(return_value=True))
-    with patch(f"{_MOD}.get_scheduler_client", return_value=client):
+    with patch(f"{_MOD}.get_scheduler_client", return_value=client) as factory:
         await cancel_resume_at_reset_in_background(SESSION, "user-1")
     client.cancel_at_reset_turn.assert_awaited_once_with(
         user_id="user-1", session_id=SESSION, kind="resume"
     )
+    # A cancel lost on a connection the scheduler had just closed is repeated.
+    factory.assert_called_once_with(should_retry=True)
 
 
 @pytest.mark.asyncio

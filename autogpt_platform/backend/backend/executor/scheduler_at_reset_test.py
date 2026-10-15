@@ -92,7 +92,7 @@ def fire_env():
             f"{_SCHEDULER}.load_at_reset_chat", AsyncMock(return_value=_chat())
         ) as load,
         patch(f"{_SCHEDULER}.schedule_turn", AsyncMock()) as dispatch,
-        patch(f"{_SCHEDULER}.get_scheduler_client", return_value=client),
+        patch(f"{_SCHEDULER}.get_scheduler_client", return_value=client) as factory,
         patch(f"{_AT_RESET}.chat_db", return_value=store),
         patch(f"{_AT_RESET}.is_turn_in_flight", AsyncMock(return_value=False)) as busy,
         patch(f"{_AT_RESET}.get_global_rate_limits", AsyncMock(return_value=limits)),
@@ -103,6 +103,7 @@ def fire_env():
             load=load,
             dispatch=dispatch,
             client=client,
+            factory=factory,
             busy=busy,
             gate=gate,
             usage=usage,
@@ -246,6 +247,16 @@ async def test_a_busy_chat_puts_it_back_in_five_minutes_under_its_own_id(fire_en
     assert readded["created_at"] == SET_AT
     assert readded["cap_retry_count"] == 3
     assert timedelta(minutes=5) <= readded["run_at"] - before < timedelta(minutes=6)
+
+
+@pytest.mark.asyncio
+async def test_a_put_back_lost_in_transit_is_repeated(fire_env):
+    # Dropped, it would lose the user's turn; under its own id it is safe to
+    # repeat on a connection the scheduler had just closed.
+    fire_env.busy.return_value = True
+    await _fire(_args("send"))
+    fire_env.client.add_copilot_turn_schedule.assert_awaited_once()
+    fire_env.factory.assert_called_once_with(should_retry=True)
 
 
 @pytest.mark.asyncio
