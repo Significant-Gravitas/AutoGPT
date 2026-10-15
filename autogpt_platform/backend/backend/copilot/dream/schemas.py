@@ -23,6 +23,8 @@ from .routing import ExecutionPath
 
 logger = logging.getLogger(__name__)
 
+DreamPhase = Literal["consolidate", "recombine", "sanitize"]
+
 
 class IngestionDrainStatus(str, Enum):
     """Fate of a dream pass's enqueued graph writes at the moment the pass
@@ -274,7 +276,7 @@ class DreamOperationsSnapshot(BaseModel):
 class PhaseUsage(BaseModel):
     """Per-phase token + cost telemetry."""
 
-    phase: Literal["consolidate", "recombine", "sanitize"]
+    phase: DreamPhase
     model: str
     input_tokens: int = 0
     output_tokens: int = 0

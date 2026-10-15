@@ -1,263 +1,54 @@
-"""Pydantic-typed LLM entry point for the dream pass.
+"""Parse a background LLM call's structured answer into its Pydantic model.
 
-Thin wrapper on top of ``backend/util/llm/providers.call_provider``
-that adds the dream-specific concerns the shared helper deliberately
-doesn't own:
+``backend/copilot/inference/complete.py`` makes the call, and the dream's
+batch callbacks read their result rows; this module turns the text either
+gets back into the typed value, recovering from the ways models wrap their
+JSON:
 
-  * **Pydantic schema validation** — converts the LLM's JSON response
-    into a typed instance of ``response_model`` and surfaces a clean
-    ``DreamLLMError`` if the model emits a shape that doesn't fit.
-  * **JSON prose-prefix recovery** — when a model wraps its JSON in
-    chain-of-thought ("Looking at the inputs, I need to ... {...}")
-    we extract the first balanced JSON object/array. The strengthened
-    system prompts in ``prompts.py`` cut down on prose preambles, but
-    this is the parser-level safety net.
-  * **Markdown fence stripping** — ``` ```json ... ``` ``` shows up
-    on some OpenRouter upstreams even with ``force_json_output``.
-  * **CompletionUsage** carrier — the orchestrator rolls these per
-    phase into a ``DreamPassUsage`` for the cost ledger.
+  * **Markdown fences** — ``` ```json ... ``` ``` shows up on some
+    OpenRouter upstreams even with ``force_json_output``.
+  * **Prose prefixes** — a model that opens with chain-of-thought
+    ("Looking at the inputs, I need to ... {...}") has its first balanced
+    JSON object or array extracted. The system prompts in ``prompts.py``
+    cut these down; this is the parser-level safety net.
 
-Why route through ``routing_kwargs_for_chat_transport()`` instead of
-pinning a provider:
-  * One control surface for every transport — local Ollama,
-    subscription Anthropic, direct Anthropic, and OpenRouter all
-    land at the same call site without per-transport branches here.
-  * ``response_format={"type":"json_object"}`` is supported across
-    OpenAI, OpenRouter, and Ollama. The native Anthropic API ignores
-    it, so on the ``anthropic`` provider the output comes from one
-    tool built from the response model instead, the way the batch
-    path gets it (``structured_output.py``): forced where the model
-    accepts that, left to the model (``auto``) where it doesn't.
-  * The Anthropic batch path (``batch_submit.py``) calls
-    ``call_provider(execution_mode="batch")`` itself, beside this
-    wrapper rather than through it; this wrapper stays sync-only.
+Every failure is an ``InferenceError`` carrying the call's usage: the
+provider already billed those tokens, so a caller keeping a cost ledger
+still records them.
 """
 
 from __future__ import annotations
 
 import json
-import logging
-from typing import Generic, TypeVar
+from typing import TypeVar
 
-import anthropic
 from pydantic import BaseModel, ValidationError
 
-from backend.copilot.transport_routing import (
-    ProviderRoutingKwargs,
-    routing_kwargs_for_chat_transport,
-)
-from backend.util.llm.providers import (
-    BatchSubmissionRef,
-    ProviderLiteral,
-    ProviderResponse,
-    call_provider,
-    is_forced_tool_choice_rejection,
-)
-
-from .structured_output import StructuredRequest, structured_payload, structured_request
-
-logger = logging.getLogger(__name__)
+from backend.copilot.inference.context import InferenceError, InferenceUsage
 
 T = TypeVar("T", bound=BaseModel)
 
 
-class DreamLLMError(RuntimeError):
-    """Raised when a dream-pass LLM call cannot be parsed into the target schema.
+def parse_structured_output(
+    content: str, response_model: type[T], usage: InferenceUsage
+) -> T:
+    """*content* validated into *response_model*.
 
-    ``usage`` carries the provider-reported spend when the failure happened
-    *after* a response came back — empty content, unparseable JSON, a schema
-    mismatch. Those tokens were billed, so a caller keeping a cost ledger has
-    to record them. ``None`` means no provider call completed and nothing was
-    charged.
+    Raises ``InferenceError`` carrying *usage* when the content is empty,
+    is not JSON even after fence and prose recovery, or does not fit the
+    schema.
     """
-
-    def __init__(self, message: str, usage: CompletionUsage | None = None) -> None:
-        super().__init__(message)
-        self.usage = usage
-
-
-class CompletionUsage(BaseModel):
-    """Token + cost telemetry from a single LLM call.
-
-    Carries the provider-reported cost when present (OpenRouter
-    surfaces ``usage.cost`` when the request asks for ``usage:
-    {"include": True}``); falls back to None when absent. Token counts
-    are always present.
-    """
-
-    model: str
-    input_tokens: int = 0
-    output_tokens: int = 0
-    cache_read_tokens: int = 0
-    cache_creation_tokens: int = 0
-    cost_usd: float | None = None
-
-
-class StructuredCompletion(BaseModel, Generic[T]):
-    """Return value of ``structured_completion``: parsed model + usage."""
-
-    value: T
-    usage: CompletionUsage
-
-
-async def structured_completion(
-    *,
-    model: str,
-    messages: list[dict[str, str]],
-    response_model: type[T],
-    temperature: float = 0.2,
-    max_output_tokens: int = 4096,
-    timeout_seconds: float | None = None,
-) -> StructuredCompletion[T]:
-    """Call the LLM for structured output and parse into ``response_model``.
-
-    JSON mode on every provider but the native Anthropic API, which gets
-    ``model`` in its native spelling and one tool built from
-    ``response_model``, forced where the model accepts that (see
-    ``structured_output.py``); the tool call's arguments are parsed, or
-    the message text when there is none.
-
-    Returns a ``StructuredCompletion`` carrying both the parsed value
-    and a ``CompletionUsage`` block so the dream orchestrator can roll
-    token counts + cost up into a ``DreamPassUsage``.
-
-    ``timeout_seconds`` is the wall-clock budget for the provider call.
-    The shared default is a generic block-call budget; dream phases are
-    sized against the pass's own scheduler/lock envelope and must pass
-    their own ceiling — see the per-phase ``*_TIMEOUT_SECONDS`` constants
-    in ``orchestrator.py`` — rather than inherit it.
-
-    Raises ``DreamLLMError`` if the response is empty, unparseable, or
-    fails Pydantic validation. Callers should treat that as "this
-    phase failed" — the orchestrator either skips downstream phases
-    or returns a partial result.
-    """
-    routing = routing_kwargs_for_chat_transport()
-    if not routing.api_key and routing.provider != "ollama":
-        raise DreamLLMError(_missing_api_key_message(routing.provider))
-    try:
-        request = structured_request(routing.provider, model, response_model)
-    except ValueError as exc:
-        raise DreamLLMError(str(exc)) from exc
-
-    response = await _call_provider_sync(
-        routing,
-        request,
-        messages=messages,
-        temperature=temperature,
-        max_output_tokens=max_output_tokens,
-        timeout_seconds=timeout_seconds,
-    )
-    usage = _usage_from_provider_response(response, request.model)
-
-    content = structured_payload(response)
     if not content:
-        raise DreamLLMError("LLM returned empty content", usage)
-
-    # Everything below this point is post-billing: the provider already
-    # charged for the tokens it sent, so every failure carries the usage out.
+        raise InferenceError("LLM returned empty content", usage)
     try:
-        payload = parse_json_with_prose_fallback(content)
-        return StructuredCompletion(
-            value=response_model.model_validate(payload),
-            usage=usage,
-        )
-    except DreamLLMError as exc:
+        return response_model.model_validate(parse_json_with_prose_fallback(content))
+    except InferenceError as exc:
         exc.usage = usage
         raise
     except ValidationError as exc:
-        raise DreamLLMError(
+        raise InferenceError(
             f"LLM JSON did not match {response_model.__name__}: {exc}", usage
         ) from exc
-
-
-async def _call_provider_sync(
-    routing: ProviderRoutingKwargs,
-    request: StructuredRequest,
-    *,
-    messages: list[dict[str, str]],
-    temperature: float,
-    max_output_tokens: int,
-    timeout_seconds: float | None,
-) -> ProviderResponse:
-    """One sync ``call_provider`` round trip; any failure is a ``DreamLLMError``
-    with no usage, since no response came back to bill.
-
-    A model that turns the forced output tool down (Anthropic's 400
-    ``BadRequestError`` naming ``tool_choice``, and only that) is asked
-    once more with the tool left to its choice and the prompt asking for
-    the call: the self-heal for a model missing from the provider's
-    forced-tool list. A second failure is final."""
-
-    async def send(
-        attempt: StructuredRequest,
-    ) -> ProviderResponse | BatchSubmissionRef:
-        return await call_provider(
-            provider=routing.provider,
-            model=attempt.model,
-            api_key=routing.api_key,
-            messages=attempt.prompt(messages),
-            max_tokens=max_output_tokens,
-            temperature=temperature,
-            force_json_output=attempt.force_json_output,
-            tools=attempt.tools,
-            tool_choice=attempt.tool_choice,
-            timeout_seconds=timeout_seconds,
-            # ``call_provider`` only honors ``ollama_host`` when
-            # ``provider="ollama"``; passing it on cloud transports is
-            # harmless. ``routing.base_url`` is the ``CHAT_BASE_URL``
-            # for local installs (e.g. ``http://localhost:11434/v1``);
-            # strip the OpenAI-compat ``/v1`` suffix because
-            # ``ollama.AsyncClient`` wants the raw host:port.
-            ollama_host=_normalize_ollama_host(routing.base_url),
-        )
-
-    try:
-        try:
-            response = await send(request)
-        except anthropic.BadRequestError as exc:
-            if not (
-                request.forces_output_tool and is_forced_tool_choice_rejection(exc)
-            ):
-                raise
-            logger.warning(
-                "Model %s rejected the forced output tool (%s); retrying once "
-                "with tool_choice=auto. Add it to "
-                "_ANTHROPIC_FORCED_TOOL_CHOICE_UNSUPPORTED in "
-                "backend/util/llm/providers.py.",
-                request.model,
-                exc,
-            )
-            response = await send(request.with_output_tool_optional())
-    except DreamLLMError:
-        raise
-    except Exception as exc:
-        raise DreamLLMError(f"LLM call failed: {type(exc).__name__}: {exc}") from exc
-
-    if not isinstance(response, ProviderResponse):
-        # ``call_provider`` returns a ``BatchSubmissionRef`` only for
-        # ``execution_mode="batch"``, which the batch path
-        # (``batch_submit.submit_phase``) asks for; this sync wrapper never
-        # does, so anything else is a bug.
-        raise DreamLLMError(
-            "structured_completion expected a sync ProviderResponse but got a "
-            f"{type(response).__name__} — execution_mode must stay 'sync' here."
-        )
-    return response
-
-
-def _usage_from_provider_response(
-    response: ProviderResponse, model: str
-) -> CompletionUsage:
-    """Convert a ``ProviderResponse`` into the dream's ``CompletionUsage``."""
-    return CompletionUsage(
-        model=model,
-        input_tokens=response.prompt_tokens,
-        output_tokens=response.completion_tokens,
-        cache_read_tokens=response.cache_read_tokens,
-        cache_creation_tokens=response.cache_creation_tokens,
-        cost_usd=response.cost_usd,
-    )
 
 
 def parse_json_with_prose_fallback(content: str) -> object:
@@ -271,9 +62,9 @@ def parse_json_with_prose_fallback(content: str) -> object:
        balanced ``{...}`` / ``[...]`` and re-parse that — handles the
        "Looking at the inputs, I need to..." prose-prefix case.
 
-    Raises ``DreamLLMError`` if neither layer recovers a parseable
+    Raises ``InferenceError`` if neither layer recovers a parseable
     document, surfacing the first 200 chars of the offending content so
-    the orchestrator can log enough to debug what the model emitted.
+    the caller can log enough to debug what the model emitted.
     """
     cleaned = _strip_json_code_fence(content)
     try:
@@ -283,13 +74,13 @@ def parse_json_with_prose_fallback(content: str) -> object:
 
     extracted = _extract_first_json_object(cleaned)
     if extracted is None:
-        raise DreamLLMError(
+        raise InferenceError(
             f"LLM returned non-JSON content — first 200 chars: {content[:200]}"
         )
     try:
         return json.loads(extracted)
     except json.JSONDecodeError as exc:
-        raise DreamLLMError(
+        raise InferenceError(
             f"LLM returned non-JSON content even after extraction: {exc} — "
             f"first 200 chars: {content[:200]}"
         ) from exc
@@ -357,54 +148,3 @@ def _strip_json_code_fence(content: str) -> str:
     if body.endswith("```"):
         body = body[:-3]
     return body.strip()
-
-
-def _missing_api_key_message(provider: ProviderLiteral) -> str:
-    """Per-provider friendly error string for the no-API-key case.
-
-    Calls out the env var the operator needs to set + (for subscription)
-    the reason their OAuth token isn't sufficient. Surfaced to the user
-    via the JobStatus ``error`` field in the admin viz so they can
-    self-serve the fix without needing a logs dive.
-    """
-    if provider == "anthropic":
-        return (
-            "Anthropic API key not configured — set ANTHROPIC_API_KEY to "
-            "enable the dream pass under subscription / direct-Anthropic "
-            "mode. The Claude Code OAuth token cannot be used for direct "
-            "Messages API calls (see "
-            "docs/platform/copilot-local-llm.md#subscription-mode-caveat)."
-        )
-    if provider == "open_router":
-        return "OpenRouter API key not configured — set OPEN_ROUTER_API_KEY."
-    return f"No API key configured for dream pass provider={provider!r}."
-
-
-def _normalize_ollama_host(base_url: str | None) -> str:
-    """Turn ``CHAT_BASE_URL`` into the host string ollama.AsyncClient wants.
-
-    ``CHAT_BASE_URL`` for local installs points at the OpenAI-compat
-    surface — e.g. ``http://localhost:11434/v1``. Ollama's native
-    Python client takes the raw host (no ``/v1`` suffix); pass the
-    trailing path through and the client tries to POST to
-    ``/v1/api/generate`` and 404s. Strip path/query/fragment so the
-    client sees ``http://localhost:11434``.
-
-    Returns the platform default (``localhost:11434``) when no
-    ``base_url`` is provided so non-local callers get a sane fallback
-    even though ``call_provider`` ignores ``ollama_host`` outside the
-    ollama branch.
-    """
-    if not base_url:
-        return "localhost:11434"
-    from urllib.parse import urlparse, urlunparse
-
-    parsed = urlparse(base_url)
-    # ``urlparse("localhost:11434")`` mis-reports ``scheme="localhost"``
-    # because the parser treats the colon as a scheme separator when no
-    # ``//`` follows. Only ``http`` / ``https`` are real URL schemes
-    # this caller would emit; anything else means the input was a bare
-    # ``host:port`` — pass it through unchanged.
-    if parsed.scheme not in ("http", "https"):
-        return base_url
-    return urlunparse((parsed.scheme, parsed.netloc, "", "", "", ""))
