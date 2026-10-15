@@ -49,9 +49,7 @@ describe("copilotChatRegistry onData wiring", () => {
 
   it("ignores data parts when no handler is registered", () => {
     getOrCreateCopilotChatRuntime("s1");
-    expect(() =>
-      chatOptions().onData?.({ type: "data-status" }),
-    ).not.toThrow();
+    expect(() => chatOptions().onData?.({ type: "data-status" })).not.toThrow();
   });
 
   it("stops forwarding after the handler is cleared", () => {

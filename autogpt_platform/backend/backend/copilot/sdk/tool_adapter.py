@@ -949,15 +949,10 @@ def create_copilot_mcp_server(
     sdk_tools = []
 
     for tool_name, base_tool in TOOL_REGISTRY.items():
-        # Baseline-only wrappers (TodoWrite) must not be registered here:
-        # SDK mode uses the CLI-native built-ins, and these names are
-        # excluded from ``allowed_tools`` — advertising an MCP copy the CLI
-        # can never approve makes the model call it, receive a permission
-        # denial, and silently abandon the feature (e.g. the task checklist).
         # Deferred tools are reached through run_capability, not by name.
-        # ``is_available`` is the env check the baseline path applies in
-        # ``get_available_tools``; without it this engine offers browser
-        # tools on a box with no agent-browser binary.
+        # ``is_available`` is the env check ``get_available_tools`` applies;
+        # without it this engine offers browser tools on a box with no
+        # agent-browser binary.
         if (
             tool_name in hidden
             or tool_name in DEFERRED_TOOL_NAMES
