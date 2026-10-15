@@ -365,9 +365,11 @@ def _field_labels(tool_name: str, shown: dict[str, Any]) -> list[FieldLabel]:
 
 
 def _humanize(key: str) -> str:
-    # agent_ids -> "Agents": the card shows names there, not ids.
+    # agent_ids -> "Workflows": the card shows names there, not ids, and users
+    # know a graph as a workflow.
     plural = key.endswith("_ids")
     words = key.removesuffix("_ids").removesuffix("_id").replace("_", " ").strip()
+    words = words.replace("agent", "workflow").replace("graph", "workflow")
     words += "s" if plural else ""
     return words[:1].upper() + words[1:]
 

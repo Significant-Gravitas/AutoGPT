@@ -39,7 +39,8 @@ export function AgentSavedCard({
           className="relative top-1"
         />
         <Text variant="body-medium" className="mb-2 text-[16px] text-black">
-          Agent <span className="text-violet-600">{agentName}</span> {message}
+          Workflow <span className="text-violet-600">{agentName}</span>{" "}
+          {message}
         </Text>
       </div>
       {!hideNavButtons && (

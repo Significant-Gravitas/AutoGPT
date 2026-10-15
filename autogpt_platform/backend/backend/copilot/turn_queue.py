@@ -10,7 +10,8 @@ text column:
 
 The user's pending message itself is just a normal ChatMessage row (no
 status of its own).  The dispatcher's submit-time payload (``file_ids``,
-``model``, ``permissions``, ``context``, ``request_arrival_at``)
+``model``, ``permissions``, ``context``, ``request_arrival_at``,
+``impersonated``)
 is stashed in that row's ``metadata`` JSONB so a later promotion can
 replay the turn faithfully.
 
@@ -148,6 +149,7 @@ async def try_enqueue_turn(
     permissions: Mapping[str, Any] | None = None,
     request_arrival_at: float = 0.0,
     envelope: TurnEnvelope | None = None,
+    impersonated: bool = False,
 ) -> ChatMessage | None:
     """Admit a queued turn against the user's hard cap.
 
@@ -174,6 +176,7 @@ async def try_enqueue_turn(
         permissions=permissions,
         request_arrival_at=request_arrival_at,
         envelope=envelope,
+        impersonated=impersonated,
     )
 
 
@@ -196,6 +199,7 @@ async def enqueue_turn(
     tool_call_id: str | None = None,
     tool_name: str | None = None,
     only_if_idle: bool = False,
+    impersonated: bool = False,
 ) -> ChatMessage | None:
     """Persist the user's pending message and flip the session to
     ``"queued"``.  Caller is responsible for the in-flight cap check
@@ -220,6 +224,8 @@ async def enqueue_turn(
         metadata["permissions"] = dict(permissions)
     if request_arrival_at:
         metadata["request_arrival_at"] = request_arrival_at
+    if impersonated:
+        metadata["impersonated"] = True
     # A wake starts under the envelope its call was held under, and a spawned
     # child under the one admitted for it, whichever turn frees the slot.
     if envelope is not None:
@@ -514,6 +520,7 @@ async def _promote_head(user_id: str) -> bool | None:
             llm_credential_id=head.metadata.llm_credential_id,
             permissions=_promotion_permissions(head, metadata, spawned=spawned),
             request_arrival_at=float(metadata.get("request_arrival_at") or 0.0),
+            impersonated=metadata.get("impersonated") is True,
             tool_call_id=metadata.get("tool_call_id") or "chat_stream",
             tool_name=metadata.get("tool_name") or "chat",
             # A typed message is a root, as the chat route makes it, not the
