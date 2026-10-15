@@ -94,8 +94,8 @@ async def run_skill_learning_pass(
         trigger=trigger,
         started_at=datetime.now(timezone.utc),
     )
-    config = config or ChatConfig()
     try:
+        config = config or ChatConfig()
         if not config.has_platform_api:
             # A Claude login or a disabled route: no model of the platform's
             # own to review with. Skip before any source is reserved: the
