@@ -34,6 +34,15 @@ const CHIP_ICON_SIZE: Record<ChipSize, number> = {
 const NEUTRAL_ACCENT = getCategoryAccent(undefined).accent;
 const NEUTRAL_SELECTED = "border-transparent bg-zinc-100 text-zinc-900";
 
+// The same glossy pill for chips with no category colour (the hero's search
+// terms, "All"): a white-to-zinc fill, a top highlight and a small drop.
+const NEUTRAL_GLOSS =
+  "bg-gradient-to-b shadow-[inset_0_1px_0_rgba(255,255,255,0.9),0_1px_2px_rgba(16,24,40,0.05)]";
+const NEUTRAL_GLOSS_IDLE =
+  "border-zinc-200 from-white to-zinc-50 text-zinc-700 hover:border-zinc-300 hover:from-white hover:to-zinc-100";
+const NEUTRAL_GLOSS_SELECTED =
+  "border-zinc-300 from-zinc-100 to-zinc-200/80 text-zinc-900";
+
 /** A category chip in its own colour, with a soft top highlight so it reads
  *  as a glossy pill: darker text for contrast, a light tint and a tinted
  *  edge, all stronger once selected. */
@@ -115,6 +124,12 @@ export function CategoryChip({
             : accent === NEUTRAL_ACCENT
               ? NEUTRAL_SELECTED
               : cn(accent.chip, "border-transparent")),
+        !color &&
+          accent === NEUTRAL_ACCENT &&
+          cn(
+            NEUTRAL_GLOSS,
+            isSelected ? NEUTRAL_GLOSS_SELECTED : NEUTRAL_GLOSS_IDLE,
+          ),
       )}
     >
       {label}
