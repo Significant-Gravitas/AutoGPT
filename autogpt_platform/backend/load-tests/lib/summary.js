@@ -179,6 +179,7 @@ export function buildSummary(data, meta) {
     by_journey: byJourney,
     custom_metrics: custom,
     seeding: meta.seeding ? meta.seeding(data) : null,
+    coverage: meta.coverage ? meta.coverage(data) : null,
     thresholds: { failed, results },
   };
 }
@@ -222,10 +223,10 @@ export function textReport(summary) {
   for (const name of Object.keys(summary.http_by_endpoint).sort()) {
     const row = summary.http_by_endpoint[name];
     lines.push(
-      `${pad(name, 36)} ${pad(num(row.count), 7)} ${pad(ms(row.med), 8)} ${pad(
-        ms(row["p(95)"]),
+      `${pad(name, 36)} ${pad(num(row.count), 7)} ${pad(cell(row, "med", ms), 8)} ${pad(
+        cell(row, "p(95)", ms),
         8,
-      )} ${pad(ms(row["p(99)"]), 8)} ${pad(pct(row.failed_rate), 7)}`,
+      )} ${pad(cell(row, "p(99)", ms), 8)} ${pad(cell(row, "failed_rate", pct), 7)}`,
     );
   }
   if (Object.keys(summary.custom_metrics).length > 0) {
@@ -239,16 +240,33 @@ export function textReport(summary) {
     for (const name of Object.keys(summary.custom_metrics)) {
       const row = summary.custom_metrics[name];
       lines.push(
-        `${pad(name, 36)} ${pad(num(row.count), 7)} ${pad(ms(row.med), 8)} ${pad(
-          ms(row["p(95)"]),
+        `${pad(name, 36)} ${pad(num(row.count), 7)} ${pad(cell(row, "med", ms), 8)} ${pad(
+          cell(row, "p(95)", ms),
           8,
-        )} ${pad(ms(row["p(99)"]), 8)} ${pad(ms(row.max), 8)}`,
+        )} ${pad(cell(row, "p(99)", ms), 8)} ${pad(cell(row, "max", ms), 8)}`,
       );
     }
   }
   if (summary.seeding) {
     lines.push("");
     lines.push(`seeded: ${JSON.stringify(summary.seeding)}`);
+  }
+  if (summary.coverage) {
+    const off = Object.keys(summary.coverage).filter(
+      (name) => summary.coverage[name].status !== "covered",
+    );
+    lines.push("");
+    if (off.length === 0) {
+      lines.push("coverage: every journey ran in full");
+    } else {
+      lines.push(
+        "NOT COVERED IN FULL: the numbers above are for what the target let the run exercise",
+      );
+      for (const name of off) {
+        const entry = summary.coverage[name];
+        lines.push(`  ${name}: ${entry.status}: ${entry.reason}`);
+      }
+    }
   }
   lines.push("");
   const failing = Object.keys(summary.thresholds.results).filter(
@@ -262,6 +280,11 @@ export function textReport(summary) {
   for (const name of failing) lines.push(`  FAIL ${name}`);
   lines.push("");
   return lines.join("\n");
+}
+
+// A row with no samples shows "-" rather than the zeros k6 reports for it.
+function cell(row, key, format) {
+  return row.count ? format(row[key]) : "-";
 }
 
 function ms(value) {

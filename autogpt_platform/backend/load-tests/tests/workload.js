@@ -21,6 +21,7 @@ import {
 } from "../configs/profiles.js";
 import { buildThresholds, customMetricNames } from "../configs/thresholds.js";
 import { authSetupTimeout, setupAuth } from "../lib/auth.js";
+import { coverageReport } from "../lib/coverage.js";
 import { runSeed } from "../lib/random.js";
 import { seedRun, seedSetupTimeout, seedingReport } from "../lib/seed.js";
 import { summaryOutputs } from "../lib/summary.js";
@@ -125,5 +126,6 @@ export function handleSummary(data) {
       "ws_events",
     ]),
     seeding: seedingReport,
+    coverage: (summaryData) => coverageReport(summaryData, journeys),
   });
 }

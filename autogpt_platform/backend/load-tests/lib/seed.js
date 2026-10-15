@@ -8,11 +8,25 @@
 // needs some; the one-time onboarding rewards fund each account first.
 import { sleep } from "k6";
 import http from "k6/http";
-import { Counter, Trend } from "k6/metrics";
+import { Counter, Gauge, Trend } from "k6/metrics";
 
 import { getEnvironmentConfig } from "../configs/environment.js";
 import { accountCount, accountHeaders } from "./auth.js";
 import { DUMMY_REPLY, streamTurn } from "./copilot.js";
+import {
+  COVERED,
+  ENGINE_NOT_DUMMY,
+  ENGINE_PROBE_FAILED,
+  ENGINE_UNSET,
+  MARKETPLACE_EMPTY,
+  NO_CREDITS,
+  NO_GRAPHS,
+  NO_SEED_RUN_COMPLETED,
+  NO_SESSIONS,
+  PAYWALLED,
+  SKILLS_UNAVAILABLE,
+  recordCoverage,
+} from "./coverage.js";
 import { seedGraph } from "./graphs.js";
 
 const config = getEnvironmentConfig();
@@ -32,6 +46,8 @@ const seedSessions = new Counter("seed_sessions");
 const seedTurns = new Counter("seed_turns");
 const seedLibraryAdds = new Counter("seed_library_adds");
 const seedCredits = new Trend("seed_credits_per_account");
+const storeAgentsFound = new Gauge("seed_store_agents_found");
+const storeSkillsFound = new Gauge("seed_store_skills_found");
 
 function whole(raw, fallback, min, max) {
   if (raw === undefined || raw === "") return fallback;
@@ -99,10 +115,11 @@ export function seedRun(auth, journeys) {
     auth: auth.auth,
     accounts: [],
     store: discoverStore(accountHeaders(auth, 0)),
-    graphs: { enabled: wants("graph_run"), reason: null },
+    graphs: { enabled: wants("graph_run"), reason: null, code: COVERED },
     copilot: {
       enabled: false,
       reason: null,
+      code: COVERED,
       turnTimeout: __ENV.COPILOT_TURN_TIMEOUT || "120s",
     },
   };
@@ -144,6 +161,10 @@ export function seedRun(auth, journeys) {
         if (library.ok && library.json && library.json.id) {
           graph.libraryAgentId = library.json.id;
           account.libraryAgentIds.push(library.json.id);
+        } else {
+          console.warn(
+            `seed: graph ${graph.graphId} has no library agent (${detail(library)})`,
+          );
         }
         account.graphs.push(graph);
       }
@@ -180,9 +201,13 @@ export function seedRun(auth, journeys) {
           );
           if (started.status === 402) {
             data.graphs.enabled = false;
-            data.graphs.reason = isPaywall(started)
-              ? `the target paywalls new accounts (${detail(started)}); graph runs need an account past the paywall`
-              : `the account has no credits for a run (${detail(started)})`;
+            if (isPaywall(started)) {
+              data.graphs.code = PAYWALLED;
+              data.graphs.reason = `the target paywalls new accounts (${detail(started)}); graph runs need an account past the paywall`;
+            } else {
+              data.graphs.code = NO_CREDITS;
+              data.graphs.reason = `the account has no credits for a run (${detail(started)})`;
+            }
             break;
           }
           if (!started.ok || !started.json || !started.json.id) {
@@ -212,6 +237,7 @@ export function seedRun(auth, journeys) {
           [200, 402],
         );
         if (created.status === 402) {
+          data.copilot.code = PAYWALLED;
           data.copilot.reason = `the target paywalls new accounts (${detail(created)})`;
           console.warn(
             `seed: creating chat sessions for account ${i + 1} refused: ${detail(created)}`,
@@ -237,16 +263,63 @@ export function seedRun(auth, journeys) {
     decideCopilot(auth, data);
   }
 
-  console.log(
-    `seed: ${data.accounts.length} accounts; store agents ${data.store.agents.length}, skills ${
-      data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
-    }; graph runs ${data.graphs.enabled ? "on" : `off (${data.graphs.reason})`}; copilot turns ${
-      data.copilot.enabled
-        ? "on (dummy engine confirmed)"
-        : `off (${data.copilot.reason})`
-    }`,
-  );
+  const off = recordRunCoverage(data, journeys);
+  const line = `seed: ${data.accounts.length} accounts; store agents ${data.store.agents.length}, skills ${
+    data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
+  }; graph runs ${data.graphs.enabled ? "on" : `off (${data.graphs.reason})`}; copilot turns ${
+    data.copilot.enabled
+      ? "on (dummy engine confirmed)"
+      : `off (${data.copilot.reason})`
+  }`;
+  if (off.length > 0) {
+    console.warn(
+      `${line}. NOT COVERED IN FULL: ${off.join(", ")}; the summary's coverage section says why`,
+    );
+  } else {
+    console.log(line);
+  }
   return data;
+}
+
+// What each enabled journey can exercise, from what the seed found and
+// created. Returns the journeys that cannot run in full.
+function recordRunCoverage(data, journeys) {
+  const graphsSeeded = data.accounts.reduce(
+    (n, account) => n + account.graphs.length,
+    0,
+  );
+  const sessionsSeeded = data.accounts.reduce(
+    (n, account) => n + account.sessionIds.length,
+    0,
+  );
+  const codes = {
+    account_reads: COVERED,
+    store_browse:
+      data.store.agents.length === 0
+        ? MARKETPLACE_EMPTY
+        : !data.store.skillsAvailable || data.store.skillSlugs.length === 0
+          ? SKILLS_UNAVAILABLE
+          : COVERED,
+    library_browse: graphsSeeded === 0 ? NO_GRAPHS : COVERED,
+    graph_run: data.graphs.enabled
+      ? COVERED
+      : graphsSeeded === 0
+        ? NO_GRAPHS
+        : data.graphs.code,
+    copilot_reads:
+      sessionsSeeded > 0
+        ? COVERED
+        : data.copilot.code === PAYWALLED
+          ? PAYWALLED
+          : NO_SESSIONS,
+    copilot_turn: data.copilot.enabled ? COVERED : data.copilot.code,
+  };
+  const off = [];
+  for (const name of journeys) {
+    recordCoverage(name, codes[name]);
+    if (codes[name] !== COVERED) off.push(name);
+  }
+  return off;
 }
 
 // The one-time onboarding rewards: 300 credits each for two steps, more
@@ -300,6 +373,7 @@ function discoverStore(headers) {
       "seed: the target's store has no agents; the store journey reads empty lists",
     );
   }
+  storeAgentsFound.add(store.agents.length);
   // The skills catalogue sits behind a feature flag evaluated per user.
   const skills = request(
     "GET",
@@ -325,6 +399,7 @@ function discoverStore(headers) {
       `seed: skills are not available on the target (${detail(skills)}); the store journey skips them`,
     );
   }
+  storeSkillsFound.add(store.skillSlugs.length);
   return store;
 }
 
@@ -354,6 +429,7 @@ function waitForRuns(pending, data) {
   seedRunsCompleted.add(completed);
   if (pending.length > 0 && completed === 0) {
     data.graphs.enabled = false;
+    data.graphs.code = NO_SEED_RUN_COMPLETED;
     data.graphs.reason = `none of ${pending.length} seed runs completed within ${
       SEED_RUN_WAIT_MS / 1000
     }s (${failed} failed, ${open.length} still open): is the executor running?`;
@@ -370,6 +446,7 @@ function decideCopilot(auth, data) {
   const engine = __ENV.LOAD_TEST_COPILOT_ENGINE || "";
   if (data.copilot.reason) return;
   if (engine === "") {
+    data.copilot.code = ENGINE_UNSET;
     data.copilot.reason =
       "LOAD_TEST_COPILOT_ENGINE is not set; set it to dummy once the target runs CHAT_TEST_MODE=true on its copilot executor (README: Copilot and model spend)";
     return;
@@ -381,6 +458,7 @@ function decideCopilot(auth, data) {
   }
   const first = data.accounts.find((a) => a.sessionIds.length > 0);
   if (!first) {
+    data.copilot.code = NO_SESSIONS;
     data.copilot.reason =
       "no chat session could be created to probe the engine";
     return;
@@ -392,10 +470,12 @@ function decideCopilot(auth, data) {
     record: false,
   });
   if (probe.outcome !== "completed") {
+    data.copilot.code = ENGINE_PROBE_FAILED;
     data.copilot.reason = `the engine probe ${probe.outcome} (${probe.error || "no error"}); is the copilot executor running?`;
     return;
   }
   if (probe.text.trim() !== DUMMY_REPLY) {
+    data.copilot.code = ENGINE_NOT_DUMMY;
     data.copilot.reason =
       "the engine probe's reply was not the dummy's: the target is not in CHAT_TEST_MODE, and the probe spent one real turn";
     return;
@@ -426,6 +506,12 @@ export function seedingReport(summaryData) {
     const metric = summaryData.metrics[name];
     return metric && metric.values ? metric.values.count || 0 : 0;
   };
+  const gauge = (name) => {
+    const metric = summaryData.metrics[name];
+    return metric && metric.values && typeof metric.values.value === "number"
+      ? metric.values.value
+      : null;
+  };
   const credits = summaryData.metrics.seed_credits_per_account;
   return {
     graphs: count("seed_graphs"),
@@ -434,6 +520,8 @@ export function seedingReport(summaryData) {
     sessions: count("seed_sessions"),
     turns: count("seed_turns"),
     library_adds: count("seed_library_adds"),
+    store_agents_found: gauge("seed_store_agents_found"),
+    store_skills_found: gauge("seed_store_skills_found"),
     credits_per_account_avg:
       credits && credits.values ? Math.round(credits.values.avg) : null,
   };
