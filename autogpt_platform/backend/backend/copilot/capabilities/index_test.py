@@ -298,3 +298,131 @@ def test_a_platform_entry_keeps_a_bare_ref_a_skill_shares(index):
     shared = layered.get("web_search")
     assert shared is not None and shared.kind == "tool"
     assert layered.get("skill:web_search") is clone
+
+
+def _mcp(host: str, name: str, service: str, purpose: str):
+    return CapabilityEntry(
+        id=f"mcp:{host}",
+        kind="mcp_server",
+        klass="service",
+        name=name,
+        purpose=purpose,
+        tags=["mcp", service, host],
+        context="direct",
+        implementations=[Implementation(kind="mcp_server", ref=f"https://{host}/mcp")],
+        connection=Connection(
+            required=True, key_type="server_url", key=f"https://{host}/mcp"
+        ),
+        service=service,
+    )
+
+
+@pytest.fixture
+def twin_index() -> CapabilityIndex:
+    linear_block = _block(
+        LINEAR_ID,
+        "LinearCreateIssueBlock",
+        "Create a new issue in Linear.",
+        provider="linear",
+        args=("title", "team"),
+    )
+    linear_block.service = "linear"
+    return CapabilityIndex(
+        [
+            linear_block,
+            _mcp(
+                "mcp.linear.app",
+                "Linear",
+                "linear",
+                "Issues, projects and cycles in Linear.",
+            ),
+            _mcp("mcp.sentry.dev", "Sentry", "sentry", "Errors and traces in Sentry."),
+        ]
+    )
+
+
+def test_prefer_mcp_lists_the_server_before_its_block(twin_index: CapabilityIndex):
+    result = twin_index.search("linear issue", prefer_mcp=True)
+    assert result.hits[0].entry.id == "mcp:mcp.linear.app"
+    assert f"block:{LINEAR_ID}" in result.ids
+
+
+def test_prefer_mcp_still_puts_a_connected_block_first(twin_index: CapabilityIndex):
+    connected = ConnectionState(providers=frozenset({"linear"}))
+    result = twin_index.search("linear issue", connections=connected, prefer_mcp=True)
+    assert result.hits[0].entry.id == f"block:{LINEAR_ID}"
+    assert "mcp:mcp.linear.app" in result.ids
+
+
+def test_prefer_mcp_with_the_server_connected(twin_index: CapabilityIndex):
+    connected = ConnectionState(server_urls=frozenset({"https://mcp.linear.app/mcp"}))
+    result = twin_index.search("linear issue", connections=connected, prefer_mcp=True)
+    assert result.hits[0].entry.id == "mcp:mcp.linear.app"
+
+
+def test_default_order_is_coverage_first(twin_index: CapabilityIndex):
+    result = twin_index.search("linear issue")
+    assert result.ids.index(f"block:{LINEAR_ID}") < result.ids.index(
+        "mcp:mcp.linear.app"
+    )
+
+
+def test_prefer_mcp_leaves_a_block_without_a_twin_alone(twin_index: CapabilityIndex):
+    github = _block(
+        GITHUB_ID,
+        "GithubMakeIssueBlock",
+        "Create an issue on GitHub.",
+        provider="github",
+    )
+    github.service = "github"
+    index = twin_index.with_entries([github])
+    result = index.search("github issue", prefer_mcp=True)
+    assert result.hits[0].entry.id == f"block:{GITHUB_ID}"
+
+
+def test_prefer_mcp_keeps_coverage_first_when_no_server_matches(index):
+    notes = _skill("linear-notes", "Keep notes about Linear.")
+    layered = index.with_entries([notes])
+    result = layered.search("linear issue", prefer_mcp=True)
+    assert result.service == "linear"
+    assert result.names == ["LinearCreateIssueBlock", "linear-notes"]
+
+
+def test_prefer_mcp_does_not_move_one_service_ahead_of_another():
+    linear_block = _block(
+        LINEAR_ID,
+        "LinearCreateIssueBlock",
+        "Create and triage a GitHub issue from a Linear issue.",
+        provider="linear",
+    )
+    linear_block.service = "linear"
+    github_block = _block(
+        GITHUB_ID,
+        "GithubMakeIssueBlock",
+        "Create a new GitHub repository issue.",
+        provider="github",
+    )
+    github_block.service = "github"
+    index = CapabilityIndex(
+        [
+            linear_block,
+            github_block,
+            _mcp(
+                "mcp.linear.app",
+                "Linear",
+                "linear",
+                "Read Linear issues.",
+            ),
+        ]
+    )
+
+    result = index.search(
+        "create github repository linear read triage issue", prefer_mcp=True
+    )
+
+    assert result.ids.index(f"block:{GITHUB_ID}") < result.ids.index(
+        "mcp:mcp.linear.app"
+    )
+    assert result.ids.index("mcp:mcp.linear.app") < result.ids.index(
+        f"block:{LINEAR_ID}"
+    )

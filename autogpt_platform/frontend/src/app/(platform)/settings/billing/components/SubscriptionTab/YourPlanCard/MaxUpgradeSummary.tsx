@@ -33,7 +33,7 @@ export function MaxUpgradeSummary({ preview }: Props) {
             · {preview.billing_cycle === "yearly" ? "Yearly" : "Monthly"}
           </span>
         </Text>
-        <Text variant="small" tone="secondary">
+        <Text variant="small" tone="secondary" unmask={false}>
           {amount(preview.recurring_amount)} / {unit}
         </Text>
       </div>
@@ -72,7 +72,12 @@ export function MaxUpgradeSummary({ preview }: Props) {
             emphasized
           />
         </div>
-        <Text variant="small" tone="secondary" className="pt-2 leading-5">
+        <Text
+          variant="small"
+          tone="secondary"
+          unmask={false}
+          className="pt-2 leading-5"
+        >
           Next renewal: {dateLabel(preview.period_end)}. Max’s regular price is{" "}
           {amount(preview.recurring_amount)} {recurringTax} per {unit}, before
           any applicable discounts or account credits.
@@ -101,6 +106,7 @@ function SummaryRow({
       </Text>
       <Text
         variant={emphasized ? "body-medium" : "small"}
+        unmask={false}
         className={`shrink-0 tabular-nums ${emphasized ? "text-zinc-900" : "text-zinc-600"}`}
       >
         {value}

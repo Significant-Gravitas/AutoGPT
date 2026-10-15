@@ -164,3 +164,7 @@ export function useProviderLimitDialog() {
     retryOffers: noop,
   };
 }
+
+export function useFlagStatus() {
+  return { enabled: true, ready: true };
+}

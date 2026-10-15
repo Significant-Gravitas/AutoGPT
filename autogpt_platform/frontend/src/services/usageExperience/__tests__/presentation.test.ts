@@ -89,4 +89,37 @@ describe("usage messages", () => {
       description: "Your chats, agents and results are saved.",
     });
   });
+  it("states the amount and start date of a failed first trial charge", () => {
+    const experience = getUsageExperience(
+      { tier: "NO_TIER" },
+      {
+        active: false,
+        converted: false,
+        status: "past_due",
+        offer: { tier: "PRO" },
+        ends_at: new Date(2026, 9, 12, 12),
+        payment_due: {
+          amount_due: 5413,
+          currency: "usd",
+          payment_url: "https://invoice.stripe.com/i/acct_1/test_inv_1",
+        },
+      },
+      "NO_TIER",
+    );
+    expect(usagePresentation(experience)).toMatchObject({
+      title: "Your payment didn’t go through",
+      description:
+        "Pro was due to start on Oct 12, but the $54.13 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.",
+    });
+  });
+  it("keeps the billing route when the open invoice is unavailable", () => {
+    const experience = getUsageExperience(
+      { tier: "NO_TIER" },
+      { active: false, converted: false, status: "past_due" },
+      "NO_TIER",
+    );
+    expect(usagePresentation(experience).description).toBe(
+      "Review your billing details to continue. Your chats, agents and results are saved.",
+    );
+  });
 });

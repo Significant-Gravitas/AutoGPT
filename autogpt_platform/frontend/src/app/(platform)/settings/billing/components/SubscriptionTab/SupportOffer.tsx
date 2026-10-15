@@ -7,23 +7,17 @@ import { Text } from "@/components/atoms/Text/Text";
 
 export function SupportOffer({
   eyebrow,
-  footer,
   title,
   description,
   label,
   href,
-  onAction,
-  disabled = false,
   ready = false,
 }: {
   eyebrow: string;
-  footer?: string;
   title: string;
   description: string;
   label: string;
-  href?: string;
-  onAction?: () => void;
-  disabled?: boolean;
+  href: string;
   ready?: boolean;
 }) {
   return (
@@ -49,36 +43,15 @@ export function SupportOffer({
       <Text variant="small" tone="secondary" className="mb-7 leading-6">
         {description}
       </Text>
-      {href ? (
-        <Button
-          variant="secondary"
-          size="large"
-          className="mt-auto w-full"
-          as="NextLink"
-          href={href}
-        >
-          {label}
-        </Button>
-      ) : (
-        <Button
-          variant="secondary"
-          size="large"
-          className="mt-auto w-full"
-          onClick={onAction}
-          disabled={disabled}
-        >
-          {label}
-        </Button>
-      )}
-      {footer && (
-        <Text
-          variant="small"
-          tone="secondary"
-          className="mt-2.5 text-center text-xs leading-5"
-        >
-          {footer}
-        </Text>
-      )}
+      <Button
+        variant="secondary"
+        size="large"
+        className="mt-auto w-full"
+        as="NextLink"
+        href={href}
+      >
+        {label}
+      </Button>
     </section>
   );
 }

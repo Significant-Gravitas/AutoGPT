@@ -99,7 +99,12 @@ try {
         const { id, experience, screen } = scenario;
         await page.setViewportSize({ width, height: 1100 });
         await page.goto(`http://127.0.0.1:${server.address().port}/`);
-        await page.waitForFunction(() => window.__implementationPreview);
+        try {
+          await page.waitForFunction(() => window.__implementationPreview);
+        } catch (error) {
+          console.error(JSON.stringify({ id, width, pageErrors: errors }));
+          throw error;
+        }
         await page.evaluate(
           ({ experience, screen }) =>
             window.__implementationPreview.show(experience, screen),
@@ -115,7 +120,19 @@ try {
                 ? '[data-capture="billing"] > div'
                 : `[data-capture="${screen}"]`,
             );
-        await target.waitFor({ state: "visible" });
+        try {
+          await target.waitFor({ state: "visible" });
+        } catch (error) {
+          console.error(
+            JSON.stringify({
+              id,
+              width,
+              pageErrors: errors,
+              body: await page.locator("body").innerText(),
+            }),
+          );
+          throw error;
+        }
         // A tall viewport reveals the whole existing drawer without altering its
         // styles or clipping its payment terms/controls. The manifest records it.
         if (modal) {

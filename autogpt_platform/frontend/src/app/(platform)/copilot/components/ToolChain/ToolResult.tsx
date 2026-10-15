@@ -2,6 +2,7 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { HeldCallDetail } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -508,10 +509,25 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  if (row.held && row.held.state !== "approved") {
-    return <HeldCallDetail held={row.held} />;
+  if (row.held) {
+    const approved = row.held.state === "approved";
+    const ownCall = heldShowsOwnCall(row);
+    const ran = row.output !== undefined && row.output !== "";
+    return (
+      <div className="flex flex-col gap-2">
+        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        {approved && (ran || ownCall) && (
+          <ToolOutput row={row} readOnly={readOnly} />
+        )}
+      </div>
+    );
   }
 
+  return <ToolOutput row={row} readOnly={readOnly} />;
+}
+
+function ToolOutput({ row, readOnly }: Required<Props>) {
+  const output = asObject(row.output);
   const target = capabilityTargetRow(row);
   const card =
     toolCard(target, output, readOnly) ??

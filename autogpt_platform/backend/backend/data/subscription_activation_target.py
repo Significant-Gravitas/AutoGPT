@@ -9,6 +9,7 @@ from prisma.models import User
 from backend.data.db import query_raw_with_schema
 from backend.data.subscription_activation_models import ActivationAttempt
 from backend.data.subscription_trial import TrialState
+from backend.data.subscription_trial_payment import SubscriptionPlanTerms
 
 PAID_CONVERSION_TIERS = (SubscriptionTier.PRO, SubscriptionTier.MAX)
 
@@ -40,6 +41,13 @@ async def accepted_conversion_target(
         return SubscriptionTier(trial.offer.tier), price_id
     attempt_id = metadata.get("pro_activation_attempt_id")
     if not attempt_id:
+        chosen = SubscriptionPlanTerms.model_validate(subscription).chosen_plan()
+        if (
+            subscription.get("status") == "active"
+            and chosen
+            and chosen.tier in PAID_CONVERSION_TIERS
+        ):
+            return chosen.tier, chosen.price.id
         return None
     rows = await query_raw_with_schema(
         'SELECT "id", "userId" AS user_id, '

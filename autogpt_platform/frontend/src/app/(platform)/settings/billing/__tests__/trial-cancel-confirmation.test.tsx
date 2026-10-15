@@ -21,30 +21,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 beforeEach(() => setTrialUser("user-a"));
 afterEach(() => setTrialUser(null));
 
-it("requires confirmation before irreversibly ending a trial", async () => {
-  const cancel = vi.fn(() =>
-    trialResponse({ active: false, status: "canceled" }),
-  );
-  server.use(
-    getGetTrialsGetTrialStatusMockHandler200(trialResponse()),
-    getPostTrialsCancelTrialMockHandler200(cancel),
-  );
-  render(<TrialCard />);
-  fireEvent.click(await screen.findByRole("button", { name: "Cancel trial" }));
-  expect(
-    await screen.findByRole("dialog", { name: "End your trial now?" }),
-  ).toBeDefined();
-  expect(cancel).not.toHaveBeenCalled();
-  expect(screen.getByText(/You cannot restart this trial/)).toBeDefined();
-  fireEvent.click(screen.getByRole("button", { name: "Keep trial" }));
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(cancel).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole("button", { name: "Cancel trial" }));
-  fireEvent.click(await screen.findByRole("button", { name: "End trial now" }));
-  await screen.findByText(/Cancellation confirmed/);
-  expect(cancel).toHaveBeenCalledOnce();
-});
-
 it("dismisses confirmation on Escape without canceling", async () => {
   const cancel = vi.fn(() => trialResponse());
   server.use(

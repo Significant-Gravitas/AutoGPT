@@ -77,7 +77,7 @@ export function PlanOffer({
         </div>
         {amount && (
           <div className="shrink-0 text-right">
-            <Text variant="h4" className="!text-2xl">
+            <Text variant="h4" className="!text-2xl" unmask={!freshUsage}>
               {amount}
             </Text>
             <Text variant="small" className="!text-zinc-500">
@@ -105,6 +105,7 @@ export function PlanOffer({
         className="w-full"
         onClick={onUpgrade}
         disabled={disabled}
+        unmask={!freshUsage}
         rightIcon={<Icon icon={ArrowRight02Icon} size={16} />}
       >
         {actionLabel ??
@@ -121,7 +122,7 @@ export function PlanOffer({
         {freshUsage
           ? "You’ll see the full charge before you pay."
           : tier === "MAX"
-            ? "What you’ve used today counts toward Max’s higher limit."
+            ? "What you’ve already used counts toward Max’s higher limit."
             : "Review your plan and payment before confirming."}
       </Text>
     </section>

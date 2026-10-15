@@ -110,44 +110,87 @@ describe("Max charge review", () => {
     expect(charged).not.toHaveBeenCalled();
   });
 
-  it("requires fresh consent after billing changes instead of charging an unseen amount", async () => {
-    let quotes = 0;
-    const charged = vi.fn();
-    server.use(
-      http.post("*/api/credits/subscription/preview", () =>
-        HttpResponse.json(
-          maxUpgradePreview(
-            ++quotes === 1
-              ? {}
-              : {
-                  preview_id: "b".repeat(32),
-                  amount_due: 28000,
-                  adjustment_amount: 722,
-                },
+  it.each([
+    { status: 409, message: /Your billing details changed/ },
+    { status: 402, message: /Payment wasn’t completed/ },
+  ])(
+    "requires a fresh review after a $status response",
+    async ({ status, message }) => {
+      let quotes = 0;
+      const charged = vi.fn();
+      server.use(
+        http.post("*/api/credits/subscription/preview", () =>
+          HttpResponse.json(
+            maxUpgradePreview(
+              ++quotes === 1
+                ? {}
+                : {
+                    preview_id: "b".repeat(32),
+                    amount_due: 28000,
+                    adjustment_amount: 722,
+                  },
+            ),
           ),
         ),
-      ),
+        http.post("*/api/credits/subscription", async ({ request }) => {
+          charged(await request.json());
+          return charged.mock.calls.length === 1
+            ? HttpResponse.json({ detail: "Review again" }, { status })
+            : HttpResponse.json({ ...subscription, tier: "MAX" });
+        }),
+      );
+      const dialog = await openReview();
+      fireEvent.click(
+        await dialog.findByRole("button", { name: "Pay $272.78 and upgrade" }),
+      );
+      await dialog.findByText(message);
+      expect(charged).toHaveBeenCalledTimes(1);
+      expect(quotes).toBe(1);
+      expect(dialog.queryByRole("button", { name: /Pay \$/ })).toBeNull();
+      fireEvent.click(dialog.getByRole("button", { name: "Retry review" }));
+      fireEvent.click(
+        await dialog.findByRole("button", { name: "Pay $280.00 and upgrade" }),
+      );
+      await waitFor(() => expect(charged).toHaveBeenCalledTimes(2));
+      expect(charged.mock.calls[1][0]).toMatchObject({
+        preview_id: "b".repeat(32),
+      });
+    },
+  );
+
+  it("retries an uncertain payment with the same reviewed quote", async () => {
+    const preview = maxUpgradePreview();
+    const requested = vi.fn();
+    const charged = vi.fn();
+    server.use(
+      http.post("*/api/credits/subscription/preview", () => {
+        requested();
+        return HttpResponse.json(preview);
+      }),
       http.post("*/api/credits/subscription", async ({ request }) => {
         charged(await request.json());
         return charged.mock.calls.length === 1
-          ? HttpResponse.json({ detail: "Review again" }, { status: 409 })
+          ? HttpResponse.json(
+              { detail: "Couldn’t confirm the payment result. Please retry." },
+              { status: 502 },
+            )
           : HttpResponse.json({ ...subscription, tier: "MAX" });
       }),
     );
     const dialog = await openReview();
-    fireEvent.click(
-      await dialog.findByRole("button", { name: "Pay $272.78 and upgrade" }),
-    );
-    await dialog.findByText(/Your billing details changed/);
-    expect(charged).toHaveBeenCalledTimes(1);
-    expect(dialog.queryByRole("button", { name: /Pay \$/ })).toBeNull();
-    fireEvent.click(dialog.getByRole("button", { name: "Retry review" }));
-    fireEvent.click(
-      await dialog.findByRole("button", { name: "Pay $280.00 and upgrade" }),
-    );
+    const pay = await dialog.findByRole("button", {
+      name: "Pay $272.78 and upgrade",
+    });
+    fireEvent.click(pay);
+    await waitFor(() => expect(charged).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(pay.hasAttribute("disabled")).toBe(false));
+    expect(dialog.queryByRole("button", { name: "Retry review" })).toBeNull();
+    fireEvent.click(pay);
     await waitFor(() => expect(charged).toHaveBeenCalledTimes(2));
+    expect(requested).toHaveBeenCalledOnce();
     expect(charged.mock.calls[1][0]).toMatchObject({
-      preview_id: "b".repeat(32),
+      preview_id: preview.preview_id,
+      proration_date: preview.proration_date,
     });
   });
 

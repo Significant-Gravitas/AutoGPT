@@ -7,6 +7,7 @@ import * as React from "react";
 import { MenuItemGroup } from "../../helpers";
 import { AccountLogoutOption } from "./components/AccountLogoutOption";
 import { AccountMenuActivityRow } from "./components/AccountMenuActivityRow";
+import { AccountMenuFeedbackRow } from "./components/AccountMenuFeedbackRow";
 import { AccountMenuHeader } from "./components/AccountMenuHeader";
 import { AccountMenuRow } from "./components/AccountMenuRow";
 import { InitialAvatar } from "./components/InitialAvatar";
@@ -124,9 +125,14 @@ export function AccountMenuNewLayout({
                     );
                   })}
                   {groupIndex === 0 && (
-                    <li>
-                      <AccountMenuActivityRow />
-                    </li>
+                    <>
+                      <li>
+                        <AccountMenuActivityRow />
+                      </li>
+                      <li>
+                        <AccountMenuFeedbackRow />
+                      </li>
+                    </>
                   )}
                 </ul>
               </div>
