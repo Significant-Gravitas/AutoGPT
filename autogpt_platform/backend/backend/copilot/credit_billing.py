@@ -41,9 +41,11 @@ from backend.copilot.turn_pause import PauseReason, TurnPause
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.db_accessors import credit_db
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
+settings = Settings()
 
 CREDITS_PER_USD = 100
 # The OpenRouter cost reconcile retries its lookups for up to ~30s after the
@@ -73,9 +75,15 @@ class CreditBilledTurn:
         session_id: str,
         cap_credits: int,
         refusal: TurnPause,
+        organization_id: str | None = None,
+        team_id: str | None = None,
     ) -> None:
         self.user_id = user_id
         self.session_id = session_id
+        # In an organization's run the organization pays, as for the graph's
+        # other blocks.
+        self.organization_id = organization_id
+        self.team_id = team_id
         # What the balance covered when the turn started, within the ceiling.
         self.cap_credits = cap_credits
         # The refusal this turn runs instead of: the limit that's used up.
@@ -107,11 +115,19 @@ class CreditBilledTurn:
             await self._charge_due()
 
     async def end(self) -> None:
-        """Charge what the turn recorded, once its late recordings are in."""
-        if self._recordings:
-            await asyncio.wait(self._recordings, timeout=_COST_SETTLE_TIMEOUT_SECONDS)
-        self._ended = True
-        await self._charge_due()
+        """Charge what the turn recorded, once its late recordings are in.
+
+        A cancel during the wait doesn't skip the charge: the turn still pays
+        for what it spent, and cost recorded later is charged as it lands.
+        """
+        try:
+            if self._recordings:
+                await asyncio.wait(
+                    self._recordings, timeout=_COST_SETTLE_TIMEOUT_SECONDS
+                )
+        finally:
+            self._ended = True
+            await asyncio.shield(self._charge_due())
 
     async def _charge_due(self) -> None:
         async with self._charging:
@@ -123,27 +139,16 @@ class CreditBilledTurn:
 
     async def _spend(self, credits: int) -> int:
         """Debit up to ``credits``, never below zero; returns what was debited."""
-        metadata = UsageTransactionMetadata(
-            chat_session_id=self.session_id,
-            block_id=AUTOPILOT_BLOCK_ID,
-            block="AutoPilotBlock",
-            reason="AutoPilot turn billed to credits: plan allowance used up",
-        )
-        db = credit_db()
         try:
-            await db.spend_credits(
-                user_id=self.user_id, cost=credits, metadata=metadata
-            )
+            await self._debit(credits)
             return credits
         except InsufficientBalanceError:
             # Other runs spent the balance while this turn ran: it takes what
             # is left rather than overdrawing the account.
             try:
-                left = min(credits, await db.get_credits(self.user_id))
+                left = min(credits, await _balance(self.user_id, self.organization_id))
                 if left > 0:
-                    await db.spend_credits(
-                        user_id=self.user_id, cost=left, metadata=metadata
-                    )
+                    await self._debit(left)
             except Exception:
                 left = 0
             logger.warning(
@@ -159,6 +164,26 @@ class CreditBilledTurn:
             )
             return 0
 
+    async def _debit(self, credits: int) -> None:
+        metadata = UsageTransactionMetadata(
+            chat_session_id=self.session_id,
+            block_id=AUTOPILOT_BLOCK_ID,
+            block="AutoPilotBlock",
+            reason="AutoPilot turn billed to credits: plan allowance used up",
+        )
+        if self.organization_id:
+            await credit_db().spend_org_credits(
+                org_id=self.organization_id,
+                user_id=self.user_id,
+                cost=credits,
+                metadata=metadata,
+                team_id=self.team_id,
+            )
+        else:
+            await credit_db().spend_credits(
+                user_id=self.user_id, cost=credits, metadata=metadata
+            )
+
 
 async def bill_to_credits(
     *,
@@ -166,17 +191,24 @@ async def bill_to_credits(
     session_id: str,
     tool_name: str | None,
     refusal: TurnPause,
+    organization_id: str | None = None,
+    team_id: str | None = None,
 ) -> CreditBilledTurn | None:
     """The credit-billed turn to run instead of ``refusal``, or None to refuse.
 
     Only the AutoPilot block's turns, and only when the balance covers the
-    per-turn spend floor. Raises ``RateLimitUnavailable`` when the balance
-    can't be read: like an unreadable allowance, that fails the turn closed.
+    per-turn spend floor: the organization's balance in an organization's
+    run. None where credits are off, leaving no balance to bill, or where
+    the SDK engine that caps a turn's spend can't run. Raises
+    ``RateLimitUnavailable`` when the balance can't be read: like an
+    unreadable allowance, that fails the turn closed.
     """
     if user_id is None or tool_name != AUTOPILOT_BLOCK_TOOL_NAME:
         return None
+    if not settings.config.enable_credit or not config.thinking_available:
+        return None
     try:
-        balance = await credit_db().get_credits(user_id)
+        balance = await _balance(user_id, organization_id)
     except Exception as exc:
         raise RateLimitUnavailable("Credit balance unavailable") from exc
     if balance < math.ceil(PER_TURN_SPEND_FLOOR_USD * CREDITS_PER_USD):
@@ -187,7 +219,15 @@ async def bill_to_credits(
         session_id=session_id,
         cap_credits=min(balance, ceiling),
         refusal=refusal,
+        organization_id=organization_id,
+        team_id=team_id,
     )
+
+
+async def _balance(user_id: str, organization_id: str | None) -> int:
+    if organization_id:
+        return await credit_db().get_org_credits(org_id=organization_id)
+    return await credit_db().get_credits(user_id)
 
 
 @asynccontextmanager

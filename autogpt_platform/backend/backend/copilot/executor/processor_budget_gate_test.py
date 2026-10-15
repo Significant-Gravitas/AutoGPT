@@ -11,10 +11,11 @@ import logging
 import threading
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.executor.processor import (
     RATE_LIMIT_UNAVAILABLE_CODE,
     RATE_LIMIT_UNAVAILABLE_MESSAGE,
@@ -232,12 +233,22 @@ class _SpendingStream:
         return None
 
 
+_CREDITS_ON = "backend.copilot.credit_billing.settings.config.enable_credit"
+
+
 @pytest.fixture
 def credits(mocker) -> MagicMock:
     db = MagicMock()
     db.get_credits = AsyncMock(return_value=500)
     db.spend_credits = AsyncMock(return_value=0)
+    db.get_org_credits = AsyncMock(return_value=0)
+    db.spend_org_credits = AsyncMock(return_value=0)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
+    # A deployment that bills credits, on a route the SDK engine can take.
+    mocker.patch(_CREDITS_ON, True)
+    mocker.patch.object(
+        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=True
+    )
     return db
 
 
@@ -274,6 +285,29 @@ async def test_a_block_turn_past_its_allowance_runs_on_credits_and_pays_its_cost
     windows.assert_not_awaited()
     turn.complete.assert_awaited_once_with(
         "sess-1", error_message=None, error_code=None, turn_id="turn-1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_organizations_block_turn_is_charged_to_the_organization(
+    credits, windows
+):
+    credits.get_org_credits.return_value = 300
+    turn = _Turn(_session())
+    turn.stream = MagicMock(return_value=_SpendingStream(cost_usd=0.1234))
+
+    await turn.run(
+        _entry(tool_name="autopilot_block", organization_id="org-1", team_id="team-1"),
+        AsyncMock(return_value=PAUSE),
+    )
+
+    credits.get_org_credits.assert_awaited_once_with(org_id="org-1")
+    credits.spend_credits.assert_not_awaited()
+    charge = credits.spend_org_credits.await_args.kwargs
+    assert (charge["org_id"], charge["team_id"], charge["cost"]) == (
+        "org-1",
+        "team-1",
+        13,
     )
 
 
