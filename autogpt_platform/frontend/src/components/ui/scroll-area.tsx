@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
-interface ScrollAreaProps
-  extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
+interface ScrollAreaProps extends React.ComponentPropsWithoutRef<
+  typeof ScrollAreaPrimitive.Root
+> {
   orientation?: "vertical" | "horizontal" | "both";
   showScrollToTop?: boolean;
 }

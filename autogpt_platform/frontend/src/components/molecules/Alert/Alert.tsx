@@ -29,7 +29,8 @@ const variantIcons = {
 } as const;
 
 interface AlertProps
-  extends React.HTMLAttributes<HTMLDivElement>,
+  extends
+    React.HTMLAttributes<HTMLDivElement>,
     VariantProps<typeof alertVariants> {
   children: React.ReactNode;
   /** Override the default variant icon (e.g. a domain-specific icon). */

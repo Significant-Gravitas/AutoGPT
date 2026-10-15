@@ -25,7 +25,7 @@ export function usesPostHog() {
 export function isPostHogFlagsEnabled() {
   return Boolean(
     process.env.NEXT_PUBLIC_BEHAVE_AS === "CLOUD" &&
-      process.env.NEXT_PUBLIC_POSTHOG_KEY &&
-      process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    process.env.NEXT_PUBLIC_POSTHOG_KEY &&
+    process.env.NEXT_PUBLIC_POSTHOG_HOST,
   );
 }
