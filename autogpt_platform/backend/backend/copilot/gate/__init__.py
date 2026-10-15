@@ -72,6 +72,9 @@ CARDLESS_PLATFORMS = (
 CEILING_UNIT_MICRODOLLARS = 1_000_000
 # Paid steps that otherwise run in every mode; the costliest blocks are workspace.
 METERED = frozenset({Effect.READ, Effect.WORKSPACE})
+# How many of the user's typed messages the supervisor reads as the request.
+_REQUEST_MESSAGES = 3
+_REQUEST_SEPARATOR = "\n\n---\n\n"
 # The user's own word on the subject in this chat outranks the mode's rule.
 _RULE_VERDICTS = {
     "allow": Verdict.RUN,
@@ -217,7 +220,7 @@ async def check_action(
             judgement = await supervise(
                 tool_name=tool_name,
                 args=_judged_args(args, files),
-                user_message=_last_user_message(session),
+                user_message=_user_request(session),
             )
             if judgement.allowed:
                 return ALLOW
@@ -308,17 +311,22 @@ def _judged_args(
     return judged
 
 
-def _last_user_message(session: ChatSession) -> str:
+def _user_request(session: ChatSession) -> str:
+    """The user's last few typed messages, oldest first: a bare "carry on" asks
+    for nothing unless the task it continues is in view."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
+    typed: list[str] = []
     for message in reversed(session.messages):
+        if len(typed) == _REQUEST_MESSAGES:
+            break
         if message.role == "user" and message.content:
             if held.is_answer_row(message):
                 continue
             # A first turn's row starts with the server's context blocks.
-            return strip_injected_context_for_display(message.content)
-    return ""
+            typed.append(strip_injected_context_for_display(message.content))
+    return _REQUEST_SEPARATOR.join(m for m in reversed(typed) if m.strip())
 
 
 __all__ = [

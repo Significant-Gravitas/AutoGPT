@@ -501,3 +501,31 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     assert words in request
     assert "<available_skills>" not in request
     assert "<user_context>" not in request
+
+
+async def test_the_judge_reads_the_users_last_few_messages_not_only_the_last(
+    gate_on, clean_session_state
+):
+    """A bare "carry on" asks for nothing, so the task it continues must be in view;
+    an answered card's rows are not the user's words and take no place in it."""
+    session = _session()
+    session.messages = [
+        ChatMessage(role="user", content="An old request"),
+        ChatMessage(role="user", content="Find student housing in Delft"),
+        ChatMessage(role="assistant", content="Here is a method."),
+        ChatMessage(role="user", content="Use that method for Leiden too"),
+        ChatMessage(
+            role="user",
+            content=held.WAKE_MESSAGE,
+            metadata={"held_calls_answered": True},
+        ),
+        ChatMessage(role="user", content="carry on"),
+    ]
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="asked"))
+    with patch(f"{_GATE}.supervise", supervisor):
+        await check_action("bash_exec", {"command": "python3 run.py"}, "u", session)
+
+    request = supervisor.await_args.kwargs["user_message"]
+    assert request.index("Delft") < request.index("Leiden") < request.index("carry on")
+    assert "old request" not in request
+    assert held.WAKE_MESSAGE not in request
