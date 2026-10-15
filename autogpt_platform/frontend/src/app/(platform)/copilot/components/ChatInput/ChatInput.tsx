@@ -28,6 +28,7 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
+import { AtResetFilesNotice } from "./components/AtResetFilesNotice";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import {
   ComposerPlusMenu,
@@ -449,6 +450,9 @@ export function ChatInput({
             onDismiss={() => setRefusedCount(0)}
             className={stacked ? undefined : "mt-1.5"}
           />
+        )}
+        {atReset && hasAttachments && (
+          <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
         )}
         <FileChips
           attachments={attachments}

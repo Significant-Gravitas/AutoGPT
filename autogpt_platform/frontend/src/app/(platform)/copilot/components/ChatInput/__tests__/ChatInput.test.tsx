@@ -919,6 +919,25 @@ describe("ChatInput clipboard paste", () => {
     expect(files).toHaveLength(1);
   });
 
+  it("says why Send at reset is off for files attached before it", async () => {
+    const onSchedule = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={vi.fn()} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+    expect(screen.queryByText(/Only text can wait for the reset/)).toBeNull();
+
+    // The budget runs out with the file still attached.
+    rerender(<ChatInput onSend={vi.fn()} atReset={{ onSchedule }} />);
+    fireEvent.change(textarea, { target: { value: "see screenshot" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    expect(
+      await screen.findByText(/Only text can wait for the reset/),
+    ).toBeDefined();
+    expect(onSchedule).not.toHaveBeenCalled();
+  });
+
   it("keeps the original name of pasted non-generic files", async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);
     render(<ChatInput onSend={onSend} />);
