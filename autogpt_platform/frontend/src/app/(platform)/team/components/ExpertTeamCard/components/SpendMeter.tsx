@@ -32,7 +32,7 @@ export function SpendMeter({ spent, budget, muted, color }: Props) {
       style={
         color
           ? ({
-              "--meter-track": `color-mix(in srgb, ${color} 30%, white)`,
+              "--meter-track": `color-mix(in srgb, ${color} 40%, white)`,
               "--meter-fill": `color-mix(in srgb, ${color} 60%, #18181b)`,
             } as CSSProperties)
           : undefined

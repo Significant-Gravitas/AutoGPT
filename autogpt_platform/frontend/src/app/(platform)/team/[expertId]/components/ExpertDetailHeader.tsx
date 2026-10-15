@@ -36,7 +36,7 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
         <ExpertBudgetSection
           expert={expert}
           color={cover.color}
-          className="absolute right-4 top-4 w-48 rounded-xl bg-white/40 px-3 py-2 backdrop-blur-sm sm:w-64"
+          className="absolute right-4 top-4 w-48 gap-2 rounded-xl bg-white/75 px-3.5 py-2.5 shadow-sm ring-1 ring-black/5 backdrop-blur-md sm:w-64"
         />
       </div>
 
