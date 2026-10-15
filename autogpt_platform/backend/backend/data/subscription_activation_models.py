@@ -251,5 +251,7 @@ class BillingSubscription(BaseModel):
     trial_end: int | None = None
     items: ActivationItems
     latest_invoice: BillingInvoice | None = None
+    # A change Stripe holds until its invoice is paid; the trial runs meanwhile.
+    pending_update: dict[str, object] | None = None
     automatic_tax: AutomaticTax = Field(default_factory=AutomaticTax)
     default_tax_rates: list[RenewalTaxRate] = Field(default_factory=list)

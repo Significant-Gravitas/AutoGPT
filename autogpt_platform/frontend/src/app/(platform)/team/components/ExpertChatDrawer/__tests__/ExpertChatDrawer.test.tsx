@@ -524,7 +524,7 @@ describe("ExpertChatDrawer", () => {
     );
     await waitFor(() => expect(request).toHaveBeenCalled());
     expect(screen.getByText("What can I do for you?")).toBeDefined();
-    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip questions" })).toBeNull();
   });
 
   test("does not request setup when the new chat has a prompt", async () => {
@@ -562,7 +562,9 @@ describe("ExpertChatDrawer", () => {
     expect(
       await screen.findByText("Which outcome should I start with?"),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Skip" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Skip questions" }),
+    ).toBeDefined();
   });
 
   test("a hire's onboarding card is a live form, not a settled row", async () => {
@@ -594,7 +596,9 @@ describe("ExpertChatDrawer", () => {
     expect(
       await screen.findByText("Which outcome should I start with?"),
     ).toBeDefined();
-    expect(screen.getByRole("button", { name: "Skip" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Skip questions" }),
+    ).toBeDefined();
     expect(screen.queryByText(/Setup questions from/)).toBeNull();
   });
 });

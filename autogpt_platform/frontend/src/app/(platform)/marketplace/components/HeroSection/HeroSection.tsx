@@ -22,7 +22,7 @@ export const HeroSection = () => {
             </>
           ) : (
             <>
-              Explore AI agents built for{" "}
+              Explore AI workflows built for{" "}
               <span className="text-violet-600">you</span>
               <span className="block">by the community</span>
             </>
@@ -35,7 +35,7 @@ export const HeroSection = () => {
               <span className="block">— working in minutes.</span>
             </>
           ) : (
-            "Bringing you AI agents designed by thinkers from around the world"
+            "Bringing you AI workflows designed by thinkers from around the world"
           )}
         </p>
         <div className="mb-4 flex w-full justify-center">

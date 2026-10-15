@@ -7,27 +7,33 @@ import { pendingConsent } from "./storage";
 interface Options {
   userID?: string;
   attempt: ActivationResponse | null;
+  /** The page loaded on the way back from Stripe's checkout. */
+  checkoutReturn: boolean;
   accept: (
     response: ActivationResponse,
     recovered?: boolean,
     background?: boolean,
   ) => void;
   onError: (message: string) => void;
+  /** The server has no activation for the attempt being checked. */
+  onMissing: () => void;
 }
 
 export function useActivationRecovery(options: Options) {
   const latest = useRef(options);
   latest.current = options;
-  const { userID, attempt } = options;
+  const { userID, attempt, checkoutReturn } = options;
   useEffect(() => {
-    if (!userID) return;
+    // Only a payment being resumed can use the answer, and for a paying user
+    // the lookup reconciles with Stripe, so an ordinary page load skips it.
+    if (!userID || (!checkoutReturn && !pendingConsent(userID))) return;
     let alive = true;
     retrieveActivation()
       .then((result) => {
         if (alive) latest.current.accept(result, true);
       })
       .catch((error) => {
-        if (alive && statusCode(error) !== 404 && pendingConsent(userID)) {
+        if (alive && statusCode(error) !== 404) {
           latest.current.onError(
             "We couldn’t check your payment yet. Your activation can be recovered without starting another purchase.",
           );
@@ -36,7 +42,7 @@ export function useActivationRecovery(options: Options) {
     return () => {
       alive = false;
     };
-  }, [userID]);
+  }, [userID, checkoutReturn]);
 
   useEffect(() => {
     if (
@@ -67,8 +73,10 @@ export function useActivationRecovery(options: Options) {
       try {
         const response = await retrieveActivation(attempt?.id);
         if (alive) latest.current.accept(response, false, true);
-      } catch {
-        if (alive)
+      } catch (error) {
+        // An attempt the server no longer has is nothing to wait for.
+        if (alive && statusCode(error) === 404) latest.current.onMissing();
+        else if (alive)
           latest.current.onError(
             "We’re still checking your payment. You won’t be charged again by this status check.",
           );
