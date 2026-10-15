@@ -1,0 +1,147 @@
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+import pytest
+
+from backend.copilot.scheduled_chats.cadence import _fires, describe, less_often
+
+_CHICAGO = "America/Chicago"
+# A Sunday afternoon in Chicago.
+_NOW = datetime(2026, 10, 11, 13, 0, tzinfo=ZoneInfo(_CHICAGO))
+
+
+def _labels(crons: list[str]) -> list[str]:
+    return [rung.label for rung in less_often(crons, _CHICAGO, _NOW)]
+
+
+def test_the_every_minute_monitor_is_offered_the_whole_ladder():
+    assert _labels(["* * * * *"]) == [
+        "Every 15 minutes",
+        "Every hour",
+        "Every 4 hours",
+        "Every day at 09:00",
+        "Weekdays at 09:00",
+        "Every Monday at 09:00",
+    ]
+
+
+def test_an_hourly_routine_keeps_the_minute_it_was_spread_to():
+    rungs = less_often(["17 * * * *"], _CHICAGO, _NOW)
+
+    assert [(rung.cron, rung.label) for rung in rungs] == [
+        ("17 */4 * * *", "Every 4 hours"),
+        ("17 9 * * *", "Every day at 09:17"),
+        ("17 9 * * mon-fri", "Weekdays at 09:17"),
+        ("17 9 * * mon", "Every Monday at 09:17"),
+    ]
+
+
+def test_a_routine_with_two_times_a_day_keeps_its_morning_one():
+    assert _labels(["0 13 * * *", "30 8 * * *"]) == [
+        "Every day at 08:30",
+        "Weekdays at 08:30",
+        "Every Monday at 08:30",
+    ]
+
+
+def test_a_night_run_gives_way_to_the_first_one_after_six():
+    assert _labels(["30 0 * * *", "0 18 * * *"])[0] == "Every day at 18:00"
+
+
+def test_weekdays_can_only_drop_to_once_a_week_on_the_day_it_already_runs():
+    # Unix numbering, as stored: 1-5 is Monday to Friday.
+    assert _labels(["0 9 * * 1-5"]) == ["Every Monday at 09:00"]
+    assert _labels(["0 9,17 * * 4"]) == ["Every Thursday at 09:00"]
+
+
+@pytest.mark.parametrize(
+    "crons",
+    [["0 9 * * mon"], ["0 9 1 * *"], [], ["not a cron"]],
+    ids=["weekly", "monthly", "one-off", "unreadable"],
+)
+def test_nothing_runs_less_often_than_once_a_week(crons):
+    assert less_often(crons, _CHICAGO, _NOW) == []
+
+
+def test_times_stay_on_the_schedules_own_clock():
+    utc_now = _NOW.astimezone(timezone.utc)
+
+    assert less_often(["30 8 * * *"], _CHICAGO, utc_now)[0].cron == "30 8 * * mon-fri"
+
+
+def test_each_rung_runs_as_often_as_it_says():
+    for rung in less_often(["* * * * *"], _CHICAGO, _NOW):
+        assert len(_fires([rung.cron], _CHICAGO, _NOW)) == rung.runs_per_week
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        _NOW.replace(minute=16, second=59, microsecond=999_999),
+        _NOW.replace(minute=17),
+        _NOW.replace(minute=17, microsecond=50_000),
+        _NOW.replace(minute=17, second=1),
+    ],
+    ids=["just-before-a-run", "on-a-run", "inside-its-second", "just-after"],
+)
+def test_the_offer_holds_through_the_second_a_run_fires(now):
+    """CI opened the dialog at 20:16:59 and saved at 20:17:00.05: counting from
+    a second before then caught the 20:17 run and the one a week on, so the
+    hour it offered was gone by the save."""
+    assert [rung.cron for rung in less_often(["17 * * * *"], _CHICAGO, now)] == [
+        "17 */4 * * *",
+        "17 9 * * *",
+        "17 9 * * mon-fri",
+        "17 9 * * mon",
+    ]
+
+
+def test_the_offer_does_not_depend_on_which_run_is_next():
+    # Its next run is 14:17 at 14:10, and 14:47 at 14:30.
+    early = less_often(["17,47 */2 * * *"], _CHICAGO, _NOW.replace(hour=14, minute=10))
+    late = less_often(["17,47 */2 * * *"], _CHICAGO, _NOW.replace(hour=14, minute=30))
+
+    assert [rung.cron for rung in early] == [rung.cron for rung in late]
+    assert early[0].cron == "17 */4 * * *"
+
+
+@pytest.mark.parametrize(
+    "now",
+    [
+        datetime(2026, 10, 30, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
+        datetime(2027, 3, 12, 13, 0, tzinfo=ZoneInfo(_CHICAGO)),
+    ],
+    ids=["clocks-fall-back", "clocks-spring-forward"],
+)
+def test_the_week_the_clocks_change_reads_like_any_other(now):
+    """Counted on the zone's own clock, Chicago's fall-back Sunday has 01:17
+    twice and its spring-forward one none, so an hourly schedule was offered
+    "Every hour" and lost its minute."""
+    rungs = less_often(["17 * * * *"], _CHICAGO, now)
+
+    assert [rung.label for rung in rungs] == [
+        "Every 4 hours",
+        "Every day at 09:17",
+        "Weekdays at 09:17",
+        "Every Monday at 09:17",
+    ]
+    assert describe(["17 * * * *"], _CHICAGO, now) == "Every hour"
+    assert describe(["30 1 * * *"], _CHICAGO, now) == "Every day at 01:30"
+
+
+@pytest.mark.parametrize(
+    ("crons", "words"),
+    [
+        (["* * * * *"], "Every minute"),
+        (["*/15 * * * *"], "Every 15 minutes"),
+        (["17 * * * *"], "Every hour"),
+        (["0 */4 * * *"], "Every 4 hours"),
+        (["30 8 * * *"], "Every day at 08:30"),
+        (["0 9 * * mon"], "Every Monday at 09:00"),
+        (["30 8 * * *", "0 13 * * *"], "Twice a day"),
+        (["0 9 * * 1-5"], "5 times a week"),
+        (["0 9 1 * *"], None),
+    ],
+)
+def test_describe(crons, words):
+    assert describe(crons, _CHICAGO, _NOW) == words

@@ -1,16 +1,26 @@
+import logging
 from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, HTTPException, Path, Security
-from starlette.status import HTTP_404_NOT_FOUND
+from starlette.status import (
+    HTTP_400_BAD_REQUEST,
+    HTTP_404_NOT_FOUND,
+    HTTP_409_CONFLICT,
+    HTTP_503_SERVICE_UNAVAILABLE,
+)
 
 from backend.api.features.experts import experts_db
 from backend.api.features.schedule_visibility import visible_graph_schedules
 from backend.api.features.schedules.model import (
+    ResumeScheduledChatResponse,
     ScheduleCreationRequest,
     ScheduleUpdateRequest,
+    SetScheduledChatCadenceRequest,
 )
+from backend.copilot.scheduled_chats import cadence_service
+from backend.copilot.scheduled_chats import service as scheduled_chats
 from backend.data import graph as graph_db
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.data.tenancy import get_user_team_ids
@@ -23,7 +33,9 @@ from backend.util.timezone_utils import (
     get_user_timezone_or_utc,
 )
 
-# This router mounts at /api and keeps the section's full paths: its six routes
+logger = logging.getLogger(__name__)
+
+# This router mounts at /api and keeps the section's full paths: its routes
 # span two prefixes (/schedules and /graphs/{graph_id}/schedules), so a prefixed
 # mount would have to move one of them.
 router = APIRouter(dependencies=[Security(requires_user)])
@@ -165,6 +177,107 @@ async def list_copilot_turn_schedules(
     return [s for s in schedules if isinstance(s, scheduler.CopilotTurnJobInfo)]
 
 
+@router.get(
+    path="/schedules/followups/paused",
+    summary="List scheduled chats paused after failing the same way",
+    operation_id="listPausedScheduledChats",
+)
+async def list_paused_scheduled_chats(
+    user_id: Annotated[str, Security(get_user_id)],
+) -> list[scheduled_chats.PausedScheduledChat]:
+    """A paused job drops out of the follow-ups list above, so the chats a
+    failure streak paused are listed here, each once however many fire times
+    it has, with why and what Resume takes."""
+    return await scheduled_chats.list_paused_scheduled_chats(user_id)
+
+
+@router.post(
+    path="/schedules/followups/{schedule_key}/resume",
+    summary="Resume a scheduled chat paused after failing the same way",
+    operation_id="resumeScheduledChat",
+)
+async def resume_scheduled_chat(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> ResumeScheduledChatResponse:
+    try:
+        resumed = await scheduled_chats.resume_scheduled_chat(user_id, schedule_key)
+    except Exception:
+        # The scheduler refused or the database blinked: the chat stays
+        # paused, so Resume can simply be tried again.
+        logger.exception("Could not resume scheduled chat %s", schedule_key)
+        raise HTTPException(
+            status_code=HTTP_503_SERVICE_UNAVAILABLE,
+            detail="This scheduled chat could not be resumed just now. Try again.",
+        )
+    if not resumed:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat is not paused.",
+        )
+    return ResumeScheduledChatResponse(resumed=True)
+
+
+@router.get(
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="How often a scheduled chat runs, and how it could run less often",
+    operation_id="getScheduledChatCadence",
+)
+async def get_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    try:
+        return await cadence_service.get_cadence(user_id, schedule_key)
+    except Exception as e:
+        raise _cadence_error(e, schedule_key) from e
+
+
+@router.post(
+    path="/schedules/followups/{schedule_key}/cadence",
+    summary="Run a scheduled chat less often",
+    operation_id="setScheduledChatCadence",
+)
+async def set_scheduled_chat_cadence(
+    user_id: Annotated[str, Security(get_user_id)],
+    body: SetScheduledChatCadenceRequest,
+    schedule_key: str = Path(
+        ..., description="The routine's id, or the follow-up's schedule id"
+    ),
+) -> cadence_service.ScheduledChatCadence:
+    try:
+        return await cadence_service.set_cadence(user_id, schedule_key, body.cron)
+    except Exception as e:
+        raise _cadence_error(e, schedule_key) from e
+
+
+def _cadence_error(error: Exception, schedule_key: str) -> HTTPException:
+    if isinstance(error, cadence_service.CadenceNotOffered):
+        return HTTPException(
+            status_code=HTTP_400_BAD_REQUEST,
+            detail="That cadence is not one this scheduled chat can switch to.",
+        )
+    if isinstance(error, cadence_service.CadenceNotFound):
+        return HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail="This scheduled chat has no cadence to change.",
+        )
+    if isinstance(error, cadence_service.ScheduledChatPaused):
+        return HTTPException(
+            status_code=HTTP_409_CONFLICT,
+            detail="This scheduled chat is paused. Resume it first.",
+        )
+    logger.exception("Could not change the cadence of scheduled chat %s", schedule_key)
+    return HTTPException(
+        status_code=HTTP_503_SERVICE_UNAVAILABLE,
+        detail="Its cadence could not be changed just now. Try again.",
+    )
+
+
 @router.delete(
     path="/schedules/{schedule_id}",
     summary="Delete execution schedule",
@@ -177,10 +290,15 @@ async def delete_graph_execution_schedule(
     try:
         await get_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     except NotFoundError:
+        # Gone already, perhaps by a delete whose streak cleanup failed: a
+        # retry still clears the streak, or the chat stays listed as paused.
+        await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
         raise HTTPException(
             status_code=HTTP_404_NOT_FOUND,
             detail=f"Schedule #{schedule_id} not found",
         )
+    # A follow-up's failure streak is keyed by its schedule id.
+    await scheduled_chats.forget_scheduled_chat(user_id, schedule_id)
     return {"id": schedule_id}
 
 

@@ -47,6 +47,8 @@ import {
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
+import { ScheduledChatNoticeCard } from "../ScheduledChatNoticeCard/ScheduledChatNoticeCard";
+import { getScheduledChatNotice } from "../ScheduledChatNoticeCard/helpers";
 import { WorkCard } from "../WorkCard/WorkCard";
 import { getWorkRunMetadata, toPreview } from "../WorkCard/helpers";
 import { AssistantMessageActions } from "./components/AssistantMessageActions";
@@ -542,6 +544,29 @@ export function ChatMessagesContainer({
                 >
                   <MessageContent className="group-[.is-assistant]:bg-transparent">
                     <WorkCard metadata={runMetadata} preview={preview} />
+                  </MessageContent>
+                </Message>
+              );
+            }
+
+            // A scheduled chat whose run was skipped says why, with the fix
+            // on a button. The model never reads this row back, and it is
+            // the owner's: a shared copy of the chat leaves it out.
+            const notice = getScheduledChatNotice(message.metadata);
+            if (notice) {
+              if (readOnly) return null;
+              return (
+                <Message
+                  from={message.role}
+                  key={message.id}
+                  data-message-id={message.id}
+                  className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
+                >
+                  <MessageContent className="group-[.is-assistant]:bg-transparent">
+                    <ScheduledChatNoticeCard
+                      notice={notice}
+                      sessionID={sessionID}
+                    />
                   </MessageContent>
                 </Message>
               );

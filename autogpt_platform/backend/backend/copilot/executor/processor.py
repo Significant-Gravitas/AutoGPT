@@ -790,14 +790,15 @@ class CoPilotProcessor:
                         log.info("Cancel requested, breaking stream")
                         break
 
+                    # Before the StreamError break: the watch reports its code.
+                    if scheduled_watch is not None:
+                        scheduled_watch.observe(chunk)
                     # Capture StreamError so mark_session_completed receives
                     # the error message (stream_and_publish yields but does
                     # not publish StreamError — that's done by mark_session_completed).
                     if isinstance(chunk, StreamError):
                         error_msg = chunk.errorText
                         break
-                    if scheduled_watch is not None:
-                        scheduled_watch.observe(chunk)
 
                     current_time = time.monotonic()
                     if current_time - last_refresh >= refresh_interval:
@@ -846,6 +847,10 @@ class CoPilotProcessor:
                 except Exception as mark_err:
                     log.error(f"Failed to mark session completed: {mark_err}")
                 finally:
+                    # After the turn is marked done, so the owner never waits on
+                    # it: counts the run toward its schedule's failure streak.
+                    if scheduled_watch is not None:
+                        await scheduled_watch.record(error_msg)
                     await cost_context_stack.aclose()
                     # A browser turn leaves a Chromium tree on this pod that
                     # nothing else ever stops; state is already persisted, so

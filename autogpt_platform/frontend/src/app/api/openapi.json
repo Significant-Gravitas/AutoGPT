@@ -14204,6 +14204,174 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/schedules/followups/paused": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List scheduled chats paused after failing the same way",
+        "description": "A paused job drops out of the follow-ups list above, so the chats a\nfailure streak paused are listed here, each once however many fire times\nit has, with why and what Resume takes.",
+        "operationId": "listPausedScheduledChats",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PausedScheduledChat"
+                  },
+                  "type": "array",
+                  "title": "Response Listpausedscheduledchats"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/cadence": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "How often a scheduled chat runs, and how it could run less often",
+        "operationId": "getScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Run a scheduled chat less often",
+        "operationId": "setScheduledChatCadence",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetScheduledChatCadenceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduledChatCadence"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules/followups/{schedule_key}/resume": {
+      "post": {
+        "tags": ["v1", "schedules"],
+        "summary": "Resume a scheduled chat paused after failing the same way",
+        "operationId": "resumeScheduledChat",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "The routine's id, or the follow-up's schedule id",
+              "title": "Schedule Key"
+            },
+            "description": "The routine's id, or the follow-up's schedule id"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResumeScheduledChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
@@ -19286,6 +19454,15 @@
         "required": ["file_ids"],
         "title": "BulkMoveFilesRequest"
       },
+      "CadenceOption": {
+        "properties": {
+          "cron": { "type": "string", "title": "Cron" },
+          "label": { "type": "string", "title": "Label" }
+        },
+        "type": "object",
+        "required": ["cron", "label"],
+        "title": "CadenceOption"
+      },
       "CancelSessionResponse": {
         "properties": {
           "cancelled": { "type": "boolean", "title": "Cancelled" },
@@ -20056,6 +20233,11 @@
           "limits_retry_count": {
             "type": "integer",
             "title": "Limits Retry Count",
+            "default": 0
+          },
+          "usage_wait_count": {
+            "type": "integer",
+            "title": "Usage Wait Count",
             "default": 0
           },
           "user_timezone": {
@@ -27347,6 +27529,40 @@
         "required": ["total_items", "total_pages", "current_page", "page_size"],
         "title": "Pagination"
       },
+      "PausedScheduledChat": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id"
+          },
+          "reason": { "type": "string", "title": "Reason" },
+          "provider": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Provider"
+          },
+          "summary": { "type": "string", "title": "Summary" },
+          "paused_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paused At"
+          },
+          "routine": { "type": "boolean", "title": "Routine", "default": false }
+        },
+        "type": "object",
+        "required": [
+          "schedule_key",
+          "title",
+          "session_id",
+          "reason",
+          "provider",
+          "summary",
+          "paused_at"
+        ],
+        "title": "PausedScheduledChat",
+        "description": "A scheduled chat its failure streak paused, as the lists show it."
+      },
       "PeekPendingMessagesResponse": {
         "properties": {
           "messages": {
@@ -29072,6 +29288,12 @@
         "title": "ResponseType",
         "description": "Types of tool responses."
       },
+      "ResumeScheduledChatResponse": {
+        "properties": { "resumed": { "type": "boolean", "title": "Resumed" } },
+        "type": "object",
+        "required": ["resumed"],
+        "title": "ResumeScheduledChatResponse"
+      },
       "ReviewItem": {
         "properties": {
           "node_exec_id": {
@@ -29607,6 +29829,25 @@
         "title": "ScheduleUpdateRequest",
         "description": "Fields to change on an existing schedule; omitted fields keep their value."
       },
+      "ScheduledChatCadence": {
+        "properties": {
+          "schedule_key": { "type": "string", "title": "Schedule Key" },
+          "title": { "type": "string", "title": "Title" },
+          "current": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Current"
+          },
+          "timezone": { "type": "string", "title": "Timezone" },
+          "options": {
+            "items": { "$ref": "#/components/schemas/CadenceOption" },
+            "type": "array",
+            "title": "Options"
+          }
+        },
+        "type": "object",
+        "required": ["schedule_key", "title", "current", "timezone", "options"],
+        "title": "ScheduledChatCadence"
+      },
       "SchedulesListResponse": {
         "properties": {
           "schedules": {
@@ -29877,6 +30118,18 @@
         "type": "object",
         "required": ["active_graph_version"],
         "title": "SetGraphActiveVersion"
+      },
+      "SetScheduledChatCadenceRequest": {
+        "properties": {
+          "cron": {
+            "type": "string",
+            "title": "Cron",
+            "description": "One of the cadences offered for this chat, as returned by getScheduledChatCadence"
+          }
+        },
+        "type": "object",
+        "required": ["cron"],
+        "title": "SetScheduledChatCadenceRequest"
       },
       "SetUserTierRequest": {
         "properties": {

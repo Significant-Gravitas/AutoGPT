@@ -4,9 +4,13 @@ The scheduler only learns whether it got a turn onto the queue. What happens
 next, such as the turn erroring or a tool it called returning an error
 (``run_agent`` in SECRT-2799, every Monday for ten weeks), is only visible
 here in the copilot executor, and nobody is watching an unattended turn. So a
-failed scheduled turn raises one Sentry event and a metric.
+failed scheduled turn raises one Sentry event and a metric, and every
+scheduled turn's outcome counts toward its schedule's failure streak, which
+pauses a chat that keeps failing the same way and tells its owner
+(SECRT-2879).
 """
 
+import asyncio
 import logging
 import re
 
@@ -15,19 +19,44 @@ import sentry_sdk
 from pydantic import BaseModel
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.permissions import SDK_BUILTIN_TOOL_NAMES
-from backend.copilot.response_model import StreamBaseResponse, StreamToolOutputAvailable
+from backend.copilot.response_model import (
+    StreamBaseResponse,
+    StreamError,
+    StreamToolOutputAvailable,
+)
+from backend.copilot.scheduled_chats.notices import schedule_title
+from backend.copilot.scheduled_chats.outcomes import (
+    RunOutcome,
+    ToolFailureDetail,
+    classify_run,
+    text_hash,
+    tool_failure_detail,
+)
+from backend.copilot.scheduled_chats.service import ScheduledRun
 from backend.copilot.tools.models import ResponseType
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
+from backend.util.clients import get_database_manager_async_client
 
 from .utils import CoPilotExecutionEntry, ScheduledTurnOrigin
 
 logger = logging.getLogger(__name__)
 
+# How long a finished turn may spend recording its outcome. The turn is
+# already marked done; this only holds the worker.
+_RECORD_TIMEOUT_SECONDS = 20
+
 # A tool's error text can quote the user's data, and neither the log sinks nor
 # Sentry are redacted, so a failure is reported by its error code alone.
 _ERROR_CODE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 UNCLASSIFIED = "unclassified"
+
+# Finding a block and reading its schema is how a run gets ready to work, not
+# work done. The every-minute Discord monitor did both before its one real
+# step failed; counting them made a run that did nothing read as one that
+# went ahead without Discord, so it was never paused.
+_LOOKUP_TOOLS = frozenset({"find_capability", "describe_capability"})
 
 
 class ToolFailure(BaseModel):
@@ -36,13 +65,18 @@ class ToolFailure(BaseModel):
 
 
 class ScheduledTurnWatch:
-    """Collects a scheduled turn's tool errors while it streams, then reports
-    once the turn has ended."""
+    """Collects a scheduled turn's error code and tool errors while it streams,
+    then reports once the turn has ended."""
 
     def __init__(self, entry: CoPilotExecutionEntry, origin: ScheduledTurnOrigin):
         self._entry = entry
         self._origin = origin
         self.tool_failures: list[ToolFailure] = []
+        self._turn_error_code: str | None = None
+        # For the failure streak: what each failure said, and how many
+        # platform tool calls worked.
+        self._failure_details: list[tuple[str, ToolFailureDetail]] = []
+        self._tool_successes = 0
 
     @classmethod
     def for_entry(cls, entry: CoPilotExecutionEntry) -> "ScheduledTurnWatch | None":
@@ -51,21 +85,70 @@ class ScheduledTurnWatch:
         return cls(entry, entry.scheduled)
 
     def observe(self, chunk: StreamBaseResponse) -> None:
+        if isinstance(chunk, StreamError):
+            self._turn_error_code = chunk.code
+            return
         if not isinstance(chunk, StreamToolOutputAvailable):
+            return
+        # The CLI's own tools stay out, whatever they return: a missed Read or
+        # Grep is the model probing, and a file it read can hold anything,
+        # an error payload included.
+        if not _ours(chunk.toolName):
             return
         error_type = tool_error_type(chunk.output)
         # A platform tool can also fail without an ErrorResponse payload (a
-        # login prompt, a held read, a plain-text error). The CLI's own tools
-        # stay out: a missed Read or Grep is the model probing, not a failure.
-        if (
-            error_type is None
-            and not chunk.success
-            and chunk.toolName not in SDK_BUILTIN_TOOL_NAMES
-        ):
+        # login prompt, a held read, a plain-text error).
+        if error_type is None and not chunk.success:
             error_type = UNCLASSIFIED
+        tool = chunk.toolName or "unknown"
         if error_type is not None:
-            self.tool_failures.append(
-                ToolFailure(tool=chunk.toolName or "unknown", error_type=error_type)
+            self.tool_failures.append(ToolFailure(tool=tool, error_type=error_type))
+            detail = tool_failure_detail(chunk.output) or ToolFailureDetail(
+                error_type=UNCLASSIFIED, text_hash=text_hash(chunk.output)
+            )
+            self._failure_details.append((tool, detail))
+        elif chunk.toolName not in _LOOKUP_TOOLS:
+            self._tool_successes += 1
+
+    def outcome(self, turn_error: str | None) -> RunOutcome:
+        return classify_run(
+            cancelled=turn_error == stream_registry.CANCELLED_MESSAGE,
+            turn_error_code=self._turn_error_code,
+            turn_errored=turn_error is not None,
+            tool_failures=self._failure_details,
+            tool_successes=self._tool_successes,
+        )
+
+    async def record(self, turn_error: str | None) -> None:
+        """Count this run toward its schedule's failure streak.
+
+        Never raises, and bounded: it runs in the turn's cleanup, after the
+        turn has been marked done.
+        """
+        outcome = self.outcome(turn_error)
+        schedule_key = self._origin.routine_id or self._origin.schedule_id
+        if outcome.neutral or schedule_key is None or self._entry.user_id is None:
+            return
+        run = ScheduledRun(
+            user_id=self._entry.user_id,
+            schedule_key=schedule_key,
+            schedule_id=self._origin.schedule_id,
+            routine_id=self._origin.routine_id,
+            session_id=self._entry.session_id,
+            title=schedule_title(routine_title=None, message=self._entry.message),
+            outcome=outcome,
+        )
+        try:
+            await asyncio.wait_for(
+                get_database_manager_async_client().record_scheduled_run(run),
+                timeout=_RECORD_TIMEOUT_SECONDS,
+            )
+        except Exception:
+            logger.warning(
+                "Could not record scheduled copilot turn %s toward its schedule's "
+                "failure streak",
+                self._entry.turn_id,
+                exc_info=True,
             )
 
     def report(self, turn_error: str | None) -> None:
@@ -104,7 +187,9 @@ class ScheduledTurnWatch:
             "cron": self._origin.cron,
             "session_id": self._entry.session_id,
             "turn_id": self._entry.turn_id,
-            "turn_error_type": error_type(turn_error) if turn_error else None,
+            "turn_error_type": (
+                error_type(self._turn_error_code or turn_error) if turn_error else None
+            ),
             "tool_failures": [f.model_dump() for f in self.tool_failures],
         }
         failed_tools = ", ".join(
@@ -147,3 +232,15 @@ def error_type(error: object) -> str:
     if isinstance(error, str) and _ERROR_CODE.fullmatch(error):
         return error
     return UNCLASSIFIED
+
+
+def _ours(tool_name: str | None) -> bool:
+    """A platform tool call. The CLI's own tools stay out (a missed Read or
+    Grep is the model probing), and so does the compaction notice, which no
+    tool returned: counting it as work done would keep a run that failed
+    everywhere else from ever reading as failed."""
+    return (
+        tool_name is not None
+        and tool_name not in SDK_BUILTIN_TOOL_NAMES
+        and tool_name != COMPACTION_TOOL_NAME
+    )
