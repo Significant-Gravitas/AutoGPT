@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { AddColumn } from "./components/AddColumn/AddColumn";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
+import { ScheduledColumn } from "./components/ScheduledColumn/ScheduledColumn";
 import { DONE, isDefaultColumn } from "./helpers";
 import { useTaskBoard } from "./useTaskBoard";
 
@@ -13,6 +14,8 @@ export function TaskBoard() {
     isClearing,
     clearColumn,
     columns,
+    schedules,
+    nextFollowupBySession,
     allColumns,
     expertsById,
     moveCard,
@@ -41,12 +44,14 @@ export function TaskBoard() {
           <BoardSkeleton />
         ) : (
           <div className="flex items-start gap-3 overflow-x-auto pb-2">
+            <ScheduledColumn schedules={schedules} expertsById={expertsById} />
             {columns.map((column) => (
               <BoardColumn
                 key={column.id}
                 column={column}
                 allColumns={allColumns}
                 expertsById={expertsById}
+                nextFollowupBySession={nextFollowupBySession}
                 onMoveCard={moveCard}
                 onRemove={
                   isDefaultColumn(column.id)
@@ -75,7 +80,7 @@ export function TaskBoard() {
 function BoardSkeleton() {
   return (
     <div className="flex gap-3" aria-label="Loading task board…">
-      {[0, 1, 2].map((index) => (
+      {[0, 1, 2, 3].map((index) => (
         <Skeleton
           key={index}
           className="h-[calc(100dvh-8rem)] min-h-[32rem] min-w-[18rem] max-w-[26rem] flex-1 basis-0 rounded-xl"

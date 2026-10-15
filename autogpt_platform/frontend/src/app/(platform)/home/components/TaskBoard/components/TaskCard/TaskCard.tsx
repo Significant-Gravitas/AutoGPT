@@ -3,8 +3,6 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
-import { AutopilotAvatar } from "@/components/molecules/AutopilotAvatar/AutopilotAvatar";
-import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +10,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatTimeAgo } from "@/lib/utils/time";
 import {
+  Clock01Icon,
   FileAttachmentIcon,
   MoreHorizontalIcon,
 } from "@hugeicons/core-free-icons";
@@ -22,10 +20,12 @@ import Link from "next/link";
 import type { DragEvent } from "react";
 import {
   type BoardColumnDef,
+  formatRunMoment,
   getPreviewLine,
   isSessionRunning,
   TASK_CARD_MIME,
 } from "../../helpers";
+import { ExpertByline } from "../ExpertByline/ExpertByline";
 import { StatusIcon } from "../StatusIcon/StatusIcon";
 
 interface Props {
@@ -33,6 +33,7 @@ interface Props {
   columnId: string;
   allColumns: BoardColumnDef[];
   expert: ExpertIdentity | undefined;
+  nextFollowup: string | undefined;
   onMove: (columnId: string) => void;
 }
 
@@ -41,12 +42,11 @@ export function TaskCard({
   columnId,
   allColumns,
   expert,
+  nextFollowup,
   onMove,
 }: Props) {
   const title = session.title || "Untitled chat";
   const isRunning = isSessionRunning(session);
-  const name = expert?.name ?? AUTOPILOT_NAME;
-  const jobTitle = expert ? expert.jobTitle || expert.role : "Head of AI";
   const fileCount = session.file_count ?? 0;
 
   function handleDragStart(e: DragEvent<HTMLElement>) {
@@ -65,30 +65,7 @@ export function TaskCard({
         draggable={false}
         className="block rounded-lg px-3.5 pb-3 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
-        <div className="flex items-center gap-1.5 pr-6">
-          {expert ? (
-            <ExpertAvatar
-              name={expert.name}
-              avatarUrl={expert.avatarUrl}
-              color={expert.color}
-              size={20}
-              className="rounded-full border border-zinc-200"
-            />
-          ) : (
-            <AutopilotAvatar
-              size={20}
-              className="rounded-full border border-zinc-200"
-            />
-          )}
-          <Text variant="small" tone="muted" className="shrink-0">
-            {name}
-          </Text>
-          {jobTitle && (
-            <Text variant="small" className="truncate text-zinc-400">
-              · {jobTitle}
-            </Text>
-          )}
-        </div>
+        <ExpertByline expert={expert} />
         <div className="mt-2.5 flex items-start gap-2">
           <StatusIcon columnId={columnId} className="mt-[0.2rem]" />
           <Text variant="body-medium" tone="primary" className="line-clamp-2">
@@ -114,6 +91,17 @@ export function TaskCard({
           </div>
         )}
         <div className="mt-2.5 flex items-center gap-3">
+          {nextFollowup && (
+            <span
+              className="inline-flex items-center gap-1 text-zinc-500"
+              aria-label={`Follow-up scheduled for ${formatRunMoment(nextFollowup)}`}
+            >
+              <Icon icon={Clock01Icon} size={14} />
+              <Text variant="small" tone="muted" aria-hidden>
+                {formatRunMoment(nextFollowup)}
+              </Text>
+            </span>
+          )}
           {fileCount > 0 && (
             <span
               className="inline-flex items-center gap-1 text-zinc-500"

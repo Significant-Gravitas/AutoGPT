@@ -20,6 +20,7 @@ interface Props {
   column: BoardColumnDef & { sessions: SessionSummaryResponse[] };
   allColumns: BoardColumnDef[];
   expertsById: ExpertIdentityMap;
+  nextFollowupBySession: Map<string, string>;
   onMoveCard: (sessionId: string, columnId: string) => void;
   onRemove?: () => void;
   onClear?: () => void;
@@ -30,6 +31,7 @@ export function BoardColumn({
   column,
   allColumns,
   expertsById,
+  nextFollowupBySession,
   onMoveCard,
   onRemove,
   onClear,
@@ -101,6 +103,7 @@ export function BoardColumn({
             expert={
               session.expert_id ? expertsById.get(session.expert_id) : undefined
             }
+            nextFollowup={nextFollowupBySession.get(session.id)}
             onMove={(columnId) => onMoveCard(session.id, columnId)}
           />
         ))}

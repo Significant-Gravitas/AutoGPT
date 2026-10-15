@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { DONE, IN_PROGRESS, TODO } from "../../helpers";
+import { DONE, IN_PROGRESS, SCHEDULED, TODO } from "../../helpers";
 
 interface Props {
   columnId: string;
@@ -8,6 +8,30 @@ interface Props {
 
 export function StatusIcon({ columnId, className }: Props) {
   const classes = cn("size-3.5 shrink-0", className);
+
+  if (columnId === SCHEDULED) {
+    return (
+      <svg viewBox="0 0 14 14" aria-hidden className={classes}>
+        <circle
+          cx="7"
+          cy="7"
+          r="6"
+          fill="none"
+          strokeWidth="1.5"
+          strokeDasharray="2.2 2"
+          className="stroke-zinc-500"
+        />
+        <path
+          d="M7 4.25V7l1.75 1.25"
+          fill="none"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="stroke-zinc-500"
+        />
+      </svg>
+    );
+  }
 
   if (columnId === TODO) {
     return (

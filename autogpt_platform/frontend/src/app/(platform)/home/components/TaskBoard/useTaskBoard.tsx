@@ -4,6 +4,11 @@ import {
   useSessionList,
 } from "@/app/(platform)/copilot/useSessionList";
 import { usePostV2ArchiveSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import {
+  useGetV1ListExecutionSchedulesForAUser,
+  useListCopilotFollowupSchedules,
+} from "@/app/api/__generated__/endpoints/schedules/schedules";
+import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { Key, storage } from "@/services/storage/local-storage";
@@ -11,15 +16,32 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   type BoardState,
+  buildScheduleCards,
+  getNextFollowupBySession,
   groupSessionsIntoColumns,
   isDefaultColumn,
   makeColumnId,
   parseBoardState,
 } from "./helpers";
 
+const SCHEDULES_REFETCH_INTERVAL_MS = 60_000;
+
 export function useTaskBoard() {
   const { sessions, isLoading } = useSessionList();
   const { expertsById } = useExpertMap();
+  const { data: followups = [] } = useListCopilotFollowupSchedules({
+    query: {
+      select: (res) => okData(res) ?? [],
+      refetchInterval: SCHEDULES_REFETCH_INTERVAL_MS,
+    },
+  });
+  const { data: workflowSchedules = [] } =
+    useGetV1ListExecutionSchedulesForAUser({
+      query: {
+        select: (res) => okData(res) ?? [],
+        refetchInterval: SCHEDULES_REFETCH_INTERVAL_MS,
+      },
+    });
   const queryClient = useQueryClient();
   const { mutateAsync: setArchived, isPending: isClearing } =
     usePostV2ArchiveSessions();
@@ -110,6 +132,8 @@ export function useTaskBoard() {
     isClearing,
     clearColumn,
     columns: groupSessionsIntoColumns(sessions, board),
+    schedules: buildScheduleCards(followups, workflowSchedules),
+    nextFollowupBySession: getNextFollowupBySession(followups),
     allColumns: board.columns,
     expertsById,
     moveCard,
