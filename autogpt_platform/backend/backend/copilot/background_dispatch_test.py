@@ -152,6 +152,9 @@ async def test_openrouter_calls_go_to_the_routes_url_with_its_key(
 async def test_direct_calls_go_to_the_routes_url_with_its_key_and_native_names(
     monkeypatch, integration_keys
 ):
+    # What the Anthropic SDK would otherwise pick up from the process.
+    monkeypatch.setenv("ANTHROPIC_AUTH_TOKEN", "FAKE-process-token")
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9")
     seen: list[dict] = []
     runner, port = await _serve("/proxy/v1/messages", _MESSAGE, seen)
     try:
@@ -271,6 +274,13 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
     )
     batch_dispatch = mocker.patch(
         "backend.copilot.dream.batch_submit.call_provider", new=AsyncMock()
+    )
+    # The pass must skip before any of this; reaching it fails fast.
+    mocker.patch.object(
+        orchestrator, "is_feature_enabled", AsyncMock(return_value=True)
+    )
+    mocker.patch.object(
+        orchestrator, "dream_lock", side_effect=AssertionError("took the lock")
     )
 
     result = await orchestrator._execute_dream_pass_async("user-1", config=cfg)

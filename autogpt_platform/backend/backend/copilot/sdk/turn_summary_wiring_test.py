@@ -26,6 +26,7 @@ from backend.copilot.anthropic_rate_card import anthropic_usage_cost_usd
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.conftest import build_test_transcript
+from backend.copilot.sdk.launch_env import isolated_launch_env
 from backend.copilot.sdk.query_blocks import scan_context_blocks
 from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
 from backend.copilot.sdk.service import stream_chat_completion_sdk
@@ -331,7 +332,8 @@ async def test_first_launch_line_reads_the_live_prompt(
 
     [summary] = _summaries(caplog)
     [launch] = options
-    assert launch.env == _ROUTE_ENV
+    # The route's own variables, launched from the allowlisted parent.
+    assert launch.env == isolated_launch_env(_ROUTE_ENV)
     _assert_line_reads_the_launch(summary, launch)
     _assert_line_reads_the_query(summary, _sent_query(clients[0]), "no_resume_history")
 
@@ -369,7 +371,7 @@ async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
         summary, _sent_query(clients[1]), "rebuilt_no_resume_history"
     )
     assert retry.hooks is first.hooks
-    assert retry.env == first.env == _ROUTE_ENV
+    assert retry.env == first.env == isolated_launch_env(_ROUTE_ENV)
     assert _prompt_text(retry) == _prompt_text(first)
     _assert_line_reads_the_launch(summary, retry)
 
@@ -407,7 +409,7 @@ async def test_building_mode_restart_keeps_hooks_env_and_sends_the_guide(
     assert summary["cli_launches"] == 2
     assert summary["building_guide_in_prompt"] is True
     assert restart.hooks is first.hooks
-    assert restart.env == first.env == _ROUTE_ENV
+    assert restart.env == first.env == isolated_launch_env(_ROUTE_ENV)
     assert _prompt_text(restart) == _prompt_text(first) + _GUIDE
     _assert_line_reads_the_launch(summary, restart)
     _assert_line_reads_the_query(summary, _sent_query(clients[1]), "resume")

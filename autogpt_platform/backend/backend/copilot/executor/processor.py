@@ -29,6 +29,7 @@ from backend.copilot.llm_attribution import set_turn_impersonated
 from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
+from backend.copilot.sdk.launch_env import inherited_env
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
@@ -349,6 +350,7 @@ class CoPilotProcessor:
                     [cli_path, "-v"],
                     capture_output=True,
                     timeout=10,
+                    env=inherited_env(),
                 )
                 if result.returncode == 0:
                     logger.info(f"CLI pre-warm done: {cli_path}")

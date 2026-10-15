@@ -166,6 +166,28 @@ async def test_a_variable_the_backend_gains_later_is_blanked_too(
     assert spawned["SOME_SERVICE_TOKEN_ADDED_LATER"] == ""
 
 
+def test_the_worker_warm_up_starts_the_cli_from_the_allowlist(
+    parent: None, monkeypatch: pytest.MonkeyPatch
+):
+    from backend.copilot.executor import processor
+
+    runs: list[dict[str, str]] = []
+
+    def run(args, **kwargs):
+        runs.append(kwargs["env"])
+        return subprocess.CompletedProcess(args, 0, stdout=b"", stderr=b"")
+
+    monkeypatch.setattr(processor.subprocess, "run", run)
+
+    processor.CoPilotProcessor._prewarm_cli(
+        None, cli_path="claude-under-test"  # type: ignore[arg-type]
+    )
+
+    [env] = runs
+    assert all(inherited(name) for name in env)
+    assert not set(_PARENT_SECRETS.values()) & set(env.values())
+
+
 def test_the_subscription_check_starts_the_cli_from_the_allowlist(
     parent: None, monkeypatch: pytest.MonkeyPatch
 ):
