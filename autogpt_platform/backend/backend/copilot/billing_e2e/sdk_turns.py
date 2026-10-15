@@ -26,6 +26,7 @@ from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
+from backend.copilot.turn_budget import TurnBudget
 from backend.data.llm_registry.llm_models import LLMModel
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.auth_bundle import CodexAuthBundleV1, CodexAuthTokensV1
@@ -126,7 +127,10 @@ class SdkTurns:
             "get_copilot_tool_names": MagicMock(return_value=[]),
             "get_sdk_disallowed_tools": MagicMock(return_value=[]),
             "get_user_tier": AsyncMock(return_value=None),
-            "_resolve_dynamic_max_budget_usd": AsyncMock(return_value=100.0),
+            # Well above any turn here, so the governor never lands one.
+            "resolve_turn_budget": AsyncMock(
+                return_value=TurnBudget(usd=100.0, limiting="task")
+            ),
             "build_turn_budget_block": AsyncMock(return_value=""),
             "drain_pending_safe": AsyncMock(return_value=[]),
             "drain_pending_for_persist": AsyncMock(return_value=[]),
