@@ -35,9 +35,10 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 logger = logging.getLogger(__name__)
 
-# Every top-level block this module renders into a prompt. The display strip in
-# ``service.py`` peels these off the front of a stored user message by name, so
-# a new block missing from this tuple renders verbatim as if the user typed it.
+# Every top-level block this module renders into a prompt. The inbound sanitizer
+# in ``service.py`` reserves these by name, so a new block missing from this
+# tuple can be forged by a user. One that lands in the stored first row must also
+# join ``STORED_ROW_BLOCK_TAGS`` there, or it shows as if the user typed it.
 OWNED_BLOCK_TAGS = (
     "expert_identity",
     "expert_workflows",

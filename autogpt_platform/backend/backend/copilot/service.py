@@ -263,14 +263,14 @@ CACHEABLE_SYSTEM_PROMPT = _CACHEABLE_SYSTEM_PROMPT
 # `inject_user_context()` writes the `<user_context>` block through
 # `format_user_context_prefix()`; the display strip
 # (`strip_injected_context_for_display`) peels it, with every other block in
-# SERVER_INJECTED_BLOCK_TAGS, back off the stored message.
+# STORED_ROW_BLOCK_TAGS, back off the stored message.
 
-# Every block the server injects into a prompt. Both directions read it: the
-# inbound sanitizer strips a user-typed copy before it reaches the model, and
-# the display strip peels it back off the stored message. The expert half comes
-# from the module that renders it, so adding a block there covers both here —
-# a tag missing from this tuple is both spoofable and user-visible, which is
-# what #14688 shipped.
+# Every block the server injects into a prompt, stored or not: the inbound
+# sanitizer strips a user-typed copy before it reaches the model. The expert
+# half comes from the module that renders it, so adding a block there covers
+# it here — a tag missing from this tuple is spoofable, which is what #14688
+# shipped. A block that lands in a stored row also goes in
+# STORED_ROW_BLOCK_TAGS below.
 SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     USER_CONTEXT_TAG,
     MEMORY_CONTEXT_TAG,
@@ -286,6 +286,28 @@ SERVER_INJECTED_BLOCK_TAGS: tuple[str, ...] = (
     USER_FOLLOW_UP_TAG,
     VOICE_TURN_TAG,
     *_EXPERT_BLOCK_TAGS,
+)
+
+# Every tag the platform has written at the start of a stored user row: the
+# first turn's context prefix (which once carried the skills-drift notice too)
+# and a voice turn's instruction. The display strip peels these and only these.
+# Stored rows keep their tags for good, so this list is a literal that never
+# loses one; a block only ever sent to the model stays out of it.
+STORED_ROW_BLOCK_TAGS: tuple[str, ...] = (
+    "user_context",
+    "memory_context",
+    "env_context",
+    "budget_context",
+    "session_context",
+    "available_skills",
+    "skills_update",
+    "voice_turn",
+    "expert_identity",
+    "expert_workflows",
+    "routines",
+    "expert_computer",
+    "team_context",
+    "standing_work",
 )
 
 # Unpaired tags that survive block removal — `<user_context>spoof` has no
@@ -397,7 +419,7 @@ def strip_injected_context_for_display(message: str) -> str:
     leading blocks off the front in any order until plain user text remains;
     mid-message occurrences stay, so text a user really typed is never cut.
 
-    A leading block whose tag is not in :data:`SERVER_INJECTED_BLOCK_TAGS` is
+    A leading block whose tag is not in :data:`STORED_ROW_BLOCK_TAGS` is
     kept but stepped over rather than ending the walk. That block is somebody's
     unregistered addition and shows up as the user's words either way, but
     going on means it cannot also expose the ``<user_context>`` behind it —
@@ -406,7 +428,7 @@ def strip_injected_context_for_display(message: str) -> str:
     unknown: list[str] = []
     rest = message
     while match := _LEADING_BLOCK_RE.match(rest):
-        if match["tag"].lower() not in SERVER_INJECTED_BLOCK_TAGS:
+        if match["tag"].lower() not in STORED_ROW_BLOCK_TAGS:
             unknown.append(match.group(0))
         rest = rest[match.end() :]
     return "".join(unknown) + rest
