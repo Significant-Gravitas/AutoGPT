@@ -1,8 +1,10 @@
 // What a healthy target answers within, per endpoint, at the baseline
 // profile: p95 in milliseconds for the steady phase. The numbers sit above
 // production's p95 for each route (Sentry, autogpt-server, prod, 7 days), so
-// a healthy preview passes and a regression trips them. A profile's
-// thresholdScale, and THRESHOLD_SCALE, multiply them.
+// a healthy preview passes and a regression trips them. The graph run and
+// its execute route are sized on a preview instead: a whole run has no
+// production number, and a preview's executor is smaller than production's.
+// A profile's thresholdScale, and THRESHOLD_SCALE, multiply them.
 //
 // Thresholds are the run's own pass/fail. The comparison between two builds
 // is perf-compare's job, in Sentry.
@@ -40,7 +42,9 @@ export const ENDPOINT_SLOS = {
   "library.search": { journeys: ["library_browse"], p95: 3000 },
   "library.agent_detail": { journeys: ["library_browse"], p95: 3000 },
 
-  "graphs.execute": { journeys: ["graph_run"], p95: 2000 },
+  // Starting a run validates the graph, checks credits and queues it: about
+  // 3 s on a preview, which runs with fewer resources than production.
+  "graphs.execute": { journeys: ["graph_run"], p95: 4000 },
   "graphs.execution_detail": { journeys: ["graph_run"], p95: 3000 },
   "graphs.executions_list": { journeys: ["graph_run"], p95: 4000 },
   "graphs.graph_detail": { journeys: ["graph_run"], p95: 2000 },
@@ -51,7 +55,9 @@ export const CUSTOM_SLOS = {
   copilot_first_chunk_ms: { journeys: ["copilot_turn"], p95: 2000 },
   copilot_ttft_ms: { journeys: ["copilot_turn"], p95: 3000 },
   copilot_turn_ms: { journeys: ["copilot_turn"], p95: 10000 },
-  graph_run_ms: { journeys: ["graph_run"], p95: 20000 },
+  // A seeded graph's run takes 26 to 34 s on a preview's executor, a few
+  // seconds a node; this catches a run that stalls, not one a little slower.
+  graph_run_ms: { journeys: ["graph_run"], p95: 45000 },
   graph_run_start_ms: { journeys: ["graph_run"], p95: 5000 },
   ws_connect_ms: { journeys: ["graph_run"], p95: 3000 },
   ws_event_latency_ms: { journeys: ["graph_run"], p95: 3000 },

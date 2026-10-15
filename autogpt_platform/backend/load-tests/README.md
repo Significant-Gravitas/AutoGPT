@@ -58,7 +58,7 @@ Settings: `SCENARIOS=copilot_turn,store_browse` runs a subset; `RATE_SCALE=0.5` 
 
 ### What is measured
 
-- Every request carries `endpoint` (such as `store.skill_detail`) and `phase` tags, and one check named after the endpoint. Thresholds in `configs/thresholds.js` set a p95 per endpoint, above production's p95 for the route, and a failure rate under 2%.
+- Every request carries `endpoint` (such as `store.skill_detail`) and `phase` tags, and one check named after the endpoint. Thresholds in `configs/thresholds.js` set a p95 per endpoint, above production's p95 for the route, and a failure rate under 2%. The graph run's own numbers and its execute route are sized on a preview instead, whose executor is smaller than production's: a run of a seeded graph takes about 30 s there.
 - Custom Trends for what users feel: `copilot_first_chunk_ms` (the first frame), `copilot_ttft_ms` (the first text), `copilot_turn_ms` (the `finish` frame), `copilot_chunks_per_turn`; `graph_run_start_ms` (execute to the first running event) and `graph_run_ms` (execute to completed); `ws_connect_ms` and `ws_event_latency_ms` (the event's `ended_at` to its arrival). Counters tell completed, queued and failed copilot turns and graph runs apart.
 - `copilot.stream`'s `http_req_duration` is the whole stream, so it has no latency threshold; the Trends above are its numbers.
 
@@ -233,7 +233,7 @@ Each route is a transaction named by its path, such as `/api/store/skills/{slug}
 - **`copilot engine probe: the reply was not the dummy's`**: the target is not in test mode; the probe spent one real turn and the scenario is off for this run.
 - **Copilot turns time out with no `finish`**: the target's copilot executor is not running or not consuming the queue; the route answers 200 and heartbeats until the stream's TTL.
 - **`graph_run` never sees a completed run**: the executor is not running, or the WebSocket URL is wrong (`K6_WS_URL`); the journey falls back to polling and reports `graph_runs_failed`.
-- **`dropped_iterations` fails**: the target could not take the offered rate with the VUs allocated; the summary's `by_journey` says which. Lower `RATE_SCALE` or raise the maximum VUs in `configs/profiles.js`.
+- **`dropped_iterations` fails**: k6 had no free VU when an iteration was due; the summary's `by_journey` says which journey. Each journey pre-allocates three times its expected concurrency (`configs/profiles.js`); a slower target needs more, so raise its `EXPECTED_ITERATION_SECONDS` there, or lower `RATE_SCALE`.
 - **`429` during setup**: another sign-in from the same IP used up the burst. `setup()` waits and retries; it fails only after five refusals in a row.
 - **`k6.sh: this command would use Grafana Cloud k6`**: run it on your machine instead.
 - **`docker build` stalls on a credential helper**: `./k6.sh` builds with an empty temporary `DOCKER_CONFIG`; if your own `docker pull` hangs, do the same.
