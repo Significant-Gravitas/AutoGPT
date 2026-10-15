@@ -32,6 +32,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.llm_attribution import set_turn_impersonated
 from backend.copilot.model import maybe_append_user_message
 from backend.copilot.rate_limit import RateLimitUnavailable
 from backend.copilot.response_model import (
@@ -824,6 +825,7 @@ class CoPilotProcessor:
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
+            set_turn_impersonated(entry.impersonated)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
             raw_stream = stream_fn(

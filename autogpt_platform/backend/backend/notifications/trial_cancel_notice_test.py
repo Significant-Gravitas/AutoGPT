@@ -37,7 +37,7 @@ def test_resumed_notice_copy_is_unchanged(trial, urls):
     assert email.subject == "Your AutoGPT trial will continue into your plan"
     assert email.preheader == (
         "Your saved card will be charged for your Pro plan on "
-        f"{data.ends_label} at $20.00 USD / month."
+        f"{data.ends_label} at $20.00 / month."
     )
     assert (
         "Applicable tax may be added. Review your plan or cancel in billing "
