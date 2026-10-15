@@ -28,6 +28,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
 from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
@@ -36,16 +37,12 @@ from backend.notifications.mailerlite import (
     _find_subscriber,
     _headers,
     _payload,
+    held_value,
 )
-from backend.notifications.mailerlite_backfill import (
-    BatchAnswer,
-    Subscription,
-    _refusal,
-)
+from backend.notifications.mailerlite_backfill import BatchAnswer, _refusal
 from backend.notifications.mailerlite_field_backfill import (
     Current,
     Person,
-    _normalise,
     _valid,
     desired,
 )
@@ -176,7 +173,7 @@ def _changed(fields: Fields, held: Mapping[str, object] | None) -> Fields:
     return {
         field: value
         for field, value in fields.items()
-        if held is None or _normalise(field, held.get(field.value)) != value
+        if held is None or held_value(field, held.get(field.value)) != value
     }
 
 
@@ -185,7 +182,7 @@ async def apply(
     group_id: str,
     on_progress: Callable[[int, int], None] | None = None,
     *,
-    refresh: Callable[[str], Awaitable[list[Subscription]]] | None = None,
+    refresh: Callable[[str], Awaitable[list[StripeSubscriptionFacts]]] | None = None,
     kept_out: KeptOut | None = None,
 ) -> tuple[int, int, int]:
     """Visit each planned opener: with `kept_out`, check they may still enter

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.data.notifications import SubscriberField
+from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 from backend.notifications import checkout_backfill, mailerlite
-from backend.notifications.mailerlite_backfill import Subscription
 from backend.notifications.mailerlite_field_backfill import Person
 
 OPENED = int(datetime(2026, 7, 15, 9, 0, tzinfo=UTC).timestamp())
@@ -71,7 +71,11 @@ def test_an_existing_subscriber_only_joins_the_group():
 
 
 def test_the_status_comes_from_stripe_not_the_signed_default():
-    opener = _opener(subscriptions=[Subscription(status="active", start_date=OPENED)])
+    opener = _opener(
+        subscriptions=[
+            StripeSubscriptionFacts(id="sub_1", status="active", start_date=OPENED)
+        ]
+    )
     held = {**_held(_opener()), "subscription_status": "signed"}
     plan = checkout_backfill.plan(
         [opener], current={"sam@acme.com": held}, members={"sam@acme.com": "1"}
@@ -246,7 +250,7 @@ async def test_a_failed_write_is_counted_and_the_run_goes_on(monkeypatch, caplog
     assert "a@acme.com" not in caplog.text
 
 
-ACTIVE = [Subscription(id="sub_1", status="active", start_date=OPENED)]
+ACTIVE = [StripeSubscriptionFacts(id="sub_1", status="active", start_date=OPENED)]
 
 
 async def _apply_with(monkeypatch, plan, *, held, refresh, kept_out=None):

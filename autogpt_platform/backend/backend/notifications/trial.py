@@ -93,7 +93,7 @@ async def notify_trial(subscription: dict, kind: TrialNoticeKind) -> bool:
     if not await claim_once(claim):
         return True
     try:
-        await queue_trial_audience_change(kind, user, current)
+        await queue_trial_audience_change(kind, user)
         result = await queue_notification_async(
             NotificationEventModel[TrialUpdateData](
                 user_id=user_id, type=NotificationType.TRIAL_UPDATE, data=data
