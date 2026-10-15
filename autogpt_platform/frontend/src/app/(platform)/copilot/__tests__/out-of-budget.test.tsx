@@ -525,15 +525,13 @@ describe("Running low", () => {
         "About 14% of today’s budget left. A long task may pause partway.",
       ),
     ).toBeDefined();
+    // One small gauge for the window that is running low, not a meter per
+    // window: under the composer, every line costs typing room on a phone.
     expect(
       screen
         .getByRole("progressbar", { name: "Today" })
         .getAttribute("aria-valuenow"),
     ).toBe("86");
-    expect(
-      screen
-        .getByRole("progressbar", { name: "This week" })
-        .getAttribute("aria-valuenow"),
-    ).toBe("61");
+    expect(screen.queryByRole("progressbar", { name: "This week" })).toBeNull();
   });
 });
