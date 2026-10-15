@@ -1574,20 +1574,15 @@ async def set_auto_top_up(user_id: str, config: AutoTopUpConfig):
     get_user_by_id.cache_delete(user_id)
 
 
-async def set_subscription_tier(
-    user_id: str,
-    tier: SubscriptionTier,
-    *,
-    track_lifecycle: bool = True,
-) -> None:
-    """Set the user's subscription tier."""
+async def set_subscription_tier(user_id: str, tier: SubscriptionTier) -> None:
+    """Set the user's subscription tier. No lifecycle sync: the subscription
+    status doesn't read the tier, and the Stripe change that comes with a
+    tier change syncs through its own webhook."""
     data: UserUpdateInput = {
         "subscriptionTier": tier,
     }
     await User.prisma().update(where={"id": user_id}, data=data)
     invalidate_subscription_caches(user_id)
-    if track_lifecycle:
-        schedule_posthog_lifecycle_sync(user_id)
 
 
 async def invalidate_billing_lookups(customer_id: str) -> None:
@@ -3012,9 +3007,7 @@ async def _sync_subscription_tier_from_stripe(stripe_subscription: dict) -> None
         # A future improvement would be to write the new tier first, then
         # cancel the old sub.
         await _cleanup_stale_subscriptions(customer_id, new_sub_id)
-    # The wrapper schedules the lifecycle sync (or, for the tier sweep, doesn't),
-    # so the tier write mustn't schedule a second one.
-    await set_subscription_tier(user.id, tier, track_lifecycle=False)
+    await set_subscription_tier(user.id, tier)
     if is_tier_upgrade(current_tier, tier):
         billing_cycle = (
             metadata.get("billing_cycle") if isinstance(metadata, dict) else None
