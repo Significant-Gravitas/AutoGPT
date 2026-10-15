@@ -49,12 +49,11 @@ jobs:
 
   ios:
     name: iOS build and launch journey
-    runs-on: macos-26-intel
+    runs-on: macos-26
     timeout-minutes: 10
     env:
       CI: "1"
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      NATIVE_SIMULATOR_ARCHS: "arm64 x86_64"
       MAESTRO_VERSION: "2.11.0"
       MAESTRO_CLI_NO_ANALYTICS: "true"
       MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true"
@@ -63,6 +62,10 @@ jobs:
         working-directory: autogpt_platform/mobile
     steps:
       - uses: actions/checkout@v6
+      - name: Disable host Spotlight indexing
+        run: |
+          mkdir -p e2e/artifacts
+          sudo mdutil -i off / | tee e2e/artifacts/spotlight.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -124,9 +127,10 @@ jobs:
           sysctl vm.swapusage > e2e/artifacts/swap-after.txt
           vm_stat > e2e/artifacts/vm-after.txt
           ps -axo pid,ppid,state,pcpu,rss,comm > e2e/artifacts/processes-after.txt
+          python3 scripts/collect-simulator-logs.py
           {
-            echo 'Standard free macos-26-intel runner; Xcode 26.6; x86_64 simulator.'
-            echo 'Universal arm64/x86_64 simulator builds retain Apple Silicon artifact compatibility.'
+            echo 'Standard free macos-26 runner; Xcode 26.6; native arm64 simulator builds.'
+            echo 'Host Spotlight indexing disabled on this disposable CI runner.'
             echo 'SwiftUI and system frameworks; no dependency or DerivedData caches are restored.'
             echo 'Optimized Release launch journey; Debug-only interaction fixtures, excluded from Release.'
             echo 'Compilation finishes before simulator boot; selected runtime matches the SDK.'

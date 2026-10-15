@@ -15,10 +15,12 @@ xcrun simctl list devices available --json > e2e/artifacts/devices.json
 sdk_version=$(xcrun --sdk iphonesimulator --show-sdk-version)
 echo "Selecting an iPhone simulator for iOS $sdk_version"
 device_id=$(python3 scripts/select-simulator.py e2e/artifacts/devices.json "$sdk_version")
-xcrun simctl boot "$device_id"
-xcrun simctl bootstatus "$device_id" -b
+echo "$device_id" > e2e/artifacts/simulator-id.txt
 
 {
   echo "maestro=$maestro_dir/maestro/bin/maestro"
   echo "simulator-id=$device_id"
 } >> "$GITHUB_OUTPUT"
+
+xcrun simctl boot "$device_id"
+xcrun simctl bootstatus "$device_id" -b
