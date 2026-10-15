@@ -89,9 +89,7 @@ async def test_new_plan_ends_cancel_pending_trial_without_invoice():
 
     mock_cancel.assert_awaited_once_with("sub_trial", invoice_now=False, prorate=False)
     reconcile.assert_awaited_once_with("user-1", "sub_trial")
-    mock_set.assert_awaited_once_with(
-        "user-1", SubscriptionTier.MAX, track_lifecycle=False
-    )
+    mock_set.assert_awaited_once_with("user-1", SubscriptionTier.MAX)
     assert events == ["cancel:sub_trial", "tier:MAX"]
 
 
