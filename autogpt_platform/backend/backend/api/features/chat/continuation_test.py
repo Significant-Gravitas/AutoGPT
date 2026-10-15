@@ -149,6 +149,19 @@ def test_a_chatgpt_chat_skips_the_platform_allowance(chat):
     chat.check_rate_limit.assert_not_awaited()
 
 
+def test_a_microsoft_365_chat_is_refused_and_nothing_is_sent(chat):
+    """Keep going would hand Microsoft our system note as the user's message,
+    on a connection with no tools and none of the task."""
+    chat.session.return_value = _session(route="microsoft_365_copilot")
+
+    response = client.post(URL)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "unsupported_connection"
+    chat.schedule.assert_not_awaited()
+    chat.publish.assert_not_awaited()
+
+
 def test_a_full_concurrency_cap_is_a_429(chat):
     chat.schedule.side_effect = ConcurrentTurnLimitError("5 turns running")
 
