@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 import stripe
 from prisma.enums import NotificationType
 
-from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
+from backend.data.credit import REPLACED_PLAN_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationEventModel,
@@ -305,6 +305,10 @@ async def on_subscription_updated(subscription: dict, previous: dict) -> None:
 async def on_subscription_deleted(subscription: dict) -> None:
     """Two roads lead here — a cancellation reaching period end, and dunning
     exhaustion — so the copy branches on which one the customer took."""
+    details = subscription.get("cancellation_details") or {}
+    if details.get("comment") == REPLACED_PLAN_CANCELLATION_COMMENT:
+        # Ended because the customer has another plan; they did not leave.
+        return
     if await notify_trial(subscription, "ended"):
         return
     user = await _user_for(subscription.get("customer"))
@@ -358,11 +362,9 @@ async def _queue_fields(
 
 
 def _churn_reason(subscription: dict) -> str | None:
-    """Stripe's ``cancellation_details.reason``, except that our own cancel
-    after a failed renewal is involuntary churn, not a requested one."""
+    """Stripe's ``cancellation_details.reason``: ``payment_failed`` when
+    Stripe ended the subscription after its retries failed."""
     details = subscription.get("cancellation_details") or {}
-    if details.get("comment") == PAYMENT_FAILURE_CANCELLATION_COMMENT:
-        return "payment_failed"
     return details.get("reason")
 
 

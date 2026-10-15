@@ -1291,6 +1291,60 @@ def test_stripe_webhook_dispatches_invoice_payment_failed(
     failure_mock.assert_awaited_once_with(invoice_obj)
 
 
+@pytest.mark.parametrize(
+    "event_type", ["invoice.payment_succeeded", "invoice_payment.paid"]
+)
+def test_stripe_webhook_paid_invoice_reconciles_the_wallet_payment_first(
+    client: fastapi.testclient.TestClient,
+    mocker: pytest_mock.MockFixture,
+    event_type: str,
+) -> None:
+    """Both paid events settle or refund an unfinished wallet payment before
+    the success handler, whose credit grant reads the settled state."""
+    invoice_obj = {"id": "in_test", "customer": "cus_test", "amount_paid": 1999}
+    data_object = (
+        invoice_obj
+        if event_type == "invoice.payment_succeeded"
+        else {"object": "invoice_payment", "invoice": "in_test"}
+    )
+    event = {"type": event_type, "data": {"object": data_object}}
+    mocker.patch.object(
+        stripe.Invoice, "retrieve_async", AsyncMock(return_value=invoice_obj)
+    )
+
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.settings.secrets.stripe_webhook_secret",
+        new="whsec_test",
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.stripe.Webhook.construct_event",
+        return_value=event,
+    )
+    calls = Mock()
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.reconcile_wallet_payment_on_paid_invoice",
+        new=AsyncMock(side_effect=lambda inv: calls("refund", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.handle_subscription_payment_success",
+        new=AsyncMock(side_effect=lambda inv: calls("success", inv)),
+    )
+    mocker.patch(
+        "backend.api.features.billing.subscriptions.routes.on_trial_invoice",
+        new_callable=AsyncMock,
+    )
+
+    response = client.post(
+        "/credits/stripe_webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=abc"},
+    )
+
+    assert response.status_code == 200
+    assert [c.args[0] for c in calls.call_args_list] == ["refund", "success"]
+    calls.assert_any_call("refund", invoice_obj)
+
+
 def test_update_subscription_tier_paid_to_paid_modifies_subscription(
     client: fastapi.testclient.TestClient,
     mocker: pytest_mock.MockFixture,
