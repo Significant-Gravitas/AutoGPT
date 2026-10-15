@@ -10,10 +10,10 @@ export const SEND_AT_RESET_PLACEHOLDER =
   "Write now, and it sends when your budget resets…";
 
 /** Thrown when the budget turned out to be back, so the message went out
- *  straight away instead, and that send failed. */
+ *  straight away instead, and that send failed; `cause` is how it failed. */
 export class SentNowError extends Error {
   constructor(cause: unknown) {
-    super(cause instanceof Error ? cause.message : "");
+    super(cause instanceof Error ? cause.message : "", { cause });
     this.name = "SentNowError";
   }
 }

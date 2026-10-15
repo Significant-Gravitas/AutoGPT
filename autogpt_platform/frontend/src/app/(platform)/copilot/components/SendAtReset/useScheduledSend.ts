@@ -7,6 +7,7 @@ import {
 } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { describeSendFailure } from "../ChatInput/helpers";
 import { useChatDraft } from "../ChatInput/useChatDraft";
 import {
@@ -80,13 +81,10 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       await schedule(message);
     } catch (error) {
       setDraft((current) => returnToDraft(current, message));
-      toast({
+      toastSendFailure({
         title: sendAtResetFailureTitle(error),
-        description: describeSendFailure(
-          error,
-          "your message is back in the composer",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your message is back in the composer",
       });
     }
   }
