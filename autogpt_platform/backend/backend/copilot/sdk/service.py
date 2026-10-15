@@ -54,6 +54,9 @@ from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
+from backend.copilot.session_kind import SessionKind
+from backend.copilot.context_blocks import ContextBlock, render_context_blocks
+from backend.data.understanding import BusinessUnderstanding
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.model_gateway.front import ModelGateway
@@ -189,15 +192,14 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
-from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     SKILLS_CONTEXT_TAG,
     _build_system_prompt,
     _is_langfuse_configured,
     _update_title_async,
-    build_injected_context_prefix,
     fetch_business_understanding,
-    inject_user_context,
+    inject_context_blocks,
+    injected_context_blocks,
     strip_injected_context_for_display,
     strip_user_context_tags,
 )
@@ -207,8 +209,6 @@ from ..token_tracking import persist_and_record_usage
 from ..tools import (
     ToolGroup,
     expert_tool_disabled_groups,
-    kickoff_turn_disabled_tools,
-    origin_disabled_tools,
     tool_names_in_groups,
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -216,8 +216,8 @@ from ..tools.sandbox import WORKSPACE_PREFIX, make_session_path
 from ..tools.seen_capabilities import build_seen_capabilities_notice
 from ..tools.session_context import build_session_context
 from ..tools.skills import (
-    build_skills_context,
     build_skills_update_notice,
+    skills_context_block,
     start_session_skill_versions,
 )
 from ..tracking import track_user_message
@@ -4619,7 +4619,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     message_metadata: dict[str, Any] | None = None,
     turn_start: int | None = None,
     continued_pending: list[PendingMessage] | None = None,
-    voice: bool = False,
+    session_kind: SessionKind | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4700,8 +4700,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
 
+    # The turn's kind, read once for every reader below: the executor's,
+    # or this session's own for a caller that dispatches no turn.
+    kind = session_kind or SessionKind.for_turn(session)
     turn_summary = TurnSummaryCollector(
-        session_id, voice=voice, is_user_message=is_user_message
+        session_id, voice=kind.voice, is_user_message=is_user_message
     )
 
     # Strip any user-injected <user_context> tags on every turn.
@@ -4804,6 +4807,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         session=session,
         permissions=permissions,
         envelope=envelope,
+        kind=kind,
     )
     e2b_sandbox = None
     use_resume = False
@@ -5089,23 +5093,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # fallback; read_skill("agent_building_guide") remains as escape
         # hatch. The baseline path (no prompt machinery) keeps the tool.
 
-        # A hire's kickoff turn is a server-sent control message, so nothing
-        # on it was asked for: narrow it to the onboarding card and nothing
-        # else. Hiding is the enforcement here — an unregistered MCP tool
-        # does not exist for the CLI, so there is no call left to deny.
-        kickoff_hidden = (
-            kickoff_turn_disabled_tools()
-            if is_expert_kickoff_turn(session)
-            else frozenset()
-        )
-        # A machine-authored session cannot staff the team, so it is not
-        # offered the proposal tools its own guard would refuse.
+        # What the turn's kind does not offer: a hire's kickoff is narrowed
+        # to the onboarding card, and a session no person drives is not
+        # offered the staffing tools its own guard would refuse. Hiding is
+        # the enforcement here: an unregistered MCP tool does not exist for
+        # the CLI, so there is no call left to deny.
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
-            | kickoff_hidden
-            | origin_disabled_tools(session.metadata.origin)
+            | kind.hidden_tools()
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.
@@ -5171,7 +5168,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions,
             use_e2b=use_e2b,
             disabled_groups=disabled_tool_groups,
-            denied_tools=kickoff_hidden,
+            denied_tools=kind.hidden_tools(),
         )
 
         security_hooks = create_security_hooks(
@@ -5184,6 +5181,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 _context_after_compaction,
                 session,
                 user_id,
+                kind,
                 sdk_cwd=sdk_cwd,
                 use_e2b=use_e2b,
                 log_prefix=log_prefix,
@@ -5353,7 +5351,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 len(pending_messages),
             )
             # NOTE: combining and per-row persistence both happen *after*
-            # ``inject_user_context`` below — see the comment near that
+            # ``inject_context_blocks`` below — see the comment near that
             # call.  At this point ``current_message`` is still the
             # original turn-starting send (no pending text yet).
 
@@ -5378,53 +5376,51 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # On resume (has_history=True) we intentionally skip re-injection: the
         # transcript already contains the <user_context> and <memory_context>
         # prefixes from the original turn (persisted to the DB via
-        # inject_user_context), so the SDK replay carries context continuity
+        # inject_context_blocks), so the SDK replay carries context continuity
         # without us prepending them again.
         #
         # A later turn that could NOT resume (no SDK transcript in storage,
         # a baseline-written one, or one that failed validation) starts a
         # fresh CLI session that has never seen those prefixes, so the same
         # blocks, memory aside, are rebuilt and lead the query instead — see
-        # ``_rebuild_first_turn_prefix``.  They ride the query only; the
+        # ``_rebuild_first_turn_context``.  They ride the query only; the
         # stored row keeps the user's own words.  (The CLI's own compaction
         # drops them too; the ``SessionStart`` hook wired up with the
         # security hooks above re-sends them after every compaction.)
         resume_fallback_prefix: str | None = None
         if not has_history:
-            env_ctx_content, session_ctx_content, skills_ctx_content = (
-                await _first_turn_context_blocks(
-                    session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
-                )
-            )
-            # Pass warm_ctx and env_ctx to inject_user_context so they are
-            # prepended AFTER sanitize_user_supplied_context runs — preventing
-            # trusted server-injected blocks from being stripped by the sanitizer.
-            # inject_user_context persists the fully prefixed message to DB.
-            prefixed_message = await inject_user_context(
-                understanding,
-                current_message,
-                session_id,
-                session.messages,
+            first_turn_blocks = await _first_turn_context_blocks(
+                session,
+                user_id,
+                kind,
+                sdk_cwd=sdk_cwd,
+                use_e2b=use_e2b,
+                understanding=understanding,
                 warm_ctx=warm_ctx,
-                env_ctx=env_ctx_content,
-                session_ctx=session_ctx_content,
-                skills_ctx=skills_ctx_content,
-                user_id=user_id,
-                expert_id=session.expert_id,
+            )
+            # inject_context_blocks prepends the blocks AFTER
+            # sanitize_user_supplied_context runs — so the trusted
+            # server-injected blocks are never stripped by the sanitizer —
+            # and persists the fully prefixed message to DB.
+            prefixed_message = await inject_context_blocks(
+                first_turn_blocks, current_message, session_id, session.messages
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
         elif not use_resume:
-            resume_fallback_prefix = await _rebuild_first_turn_prefix(
-                session,
-                user_id,
-                sdk_cwd=sdk_cwd,
-                use_e2b=use_e2b,
-                log_prefix=log_prefix,
-                reason="no-resume fallback",
+            resume_fallback_prefix = render_context_blocks(
+                await _rebuild_first_turn_context(
+                    session,
+                    user_id,
+                    kind,
+                    sdk_cwd=sdk_cwd,
+                    use_e2b=use_e2b,
+                    log_prefix=log_prefix,
+                    reason="no-resume fallback",
+                )
             )
 
-        # Now that ``inject_user_context`` has wrapped + persisted the
+        # Now that ``inject_context_blocks`` has wrapped + persisted the
         # ORIGINAL turn-starting send into its row, fold any pending
         # chips into the prompt the model sees AND persist each pending
         # message as its own raw-text user row in the DB.  Order matters
@@ -5491,7 +5487,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # only: added after the inbound strip, so it is the platform's own,
         # and never written to ``current_message`` or the stored row.
         turn_text = budget_status + current_message
-        if voice:
+        if kind.voice:
             turn_text = f"{turn_text}\n\n{VOICE_TURN_INSTRUCTION}"
 
         query_message, compaction_stats = await _build_query_message(
@@ -5527,7 +5523,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         if attachments.hint:
             query_message = f"{query_message}\n\n{attachments.hint}"
 
-        # warm_ctx is injected via inject_user_context above (warm_ctx= kwarg).
+        # warm_ctx is among the first-turn blocks above (warm_ctx= kwarg).
         # No separate injection needed here.
 
         # Inject per-turn builder context when the session is bound to a
@@ -5711,13 +5707,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 # A resumed turn's retry drops --resume, so it needs the
                 # first-turn context just as a turn that never resumed does.
                 if has_history and resume_fallback_prefix is None:
-                    resume_fallback_prefix = await _rebuild_first_turn_prefix(
-                        session,
-                        user_id,
-                        sdk_cwd=sdk_cwd,
-                        use_e2b=use_e2b,
-                        log_prefix=log_prefix,
-                        reason="no-resume fallback",
+                    resume_fallback_prefix = render_context_blocks(
+                        await _rebuild_first_turn_context(
+                            session,
+                            user_id,
+                            kind,
+                            sdk_cwd=sdk_cwd,
+                            use_e2b=use_e2b,
+                            log_prefix=log_prefix,
+                            reason="no-resume fallback",
+                        )
                     )
                 (
                     state.query_message,
@@ -5748,7 +5747,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 if attachments.hint:
                     state.query_message = f"{state.query_message}\n\n{attachments.hint}"
                 # warm_ctx is already baked into current_message via
-                # inject_user_context — no separate injection needed.
+                # inject_context_blocks — no separate injection needed.
                 # Re-inject per-turn builder context so retries carry the
                 # same live graph snapshot as the initial attempt.
                 state.query_message = await _maybe_prepend_builder_context(
@@ -6646,6 +6645,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
+                    # A new reading for the queued messages it answers, not
+                    # a kickoff and not spoken; still unattended if this was.
+                    session_kind=SessionKind.for_turn(
+                        session, scheduled=kind.unattended
+                    ),
                     turn_start=turn_start,
                     continued_pending=_auto_pending_messages,
                 ):
@@ -6702,20 +6706,26 @@ async def _fetch_graphiti_context(
 async def _first_turn_context_blocks(
     session: ChatSession,
     user_id: str | None,
+    kind: SessionKind,
     *,
     sdk_cwd: str,
     use_e2b: bool,
-) -> tuple[str, str, str]:
-    """The ``(env_ctx, session_ctx, skills_ctx)`` bodies for the first-turn prefix.
+    understanding: BusinessUnderstanding | None,
+    warm_ctx: str = "",
+) -> list[ContextBlock]:
+    """The blocks that lead the session's first user message, for *kind*.
 
-    ``env_ctx`` names the working directory; ``session_ctx`` lets the model
-    answer "cancel that" / "what did I schedule" without a ``list_schedules``
-    round-trip (it degrades to the bare session_id line on a scheduler RPC
-    hiccup); ``skills_ctx`` is the per-user skill index, which names the
-    declared ``mcp__copilot__run_capability`` the model calls.  All three land in
-    the per-turn user message, after the cache breakpoint, so they do not bust
-    the cross-session prefix cache.  A skill-index failure must not block the
-    turn: it is logged and the index left empty.
+    The first turn writes them on its row; a context that has lost that message
+    gets them again, rebuilt (``_rebuild_first_turn_context``).  Besides the
+    shared ones (``injected_context_blocks``): the working directory; the
+    session's follow-ups, so the model can answer "cancel that" / "what did I
+    schedule" without a ``list_schedules`` round-trip (it degrades to the bare
+    session_id line on a scheduler RPC hiccup); and the per-user skill index,
+    which names the declared ``mcp__copilot__run_capability`` the model calls.
+    All of them land in the per-turn user message, after the cache breakpoint,
+    so they do not bust the cross-session prefix cache.  A skill-index failure
+    must not block the turn: it is logged and the index left out.  ``warm_ctx``
+    is the first turn's Graphiti memory; a rebuild has none.
     """
     env_ctx = f"working_dir: {sdk_cwd}" if sdk_cwd and not use_e2b else ""
     session_ctx = ""
@@ -6723,16 +6733,25 @@ async def _first_turn_context_blocks(
         session_ctx = await build_session_context(
             session_id=session.session_id, user_id=user_id
         )
-    skills_ctx = ""
+    skills = None
     try:
-        skills_ctx = await build_skills_context(
+        skills = await skills_context_block(
             user_id,
             expert_id=session.expert_id,
             run_capability_tool=f"{MCP_TOOL_PREFIX}run_capability",
         )
     except Exception:
         logger.exception("[skills] failed to build skills_ctx — proceeding without it")
-    return env_ctx, session_ctx, skills_ctx
+    return await injected_context_blocks(
+        understanding,
+        warm_ctx=warm_ctx,
+        env_ctx=env_ctx,
+        session_ctx=session_ctx,
+        skills=skills,
+        user_id=user_id,
+        expert_id=session.expert_id,
+        kickoff_turn=kind.expert_kickoff,
+    )
 
 
 # Leads the blocks the ``SessionStart`` hook hands back after a compaction, so
@@ -6748,6 +6767,7 @@ _AFTER_COMPACTION_LEAD = (
 async def _context_after_compaction(
     session: ChatSession,
     user_id: str | None,
+    kind: SessionKind,
     *,
     sdk_cwd: str,
     use_e2b: bool,
@@ -6768,16 +6788,17 @@ async def _context_after_compaction(
     """
     if turn_summary is not None:
         turn_summary.note_after_compaction_resend()
-    prefix = await _rebuild_first_turn_prefix(
+    blocks = await _rebuild_first_turn_context(
         session,
         user_id,
+        kind,
         sdk_cwd=sdk_cwd,
         use_e2b=use_e2b,
         log_prefix=log_prefix,
         reason="compaction",
     )
     fitted = fit_after_compaction(
-        _AFTER_COMPACTION_LEAD, prefix, hidden_tools=hidden_tools
+        _AFTER_COMPACTION_LEAD, blocks, hidden_tools=hidden_tools
     )
     if fitted.dropped or fitted.shortened:
         logger.warning(
@@ -6794,44 +6815,40 @@ async def _context_after_compaction(
     return fitted.parts
 
 
-async def _rebuild_first_turn_prefix(
+async def _rebuild_first_turn_context(
     session: ChatSession,
     user_id: str | None,
+    kind: SessionKind,
     *,
     sdk_cwd: str,
     use_e2b: bool,
     log_prefix: str,
     reason: str,
-) -> str:
-    """Render the first-turn prefix again for a context that has lost it.
+) -> list[ContextBlock]:
+    """The first-turn blocks again, for a context that has lost them.
 
     The first turn's blocks reach later model calls only through the
     session's first user message.  Two things take that message away: a
     later turn that cannot ``--resume`` (``_build_query_message`` puts the
-    result ahead of ``<conversation_history>``), and the CLI's own compaction,
-    which replaces it with a summary (``_context_after_compaction``).  This
-    renders the blocks with the first turn's own builders — skills index,
-    expert or team workflows, follow-ups, working directory and user context.
-    Graphiti memory (``<memory_context>``) is not among them: it is fetched
-    for the first turn only (``_fetch_graphiti_context``) and is not re-sent
-    here.  Best effort: any failure is logged and ``""`` returned, and the
-    turn goes on without them.
+    rendered blocks ahead of ``<conversation_history>``), and the CLI's own
+    compaction, which replaces it with a summary
+    (``_context_after_compaction``).  These are the first turn's own blocks,
+    from the same builders — skills index, expert or team workflows,
+    follow-ups, working directory and user context.  Graphiti memory
+    (``<memory_context>``) is not among them: it is fetched for the first
+    turn only (``_fetch_graphiti_context``) and is not re-sent here.  Best
+    effort: any failure is logged and ``[]`` returned, and the turn goes on
+    without them.
     """
     try:
-        (env_ctx, session_ctx, skills_ctx), understanding = await asyncio.gather(
-            _first_turn_context_blocks(
-                session, user_id, sdk_cwd=sdk_cwd, use_e2b=use_e2b
-            ),
-            fetch_business_understanding(user_id),
-        )
-        prefix = await build_injected_context_prefix(
-            understanding,
-            env_ctx=env_ctx,
-            session_ctx=session_ctx,
-            skills_ctx=skills_ctx,
-            user_id=user_id,
-            expert_id=session.expert_id,
-            kickoff_turn=is_expert_kickoff_turn(session),
+        understanding = await fetch_business_understanding(user_id)
+        blocks = await _first_turn_context_blocks(
+            session,
+            user_id,
+            kind,
+            sdk_cwd=sdk_cwd,
+            use_e2b=use_e2b,
+            understanding=understanding,
         )
     except Exception:
         logger.exception(
@@ -6839,16 +6856,16 @@ async def _rebuild_first_turn_prefix(
             log_prefix,
             reason,
         )
-        return ""
+        return []
     logger.info(
         "%s Rebuilt first-turn context (%s): %d chars; skills=%s, user_context=%s",
         log_prefix,
         reason,
-        len(prefix),
-        bool(skills_ctx),
+        len(render_context_blocks(blocks)),
+        any(block.tag == SKILLS_CONTEXT_TAG for block in blocks),
         understanding is not None,
     )
-    return prefix
+    return blocks
 
 
 def _graphiti_ingest_allowed(

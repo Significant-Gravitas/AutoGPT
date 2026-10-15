@@ -13,21 +13,29 @@ from backend.copilot.model import ChatSession
 from backend.copilot.prompting import get_sdk_supplement
 from backend.copilot.sdk.service import _first_turn_context_blocks
 from backend.copilot.sdk.tool_adapter import MCP_TOOL_PREFIX
+from backend.copilot.service import SKILLS_CONTEXT_TAG
+from backend.copilot.session_kind import SessionKind
 
 
 @pytest.mark.asyncio
 async def test_the_skills_index_names_the_declared_run_capability(tmp_path):
     session = ChatSession.new("user-1", dry_run=False)
 
-    _, _, skills_ctx = await _first_turn_context_blocks(
-        session, None, sdk_cwd=str(tmp_path), use_e2b=False
+    blocks = await _first_turn_context_blocks(
+        session,
+        None,
+        SessionKind.for_turn(session),
+        sdk_cwd=str(tmp_path),
+        use_e2b=False,
+        understanding=None,
     )
+    (skills,) = [block for block in blocks if block.tag == SKILLS_CONTEXT_TAG]
 
     declared_call = (
         f'`{MCP_TOOL_PREFIX}run_capability(id="tool:read_skill", '
         'input={"name": ...})`'
     )
-    assert declared_call in skills_ctx
+    assert declared_call in skills.head
 
 
 @pytest.mark.parametrize("use_e2b", [False, True])

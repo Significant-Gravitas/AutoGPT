@@ -44,6 +44,7 @@ from backend.copilot.response_model import (
     StreamTextDelta,
     StreamToolInputAvailable,
 )
+from backend.copilot.session_kind import SessionKind
 from backend.data.model import OAuth2Credentials
 from backend.integrations.codex.transport import (
     CodexCredentialBusyError,
@@ -1572,12 +1573,12 @@ def test_a_chat_platform_session_promotes_its_envelope_to_tainted():
     clean = root_envelope("turn-1")
     assert clean.tainted is False
 
-    web = MagicMock()
-    web.metadata.source_platform = None
+    web = SessionKind.for_turn(ChatSession.new("user-1", dry_run=False))
     assert taint_for_source_platform(clean, web) is clean
 
-    slack = MagicMock()
-    slack.metadata.source_platform = "slack"
+    on_slack = ChatSession.new("user-1", dry_run=False)
+    on_slack.metadata.source_platform = "slack"
+    slack = SessionKind.for_turn(on_slack)
     promoted = taint_for_source_platform(clean, slack)
     assert promoted.tainted is True
     assert promoted.tree_id == clean.tree_id

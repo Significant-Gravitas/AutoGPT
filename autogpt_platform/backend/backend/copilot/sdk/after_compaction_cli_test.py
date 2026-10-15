@@ -23,6 +23,8 @@ import pytest
 from aiohttp import web
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 
+from backend.copilot.context_blocks import ContextBlock, render_context_blocks
+
 from .after_compaction import fit_after_compaction, utf16_len
 from .cli_openrouter_compat_test import _resolve_cli_path, assert_pinned_cli
 from .compaction import CompactionTracker
@@ -36,20 +38,23 @@ _CONTEXT_WINDOW_TOKENS = 50_000
 _BIG_TURN = "The quick brown fox jumps over the lazy dog near the riverbank. " * 1_800
 
 
-def _block(tag: str, lines: int, line: str) -> str:
-    body = "\n".join(f"- {line} {i}" for i in range(lines))
-    return f"<{tag}>\nHeader line for {tag}.\n{body}\n</{tag}>\n\n"
-
-
-def _first_turn_prefix() -> str:
-    return (
-        _block("available_skills", 260, "name: skill — does a thing — triggers: x")
-        + _block("expert_workflows", 150, "Workflow (library_agent_id: abc) : desc")
-        + _block("team_context", 160, "Expert — role (expert id: e1); workflows")
-        + "<session_context>\nsession_id: s1\n</session_context>\n\n"
-        + "<env_context>\nworking_dir: /tmp/copilot-s1\n</env_context>\n\n"
-        + _block("user_context", 40, "Business detail line for the user")
+def _block(tag: str, lines: int, line: str) -> ContextBlock:
+    return ContextBlock(
+        tag=tag,
+        head=f"Header line for {tag}.",
+        items=tuple(f"- {line} {i}" for i in range(lines)),
     )
+
+
+def _first_turn_blocks() -> list[ContextBlock]:
+    return [
+        _block("available_skills", 260, "name: skill — does a thing — triggers: x"),
+        _block("expert_workflows", 150, "Workflow (library_agent_id: abc) : desc"),
+        _block("team_context", 160, "Expert — role (expert id: e1); workflows"),
+        ContextBlock(tag="session_context", head="session_id: s1"),
+        ContextBlock(tag="env_context", head="working_dir: /tmp/copilot-s1"),
+        _block("user_context", 40, "Business detail line for the user"),
+    ]
 
 
 @pytest.mark.asyncio
@@ -62,9 +67,9 @@ async def test_over_cap_context_reaches_the_model_whole(
     # A run inside Claude Code inherits its CLAUDE_* flags.
     for key in [k for k in os.environ if k.startswith("CLAUDE")]:
         monkeypatch.delenv(key)
-    prefix = _first_turn_prefix()
-    assert utf16_len(_LEAD + prefix) > 2 * _CLI_HOOK_CAP
-    fitted = fit_after_compaction(_LEAD, prefix)
+    blocks = _first_turn_blocks()
+    assert utf16_len(_LEAD + render_context_blocks(blocks)) > 2 * _CLI_HOOK_CAP
+    fitted = fit_after_compaction(_LEAD, blocks)
     assert len(fitted.parts) > 1
 
     async def _context() -> list[str]:
@@ -98,7 +103,7 @@ async def test_each_compaction_counts_once_for_the_tracker_and_the_resend(
 
     async def _context() -> list[str]:
         rebuilds.append(len(rebuilds))
-        return [_LEAD + _block("user_context", 4, "Business detail")]
+        return [_LEAD + _block("user_context", 4, "Business detail").text]
 
     requests = await asyncio.wait_for(
         _requests_around_a_compaction(

@@ -110,7 +110,10 @@ def _make_patches(*, hire_experts_enabled: bool):
             f"{_SVC}.upsert_chat_session",
             dict(new_callable=AsyncMock, side_effect=lambda s: s),
         ),
-        (f"{_SVC}.build_skills_context", dict(new_callable=AsyncMock, return_value="")),
+        (
+            f"{_SVC}.skills_context_block",
+            dict(new_callable=AsyncMock, return_value=None),
+        ),
         (f"{_SVC}.get_redis_async", dict(new_callable=AsyncMock)),
         (f"{_SVC}.AsyncClusterLock", dict(side_effect=_make_lock_mock())),
         (f"{_SVC}._make_sdk_cwd", dict(return_value="/tmp/test-sdk-cwd")),

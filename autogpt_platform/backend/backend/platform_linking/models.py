@@ -280,7 +280,8 @@ class TurnDenial(BaseModel):
     directly into the executor.
     """
 
-    reason: Literal["paywalled", "rate_limited", "unavailable"]
+    # busy: the owner is at their concurrent-task cap (running + queued).
+    reason: Literal["paywalled", "rate_limited", "unavailable", "busy"]
     message: str
     button_label: str | None = None
     button_url: str | None = None

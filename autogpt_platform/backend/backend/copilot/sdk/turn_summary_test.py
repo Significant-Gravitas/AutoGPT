@@ -24,6 +24,7 @@ from backend.copilot.sdk.turn_summary_model import (
     short_hash,
     upload_gate_reason,
 )
+from backend.copilot.session_kind import SessionKind
 
 _MOD = "backend.copilot.sdk.turn_summary"
 
@@ -132,7 +133,12 @@ class TestCollector:
         session.metadata.builder_graph_id = "g1"
 
         c.record_turn(
-            turn=2, message_id="m", session=session, permissions=None, envelope=None
+            turn=2,
+            message_id="m",
+            session=session,
+            permissions=None,
+            envelope=None,
+            kind=SessionKind.for_turn(session),
         )
 
         s = c.summary
@@ -415,6 +421,7 @@ class TestNeverRaises:
                 session=MagicMock(metadata=None),
                 permissions=None,
                 envelope=None,
+                kind=MagicMock(),
             )
             c.observe_assistant(MagicMock(content=None))
             _finish(c, session=MagicMock(spec_set=[]))

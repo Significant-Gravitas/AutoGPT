@@ -841,10 +841,9 @@ async def _enqueue_for_recovery(
         return
     try:
         from backend.copilot.executor.utils import (  # avoid circular import
-            enqueue_copilot_turn,
+            schedule_turn,
         )
         from backend.copilot.model import get_chat_session
-        from backend.copilot.tree import root_envelope
 
         session = await get_chat_session(session_id, user_id)
         if session is None:
@@ -854,21 +853,21 @@ async def _enqueue_for_recovery(
             )
             return
 
-        recovery_turn_id = str(uuid.uuid4())
         await asyncio.wait_for(
-            enqueue_copilot_turn(
+            # Through the dispatch every turn takes: the user's concurrency
+            # slot, the stream registry and the tree ledger.
+            schedule_turn(
                 session_id=session_id,
                 user_id=user_id,
+                turn_id=str(uuid.uuid4()),
                 message=message,
-                turn_id=recovery_turn_id,
                 llm_auth_provider=session.metadata.llm_auth_provider,
                 llm_credential_id=session.metadata.llm_credential_id,
                 # The orphaned turn's envelope died with its worker and is not
-                # recoverable, so this re-dispatch roots a fresh tree — which
-                # is what an AutoPilotBlock turn already gets, the graph
-                # executor being a separate process.
+                # recoverable, so this re-dispatch roots a fresh tree, which
+                # is what an AutoPilotBlock turn already gets.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
-                envelope=root_envelope(recovery_turn_id, session_id=session_id),
+                root=True,
             ),
             timeout=10,
         )

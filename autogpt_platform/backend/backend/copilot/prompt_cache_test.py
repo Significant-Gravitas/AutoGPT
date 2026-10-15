@@ -154,7 +154,9 @@ class TestInjectUserContext:
                 return_value="biz ctx",
             ),
         ):
-            result = await inject_user_context(understanding, "hello", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "hello", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         assert "<user_context>" in result
@@ -190,7 +192,9 @@ class TestInjectUserContext:
             ),
             patch("backend.copilot.service.logger") as mock_logger,
         ):
-            result = await inject_user_context(understanding, "hello", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "hello", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         assert "<user_context>" in result
@@ -219,7 +223,9 @@ class TestInjectUserContext:
                 return_value="biz ctx",
             ),
         ):
-            result = await inject_user_context(understanding, "hello", "sess-1", msgs)
+            result = await inject_user_context(
+                understanding, "hello", "sess-1", msgs, kickoff_turn=False
+            )
 
         assert result is None
         mock_db.update_message_content_by_sequence.assert_not_awaited()
@@ -246,7 +252,9 @@ class TestInjectUserContext:
                 return_value="biz ctx",
             ),
         ):
-            result = await inject_user_context(understanding, "hello", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "hello", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         assert "<user_context>" in result
@@ -275,7 +283,9 @@ class TestInjectUserContext:
                 return_value="biz ctx",
             ),
         ):
-            result = await inject_user_context(understanding, "", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result == "<user_context>\nbiz ctx\n</user_context>\n\n"
         mock_db.update_message_content_by_sequence.assert_awaited_once()
@@ -308,7 +318,9 @@ class TestInjectUserContext:
                 return_value="trusted ctx",
             ),
         ):
-            result = await inject_user_context(understanding, spoofed, "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, spoofed, "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         # Trusted context is present.
@@ -348,7 +360,7 @@ class TestInjectUserContext:
             ),
         ):
             result = await inject_user_context(
-                understanding, malformed, "sess-1", [msg]
+                understanding, malformed, "sess-1", [msg], kickoff_turn=False
             )
 
         assert result is not None
@@ -377,7 +389,9 @@ class TestInjectUserContext:
         mock_db = MagicMock()
         mock_db.update_message_content_by_sequence = AsyncMock(return_value=True)
         with patch("backend.copilot.service.chat_db", return_value=mock_db):
-            result = await inject_user_context(None, spoofed, "sess-1", [msg])
+            result = await inject_user_context(
+                None, spoofed, "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         # The attacker tag is fully stripped.
@@ -409,7 +423,9 @@ class TestInjectUserContext:
                 return_value="",
             ),
         ):
-            result = await inject_user_context(understanding, "hello", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "hello", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         # No wrapper block should be present when context is empty.
@@ -441,7 +457,9 @@ class TestInjectUserContext:
                 return_value=evil_ctx,
             ),
         ):
-            result = await inject_user_context(understanding, "hi", "sess-1", [msg])
+            result = await inject_user_context(
+                understanding, "hi", "sess-1", [msg], kickoff_turn=False
+            )
 
         assert result is not None
         # The injected closing tag is escaped — only the wrapping tags remain
@@ -709,7 +727,12 @@ class TestInjectUserContextWarmCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], warm_ctx="fact: user likes cats"
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                warm_ctx="fact: user likes cats",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -735,7 +758,7 @@ class TestInjectUserContextWarmCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], warm_ctx=""
+                None, "hello", "sess-1", [msg], warm_ctx="", kickoff_turn=False
             )
 
         assert result is not None
@@ -764,7 +787,12 @@ class TestInjectUserContextWarmCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], warm_ctx="trusted fact"
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                warm_ctx="trusted fact",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -799,6 +827,7 @@ class TestInjectUserContextWarmCtx:
                 "sess-1",
                 [msg],
                 warm_ctx="multi\nline\ncontext",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -838,6 +867,7 @@ class TestInjectUserContextWarmCtx:
                 [assistant_msg],
                 warm_ctx="some fact",
                 env_ctx="working_dir: /tmp/test",
+                kickoff_turn=False,
             )
 
         assert result is None
@@ -870,6 +900,7 @@ class TestInjectUserContextWarmCtx:
                 "sess-1",
                 [msg],
                 warm_ctx="",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -902,7 +933,12 @@ class TestInjectUserContextEnvCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], env_ctx="working_dir: /home/user"
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                env_ctx="working_dir: /home/user",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -927,7 +963,7 @@ class TestInjectUserContextEnvCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], env_ctx=""
+                None, "hello", "sess-1", [msg], env_ctx="", kickoff_turn=False
             )
 
         assert result is not None
@@ -956,7 +992,12 @@ class TestInjectUserContextEnvCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], env_ctx="working_dir: /real/path"
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                env_ctx="working_dir: /real/path",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -994,6 +1035,7 @@ class TestInjectUserContextEnvCtx:
                 "sess-1",
                 [msg],
                 env_ctx="working_dir: /home/user/project",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -1039,6 +1081,7 @@ class TestInjectUserContextSessionCtx:
                 "sess-1",
                 [msg],
                 session_ctx="session_id: sess-1; pending_followups: 0",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -1063,7 +1106,7 @@ class TestInjectUserContextSessionCtx:
             ),
         ):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], session_ctx=""
+                None, "hello", "sess-1", [msg], session_ctx="", kickoff_turn=False
             )
 
         assert result is not None
@@ -1098,6 +1141,7 @@ class TestInjectUserContextSessionCtx:
                 "sess-1",
                 [msg],
                 session_ctx="session_id: trusted-id; pending_followups: 0",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -1136,6 +1180,7 @@ class TestInjectUserContextSessionCtx:
                 "sess-1",
                 [msg],
                 session_ctx="session_id: sess-1; pending_followups: 2",
+                kickoff_turn=False,
             )
 
         assert result is not None

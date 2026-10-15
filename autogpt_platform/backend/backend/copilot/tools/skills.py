@@ -9,7 +9,7 @@ folder and are reachable via :tool:`read_workspace_file`.
 
 The model discovers skills via the ``<available_skills>`` block that
 :mod:`backend.copilot.service` injects into the first user message
-(see ``inject_user_context``). It loads body + sibling list with
+(see ``skills_context_block``). It loads body + sibling list with
 ``read_skill`` and writes new skills via ``store_skill`` whenever a
 procedure is worth re-using.
 
@@ -37,6 +37,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.learning.content_approvals import current_content_approvals
 from backend.copilot.learning.content_checks import (
     ContentCheckFailure,
@@ -53,7 +54,11 @@ from backend.copilot.learning.retrieval import (
     resolve_current_version,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.service import SKILLS_UPDATE_TAG, strip_server_injected_tags
+from backend.copilot.service import (
+    SKILLS_CONTEXT_TAG,
+    SKILLS_UPDATE_TAG,
+    strip_server_injected_tags,
+)
 from backend.data.db_accessors import (
     experts_db,
     skill_db,
@@ -2642,9 +2647,8 @@ async def list_all_skills(
     return skills
 
 
-def render_skills_index(skills: list[ParsedSkill]) -> str:
-    """Render skills as a compact one-line-each index for the
-    ``<available_skills>`` injection block.
+def skills_index_entries(skills: list[ParsedSkill]) -> list[str]:
+    """One compact line per skill for the ``<available_skills>`` block.
 
     Format: ``- name: <slug> — <description> — triggers: t1, t2``
     The ``name:`` prefix anchors the slug visually so the model picks
@@ -2653,8 +2657,6 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
     plain substring scan of the directive line covers both the slug and
     its triggers.
     """
-    if not skills:
-        return ""
     lines = []
     for s in skills:
         trigger_text = ", ".join(s.triggers)
@@ -2665,7 +2667,7 @@ def render_skills_index(skills: list[ParsedSkill]) -> str:
             f" — note: {_UPDATE_HINTS[s.update]}" if s.update in _UPDATE_HINTS else ""
         )
         lines.append(f"- name: {s.name} — {s.description}{trigger_hint}{update_hint}")
-    return "\n".join(lines)
+    return lines
 
 
 _UPDATE_HINTS = {
@@ -2690,20 +2692,19 @@ async def is_skills_feature_enabled(user_id: str | None) -> bool:
     return await is_feature_enabled(Flag.COPILOT_SKILLS, user_id, default=True)
 
 
-async def build_skills_context(
+async def skills_context_block(
     user_id: str | None,
     expert_id: str | None = None,
     *,
     run_capability_tool: str = "run_capability",
-) -> str:
-    """Build the body of the ``<available_skills>`` block injected into
-    the first user message.  Returns ``""`` if there are no skills to
-    show — :func:`inject_user_context` then omits the block entirely so
+) -> ContextBlock | None:
+    """The ``<available_skills>`` block for the first user message, one
+    item per skill.  ``None`` when there are no skills to show, so
     sessions with no skill state don't pay the tag overhead.
 
-    Also returns ``""`` when the ``COPILOT_SKILLS`` LD flag is off for
-    this user, so the kill-switch fully suppresses the per-turn index
-    cost (no list query, no Redis hit, nothing to cache).
+    Also ``None`` when the ``COPILOT_SKILLS`` LD flag is off for this
+    user, so the kill-switch fully suppresses the per-turn index cost
+    (no list query, no Redis hit, nothing to cache).
 
     ``expert_id`` is the session's persisted expert attribution; the index
     then holds platform defaults plus that expert's own skills.
@@ -2713,20 +2714,36 @@ async def build_skills_context(
     SDK path declares ``mcp__copilot__run_capability``.
     """
     if not await is_skills_feature_enabled(user_id):
-        return ""
-    skills = await list_all_skills(user_id, expert_id)
-    index = render_skills_index(skills)
-    if not index:
-        return ""
-    return (
-        "Skills are reusable procedures loaded with "
-        f'`{run_capability_tool}(id="tool:read_skill", input={{"name": ...}})`. '
-        "Match the user's request to a skill's triggers (substring or "
-        "close paraphrase) and load the "
-        "full body before acting; distill a new one with `tool:store_skill` "
-        "after you complete a non-trivial procedure worth reusing.\n"
-        f"{index}"
+        return None
+    entries = skills_index_entries(await list_all_skills(user_id, expert_id))
+    if not entries:
+        return None
+    return ContextBlock(
+        tag=SKILLS_CONTEXT_TAG,
+        head=(
+            "Skills are reusable procedures loaded with "
+            f'`{run_capability_tool}(id="tool:read_skill", input={{"name": ...}})`. '
+            "Match the user's request to a skill's triggers (substring or "
+            "close paraphrase) and load the "
+            "full body before acting; distill a new one with `tool:store_skill` "
+            "after you complete a non-trivial procedure worth reusing."
+        ),
+        items=tuple(entries),
     )
+
+
+async def build_skills_context(
+    user_id: str | None,
+    expert_id: str | None = None,
+    *,
+    run_capability_tool: str = "run_capability",
+) -> str:
+    """The body of :func:`skills_context_block`, ``""`` without one, for a
+    caller that puts the tags round it itself (the baseline engine)."""
+    block = await skills_context_block(
+        user_id, expert_id, run_capability_tool=run_capability_tool
+    )
+    return block.body if block else ""
 
 
 # Non-greedy: history holds at most one ``<available_skills>`` block (the

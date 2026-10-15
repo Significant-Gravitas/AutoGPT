@@ -69,7 +69,7 @@ async def _continue_turn(
         (f"{_SVC}.build_skills_update_notice", dict(new=AsyncMock(return_value=""))),
         (f"{_SVC}.persist_and_record_usage", dict(new_callable=AsyncMock)),
         (f"{_SVC}.persist_pending_as_user_rows", dict(side_effect=_persist)),
-        (f"{_SVC}._rebuild_first_turn_prefix", dict(new=AsyncMock(return_value=""))),
+        (f"{_SVC}._rebuild_first_turn_context", dict(new=AsyncMock(return_value=[]))),
     ]
     if resumed:
         # The previous turn's session file covers its rows: sequences 0 and 1.

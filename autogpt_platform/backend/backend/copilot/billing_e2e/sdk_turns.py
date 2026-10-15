@@ -120,10 +120,9 @@ class SdkTurns:
                 return_value="You are a test assistant. Reply briefly."
             ),
             "fetch_business_understanding": AsyncMock(return_value=None),
-            "build_skills_context": AsyncMock(return_value=""),
+            "_first_turn_context_blocks": AsyncMock(return_value=[]),
             "build_skills_update_notice": AsyncMock(return_value=None),
-            "build_session_context": AsyncMock(return_value=""),
-            "inject_user_context": AsyncMock(return_value=None),
+            "inject_context_blocks": AsyncMock(return_value=None),
             "create_copilot_mcp_server": MagicMock(),
             "create_security_hooks": MagicMock(),
             "get_copilot_tool_names": MagicMock(return_value=[]),

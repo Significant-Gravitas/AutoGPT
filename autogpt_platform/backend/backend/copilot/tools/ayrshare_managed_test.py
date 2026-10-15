@@ -16,6 +16,7 @@ from backend.blocks.ayrshare.post_to_linkedin import PostToLinkedInBlock
 from backend.blocks.ayrshare.post_to_x import PostToXBlock
 from backend.copilot.context import _current_permissions, set_turn_unattended
 from backend.copilot.permissions import CopilotPermissions
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.tools.ayrshare_managed import (
     BUILDER_CONNECT_BUTTON,
     GRANT_TO_EXPERT,
@@ -193,12 +194,14 @@ class TestBlockWithoutCredential:
 
     async def test_unattended_turn_says_where_to_connect(self):
         session = make_session(USER)
-        set_turn_unattended(session, scheduled=True)
+        set_turn_unattended(SessionKind.for_turn(session, scheduled=True).unattended)
         try:
             with ayrshare_backend():
                 result = await _prepare(PostToLinkedInBlock().id)
         finally:
-            set_turn_unattended(session, scheduled=False)
+            set_turn_unattended(
+                SessionKind.for_turn(session, scheduled=False).unattended
+            )
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
@@ -421,7 +424,9 @@ class TestNoSSOLinkInChat:
         self, answer, has_profile, unattended
     ):
         session = make_session(USER)
-        set_turn_unattended(session, scheduled=unattended)
+        set_turn_unattended(
+            SessionKind.for_turn(session, scheduled=unattended).unattended
+        )
         signed = JWTResponse(status="success", title="t", token="tok", url=SSO_URL)
         try:
             with (
@@ -432,7 +437,9 @@ class TestNoSSOLinkInChat:
             ):
                 result = await answer(session)
         finally:
-            set_turn_unattended(session, scheduled=False)
+            set_turn_unattended(
+                SessionKind.for_turn(session, scheduled=False).unattended
+            )
 
         if unattended and answer is not _connect:
             assert isinstance(result, ErrorResponse)
@@ -508,12 +515,14 @@ class TestExpertSession:
 
     async def test_unattended_says_to_grant_the_expert(self):
         session = make_session(USER, expert_id=EXPERT)
-        set_turn_unattended(session, scheduled=True)
+        set_turn_unattended(SessionKind.for_turn(session, scheduled=True).unattended)
         try:
             with ayrshare_backend(), expert_grants([]):
                 result = await _prepare(PostToLinkedInBlock().id, session=session)
         finally:
-            set_turn_unattended(session, scheduled=False)
+            set_turn_unattended(
+                SessionKind.for_turn(session, scheduled=False).unattended
+            )
 
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"

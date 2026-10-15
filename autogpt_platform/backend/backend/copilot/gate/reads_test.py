@@ -35,6 +35,7 @@ from backend.copilot.sdk.tool_adapter import (
     create_tool_handler,
     set_execution_context,
 )
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.trial_cost_context import (
@@ -1389,7 +1390,7 @@ async def test_a_scheduled_turns_skipped_step_reaches_the_model_unjudged(
 
     async def turn():
         # Fired by the scheduler into the user's own chat, so the gate is on.
-        set_turn_unattended(session, scheduled=True)
+        set_turn_unattended(SessionKind.for_turn(session, scheduled=True).unattended)
         return await _call(_Unattended("", name=tool_name), session)
 
     judge = _judge(_HELD)

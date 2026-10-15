@@ -268,6 +268,30 @@ class TestRecoveryEnqueue:
         return AutoPilotBlock()
 
     @pytest.mark.asyncio
+    async def test_recovery_takes_the_dispatch_as_a_fresh_root(self):
+        """The user's concurrency slot, the stream registry and the tree
+        ledger, like every turn; the orphaned turn's envelope is gone, so it
+        roots a fresh tree."""
+        session = MagicMock()
+        session.metadata.llm_auth_provider = "platform"
+        session.metadata.llm_credential_id = None
+        schedule = AsyncMock()
+        with (
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.copilot.executor.utils.schedule_turn", new=schedule),
+        ):
+            await _enqueue_for_recovery("sess-1", "user-1", "hello", dry_run=False)
+
+        call = schedule.await_args
+        assert call is not None
+        kwargs = call.kwargs
+        assert (kwargs["session_id"], kwargs["message"]) == ("sess-1", "hello")
+        assert kwargs["root"] is True
+
+    @pytest.mark.asyncio
     async def test_recovery_enqueued_on_transient_exception(self, block):
         """A generic exception should trigger _enqueue_for_recovery."""
         block.execute_copilot = AsyncMock(side_effect=RuntimeError("network error"))

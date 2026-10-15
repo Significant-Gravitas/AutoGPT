@@ -23,6 +23,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import (
     _AFTER_COMPACTION_LEAD,
@@ -48,8 +49,8 @@ _SKILLS_INDEX = (
     "- name: weekly-report — Drafts the weekly report — triggers: weekly report"
 )
 _MEMORY = "Sam's bakery is closed on Mondays."
-_TEAM_BLOCK = (
-    "<team_context>\nMax owns the weekly-report workflow.\n</team_context>\n\n"
+_TEAM_BLOCK = ContextBlock(
+    tag="team_context", head="Max owns the weekly-report workflow."
 )
 _UNDERSTANDING = "Name: Sam\nBusiness: bakery"
 
@@ -112,7 +113,14 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
         [("user", _FIRST_TURN_ROW), ("assistant", "Nice to meet you, Sam.")]
     )
     patches = [
-        (f"{_SVC}.build_skills_context", dict(return_value=_SKILLS_INDEX)),
+        (
+            f"{_SVC}.skills_context_block",
+            dict(
+                return_value=ContextBlock(
+                    tag="available_skills", items=(_SKILLS_INDEX,)
+                )
+            ),
+        ),
         (
             f"{_SVC}.build_session_context",
             dict(return_value=f"session_id: {_SESSION_ID}"),
@@ -129,7 +137,7 @@ def _context_patches(*, resume_hit: bool) -> list[tuple[str, dict]]:
             dict(return_value=_UNDERSTANDING),
         ),
         (f"{_SHARED}._fetch_langfuse_prompt", dict(return_value=None)),
-        (f"{_SHARED}.build_expert_context", dict(return_value=_TEAM_BLOCK)),
+        (f"{_SHARED}.build_expert_context", dict(return_value=[_TEAM_BLOCK])),
         ("backend.copilot.rate_limit.get_user_tier", dict(return_value=tier)),
     ]
     if resume_hit:
@@ -301,7 +309,7 @@ class TestCompactionKeepsFirstTurnContext:
         session = _session()
         queries: list[str] = []
 
-        with patch(f"{_SVC}._rebuild_first_turn_prefix", AsyncMock(return_value="")):
+        with patch(f"{_SVC}._rebuild_first_turn_context", AsyncMock(return_value=[])):
             parts = await _run_turn(
                 session, lambda *a, **kw: _client(queries), resume_hit=True
             )

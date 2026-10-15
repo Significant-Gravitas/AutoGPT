@@ -12,16 +12,19 @@ Each callback has its own allowance, and the CLI joins every callback's
 context with a newline into one ``SessionStart hook additional context``
 reminder, in the order the callbacks answer (``after_compaction_handout``
 makes that the part order).  So the rebuilt context goes out as up to
-:data:`AFTER_COMPACTION_MAX_PARTS` parts, one per callback, split on block
-boundaries.  When that is still not enough, the lowest-priority blocks are
-dropped; a block too big for a part on its own is shortened on its own item
-boundaries.  Measured with a stub API against the real CLI 2.1.284.
+:data:`AFTER_COMPACTION_MAX_PARTS` parts, one per callback, split between
+blocks.  When that is still not enough, the lowest-priority blocks are
+dropped; a block too big for a part on its own is shortened by whole items.
+The blocks come from the first-turn builders as ``ContextBlock``s, items kept
+apart from the text around them, so nothing here parses rendered text.
+Measured with a stub API against the real CLI 2.1.284.
 """
 
 from collections.abc import Collection, Sequence
 
 from pydantic import BaseModel
 
+from backend.copilot.context_blocks import ContextBlock
 from backend.copilot.service import (
     ENV_CONTEXT_TAG,
     SESSION_CONTEXT_TAG,
@@ -64,20 +67,13 @@ _PRIORITY = (
 
 
 class _ItemList(BaseModel):
-    """A block that lists one item per ``- `` line and can lose items."""
+    """How a block that leaves items out points at the rest."""
 
     # The tool that lists the items again; without it in the turn's tool set
     # the block is not shortened.
     tool: str
     # The line that replaces the items left out (``{n}`` of them).
     rest: str
-    # How the line after the last item starts when the renderer adds one.
-    # Lines after the last item that do not start this way belong to that
-    # item (a description with a line break in it).
-    closing_starts: tuple[str, ...] = ()
-    # Shortened only when the body opens with one of these; any body when
-    # empty.
-    opens_with: tuple[str, ...] = ()
 
 
 _ITEM_LISTS = {
@@ -91,18 +87,10 @@ _ITEM_LISTS = {
     "team_context": _ItemList(
         tool="list_team",
         rest="{n} more are not listed here: call `tool:list_team` for the full roster.",
-        closing_starts=("When a request clearly matches", "These are your teammates."),
-        # Not the hiring form shown to a user with nobody hired: its items
-        # are templates, which `list_team` does not list.
-        opens_with=(
-            "The user has hired these experts:",
-            "Your teammates on this user's team:",
-        ),
     ),
     "routines": _ItemList(
         tool="list_routines",
         rest="{n} more are not listed here: call `tool:list_routines` for all of them.",
-        closing_starts=("The routines marked (proposal)",),
     ),
     "expert_workflows": _ItemList(
         tool="list_expert_workflows",
@@ -110,25 +98,8 @@ _ITEM_LISTS = {
             "{n} more are not listed here: call `tool:list_expert_workflows` for "
             "all of them."
         ),
-        closing_starts=("If the user skips or declines",),
     ),
 }
-
-_ITEM_PREFIX = "- "
-
-
-class ContextBlock(BaseModel):
-    """One top-level ``<tag>…</tag>`` block, with its trailing newlines.
-
-    ``tag`` is ``""`` for text that does not parse as a block.
-    """
-
-    tag: str
-    text: str
-
-    @property
-    def label(self) -> str:
-        return self.tag or "untagged text"
 
 
 class FittedContext(BaseModel):
@@ -146,41 +117,41 @@ class FittedContext(BaseModel):
 
 def fit_after_compaction(
     lead: str,
-    prefix: str,
+    blocks: Sequence[ContextBlock],
     *,
     budget: int = AFTER_COMPACTION_PART_BUDGET,
     max_parts: int = AFTER_COMPACTION_MAX_PARTS,
     hidden_tools: Collection[str] = (),
 ) -> FittedContext:
-    """Split ``lead + prefix`` into parts that each stay within ``budget``.
+    """Split ``lead`` and *blocks* into parts that each stay within ``budget``.
 
     Parts break only between blocks and keep the blocks' order; ``lead``
-    opens the first part.  An empty ``prefix`` gives no parts.
+    opens the first part.  No blocks gives no parts.
     ``hidden_tools`` are the tool names this turn does not offer the model.
     """
-    if not prefix:
+    if not blocks:
         return FittedContext(parts=[], rebuilt_chars=0)
     block_budget = budget - utf16_len(lead)
-    blocks: list[ContextBlock] = []
+    kept: list[ContextBlock] = []
     dropped: list[str] = []
     shortened: list[str] = []
-    for block in split_blocks(prefix):
+    for block in blocks:
         if utf16_len(block.text) <= block_budget:
-            blocks.append(block)
+            kept.append(block)
             continue
         short = shorten_block(block, block_budget, hidden_tools=hidden_tools)
         if short is None:
-            dropped.append(block.label)
+            dropped.append(block.tag)
             continue
-        blocks.append(short)
-        shortened.append(block.label)
-    parts = _pack(lead, blocks, budget)
+        kept.append(short)
+        shortened.append(block.tag)
+    parts = _pack(lead, kept, budget)
     while len(parts) > max_parts:
-        dropped.append(blocks.pop(_lowest_priority(blocks)).label)
-        parts = _pack(lead, blocks, budget)
+        dropped.append(kept.pop(_lowest_priority(kept)).tag)
+        parts = _pack(lead, kept, budget)
     return FittedContext(
         parts=parts,
-        rebuilt_chars=len(lead) + len(prefix),
+        rebuilt_chars=len(lead) + sum(len(block.text) for block in blocks),
         dropped=dropped,
         shortened=shortened,
     )
@@ -189,25 +160,6 @@ def fit_after_compaction(
 def utf16_len(text: str) -> int:
     """Length as the CLI counts it: JavaScript string length."""
     return len(text.encode("utf-16-le")) // 2
-
-
-def split_blocks(prefix: str) -> list[ContextBlock]:
-    """Split the rendered prefix into its top-level blocks, in order.
-
-    Every first-turn builder renders ``<tag>\\n…\\n</tag>`` followed by
-    blank lines; anything from the first spot that does not parse that way
-    is kept whole as one untagged block.
-    """
-    blocks: list[ContextBlock] = []
-    pos = 0
-    while pos < len(prefix):
-        end, tag = _block_end(prefix, pos)
-        if end < 0:
-            blocks.append(ContextBlock(tag="", text=prefix[pos:]))
-            break
-        blocks.append(ContextBlock(tag=tag, text=prefix[pos:end]))
-        pos = end
-    return blocks
 
 
 def shorten_block(
@@ -219,65 +171,14 @@ def shorten_block(
     item_list = _ITEM_LISTS.get(block.tag)
     if item_list is None or item_list.tool in hidden_tools:
         return None
-    opening = f"<{block.tag}>\n"
-    closing_at = block.text.rfind(f"\n</{block.tag}>")
-    body = block.text[len(opening) : closing_at]
-    if item_list.opens_with and not body.startswith(item_list.opens_with):
-        return None
-    head, items, tail = _items(body, item_list.closing_starts)
-    after = block.text[closing_at:]
+    items = block.items
     for keep in range(len(items) - 1, -1, -1):
         rest = item_list.rest.format(n=len(items) - keep)
-        text = opening + "\n".join([*head, *items[:keep], rest, *tail]) + after
-        if utf16_len(text) <= budget:
-            return ContextBlock(tag=block.tag, text=text)
+        # The pointer to the rest stands where the items left out stood.
+        short = block.model_copy(update={"items": (*items[:keep], rest)})
+        if utf16_len(short.text) <= budget:
+            return short
     return None
-
-
-def _block_end(prefix: str, pos: int) -> tuple[int, str]:
-    """End of the block that starts at ``pos`` (past its trailing newlines)
-    and its tag, or ``(-1, "")`` when no block starts there."""
-    if not prefix.startswith("<", pos):
-        return -1, ""
-    tag_end = prefix.find(">\n", pos)
-    tag = prefix[pos + 1 : tag_end] if tag_end > 0 else ""
-    if not tag or not tag.replace("_", "").isalnum():
-        return -1, ""
-    closing = f"\n</{tag}>"
-    close_at = prefix.find(closing, tag_end)
-    if close_at < 0:
-        return -1, ""
-    end = close_at + len(closing)
-    while prefix.startswith("\n", end):
-        end += 1
-    return end, tag
-
-
-def _items(
-    body: str, closing_starts: tuple[str, ...]
-) -> tuple[list[str], list[str], list[str]]:
-    """``(head, items, tail)`` lines of a block body.
-
-    An item starts at a line beginning ``- `` and takes the lines after it up
-    to the next item; lines before the first item are the head.  The tail
-    starts at the first line after the last item that begins with one of
-    ``closing_starts``; without such a line there is no tail.
-    """
-    lines = body.split("\n")
-    starts = [i for i, line in enumerate(lines) if line.startswith(_ITEM_PREFIX)]
-    if not starts:
-        return lines, [], []
-    tail_at = next(
-        (
-            i
-            for i in range(starts[-1] + 1, len(lines))
-            if lines[i].startswith(closing_starts)
-        ),
-        len(lines),
-    )
-    bounds = [*starts[1:], tail_at]
-    items = ["\n".join(lines[s:e]) for s, e in zip(starts, bounds)]
-    return lines[: starts[0]], items, lines[tail_at:]
 
 
 def _pack(lead: str, blocks: Sequence[ContextBlock], budget: int) -> list[str]:

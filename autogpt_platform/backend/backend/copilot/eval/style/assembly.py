@@ -21,6 +21,7 @@ from backend.api.features.experts.roster import load_roster
 from backend.api.features.experts.roster_types import RosterEntry
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.copilot.config import ChatConfig
+from backend.copilot.context_blocks import render_context_blocks
 from backend.copilot.expert_context import (
     render_account_standing_work_block,
     render_expert_computer_block,
@@ -126,22 +127,25 @@ def user_prefix(expert: Expert | None, roster: list[Expert]) -> str:
         # eval fixture has no account. ``<standing_work>`` is static text every
         # Otto turn carries, so leaving it out here would make this check pass
         # while production and the harness disagreed.
-        return (
-            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED)
-            + render_account_standing_work_block()
-        )
-    # ``<expert_computer>`` is only rendered when E2B actually backs the
-    # sandbox, so it is empty wherever E2B is unconfigured — which is why its
-    # absence here went unnoticed: CI has no E2B and both sides read "".
-    return (
-        render_expert_workflows_block(expert)
-        + render_expert_computer_block()
-        + render_team_context(
-            roster,
-            delegation_enabled=DELEGATION_ENABLED,
-            exclude_expert_id=expert.id,
-        )
-    )
+        blocks = [
+            render_team_context(roster, delegation_enabled=DELEGATION_ENABLED),
+            render_account_standing_work_block(),
+        ]
+    else:
+        # ``<expert_computer>`` is only rendered when E2B actually backs the
+        # sandbox, so it is missing wherever E2B is unconfigured — which is why
+        # its absence here went unnoticed: CI has no E2B and both sides had no
+        # block.
+        blocks = [
+            render_expert_workflows_block(expert),
+            render_expert_computer_block(),
+            render_team_context(
+                roster,
+                delegation_enabled=DELEGATION_ENABLED,
+                exclude_expert_id=expert.id,
+            ),
+        ]
+    return render_context_blocks(block for block in blocks if block is not None)
 
 
 def chat_system_prompt(expert: Expert | None) -> str:

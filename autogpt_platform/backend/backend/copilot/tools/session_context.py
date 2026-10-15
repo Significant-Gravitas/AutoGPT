@@ -1,6 +1,6 @@
 """Build the per-session ``<session_context>`` block.
 
-This block is injected by ``inject_user_context`` into the first user
+This block is injected by ``injected_context_blocks`` into the first user
 message of every session so the model has *proactive* awareness of any
 pending follow-ups it (or the user) previously scheduled — without
 needing to call ``list_schedules`` on every greeting.
