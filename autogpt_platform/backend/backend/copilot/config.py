@@ -313,7 +313,7 @@ class ChatConfig(BaseSettings):
         default=1.0,
         ge=0.0,
         le=1.0,
-        description="Share of chats the shadow gate (``copilot-auto-mode-shadow``) "
+        description="Share of chats the shadow gate (``copilot-auto-mode`` = shadow) "
         "judges and records, 0 to 1. Picked per chat, so a sampled chat is "
         "recorded whole.",
     )

@@ -1,8 +1,8 @@
 """Shadow mode: the gate judges calls and outside reads, holds nothing, and
 records what it would have done.
 
-With ``copilot-auto-mode-shadow`` on and ``copilot-auto-mode`` off, the action
-and read seams hand each judgement to a background task and return at once, so
+With ``copilot-auto-mode`` serving its "shadow" variant, the action and read
+seams hand each judgement to a background task and return at once, so
 the turn neither waits on a judge nor sees its answer. Each judgement becomes
 one ``chat_gate_shadow_decision`` event, which carries none of what was judged.
 """

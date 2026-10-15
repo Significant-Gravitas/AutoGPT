@@ -63,10 +63,9 @@ class Flag(str, Enum):
     # A ROLLOUT control, not a safety control — off means today's
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
+    # True or the variant "enforce" enforces; the variant "shadow" judges and
+    # records without holding anything (``copilot/gate/shadow.py``).
     COPILOT_AUTO_MODE = "copilot-auto-mode"
-    # With COPILOT_AUTO_MODE off: run the gate's judgements on every call and
-    # read and record them, holding nothing. COPILOT_AUTO_MODE wins.
-    COPILOT_AUTO_MODE_SHADOW = "copilot-auto-mode-shadow"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable
@@ -734,6 +733,12 @@ _NON_BOOLEAN_FLAG_VALUES: frozenset[str] = frozenset(
     }
 )
 
+# Flags served as variants as well as booleans: a boolean read is on for the
+# variants listed and off for any other, without the misconfiguration warning.
+_VARIANTS_READ_AS_ON: dict[str, frozenset[str]] = {
+    Flag.COPILOT_AUTO_MODE.value: frozenset({"enforce"}),
+}
+
 # Log the master switch's state once per process, not once per evaluation.
 _force_all_logged = False
 
@@ -860,6 +865,10 @@ async def evaluate_feature_flag(
     if isinstance(result, bool):
         return result, evaluated
 
+    on_variants = _VARIANTS_READ_AS_ON.get(flag_key.value)
+    if on_variants is not None and isinstance(result, str):
+        return result in on_variants, evaluated
+
     # Log a warning if the flag is not returning a boolean
     logger.warning(
         f"Feature flag {flag_key} returned non-boolean value: {result} (type: {type(result).__name__}). "
@@ -870,6 +879,16 @@ async def evaluate_feature_flag(
     # but never let a caller take an irreversible action on it.
     _record_flag_for_sentry(flag_key.value, default, False)
     return default, False
+
+
+async def get_flag_variant(flag_key: Flag, user_id: str, default: Any = False) -> Any:
+    """For a flag served as true/false or as a variant key: its env override when
+    one is set, as ``is_feature_enabled`` honours it, else the vendor's answer."""
+    override = _env_flag_override(flag_key)
+    if override is not None:
+        return override
+    value, _ = await _evaluate_flag_value(flag_key.value, user_id, default)
+    return value
 
 
 def feature_flag(

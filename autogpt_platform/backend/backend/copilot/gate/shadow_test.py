@@ -7,13 +7,20 @@ store and PostHog are faked.
 
 import asyncio
 import json
+import logging
 from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from backend.copilot.gate import active_mode, check_action, gate_active, shadow
+from backend.copilot.gate import (
+    active_mode,
+    check_action,
+    gate_active,
+    gate_mode,
+    shadow,
+)
 from backend.copilot.gate.classifier import Judgement
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.headline import Headline
@@ -27,7 +34,7 @@ from backend.copilot.model import (
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import meters_spend
-from backend.util.feature_flag import Flag
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.posthog_events import PostHogEvent
 
 _GATE = "backend.copilot.gate"
@@ -74,11 +81,18 @@ def _session(
     )
 
 
-def _flags(*on: Flag):
-    async def enabled(flag: Flag, user_id: str, default: bool = False) -> bool:
-        return flag in on
+def _auto_mode(value: Any):
+    """``copilot-auto-mode`` answered with ``value`` by the vendor, under every
+    reader of it; any other flag goes unanswered."""
 
-    return patch(f"{_GATE}.is_feature_enabled", AsyncMock(side_effect=enabled))
+    async def vendor(flag_key, user_id, default=None, *, attributes=None):
+        return (
+            (value, True)
+            if flag_key == Flag.COPILOT_AUTO_MODE.value
+            else (default, False)
+        )
+
+    return patch("backend.util.feature_flag._evaluate_flag_value", side_effect=vendor)
 
 
 @pytest.fixture
@@ -115,7 +129,7 @@ def _recorded(capture: MagicMock) -> list[dict[str, Any]]:
 
 async def test_shadow_judges_an_action_it_lets_run(parking, events):
     supervisor = AsyncMock(return_value=_ASKS)
-    with _flags(Flag.COPILOT_AUTO_MODE_SHADOW), patch(f"{_GATE}.supervise", supervisor):
+    with _auto_mode("shadow"), patch(f"{_GATE}.supervise", supervisor):
         decision = await check_action(
             "delete_folder", {"path": _ARG}, "user-1", _session(), "call-1"
         )
@@ -138,10 +152,10 @@ async def test_shadow_judges_an_action_it_lets_run(parking, events):
     }
 
 
-async def test_enforce_wins_over_shadow_and_records_nothing(parking, events):
+async def test_enforce_holds_the_call_and_records_nothing(parking, events):
     supervisor = AsyncMock(return_value=_ASKS)
     with (
-        _flags(Flag.COPILOT_AUTO_MODE, Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode(True),
         patch(f"{_GATE}.supervise", supervisor),
     ):
         decision = await check_action(
@@ -169,7 +183,7 @@ async def test_policy_and_judge_allows_are_recorded_too(
         allowed=True, reason="Allowed.", decided_by="jev", code="allowed"
     )
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.supervise", AsyncMock(return_value=allows)),
     ):
         assert (await check_action(tool, args, "user-1", _session())).allowed
@@ -186,7 +200,7 @@ async def test_shadow_never_reads_or_opens_the_spend_ledger(parking, events):
     """Shadow does not meter, so a paid read must not open the chat's ledger."""
     ceiling = AsyncMock(return_value=(2_000_000, 1_000_000))
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.spent_past_ceiling", ceiling),
     ):
         assert (
@@ -199,7 +213,7 @@ async def test_shadow_never_reads_or_opens_the_spend_ledger(parking, events):
 
 
 async def test_a_call_the_gate_never_considers_records_nothing(parking, events):
-    with _flags(Flag.COPILOT_AUTO_MODE_SHADOW):
+    with _auto_mode("shadow"):
         await check_action("web_search", {"query": "x"}, "user-1", _session())
         await _settled()
     events.assert_not_called()
@@ -225,7 +239,7 @@ async def test_a_call_the_gate_never_considers_records_nothing(parking, events):
 async def test_a_judge_failure_is_recorded_and_lets_the_call_run(
     parking, events, judgement, reason_code
 ):
-    with _flags(Flag.COPILOT_AUTO_MODE_SHADOW), patch(f"{_GATE}.supervise", judgement):
+    with _auto_mode("shadow"), patch(f"{_GATE}.supervise", judgement):
         decision = await check_action(
             "delete_folder", {"path": _ARG}, "user-1", _session()
         )
@@ -241,7 +255,7 @@ async def test_the_event_names_the_decision_and_carries_none_of_the_content(
     session = _session("ask_first")
     session.expert_id = "expert-1"
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.supervise", AsyncMock(return_value=_ASKS)),
         patch(f"{_GATE}.reads.judge_content", AsyncMock(return_value=_held())),
     ):
@@ -292,7 +306,7 @@ async def test_shadow_hands_every_read_over_whole(parking, events, verdict):
     judge = AsyncMock(return_value=verdict)
     tool = _Fetch(_PAGE)
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.reads.judge_content", judge),
     ):
         result = await tool.execute("user-1", _session(), "call-1", url="https://x")
@@ -309,7 +323,7 @@ async def test_shadow_hands_every_read_over_whole(parking, events, verdict):
 
 async def test_enforce_still_holds_a_read_and_records_nothing(parking, events):
     with (
-        _flags(Flag.COPILOT_AUTO_MODE, Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode(True),
         patch(f"{_GATE}.reads.judge_content", AsyncMock(return_value=_held())),
     ):
         result = await _Fetch(_PAGE).execute("user-1", _session(), "c", url="https://x")
@@ -353,10 +367,10 @@ async def _hang(*args, **kwargs):
 async def test_a_judge_that_hangs_changes_neither_the_result_nor_its_timing(
     parking, events, tool, judge_path
 ):
-    with _flags():
+    with _auto_mode(False):
         unjudged = await tool.execute("user-1", _session(), "c", path="p", url="u")
     hanging = AsyncMock(side_effect=_hang)
-    with _flags(Flag.COPILOT_AUTO_MODE_SHADOW), patch(judge_path, hanging):
+    with _auto_mode("shadow"), patch(judge_path, hanging):
         result = await asyncio.wait_for(
             tool.execute("user-1", _session(), "c", path="p", url="u"), timeout=1
         )
@@ -388,7 +402,7 @@ async def test_the_sample_rate_decides_whether_a_session_is_judged(
 ):
     supervisor = AsyncMock(return_value=_ASKS)
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.supervise", supervisor),
         patch.object(shadow.config, "gate_shadow_sample_rate", rate),
     ):
@@ -410,7 +424,7 @@ def test_a_partial_rate_samples_whole_sessions():
 async def test_judgements_past_the_cap_are_dropped_not_queued(parking, events):
     hanging = AsyncMock(side_effect=_hang)
     with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        _auto_mode("shadow"),
         patch(f"{_GATE}.supervise", hanging),
         patch.object(shadow, "MAX_IN_FLIGHT", 1),
     ):
@@ -423,18 +437,37 @@ async def test_judgements_past_the_cap_are_dropped_not_queued(parking, events):
     hanging.assert_awaited_once()
 
 
-async def test_shadow_leaves_metering_the_mode_and_the_prompt_alone():
-    """Each of these reads the enforce flag alone; shadow must not switch them on."""
+@pytest.mark.parametrize(
+    "value, mode",
+    [
+        (True, "enforce"),
+        ("enforce", "enforce"),
+        ("shadow", "shadow"),
+        (False, "off"),
+        (None, "off"),
+        ("canary", "off"),
+    ],
+)
+async def test_each_value_of_the_flag_is_one_gate_mode(value, mode):
+    """Metering, the mode selector and the prompt read the flag as a boolean, so
+    only an enforcing value may switch them on."""
     session = _session("ask_first")
-    with (
-        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
-        patch(
-            "backend.copilot.tree.is_feature_enabled",
-            AsyncMock(
-                side_effect=lambda flag, *_, **__: flag is Flag.COPILOT_AUTO_MODE_SHADOW
-            ),
-        ),
-    ):
-        assert not await gate_active("user-1", session)
-        assert await active_mode("user-1", session) is None
-        assert not await meters_spend("user-1")
+    with _auto_mode(value):
+        assert await gate_mode("user-1", session) == mode
+        assert await gate_active("user-1", session) is (mode == "enforce")
+        assert (await active_mode("user-1", session) is None) is (mode != "enforce")
+        assert await meters_spend("user-1") is (mode == "enforce")
+
+
+async def test_an_env_override_of_off_turns_shadow_off_too(monkeypatch):
+    monkeypatch.setenv("FORCE_FLAG_COPILOT_AUTO_MODE", "false")
+    with _auto_mode("shadow"):
+        assert await gate_mode("user-1", _session()) == "off"
+
+
+async def test_a_variant_is_read_as_a_boolean_without_the_misconfiguration_warning(
+    caplog,
+):
+    with _auto_mode("shadow"), caplog.at_level(logging.WARNING):
+        assert not await is_feature_enabled(Flag.COPILOT_AUTO_MODE, "user-1")
+    assert not [r for r in caplog.records if "non-boolean" in r.getMessage()]

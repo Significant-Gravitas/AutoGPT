@@ -26,7 +26,7 @@ from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
 from backend.platform_linking.models import Platform
-from backend.util.feature_flag import Flag, is_feature_enabled
+from backend.util.feature_flag import Flag, get_flag_variant, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
@@ -102,6 +102,7 @@ class Decision(BaseModel):
 ALLOW = Decision(allowed=True)
 
 GateMode = Literal["enforce", "shadow", "off"]
+SHADOW_VARIANT = "shadow"
 
 
 class Ruling(BaseModel):
@@ -127,17 +128,16 @@ async def gate_active(user_id: str | None, session: ChatSession) -> bool:
 
 async def gate_mode(user_id: str | None, session: ChatSession) -> GateMode:
     """The gate runs only where a signed-in user can answer; sessions nobody
-    is watching stay ungated until they get their own path. Enforce wins over
-    shadow, which judges and records without holding anything."""
+    is watching stay ungated until they get their own path. ``copilot-auto-mode``
+    enforces when on; its "shadow" variant judges and records, holding nothing."""
     if not user_id or session.metadata.origin != "interactive":
         return "off"
     if session.metadata.source_platform in CARDLESS_PLATFORMS:
         return "off"
     if await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
         return "enforce"
-    if await is_feature_enabled(Flag.COPILOT_AUTO_MODE_SHADOW, user_id, default=False):
-        return "shadow"
-    return "off"
+    variant = await get_flag_variant(Flag.COPILOT_AUTO_MODE, user_id)
+    return "shadow" if variant == SHADOW_VARIANT else "off"
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
