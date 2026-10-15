@@ -651,11 +651,22 @@ class CoPilotProcessor:
                 try:
                     pause = await refusal_for(entry.user_id)
                     if pause is not None:
+                        # Billed to the tenancy the turn runs under (as
+                        # streamed below), as the graph's other blocks are.
+                        is_expert_session = session.expert_id is not None
                         credit_turn = await bill_to_credits(
                             user_id=entry.user_id,
                             session_id=entry.session_id,
                             tool_name=entry.tool_name,
                             refusal=pause,
+                            organization_id=(
+                                session.organization_id
+                                if is_expert_session
+                                else entry.organization_id
+                            ),
+                            team_id=(
+                                session.team_id if is_expert_session else entry.team_id
+                            ),
                         )
                 except RateLimitUnavailable:
                     error_msg = RATE_LIMIT_UNAVAILABLE_MESSAGE

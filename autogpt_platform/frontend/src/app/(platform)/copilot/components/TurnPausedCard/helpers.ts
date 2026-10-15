@@ -156,12 +156,11 @@ export function resetAt(date: Date, now = new Date()): string {
 
 /** "in 4 h 12 min", "in 45 min", "in 2 days". */
 export function resetIn(date: Date, now = new Date()): string {
-  const minutes = Math.max(
-    1,
-    Math.ceil((date.getTime() - now.getTime()) / 60_000),
-  );
+  const ms = date.getTime() - now.getTime();
+  const minutes = Math.max(1, Math.ceil(ms / 60_000));
   if (minutes < 60) return `in ${minutes} min`;
-  if (minutes < 24 * 60) {
+  // resetAt's cut-off: a time it names without the day never reads "in 1 day".
+  if (ms < DAY_MS) {
     const hours = Math.floor(minutes / 60);
     const rest = minutes % 60;
     return rest ? `in ${hours} h ${rest} min` : `in ${hours} h`;

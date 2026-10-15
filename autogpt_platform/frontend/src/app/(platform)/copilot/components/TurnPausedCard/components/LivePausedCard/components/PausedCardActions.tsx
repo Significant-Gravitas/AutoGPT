@@ -26,7 +26,7 @@ export function PausedCardActions({ card, onStop }: Props) {
         <div className="flex items-center gap-1.5 pr-1">
           <Icon icon={Clock01Icon} size={14} className="text-purple-500" />
           <Text variant="small-medium" className="!text-zinc-700">
-            Resumes {resetAt(resume.resumesAt)}
+            Resumes {resetAt(resume.resumesAt, card.now)}
           </Text>
           <Button
             variant="link"
@@ -46,7 +46,7 @@ export function PausedCardActions({ card, onStop }: Props) {
           loading={resume.isScheduling}
           disabled={isBusy}
         >
-          {resumeLabel(card.shown.resets_at)}
+          {resumeLabel(card.shown.resets_at, card.now)}
         </Button>
       )}
       {card.primary === "keep_going" && (
