@@ -217,27 +217,34 @@ def _auto_credentials_field_names(node: Node) -> list[str]:
     """Inputs of the node's block that hold a picked file: the auto-credentials
     picker fields its schema declares, plus any input typed as a file carrying
     `_credentials_id`. The second covers the default of an agent's Google Drive
-    file input, whose picker is only declared per node."""
-    if get_block(node.block_id) is None:
-        # The block was removed, so no schema says which inputs are pickers.
-        # Treat any value that embeds a `_credentials_id` as one, so a picked
-        # file doesn't slip through exports and non-owner reads.
-        return [
-            field_name
-            for field_name, value in node.input_default.items()
-            if isinstance(value, dict) and "_credentials_id" in value
-        ]
-    input_schema = node.block.input_schema
+    file input, whose picker is only declared per node.
+
+    An input no schema declares (all of them, if the block was removed) has no
+    type to say it isn't a picker, so any value there embedding a
+    `_credentials_id` counts as one. A picked file then can't slip through
+    exports and non-owner reads under a name the block doesn't know."""
+    block = get_block(node.block_id)
+    model_fields = block.input_schema.model_fields if block else {}
+    undeclared = [
+        field_name
+        for field_name, value in node.input_default.items()
+        if field_name not in model_fields
+        and isinstance(value, dict)
+        and "_credentials_id" in value
+    ]
+    if block is None:
+        return undeclared
+    input_schema = block.input_schema
     declared = [
         info["field_name"]
         for info in input_schema.get_auto_credentials_fields().values()
     ]
     typed = [
         field_name
-        for field_name, field in input_schema.model_fields.items()
+        for field_name, field in model_fields.items()
         if field_name not in declared and _holds_picked_file(field.annotation)
     ]
-    return declared + typed
+    return declared + typed + undeclared
 
 
 def _holds_picked_file(annotation: Any) -> bool:
