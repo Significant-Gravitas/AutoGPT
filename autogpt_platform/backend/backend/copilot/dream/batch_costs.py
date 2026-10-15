@@ -1,6 +1,14 @@
 """What a batch dream pass cost: one PlatformCostLog row per phase that
 landed, each charged at most once however many times the pass's end or its
-cleanup runs, and the usage of those phases for the pass's DreamPass record."""
+cleanup runs, and the usage of those phases for the pass's DreamPass record.
+
+Every such charge goes by the usage attribution (#15208) the pass started
+under, read off its row: batch settlement is deferred, made in another
+process and possibly much later, so the row is the one place that knows it.
+A sync pass charges each phase in-process as it lands
+(``billing.record_phase_cost``), under the attribution it captured as it
+started (``orchestrator``'s ``attributed_usage``), the same value its row
+keeps; the row rule here is for batch settlement only."""
 
 from __future__ import annotations
 
@@ -106,6 +114,8 @@ async def charge_landed_phases(
     now: a conversion after the pass started does not move what it already
     ran. A pass whose row carries no attribution is never charged, settled
     all the same; one whose row cannot be read is left for the next cleanup.
+    This is the batch route's settlement; a sync pass charges in-process,
+    under the attribution it captured at its start (see the module).
     """
     try:
         context = await read_cost_context(pass_id)
