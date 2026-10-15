@@ -19,6 +19,7 @@ worse than saying nothing, because the user plans around it.
 import logging
 import re
 import time
+from collections.abc import Mapping
 from enum import Enum
 from typing import Any
 
@@ -247,6 +248,11 @@ def _resets_at(exc: BaseException) -> int | None:
     headers = getattr(response, "headers", None)
     if headers is None:
         return None
+    return reset_time_from_headers(headers)
+
+
+def reset_time_from_headers(headers: Mapping[str, str]) -> int | None:
+    """Parse provider reset metadata without retaining or logging raw headers."""
     raw = headers.get("x-ratelimit-reset-requests") or headers.get(
         "x-ratelimit-reset-tokens"
     )
@@ -255,7 +261,6 @@ def _resets_at(exc: BaseException) -> int | None:
     try:
         return _to_unix_seconds(str(raw))
     except (ValueError, TypeError):
-        logger.debug("Unparseable rate-limit reset header: %r", raw)
         return None
 
 
