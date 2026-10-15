@@ -50,7 +50,7 @@ The graphs are built from deterministic blocks that do real work without a model
 | `baseline`     | the table      | 1 min   | 10 min | as declared | The comparison run; about 16 requests a second in all |
 | `stress`       | 3 x baseline   | 1 min   | 10 min | 2 x relaxed | What breaks first                                     |
 
-The warm-up ramps each rate up from zero. Requests made during it carry `phase:warmup`; every threshold and every number in the summary covers `phase:steady` only.
+The warm-up ramps each rate up from zero. Requests made during it carry `phase:warmup`; every threshold and every per-endpoint and user-facing number in the summary covers `phase:steady` only. The per-journey iteration times (`by_journey`) span the whole run, since k6 times an iteration without the request tags.
 
 Settings: `SCENARIOS=copilot_turn,store_browse` runs a subset; `RATE_SCALE=0.5` multiplies every rate; `WARMUP` and `DURATION` replace the phase lengths; `THRESHOLD_SCALE` relaxes the thresholds; `RUN_SEED` fixes which items each iteration picks (default fixed, so two runs send the same sequence); `LOAD_TEST_ACCOUNT_COUNT` is the number of accounts (default 8).
 
@@ -68,6 +68,7 @@ Settings: `SCENARIOS=copilot_turn,store_browse` runs a subset; `RATE_SCALE=0.5` 
 - `target`: name, URLs and the Sentry project and environment to query (`autogpt-server-previews`, `pr-<N>`); `target.build` is the backend's `/health` answer, which does not name the commit, so select the preview's traces by environment and window (its Sentry `release` is the git sha);
 - `window`: `started_at`, `load_started_at` (after setup) and `ended_at`, UTC, for perf-compare's `window=`;
 - per endpoint and per custom metric: count, p50, p95, p99, failure rate, steady phase only;
+- `by_journey`: each journey's iteration time over the whole run and its dropped iterations;
 - the seeding counts, including how many store agents and skills the target had;
 - `coverage`: per journey, `covered`, `partial` or `skipped`, with the reason when it is not covered (the paywall, no dummy engine, an empty marketplace, no sessions); the text report prints the same under `NOT COVERED IN FULL`, because a list read against an empty marketplace is fast for the wrong reason;
 - every threshold's result.
