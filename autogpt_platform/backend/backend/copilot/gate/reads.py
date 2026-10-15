@@ -22,7 +22,7 @@ from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from enum import Enum
 from functools import partial
-from typing import Any, Callable
+from typing import Any, Callable, Literal
 from uuid import UUID
 
 from prisma.enums import ReviewStatus
@@ -35,8 +35,9 @@ from backend.copilot.model import ChatSession
 from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
+from backend.util.feature_flag import Flag, get_flag_variant
 
-from . import active_mode, gate_mode, held, resolve_mode
+from . import answerable, held, resolve_mode
 from . import review as review_store
 from . import shadow
 from .content import ContentVerdict, Image, judge_content
@@ -44,6 +45,9 @@ from .headline import Headline, named
 from .policy import DEFAULT_MODE
 
 logger = logging.getLogger(__name__)
+
+ScreenMode = Literal["enforce", "shadow", "off"]
+SHADOW = "shadow"
 
 # Every tool whose output is bytes AutoPilot did not author (plan A4). The
 # user's own memories are left out: a memory is content they already trust
@@ -170,7 +174,9 @@ async def release_held_read(
     Checked before the tool runs, so a released read is the bytes the user
     approved and not a second fetch that might differ.
     """
-    if tool_name not in JUDGED_READS or await active_mode(user_id, session) is None:
+    if tool_name not in JUDGED_READS:
+        return None
+    if await screen_mode(user_id, session) != "enforce":
         return None
     assert user_id is not None
     review_id = read_review_id(session.session_id, user_id, tool_name, args)
@@ -255,17 +261,14 @@ async def screen_read(
         return None
     source = source_of(tool_name, args)
     try:
-        gating = await gate_mode(user_id, session)
-        mode = resolve_mode(session)
-        if gating == "off" or mode == "unsupervised":
+        screening = await screen_mode(user_id, session)
+        if screening == "off" or resolve_mode(session) == "unsupervised":
             return None
         assert user_id is not None
-        if gating == "shadow":
+        if screening == "shadow":
             shadow.judge_later(
                 user_id,
                 session,
-                kind="read",
-                mode=mode,
                 tool_name=tool_name,
                 tool_call_id=tool_call_id,
                 source_kind=_source_kind(tool_name, args),
@@ -298,6 +301,18 @@ async def screen_read(
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
         return _stub(tool_name, source, _UNRECORDABLE, session)
+
+
+async def screen_mode(user_id: str | None, session: ChatSession) -> ScreenMode:
+    """``copilot-read-screen``: true or "enforce" holds a flagged read, "shadow"
+    judges and records without holding, anything else is off. It runs only
+    where a signed-in user can answer the card, as the action gate does."""
+    if not answerable(user_id, session):
+        return "off"
+    value = await get_flag_variant(Flag.COPILOT_READ_SCREEN, user_id)
+    if value is True or value == "enforce":
+        return "enforce"
+    return "shadow" if value == SHADOW else "off"
 
 
 async def _judge(

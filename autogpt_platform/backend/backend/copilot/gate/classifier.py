@@ -48,9 +48,6 @@ class Judgement(BaseModel):
     # None when no model was asked: the call was too long to judge.
     decided_by: DecidedBy | None = None
     first_stage: dict[str, float] | None = None
-    # ``reason`` as a fixed code: allowed, asked, too_long, failed (no model
-    # answered usably), or the rubric question Jev flagged.
-    code: str = ""
 
 
 async def supervise(
@@ -74,23 +71,13 @@ async def supervise(
         prompt, over = _fit(_utf8(user_message), fence("PROPOSED CALL", _utf8(call)))
     except Exception:
         logger.warning(f"Gate could not size the call for {tool_name}", exc_info=True)
-        return Judgement(allowed=False, reason=_FALLBACK_REASON, code="failed")
+        return Judgement(allowed=False, reason=_FALLBACK_REASON)
     if over:
-        return Judgement(allowed=False, reason=too_long_reason(over), code="too_long")
+        return Judgement(allowed=False, reason=too_long_reason(over))
     first = await jev.judge(prompt) if jev.enabled() else None
     if first is None:
-        verdict = await _judge(prompt, tool_name)
-        if verdict is None:
-            return Judgement(
-                allowed=False, reason=_FALLBACK_REASON, decided_by="llm", code="failed"
-            )
-        allowed = verdict[0] == "allow"
-        return Judgement(
-            allowed=allowed,
-            reason=verdict[1] or ("Allowed." if allowed else "Needs your approval."),
-            decided_by="llm",
-            code="allowed" if allowed else "asked",
-        )
+        allowed, reason = await _llm_verdict(prompt, tool_name)
+        return Judgement(allowed=allowed, reason=reason, decided_by="llm")
     logger.info(
         f"Gate first stage {'ask' if first.ask else 'allow'} for {tool_name}: "
         f"{first.probabilities}"
@@ -101,7 +88,6 @@ async def supervise(
             reason="Allowed.",
             decided_by="jev",
             first_stage=first.probabilities,
-            code="allowed",
         )
     answer = await _judge(prompt + "\n\n" + jev.flag_line(first), tool_name)
     # Jev's ask holds even when the LLM would allow: the card never waits on it.
@@ -114,8 +100,15 @@ async def supervise(
         reason=reason,
         decided_by="jev+llm",
         first_stage=first.probabilities,
-        code=jev.QUESTION_CODES[first.flagged],
     )
+
+
+async def _llm_verdict(prompt: str, tool_name: str) -> tuple[bool, str]:
+    verdict = await _judge(prompt, tool_name)
+    if verdict is None:
+        return False, _FALLBACK_REASON
+    allow = verdict[0] == "allow"
+    return allow, verdict[1] or ("Allowed." if allow else "Needs your approval.")
 
 
 async def _judge(prompt: str, tool_name: str) -> tuple[str, str] | None:

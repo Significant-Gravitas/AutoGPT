@@ -132,7 +132,9 @@ def _session(mode: AutopilotMode | None = "auto") -> ChatSession:
 def rows():
     fake = _Rows()
     with (
-        patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
+        patch(
+            "backend.copilot.gate.reads.get_flag_variant", AsyncMock(return_value=True)
+        ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
         patch.object(held, "remember", fake.remember),
