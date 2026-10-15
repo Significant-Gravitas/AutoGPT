@@ -1,8 +1,8 @@
 {
   "before": "f8fee36faa38e2efdeaf51b9bc30ac82b7db27e2",
   "after": "89ffd34bf36cf28705f7450aa31ebf9aa45001c5",
-  "variants": 49,
-  "browserCases": 686,
+  "variants": 52,
+  "browserCases": 728,
   "renderer": "Chromium 1228, headless, device scale 1",
   "syntheticData": true,
   "imageBytesMatchPublicAssets": true,
@@ -7668,6 +7668,482 @@
       "overflow": 0,
       "sheet": 390,
       "columns": [
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "before",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [
+        464
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "greeting-fallback",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [
+        464,
+        464
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316,
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316,
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "payment-no-retry-date",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 640,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 560,
+      "columns": [
+        464,
+        464
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 360,
+      "mode": "normal",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316,
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 360,
+      "mode": "style-off",
+      "overflow": 0,
+      "sheet": 360,
+      "columns": [
+        316,
+        316
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "images-off",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
+        346
+      ],
+      "brokenImages": []
+    },
+    {
+      "stage": "after",
+      "name": "final-hosted-invoice",
+      "width": 390,
+      "mode": "dark-preference",
+      "overflow": 0,
+      "sheet": 390,
+      "columns": [
+        346,
         346
       ],
       "brokenImages": []
