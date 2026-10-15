@@ -23,7 +23,16 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
 
   return (
     <header>
-      <ExpertCover className="h-36" color={cover.color} art={cover.art} />
+      <div className="relative">
+        <ExpertCover className="h-36" color={cover.color} art={cover.art} />
+        {topic ? (
+          <CategoryTag
+            category={topic}
+            size="medium"
+            className="absolute left-4 top-4 h-7 px-2.5 text-[13px]"
+          />
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <span className="relative z-10 -mt-12 ml-14 block shrink-0">
@@ -37,11 +46,6 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             size="page"
             nameAlign="baseline"
             areaColor={getCategoryHex(topic)}
-            nameAccessory={
-              topic ? (
-                <CategoryTag category={topic} className="self-center" />
-              ) : null
-            }
           />
           <div className="mt-2 flex items-center gap-2 empty:hidden">
             <IntegrationIcons
