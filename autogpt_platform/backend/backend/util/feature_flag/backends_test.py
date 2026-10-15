@@ -259,6 +259,7 @@ class TestPostHogBackend:
             "email": "x@agpt.co",
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
+            "environment": ff.settings.config.app_env.value,
         }
 
     @pytest.mark.asyncio
@@ -291,8 +292,9 @@ class TestPostHogBackend:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_an_anonymous_context_carries_no_person_properties(self, mocker):
-        """The `"system"`-keyed config flags have no user to describe."""
+    async def test_an_anonymous_context_carries_only_the_environment(self, mocker):
+        """The `"system"`-keyed config flags have no user to describe, but can
+        still differ between dev and prod."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True, payload={"TIER": 1.5})
 
@@ -300,7 +302,33 @@ class TestPostHogBackend:
 
         args, kwargs = client.evaluate_flags.call_args
         assert args[0] == "system"
-        assert kwargs["person_properties"] is None
+        assert kwargs["person_properties"] == {
+            "environment": ff.settings.config.app_env.value
+        }
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "app_env,expected",
+        [
+            (AppEnvironment.DEVELOPMENT, (True, True)),
+            (AppEnvironment.PRODUCTION, (False, True)),
+        ],
+    )
+    async def test_a_dev_only_rollout_evaluates_in_process(
+        self, mocker, user_context, app_env, expected
+    ):
+        """Dev reads prod's definitions; a release condition on ``environment``
+        is how a flag goes out to dev alone."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff.settings.config, "app_env", app_env)
+        posthog_client = _posthog_rolled_out_to_dev_only()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        assert result == expected
 
     def test_lifecycle_starts_only_posthog(self, mocker):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
@@ -1061,6 +1089,35 @@ def _posthog_with_an_employee_cohort() -> Posthog:
             ],
         }
     }
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
+def _posthog_rolled_out_to_dev_only() -> Posthog:
+    """A flag whose one release condition is ``environment = dev``."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": Flag.HIRE_EXPERTS.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "environment",
+                                "type": "person",
+                                "operator": "exact",
+                                "value": ["dev"],
+                            }
+                        ],
+                        "rollout_percentage": 100,
+                    }
+                ]
+            },
+        }
+    ]
     client._get_flags_decision = _no_remote_flags
     return client
 

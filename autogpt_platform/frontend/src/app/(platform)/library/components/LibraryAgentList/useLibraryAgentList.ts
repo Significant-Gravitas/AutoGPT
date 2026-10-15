@@ -177,7 +177,7 @@ export function useLibraryAgentList({
         }
         toast({
           title: "Error",
-          description: "Failed to move agent. Please try again.",
+          description: "Failed to move workflow. Please try again.",
           variant: "destructive",
         });
       },

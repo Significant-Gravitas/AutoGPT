@@ -68,6 +68,11 @@ class PostHogEvent(StrEnum):
     # event, not a user action; keep it out of funnels.
     SET_PERSON_PROPERTIES = "$set"
 
+    # LLM analytics (SECRT-2730): backend/copilot/feedback.py. PostHog's own
+    # event for a score on a generative AI trace, named by PostHog rather
+    # than the analytics plan; a thumbs up/down or copy of an AutoPilot reply.
+    AI_METRIC = "$ai_metric"
+
     # Key moments (SECRT-2723): backend/util/product_analytics.py
     SIGNUP_COMPLETED = "signup_completed"
     ONBOARDING_COMPLETED = "onboarding_completed"
