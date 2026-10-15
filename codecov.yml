@@ -43,6 +43,8 @@ flags:
     paths:
       - autogpt_platform/backend/
     carryforward: true
+    # Four test shards across three Python versions upload separately.
+    after_n_builds: 12
   platform-frontend:
     paths:
       - autogpt_platform/frontend/src/
