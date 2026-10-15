@@ -133,7 +133,7 @@ async def test_native_email_login_renewal_and_signout_revoke_backend_access(
     send = AsyncMock()
     websocket = WebSocket(
         {"type": "websocket", "query_string": urlencode({"token": token}).encode()},
-        receive=AsyncMock(),
+        receive=AsyncMock(return_value={"type": "websocket.connect"}),
         send=send,
     )
     assert await ws_api.authenticate_websocket(websocket)

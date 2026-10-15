@@ -79,7 +79,9 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
     token = websocket.query_params.get("token")
     if not token:
-        await websocket.close(code=4001, reason="Missing authentication token")
+        await _close_authentication_failure(
+            websocket, code=4001, reason="Missing authentication token"
+        )
         return ""
 
     try:
@@ -87,20 +89,34 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         await require_active_auth_session(payload)
         user_id = payload.get("sub")
         if not user_id:
-            await websocket.close(code=4002, reason="Invalid token")
+            await _close_authentication_failure(
+                websocket, code=4002, reason="Invalid token"
+            )
             return ""
         return user_id
     except ValueError:
-        await websocket.close(code=4003, reason="Invalid token")
+        await _close_authentication_failure(
+            websocket, code=4003, reason="Invalid token"
+        )
         return ""
     except HTTPException as exc:
         if exc.status_code == 503:
-            await websocket.close(
-                code=1013, reason="Authentication service unavailable"
+            await _close_authentication_failure(
+                websocket, code=1013, reason="Authentication service unavailable"
             )
         else:
-            await websocket.close(code=4003, reason="Session expired or revoked")
+            await _close_authentication_failure(
+                websocket, code=4003, reason="Session expired or revoked"
+            )
         return ""
+
+
+async def _close_authentication_failure(
+    websocket: WebSocket, *, code: int, reason: str
+) -> None:
+    """Complete the handshake so the client receives the close frame."""
+    await websocket.accept()
+    await websocket.close(code=code, reason=reason)
 
 
 # ===================== Message Handlers ===================== #
