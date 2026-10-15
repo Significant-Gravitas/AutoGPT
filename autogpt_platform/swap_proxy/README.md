@@ -214,7 +214,9 @@ backend service.
 
 That service is `SwapCredentialService` (`backend/copilot/swap_service.py`),
 and it answers the two calls the proxy makes (`get_swap_bindings`,
-`resolve_swap_credential`) and nothing else: every other backend method is on
+`resolve_swap_credential`) and no other backend method (it also serves the
+health checks and FastAPI's schema pages, as every service does): every other
+backend method is on
 another service's port, so a proxy that can reach only this port cannot call
 it, whatever it sends. It runs beside `DatabaseManager` in the backend's `db`
 entrypoint, on its own port (`SWAP_CREDENTIAL_SERVICE_PORT`, default 8012); the
