@@ -4,6 +4,7 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
+import { ExpertDownloadButton } from "./ExpertDownloadButton/ExpertDownloadButton";
 
 // Sized and shaped like the small button beside it so the pair reads as one row.
 const STATUS_CLASS = "h-9 rounded-full px-3.5 text-sm";
@@ -61,6 +62,7 @@ export function ExpertHireActions({
         >
           {`Chat with ${expert.name}`}
         </Button>
+        <ExpertDownloadButton templateId={expert.id} name={expert.name} />
       </div>
     );
   }
@@ -74,14 +76,17 @@ export function ExpertHireActions({
   }
 
   return (
-    <Button
-      variant="primary"
-      size="small"
-      onClick={handleHire}
-      loading={isHiring}
-      className="w-full sm:w-auto"
-    >
-      {`Hire ${expert.name}`}
-    </Button>
+    <div className="flex items-center gap-3">
+      <Button
+        variant="primary"
+        size="small"
+        onClick={handleHire}
+        loading={isHiring}
+        className="flex-1 sm:flex-none"
+      >
+        {`Hire ${expert.name}`}
+      </Button>
+      <ExpertDownloadButton templateId={expert.id} name={expert.name} />
+    </div>
   );
 }
