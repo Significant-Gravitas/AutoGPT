@@ -29,6 +29,10 @@ async def _matches(input_value: Any, value: Any) -> bool:
         (2, {"a": 1, "b": 2}),
         (False, "no"),  # any string other than "true"/"1" used to become False
         (False, ""),
+        (9007199254740992, "9007199254740993"),  # float() rounded these equal
+        (0.1, "0.10000000000000001"),
+        (10, "1_0"),
+        (1.0, "nan"),
     ],
 )
 async def test_lossy_conversion_does_not_report_a_match(input_value, value):
@@ -43,6 +47,9 @@ async def test_lossy_conversion_does_not_report_a_match(input_value, value):
         (10, " 10 "),
         (10, "10.0"),
         (2.5, "2.5"),
+        (0.1, "0.1"),
+        (1000, "1e3"),
+        (1.5, "1.50"),
         (0, "0"),
         (True, "true"),
         (True, "True"),

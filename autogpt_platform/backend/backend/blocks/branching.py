@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
 
@@ -121,14 +122,15 @@ class ConditionBlock(Block):
             yield "no_output", no_value
 
 
-def _convert_for_match(value: Any, input_type: type) -> Any:
-    """Convert *value* to *input_type* only when the conversion is lossless.
+def _convert_for_match(value: Any, target: Any) -> Any:
+    """Convert *value* to the type of *target* only when the conversion is lossless.
 
     ``convert`` is deliberately lenient (non-numeric text becomes 0, a list
     becomes its length, any text other than "true"/"1" becomes False), which
     is fine for filling block inputs but makes unrelated values compare equal.
     Values that cannot be converted faithfully are returned unchanged.
     """
+    input_type = type(target)
     if input_type in (Any, object):
         return value
     if issubclass(input_type, bool):
@@ -137,10 +139,17 @@ def _convert_for_match(value: Any, input_type: type) -> Any:
         return value
     if issubclass(input_type, (int, float)):
         if isinstance(value, str):
-            try:
-                return float(value.strip())
-            except ValueError:
+            # Compare exact decimal values: float() would round, so that
+            # "9007199254740993" matched 9007199254740992.
+            text = value.strip()
+            if "_" in text:
                 return value
+            try:
+                number = Decimal(text)
+            except InvalidOperation:
+                return value
+            if number.is_finite() and number == Decimal(str(target)):
+                return target
         return value
     return convert(value, input_type)
 
@@ -228,7 +237,7 @@ class IfInputMatchesBlock(Block):
                 # Only attempt conversion if input is not None and value is not None
                 if input_data.input is not None and input_data.value is not None:
                     input_data.value = _convert_for_match(
-                        input_data.value, type(input_data.input)
+                        input_data.value, input_data.input
                     )
             except Exception:
                 pass  # If conversion fails, just leave value as is
