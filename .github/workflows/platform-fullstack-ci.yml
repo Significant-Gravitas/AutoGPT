@@ -370,7 +370,10 @@ jobs:
         run: |
           targets=$(python -c "import yaml; s = yaml.safe_load(open('docker-compose.resolved.yml'))['services']; print(' '.join(n for n, c in s.items() if 'build' in c and n != 'frontend'))")
           echo "Baking: $targets"
-          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load $targets
+          # The UTC date re-runs the backend's package installs once a day
+          # (APT_REFRESH), so E2E tests the OS packages that ship.
+          docker buildx bake --allow=fs.read=.. -f docker-compose.resolved.yml --load \
+            --set "*.args.APT_REFRESH=$(date -u +%F)" $targets
 
       - name: Set up Platform - Build frontend Docker image
         id: platform-build-frontend

@@ -10,6 +10,8 @@ from redis.exceptions import ClusterDownError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from backend.util import tracing
+
 if TYPE_CHECKING:
     from backend.data.redis_client import AsyncRedisClient, RedisClient
 
@@ -104,6 +106,15 @@ class ClusterLock:
             return None
 
     def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return self._refresh()
+
+    def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
@@ -244,6 +255,15 @@ class AsyncClusterLock:
             return None
 
     async def refresh(self) -> bool:
+        """Refresh lock TTL if we still own it; see ``_refresh``.
+
+        A keepalive repeated for as long as the lock is held, so its Redis
+        calls are kept out of the holder's Sentry transaction.
+        """
+        with tracing.suppress_child_spans():
+            return await self._refresh()
+
+    async def _refresh(self) -> bool:
         """Refresh lock TTL if we still own it.
 
         Rate limited to at most once every timeout/10 seconds (minimum 1 second).
