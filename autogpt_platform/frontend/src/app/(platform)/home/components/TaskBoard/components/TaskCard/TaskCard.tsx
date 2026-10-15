@@ -114,12 +114,9 @@ export function TaskCard({
           </div>
         )}
         <div className="mt-2.5 flex items-center gap-3">
-          <Text variant="small" tone="muted">
-            Updated {formatTimeAgo(session.updated_at)}
-          </Text>
           {fileCount > 0 && (
             <span
-              className="ml-auto inline-flex items-center gap-1 text-zinc-500"
+              className="inline-flex items-center gap-1 text-zinc-500"
               aria-label={`${fileCount} ${fileCount === 1 ? "file" : "files"}`}
             >
               <Icon icon={FileAttachmentIcon} size={14} />
@@ -133,6 +130,9 @@ export function TaskCard({
               </Text>
             </span>
           )}
+          <Text variant="small" tone="muted" className="ml-auto">
+            {formatTimeAgo(session.updated_at)}
+          </Text>
         </div>
       </Link>
       <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
