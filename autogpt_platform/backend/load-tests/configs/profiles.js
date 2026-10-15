@@ -143,11 +143,12 @@ export function buildScenarios(profile, names) {
     const journey = JOURNEYS[name];
     const rate = journeyRate(name, profile);
     const perHour = Math.max(1, Math.round(rate * 60));
-    // Three times the expected concurrency, pre-allocated: k6 starts more
-    // VUs up to maxVUs when it needs them, but starting one takes time and
-    // an iteration due in the meantime is dropped.
+    // Five times the expected concurrency, pre-allocated: k6 starts more VUs
+    // up to maxVUs when it needs them, but starting one takes time and an
+    // iteration due in the meantime is dropped, and a target that stalls
+    // for a few seconds holds several times the usual number of VUs.
     const inFlight = (rate / 60) * EXPECTED_ITERATION_SECONDS[name];
-    const preAllocatedVUs = Math.max(4, Math.ceil(inFlight * 3));
+    const preAllocatedVUs = Math.max(4, Math.ceil(inFlight * 5));
     const stages = [];
     if (durationMs(profile.warmup) > 0) {
       stages.push({ duration: profile.warmup, target: perHour });
