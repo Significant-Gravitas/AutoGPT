@@ -5,8 +5,10 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
+import type { IconSvgElement } from "@hugeicons/react";
 import { cn } from "@/lib/utils";
 import { MAX_ATTACHMENTS } from "../../../helpers/workspaceAttachments";
 import { useComposerPlusMenu } from "./useComposerPlusMenu";
@@ -29,6 +31,16 @@ interface Props {
    *  entries read disabled rather than letting the composer take another. */
   isAtCap?: boolean;
   className?: string;
+  /** Composer settings that live behind the + rather than as icons in the
+   *  tray (model tier, the dev token readout). */
+  extraItems?: ComposerMenuItem[];
+}
+
+export interface ComposerMenuItem {
+  key: string;
+  label: string;
+  icon: IconSvgElement;
+  onSelect: () => void;
 }
 
 export function ComposerPlusMenu({
@@ -38,6 +50,7 @@ export function ComposerPlusMenu({
   disabled,
   isAtCap = false,
   className,
+  extraItems = [],
 }: Props) {
   const {
     fileInputRef,
@@ -117,6 +130,13 @@ export function ComposerPlusMenu({
             <Icon icon={Calendar03Icon} className="mr-2 h-4 w-4" />
             Scheduled
           </DropdownMenuItem>
+          {extraItems.length > 0 && <DropdownMenuSeparator />}
+          {extraItems.map((item) => (
+            <DropdownMenuItem key={item.key} onSelect={item.onSelect}>
+              <Icon icon={item.icon} className="mr-2 h-4 w-4" />
+              {item.label}
+            </DropdownMenuItem>
+          ))}
         </DropdownMenuContent>
       </DropdownMenu>
     </>
