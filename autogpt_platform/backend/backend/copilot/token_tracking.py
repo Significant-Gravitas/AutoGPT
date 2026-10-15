@@ -283,6 +283,7 @@ async def persist_and_record_usage(
         trial_context = get_trial_cost_context(user_id)
         if trial_context is not None:
             metadata["subscription_trial_id"] = trial_context.trial_id
+            metadata["usage_generation"] = trial_context.generation
 
         _schedule_cost_log(
             PlatformCostEntry(

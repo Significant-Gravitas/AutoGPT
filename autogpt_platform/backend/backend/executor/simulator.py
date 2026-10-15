@@ -44,6 +44,7 @@ from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LLMModel
 from backend.blocks.orchestrator import ExecutionMode, OrchestratorBlock
 from backend.copilot.token_tracking import persist_and_record_usage
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.json import strip_code_fence
 
 logger = logging.getLogger(__name__)
@@ -148,6 +149,7 @@ def _describe_schema_pins(schema: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
+@attributed_usage
 async def _call_llm_for_simulation(
     system_prompt: str,
     user_prompt: str,
