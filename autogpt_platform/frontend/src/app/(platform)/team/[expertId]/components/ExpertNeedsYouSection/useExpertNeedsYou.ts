@@ -15,6 +15,7 @@ export function useExpertNeedsYou({ expertId, enabled }: Args) {
   const dashboardQuery = useGetHomeDashboard({
     query: {
       enabled,
+      staleTime: 0,
       select: (res) =>
         (okData(res)?.attention ?? []).filter(
           (item) => item.expert?.id === expertId && item.kind !== "setup",

@@ -75,7 +75,7 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            Simulate agent (no real execution — LLM-generated outputs)
+            Simulate workflow (no real execution — LLM-generated outputs)
           </TooltipContent>
         </Tooltip>
       )}
@@ -100,8 +100,8 @@ export const RunGraph = ({ flowID }: { flowID: string | null }) => {
           {isLoading
             ? "Processing..."
             : isGraphRunning
-              ? "Stop agent"
-              : "Run agent"}
+              ? "Stop workflow"
+              : "Run workflow"}
         </TooltipContent>
       </Tooltip>
       <RunInputDialog
