@@ -45,7 +45,7 @@ export function BoardColumn({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex w-[20rem] shrink-0 flex-col rounded-xl bg-zinc-100/80 transition-colors",
+        "flex h-[calc(100dvh-8rem)] min-h-[32rem] w-[20rem] shrink-0 flex-col rounded-xl bg-zinc-100/80 transition-colors",
         isOver && "bg-zinc-200/70",
       )}
     >
@@ -91,7 +91,7 @@ export function BoardColumn({
           )}
         </div>
       </header>
-      <div className="flex max-h-[36rem] min-h-28 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
+      <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
         {column.sessions.map((session) => (
           <TaskCard
             key={session.id}
@@ -105,7 +105,7 @@ export function BoardColumn({
           />
         ))}
         {column.sessions.length === 0 && (
-          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-300 py-8">
+          <div className="flex items-center justify-center rounded-lg border border-dashed border-zinc-300 py-8">
             <Text variant="small" tone="muted">
               Drop a card here
             </Text>
