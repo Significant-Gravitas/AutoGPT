@@ -25,12 +25,17 @@ import { ReactNode, useState } from "react";
 import { EXPERT_CHAT_PAGE_SIZE } from "@/services/experts/expert-chat-pagination";
 
 // The chevron, the slot the header reserves next to it, and the new-chat link
-// that floats over that slot are all one size.
+// that floats over that slot are all one size. On touch widths the slot and
+// the link grow to a finger-sized target; the chevron keeps its size.
 const CHEVRON_SIZE_CLASS = "size-5";
+const NEW_CHAT_SLOT_SIZE_CLASS = "size-5 max-md:size-9";
 // Where that slot starts, measured in from the header's right edge: the
 // trigger's `px-2` (0.5rem) + the chevron's `size-5` (1.25rem) + the `gap-2`
 // between them (0.5rem) = 2.25rem. Change any of the three and this moves.
 const NEW_CHAT_LINK_OFFSET_CLASS = "right-9";
+// Otto opens with a short preview and a single "Load all"; every other
+// expert starts collapsed and pages in when opened.
+const OTTO_PREVIEW_COUNT = 1;
 
 interface Props {
   label: string;
@@ -53,8 +58,10 @@ export function ExpertChatGroup({
   sessions,
   renderItem,
 }: Props) {
-  const [isOpen, setIsOpen] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(EXPERT_CHAT_PAGE_SIZE);
+  const [isOpen, setIsOpen] = useState(!!isAutopilot);
+  const [visibleCount, setVisibleCount] = useState(
+    isAutopilot ? OTTO_PREVIEW_COUNT : EXPERT_CHAT_PAGE_SIZE,
+  );
   const visibleSessions = sessions.slice(0, visibleCount);
   const hasHiddenSessions = sessions.length > visibleSessions.length;
   const runningSessions = sessions.filter((session) => session.is_processing);
@@ -71,7 +78,7 @@ export function ExpertChatGroup({
       <div className="group/expert-header relative mb-1 flex items-center rounded-md hover:bg-zinc-100">
         <CollapsibleTrigger
           aria-label={`${label} chats`}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-zinc-900"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left text-sm font-medium text-zinc-900 max-md:py-2 max-md:text-base"
         >
           {isAutopilot ? (
             <AutopilotAvatar
@@ -94,11 +101,12 @@ export function ExpertChatGroup({
             role={role}
             size="compact"
             areaClassName="opacity-70"
+            nameAccessory={<SessionCount count={sessions.length} />}
           />
           {newChatHref && (
             <span
               aria-hidden
-              className={cn("ml-auto shrink-0", CHEVRON_SIZE_CLASS)}
+              className={cn("ml-auto shrink-0", NEW_CHAT_SLOT_SIZE_CLASS)}
             />
           )}
           {/* Hidden at rest on desktop like the new-chat link, and revealed
@@ -129,18 +137,31 @@ export function ExpertChatGroup({
           {hasHiddenSessions && (
             <button
               type="button"
-              aria-label={`Load more ${label} chats`}
+              aria-label={`${isAutopilot ? "Load all" : "Load more"} ${label} chats`}
               onClick={() =>
-                setVisibleCount((count) => count + EXPERT_CHAT_PAGE_SIZE)
+                setVisibleCount((count) =>
+                  isAutopilot ? Infinity : count + EXPERT_CHAT_PAGE_SIZE,
+                )
               }
-              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800"
+              className="mt-0.5 w-full rounded-md px-2 py-1 text-left text-xs font-medium text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 max-md:py-2.5 max-md:text-sm"
             >
-              Load more
+              {isAutopilot ? "Load all" : "Load more"}
             </button>
           )}
         </GroupBody>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+function SessionCount({ count }: { count: number }) {
+  return (
+    <span
+      aria-hidden
+      className="shrink-0 rounded-full bg-zinc-200/70 px-1.5 text-[11px] font-medium tabular-nums leading-[1.125rem] text-zinc-600"
+    >
+      {count}
+    </span>
   );
 }
 
@@ -155,7 +176,7 @@ function NewChatLink({ href, label }: { href: string; label: string }) {
           aria-label={name}
           className={cn(
             "absolute top-1/2 flex -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition-opacity group-focus-within/expert-header:opacity-100 group-hover/expert-header:opacity-100 hover:bg-zinc-200 hover:text-zinc-900 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 md:opacity-0",
-            CHEVRON_SIZE_CLASS,
+            NEW_CHAT_SLOT_SIZE_CLASS,
             NEW_CHAT_LINK_OFFSET_CLASS,
           )}
         >
@@ -176,7 +197,7 @@ function NewChatIcon() {
     return <LoadingSpinner size="small" className="!size-4 text-zinc-500" />;
   }
 
-  return <Icon icon={PlusSignIcon} className="size-4" />;
+  return <Icon icon={PlusSignIcon} className="size-4 max-md:size-5" />;
 }
 
 function GroupBody({ children }: { children: ReactNode }) {

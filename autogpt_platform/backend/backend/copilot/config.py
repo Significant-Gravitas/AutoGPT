@@ -103,6 +103,13 @@ class ChatConfig(BaseSettings):
         description="The advanced tier's model; unset takes the route's default. "
         "Required on the local route.",
     )
+    learning_reviewer_model: str = Field(
+        default="",
+        description="Model for the nightly skill-learning review. Empty (the "
+        "default) is the route's standard tier, like the platform's other "
+        "background jobs; set CHAT_LEARNING_REVIEWER_MODEL to pin a model "
+        "chosen through evaluation.",
+    )
 
     gate_timeout_s: float = Field(
         default=6.0,
