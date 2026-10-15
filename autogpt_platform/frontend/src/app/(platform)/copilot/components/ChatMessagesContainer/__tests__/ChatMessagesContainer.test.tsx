@@ -984,6 +984,41 @@ describe("ChatMessagesContainer — readOnly mode", () => {
     },
   );
 
+  it.each([false, true])(
+    "shows a scheduled chat's note to its owner alone (readOnly=%s)",
+    (readOnly) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          readOnly={readOnly}
+          messages={[
+            {
+              id: "notice-1",
+              role: "assistant",
+              parts: [
+                { type: "text", text: "Skipped: daily usage limit reached" },
+              ],
+              metadata: {
+                kind: "scheduled_chat_notice",
+                reason: "no_plan",
+                headline: "Skipped: daily usage limit reached",
+                body: "“Briefing” didn't run.",
+                actions: [],
+              },
+            },
+          ]}
+        />,
+      );
+
+      expect(screen.queryAllByTestId("scheduled-chat-notice")).toHaveLength(
+        readOnly ? 0 : 1,
+      );
+      expect(
+        screen.queryAllByText("Skipped: daily usage limit reached"),
+      ).toHaveLength(readOnly ? 0 : 1);
+    },
+  );
+
   it("renders no Sent from badge in a read-only transcript", () => {
     const messages: Message[] = [
       {
