@@ -12,8 +12,7 @@ submitter:
     P11 threat rehearsal land as additional submitters here
 
 Each submitter is fast to ENQUEUE (seconds) but may take up to ~1h to
-COMPLETE when running against a real batch provider (Anthropic /
-OpenAI batch API). The submitters fire in sequence at cron time; their
+COMPLETE when running against the Anthropic batch API. The submitters fire in sequence at cron time; their
 batch results land asynchronously via the separate
 ``copilot_batch_executor`` poller service that dispatches by
 ``custom_id`` to per-stage apply handlers.
