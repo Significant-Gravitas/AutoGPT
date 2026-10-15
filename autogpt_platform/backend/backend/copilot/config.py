@@ -478,12 +478,21 @@ class ChatConfig(BaseSettings):
             "CHAT_AGENT_MAX_TURNS",
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
-        description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths, including Codex models "
-        "on the SDK path, where each Codex function call counts as one round. "
-        "Prevents runaway tool loops from burning budget. Override via "
-        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
-        "still accepted).",
+        description="Maximum number of tool-call rounds per turn on the "
+        "baseline path, which has no spend governor. The Claude Agent SDK path, "
+        "Codex models included, uses ``sdk_step_checkin`` instead. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS still "
+        "accepted).",
+    )
+    sdk_step_checkin: int = Field(
+        default=450,
+        ge=1,
+        le=10000,
+        description="Model calls an SDK turn may make before its tools are "
+        "refused for a check-in: the agent writes a progress summary and the "
+        "user can choose to keep going, which starts a fresh count. The CLI's "
+        "own max_turns sits a little above this as a backstop. Spend, not "
+        "steps, is what bounds cost: the governor lands a turn at its budget.",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,
