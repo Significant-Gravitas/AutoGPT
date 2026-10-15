@@ -21,10 +21,10 @@ const KIND_ICONS: Record<
   { icon: IconSvgElement; label: string }
 > = {
   integration: { icon: Plug01Icon, label: "Integration" },
-  input: { icon: InputCursorTextIcon, label: "Agent input" },
-  output: { icon: FileExportIcon, label: "Agent output" },
+  input: { icon: InputCursorTextIcon, label: "Workflow input" },
+  output: { icon: FileExportIcon, label: "Workflow output" },
   trigger: { icon: FlashIcon, label: "Trigger" },
-  agent: { icon: Robot01Icon, label: "Agent" },
+  agent: { icon: Robot01Icon, label: "Workflow" },
   ai: { icon: AiChat02Icon, label: "AI model" },
   mcp: { icon: Plug01Icon, label: "MCP tool" },
   human: { icon: UserCheck01Icon, label: "Human review" },
