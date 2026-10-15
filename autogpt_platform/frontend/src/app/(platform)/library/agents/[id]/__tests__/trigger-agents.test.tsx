@@ -1123,7 +1123,7 @@ describe("Library agent view — trigger agents", () => {
     );
 
     const openButton = await screen.findByRole("button", {
-      name: /new agent task/i,
+      name: /new workflow task/i,
     });
     await waitFor(() =>
       expect((openButton as HTMLButtonElement).disabled).toBe(false),
