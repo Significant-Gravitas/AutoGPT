@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.dream.batch_submit import (
     INPUT_TTL_SECONDS,
     input_bundle_key,
@@ -246,3 +247,6 @@ async def test_read_lock_token_none_when_bundle_corrupted(fake_redis):
     string_store[input_bundle_key("p3")] = "not json {{{"
 
     assert await read_lock_token("p3") is None
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
