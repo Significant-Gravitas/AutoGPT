@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 
@@ -1839,3 +1840,6 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     delete_bundle.assert_awaited_once_with("p-lock-lost")
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
