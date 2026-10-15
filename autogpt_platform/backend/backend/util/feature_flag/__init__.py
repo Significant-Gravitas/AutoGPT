@@ -49,6 +49,11 @@ MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 _unanswered_flags_reported: set[str] = set()
 
 
+# Flags that run a PostHog experiment. Only a read of one of these sends the
+# billed `$feature_flag_called` event, which is how an experiment counts exposure.
+EXPERIMENT_FLAGS = frozenset({"subscription-pricing-page-initial-state"})
+
+
 class Flag(str, Enum):
     """
     Centralized enum for all feature flags.
@@ -518,7 +523,9 @@ async def _evaluate_flag_value(
         context = (_with_request_attributes(user_context, attributes), context_resolved)
     backend = settings.config.feature_flag_backend
     if backend is FeatureFlagBackend.POSTHOG:
-        result = await _evaluate_posthog(flag_key, user_id, default, context)
+        result = await _evaluate_posthog(
+            flag_key, user_id, default, context, exposure=flag_key in EXPERIMENT_FLAGS
+        )
     elif backend is FeatureFlagBackend.DUAL:
         result = await _evaluate_dual(flag_key, user_id, default, context)
     else:
@@ -638,12 +645,15 @@ async def _evaluate_posthog(
     user_id: str,
     default: Any = None,
     context: tuple[Context, bool] | None = None,
+    *,
+    exposure: bool = False,
 ) -> tuple[Any, bool]:
     """``(value, evaluated)`` from PostHog for one raw flag read.
 
     A degraded context lookup makes the answer unauthoritative for the same
     reason it does on LaunchDarkly: the flag evaluates fine, it just answers
-    for a user without the targeted attributes.
+    for a user without the targeted attributes. Only a served *exposure*
+    sends the experiment's event; dual mode's shadow read never does.
     """
     user_context, context_resolved = context or await _fetch_user_context_status(
         user_id
@@ -653,6 +663,7 @@ async def _evaluate_posthog(
         user_id,
         _person_properties(user_context),
         default,
+        exposure=exposure,
     )
     return value, evaluated and context_resolved
 

@@ -9,12 +9,14 @@ import uuid
 import pytest
 import sentry_sdk
 import sentry_sdk.feature_flags
+import urllib3.connectionpool
 from fastapi import HTTPException
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.evaluation import EvaluationDetail
 from ldclient.integrations.test_data import TestData
 from posthog import Posthog
+from posthog.types import FeatureFlagResult
 from sentry_sdk.tracing import Span
 
 import backend.util.feature_flag as ff
@@ -27,6 +29,8 @@ from backend.util.feature_flag import (
     is_feature_enabled,
 )
 from backend.util.settings import AppEnvironment, Config, FeatureFlagBackend
+
+PRICING_EXPERIMENT = "subscription-pricing-page-initial-state"
 
 
 @pytest.fixture(autouse=True)
@@ -93,12 +97,11 @@ def use_backend(mocker, backend: FeatureFlagBackend):
 
 
 def stub_posthog(mocker, *, value, payload=None):
-    """Stand in for a PostHog evaluation snapshot for one flag."""
-    snapshot = mocker.Mock()
-    snapshot.get_flag.return_value = value
-    snapshot.get_flag_payload.return_value = payload
+    """Stand in for PostHog's answer for one flag."""
     client = mocker.Mock()
-    client.evaluate_flags.return_value = snapshot
+    client.get_feature_flag_result.return_value = (
+        FeatureFlagResult.from_value_and_payload("flag", value, payload)
+    )
     mocker.patch.object(ph, "get_flag_client", return_value=client)
     return client
 
@@ -197,7 +200,7 @@ class TestPostHogBackend:
     async def test_an_evaluation_that_raises_is_not(self, mocker, user_context):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True)
-        client.evaluate_flags.side_effect = Exception("evaluation exploded")
+        client.get_feature_flag_result.side_effect = Exception("evaluation exploded")
 
         assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (False, False)
 
@@ -254,7 +257,7 @@ class TestPostHogBackend:
 
         await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
 
-        _, kwargs = client.evaluate_flags.call_args
+        _, kwargs = client.get_feature_flag_result.call_args
         assert kwargs["person_properties"] == {
             "role": "admin",
             "email": "x@agpt.co",
@@ -304,8 +307,8 @@ class TestPostHogBackend:
 
         await ff.get_feature_flag_value("copilot-tier-multipliers", "system")
 
-        args, kwargs = client.evaluate_flags.call_args
-        assert args[0] == "system"
+        args, kwargs = client.get_feature_flag_result.call_args
+        assert args[1] == "system"
         assert kwargs["person_properties"] == {
             "is_anonymous": False,
             "environment": ff.settings.config.app_env.value,
@@ -337,6 +340,31 @@ class TestPostHogBackend:
         share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
         # One assertion, so a failure shows both halves.
         assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flag_key,events",
+        [(PRICING_EXPERIMENT, 1), (Flag.HIRE_EXPERTS.value, 0)],
+    )
+    async def test_only_an_experiment_read_sends_posthog_its_exposure_event(
+        self, mocker, monkeypatch, flag_key, events
+    ):
+        """`$feature_flag_called` is billed per event, and only an experiment
+        counts its exposures with it."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        monkeypatch.setattr(
+            urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+        )
+        posthog_client = _posthog_rolled_out(flag_key)
+        capture = mocker.patch.object(posthog_client, "capture")
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            value = await ff.get_feature_flag_value(flag_key, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        sent = [call.args[0] for call in capture.call_args_list]
+        assert (value, sent) == (True, ["$feature_flag_called"] * events)
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -382,6 +410,28 @@ class TestPostHogBackend:
 
 
 class TestDualBackend:
+    @pytest.mark.asyncio
+    async def test_the_shadow_read_of_an_experiment_sends_posthog_no_exposure(
+        self, mocker, monkeypatch, ld_client, user_context
+    ):
+        """LaunchDarkly's answer is the one served, so PostHog's arm was never shown."""
+        use_backend(mocker, FeatureFlagBackend.DUAL)
+        ld_client.variation_detail.return_value = served(True)
+        monkeypatch.setattr(
+            urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+        )
+        posthog_client = _posthog_rolled_out(PRICING_EXPERIMENT)
+        capture = mocker.patch.object(posthog_client, "capture")
+        read = mocker.spy(posthog_client, "get_feature_flag_result")
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            await ff.get_feature_flag_value(PRICING_EXPERIMENT, "u-1")
+            await drain_shadow_evaluations()
+        finally:
+            posthog_client.shutdown()
+
+        assert (read.call_count, capture.call_count) == (1, 0)
+
     @pytest.mark.asyncio
     async def test_launchdarkly_answers_even_when_posthog_disagrees(
         self, mocker, ld_client, user_context
@@ -1152,6 +1202,23 @@ def _posthog_with_a_split_on_is_anonymous() -> Posthog:
     ]
     client._get_flags_decision = _no_remote_flags
     return client
+
+
+def _posthog_rolled_out(flag_key: str) -> Posthog:
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": flag_key,
+            "active": True,
+            "filters": {"groups": [{"properties": [], "rollout_percentage": 100}]},
+        }
+    ]
+    return client
+
+
+def _refuse_network(pool, method, url, *args, **kwargs):
+    raise urllib3.exceptions.ProtocolError(f"no network in tests: {method} {url}")
 
 
 def _posthog_rolled_out_to_dev_only() -> Posthog:
