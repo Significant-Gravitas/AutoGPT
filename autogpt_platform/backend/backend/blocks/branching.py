@@ -121,6 +121,30 @@ class ConditionBlock(Block):
             yield "no_output", no_value
 
 
+def _convert_for_match(value: Any, input_type: type) -> Any:
+    """Convert *value* to *input_type* only when the conversion is lossless.
+
+    ``convert`` is deliberately lenient (non-numeric text becomes 0, a list
+    becomes its length, any text other than "true"/"1" becomes False), which
+    is fine for filling block inputs but makes unrelated values compare equal.
+    Values that cannot be converted faithfully are returned unchanged.
+    """
+    if input_type in (Any, object):
+        return value
+    if issubclass(input_type, bool):
+        if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+            return value.strip().lower() == "true"
+        return value
+    if issubclass(input_type, (int, float)):
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                return value
+        return value
+    return convert(value, input_type)
+
+
 class IfInputMatchesBlock(Block):
     class Input(BlockSchemaInput):
         input: Any = SchemaField(
@@ -203,10 +227,9 @@ class IfInputMatchesBlock(Block):
             try:
                 # Only attempt conversion if input is not None and value is not None
                 if input_data.input is not None and input_data.value is not None:
-                    input_type = type(input_data.input)
-                    # Avoid converting if input_type is Any or object
-                    if input_type not in (Any, object):
-                        input_data.value = convert(input_data.value, input_type)
+                    input_data.value = _convert_for_match(
+                        input_data.value, type(input_data.input)
+                    )
             except Exception:
                 pass  # If conversion fails, just leave value as is
 
