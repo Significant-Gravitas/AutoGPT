@@ -825,3 +825,116 @@ async def test_an_approval_turn_is_judged_against_the_users_request(
         await check_action("bash_exec", {"command": "ls"}, test_user_id, reloaded)
 
     assert supervisor.await_args.kwargs["user_message"] == request
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_answers_on_an_idle_chat_start_one_turn_at_the_last_card(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    cards = [await _hold(session, test_user_id, text) for text in ("a", "b", "c")]
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        for card in cards[:2]:
+            await _answer(card, ReviewStatus.APPROVED)
+            assert not await held.wake(
+                test_user_id, session.session_id, until_last=True
+            )
+        dispatch.assert_not_awaited()
+
+        await _answer(cards[2], ReviewStatus.APPROVED)
+        assert await held.wake(test_user_id, session.session_id, until_last=True)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"] == held.WAKE_MESSAGE
+    delivered = await _resolved(test_user_id, session)
+    assert len(delivered) == 3
+    assert sorted(run["text"] for run in post_tool.runs) == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_continue_starts_the_turn_and_leaves_the_rest_waiting(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    session = await _new_session(test_user_id)
+    answered, waiting = [
+        await _hold(session, test_user_id, text) for text in ("now", "later")
+    ]
+    await _answer(answered, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        assert not await held.wake(test_user_id, session.session_id, until_last=True)
+        await held.wake(test_user_id, session.session_id)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"] == (
+        f"{held.WAKE_MESSAGE} 1 more still waits for my answer."
+    )
+    delivered = await _resolved(test_user_id, session)
+    assert [r.metadata["held_call"]["review_id"] for r in delivered] == [answered]
+    row = await _row(waiting, test_user_id)
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert post_tool.runs == [{"text": "now"}]
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_answer_during_a_running_turn_is_left_to_that_turns_end(
+    setup_test_user, test_user_id, gate_on
+):
+    """The page follows the turn that end starts, so the answer is not held."""
+    session = await _new_session(test_user_id)
+    answered, _ = [await _hold(session, test_user_id, t) for t in ("mid", "rest")]
+    await _answer(answered, ReviewStatus.APPROVED)
+    assert await chat_db().update_chat_session_status(
+        session_id=session.session_id,
+        expect_status=CHAT_STATUS_IDLE,
+        status=CHAT_STATUS_RUNNING,
+        user_id=test_user_id,
+    )
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        try:
+            assert await held.wake(test_user_id, session.session_id, until_last=True)
+            dispatch.assert_not_awaited()
+        finally:
+            await chat_db().update_chat_session_status(
+                session_id=session.session_id,
+                expect_status=CHAT_STATUS_RUNNING,
+                status=CHAT_STATUS_IDLE,
+                user_id=test_user_id,
+            )
+        # The running turn's end.
+        await held.wake(test_user_id, session.session_id)
+
+    dispatch.assert_awaited_once()
+    assert dispatch.await_args.kwargs["message"].endswith(
+        "1 more still waits for my answer."
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_wake_lost_after_the_last_answer_starts_on_the_next_one(
+    setup_test_user, test_user_id, gate_on
+):
+    """No timer or marker holds the batch: whatever wakes the same answered
+    cards next (a retried answer, a turn's end) still starts their turn."""
+    session = await _new_session(test_user_id)
+    cards = [await _hold(session, test_user_id, t) for t in ("first", "last")]
+    for card in cards:
+        await _answer(card, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        with patch.object(
+            chat_db(), "get_chat_session_metadata", side_effect=RuntimeError("died")
+        ):
+            await held.wake(test_user_id, session.session_id, until_last=True)
+        dispatch.assert_not_awaited()
+
+        await held.wake(test_user_id, session.session_id, until_last=True)
+        await held.wake(test_user_id, session.session_id, until_last=True)
+
+    dispatch.assert_awaited_once()

@@ -14,7 +14,7 @@ in the same executor process.
 import threading
 from collections.abc import Awaitable, Callable
 
-Work = Callable[[], Awaitable[None]]
+Work = Callable[[], Awaitable[object]]
 
 _lock = threading.Lock()
 _deferred: dict[str, list[Work]] = {}

@@ -7,7 +7,8 @@ start of the chat's next turn, inside the engine, where the turn's sandbox and
 tool bounds exist. Its result reaches the model as a user row naming the
 original call. :func:`wake` starts that turn when none is running; a running
 turn's end wakes it instead, once that turn has left its executor
-(``stream_registry.mark_session_completed``).
+(``stream_registry.mark_session_completed``). An answer on an idle chat waits
+for the chat's last card, so a burst of answers starts one turn.
 """
 
 import json
@@ -21,7 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.copilot import woken_turns
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.model import ChatSession
+from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
@@ -216,12 +217,16 @@ async def wake(
     user_id: str,
     session_id: str,
     answered_rows: "Iterable[PendingHumanReviewModel]" = (),
-) -> None:
+    *,
+    until_last: bool = False,
+) -> bool:
     """Start a turn to carry answered cards, if the chat is idle.
 
     Best effort: a running turn's end calls this again, and any later turn
     folds the results in anyway. ``answered_rows`` are the cards just
     answered; one whose held call is gone from Redis is restored from its row.
+    ``until_last`` is an answer's wake: on an idle chat it starts nothing while
+    another card still waits, and returns False.
     """
     # Deferred: the executor utilities import the tool registry.
     from backend.copilot.active_turns import (
@@ -247,7 +252,7 @@ async def wake(
         await _restore(user_id, session_id, answered_rows)
         calls = await answered(user_id, session_id)
         if not calls:
-            return
+            return True
         # One wake per set of answered cards: a turn that died before its fold
         # must not be woken again for the same cards, turn after failed turn.
         wake_id = str(
@@ -258,19 +263,25 @@ async def wake(
         )
         info = await chat_db().get_chat_session_metadata(session_id)
         if info is None or info.user_id != user_id:
-            return
+            return True
+        waiting = await _waiting(user_id, session_id)
+        # A running turn's end carries the answers whatever still waits.
+        if until_last and waiting and info.chat_status != CHAT_STATUS_RUNNING:
+            logger.info(f"Held calls in {session_id} wait for {waiting} more answers")
+            return False
         # A turn now would run over the question; the answer's turn runs these
         # cards first.
         if info.metadata.pending_question is not None:
             logger.info(f"Held calls in {session_id} wait for its open question")
-            return
+            return True
+        message = _wake_message(waiting)
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
         envelope = max(calls, key=lambda c: c.held_at).envelope
         if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
             await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
-            return
+            return True
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
         capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
@@ -280,27 +291,27 @@ async def wake(
             ) as slot:
                 # Not admitted: a turn is already running, and its end wakes us.
                 if not slot.admitted:
-                    return
+                    return True
                 if (
                     await append_and_save_message(
                         session_id,
                         ChatMessage(
                             id=wake_id,
                             role="user",
-                            content=WAKE_MESSAGE,
+                            content=message,
                             metadata=metadata,
                         ),
                     )
                     is None
                 ):
-                    return
+                    return True
                 turn_id = str(uuid.uuid4())
                 await dispatch_turn(
                     slot,
                     session_id=session_id,
                     user_id=user_id,
                     turn_id=turn_id,
-                    message=WAKE_MESSAGE,
+                    message=message,
                     organization_id=info.organization_id,
                     team_id=info.team_id,
                     llm_auth_provider=info.metadata.llm_auth_provider,
@@ -320,7 +331,7 @@ async def wake(
                 user_id=user_id,
                 inflight_cap=get_inflight_turn_limit(),
                 session_id=session_id,
-                message=WAKE_MESSAGE,
+                message=message,
                 message_id=wake_id,
                 message_metadata=metadata,
                 llm_auth_provider=info.metadata.llm_auth_provider,
@@ -338,6 +349,29 @@ async def wake(
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
         logger.warning(f"Could not wake session {session_id}", exc_info=True)
+    return True
+
+
+def _wake_message(waiting: int) -> str:
+    """The wake row, which tells the model how many of its cards are unanswered."""
+    if not waiting:
+        return WAKE_MESSAGE
+    more = "1 more still waits" if waiting == 1 else f"{waiting} more still wait"
+    return f"{WAKE_MESSAGE} {more} for my answer."
+
+
+async def _waiting(user_id: str, session_id: str) -> int:
+    """The chat's cards still waiting for an answer, as its queue shows them."""
+    try:
+        rows = await review_db().get_pending_reviews_for_chat_session(
+            session_id, user_id
+        )
+    except Exception:
+        # Unreadable counts as none, so an answer still wakes its turn.
+        logger.warning(f"Waiting cards in {session_id} unreadable", exc_info=True)
+        return 0
+    gate_prefix = review_store.node_id_for("")
+    return sum(1 for row in rows if row.node_exec_id.startswith(gate_prefix))
 
 
 async def _resolve(

@@ -366,9 +366,12 @@ async def process_review_action(
             {review.node_exec_id: review.chat_rule_scope for review in request.reviews},
         )
 
-    # A held call finishes on its own: the answer starts the chat's next turn.
+    # A held call finishes on its own: the chat's last answer starts its next turn.
+    awaiting_other_cards = False
     if chat_session_id is not None and updated_reviews:
-        await wake_for_held_calls(user_id, chat_session_id, updated_reviews.values())
+        awaiting_other_cards = not await wake_for_held_calls(
+            user_id, chat_session_id, updated_reviews.values(), until_last=True
+        )
 
     # Resume graph execution only for real graph executions; a chat is resumed
     # by the LLM calling resume_capability with the review_id
@@ -423,4 +426,19 @@ async def process_review_action(
         rejected_count=rejected_count,
         failed_count=auto_approval_failed_count,
         error=error_message,
+        awaiting_other_cards=awaiting_other_cards,
     )
+
+
+@router.post(
+    "/session/{chat_session_id}/continue",
+    summary="Continue Chat With Answered Reviews",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def continue_with_answered_reviews(
+    chat_session_id: str,
+    user_id: str = Security(autogpt_auth_lib.get_user_id),
+) -> None:
+    """Start the chat's turn with the cards answered so far; the rest stay open
+    and the turn is told how many still wait."""
+    await wake_for_held_calls(user_id, chat_session_id)

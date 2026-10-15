@@ -1376,8 +1376,12 @@ async def test_process_review_action_per_review_auto_approve_granularity(
 
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.parametrize(
-    "graph_exec_id, session_id, woken",
-    [(None, "s1", "s1"), ("test_graph_exec_456", None, None)],
+    "graph_exec_id, session_id, woken, started",
+    [
+        (None, "s1", "s1", True),
+        (None, "s1", "s1", False),
+        ("test_graph_exec_456", None, None, False),
+    ],
 )
 async def test_an_answer_on_a_chat_card_wakes_that_chat(
     client: httpx.AsyncClient,
@@ -1387,8 +1391,10 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
     graph_exec_id: str | None,
     session_id: str | None,
     woken: str | None,
+    started: bool,
 ) -> None:
-    """A held call finishes on the chat's next turn; nothing else starts one."""
+    """A held call finishes on the chat's next turn once its last card is
+    answered; the page is told when the answer waits for the others."""
     review = sample_pending_review.model_copy(
         update={"graph_exec_id": graph_exec_id, "session_id": session_id}
     )
@@ -1407,7 +1413,7 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
         },
     )
     mocker.patch(f"{routes}.has_pending_reviews_for_graph_exec", return_value=True)
-    wake = mocker.patch(f"{routes}.wake_for_held_calls")
+    wake = mocker.patch(f"{routes}.wake_for_held_calls", return_value=started)
 
     response = await client.post(
         "/api/review/action",
@@ -1419,8 +1425,26 @@ async def test_an_answer_on_a_chat_card_wakes_that_chat(
         wake.assert_awaited_once()
         assert wake.await_args.args[:2] == (test_user_id, woken)
         assert [r.node_exec_id for r in wake.await_args.args[2]] == ["test_node_123"]
+        assert wake.await_args.kwargs == {"until_last": True}
+        assert response.json()["awaiting_other_cards"] is not started
     else:
         wake.assert_not_called()
+        assert response.json()["awaiting_other_cards"] is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_continue_wakes_the_chat_without_waiting_for_its_other_cards(
+    client: httpx.AsyncClient,
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    routes = "backend.api.features.graph_executions.review.routes"
+    wake = mocker.patch(f"{routes}.wake_for_held_calls", return_value=True)
+
+    response = await client.post("/api/review/session/s1/continue")
+
+    assert response.status_code == 204
+    wake.assert_awaited_once_with(test_user_id, "s1")
 
 
 @pytest.mark.asyncio(loop_scope="session")

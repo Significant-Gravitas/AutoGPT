@@ -271,6 +271,10 @@ class ReviewResponse(BaseModel):
     rejected_count: int = Field(description="Number of reviews successfully rejected")
     failed_count: int = Field(description="Number of reviews that failed processing")
     error: str | None = Field(None, description="Error message if operation failed")
+    awaiting_other_cards: bool = Field(
+        False,
+        description="The answers start no chat turn yet: other cards in the chat still wait",
+    )
 
 
 def _block_named(name: str | None):
