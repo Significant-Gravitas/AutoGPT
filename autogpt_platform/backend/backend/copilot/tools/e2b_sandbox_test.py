@@ -2153,6 +2153,21 @@ class TestGrantsAreRenewedOnReconnect:
         self._reconnect(**kwargs).assert_not_awaited()
 
 
+def _pinning_connect() -> AsyncMock:
+    """``connect_sandbox`` deciding the pin the way the real one does, under
+    its lock; the owner it pinned with is ``.pinned``."""
+    mock = AsyncMock()
+
+    async def connect(cls, sandbox_id, owner, *, owner_at_pin=None, **kwargs):
+        if owner_at_pin is not None and kwargs.get("apply_network", True):
+            owner = await owner_at_pin(owner)
+        mock.pinned = owner
+        return MagicMock()
+
+    mock.side_effect = connect
+    return mock
+
+
 class TestProviderCeilingIsPinned:
     """The turn's ceiling on connected accounts reaches the box's egress
     record at create and at every reconnect (``e2b_network``)."""
@@ -2187,7 +2202,7 @@ class TestProviderCeilingIsPinned:
             _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
-                AsyncMock(return_value=MagicMock()),
+                _pinning_connect(),
             ) as connect,
             _patch_redis(_mock_redis()),
         ):
@@ -2195,7 +2210,7 @@ class TestProviderCeilingIsPinned:
             asyncio.run(
                 connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=())
             )
-        assert connect.await_args.args[2].providers == ()
+        assert connect.pinned.providers == ()
 
 
 class _CeilingRedis:
@@ -2235,7 +2250,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
             _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
-                AsyncMock(return_value=MagicMock()),
+                _pinning_connect(),
             ) as connect,
             patch(
                 "backend.copilot.tools.e2b_sandbox.get_redis_async",
@@ -2248,7 +2263,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
                     "sb-1", self._OWNER, _API_KEY, user_id="user-a", providers=providers
                 )
             )
-        return connect.await_args.args[2].providers
+        return connect.pinned.providers
 
     @pytest.mark.parametrize(
         "first, second, pinned",
@@ -2296,7 +2311,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
             _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
-                AsyncMock(return_value=MagicMock()),
+                _pinning_connect(),
             ) as connect,
             patch(
                 "backend.copilot.tools.e2b_sandbox.get_redis_async",
@@ -2307,7 +2322,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
             asyncio.run(
                 connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=None)
             )
-        assert connect.await_args.args[2].providers is None
+        assert connect.pinned.providers is None
         assert redis.lists == {}
 
 
@@ -2322,7 +2337,7 @@ class TestNoCeilingGivenKeepsTheBoxs:
             _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
-                AsyncMock(return_value=MagicMock()),
+                _pinning_connect(),
             ) as connect,
             patch(
                 "backend.copilot.tools.e2b_sandbox.recorded_providers",
@@ -2338,12 +2353,12 @@ class TestNoCeilingGivenKeepsTheBoxs:
     def test_a_re_pin_without_one_keeps_the_recorded_ceiling(self):
         connect, recorded = self._reconnect()
         recorded.assert_awaited_once_with("sb-1")
-        assert connect.await_args.args[2].providers == ()
+        assert connect.pinned.providers == ()
 
     def test_a_turn_that_gives_one_sets_it(self):
         connect, recorded = self._reconnect(providers=("github",))
         recorded.assert_not_awaited()
-        assert connect.await_args.args[2].providers == ("github",)
+        assert connect.pinned.providers == ("github",)
 
     def test_a_connect_that_does_not_pin_reads_nothing(self):
         _, recorded = self._reconnect(pin_egress=False)

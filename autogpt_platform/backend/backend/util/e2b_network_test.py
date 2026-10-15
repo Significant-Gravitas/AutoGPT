@@ -213,6 +213,28 @@ class TestPinned:
         assert on_reconnect and on_reconnect["providers"] == []
 
     @pytest.mark.asyncio
+    async def test_a_pins_owner_is_decided_under_the_boxs_lock(self):
+        """Two concurrent reconnects apply in the order they decided, so a
+        later pin always sees what an earlier one recorded."""
+        box, redis = _box("sb-1"), _redis()
+        held: list[bool] = []
+
+        async def at_pin(owner):
+            held.append("e2b:egress:lock:sb-1" in redis.store)
+            return owner.model_copy(update={"providers": ("github",)})
+
+        with _configured(_PROXY), patch(
+            f"{_M}.get_redis_async", AsyncMock(return_value=redis)
+        ):
+            await connect_sandbox(_sdk(box), "sb-1", _OWNER, owner_at_pin=at_pin)
+            repinned = box.update_network.await_args.args[0]["egress_proxy"]
+            record = await credential_record(repinned["username"])
+            ceiling = await e2b_network.recorded_providers("sb-1")
+        assert held == [True]
+        assert record and record["providers"] == ["github"]
+        assert ceiling == ("github",)
+
+    @pytest.mark.asyncio
     async def test_every_pin_is_audited_without_a_secret(self, caplog):
         box, redis = _box("sb-1"), _redis()
         cls = _sdk(box)

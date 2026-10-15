@@ -39,7 +39,7 @@ import hashlib
 import json
 import logging
 import secrets
-from typing import Any, Literal, Optional, TypeVar, cast
+from typing import Any, Awaitable, Callable, Literal, Optional, TypeVar, cast
 
 from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.sandbox.sandbox_api import (
@@ -183,6 +183,7 @@ async def connect_sandbox(
     owner: EgressOwner,
     *,
     apply_network: bool = True,
+    owner_at_pin: Optional[Callable[[EgressOwner], Awaitable[EgressOwner]]] = None,
     **kwargs: Any,
 ) -> S:
     """Reconnect to a box, re-pinning its egress under a fresh credential.
@@ -205,6 +206,10 @@ async def connect_sandbox(
     if address is None or not apply_network:
         return sandbox
     async with _rotation_lock(sandbox_id):
+        if owner_at_pin is not None:
+            # Decided under the lock, so concurrent pins of one box apply in
+            # the order they were decided: a later one sees every earlier one.
+            owner = await owner_at_pin(owner)
         credential = _mint()
         await _remember(credential, owner, sandbox_id=sandbox_id)
         try:
