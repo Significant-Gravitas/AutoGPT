@@ -48,17 +48,16 @@ def posthog_client(mocker, monkeypatch):
     return client
 
 
-async def test_the_arm_is_read_locally_and_reported_as_an_exposure(
+async def test_the_arm_is_read_locally_and_tells_posthog_nothing(
     mocker, posthog_client
 ):
-    """`$feature_flag_called` is how the experiment counts who was shown an arm."""
     capture = mocker.spy(posthog_client, "capture")
     remote = _remote_flags_request(mocker)
 
     arm = await evaluate_experiment_variant(PRICING, "u-1")
 
     assert arm in ARMS
-    assert [call.args[0] for call in capture.call_args_list] == ["$feature_flag_called"]
+    capture.assert_not_called()
     remote.assert_not_called()
 
 
