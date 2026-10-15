@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 STATE_LABELS: dict[str, str] = {
     "ready": "Ready to use",
@@ -202,6 +202,12 @@ class RestoreVersionRequest(BaseModel):
 class DecisionRequest(BaseModel):
     action: Literal["apply", "keep_current", "apply_edited"]
     edited_body: str | None = Field(default=None, max_length=20_000)
+
+    @model_validator(mode="after")
+    def edits_carry_a_body(self) -> "DecisionRequest":
+        if self.action == "apply_edited" and not (self.edited_body or "").strip():
+            raise ValueError("An edited alternative needs a body")
+        return self
 
 
 class OutcomeReportRequest(BaseModel):

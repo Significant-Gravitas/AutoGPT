@@ -210,6 +210,10 @@ async def decide_proposal(
     actor_user_id: str,
 ) -> PublishOutcome:
     """Resolve one open proposal. Applying re-checks eligibility first."""
+    if action == "apply_edited" and not (edited_body or "").strip():
+        return PublishOutcome(
+            status="invalid_proposal", reason="the edited alternative is empty"
+        )
     versions = skill_versions_db()
     proposal = await versions.get_version(user_id, version_id)
     if (

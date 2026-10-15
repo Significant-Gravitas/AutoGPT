@@ -589,3 +589,29 @@ def test_detail_does_not_lose_current_version_behind_unpublished_history(
     assert resp.status_code == 200
     assert resp.json()["current_version"]["id"] == current.id
     assert resp.json()["state"] == "ready"
+
+
+@pytest.mark.parametrize("payload", [{}, {"edited_body": ""}, {"edited_body": "  "}])
+def test_apply_edited_requires_an_edited_body(store, test_user_id, payload):
+    _, version = run(_publish(store, test_user_id))
+    head = run(store.get_head(test_user_id, EXPERT, "csv-import-checks"))
+    proposal = run(
+        store.create_version(
+            test_user_id,
+            head=head,
+            content=version.content + "\n3. Log it\n",
+            description="Import CSV",
+            triggers=[],
+            origin="saved_overnight",
+            state="needs_decision",
+            base_version_id=head.current_version_id,
+        )
+    )
+    resp = client.post(
+        f"/skill-learning/skills/csv-import-checks/decisions/{proposal.id}",
+        params={"expert_id": EXPERT},
+        json={"action": "apply_edited", **payload},
+    )
+    assert resp.status_code == 422
+    decisions = client.get("/skill-learning/decisions").json()
+    assert [d["id"] for d in decisions["items"]] == [proposal.id]

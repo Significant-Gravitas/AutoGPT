@@ -705,3 +705,36 @@ async def test_decision_cannot_archive_another_experts_proposal(fake_store, work
     assert outcome.status == "conflict"
     assert (await fake_store.get_version(USER, proposal.id)).state == "needs_decision"
     workspace.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("edited_body", [None, "", "   "])
+async def test_apply_edited_without_a_body_changes_nothing(
+    fake_store, workspace, edited_body
+):
+    await _seed(fake_store)
+    head = await fake_store.get_head(USER, EXPERT, NAME)
+    proposal = await fake_store.create_version(
+        USER,
+        head=head,
+        content=_content(BODY_V2 + "3. Log it\n"),
+        description="Import a CSV",
+        triggers=["csv"],
+        origin="saved_overnight",
+        state="needs_decision",
+        base_version_id=head.current_version_id,
+    )
+    outcome = await owner_actions.decide_proposal(
+        user_id=USER,
+        expert_id=EXPERT,
+        skill_name=NAME,
+        version_id=proposal.id,
+        action="apply_edited",
+        edited_body=edited_body,
+        actor_user_id=USER,
+    )
+    assert outcome.status == "invalid_proposal"
+    assert (await fake_store.get_version(USER, proposal.id)).state == "needs_decision"
+    after = await fake_store.get_head(USER, EXPERT, NAME)
+    assert after.current_version_id == head.current_version_id
+    workspace.assert_not_awaited()
