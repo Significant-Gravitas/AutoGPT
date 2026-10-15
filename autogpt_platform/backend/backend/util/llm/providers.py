@@ -325,6 +325,19 @@ async def call_provider(
 
 # The providers whose sync calls take a ``base_url``.
 _BASE_URL_PROVIDERS = frozenset({"anthropic", "open_router"})
+_ANTHROPIC_API_ROOT = "https://api.anthropic.com"
+
+
+def _anthropic_client(api_key: str, base_url: str | None = None) -> Any:
+    """An Anthropic client on *api_key* alone, sent to *base_url* or
+    Anthropic's own API. Left to itself the SDK also takes a bearer from
+    ``ANTHROPIC_AUTH_TOKEN`` and its URL from ``ANTHROPIC_BASE_URL`` in the
+    process environment."""
+    client = anthropic.AsyncAnthropic(
+        api_key=api_key, base_url=base_url or _ANTHROPIC_API_ROOT
+    )
+    client.auth_token = None
+    return client
 
 
 async def _dispatch_sync(
@@ -593,7 +606,7 @@ async def _call_anthropic_messages(
                 anth_messages.append({"role": p["role"], "content": p["content"]})
                 last_role = p["role"]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key, base_url=base_url)
+    client = _anthropic_client(api_key, base_url)
     create_kwargs: dict[str, Any] = dict(
         model=model,
         messages=anth_messages,
@@ -1243,7 +1256,7 @@ async def _submit_anthropic_batch(
             }
         ]
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     # Anthropic's typed Request union is too strict for our dynamic
     # params shape (we conditionally include ``system`` / ``tools`` /
     # ``tool_choice``). The runtime contract accepts any dict matching
@@ -1274,7 +1287,7 @@ async def cancel_batch(
     """
     try:
         if provider == "anthropic":
-            client = anthropic.AsyncAnthropic(api_key=api_key)
+            client = _anthropic_client(api_key)
             await client.messages.batches.cancel(provider_batch_id)
             return True
         logger.warning(
@@ -1338,7 +1351,7 @@ async def poll_batch(
             f"poll_batch only supports provider='anthropic' today; "
             f"got {provider!r}."
         )
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     batch = await client.messages.batches.retrieve(provider_batch_id)
     status = getattr(batch, "processing_status", None)
     if status == "ended":
@@ -1376,7 +1389,7 @@ async def download_batch_results(
             f"download_batch_results only supports provider='anthropic' "
             f"today; got {provider!r}."
         )
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = _anthropic_client(api_key)
     rows: list[BatchResultRow] = []
     async for entry in await client.messages.batches.results(provider_batch_id):
         custom_id = getattr(entry, "custom_id", "") or ""
