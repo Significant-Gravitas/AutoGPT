@@ -30,7 +30,7 @@ import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawe
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
 import { FireExpertDialog } from "../components/FireExpertDialog/FireExpertDialog";
 import { SoulDrawer } from "../components/SoulDrawer/SoulDrawer";
-import { getLastRunLabel } from "../helpers";
+import { getExpertCover, getLastRunLabel } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
 import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
@@ -226,7 +226,7 @@ export default function ExpertDetailPage() {
               accentClassName={
                 getRaisedExpertAccent(expert.role, expert.color).pill
               }
-              coverColor={expert.color}
+              coverColor={getExpertCover(expert).color}
               onInstallWorkflow={openPicker}
               onAskWorkflow={openChatWithPrompt}
             />
