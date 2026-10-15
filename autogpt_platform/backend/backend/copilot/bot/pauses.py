@@ -5,7 +5,7 @@ no button, but a reply in the conversation starts a turn that picks the task
 up from the checkpoint the paused turn wrote, so the note says to send one.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from backend.copilot.turn_pause import TurnPause
 
@@ -23,5 +23,5 @@ def pause_note(pause: TurnPause) -> str:
 def _at(resets_at: datetime | None) -> str:
     if resets_at is None:
         return ""
-    utc = resets_at.astimezone(timezone.utc)
+    utc = resets_at.astimezone(UTC)
     return f" at {utc:%H:%M} UTC on {utc:%b} {utc.day}"

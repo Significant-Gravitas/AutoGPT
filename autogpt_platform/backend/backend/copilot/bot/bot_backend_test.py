@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -617,7 +617,7 @@ class TestPausedTurn:
 
     @pytest.mark.asyncio
     async def test_a_budget_pause_says_when_it_can_go_on(self, api: BotBackend):
-        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=timezone.utc)
+        resets_at = datetime(2026, 10, 16, 0, 0, tzinfo=UTC)
 
         reply = await self._reply(
             api,
