@@ -7,6 +7,7 @@ transaction of its own in that trace, so a long autopilot turn stays under the
 SDK's span limit however many tools it runs.
 """
 
+import logging
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -25,9 +26,17 @@ from backend.util import tracing
 
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
+    from backend.copilot.model import ChatSession
+
+logger = logging.getLogger(__name__)
 
 TURN_OP = "copilot.turn"
 TOOL_OP = "copilot.tool"
+
+WAITED_AFTER_S = 60.0
+"""A turn that starts this long after its chat request waited for it (queued
+behind another turn, held at a limit, redelivered), so timing it from the
+request would measure the wait rather than the reply."""
 
 MODEL_OUTPUT_CHUNKS = (StreamTextDelta, StreamReasoningDelta, StreamToolInputStart)
 """Chunks that carry model output. The first one is the turn's first token."""
@@ -46,12 +55,20 @@ class TurnTrace:
         self._chunks = 0
         self._tool_calls = 0
 
-    def describe_chat(self, *, first_turn: bool, expert: bool) -> None:
+    def describe_chat(self, session: "ChatSession") -> None:
         """Tag the kind of chat the turn is in, so its timings split by it: a
         chat's first turn sets up its sandbox and context, and an expert's
-        turn loads the expert as well."""
-        self.span.set_tag("copilot.turn.first", "true" if first_turn else "false")
-        self.span.set_tag("copilot.expert", "true" if expert else "false")
+        turn loads the expert as well. The first turn answers the chat's first
+        user message; a greeting or note the platform wrote before it doesn't
+        make it a follow-up."""
+        try:
+            users = sum(1 for message in session.messages if message.role == "user")
+            self.span.set_tag("copilot.turn.first", "true" if users <= 1 else "false")
+            self.span.set_tag(
+                "copilot.expert", "true" if session.expert_id else "false"
+            )
+        except Exception:
+            logger.debug("Could not tag the turn's kind of chat", exc_info=True)
 
     def engine_started(self, engine: str) -> None:
         """Setup is done and the turn is handed to ``engine``."""
@@ -143,11 +160,21 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
                 (time.time() - entry.enqueued_at) * 1000,
                 span=span,
             )
-        turn = TurnTrace(span, requested_at=entry.request_arrival_at)
+        turn = TurnTrace(span, requested_at=_prompt_request_time(entry, span))
         try:
             yield turn
         finally:
             turn.close()
+
+
+def _prompt_request_time(entry: "CoPilotExecutionEntry", span: Span) -> float:
+    """When the turn's chat request arrived, if the turn started promptly
+    after it; 0 for a turn that waited (tagged) or had no request."""
+    if not entry.request_arrival_at:
+        return 0.0
+    waited = time.time() - entry.request_arrival_at > WAITED_AFTER_S
+    span.set_tag("copilot.turn.waited", "true" if waited else "false")
+    return 0.0 if waited else entry.request_arrival_at
 
 
 def _origin(entry: "CoPilotExecutionEntry") -> str:

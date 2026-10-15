@@ -595,10 +595,7 @@ class CoPilotProcessor:
                 or session.metadata.llm_credential_id != entry.llm_credential_id
             ):
                 raise RuntimeError("codex_session_route_mismatch")
-            turn.describe_chat(
-                first_turn=not any(m.role == "assistant" for m in session.messages),
-                expert=session.expert_id is not None,
-            )
+            turn.describe_chat(session)
 
             session = await _normalize_private_expert_session_tenancy(session)
             await _wait_for_expert_setup(session)
