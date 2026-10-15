@@ -3,18 +3,36 @@ import { Badge } from "@/components/atoms/Badge/Badge";
 import { Text } from "@/components/atoms/Text/Text";
 import { CancelTrialDialog } from "./CancelTrialDialog";
 import { formatTrialEnd, formatTrialPrice } from "./helpers";
+import { TrialCancelPending } from "./TrialCancelPending";
 import { TrialRejection } from "./TrialRejection";
 
 interface Props {
   trial: TrialStatusResponse;
   isCanceling: boolean;
   onCancel: () => void;
+  isResuming: boolean;
+  onResume: () => void;
 }
 
-export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
+export function TrialStatus({
+  trial,
+  isCanceling,
+  onCancel,
+  isResuming,
+  onResume,
+}: Props) {
   if (!trial.offer) return null;
   if (trial.status === "canceled" && trial.rejection_reason)
     return <TrialRejection reason={trial.rejection_reason} />;
+  if (trial.active && trial.cancel_at_period_end)
+    return (
+      <TrialCancelPending
+        trial={trial}
+        offer={trial.offer}
+        isResuming={isResuming}
+        onResume={onResume}
+      />
+    );
   const end = formatTrialEnd(trial.ends_at);
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-5 gap-y-3">
@@ -47,12 +65,16 @@ export function TrialStatus({ trial, isCanceling, onCancel }: Props) {
         </Text>
         {trial.active && (
           <Text variant="small" tone="secondary" className="text-xs">
-            Canceling ends trial access immediately.
+            Cancel before your trial ends to avoid a charge.
           </Text>
         )}
       </div>
       {trial.active && !trial.cancel_at_period_end && (
-        <CancelTrialDialog isCanceling={isCanceling} onCancel={onCancel} />
+        <CancelTrialDialog
+          trial={trial}
+          isCanceling={isCanceling}
+          onCancel={onCancel}
+        />
       )}
     </div>
   );

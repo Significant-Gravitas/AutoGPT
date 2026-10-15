@@ -1,12 +1,14 @@
 """What GTM segments checkout openers on: country from the strongest source,
-Germany and Austria caught by any signal and never released, and nothing
-MailerLite holds made worse by a later or weaker write."""
+Germany and Austria caught by any signal and never released, the onboarding
+role, and nothing MailerLite holds made worse by a later or weaker write. Iran
+and Russia are caught by any signal too, and never written at all."""
 
 from datetime import UTC, datetime
 
 import pytest
 
 from backend.data.notifications import SubscriberField
+from backend.data.onboarding_role import OnboardingRole
 from backend.notifications import audience_enrichment as enrichment
 
 CREATED = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
@@ -90,6 +92,70 @@ def test_a_de_or_at_address_counts_whatever_sits_under_it(email, de_at):
 
 
 @pytest.mark.parametrize(
+    "signals",
+    [
+        dict(timezone="Europe/Moscow"),
+        dict(timezone="Asia/Vladivostok"),
+        dict(timezone="Asia/Tehran"),
+        # An old name a browser may still report.
+        dict(timezone="Iran"),
+        dict(countries=("RU",)),
+        dict(countries=(None, " ir ")),
+        dict(email="sam@firma.ru"),
+        dict(email="sam@mail.co.ir"),
+        dict(email="sam@kontora.su"),
+        dict(email="sam@почта.рф"),
+        dict(email="sam@xn--80a1acny.xn--p1ai"),
+        # A billing address elsewhere does not outweigh a Moscow timezone.
+        dict(countries=("US",), timezone="Europe/Moscow"),
+    ],
+)
+def test_any_iran_or_russia_signal_excludes(signals):
+    signals = {"email": "sam@acme.com", "timezone": "America/Chicago", **signals}
+    assert enrichment.points_at_excluded_country(**signals)
+
+
+@pytest.mark.parametrize(
+    "signals",
+    [
+        dict(),
+        dict(timezone="Europe/Kiev"),
+        dict(timezone="Europe/Minsk"),
+        dict(countries=("UA", "XX", None)),
+        dict(email="sam@ruby.dev"),
+        dict(email="sam@iran-travel.com"),
+    ],
+)
+def test_neighbours_and_lookalikes_are_not_excluded(signals):
+    signals = {"email": "sam@acme.com", "timezone": "America/Chicago", **signals}
+    assert not enrichment.points_at_excluded_country(**signals)
+
+
+def test_the_billing_country_comes_from_the_checkout_session():
+    session = {"customer_details": {"address": {"country": "RU"}}}
+    assert enrichment.billing_country(session) == "RU"
+    assert enrichment.billing_country({"customer_details": None}) is None
+    assert enrichment.billing_country({}) is None
+
+
+@pytest.mark.parametrize(
+    "role, fields",
+    [
+        (
+            OnboardingRole(choice="Sales/BD"),
+            {SubscriberField.ROLE: "Sales / BD", SubscriberField.ROLE_OTHER: None},
+        ),
+        (
+            OnboardingRole(choice="Other", other="Dentist"),
+            {SubscriberField.ROLE: "Other", SubscriberField.ROLE_OTHER: "Dentist"},
+        ),
+    ],
+)
+def test_the_role_is_written_as_labelled_with_others_text(role, fields):
+    assert enrichment.role_fields(role) == fields
+
+
+@pytest.mark.parametrize(
     "providers, method",
     [
         (["google"], "google"),
@@ -141,6 +207,18 @@ def test_country_comes_from_the_strongest_source(sources, country, source):
     fields = _fields(**sources)
     assert fields[SubscriberField.COUNTRY_CODE] == country
     assert fields[SubscriberField.COUNTRY_SOURCE] == source
+
+
+def test_a_picked_role_rides_on_the_checkout():
+    fields = _fields(role=OnboardingRole(choice="HR/People"))
+    assert fields[SubscriberField.ROLE] == "HR / People"
+    assert fields[SubscriberField.ROLE_OTHER] is None
+
+
+def test_without_a_pick_the_role_mailerlite_holds_is_left_alone():
+    fields = _fields()
+    assert SubscriberField.ROLE not in fields
+    assert SubscriberField.ROLE_OTHER not in fields
 
 
 def test_without_any_country_signal_the_country_is_left_alone():

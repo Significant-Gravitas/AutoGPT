@@ -8,7 +8,6 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
 import { useSessionFiles } from "./components/FilesTab/useSessionFiles";
-import { useEffect } from "react";
 
 interface Props {
   sessionId?: string | null;
@@ -30,11 +29,6 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const { deliverables, documentCount: liveDocumentCount } =
     useSessionFiles(sessionId);
   const documentCount = Math.max(deliverables.length, liveDocumentCount);
-  const expertId = expert?.id ?? null;
-  const expertName = expert?.name ?? null;
-  const setContextPanelExpert = useCopilotUIStore(
-    (s) => s.setContextPanelExpert,
-  );
   const isFilesOpen = useCopilotUIStore(
     (s) =>
       s.artifactPanel.isOpen &&
@@ -52,14 +46,10 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
   const openComputer = useCopilotUIStore((s) => s.openComputer);
   const closeComputer = useCopilotUIStore((s) => s.closeComputer);
   const isMobile = useIsMobile();
-  // The mobile sheet has no computer face to open.
+  // The mobile sheet has no computer face to open, and mobile already floats
+  // a files button over the chat's top-left corner.
   const showComputerToggle = !!sessionId && !isMobile;
-
-  useEffect(() => {
-    setContextPanelExpert(
-      expertId && expertName ? { id: expertId, name: expertName } : null,
-    );
-  }, [expertId, expertName, setContextPanelExpert]);
+  const showFilesToggle = !isMobile;
 
   function handleComputerToggle() {
     // Back to whatever the computer was covering: the preview, the tab, or
@@ -67,6 +57,8 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
     if (isComputerOpen) closeComputer();
     else openComputer();
   }
+
+  if (!expert && !showComputerToggle && !showFilesToggle) return null;
 
   return (
     // With the side panel open the chat column narrows under these controls,
@@ -94,34 +86,36 @@ export function ContextPanelToggle({ sessionId = null, expert = null }: Props) {
           />
         </Button>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        onClick={() => toggleContextPanelTab("files")}
-        aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
-          documentCount > 0
-            ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
-            : ""
-        }`}
-        aria-pressed={isFilesOpen}
-        className={cn(
-          toggleClass,
-          "h-8",
-          documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
-          isFilesOpen && "bg-zinc-100",
-        )}
-      >
-        <Icon
-          icon={LicenseDraftIcon}
-          className="!size-4 text-sidebar-foreground/90"
-        />
-        {documentCount > 0 && (
-          <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
-            {documentCount}
-          </span>
-        )}
-      </Button>
+      {showFilesToggle && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => toggleContextPanelTab("files")}
+          aria-label={`${isFilesOpen ? "Hide" : "Open"} files${
+            documentCount > 0
+              ? ` (${documentCount} ${documentCount === 1 ? "document" : "documents"})`
+              : ""
+          }`}
+          aria-pressed={isFilesOpen}
+          className={cn(
+            toggleClass,
+            "h-8",
+            documentCount > 0 ? "w-auto gap-1 px-2" : "w-8",
+            isFilesOpen && "bg-zinc-100",
+          )}
+        >
+          <Icon
+            icon={LicenseDraftIcon}
+            className="!size-4 text-sidebar-foreground/90"
+          />
+          {documentCount > 0 && (
+            <span className="text-xs font-medium tabular-nums text-sidebar-foreground/90">
+              {documentCount}
+            </span>
+          )}
+        </Button>
+      )}
     </div>
   );
 }

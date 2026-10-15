@@ -85,22 +85,6 @@ afterEach(() => {
 });
 
 describe("ContextPanelToggle files button", () => {
-  test("shares the chat expert with the file panel", async () => {
-    render(
-      <ContextPanelToggle
-        sessionId="s1"
-        expert={{ id: "expert-maria", name: "Maria" }}
-      />,
-    );
-
-    await vi.waitFor(() =>
-      expect(useCopilotUIStore.getState().contextPanelExpert).toEqual({
-        id: "expert-maria",
-        name: "Maria",
-      }),
-    );
-  });
-
   test("shows the number of documents generated in the chat", async () => {
     const documentId = "aaaaaaaa-0000-0000-0000-000000000001";
     const uploadId = "bbbbbbbb-0000-0000-0000-000000000002";
@@ -311,6 +295,14 @@ describe("ContextPanelToggle computer button", () => {
     render(<ContextPanelToggle sessionId="s1" />);
 
     expect(screen.queryByLabelText("Open computer")).toBeNull();
-    expect(screen.getByLabelText("Open files")).toBeDefined();
+  });
+});
+
+describe("files toggle on mobile", () => {
+  test("is hidden, since mobile floats its own files button", () => {
+    setMobile(true);
+    render(<ContextPanelToggle sessionId="s1" />);
+
+    expect(screen.queryByLabelText(/files/)).toBeNull();
   });
 });

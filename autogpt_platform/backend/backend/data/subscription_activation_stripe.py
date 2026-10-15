@@ -22,6 +22,7 @@ from backend.data.subscription_activation_models import (
     RenewalTax,
 )
 from backend.data.subscription_trial import TrialState, get_subscription_trial
+from backend.data.subscription_trial_payment import SubscriptionPlanTerms
 
 
 class SubscriptionItemsUpdate(TypedDict, total=False):
@@ -63,6 +64,20 @@ async def is_paid_activation_subscription(
         and trial.subscription_id == sub.id
         and trial.offer.tier in ("PRO", "MAX")
         and trial.offer.price_id == item.price.id
+    ):
+        return True
+    chosen = SubscriptionPlanTerms.model_validate(sub.model_dump()).chosen_plan()
+    if (
+        trial
+        and sub.status == "active"
+        and trial.subscription_id == sub.id
+        and trial.customer_id == sub.customer
+        and sub.metadata.get("user_id") == trial.user_id == user_id
+        and sub.metadata.get("trial_enrollment_id") == trial.id
+        and sub.metadata.get("trial_checkout_attempt") == str(trial.checkout_attempt)
+        and not sub.metadata.get("pro_activation_attempt_id")
+        and chosen
+        and chosen.tier in (SubscriptionTier.PRO, SubscriptionTier.MAX)
     ):
         return True
     tier = (await credit.build_price_to_tier_map()).get(item.price.id)

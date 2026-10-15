@@ -649,7 +649,8 @@ async def update_app_logo(
             detail="Application not found or you don't have permission to update it",
         )
 
-    await _delete_app_current_logo_file(app)
+    if app.logo_url != request.logo_url:
+        await _delete_app_current_logo_file(app)
 
     logger.info(
         f"OAuth app {updated_app.name} (#{app_id}) logo updated by user #{user_id}"

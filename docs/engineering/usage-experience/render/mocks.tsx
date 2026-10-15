@@ -23,6 +23,11 @@ export function useTrialCard() {
     retry: noop,
     isStarting: false,
     isCanceling: false,
+    isResuming: false,
+    resumeTrial: noop,
+    showCanceledDialog: false,
+    dismissCanceledDialog: noop,
+    subscribeNow: noop,
     startTrial: async () => {},
     cancelTrial: async () => {},
   };
@@ -210,5 +215,50 @@ export function useGetV1ManagePaymentMethods() {
       data: { url: "https://billing.stripe.com/p/session/fixture" },
     },
     isLoading: false,
+  };
+}
+
+export function useGetSubscriptionStatus(options = {}) {
+  const response = {
+    status: 200,
+    data: {
+      tier: useYourPlanCard().plan.tierKey,
+      tier_costs: { PRO: 5000, MAX: 32000 },
+      tier_multipliers: { PRO: 1, MAX: 8.5 },
+    },
+  };
+  const data = options.query?.select
+    ? options.query.select(response)
+    : response;
+  return { data, isPending: false, isLoading: false };
+}
+export function notFound() {
+  throw new Error("Unexpected unavailable fixture route");
+}
+
+export const getGetV1ListStripeInvoicesQueryKey = () => ["invoices"];
+export const trackPaywallViewed = noop;
+export const trackPlanSelected = noop;
+export const addBreadcrumb = noop;
+export const getTraceData = () => ({});
+export function useUpdateSubscriptionTier() {
+  return { mutateAsync: async () => {}, isPending: false };
+}
+
+export const getGetTrialsGetTrialStatusQueryKey = () => ["trial"];
+
+export const getGetV2GetCopilotUsageQueryKey = () => ["usage"];
+export class ApiError extends Error {}
+
+export function useGetV2ListChatTransports() {
+  return {
+    data: {
+      status: 200,
+      data: {
+        transports: [
+          { available: true, auth_provider: "platform", credential_id: null },
+        ],
+      },
+    },
   };
 }

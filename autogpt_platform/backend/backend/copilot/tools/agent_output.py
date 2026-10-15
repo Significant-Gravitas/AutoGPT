@@ -391,7 +391,13 @@ class AgentOutputTool(BaseTool):
         # Build appropriate message based on execution status
         if execution.status == ExecutionStatus.COMPLETED:
             message = f"Found execution outputs for agent '{agent.name}'"
-            health_warning = build_run_health_warning(execution.outputs, node_failures)
+            health_warning = build_run_health_warning(
+                execution.outputs,
+                node_failures,
+                failed_node_count=(
+                    execution.stats.node_error_count if execution.stats else 0
+                ),
+            )
             if health_warning:
                 if not isinstance(execution, GraphExecutionWithNodes):
                     health_warning += (

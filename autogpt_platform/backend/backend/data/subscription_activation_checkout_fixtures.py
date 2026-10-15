@@ -91,6 +91,7 @@ def boundaries(monkeypatch, attempt, live_subscription, trial):
         "backend.data.credit.build_price_to_tier_map",
         AsyncMock(return_value={"price_pro": SubscriptionTier.PRO}),
     )
+    monkeypatch.setattr(billing.credit, "invalidate_billing_lookups", AsyncMock())
     return SimpleNamespace(**mocks)
 
 

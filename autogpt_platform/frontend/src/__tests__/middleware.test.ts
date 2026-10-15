@@ -1,5 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment node
+// happy-dom hides a request's cookie header, so a cookie test can't fail there.
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMiddlewareMock = vi.fn();
 
@@ -7,7 +10,11 @@ vi.mock("@/lib/auth/middleware", () => ({
   authMiddleware: (...args: unknown[]) => authMiddlewareMock(...args),
 }));
 
-import { middleware } from "../middleware";
+import { config, middleware } from "../middleware";
+
+beforeEach(() => {
+  authMiddlewareMock.mockReset();
+});
 
 describe("middleware www→non-www redirect", () => {
   it("redirects www host to non-www with 308", async () => {
@@ -44,4 +51,184 @@ describe("middleware www→non-www redirect", () => {
     expect(authMiddlewareMock).toHaveBeenCalledTimes(1);
     expect(response).toBe(passthrough);
   });
+});
+
+describe("middleware trailing-slash redirect", () => {
+  it("strips a trailing slash from page paths with 308", async () => {
+    const response = await middleware(
+      new NextRequest("https://example.com/marketplace/?q=1"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://example.com/marketplace?q=1",
+    );
+    expect(authMiddlewareMock).not.toHaveBeenCalled();
+  });
+
+  it("fixes www and the trailing slash in one redirect", async () => {
+    const response = await middleware(
+      new NextRequest("https://www.example.com/copilot/"),
+    );
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "https://example.com/copilot",
+    );
+  });
+
+  it("leaves the root path alone", async () => {
+    authMiddlewareMock.mockResolvedValueOnce(new Response("ok"));
+
+    await middleware(new NextRequest("https://example.com/"));
+
+    expect(authMiddlewareMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("middleware PostHog proxy", () => {
+  beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_test");
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", "https://eu.i.posthog.com");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  const RELAY = "https://platform.agpt.co/relay/pnosthog";
+
+  function proxiedRequest(
+    url: string,
+    extraHeaders: Record<string, string> = {},
+  ) {
+    return new NextRequest(url, {
+      method: "POST",
+      headers: {
+        cookie: "better-auth.session_token=secret; sb-proj-auth-token=legacy",
+        authorization: "Bearer secret",
+        "content-type": "application/json",
+        ...extraHeaders,
+      },
+    });
+  }
+
+  function forwardedHeaders(response: Response) {
+    return (response.headers.get("x-middleware-override-headers") ?? "")
+      .split(",")
+      .sort();
+  }
+
+  it("runs middleware on the proxy path", () => {
+    expect(
+      unstable_doesMiddlewareMatch({ config, url: `${RELAY}/i/v0/e/` }),
+    ).toBe(true);
+  });
+
+  it.each(["/e/", "/i/v0/e/", "/s/", "/flags/", "/api/surveys/"])(
+    "forwards %s to PostHog with its trailing slash and query intact",
+    async (path) => {
+      const response = await middleware(
+        proxiedRequest(`${RELAY}${path}?ip=0&_=1`),
+      );
+
+      expect(response.headers.get("x-middleware-rewrite")).toBe(
+        `https://eu.i.posthog.com${path}?ip=0&_=1`,
+      );
+      expect(response.headers.get("location")).toBeNull();
+      expect(authMiddlewareMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("serves PostHog's scripts and our remote config from its assets host", async () => {
+    const asset = await middleware(
+      new NextRequest(`${RELAY}/static/recorder.js?v=1`),
+    );
+    const remoteConfig = await middleware(
+      new NextRequest(`${RELAY}/array/phc_test/config`),
+    );
+
+    expect(asset.headers.get("x-middleware-rewrite")).toBe(
+      "https://eu-assets.i.posthog.com/static/recorder.js?v=1",
+    );
+    expect(remoteConfig.headers.get("x-middleware-rewrite")).toBe(
+      "https://eu-assets.i.posthog.com/array/phc_test/config",
+    );
+  });
+
+  it("never hands our cookies or auth header to PostHog", async () => {
+    const response = await middleware(proxiedRequest(`${RELAY}/flags/?v=2`));
+
+    expect(forwardedHeaders(response)).toEqual(["content-type", "host"]);
+    expect(response.headers.get("x-middleware-request-host")).toBe(
+      "eu.i.posthog.com",
+    );
+  });
+
+  it("forwards no header outside its allowlist", async () => {
+    const response = await middleware(
+      proxiedRequest(`${RELAY}/e/`, {
+        "x-custom-token": "secret",
+        "user-agent": "probe",
+        "x-forwarded-for": "203.0.113.7",
+      }),
+    );
+
+    expect(forwardedHeaders(response)).toEqual([
+      "content-type",
+      "host",
+      "user-agent",
+      "x-forwarded-for",
+    ]);
+  });
+
+  it.each([
+    "/api/projects/1/",
+    "/array/phc_other/config.js",
+    "/decide/",
+    "//evil.example/x",
+    "",
+  ])("refuses %s without contacting PostHog", async (path) => {
+    const response = await middleware(proxiedRequest(`${RELAY}${path}`));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(authMiddlewareMock).not.toHaveBeenCalled();
+  });
+
+  it("skips the www redirect and auth checks on the proxy path", async () => {
+    const response = await middleware(
+      proxiedRequest("https://www.platform.agpt.co/relay/pnosthog/e/"),
+    );
+
+    expect(response.status).not.toBe(308);
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      "https://eu.i.posthog.com/e/",
+    );
+    expect(authMiddlewareMock).not.toHaveBeenCalled();
+  });
+
+  it("passes the path through untouched when PostHog Cloud isn't configured", async () => {
+    vi.stubEnv("NEXT_PUBLIC_POSTHOG_HOST", "https://posthog.example.com");
+
+    const response = await middleware(proxiedRequest(`${RELAY}/e/`));
+
+    expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(authMiddlewareMock).not.toHaveBeenCalled();
+  });
+
+  it.each(["/relay/pnosthogx/e", "/relay/other/e", "/relay"])(
+    "leaves %s to the rest of the middleware",
+    async (path) => {
+      authMiddlewareMock.mockResolvedValueOnce(new Response("ok"));
+
+      const response = await middleware(
+        new NextRequest(`https://platform.agpt.co${path}`),
+      );
+
+      expect(response.headers.get("x-middleware-rewrite")).toBeNull();
+      expect(authMiddlewareMock).toHaveBeenCalledTimes(1);
+    },
+  );
 });

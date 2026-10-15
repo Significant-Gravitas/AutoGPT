@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 import stripe
 from prisma.models import User
 
+from backend.data import credit
 from backend.data.stripe_client import stripe_call, stripe_list_items
 from backend.data.subscription_activation import reconcile_paid_activation
 from backend.data.subscription_activation_attempt import (
@@ -178,16 +179,19 @@ async def _submit_confirmed(attempt: ActivationAttempt) -> ActivationResponse:
                 )
             ):
                 return attempt.response("processing", error_code="terms_changed")
-            await stripe_call(
-                stripe.Subscription.modify_async,
-                attempt.subscription_id,
-                trial_end="now",
-                proration_behavior="none",
-                payment_behavior="allow_incomplete",
-                metadata={"pro_activation_attempt_id": attempt.id},
-                idempotency_key=f"pro-activation:{attempt.id}",
-                **subscription_item_update(sub, attempt.terms.price_id),
-            )
+            try:
+                await stripe_call(
+                    stripe.Subscription.modify_async,
+                    attempt.subscription_id,
+                    trial_end="now",
+                    proration_behavior="none",
+                    payment_behavior="allow_incomplete",
+                    metadata={"pro_activation_attempt_id": attempt.id},
+                    idempotency_key=f"pro-activation:{attempt.id}",
+                    **subscription_item_update(sub, attempt.terms.price_id),
+                )
+            finally:
+                await credit.invalidate_billing_lookups(attempt.customer_id)
         return await activation_status(attempt)
     except Exception:
         logger.exception("Confirmed activation needs recovery for %s", attempt.id)

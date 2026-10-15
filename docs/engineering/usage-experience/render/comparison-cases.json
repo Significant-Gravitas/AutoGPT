@@ -1,7 +1,7 @@
 [
   {
     "id": "01-trial-popup",
-    "title": "Trial · limit popup",
+    "title": "Trial \u00b7 limit popup",
     "experience": {
       "tier": "trial",
       "state": "total"
@@ -13,7 +13,7 @@
   },
   {
     "id": "02-trial-chat",
-    "title": "Trial · in-chat notice",
+    "title": "Trial \u00b7 in-chat notice",
     "experience": {
       "tier": "trial",
       "state": "total"
@@ -25,7 +25,7 @@
   },
   {
     "id": "03-trial-billing",
-    "title": "Trial · exhausted allowance",
+    "title": "Trial \u00b7 exhausted allowance",
     "experience": {
       "tier": "trial",
       "state": "total"
@@ -37,17 +37,17 @@
   },
   {
     "id": "04-trial-active",
-    "title": "Trial · allowance remaining",
+    "title": "Trial \u00b7 allowance remaining",
     "experience": {
       "tier": "trial",
       "state": "active"
     },
     "screen": "billing",
-    "improvement": "One percentage for the whole trial, with an end date instead of a reset timer."
+    "improvement": "One trial meter with its end date. The Pro card keeps the price and start date, and only suggests starting early once usage runs low."
   },
   {
     "id": "05-pro-popup",
-    "title": "Pro · daily limit",
+    "title": "Pro \u00b7 daily limit",
     "experience": {
       "tier": "pro",
       "state": "daily"
@@ -57,7 +57,7 @@
   },
   {
     "id": "06-pro-chat",
-    "title": "Pro · in-chat notice",
+    "title": "Pro \u00b7 in-chat notice",
     "experience": {
       "tier": "pro",
       "state": "daily"
@@ -67,7 +67,7 @@
   },
   {
     "id": "07-pro-billing",
-    "title": "Pro · both limits reached",
+    "title": "Pro \u00b7 both limits reached",
     "experience": {
       "tier": "pro",
       "state": "both"
@@ -77,7 +77,7 @@
   },
   {
     "id": "08-pro-weekly",
-    "title": "Pro · weekly limit",
+    "title": "Pro \u00b7 weekly limit",
     "experience": {
       "tier": "pro",
       "state": "weekly"
@@ -87,7 +87,7 @@
   },
   {
     "id": "09-max-popup",
-    "title": "Max · daily limit",
+    "title": "Max \u00b7 daily limit",
     "experience": {
       "tier": "max",
       "state": "daily"
@@ -97,7 +97,7 @@
   },
   {
     "id": "10-max-chat",
-    "title": "Max · in-chat notice",
+    "title": "Max \u00b7 in-chat notice",
     "experience": {
       "tier": "max",
       "state": "daily"
@@ -107,7 +107,7 @@
   },
   {
     "id": "11-max-billing",
-    "title": "Max · billing and capacity",
+    "title": "Max \u00b7 billing and capacity",
     "experience": {
       "tier": "max",
       "state": "daily"
@@ -117,7 +117,7 @@
   },
   {
     "id": "12-team-popup",
-    "title": "Team · weekly limit",
+    "title": "Team \u00b7 weekly limit",
     "experience": {
       "tier": "team",
       "state": "weekly"
@@ -127,7 +127,7 @@
   },
   {
     "id": "13-team-billing",
-    "title": "Team · billing and usage",
+    "title": "Team \u00b7 billing and usage",
     "experience": {
       "tier": "team",
       "state": "weekly"
@@ -137,7 +137,7 @@
   },
   {
     "id": "14-enterprise-popup",
-    "title": "Enterprise · weekly limit",
+    "title": "Enterprise \u00b7 weekly limit",
     "experience": {
       "tier": "enterprise",
       "state": "both"
@@ -147,7 +147,7 @@
   },
   {
     "id": "15-enterprise-billing",
-    "title": "Enterprise · billing and usage",
+    "title": "Enterprise \u00b7 billing and usage",
     "experience": {
       "tier": "enterprise",
       "state": "both"
@@ -158,7 +158,7 @@
   },
   {
     "id": "16-basic-chat",
-    "title": "Basic · legacy-plan notice",
+    "title": "Basic \u00b7 legacy-plan notice",
     "experience": {
       "tier": "basic",
       "state": "daily"
@@ -168,7 +168,7 @@
   },
   {
     "id": "17-basic-billing",
-    "title": "Basic · legacy-plan settings",
+    "title": "Basic \u00b7 legacy-plan settings",
     "experience": {
       "tier": "basic",
       "state": "daily"
@@ -178,7 +178,7 @@
   },
   {
     "id": "18-choose-plan",
-    "title": "No active plan · plan selection",
+    "title": "No active plan \u00b7 plan selection",
     "experience": {
       "tier": "none",
       "state": "expired"
@@ -190,7 +190,7 @@
   },
   {
     "id": "19-no-plan-billing",
-    "title": "No active plan · settings",
+    "title": "No active plan \u00b7 settings",
     "experience": {
       "tier": "none",
       "state": "expired"
@@ -202,7 +202,7 @@
   },
   {
     "id": "20-trial-ended",
-    "title": "Trial ended · recovery",
+    "title": "Trial ended \u00b7 recovery",
     "experience": {
       "tier": "trial",
       "state": "expired"
@@ -214,7 +214,7 @@
   },
   {
     "id": "21-trial-canceled",
-    "title": "Trial canceled · recovery",
+    "title": "Trial canceled \u00b7 recovery",
     "experience": {
       "tier": "trial",
       "state": "canceled"
@@ -226,30 +226,30 @@
   },
   {
     "id": "22-payment-failed",
-    "title": "Payment failure · recovery",
+    "title": "Payment failure \u00b7 recovery",
     "experience": {
       "tier": "pro",
       "state": "payment_failed"
     },
     "screen": "dialog",
-    "improvement": "A dedicated action to recover the existing subscription.",
+    "improvement": "State the amount owed and pay the open trial invoice on Stripe in one step, instead of a plan checkout that is refused while the invoice is open.",
     "beforeScreen": "payment-method",
-    "note": "Before: existing payment-method management card; production has no equivalent recovery popup."
+    "note": "Before: existing payment-method management card; production has no equivalent recovery popup. After: the button opens the open trial invoice on Stripe\u2019s hosted page."
   },
   {
     "id": "23-payment-billing",
-    "title": "Payment failure · settings",
+    "title": "Payment failure \u00b7 settings",
     "experience": {
       "tier": "pro",
       "state": "payment_failed"
     },
     "screen": "billing",
-    "improvement": "Bring payment recovery into the plan and usage summary.",
+    "improvement": "One message with the amount and one button that pays the open invoice. No refused Start Pro checkout and no duplicate payment cards.",
     "note": "Before: generic Pro billing; no dedicated payment-failure state. After: recovery only when billing confirms suspended access."
   },
   {
     "id": "24-usage-unavailable",
-    "title": "Usage unavailable · in-chat feedback",
+    "title": "Usage unavailable \u00b7 in-chat feedback",
     "experience": {
       "tier": "pro",
       "state": "unavailable"
@@ -261,17 +261,17 @@
   },
   {
     "id": "25-unavailable-billing",
-    "title": "Usage unavailable · settings",
+    "title": "Usage unavailable \u00b7 settings",
     "experience": {
       "tier": "pro",
       "state": "unavailable"
     },
     "screen": "billing",
-    "improvement": "Keep a visible usage error and retry action instead of silently removing the section."
+    "improvement": "One usage error with a retry in the Usage slot, while the plan card beside it stays as usual."
   },
   {
     "id": "26-linked-provider",
-    "title": "Connected provider · continuation",
+    "title": "Connected provider \u00b7 continuation",
     "experience": {
       "tier": "trial",
       "state": "total",
@@ -285,7 +285,7 @@
   },
   {
     "id": "27-pro-review",
-    "title": "Start Pro · payment review",
+    "title": "Start Pro \u00b7 payment review",
     "experience": {
       "tier": "trial",
       "state": "total"
@@ -298,7 +298,7 @@
   },
   {
     "id": "28-max-review",
-    "title": "Pro to Max · upgrade review",
+    "title": "Pro to Max \u00b7 upgrade review",
     "experience": {
       "tier": "pro",
       "state": "daily"
@@ -310,7 +310,7 @@
   },
   {
     "id": "29-payment-pending",
-    "title": "Start Pro · payment processing",
+    "title": "Start Pro \u00b7 payment processing",
     "experience": {
       "tier": "trial",
       "state": "total"
@@ -323,7 +323,7 @@
   },
   {
     "id": "30-activation-success",
-    "title": "Pro activated · return to work",
+    "title": "Pro activated \u00b7 return to work",
     "experience": {
       "tier": "pro",
       "state": "fresh"
@@ -335,7 +335,7 @@
   },
   {
     "id": "31-fresh-billing",
-    "title": "Pro activated · fresh allowance",
+    "title": "Pro activated \u00b7 fresh allowance",
     "experience": {
       "tier": "pro",
       "state": "fresh"
@@ -344,5 +344,41 @@
     "improvement": "Show fresh allowances after confirmed trial-to-paid activation.",
     "beforeState": "active",
     "note": "Illustrative before usage is carried over. After zero usage depends on the reset receipt and successful data refresh."
+  },
+  {
+    "id": "32-cancel-pending-billing",
+    "title": "Trial cancellation pending \u00b7 billing",
+    "experience": {
+      "tier": "trial",
+      "state": "cancel_pending"
+    },
+    "screen": "billing",
+    "improvement": "Keep remaining trial access and the parent\u2019s explicit plan choices, without a duplicate automatic-start offer.",
+    "absence": "No remaining-access cancellation state in this production snapshot.",
+    "absenceDetail": "The new parent keeps trial access until its scheduled end. This capture shows the actual combined billing UI; no production equivalent is invented."
+  },
+  {
+    "id": "33-cancel-pending-notice",
+    "title": "Trial cancellation pending \u00b7 chat notice",
+    "experience": {
+      "tier": "trial",
+      "state": "cancel_pending"
+    },
+    "screen": "notice",
+    "improvement": "Choose a plan explicitly after cancellation with Subscribe now, the label of the plan cards it opens; never promise that Pro will start automatically.",
+    "absence": "No cancel-pending chat notice in this production snapshot.",
+    "absenceDetail": "The new parent keeps trial access until its scheduled end. This notice links to plan selection rather than starting activation directly."
+  },
+  {
+    "id": "34-payment-paywall",
+    "title": "Payment failure \u00b7 paywall",
+    "experience": {
+      "tier": "pro",
+      "state": "payment_failed"
+    },
+    "screen": "paywall",
+    "improvement": "Past-due trials see the same message and pay button in the paywall instead of plan choices whose checkout is refused.",
+    "absence": "No payment-failure paywall capture in this production snapshot.",
+    "absenceDetail": "Production shows the plan choices from pair 18 here. While the trial invoice is open, their Start Pro checkout is refused, so this state pays that invoice instead."
   }
 ]

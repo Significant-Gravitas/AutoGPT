@@ -49,16 +49,14 @@ def _clear_cache(fn: _CacheClearable) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _clear_active_subscription_cache():
-    """Isolate the short-TTL active-subscription cache between tests.
-
-    ``get_user_billing_cycle`` / ``get_active_subscription_period_end`` /
-    ``get_proration_credit_cents`` share ``_get_active_subscription_cached``;
-    clear it so a subscription mocked in one test cannot leak into the next
-    through the cache.
-    """
-    _clear_cache(_get_active_subscription_cached)
-    yield
+def _no_pending_update():
+    """The payment failures here are plans that lapsed, not a change Stripe
+    holds until it's paid (see credit_pending_update_test.py)."""
+    with patch(
+        "backend.data.credit._nothing_left_to_cover",
+        AsyncMock(return_value=False),
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)
@@ -260,7 +258,10 @@ async def test_sync_subscription_from_stripe_tracks_upgrade(billing_boundaries):
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         billing_boundaries.subscription.return_value = stripe_sub
         await sync_subscription_from_stripe(stripe_sub)
@@ -530,9 +531,9 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
                 "ENTERPRISE": 15 * 1024,
             },
         ),
-        patch.object(
-            get_pending_subscription_change,
-            "cache_delete",
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
         ) as mock_pending_cache_delete,
     ):
         billing_boundaries.subscription.return_value = stripe_sub
@@ -540,7 +541,7 @@ async def test_sync_subscription_from_stripe_cancelled_applies_no_tier_storage_l
         result = await get_workspace_storage_limit_bytes("user-1")
 
     assert result == 250 * 1024 * 1024
-    mock_pending_cache_delete.assert_called_once_with("user-1")
+    mock_pending_cache_delete.assert_awaited_once_with("cus_123")
 
 
 @pytest.mark.asyncio
@@ -711,7 +712,10 @@ async def test_cancel_stripe_subscription_tracks_cancellation():
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await cancel_stripe_subscription("user-1")
 
@@ -1062,7 +1066,8 @@ async def test_active_subscription_lookup_is_cached_within_window():
     ) as raw:
         first = await _get_active_subscription_cached("cus_cache")
         second = await _get_active_subscription_cached("cus_cache")
-    assert first is second is mock_sub
+    assert first == second
+    assert first is not None and first.status == "active"
     raw.assert_awaited_once()
 
 
@@ -1946,6 +1951,42 @@ async def test_handle_subscription_payment_failure_balance_covers_pays_invoice(
 
 
 @pytest.mark.asyncio
+async def test_handle_subscription_payment_failure_ignores_a_new_plans_first_payment():
+    """A card declined in Checkout leaves the new plan incomplete for the
+    customer to retry. Treating it as a lapsed plan would cancel every live
+    subscription, including a cancel-pending trial that still has access."""
+    mock_user = _make_user(user_id="user-1", tier=SubscriptionTier.TRIAL)
+    invoice = {
+        "id": "in_first",
+        "customer": "cus_123",
+        "subscription": "sub_new_max",
+        "amount_due": 32000,
+        "billing_reason": "subscription_create",
+    }
+
+    with (
+        patch(
+            "backend.data.credit.User.prisma",
+            return_value=MagicMock(find_first=AsyncMock(return_value=mock_user)),
+        ),
+        patch(
+            "backend.data.credit.UserCredit._add_transaction", new_callable=AsyncMock
+        ) as mock_add_tx,
+        patch(
+            "backend.data.credit._cancel_customer_subscriptions",
+            new_callable=AsyncMock,
+        ) as mock_cancel,
+        patch(
+            "backend.data.credit.set_subscription_tier", new_callable=AsyncMock
+        ) as mock_set,
+    ):
+        await handle_subscription_payment_failure(invoice)
+    mock_add_tx.assert_not_awaited()
+    mock_cancel.assert_not_awaited()
+    mock_set.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_raise(
     billing_boundaries,
 ):
@@ -1973,10 +2014,16 @@ async def test_handle_subscription_payment_failure_invoice_pay_error_does_not_ra
             "backend.data.credit.stripe.Invoice.pay_async",
             side_effect=stripe_mod.StripeError("network error"),
         ),
+        patch(
+            "backend.data.credit.invalidate_billing_lookups", new_callable=AsyncMock
+        ) as invalidate,
     ):
         # Must not raise — the pay failure is only logged as a warning
         billing_boundaries.invoice.return_value = {**invoice, "status": "open"}
         await handle_subscription_payment_failure(invoice)
+    # A timed-out call may still have been applied in Stripe, so the cached
+    # billing lookups are dropped either way.
+    invalidate.assert_awaited_once_with("cus_123")
 
 
 @pytest.mark.asyncio
@@ -3235,7 +3282,10 @@ async def test_modify_stripe_subscription_skips_emit_when_db_flip_fails():
             return_value=MagicMock(capture=track_mock),
         ),
         patch("backend.util.posthog_client._environment", return_value="test"),
-        patch.object(get_pending_subscription_change, "cache_delete"),
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await modify_stripe_subscription_for_tier(
             "user-1", SubscriptionTier.BUSINESS
@@ -3507,8 +3557,6 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
     """cancel_at_period_end=True maps to pending NO_TIER at current_period_end."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
     mock_sub = stripe.Subscription.construct_from(
@@ -3564,8 +3612,6 @@ async def test_get_pending_subscription_change_cancel_at_period_end():
 async def test_get_pending_subscription_change_from_schedule():
     """A schedule whose next phase uses the PRO price maps to pending_tier=PRO."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -3648,8 +3694,6 @@ async def test_get_pending_subscription_change_yearly_next_phase_maps_to_tier():
     """A schedule whose next phase uses a YEARLY price still resolves to the
     correct tier — yearly subscribers must see their pending downgrade in UI."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
@@ -3738,8 +3782,6 @@ async def test_get_pending_subscription_change_from_schedule_to_basic():
     """A schedule whose next phase uses the BASIC price maps to pending_tier=BASIC."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     period_end = now + 10 * 24 * 3600
     mock_sub = stripe.Subscription.construct_from(
@@ -3823,8 +3865,6 @@ async def test_get_pending_subscription_change_none_when_no_schedule_or_cancel()
     """Returns None when neither a schedule nor cancel_at_period_end is set."""
     import time as time_mod
 
-    _clear_cache(get_pending_subscription_change)
-
     now = int(time_mod.time())
     mock_sub = stripe.Subscription.construct_from(
         {
@@ -3876,8 +3916,6 @@ async def test_get_pending_subscription_change_same_tier_yearly_to_monthly_repor
     UI can describe a cycle-only switch correctly (pending_tier == current tier
     would otherwise look like a no-op or a confusing same-tier "downgrade")."""
     import time as time_mod
-
-    _clear_cache(get_pending_subscription_change)
 
     now = int(time_mod.time())
     period_end = now + 200 * 24 * 3600
@@ -4583,8 +4621,6 @@ async def test_get_pending_subscription_change_raises_when_price_lookups_fail():
     @cached wrapper doesn't store None and hide pending changes for 30s."""
     from backend.data.credit import PendingChangeUnknown
 
-    _clear_cache(get_pending_subscription_change)
-
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
 
@@ -4613,7 +4649,6 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
     """If schedule.release succeeds but cancel_at_period_end clear fails, the
     cache must still be invalidated — otherwise the UI shows a stale pending
     banner for up to 30s even though the schedule was actually released."""
-    _clear_cache(get_pending_subscription_change)
 
     mock_user = MagicMock()
     mock_user.stripe_customer_id = "cus_abc"
@@ -4653,14 +4688,15 @@ async def test_release_pending_subscription_schedule_invalidates_cache_on_partia
             new_callable=AsyncMock,
             side_effect=stripe.APIConnectionError("transient Stripe error"),
         ),
-        patch.object(
-            get_pending_subscription_change, "cache_delete"
+        patch(
+            "backend.data.credit.invalidate_pending_subscription_change",
+            new_callable=AsyncMock,
         ) as mock_cache_delete,
     ):
         with pytest.raises(stripe.APIConnectionError):
             await release_pending_subscription_schedule("user-partial")
 
-        mock_cache_delete.assert_called_once_with("user-partial")
+        mock_cache_delete.assert_awaited_once_with("cus_abc")
 
 
 # ─── TOP_UP vs GRANT routing ─────────────────────────────────────────────
