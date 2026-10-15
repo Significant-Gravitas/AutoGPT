@@ -42,10 +42,20 @@ export const options = {
   scenarios: buildScenarios(profile, journeys),
   thresholds: buildThresholds(profile, journeys),
   setupTimeout: `${
-    Number.parseInt(authSetupTimeout(), 10) + Number.parseInt(seedSetupTimeout(), 10)
+    Number.parseInt(authSetupTimeout(), 10) +
+    Number.parseInt(seedSetupTimeout(), 10)
   }s`,
   teardownTimeout: "120s",
-  summaryTrendStats: ["count", "avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
+  summaryTrendStats: [
+    "count",
+    "avg",
+    "min",
+    "med",
+    "p(90)",
+    "p(95)",
+    "p(99)",
+    "max",
+  ],
   userAgent: "autogpt-load-tests/2 (workload)",
 };
 
@@ -62,7 +72,9 @@ export function setup() {
   const auth = setupAuth();
   const data = seedRun(auth, journeys);
   setupDuration.add(Date.now() - started);
-  console.log(`workload: setup took ${Math.round((Date.now() - started) / 1000)}s`);
+  console.log(
+    `workload: setup took ${Math.round((Date.now() - started) / 1000)}s`,
+  );
   return data;
 }
 

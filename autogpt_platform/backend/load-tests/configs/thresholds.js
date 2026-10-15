@@ -88,7 +88,9 @@ export function buildThresholds(profile, journeys) {
   for (const name of Object.keys(CUSTOM_SLOS)) {
     const slo = CUSTOM_SLOS[name];
     if (!enabledFor(slo, journeys)) continue;
-    thresholds[`${name}{phase:steady}`] = [`p(95)<${Math.round(slo.p95 * scale)}`];
+    thresholds[`${name}{phase:steady}`] = [
+      `p(95)<${Math.round(slo.p95 * scale)}`,
+    ];
   }
   for (const name of Object.keys(CUSTOM_RATES)) {
     const slo = CUSTOM_RATES[name];
@@ -99,7 +101,9 @@ export function buildThresholds(profile, journeys) {
     // An open-model scenario drops iterations when every VU is busy, which
     // means the target could not take the offered rate.
     thresholds[`dropped_iterations{scenario:${name}}`] = ["count==0"];
-    thresholds[`iteration_duration{scenario:${name}}`] = [`p(95)<${120000 * scale}`];
+    thresholds[`iteration_duration{scenario:${name}}`] = [
+      `p(95)<${120000 * scale}`,
+    ];
   }
   return thresholds;
 }

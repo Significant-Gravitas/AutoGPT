@@ -37,7 +37,9 @@ function whole(raw, fallback, min, max) {
   if (raw === undefined || raw === "") return fallback;
   const n = Number(raw);
   if (!Number.isInteger(n) || n < min || n > max) {
-    throw new Error(`Expected a whole number from ${min} to ${max}, got "${raw}"`);
+    throw new Error(
+      `Expected a whole number from ${min} to ${max}, got "${raw}"`,
+    );
   }
   return n;
 }
@@ -45,24 +47,38 @@ function whole(raw, fallback, min, max) {
 // For options.setupTimeout: a request per seeded object, a wait for the
 // seed runs, and a probe turn.
 export function seedSetupTimeout() {
-  const perAccount = 2 + SEED_GRAPHS * (2 + SEED_RUNS) + SEED_SESSIONS + SEED_TURNS_PER_ACCOUNT;
+  const perAccount =
+    2 + SEED_GRAPHS * (2 + SEED_RUNS) + SEED_SESSIONS + SEED_TURNS_PER_ACCOUNT;
   return `${120 + Math.ceil((accountCount() * perAccount * 1500 + SEED_RUN_WAIT_MS) / 1000)}s`;
 }
 
 function request(method, path, headers, body, expected) {
-  const res = http.request(method, `${API}${path}`, body === undefined ? null : JSON.stringify(body), {
-    headers,
-    tags: { name: `/api${path.split("?")[0].replace(/[0-9a-f-]{36}/g, "{id}")}`, phase: "setup" },
-    responseCallback: http.expectedStatuses(...(expected || [200])),
-    timeout: "60s",
-  });
+  const res = http.request(
+    method,
+    `${API}${path}`,
+    body === undefined ? null : JSON.stringify(body),
+    {
+      headers,
+      tags: {
+        name: `/api${path.split("?")[0].replace(/[0-9a-f-]{36}/g, "{id}")}`,
+        phase: "setup",
+      },
+      responseCallback: http.expectedStatuses(...(expected || [200])),
+      timeout: "60s",
+    },
+  );
   let json = null;
   try {
     json = res.json();
   } catch (e) {
     json = null;
   }
-  return { res, status: res.status, ok: (expected || [200]).includes(res.status), json };
+  return {
+    res,
+    status: res.status,
+    ok: (expected || [200]).includes(res.status),
+    json,
+  };
 }
 
 function detail(result) {
@@ -94,7 +110,12 @@ export function seedRun(auth, journeys) {
   const pendingRuns = [];
   for (let i = 0; i < auth.auth.length; i++) {
     const headers = accountHeaders(auth, i);
-    const account = { index: i, graphs: [], libraryAgentIds: [], sessionIds: [] };
+    const account = {
+      index: i,
+      graphs: [],
+      libraryAgentIds: [],
+      sessionIds: [],
+    };
     data.accounts.push(account);
 
     if (wants("graph_run") || wants("library_browse")) {
@@ -103,7 +124,9 @@ export function seedRun(auth, journeys) {
         const spec = seedGraph(runId, i + 1, g);
         const created = request("POST", "/graphs", headers, spec.body);
         if (!created.ok) {
-          console.warn(`seed: creating graph ${g + 1} for account ${i + 1} failed: ${detail(created)}`);
+          console.warn(
+            `seed: creating graph ${g + 1} for account ${i + 1} failed: ${detail(created)}`,
+          );
           continue;
         }
         seedGraphs.add(1);
@@ -113,7 +136,11 @@ export function seedRun(auth, journeys) {
           inputs: spec.inputs,
           libraryAgentId: null,
         };
-        const library = request("GET", `/library/agents/by-graph/${graph.graphId}`, headers);
+        const library = request(
+          "GET",
+          `/library/agents/by-graph/${graph.graphId}`,
+          headers,
+        );
         if (library.ok && library.json && library.json.id) {
           graph.libraryAgentId = library.json.id;
           account.libraryAgentIds.push(library.json.id);
@@ -125,7 +152,10 @@ export function seedRun(auth, journeys) {
           "POST",
           "/library/agents",
           headers,
-          { store_listing_version_id: data.store.listingVersionId, source: "marketplace" },
+          {
+            store_listing_version_id: data.store.listingVersionId,
+            source: "marketplace",
+          },
           [200, 201],
         );
         if (added.ok && added.json && added.json.id) {
@@ -134,7 +164,8 @@ export function seedRun(auth, journeys) {
         }
       }
       const credits = request("GET", "/credits", headers);
-      if (credits.ok && credits.json) seedCredits.add(Number(credits.json.credits) || 0);
+      if (credits.ok && credits.json)
+        seedCredits.add(Number(credits.json.credits) || 0);
     }
 
     if (wants("graph_run") && data.graphs.enabled) {
@@ -155,11 +186,17 @@ export function seedRun(auth, journeys) {
             break;
           }
           if (!started.ok || !started.json || !started.json.id) {
-            console.warn(`seed: starting a run of ${graph.graphId} failed: ${detail(started)}`);
+            console.warn(
+              `seed: starting a run of ${graph.graphId} failed: ${detail(started)}`,
+            );
             continue;
           }
           seedRuns.add(1);
-          pendingRuns.push({ headers, graphId: graph.graphId, execId: started.json.id });
+          pendingRuns.push({
+            headers,
+            graphId: graph.graphId,
+            execId: started.json.id,
+          });
         }
         if (!data.graphs.enabled) break;
       }
@@ -167,14 +204,24 @@ export function seedRun(auth, journeys) {
 
     if (wants("copilot_reads") || wants("copilot_turn")) {
       for (let s = 0; s < SEED_SESSIONS; s++) {
-        const created = request("POST", "/chat/sessions", headers, {}, [200, 402]);
+        const created = request(
+          "POST",
+          "/chat/sessions",
+          headers,
+          {},
+          [200, 402],
+        );
         if (created.status === 402) {
           data.copilot.reason = `the target paywalls new accounts (${detail(created)})`;
-          console.warn(`seed: creating chat sessions for account ${i + 1} refused: ${detail(created)}`);
+          console.warn(
+            `seed: creating chat sessions for account ${i + 1} refused: ${detail(created)}`,
+          );
           break;
         }
         if (!created.ok || !created.json || !created.json.id) {
-          console.warn(`seed: creating a chat session for account ${i + 1} failed: ${detail(created)}`);
+          console.warn(
+            `seed: creating a chat session for account ${i + 1} failed: ${detail(created)}`,
+          );
           continue;
         }
         seedSessions.add(1);
@@ -194,7 +241,9 @@ export function seedRun(auth, journeys) {
     `seed: ${data.accounts.length} accounts; store agents ${data.store.agents.length}, skills ${
       data.store.skillsAvailable ? data.store.skillSlugs.length : "unavailable"
     }; graph runs ${data.graphs.enabled ? "on" : `off (${data.graphs.reason})`}; copilot turns ${
-      data.copilot.enabled ? "on (dummy engine confirmed)" : `off (${data.copilot.reason})`
+      data.copilot.enabled
+        ? "on (dummy engine confirmed)"
+        : `off (${data.copilot.reason})`
     }`,
   );
   return data;
@@ -204,8 +253,15 @@ export function seedRun(auth, journeys) {
 // than enough for a run's worth of zero-cost blocks.
 function fundAccount(headers) {
   for (const step of ["AGENT_NEW_RUN", "ONBOARDING_COMPLETE"]) {
-    const res = request("POST", `/onboarding/step?step=${step}`, headers, undefined, [200, 400, 409]);
-    if (!res.ok) console.warn(`seed: onboarding step ${step} answered ${detail(res)}`);
+    const res = request(
+      "POST",
+      `/onboarding/step?step=${step}`,
+      headers,
+      undefined,
+      [200, 400, 409],
+    );
+    if (!res.ok)
+      console.warn(`seed: onboarding step ${step} answered ${detail(res)}`);
   }
 }
 
@@ -218,7 +274,11 @@ function discoverStore(headers) {
     skillsAvailable: false,
     listingVersionId: null,
   };
-  const agents = request("GET", "/store/agents?page=1&page_size=20&sorted_by=runs", {});
+  const agents = request(
+    "GET",
+    "/store/agents?page=1&page_size=20&sorted_by=runs",
+    {},
+  );
   if (agents.ok && agents.json && Array.isArray(agents.json.agents)) {
     store.agents = agents.json.agents
       .filter((a) => a.creator && a.slug && a.creator !== "Needs Profile")
@@ -233,20 +293,37 @@ function discoverStore(headers) {
       `/store/agents/${encodeURIComponent(first.creator)}/${encodeURIComponent(first.slug)}`,
       {},
     );
-    if (page.ok && page.json) store.listingVersionId = page.json.store_listing_version_id || null;
+    if (page.ok && page.json)
+      store.listingVersionId = page.json.store_listing_version_id || null;
   } else {
-    console.warn("seed: the target's store has no agents; the store journey reads empty lists");
+    console.warn(
+      "seed: the target's store has no agents; the store journey reads empty lists",
+    );
   }
   // The skills catalogue sits behind a feature flag evaluated per user.
-  const skills = request("GET", "/store/skills?page=1&page_size=50", headers, undefined, [200, 404]);
-  if (skills.status === 200 && skills.json && Array.isArray(skills.json.skills)) {
+  const skills = request(
+    "GET",
+    "/store/skills?page=1&page_size=50",
+    headers,
+    undefined,
+    [200, 404],
+  );
+  if (
+    skills.status === 200 &&
+    skills.json &&
+    Array.isArray(skills.json.skills)
+  ) {
     store.skillsAvailable = true;
     store.skillSlugs = skills.json.skills.map((s) => s.slug).filter(Boolean);
     if (store.skillSlugs.length === 0) {
-      console.warn("seed: the target's skills catalogue is empty; the store journey reads the list only");
+      console.warn(
+        "seed: the target's skills catalogue is empty; the store journey reads the list only",
+      );
     }
   } else {
-    console.warn(`seed: skills are not available on the target (${detail(skills)}); the store journey skips them`);
+    console.warn(
+      `seed: skills are not available on the target (${detail(skills)}); the store journey skips them`,
+    );
   }
   return store;
 }
@@ -262,7 +339,11 @@ function waitForRuns(pending, data) {
     sleep(2);
     const still = [];
     for (const run of open) {
-      const res = request("GET", `/graphs/${run.graphId}/executions/${run.execId}`, run.headers);
+      const res = request(
+        "GET",
+        `/graphs/${run.graphId}/executions/${run.execId}`,
+        run.headers,
+      );
       const status = res.json && res.json.status;
       if (status === "COMPLETED") completed++;
       else if (status === "FAILED" || status === "TERMINATED") failed++;
@@ -277,7 +358,9 @@ function waitForRuns(pending, data) {
       SEED_RUN_WAIT_MS / 1000
     }s (${failed} failed, ${open.length} still open): is the executor running?`;
   } else if (failed > 0 || open.length > 0) {
-    console.warn(`seed: ${completed} of ${pending.length} seed runs completed, ${failed} failed, ${open.length} still open`);
+    console.warn(
+      `seed: ${completed} of ${pending.length} seed runs completed, ${failed} failed, ${open.length} still open`,
+    );
   }
 }
 
@@ -298,7 +381,8 @@ function decideCopilot(auth, data) {
   }
   const first = data.accounts.find((a) => a.sessionIds.length > 0);
   if (!first) {
-    data.copilot.reason = "no chat session could be created to probe the engine";
+    data.copilot.reason =
+      "no chat session could be created to probe the engine";
     return;
   }
   const probe = streamTurn(first.sessionIds[0], "Reply with one word.", {
@@ -321,7 +405,10 @@ function decideCopilot(auth, data) {
   // A little history in the seeded sessions, so session reads carry messages.
   for (const account of data.accounts) {
     const headers = accountHeaders(auth, account.index);
-    for (const sessionId of account.sessionIds.slice(0, SEED_TURNS_PER_ACCOUNT)) {
+    for (const sessionId of account.sessionIds.slice(
+      0,
+      SEED_TURNS_PER_ACCOUNT,
+    )) {
       const turn = streamTurn(sessionId, "Say hello in one word.", {
         headers,
         phase: "setup",
@@ -347,6 +434,7 @@ export function seedingReport(summaryData) {
     sessions: count("seed_sessions"),
     turns: count("seed_turns"),
     library_adds: count("seed_library_adds"),
-    credits_per_account_avg: credits && credits.values ? Math.round(credits.values.avg) : null,
+    credits_per_account_avg:
+      credits && credits.values ? Math.round(credits.values.avg) : null,
   };
 }

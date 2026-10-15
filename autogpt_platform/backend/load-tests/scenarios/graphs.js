@@ -47,7 +47,10 @@ export function graphRun(data, profile) {
     return;
   }
   const phase = currentPhase(profile);
-  const random = iterationRandom(exec.scenario.name, exec.scenario.iterationInTest);
+  const random = iterationRandom(
+    exec.scenario.name,
+    exec.scenario.iterationInTest,
+  );
   const account = data.accounts[(__VU - 1) % data.accounts.length];
   const graph = pick(random, account.graphs);
   if (!graph) return;
@@ -67,7 +70,9 @@ export function graphRun(data, profile) {
   const connectAt = Date.now();
   let socket;
   try {
-    socket = new WebSocket(`${config.WS_URL}?token=${encodeURIComponent(token)}`);
+    socket = new WebSocket(
+      `${config.WS_URL}?token=${encodeURIComponent(token)}`,
+    );
   } catch (e) {
     run.error = `websocket: ${e}`;
   }
@@ -228,12 +233,16 @@ function pollUntilTerminal(data, graph, run, phase) {
   const deadline = run.executedAt + RUN_TIMEOUT_MS;
   while (Date.now() < deadline) {
     sleep(1);
-    const res = api("GET", `/graphs/${graph.graphId}/executions/${run.execId}`, {
-      data,
-      route: "/graphs/{graph_id}/executions/{graph_exec_id}",
-      endpoint: "graphs.execution_detail",
-      phase,
-    });
+    const res = api(
+      "GET",
+      `/graphs/${graph.graphId}/executions/${run.execId}`,
+      {
+        data,
+        route: "/graphs/{graph_id}/executions/{graph_exec_id}",
+        endpoint: "graphs.execution_detail",
+        phase,
+      },
+    );
     const status = res.json && res.json.status;
     if (status === "RUNNING" && run.startedAt === null) {
       run.startedAt = Date.now();

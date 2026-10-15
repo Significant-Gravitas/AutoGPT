@@ -168,7 +168,9 @@ function readAccountCount() {
 // Accounts are named after the run (RUN_ID from k6.sh, else a random tag),
 // so everything a run creates can be found under its own accounts.
 function throwawayAccounts(count) {
-  const runTag = (__ENV.RUN_ID || randomHex(4)).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const runTag = (__ENV.RUN_ID || randomHex(4))
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-");
   const accounts = [];
   for (let i = 1; i <= count; i++) {
     accounts.push({

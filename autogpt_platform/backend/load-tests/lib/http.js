@@ -36,7 +36,12 @@ export function api(method, path, options) {
     timeout: opts.timeout || "60s",
   };
   const body = opts.body === undefined ? null : JSON.stringify(opts.body);
-  const res = http.request(method, `${config.API_BASE_URL}${path}`, body, params);
+  const res = http.request(
+    method,
+    `${config.API_BASE_URL}${path}`,
+    body,
+    params,
+  );
 
   const ok = expected.includes(res.status);
   check(

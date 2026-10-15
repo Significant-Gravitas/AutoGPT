@@ -32,11 +32,11 @@ The script reads `SENTRY_AUTH_TOKEN` from the environment and nowhere else. It n
 
 ## Where things are in Sentry
 
-| Project | What it holds | Environments | `release` |
-|---|---|---|---|
-| `autogpt-server` | Backend: FastAPI routes (`/api/library/agents`, `/api/chat/sessions/{session_id}/stream`) and internal RPC services (`/update_node_execution_status`) | `app:prod-behave:cloud`, `app:dev-behave:cloud` | git sha once the backend sets it; check first |
-| `builder` | Frontend (Next.js on Vercel): `http.server` routes (`GET /api/proxy/[...path]`), `middleware GET`, `serverAction/*`, browser `pageload` and `navigation` with web vitals | `app:prod-behave:cloud` is prod; `app:preview-behave:cloud` is dev **and** every Vercel preview | git sha |
-| `autogpt-server-previews`, `builder-previews` | `!deploy` previews | `pr-<n>` | git sha |
+| Project                                       | What it holds                                                                                                                                                            | Environments                                                                                    | `release`                                     |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `autogpt-server`                              | Backend: FastAPI routes (`/api/library/agents`, `/api/chat/sessions/{session_id}/stream`) and internal RPC services (`/update_node_execution_status`)                    | `app:prod-behave:cloud`, `app:dev-behave:cloud`                                                 | git sha once the backend sets it; check first |
+| `builder`                                     | Frontend (Next.js on Vercel): `http.server` routes (`GET /api/proxy/[...path]`), `middleware GET`, `serverAction/*`, browser `pageload` and `navigation` with web vitals | `app:prod-behave:cloud` is prod; `app:preview-behave:cloud` is dev **and** every Vercel preview | git sha                                       |
+| `autogpt-server-previews`, `builder-previews` | `!deploy` previews                                                                                                                                                       | `pr-<n>`                                                                                        | git sha                                       |
 
 Check a selector has data before you measure:
 
@@ -131,15 +131,15 @@ A run over the top transactions is for spotting regressions and leads, not for c
 
 ## Exit codes
 
-| Code | Meaning |
-|---|---|
-| 0 | faster: a compared transaction got faster and nothing regressed |
-| 1 | slower or more failures: at least one compared transaction regressed |
-| 2 | usage error: bad arguments (including a `--region-url` that is not https, `--timeout` ≤ 0, or `--sample-cap` below `--min-count`), unknown project, or Sentry rejected the query (HTTP 400) |
-| 3 | no detectable change |
-| 4 | not enough data: no compared transaction met `--min-count` and `--min-traces` on both sides |
-| 5 | auth: `SENTRY_AUTH_TOKEN` missing, or Sentry rejected it (401/403) |
-| 6 | Sentry API or network error after retries, or any unexpected error; never read as a regression |
+| Code | Meaning                                                                                                                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | faster: a compared transaction got faster and nothing regressed                                                                                                                             |
+| 1    | slower or more failures: at least one compared transaction regressed                                                                                                                        |
+| 2    | usage error: bad arguments (including a `--region-url` that is not https, `--timeout` ≤ 0, or `--sample-cap` below `--min-count`), unknown project, or Sentry rejected the query (HTTP 400) |
+| 3    | no detectable change                                                                                                                                                                        |
+| 4    | not enough data: no compared transaction met `--min-count` and `--min-traces` on both sides                                                                                                 |
+| 5    | auth: `SENTRY_AUTH_TOKEN` missing, or Sentry rejected it (401/403)                                                                                                                          |
+| 6    | Sentry API or network error after retries, or any unexpected error; never read as a regression                                                                                              |
 
 With `--json`, the fields to branch on are:
 

@@ -21,7 +21,9 @@ const candidate = JSON.parse(fs.readFileSync(candidatePath, "utf8"));
 function pad(text, width, right) {
   const s = String(text);
   if (s.length >= width) return s;
-  return right ? " ".repeat(width - s.length) + s : s + " ".repeat(width - s.length);
+  return right
+    ? " ".repeat(width - s.length) + s
+    : s + " ".repeat(width - s.length);
 }
 
 function ms(value) {
@@ -84,13 +86,23 @@ if (control.profile !== candidate.profile || control.seed !== candidate.seed) {
 console.log(
   `requests ${control.totals.http_reqs} / ${candidate.totals.http_reqs}; failed ${(
     control.totals.http_req_failed_rate * 100
-  ).toFixed(2)}% / ${(candidate.totals.http_req_failed_rate * 100).toFixed(2)}%; dropped iterations ${
+  ).toFixed(
+    2,
+  )}% / ${(candidate.totals.http_req_failed_rate * 100).toFixed(2)}%; dropped iterations ${
     control.totals.dropped_iterations
   } / ${candidate.totals.dropped_iterations}`,
 );
 
-table("HTTP by endpoint (ms, steady phase)", control.http_by_endpoint, candidate.http_by_endpoint);
-table("User-facing metrics (ms, steady phase)", control.custom_metrics, candidate.custom_metrics);
+table(
+  "HTTP by endpoint (ms, steady phase)",
+  control.http_by_endpoint,
+  candidate.http_by_endpoint,
+);
+table(
+  "User-facing metrics (ms, steady phase)",
+  control.custom_metrics,
+  candidate.custom_metrics,
+);
 
 console.log("");
 console.log(

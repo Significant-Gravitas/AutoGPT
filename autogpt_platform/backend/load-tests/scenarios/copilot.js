@@ -26,7 +26,10 @@ let announcedSkip = false;
 
 export function copilotReads(data, profile) {
   const phase = currentPhase(profile);
-  const random = iterationRandom(exec.scenario.name, exec.scenario.iterationInTest);
+  const random = iterationRandom(
+    exec.scenario.name,
+    exec.scenario.iterationInTest,
+  );
   const account = data.accounts[(__VU - 1) % data.accounts.length];
 
   const list = api("GET", "/chat/sessions?limit=50&offset=0", {
@@ -46,8 +49,10 @@ export function copilotReads(data, profile) {
     phase,
   });
 
-  const listed = list.json && Array.isArray(list.json.sessions) ? list.json.sessions : [];
-  const sessionId = pick(random, account.sessionIds) || (listed[0] && listed[0].id);
+  const listed =
+    list.json && Array.isArray(list.json.sessions) ? list.json.sessions : [];
+  const sessionId =
+    pick(random, account.sessionIds) || (listed[0] && listed[0].id);
   if (sessionId) {
     api("GET", `/chat/sessions/${sessionId}?limit=50`, {
       data,
@@ -67,7 +72,10 @@ export function copilotTurn(data, profile) {
     return;
   }
   const phase = currentPhase(profile);
-  const random = iterationRandom(exec.scenario.name, exec.scenario.iterationInTest);
+  const random = iterationRandom(
+    exec.scenario.name,
+    exec.scenario.iterationInTest,
+  );
   const account = data.accounts[(__VU - 1) % data.accounts.length];
 
   // Most turns start a new chat, as most do in production; the rest continue

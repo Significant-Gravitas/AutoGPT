@@ -23,7 +23,10 @@ const SEARCH_QUERIES = [
 
 export function storeBrowse(data, profile) {
   const phase = currentPhase(profile);
-  const random = iterationRandom(exec.scenario.name, exec.scenario.iterationInTest);
+  const random = iterationRandom(
+    exec.scenario.name,
+    exec.scenario.iterationInTest,
+  );
   const store = data.store;
 
   if (store.skillsAvailable) {

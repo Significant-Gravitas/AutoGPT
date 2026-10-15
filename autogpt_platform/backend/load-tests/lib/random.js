@@ -21,7 +21,8 @@ export function hashString(text) {
 
 // mulberry32: a small, fast generator with a 32-bit state.
 export function seededRandom(seed) {
-  let state = (typeof seed === "number" ? seed : hashString(String(seed))) >>> 0;
+  let state =
+    (typeof seed === "number" ? seed : hashString(String(seed))) >>> 0;
   return function next() {
     state = (state + 0x6d2b79f5) >>> 0;
     let t = state;

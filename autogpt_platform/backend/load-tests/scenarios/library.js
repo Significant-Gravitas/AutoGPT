@@ -10,14 +10,21 @@ import { iterationRandom, pick } from "../lib/random.js";
 
 export function libraryBrowse(data, profile) {
   const phase = currentPhase(profile);
-  const random = iterationRandom(exec.scenario.name, exec.scenario.iterationInTest);
+  const random = iterationRandom(
+    exec.scenario.name,
+    exec.scenario.iterationInTest,
+  );
   const account = data.accounts[(__VU - 1) % data.accounts.length];
 
-  const list = api("GET", "/library/agents?page=1&page_size=15&sort_by=updatedAt", {
-    data,
-    endpoint: "library.list",
-    phase,
-  });
+  const list = api(
+    "GET",
+    "/library/agents?page=1&page_size=15&sort_by=updatedAt",
+    {
+      data,
+      endpoint: "library.list",
+      phase,
+    },
+  );
   api("GET", "/library/agents?search_term=load%20test&page=1&page_size=15", {
     data,
     route: "/library/agents",
@@ -25,9 +32,12 @@ export function libraryBrowse(data, profile) {
     phase,
   });
 
-  const listed = list.json && Array.isArray(list.json.agents) ? list.json.agents : [];
+  const listed =
+    list.json && Array.isArray(list.json.agents) ? list.json.agents : [];
   const agentId =
-    pick(random, account.libraryAgentIds) || (listed[0] && listed[0].id) || null;
+    pick(random, account.libraryAgentIds) ||
+    (listed[0] && listed[0].id) ||
+    null;
   if (agentId) {
     api("GET", `/library/agents/${agentId}`, {
       data,

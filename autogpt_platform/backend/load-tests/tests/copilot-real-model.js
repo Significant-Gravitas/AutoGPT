@@ -20,7 +20,10 @@ import { MESSAGES } from "../scenarios/copilot.js";
 const config = getEnvironmentConfig();
 
 const TURNS = Math.max(1, Math.min(50, Number(__ENV.COPILOT_REAL_TURNS || 5)));
-const CONCURRENCY = Math.max(1, Math.min(5, Number(__ENV.COPILOT_REAL_CONCURRENCY || 1)));
+const CONCURRENCY = Math.max(
+  1,
+  Math.min(5, Number(__ENV.COPILOT_REAL_CONCURRENCY || 1)),
+);
 const COST_PER_TURN_USD = Number(__ENV.COPILOT_REAL_COST_PER_TURN_USD || 0.1);
 const TURN_TIMEOUT = __ENV.COPILOT_TURN_TIMEOUT || "300s";
 
@@ -42,7 +45,16 @@ export const options = {
     "copilot_turn_errors{phase:steady}": ["rate<0.2"],
   },
   setupTimeout: authSetupTimeout(),
-  summaryTrendStats: ["count", "avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"],
+  summaryTrendStats: [
+    "count",
+    "avg",
+    "min",
+    "med",
+    "p(90)",
+    "p(95)",
+    "p(99)",
+    "max",
+  ],
   userAgent: "autogpt-load-tests/2 (copilot-real-model)",
 };
 

@@ -11,7 +11,16 @@ import { getEnvironmentConfig } from "../configs/environment.js";
 
 const config = getEnvironmentConfig();
 
-const TREND_STATS = ["count", "avg", "min", "med", "p(90)", "p(95)", "p(99)", "max"];
+const TREND_STATS = [
+  "count",
+  "avg",
+  "min",
+  "med",
+  "p(90)",
+  "p(95)",
+  "p(99)",
+  "max",
+];
 
 export function runId() {
   return __ENV.RUN_ID || "manual";
@@ -45,8 +54,10 @@ function trendRow(metric) {
       row[stat] = round(metric.values[stat]);
     }
   }
-  if (typeof metric.values.rate === "number") row.rate = round(metric.values.rate, 4);
-  if (typeof metric.values.passes === "number") row.passes = metric.values.passes;
+  if (typeof metric.values.rate === "number")
+    row.rate = round(metric.values.rate, 4);
+  if (typeof metric.values.passes === "number")
+    row.passes = metric.values.passes;
   if (typeof metric.values.fails === "number") row.fails = metric.values.fails;
   return row;
 }
@@ -258,7 +269,9 @@ function ms(value) {
 }
 
 function pct(rate) {
-  return rate === undefined || rate === null ? "-" : `${(rate * 100).toFixed(2)}%`;
+  return rate === undefined || rate === null
+    ? "-"
+    : `${(rate * 100).toFixed(2)}%`;
 }
 
 export function summaryOutputs(data, meta) {
