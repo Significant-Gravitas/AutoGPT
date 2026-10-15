@@ -71,6 +71,13 @@ export type ContinueOutcome =
 
 export function continueOutcome(error: unknown): ContinueOutcome {
   const failure = apiFailureOf(error);
+  if (failure?.status === 409 && failure.detail === "unsupported_connection") {
+    return {
+      kind: "failed",
+      description:
+        "This chat now runs on Microsoft 365 Copilot, which can't pick up a paused task. Switch its connection back to keep going.",
+    };
+  }
   // One turn per chat: the one already running is the one to follow.
   if (failure?.status === 409) return { kind: "running" };
   const limit =

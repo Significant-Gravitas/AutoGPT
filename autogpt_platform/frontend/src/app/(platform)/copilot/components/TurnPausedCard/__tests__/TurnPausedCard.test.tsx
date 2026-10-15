@@ -20,6 +20,15 @@ import { CopilotChatActionsProvider } from "../../CopilotChatActionsProvider/Cop
 import { CurrentPauseContext } from "../CurrentPauseContext";
 import { TurnPausedCard } from "../TurnPausedCard";
 
+const { toast } = vi.hoisted(() => ({ toast: vi.fn() }));
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/components/molecules/Toast/use-toast")
+  >()),
+  toast,
+}));
+
 vi.mock("@/services/pro-activation/useProActivation", () => ({
   useProActivation: () => ({ start: vi.fn(), isBusy: false, isReady: false }),
 }));
@@ -378,6 +387,34 @@ describe("TurnPausedCard — Keep going", () => {
 
     await waitFor(() => expect(onBackendTurn).toHaveBeenCalledOnce());
     expect(await screen.findByText("Picked back up")).toBeDefined();
+  });
+
+  it("says why when the chat now runs on Microsoft 365 Copilot", async () => {
+    backend();
+    server.use(
+      http.post("*/api/chat/sessions/:id/continue", () =>
+        HttpResponse.json(
+          { detail: "unsupported_connection" },
+          { status: 409 },
+        ),
+      ),
+    );
+    const { onBackendTurn } = renderCard(
+      pause({ reason: "task", resets_at: null }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep going" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith({
+        title: "Couldn't pick this back up",
+        description:
+          "This chat now runs on Microsoft 365 Copilot, which can't pick up a paused task. Switch its connection back to keep going.",
+        variant: "destructive",
+      }),
+    );
+    expect(onBackendTurn).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Keep going" })).toBeDefined();
   });
 
   it("turns into the budget pause when the account ran out meanwhile", async () => {
