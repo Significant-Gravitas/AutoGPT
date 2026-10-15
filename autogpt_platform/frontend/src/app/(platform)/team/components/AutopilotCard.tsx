@@ -15,6 +15,7 @@ import {
   CHIP_SHAPE,
   CHIP_SIZE,
 } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
+import { categoryTagStyle } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { CardStat, CardStats } from "./CardStats";
@@ -51,7 +52,7 @@ export function AutopilotCard({
           <AutopilotAvatar
             size={88}
             backgroundColor={AUTOPILOT_COVER_COLOR}
-            className="relative z-10 -mt-12 ml-1 rounded-full ring-4 ring-background"
+            className="relative z-10 -mt-12 ml-1 rounded-full border border-[#e3e3e3] ring-4 ring-background"
           />
         </div>
 
@@ -66,8 +67,8 @@ export function AutopilotCard({
           {/* Not a category, but it sits in the same row as the experts'
               topic tags and should not read as a different kind of thing. */}
           <span
-            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "max-w-full")}
-            style={{ color: AUTOPILOT_COVER_COLOR }}
+            className={cn(CHIP_SHAPE, CHIP_SIZE.small, "h-[22px] max-w-full")}
+            style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
             <Icon icon={SparklesIcon} size={12} className="shrink-0" />
             <span className="truncate">{AUTOPILOT_ROLE}</span>

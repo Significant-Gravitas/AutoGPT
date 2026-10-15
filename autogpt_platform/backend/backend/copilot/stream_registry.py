@@ -68,6 +68,7 @@ from .response_model import (
     StreamToolInputAvailable,
     StreamToolInputStart,
     StreamToolOutputAvailable,
+    StreamTurnPaused,
     StreamUsage,
 )
 
@@ -999,8 +1000,9 @@ async def mark_session_completed(
         session_id: Session ID to mark as completed
         error_message: If provided, marks as "failed" and publishes a
             StreamError before StreamFinish. Otherwise marks as "completed".
-        error_code: The machine-readable code of that StreamError, e.g. the
-            engine's ``usage_limit``. Subscribers name the failure from it.
+        error_code: The machine-readable code of that error. Republished
+            with it so the client can tell, say, a usage limit from a crash
+            without matching on the message text.
         skip_error_publish: If True, still marks the session as "failed" but
             does NOT publish a StreamError event. Use this for a user-initiated
             cancel, which the frontend would otherwise render as "the assistant
@@ -1354,6 +1356,7 @@ CHUNK_TYPE_TO_CLASS: dict[str, type[StreamBaseResponse]] = {
     ResponseType.FOLLOW_UP_QUEUED.value: StreamFollowUpQueued,
     ResponseType.MODE_CHANGED.value: StreamModeChanged,
     ResponseType.PROVIDER_FAILURE.value: StreamProviderFailure,
+    ResponseType.TURN_PAUSED.value: StreamTurnPaused,
     ResponseType.COMPACTION.value: StreamCompactionProgress,
     ResponseType.CHECKPOINT.value: StreamCheckpoint,
 }

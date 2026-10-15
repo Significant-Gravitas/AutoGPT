@@ -33,6 +33,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.response_model import (
@@ -56,9 +57,13 @@ from backend.util.exceptions import (
 @pytest.fixture(autouse=True)
 def no_trial_attribution(mocker):
     store = MagicMock()
-    store.get_subscription_trial = AsyncMock(return_value=None)
+    store.get_usage_activation_state = AsyncMock(
+        side_effect=lambda user_id: SimpleNamespace(
+            user_id=user_id, generation=None, trial_id=None, ready=True
+        )
+    )
     mocker.patch(
-        "backend.copilot.trial_cost_context.db_accessors.credit_db", return_value=store
+        "backend.copilot.usage_activation.pro_activation_db", return_value=store
     )
 
 
@@ -218,6 +223,7 @@ class TestExecuteAsyncScheduledTurnContext:
         def stream(**_kwargs):
             seen["unattended"] = is_unattended_turn()
             seen["pins"] = dict(turn_credential_pins())
+            seen["impersonated"] = is_turn_impersonated()
             return MagicMock()
 
         with (
@@ -260,13 +266,21 @@ class TestExecuteAsyncScheduledTurnContext:
 
         seen = await self._seen_by_the_turn(entry)
 
-        assert seen == {"unattended": True, "pins": {"exa": pin}}
+        assert seen == {"unattended": True, "pins": {"exa": pin}, "impersonated": False}
 
     @pytest.mark.asyncio
     async def test_a_typed_turn_is_watched_and_has_no_pins(self) -> None:
         seen = await self._seen_by_the_turn(_make_entry())
 
-        assert seen == {"unattended": False, "pins": {}}
+        assert seen == {"unattended": False, "pins": {}, "impersonated": False}
+
+    @pytest.mark.asyncio
+    async def test_an_impersonated_turn_is_marked_for_llm_analytics(self) -> None:
+        entry = _make_entry().model_copy(update={"impersonated": True})
+
+        seen = await self._seen_by_the_turn(entry)
+
+        assert seen["impersonated"] is True
 
 
 class TestExecuteAsyncAclose:
@@ -881,7 +895,10 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     baseline_engine.assert_not_called()
     sdk_engine.assert_not_called()
     mark_completed.assert_awaited_once_with(
-        "sess-1", error_message=expected_message, error_code=None, turn_id="turn-1"
+        "sess-1",
+        error_message=expected_message,
+        error_code=None,
+        turn_id="turn-1",
     )
 
 

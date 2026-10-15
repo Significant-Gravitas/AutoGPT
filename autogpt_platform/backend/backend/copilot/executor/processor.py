@@ -25,6 +25,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.llm_attribution import set_turn_impersonated
 from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
@@ -567,7 +568,8 @@ class CoPilotProcessor:
         last_refresh = time.monotonic()
         refresh_interval = 30.0  # Refresh lock every 30 seconds
         error_msg = None
-        error_code = None
+        # Re-published with the error: the client keys its dialogs on the code.
+        error_code: str | None = None
         credential_lease = None
         cost_context_stack = AsyncExitStack()
         scheduled_watch = ScheduledTurnWatch.for_entry(entry)
@@ -733,7 +735,7 @@ class CoPilotProcessor:
                     log.info(f"Using {'SDK' if use_sdk else 'baseline'} service")
 
             await cost_context_stack.enter_async_context(
-                trial_cost_context(entry.user_id)
+                trial_cost_context(entry.user_id, entry.cost_context)
             )
 
             # Stream chat completion and publish chunks to Redis.
@@ -743,6 +745,7 @@ class CoPilotProcessor:
             # same events as they are produced.
             envelope = taint_for_source_platform(entry.envelope, session)
             set_turn_unattended(session, scheduled=entry.unattended)
+            set_turn_impersonated(entry.impersonated)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
             raw_stream = stream_fn(

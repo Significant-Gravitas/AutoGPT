@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -229,6 +230,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
         envelope=get_current_envelope(),
+        cost_context=await capture_cost_context(user_id),
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown

@@ -151,7 +151,7 @@ describe("SettingsIntegrationsPage — list", () => {
 
     expect(
       await screen.findByText(
-        "Linear blocks in agents need their own connection.",
+        "Linear blocks in workflows need their own connection.",
       ),
     ).toBeDefined();
     expect(screen.getAllByText("For chats")).toHaveLength(2);
