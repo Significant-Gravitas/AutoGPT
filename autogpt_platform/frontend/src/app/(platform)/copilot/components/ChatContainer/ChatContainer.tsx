@@ -214,9 +214,6 @@ export const ChatContainer = ({
   const isUsageExhausted = useIsUsageLimitReached(chatAuthProvider);
   const isLimitReached = isUsageExhausted || isUsageRefused;
   const [isUsageTooltipOpen, setIsUsageTooltipOpen] = useState(false);
-  useEffect(() => {
-    if (!isLimitReached) setIsUsageTooltipOpen(false);
-  }, [isLimitReached]);
   const isInputDisabled =
     isSessionUnavailable || !!isResolvingExpertIdentity || !!isKickoffStarting;
   // A fired (archived) expert's threads stay as read-only history — the
@@ -252,6 +249,13 @@ export const ChatContainer = ({
   });
   // While a turn still runs, the limit keeps follow-ups from queueing.
   const atReset = isStreaming ? undefined : composer.atReset;
+  // Send at reset takes the paused tooltip's place. Radix reports no close
+  // for a tooltip held shut, so an open recorded then would show it, unhovered,
+  // once a turn starts: record none, and forget one Send at reset cut short.
+  const canShowUsageTooltip = Boolean(isLimitReached && !atReset);
+  useEffect(() => {
+    if (!canShowUsageTooltip) setIsUsageTooltipOpen(false);
+  }, [canShowUsageTooltip]);
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
@@ -488,11 +492,9 @@ export const ChatContainer = ({
                     />
                   )}
                   <Tooltip
-                    open={Boolean(
-                      isLimitReached && !atReset && isUsageTooltipOpen,
-                    )}
+                    open={canShowUsageTooltip && isUsageTooltipOpen}
                     onOpenChange={(open) =>
-                      setIsUsageTooltipOpen(open && isLimitReached)
+                      setIsUsageTooltipOpen(open && canShowUsageTooltip)
                     }
                   >
                     <TooltipTrigger asChild>
