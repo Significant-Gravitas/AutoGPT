@@ -153,7 +153,7 @@ export function useInstallWorkflowPicker({
         agent.slug,
       );
       if (details.status !== 200) {
-        throw new Error("Failed to fetch agent details");
+        throw new Error("Failed to fetch workflow details");
       }
       await install(targetExpert, {
         store_listing_version_id: details.data.store_listing_version_id,
