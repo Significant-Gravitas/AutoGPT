@@ -121,6 +121,10 @@ export function useActivationController() {
       } catch (error) {
         if (statusCode(error) !== 404) throw error;
       }
+      // Without an attempt id this is the lookup saying it couldn't check,
+      // not a payment in flight to wait on.
+      if (existing?.status === "processing" && !existing.id)
+        throw new Error("Activation status is unavailable");
       if (
         existing &&
         existing.status !== "confirmation_required" &&
@@ -201,7 +205,25 @@ export function useActivationController() {
     }
   }
 
-  useActivationRecovery({ userID, attempt, accept, onError: setError });
+  // The server has nothing for the attempt being checked: stop waiting on it
+  // so Start Pro can quote again.
+  function forget() {
+    latestAttempt.current = null;
+    setAttempt(null);
+    consent.current = null;
+    if (userID) storeConsent(userID, null);
+    setRetryConsent(false);
+    setError("We couldn’t find a payment in progress. You can start again.");
+  }
+
+  useActivationRecovery({
+    userID,
+    attempt,
+    checkoutReturn: checkoutReturn.current,
+    accept,
+    onError: setError,
+    onMissing: forget,
+  });
   return {
     attempt,
     isOpen,

@@ -104,6 +104,22 @@ beforeEach(() => {
 });
 
 describe("Pro activation", () => {
+  it("reads a lookup that couldn't check as an error, not a payment in flight", async () => {
+    server.use(
+      http.get(`${base}/current`, () =>
+        HttpResponse.json({ status: "processing", retry_after_seconds: 3 }),
+      ),
+    );
+    mount();
+    fireEvent.click(screen.getByText("Upgrade"));
+    await screen.findByText(
+      "We couldn’t load your upgrade details. Please try again before confirming payment.",
+    );
+    expect(screen.queryByText(/We’re confirming your payment/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeDefined();
+    expect(preview).not.toHaveBeenCalled();
+  });
+
   it.each([
     { usage_reset: false },
     { usage_reset: true },
@@ -263,7 +279,7 @@ describe("Pro activation", () => {
   });
 
   it.each(["processing", "payment_required", "action_required", "failed"])(
-    "ignores unsolicited recovered %s outside an activation flow",
+    "makes no recovery lookup for an unsolicited %s outside an activation flow",
     async (status) => {
       const current = vi.fn();
       server.use(
@@ -273,8 +289,10 @@ describe("Pro activation", () => {
         }),
       );
       mount();
-      await waitFor(() => expect(current).toHaveBeenCalledTimes(1));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Only a payment being resumed can use the answer, so a plain page
+      // load doesn't ask.
+      expect(current).not.toHaveBeenCalled();
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(screen.getByText("allowance waiting")).toBeDefined();
       expect(confirm).not.toHaveBeenCalled();
@@ -361,7 +379,7 @@ describe("Pro activation", () => {
   });
 
   it.each(["PRO", "MAX", "NO_TIER"])(
-    "ignores a historical completed activation for current %s customers",
+    "makes no recovery lookup for a historical activation of current %s customers",
     async (tier) => {
       const readUsage = vi.fn();
       const current = vi.fn();
@@ -387,8 +405,10 @@ describe("Pro activation", () => {
         }),
       );
       mount();
-      await waitFor(() => expect(current).toHaveBeenCalledTimes(1));
-      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Only a payment being resumed can use the answer, so a plain page
+      // load doesn't ask.
+      expect(current).not.toHaveBeenCalled();
       expect(readUsage).not.toHaveBeenCalled();
       expect(screen.queryByRole("dialog")).toBeNull();
       expect(screen.queryByText("allowance ready")).toBeNull();
@@ -396,6 +416,11 @@ describe("Pro activation", () => {
   );
 
   it("ignores a stale mount recovery response after an explicit newer upgrade", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/settings/billing?subscription=success",
+    );
     let releaseOld: () => void = () => {};
     const pending = new Promise<void>((resolve) => {
       releaseOld = resolve;
