@@ -604,6 +604,28 @@ class TestChoiceButtons:
         adapter._on_message_callback.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_a_card_click_that_fails_tells_the_clicker_to_retry(self, adapter):
+        # The click runs as a detached task, so an error that escapes it is
+        # seen by nobody.
+        adapter._on_message_callback = AsyncMock()
+        adapter._api.answer_card = AsyncMock(side_effect=RuntimeError("rpc down"))
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "channel": {"id": "C1"},
+            "user": {"id": "U9"},
+            "container": {"type": "message", "message_ts": "111.222"},
+            "actions": [{"action_id": "appr:abcdef012345:0"}],
+        }
+
+        await adapter._dispatch_block_action(payload)
+
+        told = adapter._clients["T1"].chat_postEphemeral.await_args.kwargs["text"]
+        assert "Try again" in told
+        adapter._clients["T1"].chat_update.assert_not_awaited()
+        adapter._on_message_callback.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_malformed_action_id_is_a_no_op(self, adapter):
         adapter._on_message_callback = AsyncMock()
         payload = {

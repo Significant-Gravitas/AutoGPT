@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Tick02Icon } from "@hugeicons/core-free-icons";
+import { PencilEdit02Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { useEffect, useRef } from "react";
 import { isKey } from "@/lib/keyboard";
 
@@ -13,9 +13,9 @@ interface Props {
   labelId: string;
   focusActiveOption: boolean;
   onChange: (value: string) => void;
-  /** A pointer or tap choice, as opposed to `onChange`, which the arrow keys
-   *  fire too while the user is only browsing the group. */
-  onPick: (value: string) => void;
+  /** Copies the option into free text, for an answer that is close but not
+   *  quite right as written. */
+  onEdit: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -28,7 +28,7 @@ export function QuestionOptionList({
   labelId,
   focusActiveOption,
   onChange,
-  onPick,
+  onEdit,
   onSubmit,
 }: Props) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -49,8 +49,6 @@ export function QuestionOptionList({
     // tabbing past the pager to reach send. Selecting first means tabbing in
     // and hitting Enter can't submit an option nobody chose — and arrowing or
     // clicking already selects, so those reach the pager on the first Enter.
-    // Space reaches the native button's click the same way, so it only selects,
-    // like the arrows do, leaving a pointer click the one thing that advances.
     if (isKey(event, "Enter")) {
       event.preventDefault();
       if (options[index] === value.trim()) onSubmit();
@@ -82,29 +80,39 @@ export function QuestionOptionList({
       {options.map((option, index) => {
         const isSelected = option === value.trim();
         return (
-          <button
-            key={option}
-            ref={(element) => {
-              refs.current[index] = element;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={isSelected}
-            tabIndex={index === active ? 0 : -1}
-            onClick={() => onPick(option)}
-            onKeyDown={(event) => handleKeyDown(event, index)}
-            className={
-              "flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left text-base leading-snug transition-all " +
-              (isSelected
-                ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
-                : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100")
-            }
-          >
-            <span>{option}</span>
-            {isSelected && (
-              <Icon icon={Tick02Icon} size={16} className="shrink-0" />
-            )}
-          </button>
+          <div key={option} className="relative">
+            <button
+              ref={(element) => {
+                refs.current[index] = element;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={isSelected}
+              tabIndex={index === active ? 0 : -1}
+              onClick={() => onChange(option)}
+              onKeyDown={(event) => handleKeyDown(event, index)}
+              className={
+                "flex w-full items-center justify-between gap-3 rounded-2xl py-3 pl-4 pr-12 text-left text-base leading-snug transition-all " +
+                (isSelected
+                  ? "bg-white text-zinc-900 ring-2 ring-zinc-800"
+                  : "bg-zinc-50 text-zinc-700 ring-1 ring-zinc-100 hover:bg-zinc-100")
+              }
+            >
+              <span>{option}</span>
+              {isSelected && (
+                <Icon icon={Tick02Icon} size={16} className="shrink-0" />
+              )}
+            </button>
+            <button
+              type="button"
+              aria-label={`Edit ${option}`}
+              title="Edit before sending"
+              onClick={() => onEdit(option)}
+              className="absolute right-2 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-400 transition-colors hover:bg-zinc-200/60 hover:text-zinc-700"
+            >
+              <Icon icon={PencilEdit02Icon} size={16} />
+            </button>
+          </div>
         );
       })}
     </div>
