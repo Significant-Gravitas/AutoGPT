@@ -198,7 +198,7 @@ async def sdk_service_turn(
         ),
         "resolve_answered": AsyncMock(return_value=held_results or []),
         "build_session_context": AsyncMock(return_value=""),
-        "build_skills_context": AsyncMock(return_value=""),
+        "skills_context_block": AsyncMock(return_value=None),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
         "build_turn_budget_block": AsyncMock(return_value=""),
         "persist_and_record_usage": AsyncMock(),

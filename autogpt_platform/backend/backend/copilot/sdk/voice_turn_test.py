@@ -183,7 +183,7 @@ async def _run_engine(
         (f"{_SVC}.build_turn_budget_block", dict(new=AsyncMock(return_value=""))),
         (f"{_SVC}.build_skills_update_notice", dict(new=AsyncMock(return_value=""))),
         (f"{_SVC}.persist_and_record_usage", dict(new_callable=AsyncMock)),
-        (f"{_SVC}._rebuild_first_turn_prefix", dict(new=AsyncMock(return_value=""))),
+        (f"{_SVC}._rebuild_first_turn_context", dict(new=AsyncMock(return_value=[]))),
         # Only a second user row, the duplicate this file guards, reaches it.
         (f"{_SVC}.persist_session_safe", dict(side_effect=_persisted)),
     ]

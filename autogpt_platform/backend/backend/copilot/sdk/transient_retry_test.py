@@ -491,8 +491,8 @@ class _Turn:
             # under test.
             for name, value in (
                 ("build_skills_update_notice", None),
-                ("build_session_context", ""),
-                ("inject_user_context", None),
+                ("_first_turn_context_blocks", []),
+                ("inject_context_blocks", None),
                 ("resolve_answered", []),
                 ("drain_pending_for_persist", []),
             ):

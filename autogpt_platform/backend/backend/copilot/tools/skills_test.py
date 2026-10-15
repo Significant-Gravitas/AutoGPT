@@ -66,7 +66,7 @@ from backend.copilot.tools.skills import (
     parse_skill_markdown,
     read_user_skill_package,
     render_skill_markdown,
-    render_skills_index,
+    skills_index_entries,
     store_user_skill,
     store_user_skills,
     validate_package,
@@ -197,12 +197,12 @@ def test_default_skills_load_from_disk():
         assert len(skill.body) > 100
 
 
-def test_render_skills_index_includes_name_and_description():
+def test_skills_index_entries_include_name_and_description():
     skills = [
         ParsedSkill(name="a", description="alpha desc", body=""),
         ParsedSkill(name="b", description="beta desc", body="", triggers=("x", "y")),
     ]
-    index = render_skills_index(skills)
+    index = "\n".join(skills_index_entries(skills))
     # ``name:`` prefix anchors the slug for the model to round-trip into
     # ``read_skill(name=...)``.
     assert "- name: a — alpha desc" in index
@@ -212,11 +212,11 @@ def test_render_skills_index_includes_name_and_description():
     assert "— triggers: x, y" in index
 
 
-def test_render_skills_index_empty_returns_empty_string():
-    """An empty registry must yield ``""`` so ``inject_user_context``
-    omits the ``<available_skills>`` block entirely — preventing a
-    zero-content tag from eating tokens for no reason."""
-    assert render_skills_index([]) == ""
+def test_skills_index_entries_empty_returns_no_entries():
+    """An empty registry has no entries, so the ``<available_skills>``
+    block is left out entirely — preventing a zero-content tag from
+    eating tokens for no reason."""
+    assert skills_index_entries([]) == []
 
 
 def test_description_length_cap_enforced_by_validate_path():

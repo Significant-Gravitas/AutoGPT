@@ -176,8 +176,8 @@ async def _run_turn(session, prompt, tmp_path, env, client, upload, download):
             patch(f"{_SVC}.create_security_hooks", return_value=MagicMock())
         )
         for name, value in (
-            ("inject_user_context", None),
-            ("build_session_context", ""),
+            ("_first_turn_context_blocks", []),
+            ("inject_context_blocks", None),
         ):
             stack.enter_context(
                 patch(f"{_SVC}.{name}", new_callable=AsyncMock, return_value=value)

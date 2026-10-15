@@ -1224,7 +1224,7 @@ async def update_message_content_by_sequence(
     to a message that was already saved to the DB.
 
     Authorization note: session_id is a high-entropy UUID generated at session
-    creation time.  Callers (inject_user_context) only receive a session_id
+    creation time.  Callers (inject_context_blocks) only receive a session_id
     after the service layer has already validated that the requesting user owns
     the session, so a userId join is not required here.
 

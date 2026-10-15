@@ -356,8 +356,8 @@ async def test_context_size_retry_keeps_hooks_env_and_live_prompt(
             extra_patches=_launch_patches()
             + [
                 (
-                    f"{_SVC}._rebuild_first_turn_prefix",
-                    dict(new_callable=AsyncMock, return_value=""),
+                    f"{_SVC}._rebuild_first_turn_context",
+                    dict(new_callable=AsyncMock, return_value=[]),
                 )
             ],
             config_overrides=_LIVE_PROMPT,

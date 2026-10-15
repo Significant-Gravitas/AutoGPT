@@ -74,8 +74,8 @@ async def test_a_context_retry_after_the_restart_keeps_the_guide(tmp_path, caplo
                     dict(side_effect=_builder_suffix),
                 ),
                 (
-                    f"{_SVC}._rebuild_first_turn_prefix",
-                    dict(new_callable=AsyncMock, return_value=""),
+                    f"{_SVC}._rebuild_first_turn_context",
+                    dict(new_callable=AsyncMock, return_value=[]),
                 ),
                 (f"{_SVC}._build_query_message", dict(new=_record_build)),
             ],
