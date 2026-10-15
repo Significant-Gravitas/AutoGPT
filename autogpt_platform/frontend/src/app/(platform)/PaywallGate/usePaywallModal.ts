@@ -50,6 +50,8 @@ const PLAN_LABEL: Record<string, string> = {
 function deriveAvailablePlans(
   tierCosts: Record<string, number> | undefined,
   tierCostsYearly: Record<string, number> | undefined,
+  multipliers: Record<string, number> | undefined,
+  currentTier: string | undefined,
 ): PlanDef[] {
   if (!tierCosts) return [];
   return TIER_DISPLAY_ORDER.filter(
@@ -59,6 +61,14 @@ function deriveAvailablePlans(
     const yearlyCents = tierCostsYearly?.[tier];
     return {
       ...PLAN_METADATA[tier],
+      cta:
+        currentTier === "NO_TIER" && tier !== "BUSINESS"
+          ? `Start ${PLAN_METADATA[tier].name}`
+          : PLAN_METADATA[tier].cta,
+      usage:
+        tier === "MAX" && multipliers?.MAX && multipliers?.PRO
+          ? `${Math.round((multipliers.MAX / multipliers.PRO) * 10) / 10}x`
+          : null,
       usdMonthly: monthlyCents / 100,
       usdYearly: typeof yearlyCents === "number" ? yearlyCents / 100 : null,
     };
@@ -110,6 +120,8 @@ export function usePaywallModal() {
   const plans = deriveAvailablePlans(
     subscription?.tier_costs,
     subscription?.tier_costs_yearly,
+    subscription?.tier_multipliers,
+    subscription?.tier,
   );
 
   // Trial checkout returns to /settings/billing, which renders the trial
@@ -193,6 +205,10 @@ export function usePaywallModal() {
       window.open(TEAM_INTAKE_FORM_URL, "_blank", "noopener,noreferrer");
       return;
     }
+    if (tier === "MAX" && subscription?.tier === "PRO") {
+      router.replace("/settings/billing?upgrade=MAX");
+      return;
+    }
     // Active Stripe sub → modify-in-place hits saved-card auto-charge; no
     // Stripe Checkout opens, so the click would otherwise be a silent
     // re-bill / refund. Stage the tier behind the confirmation dialog.
@@ -246,6 +262,7 @@ export function usePaywallModal() {
     confirmPendingTier,
     cancelPendingTier,
     handleLogout,
+    handleClose: () => router.replace("/settings/billing"),
     trial,
     trialOffer,
   };

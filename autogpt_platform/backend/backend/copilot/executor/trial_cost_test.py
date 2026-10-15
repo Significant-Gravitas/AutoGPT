@@ -22,7 +22,14 @@ from backend.copilot.trial_cost_context import get_trial_cost_context
 async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
     trial = SimpleNamespace(id="trial-1", active=True, consumed_at=True)
     store = MagicMock()
-    store.get_subscription_trial = AsyncMock(return_value=trial)
+    store.get_usage_activation_state = AsyncMock(
+        side_effect=lambda user_id: SimpleNamespace(
+            user_id=user_id,
+            ready=True,
+            generation=None if trial.active else "paid-1",
+            trial_id=trial.id if trial.active else None,
+        )
+    )
     store.record_subscription_trial_cost = AsyncMock()
     tier = AsyncMock(return_value=SubscriptionTier.TRIAL)
     release = asyncio.Event()
@@ -47,6 +54,7 @@ async def test_delayed_trial_cost_and_later_paid_turn_are_separate(use_sdk):
     )
     with (
         patch("backend.data.db_accessors.credit_db", return_value=store),
+        patch("backend.copilot.usage_activation.pro_activation_db", return_value=store),
         patch("backend.copilot.rate_limit.credit_db", return_value=store),
         patch("backend.copilot.rate_limit._fetch_user_tier", tier),
         patch("backend.copilot.rate_limit.get_redis_async", AsyncMock()),
