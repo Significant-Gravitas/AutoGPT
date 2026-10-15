@@ -88,7 +88,7 @@ describe("new full-page expert chats", () => {
     const onSend = vi.fn();
     render(<ChatContainer {...props} onSend={onSend} />);
     expect(await screen.findByText("What topic?")).toBeDefined();
-    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip questions" }));
     await waitFor(() =>
       expect(onSend).toHaveBeenCalledWith(
         "Let's skip the setup questions for now.",

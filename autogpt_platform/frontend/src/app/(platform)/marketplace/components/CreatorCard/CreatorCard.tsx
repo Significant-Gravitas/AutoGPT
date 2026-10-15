@@ -56,7 +56,7 @@ export function CreatorCard({
 
       {/* Stats */}
       <Text variant="body" className="absolute bottom-4 left-4 text-zinc-500">
-        {agentsUploaded} {agentsUploaded === 1 ? "agent" : "agents"}
+        {agentsUploaded} {agentsUploaded === 1 ? "workflow" : "workflows"}
       </Text>
     </button>
   );

@@ -96,10 +96,14 @@ def format_amount(minor_units: int | None, currency: str) -> str:
     aren't."""
     if minor_units is None:
         return "Not available"
-    symbol = {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
+    symbol = currency_symbol(currency)
     if currency.lower() in _ZERO_DECIMAL_CURRENCIES:
         return f"{symbol}{minor_units:,}"
     return f"{symbol}{minor_units / 100:,.2f}"
+
+
+def currency_symbol(currency: str) -> str:
+    return {"usd": "$", "eur": "€", "gbp": "£"}.get(currency.lower(), "")
 
 
 def format_date(timestamp: int | None) -> str:
