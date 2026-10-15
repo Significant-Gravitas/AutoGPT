@@ -25,6 +25,7 @@ class TestFailureReply:
     """It used to be one fixed sentence for every cause, with nothing to act on
     or search for (Discord, 2026-09-15 and 2026-09-16)."""
 
+    @pytest.mark.xfail(strict=True, reason="the circuit breaker is called a step limit")
     @pytest.mark.asyncio
     async def test_backend_error_names_the_cause_with_a_reference(self):
         adapter = _adapter()
@@ -39,7 +40,8 @@ class TestFailureReply:
             )
 
         reply = adapter.send_message.await_args.args[1]
-        assert "the task hit its step limit" in reply
+        assert "a step was too large to complete" in reply
+        assert "Break your request into smaller parts" in reply
         assert re.search(r"\(ref [0-9a-f]{8}\)$", reply)
 
     @pytest.mark.asyncio
