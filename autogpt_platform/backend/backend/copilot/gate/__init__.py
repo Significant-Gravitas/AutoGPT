@@ -272,54 +272,38 @@ async def _rule(
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
-    held_as = Ruling(
-        allowed=False, effect=effect, code="", rule_key=rule_key, subject=subject
+    held_as = partial(
+        Ruling, allowed=False, effect=effect, rule_key=rule_key, subject=subject
     )
     spend = None
     if effect in METERED and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling(user_id)
     if hit and rule in ("ask", "unreadable"):
-        return held_as.model_copy(
-            update={"reason": hit.reason, "reason_kind": "rule", "code": f"rule_{rule}"}
-        )
+        return held_as(reason=hit.reason, reason_kind="rule", code=f"rule_{rule}")
     if spend is not None:
         reason = (
             f"costs about {_dollars(estimate)}, and this chat has spent "
             f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; approving "
             f"adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
         )
-        return held_as.model_copy(
-            update={
-                "reason": reason,
-                "reason_kind": "spend",
-                "code": "spend_ceiling",
-                "spend": _spend_shown(estimate, *spend),
-            }
+        return held_as(
+            reason=reason,
+            reason_kind="spend",
+            code="spend_ceiling",
+            spend=_spend_shown(estimate, *spend),
         )
     if verdict is Verdict.RUN:
         code = "rule_allow" if rule == "allow" else "mode_run"
         return Ruling(allowed=True, effect=effect, code=code)
     if verdict is Verdict.ASK and subject is not None and subject.reason:
-        return held_as.model_copy(
-            update={
-                "reason": subject.reason,
-                "reason_kind": "subject",
-                "code": "subject_ask",
-            }
-        )
+        return held_as(reason=subject.reason, reason_kind="subject", code="subject_ask")
     if verdict is Verdict.ASK:
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
-        return held_as.model_copy(update={"reason": reason, "code": "mode_ask"})
+        return held_as(reason=reason, code="mode_ask")
     files = await context_of() if context_of is not None else None
     if unread := [path for path, text in (files or {}).items() if text is None]:
         reason = f"Could not read {', '.join(unread)}, so this could not be checked."
-        return held_as.model_copy(
-            update={
-                "reason": reason,
-                "reason_kind": "supervisor",
-                "code": "files_unreadable",
-            }
-        )
+        return held_as(reason=reason, reason_kind="supervisor", code="files_unreadable")
     judgement = await supervise(
         tool_name=tool_name,
         args=_judged_args(args, files),
@@ -332,13 +316,11 @@ async def _rule(
             code=judgement.code,
             decided_by=judgement.decided_by,
         )
-    return held_as.model_copy(
-        update={
-            "reason": judgement.reason,
-            "reason_kind": "supervisor",
-            "code": judgement.code,
-            "decided_by": judgement.decided_by,
-        }
+    return held_as(
+        reason=judgement.reason,
+        reason_kind="supervisor",
+        code=judgement.code,
+        decided_by=judgement.decided_by,
     )
 
 

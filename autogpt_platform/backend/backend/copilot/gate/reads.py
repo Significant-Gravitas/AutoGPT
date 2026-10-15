@@ -268,7 +268,7 @@ async def screen_read(
                 mode=mode,
                 tool_name=tool_name,
                 tool_call_id=tool_call_id,
-                source_kind=source_kind(tool_name, args),
+                source_kind=_source_kind(tool_name, args),
                 judge=partial(
                     _shadow_finding, tool_name, args, text, images, outside, full
                 ),
@@ -334,7 +334,7 @@ async def _shadow_finding(
     return shadow.read_finding(judged[0]) if judged else None
 
 
-def source_kind(tool_name: str, args: dict[str, Any]) -> str:
+def _source_kind(tool_name: str, args: dict[str, Any]) -> str:
     if tool_name in ("run_capability", "resume_capability"):
         capability = str(args.get("id") or "")
         if capability.startswith("https://"):
