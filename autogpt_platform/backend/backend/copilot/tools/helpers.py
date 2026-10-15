@@ -1147,7 +1147,11 @@ async def prepare_block_for_execution(
             missing_credentials
             and not grant_hint
             and not set(turn_credential_pins()) & missing_providers
-            and (redirect := await bot_post_redirect(user_id, block.name, session_id))
+            and (
+                redirect := await bot_post_redirect(
+                    user_id, block.name, input_data, session_id
+                )
+            )
         ):
             return redirect
         if missing_credentials and is_unattended_turn():
@@ -1158,7 +1162,7 @@ async def prepare_block_for_execution(
                 user_id,
                 session.expert_id,
             )
-            unattended.message += bot_link_hint(block.name)
+            unattended.message += bot_link_hint(block.name, input_data)
             return unattended
         missing_creds_dict = await annotate_expert_grants(
             user_id, session.expert_id, missing_entries
@@ -1172,7 +1176,7 @@ async def prepare_block_for_execution(
                     "running this block."
                 )
                 + grant_hint
-                + bot_link_hint(block.name)
+                + bot_link_hint(block.name, input_data)
             )
         else:
             message = (

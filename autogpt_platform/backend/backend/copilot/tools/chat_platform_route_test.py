@@ -53,8 +53,7 @@ def _links(
     db = MagicMock()
     db.list_server_links = AsyncMock(
         return_value=[
-            SimpleNamespace(platform=p, platform_server_id=server_id)
-            for p in platforms
+            SimpleNamespace(platform=p, platform_server_id=server_id) for p in platforms
         ]
     )
     db.list_user_links = AsyncMock(
