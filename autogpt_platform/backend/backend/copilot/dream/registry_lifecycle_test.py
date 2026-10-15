@@ -156,11 +156,17 @@ async def test_wipe_removes_the_jobs_and_resume_does_not_undo_it(env):
     assert env.db.rows[USER].state == WIPED
     assert env.scheduler.jobs == {}
     skipped = await registry.ensure_scope_scheduled(ACCOUNT)
-    assert {r["reason"] for r in skipped.values()} == {"scope_wiped"}
+    assert {r["reason"] for r in skipped.values()} == {
+        "scope_wiped",
+        "skill_learning_disabled",
+    }
 
     resumed = await registry.resume_scope(ACCOUNT)
 
-    assert {r["reason"] for r in resumed.values()} == {"scope_wiped"}
+    assert {r["reason"] for r in resumed.values()} == {
+        "scope_wiped",
+        "skill_learning_disabled",
+    }
     assert env.db.rows[USER].state == WIPED
     assert env.scheduler.jobs == {}
 
@@ -343,6 +349,7 @@ async def test_timezone_change_of_a_flag_off_owner_costs_no_database_call(env):
     assert {r["reason"] for r in results[USER].values()} == {
         "graphiti_communities_disabled",
         "dream_pass_disabled",
+        "skill_learning_disabled",
     }
 
 

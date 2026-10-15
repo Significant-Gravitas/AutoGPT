@@ -457,7 +457,10 @@ async def _clean_up(
     """Clean up after *row*'s pass, releasing its lock under the token the
     row kept when *release* (for a row that kept none, finding the lock not
     the pass's). Its mark is cleared after the attempt
-    (``_record_finished``)."""
+    (``_record_finished``). Its landed phases are charged under the usage
+    attribution the pass started under, read off its row, never the one the
+    account has now; a row without one is charged nothing
+    (``batch_costs``)."""
     return await clean_up_pass(
         row.id,
         scope,

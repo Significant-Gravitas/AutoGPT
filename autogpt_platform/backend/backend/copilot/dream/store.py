@@ -27,8 +27,9 @@ admin job status keep their keys, TTLs, scripts and formats. What changed is
 timing: the pass now waits on these bounded writes before it locks, inside the
 lock, before it chains a batch or applies, and before it cleans up.
 
-``read_dream_pass`` is the read side, for the admin API and the eval driver.
-The guard, the stop checks and the cancel read and write here too, under the
+``read_dream_pass`` is the read side, for the admin API and the eval driver;
+``read_cost_context`` reads the usage attribution every charge of a pass's
+phases goes by (``batch_costs.py``). The guard, the stop checks and the cancel read and write here too, under the
 same deadline, but a failure reaches them: each decides for itself whether to
 go on (``guard.py``, ``cancel.py``). So do the reaper and the retention job,
 which read and delete across users (``reaper.py``, ``retention.py``).
@@ -40,9 +41,10 @@ from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 from typing import TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext, get_trial_cost_context
 from backend.data.db_accessors import dream_db
 from backend.data.dream_pass_models import DreamPassRecord, DreamPassUpdate
 
@@ -61,6 +63,7 @@ from .pass_record import (
     outcome,
     phase_output,
     submitted,
+    taken_back,
 )
 from .pass_run import DreamPassRun
 from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
@@ -78,9 +81,12 @@ async def start_pass(
     run: DreamPassRun, scope: MemoryScope, *, trigger: DreamTrigger
 ) -> bool:
     """Insert the run's row: running, gathering its input, holding the lease
-    of the lock it is about to take. Whether the insert is confirmed: one
-    that failed or ran out of time may never land, or land later, so the
-    pass must not gather (a hard forget marks only passes it can find)."""
+    of the lock it is about to take, and the usage attribution the pass runs
+    under (#15208, captured as it started, ``orchestrator``'s
+    ``attributed_usage``), which every charge of its phases then goes by.
+    Whether the insert is confirmed: one that failed or ran out of time may
+    never land, or land later, so the pass must not gather (a hard forget
+    marks only passes it can find)."""
     try:
         draft = new_pass(
             run.pass_id,
@@ -89,6 +95,7 @@ async def start_pass(
             trigger=trigger,
             started_at=run.started_at,
             lease_token=run.lease_token,
+            cost_context=get_trial_cost_context(scope.owner_user_id),
         )
         await _bounded(dream_db().create_dream_pass(draft))
     except Exception:
@@ -99,6 +106,27 @@ async def start_pass(
         )
         return False
     return True
+
+
+async def read_cost_context(pass_id: str) -> TrialCostContext | None:
+    """The usage attribution pass *pass_id* started under, off its row: the
+    one every charge of its phases goes by. ``None`` when there is no row, or
+    the row carries none (written before it was kept, or its capture failed),
+    one that does not parse, or another user's: such a pass is never charged.
+    Raises when the row cannot be read in time; the charge is then left for
+    the next attempt."""
+    row = await read_pass(pass_id)
+    if row is None or row.cost_context is None:
+        return None
+    try:
+        context = TrialCostContext.model_validate(row.cost_context)
+    except ValidationError:
+        logger.error(f"Dream pass {pass_id}: its usage attribution does not parse")
+        return None
+    if context.user_id != row.user_id:
+        logger.error(f"Dream pass {pass_id}: its usage attribution is another user's")
+        return None
+    return context
 
 
 async def record_lease(pass_id: str, lease_token: str, ttl_seconds: int) -> bool | None:
@@ -141,6 +169,21 @@ async def record_submitted(
             provider_batch_id=provider_batch_id,
             lease_token=lease_token,
             lease_ttl_seconds=lease_ttl_seconds,
+        ),
+    )
+
+
+async def record_taken_back(
+    pass_id: str, error: str, *, provider_batch_id: str, lease_token: str
+) -> bool | None:
+    """The pass took its just-submitted batch back without the provider
+    confirming the stop: the row closes with the batch on it, marked for the
+    reaper's cleanup (see ``_write``)."""
+    return await _write(
+        pass_id,
+        "the batch taken back",
+        lambda: taken_back(
+            error, provider_batch_id=provider_batch_id, lease_token=lease_token
         ),
     )
 

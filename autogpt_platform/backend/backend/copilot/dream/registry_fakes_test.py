@@ -27,7 +27,7 @@ from backend.util.feature_flag import Flag
 from backend.util.service import get_service_client
 
 from . import deadline, registry, scope_crons, scope_jobs, scope_reconcile
-from .scheduling import DreamSystemJob
+from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob
 
 ACTIVE = MemoryScopeScheduleState.ACTIVE
 PAUSED = MemoryScopeScheduleState.PAUSED
@@ -45,10 +45,15 @@ SHORT_DEADLINE = 0.05
 
 
 def job_ids(scope: MemoryScope) -> set[str]:
+    """The crons the default flags give ``scope``: skill learning's is off."""
     return {
         f"community_rebuild_{scope.scope_key}",
         f"dream_nightly_batch_{scope.scope_key}",
     }
+
+
+def learning_job_id(scope: MemoryScope) -> str:
+    return f"skill_learning_nightly_{scope.scope_key}"
 
 
 class FakeRegistryDB:
@@ -86,6 +91,7 @@ class FakeRegistryDB:
                 state=state,
                 community_job_id=None,
                 nightly_job_id=None,
+                learning_job_id=None,
                 last_nightly_run_at=None,
                 last_community_run_at=None,
                 created_at=now,
@@ -103,6 +109,7 @@ class FakeRegistryDB:
         user_timezone: str,
         community_job_id: str | None,
         nightly_job_id: str | None,
+        learning_job_id: str | None,
     ) -> bool:
         row = await self.get_scope_schedule(user_id, scope_key)
         if row is None or row.state != ACTIVE:
@@ -112,6 +119,7 @@ class FakeRegistryDB:
             timezone=user_timezone,
             community_job_id=community_job_id,
             nightly_job_id=nightly_job_id,
+            learning_job_id=learning_job_id,
         )
         return True
 
@@ -128,7 +136,11 @@ class FakeRegistryDB:
             return False
         fields: dict[str, Any] = {"state": state}
         if state != ACTIVE:
-            fields |= {"community_job_id": None, "nightly_job_id": None}
+            fields |= {
+                "community_job_id": None,
+                "nightly_job_id": None,
+                "learning_job_id": None,
+            }
         self.update(scope_key, **fields)
         return True
 
@@ -141,6 +153,8 @@ class FakeRegistryDB:
             fields["community_job_id"] = None
         if row.nightly_job_id == job_id:
             fields["nightly_job_id"] = None
+        if row.learning_job_id == job_id:
+            fields["learning_job_id"] = None
         self.update(scope_key, **fields)
         return bool(fields)
 
@@ -169,7 +183,7 @@ class FakeRegistryDB:
 
 
 class FakeScheduler:
-    """The three memory-cron RPCs of ``SchedulerClient``, in memory, and which
+    """The memory-cron RPCs of ``SchedulerClient``, in memory, and which
     crons carry the reconcile's tag (the registry's RPCs register untagged)."""
 
     def __init__(self) -> None:
@@ -181,6 +195,9 @@ class FakeScheduler:
         )
         self.add_scope_nightly_batch_schedule = AsyncMock(
             side_effect=self._adder("dream_nightly_batch")
+        )
+        self.add_scope_skill_learning_schedule = AsyncMock(
+            side_effect=self._adder("skill_learning_nightly")
         )
         self.remove_scope_memory_jobs = AsyncMock(side_effect=self._remove)
 
@@ -195,7 +212,8 @@ class FakeScheduler:
         return add
 
     async def _remove(self, *, scope: MemoryScope) -> list[str]:
-        removed = [job_id for job_id in job_ids(scope) if job_id in self.jobs]
+        every = [job.job_id(scope) for job in DREAM_SYSTEM_JOBS]
+        removed = [job_id for job_id in every if job_id in self.jobs]
         for job_id in removed:
             del self.jobs[job_id]
             self.scopes.pop(job_id, None)
@@ -251,6 +269,7 @@ class RegistryEnv:
         return (
             self.scheduler.add_scope_community_rebuild_schedule.await_count
             + self.scheduler.add_scope_nightly_batch_schedule.await_count
+            + self.scheduler.add_scope_skill_learning_schedule.await_count
         )
 
     async def reconcile(self) -> scope_reconcile.ReconcileReport:

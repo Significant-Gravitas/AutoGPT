@@ -87,6 +87,15 @@ class E2ESeedCacheContractTests(unittest.TestCase):
             workflow.index("- name: Run Playwright E2E suite"),
         )
 
+    def test_seed_dump_excludes_migration_owned_activation_policy(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        dump = workflow.split("pg_dump -U postgres", 1)[1].split(
+            "postgres > /tmp/e2e_test_data.sql", 1
+        )[0]
+        self.assertIn("--exclude-table='platform.\"PaidUsageActivationPolicy\"'", dump)
+
     def test_seed_cache_key_uses_pristine_checkout(self):
         workflow = (
             Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"

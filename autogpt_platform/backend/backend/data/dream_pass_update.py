@@ -17,10 +17,15 @@ statement against the row as it stands when the statement runs:
     outside, in the same statement that closes the row, so of two stops
     racing for one open row exactly one lands and bumps it;
   * ``readUuids`` gains the update's, never losing one;
+  * ``leaseExpiresAt`` only moves later: a renewal written late (a sync
+    renewal the store gave up on, landing after the batch submit's longer
+    lease) never shortens the lease the row holds. Every renewal is now
+    plus its route's TTL, so none needs to move it earlier;
   * ``leaseToken``, ``leaseExpiresAt``, ``inputBundle`` and
     ``cleanupPendingAt`` become NULL when the update names them in ``clear``
     (a closing row drops its bundle, and its lease unless the close marks
-    it for a cleanup, whose end then clears the lease with the mark);
+    it for a cleanup, whose end then clears the lease with the mark): the
+    only way a lease is dropped or cut short;
   * every other column takes the new value when the update gives one.
 
 A row a hard forget marked (``erasedAt``, ``copilot/dream/forget_copies.py``)
@@ -99,7 +104,7 @@ UPDATE {schema_prefix}"DreamPass" SET
     "leaseToken" = CASE WHEN 'leaseToken' = ANY($22::text[]) THEN NULL
         ELSE COALESCE($7::text, "leaseToken") END,
     "leaseExpiresAt" = CASE WHEN 'leaseExpiresAt' = ANY($22::text[]) THEN NULL
-        ELSE COALESCE($8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt") END,
+        ELSE GREATEST($8::timestamptz AT TIME ZONE 'UTC', "leaseExpiresAt") END,
     "windowStart" = COALESCE($9::timestamptz AT TIME ZONE 'UTC', "windowStart"),
     "windowEnd" = COALESCE($10::timestamptz AT TIME ZONE 'UTC', "windowEnd"),
     "readUuids" = CASE WHEN $27::text[] IS NULL THEN "readUuids"

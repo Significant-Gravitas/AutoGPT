@@ -96,6 +96,29 @@ async def test_a_new_row_carries_its_lease_and_a_renewal_moves_it(owner):
     assert renewed.lease_expires_at > _NOW + timedelta(seconds=1700)
 
 
+async def test_a_renewal_written_late_never_shortens_the_lease(owner):
+    """A sync renewal the store gave up on lands after the batch submit's
+    day-long lease: the row keeps the later expiry. Only ``clear`` drops
+    it."""
+    pass_id = await _new_pass(owner, lease_expires_at=_NOW)
+    day_long = _NOW + timedelta(hours=24)
+    half_hour = _NOW + timedelta(minutes=30)
+
+    assert await update_dream_pass(
+        pass_id, DreamPassUpdate(lease_token="tok", lease_expires_at=day_long)
+    )
+    assert await update_dream_pass(
+        pass_id, DreamPassUpdate(lease_token="tok", lease_expires_at=half_hour)
+    )
+    assert (await _row(pass_id)).lease_expires_at == day_long
+
+    assert await update_dream_pass(
+        pass_id,
+        DreamPassUpdate(error="moving on", clear=frozenset({"lease_expires_at"})),
+    )
+    assert (await _row(pass_id)).lease_expires_at is None
+
+
 async def test_a_closing_transition_empties_the_lease_and_the_bundle(owner):
     """Written by the statement's ``clear``: the sync route's own end drops
     the lease and the bundle, the outputs stay; an update that clears

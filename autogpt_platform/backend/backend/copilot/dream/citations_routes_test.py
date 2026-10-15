@@ -255,6 +255,11 @@ def _entry(phase: str) -> PendingEntry:
         next_poll_at=now,
         payload={
             "user_id": "u-batch",
+            "cost_context": {
+                "user_id": "u-batch",
+                "trial_id": None,
+                "generation": None,
+            },
             "pass_id": "p-batch",
             "job_id": "j-batch",
             "phase": phase,

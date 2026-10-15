@@ -108,6 +108,23 @@ async def test_a_new_row_reads_back_running_and_gathering(make_user):
     assert fetched.phase_outputs == DreamPhaseOutputs()
     assert fetched.operations == DreamPassOperations()
     assert fetched.input_bundle is None and fetched.usage is None
+    assert fetched.cost_context is None
+
+
+async def test_a_new_row_keeps_the_usage_attribution_its_pass_started_under(
+    make_user,
+):
+    """The attribution every charge of the pass goes by, as written; no
+    transition writes it again."""
+    owner = await make_user()
+    attribution = {"user_id": owner, "trial_id": "trial-1", "generation": None}
+    draft = _draft(owner, cost_context=attribution)
+
+    await create_dream_pass(draft)
+    await update_dream_pass(draft.id, DreamPassUpdate(error="moved on"))
+
+    fetched = await get_dream_pass(draft.id)
+    assert fetched is not None and fetched.cost_context == attribution
 
 
 async def test_an_update_writes_only_the_columns_it_sets(make_user):

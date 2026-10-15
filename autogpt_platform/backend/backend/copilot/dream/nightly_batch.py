@@ -48,6 +48,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from backend.copilot.learning.dispositions import SkillLearningResult
+from backend.copilot.learning.nightly import run_skill_learning_pass
+from backend.util.feature_flag import Flag, is_feature_enabled
+
 from .billing import check_dream_budget
 from .pass_record import DreamTrigger
 from .ratification import RatificationResult, run_ratification_pass
@@ -83,6 +87,7 @@ class NightlyBatchResult(BaseModel):
     # AgentProbe scorers) don't have to dispatch on runtime type.
     dream: DreamPassResult | None = None
     ratification: RatificationResult | None = None
+    learning: SkillLearningResult | None = None
 
     # True when the dream submitter took a provider batch path: the
     # submit pass only ENQUEUED phase 1, and the dream's apply step
@@ -143,6 +148,7 @@ async def run_nightly_batch_submit(
     )
     await _submit_dream(result, trigger)
     await _submit_ratification(result)
+    await _submit_learning(result)
     return _finished(result)
 
 
@@ -240,6 +246,25 @@ async def _submit_ratification(result: NightlyBatchResult) -> None:
         # ratification failure both surface.
         prev = result.error or ""
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
+
+
+async def _submit_learning(result: NightlyBatchResult) -> None:
+    """Skill learning, when its own flag is on for the user: the dream pass
+    never implies it. Once per account: its pass reviews the account's skills
+    and its experts', so an expert's nightly batch leaves it out. A failure
+    stays isolated, as the other submitters' do."""
+    user_id = result.user_id
+    expert_id = result.expert_id
+    try:
+        if expert_id is None and await is_feature_enabled(
+            Flag.DREAM_SKILL_LEARNING_ENABLED, user_id
+        ):
+            result.learning = await run_skill_learning_pass(user_id, trigger="nightly")
+    except Exception as exc:
+        logger.exception("Nightly skill learning failed for user %s", user_id[:12])
+        result.error = " | ".join(
+            part for part in (result.error, f"learning: {exc}") if part
+        )
 
 
 def _finished(result: NightlyBatchResult) -> NightlyBatchResult:

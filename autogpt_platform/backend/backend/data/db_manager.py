@@ -60,12 +60,16 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
-from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
 from backend.data import dream_pass as dream_pass_db
 from backend.data import memory_schedule as memory_schedule_db
+from backend.data import skill_learning as skill_learning_data
+from backend.data import skill_publication as skill_publication_data
+from backend.data import skill_reviews as skill_reviews_data
+from backend.data import skill_use as skill_use_data
+from backend.data import skill_versions as skill_versions_data
 from backend.data.activity_event import create_activity_event
 from backend.data.alerts import (
     count_alerts_sent_since,
@@ -157,7 +161,11 @@ from backend.data.org_credit import get_org_credits as _get_org_credits_raw
 from backend.data.org_credit import get_personal_org_owner
 from backend.data.org_credit import spend_org_credits as _spend_org_credits_raw
 from backend.data.platform_cost import log_platform_cost
-from backend.data.posthog_lifecycle_sync import start_posthog_lifecycle_sweep
+from backend.data.posthog_lifecycle_sync import (
+    request_posthog_lifecycle_sync,
+    start_posthog_lifecycle_sweep,
+)
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -385,6 +393,7 @@ class DatabaseManager(AppService):
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
@@ -397,12 +406,6 @@ class DatabaseManager(AppService):
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
-
-    # ============ Credential Swap Proxy ============ #
-    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
-    # database access of its own; see backend/copilot/swap_credentials.py.
-    get_swap_bindings = _(get_swap_bindings)
-    resolve_swap_credential = _(resolve_swap_credential)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -545,6 +548,7 @@ class DatabaseManager(AppService):
     # row via db_accessors.credit_db() instead of crashing on direct Prisma.
     reconcile_stripe_tier_for_user = _(reconcile_stripe_tier_for_user)
     start_posthog_lifecycle_sweep = _(start_posthog_lifecycle_sweep)
+    request_posthog_lifecycle_sync = _(request_posthog_lifecycle_sync)
 
     # ============ Platform Linking ============ #
     # ============ Orgs ============ #
@@ -632,6 +636,58 @@ class DatabaseManager(AppService):
     add_expert_skill_name = _(experts_db.add_expert_skill_name)
     add_expert_skill_names = _(experts_db.add_expert_skill_names)
     remove_expert_skill_name = _(experts_db.remove_expert_skill_name)
+    set_expert_learning_paused = _(experts_db.set_expert_learning_paused)
+
+    # ============ Skill learning ============ #
+    # Exposed so the Prisma-less copilot executor + scheduler can capture
+    # sources, keep the review ledger, and read/write skill versions via
+    # db_accessors.skill_learning_db() / skill_versions_db().
+    upsert_source_revision = _(skill_learning_data.upsert_source_revision)
+    get_source = _(skill_learning_data.get_source)
+    get_source_by_ref = _(skill_learning_data.get_source_by_ref)
+    list_pending_sources = _(skill_learning_data.list_pending_sources)
+    list_pending_owner_keys = _(skill_learning_data.list_pending_owner_keys)
+    get_review_for_revision = _(skill_reviews_data.get_review_for_revision)
+    reserve_model_review = _(skill_reviews_data.reserve_model_review)
+    checkpoint_review_usage = _(skill_reviews_data.checkpoint_review_usage)
+    set_review_replay = _(skill_reviews_data.set_review_replay)
+    require_owned_source = _(skill_learning_data.require_owned_source)
+    set_source_eligibility = _(skill_learning_data.set_source_eligibility)
+    set_source_approval = _(skill_learning_data.set_source_approval)
+    mark_source_attempted = _(skill_learning_data.mark_source_attempted)
+    advance_source_cursor = _(skill_learning_data.advance_source_cursor)
+    upsert_review = _(skill_reviews_data.upsert_review)
+    get_review = _(skill_reviews_data.get_review)
+    list_reviews = _(skill_reviews_data.list_reviews)
+    summarize_learning = _(skill_reviews_data.summarize_learning)
+    get_head = _(skill_versions_data.get_head)
+    ensure_head = _(skill_versions_data.ensure_head)
+    list_heads = _(skill_versions_data.list_heads)
+    list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
+    update_head_policy = _(skill_versions_data.update_head_policy)
+    publish_version_if_current = _(skill_versions_data.publish_version_if_current)
+    commit_version_safe = _(skill_publication_data.commit_version_safe)
+    complete_publication = _(skill_publication_data.complete_publication)
+    abandon_publication = _(skill_publication_data.abandon_publication)
+    list_pending_publications = _(skill_publication_data.list_pending_publications)
+    get_pending_publication_for_skill = _(
+        skill_publication_data.get_pending_publication_for_skill
+    )
+    create_version = _(skill_versions_data.create_version)
+    set_version_state = _(skill_versions_data.set_version_state)
+    get_version = _(skill_versions_data.get_version)
+    list_versions = _(skill_versions_data.list_versions)
+    list_recent_versions = _(skill_versions_data.list_recent_versions)
+    list_open_decisions = _(skill_versions_data.list_open_decisions)
+    list_versions_in_states = _(skill_versions_data.list_versions_in_states)
+    invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
+    latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
+    add_suppression = _(skill_use_data.add_suppression)
+    find_suppression = _(skill_use_data.find_suppression)
+    list_suppressions = _(skill_use_data.list_suppressions)
+    record_use_event = _(skill_use_data.record_use_event)
+    list_use_events = _(skill_use_data.list_use_events)
+
     install_workflow = _(experts_db.install_workflow)
     remove_workflow = _(experts_db.remove_workflow)
     get_workflow_label = _(experts_db.get_workflow_label)
@@ -864,6 +920,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
@@ -1029,6 +1086,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     reconcile_all_stripe_tiers = d.reconcile_all_stripe_tiers
     reconcile_stripe_tier_for_user = d.reconcile_stripe_tier_for_user
     start_posthog_lifecycle_sweep = d.start_posthog_lifecycle_sweep
+    request_posthog_lifecycle_sync = d.request_posthog_lifecycle_sync
 
     # ============ Platform Linking ============ #
     find_server_link_owner = d.find_server_link_owner
@@ -1101,6 +1159,53 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     add_expert_skill_name = d.add_expert_skill_name
     add_expert_skill_names = d.add_expert_skill_names
     remove_expert_skill_name = d.remove_expert_skill_name
+    set_expert_learning_paused = d.set_expert_learning_paused
+
+    # ============ Skill learning ============ #
+    upsert_source_revision = d.upsert_source_revision
+    get_source = d.get_source
+    get_source_by_ref = d.get_source_by_ref
+    list_pending_sources = d.list_pending_sources
+    list_pending_owner_keys = d.list_pending_owner_keys
+    get_review_for_revision = d.get_review_for_revision
+    reserve_model_review = d.reserve_model_review
+    checkpoint_review_usage = d.checkpoint_review_usage
+    set_review_replay = d.set_review_replay
+    require_owned_source = d.require_owned_source
+    set_source_eligibility = d.set_source_eligibility
+    set_source_approval = d.set_source_approval
+    mark_source_attempted = d.mark_source_attempted
+    advance_source_cursor = d.advance_source_cursor
+    upsert_review = d.upsert_review
+    get_review = d.get_review
+    list_reviews = d.list_reviews
+    summarize_learning = d.summarize_learning
+    get_head = d.get_head
+    ensure_head = d.ensure_head
+    list_heads = d.list_heads
+    list_use_paused_skill_names = d.list_use_paused_skill_names
+    update_head_policy = d.update_head_policy
+    publish_version_if_current = d.publish_version_if_current
+    commit_version_safe = d.commit_version_safe
+    complete_publication = d.complete_publication
+    abandon_publication = d.abandon_publication
+    list_pending_publications = d.list_pending_publications
+    get_pending_publication_for_skill = d.get_pending_publication_for_skill
+    create_version = d.create_version
+    set_version_state = d.set_version_state
+    get_version = d.get_version
+    list_versions = d.list_versions
+    list_recent_versions = d.list_recent_versions
+    list_open_decisions = d.list_open_decisions
+    list_versions_in_states = d.list_versions_in_states
+    invalidate_source_versions = d.invalidate_source_versions
+    latest_independent_version_id = d.latest_independent_version_id
+    add_suppression = d.add_suppression
+    find_suppression = d.find_suppression
+    list_suppressions = d.list_suppressions
+    record_use_event = d.record_use_event
+    list_use_events = d.list_use_events
+
     install_workflow = d.install_workflow
     remove_workflow = d.remove_workflow
     get_workflow_label = d.get_workflow_label

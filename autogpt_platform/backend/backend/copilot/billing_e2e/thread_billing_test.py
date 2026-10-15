@@ -69,8 +69,9 @@ async def test_each_turn_is_charged_what_its_provider_billed(
         if isinstance(run_turn, SdkTurns)
         else None
     )
+    metered = run_turn.metered if isinstance(run_turn, SdkTurns) else None
     findings = audit_thread(
-        scenario, provider, ledger, session, usage_by_turn, cli_resumed
+        scenario, provider, ledger, session, usage_by_turn, cli_resumed, metered
     )
     gap = scenario.known_gap
     unexplained = [f.message for f in findings if gap is None or f.check != gap.check]
