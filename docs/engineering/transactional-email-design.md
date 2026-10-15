@@ -118,8 +118,12 @@ To verify the trial-ending reminder, follow the delivery path in order:
    subscribes to `customer.subscription.trial_will_end`.
 2. Check the Stripe Dashboard's **Trial ending events** setting is three days.
    Compare a recent event's creation time with its subscription's `trial_end`.
-   The code only sends an ending notice inside the final three days, while the
-   trial is active, the card is verified and cancellation is not scheduled.
+   The code only sends an ending notice inside the final four days (Stripe's
+   three plus a day of slack for an early event), while the trial is active,
+   the card is verified and cancellation is not scheduled. A notice dropped by
+   these checks is logged at info as `Dropped trial <kind> notice for user
+   <user id>: <reason>`. Events for an earlier checkout attempt or an unstarted
+   trial, and a notice already sent once, return without this line.
 3. Check the endpoint's delivery result and backend processing. A successful
    Stripe webhook response is not proof that an email was delivered.
 4. Check PostHog for `trial_ending`, the current event name, and

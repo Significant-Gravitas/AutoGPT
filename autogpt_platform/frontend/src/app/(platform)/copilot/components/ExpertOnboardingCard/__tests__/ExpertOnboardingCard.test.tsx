@@ -118,14 +118,13 @@ async function answerFirstStep() {
 }
 
 describe("ExpertOnboardingCard", () => {
-  it("greets the user under the expert's name, without the role line", () => {
+  it("leaves the expert's name and greeting to the thread header", () => {
     renderCard(onboardingPart());
 
-    expect(screen.getByText("Ada")).toBeDefined();
-    expect(screen.queryByText("Social & Content Repurposing")).toBeNull();
+    expect(screen.queryByText("Ada")).toBeNull();
     expect(
-      screen.getByText("Hi, I'm Ada — good to be working with you."),
-    ).toBeDefined();
+      screen.queryByText("Hi, I'm Ada — good to be working with you."),
+    ).toBeNull();
   });
 
   it("shows one question at a time with lettered options and Other", () => {
@@ -228,7 +227,7 @@ describe("ExpertOnboardingCard", () => {
   it("skips the whole card without answering", () => {
     const { onSend } = renderCard(onboardingPart());
 
-    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    fireEvent.click(screen.getByRole("button", { name: "Skip questions" }));
 
     expect(onSend).toHaveBeenCalledWith(
       "Let's skip the setup questions for now.",
@@ -239,7 +238,7 @@ describe("ExpertOnboardingCard", () => {
     renderCard(onboardingPart(), null);
 
     expect(screen.queryByRole("radio")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Skip" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Skip questions" })).toBeNull();
     expect(screen.getByText(/Setup questions from/)).toBeDefined();
   });
 

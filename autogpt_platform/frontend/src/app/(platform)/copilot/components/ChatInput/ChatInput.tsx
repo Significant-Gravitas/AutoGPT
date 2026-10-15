@@ -7,11 +7,6 @@ import {
 import { isGuidedPrompt } from "@/components/contextual/guidedPrompts";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import {
@@ -34,7 +29,10 @@ import {
 } from "../../helpers/workspaceAttachments";
 import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
-import { ComposerPlusMenu } from "./components/ComposerPlusMenu";
+import {
+  ComposerPlusMenu,
+  type ComposerMenuItem,
+} from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
 import { FileChips } from "./components/FileChips";
 import { MentionDropdown } from "./components/MentionDropdown";
@@ -42,6 +40,7 @@ import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
 import { RecordingButton } from "./components/RecordingButton";
 import { RecordingIndicator } from "./components/RecordingIndicator";
+import { StopButton } from "./components/StopButton";
 import { TranscriptionErrorBar } from "./components/TranscriptionErrorBar";
 import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceFilePicker";
 import { useCopilotUIStore } from "../../store";
@@ -59,7 +58,11 @@ import { useChatMentions } from "./useChatMentions";
 import { useConnectedIntegrations } from "./useConnectedIntegrations";
 import { useOnboardingMicGlow } from "./useOnboardingMicGlow";
 import { useVoiceRecording } from "./useVoiceRecording";
-import { ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowUp02Icon,
+  DashboardSpeed02Icon,
+  FlashIcon,
+} from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 interface Props {
@@ -70,6 +73,9 @@ interface Props {
   ) => void | Promise<void>;
   disabled?: boolean;
   isStreaming?: boolean;
+  /** The sent message's turn has not started: a Stop now would cancel nothing
+   *  on the server and drop the message, so the button only shows progress. */
+  isTurnStarting?: boolean;
   isUploadingFiles?: boolean;
   onStop?: () => void;
   /** Called to enqueue a message when copilot is streaming and user has typed text. */
@@ -116,6 +122,7 @@ export function ChatInput({
   onSend,
   disabled = false,
   isStreaming = false,
+  isTurnStarting = false,
   isUploadingFiles = false,
   onStop,
   onEnqueue,
@@ -331,6 +338,38 @@ export function ChatInput({
   }
 
   const isCompact = variant === "compact";
+  // Model tier and the dev token readout sit behind the + instead of as
+  // icons in the tray; their sheets anchor to the + side of the composer.
+  const [plusPanel, setPlusPanel] = useState<"model" | "devtool" | null>(null);
+  const showModelControl =
+    !stacked && !isCompact && (!hasSession || !isStreaming);
+  // Wait for the menu to close and hand focus back before the sheet opens,
+  // or the returning focus dismisses it straight away.
+  function openPlusPanel(panel: "model" | "devtool") {
+    setTimeout(() => setPlusPanel(panel), 0);
+  }
+  const plusMenuItems: ComposerMenuItem[] = [
+    ...(showModelControl
+      ? [
+          {
+            key: "model",
+            label: "Model and connection",
+            icon: FlashIcon,
+            onSelect: () => openPlusPanel("model"),
+          },
+        ]
+      : []),
+    ...(devtoolSessionId
+      ? [
+          {
+            key: "devtool",
+            label: "Token usage",
+            icon: DashboardSpeed02Icon,
+            onSelect: () => openPlusPanel("devtool"),
+          },
+        ]
+      : []),
+  ];
   const iconButtonClass = stacked
     ? CARD_ICON_BUTTON_CLASS
     : isCompact
@@ -363,7 +402,7 @@ export function ChatInput({
           keeps the controls pinned to the bottom edge as the textarea grows. */}
       <InputGroup
         className={cn(
-          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0",
+          "relative z-10 flex-col overflow-hidden !rounded-[2rem] border-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_20px_rgba(0,0,0,0.08)] has-[[data-slot=input-group-control]:focus-visible]:border-zinc-300 has-[[data-slot=input-group-control]:focus-visible]:ring-0 max-md:!rounded-3xl",
           // Card composer: a hairline border and a shallow drop instead of
           // the pill's deep shadow, so it reads as a surface the text sits on.
           stacked &&
@@ -410,7 +449,7 @@ export function ChatInput({
           <InputGroupAddon
             align="inline-start"
             className={cn(
-              "order-none gap-1 py-1 pl-1.5",
+              "relative order-none gap-1 py-1 pl-1.5",
               stacked && "gap-1.5 p-0",
               isCompact && "gap-0.5 py-1 pl-1",
             )}
@@ -421,6 +460,7 @@ export function ChatInput({
               onClearGuidedPrompt={handleClearGuidedPrompt}
               disabled={isBusy}
               isAtCap={isAtCap}
+              extraItems={plusMenuItems}
               className={
                 stacked
                   ? cn(
@@ -431,6 +471,22 @@ export function ChatInput({
               }
             />
             {recipientPicker}
+            {showModelControl && (
+              <ConnectionPicker
+                connectionLocked={hasSession}
+                anchorOnly
+                open={plusPanel === "model"}
+                onOpenChange={(open) => setPlusPanel(open ? "model" : null)}
+              />
+            )}
+            {devtoolSessionId && (
+              <TokenDevtoolBadge
+                sessionId={devtoolSessionId}
+                anchorOnly
+                open={plusPanel === "devtool"}
+                onOpenChange={(open) => setPlusPanel(open ? "devtool" : null)}
+              />
+            )}
           </InputGroupAddon>
           {/* Must be a real flex item: `order`/`w-full` are ignored on a
               `display: contents` box, which is what PromptInputBody was. */}
@@ -476,18 +532,12 @@ export function ChatInput({
             {/* Connection and tier are per-message settings, so they remain
                 changeable between turns in an existing session. The card
                 composer leaves this to the page's top-right control. */}
-            {!stacked && !isCompact && (!hasSession || !isStreaming) && (
-              <ConnectionPicker connectionLocked={hasSession} />
-            )}
             {modeSelector}
             {showAdvancedComposerControls && !hasSession && (
               <DryRunToggleButton
                 isDryRun={isDryRun}
                 onToggle={handleToggleDryRun}
               />
-            )}
-            {devtoolSessionId && (
-              <TokenDevtoolBadge sessionId={devtoolSessionId} />
             )}
             {voiceToggle}
             {showMicButton && (
@@ -519,17 +569,14 @@ export function ChatInput({
                 <Icon icon={ArrowUp02Icon} className="size-4" />
               </PromptInputButton>
             )}
-            {isStreaming ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <PromptInputSubmit
-                    status="streaming"
-                    onStop={onStop}
-                    className={sendButtonClass}
-                  />
-                </TooltipTrigger>
-                <TooltipContent side="top">Stop</TooltipContent>
-              </Tooltip>
+            {isStreaming && isTurnStarting ? (
+              <PromptInputSubmit
+                status="submitted"
+                aria-label="Sending"
+                className={sendButtonClass}
+              />
+            ) : isStreaming ? (
+              <StopButton onStop={onStop} className={sendButtonClass} />
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit
                 disabled={!canSend}
