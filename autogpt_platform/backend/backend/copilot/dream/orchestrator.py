@@ -43,6 +43,7 @@ from backend.copilot.inference.context import (
 )
 from backend.copilot.inference.routing import resolve_route
 from backend.copilot.inference.trace import trace
+from backend.copilot.trial_cost_context import attributed_usage
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from .apply import apply_operations, drain_status_from_stats
@@ -409,6 +410,7 @@ async def execute_dream_pass(
     )
 
 
+@attributed_usage
 async def _execute_dream_pass_async(
     user_id: str,
     *,

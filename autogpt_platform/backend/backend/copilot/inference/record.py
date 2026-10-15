@@ -70,6 +70,11 @@ _ACCOUNTING: dict[InferenceKind, _KindAccounting] = {
     "eval_judge": _KindAccounting(
         source="expert_style_eval", charges_daily=False, correlation_column="none"
     ),
+    # A skill review's row joins its learning run, as the learning ledger
+    # wrote it before reviews went through here.
+    "skill_learning": _KindAccounting(
+        source="skill_learning", charges_daily=False, correlation_column="graph_exec"
+    ),
 }
 
 _BILLING_MODES: dict[Payer, str] = {

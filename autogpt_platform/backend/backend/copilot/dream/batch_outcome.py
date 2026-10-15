@@ -61,11 +61,13 @@ class BatchPass(BaseModel):
         )
 
 
-async def fail_pass(bp: BatchPass, error: str) -> None:
+async def fail_pass(bp: BatchPass, error: str, *, charge: bool = True) -> None:
     """Close the pass errored: its admin job and its record first, then
     charge the phases that landed, release the lock and clean up per-pass
     state. Each step is best-effort on its own, so one that fails never
-    stops the ones after it.
+    stops the ones after it. A pass that cannot be charged under its own
+    usage attribution passes ``charge=False``: its record still shows what
+    the landed phases used, and nothing is charged under another one.
 
     The record carries the usage of the phases that landed, read off the
     pass's state; a state that cannot be read leaves that usage unknown
@@ -83,7 +85,7 @@ async def fail_pass(bp: BatchPass, error: str) -> None:
     await record_batch_failed(
         bp.pass_id, error, landed_usage(state, bp.phase_models, bp.pass_id)
     )
-    if state:
+    if state and charge:
         await _charge_landed_phases(bp, state)
     # Release the dream lock the batch path disowned to this callback.
     await release_lock(bp)

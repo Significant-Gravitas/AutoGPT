@@ -17,6 +17,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.config import ChatConfig
 from backend.copilot.dream.batch_submit import (
     INPUT_TTL_SECONDS,
@@ -394,3 +395,6 @@ def test_phase_models_refuse_a_non_anthropic_model(
     assert "disable batch routing" in message
     assert "dream-pass-batch-enabled" in message
     assert "OpenRouter" not in message
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
