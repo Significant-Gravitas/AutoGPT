@@ -159,7 +159,7 @@ async def test_image_urls_are_replaced_in_place_including_tool_results(adapter, 
 
 
 @pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
-async def test_codex_redirects_are_not_followed(monkeypatch, status):
+async def test_codex_redirects_are_not_followed(status):
     seen = []
 
     def handle(request):
@@ -170,12 +170,9 @@ async def test_codex_redirects_are_not_followed(monkeypatch, status):
             )
         return httpx.Response(200, content="data: " + json.dumps(terminal()) + "\n\n")
 
-    monkeypatch.setattr(
-        httpx.AsyncClient,
-        "_transport_for_url",
-        lambda self, url: httpx.MockTransport(handle),
-    )
-    async with fake_backend_client("https://chatgpt.com/backend-api/codex") as client:
+    async with fake_backend_client(
+        "https://chatgpt.com/backend-api/codex", transport=httpx.MockTransport(handle)
+    ) as client:
         adapter = CodexResponses(codex_route("m"), client=client)
         with pytest.raises(GatewayError) as raised:
             await adapter.complete(BODY)
@@ -211,34 +208,28 @@ async def test_codex_debug_logs_never_include_content_or_credentials(
     }
     monkeypatch.setenv("OPENAI_LOG", "debug")
     caplog.set_level(logging.DEBUG)
-    monkeypatch.setattr(
-        httpx.AsyncClient,
-        "_transport_for_url",
-        lambda self, url: httpx.MockTransport(
-            lambda request: httpx.Response(
-                200, content="data: " + json.dumps(terminal()) + "\n\n"
-            )
-        ),
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(
+            200, content="data: " + json.dumps(terminal()) + "\n\n"
+        )
     )
-    async with fake_backend_client("https://chatgpt.com/backend-api/codex") as client:
+    async with fake_backend_client(
+        "https://chatgpt.com/backend-api/codex", transport=transport
+    ) as client:
         await CodexResponses(route, client=client).complete(body)
     assert all(marker not in caplog.text for marker in markers)
 
 
-async def test_unknown_error_fields_do_not_leak_to_failure_or_front(
-    monkeypatch, caplog
-):
+async def test_unknown_error_fields_do_not_leak_to_failure_or_front(caplog):
     route = codex_route("m")
     token = route.secret_values()[0]
     caplog.set_level(logging.DEBUG)
-    monkeypatch.setattr(
-        httpx.AsyncClient,
-        "_transport_for_url",
-        lambda self, url: httpx.MockTransport(
-            lambda request: httpx.Response(401, json={"unexpected": token})
-        ),
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(401, json={"unexpected": token})
     )
-    async with fake_backend_client("https://chatgpt.com/backend-api/codex") as client:
+    async with fake_backend_client(
+        "https://chatgpt.com/backend-api/codex", transport=transport
+    ) as client:
         adapter = CodexResponses(route, client=client)
         with pytest.raises(GatewayError) as raised:
             await adapter.complete(BODY)
@@ -263,7 +254,7 @@ def test_routes_reject_short_operator_keys(key):
         )
 
 
-async def test_checkpointed_lease_refreshes_auth_and_keeps_reasoning(monkeypatch):
+async def test_checkpointed_lease_refreshes_auth_and_keeps_reasoning():
     old = fake_codex_lease().credentials
     lock = AsyncMock(spec=Lock)
     lock.locked.return_value = lock.owned.return_value = True
@@ -280,12 +271,9 @@ async def test_checkpointed_lease_refreshes_auth_and_keeps_reasoning(monkeypatch
         seen.append(request)
         return httpx.Response(200, content="data: " + json.dumps(terminal()) + "\n\n")
 
-    monkeypatch.setattr(
-        httpx.AsyncClient,
-        "_transport_for_url",
-        lambda self, url: httpx.MockTransport(handle),
-    )
-    async with fake_backend_client("https://chatgpt.com/backend-api/codex") as client:
+    async with fake_backend_client(
+        "https://chatgpt.com/backend-api/codex", transport=httpx.MockTransport(handle)
+    ) as client:
         adapter = CodexResponses(route, client=client)
         signature = seal("encrypted", reasoning_tag("acct-test", "m"))
         body = {

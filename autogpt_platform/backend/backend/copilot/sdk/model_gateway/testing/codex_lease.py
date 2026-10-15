@@ -62,8 +62,18 @@ def codex_route(
     )
 
 
-def fake_backend_client(base_url: str) -> httpx.AsyncClient:
-    """A client for a fake Responses endpoint; the caller closes it."""
+def fake_backend_client(
+    base_url: str, *, transport: httpx.AsyncBaseTransport | None = None
+) -> httpx.AsyncClient:
+    """A client for a fake Responses endpoint; the caller closes it.
+
+    *transport* answers this client's requests in place of the network,
+    without touching any other client in the process.
+    """
     return httpx.AsyncClient(
-        base_url=base_url, trust_env=False, follow_redirects=False, timeout=15
+        base_url=base_url,
+        trust_env=False,
+        follow_redirects=False,
+        timeout=15,
+        transport=transport,
     )
