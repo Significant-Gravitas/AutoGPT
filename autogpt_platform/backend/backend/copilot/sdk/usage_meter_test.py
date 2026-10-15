@@ -95,6 +95,26 @@ def test_an_unknown_model_is_priced_like_the_reference():
     assert price_call_usd(unknown) == pytest.approx(price_call_usd(reference))
 
 
+@pytest.mark.parametrize(
+    "reported, alias",
+    [
+        # OpenRouter's slug, as the CLI reports a call on that route.
+        ("anthropic/claude-sonnet-5-5", "claude-sonnet-5-5"),
+        ("anthropic/claude-opus-4.6", "claude-opus-4-6"),
+        # The API's dated snapshot of an alias the card keys undated.
+        ("claude-sonnet-5-5-20260930", "claude-sonnet-5-5"),
+    ],
+)
+def test_a_call_is_priced_at_its_models_rate_however_its_route_names_it(
+    reported: str, alias: str, caplog: pytest.LogCaptureFixture
+):
+    # Missing the card priced these as Opus 4.1: about 7x a Sonnet 5.5 turn.
+    usage = {"input_tokens": 2_600, "cache_read_tokens": 24_000, "output_tokens": 30}
+    as_reported = price_call_usd(CallUsage(model=reported, **usage))
+    assert as_reported == pytest.approx(price_call_usd(CallUsage(model=alias, **usage)))
+    assert "no entry for model" not in caplog.text
+
+
 def test_cli_price_ratio_is_one_for_anthropic_and_unknown_models():
     assert cli_price_ratio("anthropic/claude-sonnet-5") == 1.0
     assert cli_price_ratio("claude-sonnet-4-5") == 1.0

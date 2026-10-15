@@ -26,6 +26,7 @@ from backend.copilot.model import ChatSession
 from backend.copilot.sdk import env as sdk_env
 from backend.copilot.sdk import openrouter_cost
 from backend.copilot.sdk import service as sdk_service
+from backend.copilot.sdk.governor import TurnGovernor
 from backend.copilot.transcript import TranscriptDownload
 from backend.copilot.tree import root_envelope
 from backend.copilot.turn_budget import TurnBudget
@@ -63,6 +64,7 @@ class SdkTurns:
         # The turn of each launch, and the CLI session it resumed (None for a
         # fresh one).
         self.resumed: list[tuple[int, str | None]] = []
+        self._governors: list[tuple[int, TurnGovernor]] = []
         self._turn = -1
         # The CLI inherits these, and the platform reads the CLI's session
         # files from the same place.
@@ -104,10 +106,19 @@ class SdkTurns:
             ):
                 pass
 
+    @property
+    def metered(self) -> dict[int, float]:
+        """The live spend each turn's governor reached, which it lands on."""
+        totals: dict[int, float] = {}
+        for turn, governor in self._governors:
+            totals[turn] = totals.get(turn, 0.0) + governor.meter.spent_usd
+        return totals
+
     def _stubs(self, session: ChatSession) -> dict[str, Any]:
         return {
             "config": self._config,
             "ClaudeSDKClient": MagicMock(side_effect=self._client),
+            "TurnGovernor": MagicMock(side_effect=self._governor),
             "AsyncClusterLock": MagicMock(side_effect=_lock),
             "_make_sdk_cwd": MagicMock(return_value=str(self._cwd)),
             "get_chat_session": AsyncMock(return_value=session),
@@ -151,6 +162,11 @@ class SdkTurns:
         options.allowed_tools = []
         options.disallowed_tools = []
         return ClaudeSDKClient(*args, options=options, **kwargs)
+
+    def _governor(self, **kwargs: Any) -> TurnGovernor:
+        governor = TurnGovernor(**kwargs)
+        self._governors.append((self._turn, governor))
+        return governor
 
     async def _upload(
         self,
