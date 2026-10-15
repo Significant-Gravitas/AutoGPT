@@ -2825,7 +2825,7 @@ class Scheduler(AppService):
         """
         job, info = self._authorized_job(schedule_id, user_id, action="update")
         if not isinstance(info, GraphExecutionJobInfo):
-            raise NotFoundError(f"Agent schedule #{schedule_id} not found.")
+            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
 
         job_args = _updated_graph_job_args(
             info,
