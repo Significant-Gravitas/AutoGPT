@@ -38,6 +38,18 @@ function chatgpt(over: Partial<AIConnectionOffer> = {}): AIConnectionOffer {
   });
 }
 
+function microsoft365(): AIConnectionOffer {
+  return offer({
+    offer_id: "microsoft_365_copilot:cred-9",
+    provider_family: "microsoft",
+    auth_provider: "microsoft_365_copilot",
+    display_name: "Microsoft 365 Copilot",
+    auth_method: "oauth",
+    credential_id: "cred-9",
+    is_default: false,
+  });
+}
+
 function limitOn(
   authProvider: string | null,
   credentialId: string | null = null,
@@ -104,23 +116,25 @@ describe("alternativeConnection", () => {
   });
 
   it("continues an out-of-budget platform chat on ChatGPT, never Microsoft 365 Copilot", () => {
-    const copilot = offer({
-      offer_id: "microsoft_365_copilot:cred-9",
-      provider_family: "microsoft",
-      auth_provider: "microsoft_365_copilot",
-      display_name: "Microsoft 365 Copilot",
-      auth_method: "oauth",
-      credential_id: "cred-9",
-      is_default: false,
-    });
-
     expect(
-      alternativeConnection([offer(), copilot], limitOn("platform")),
+      alternativeConnection([offer(), microsoft365()], limitOn("platform")),
     ).toBeNull();
     expect(
-      alternativeConnection([offer(), copilot, chatgpt()], limitOn("platform"))
-        ?.display_name,
+      alternativeConnection(
+        [offer(), microsoft365(), chatgpt()],
+        limitOn("platform"),
+      )?.display_name,
     ).toBe("ChatGPT");
+  });
+
+  it("never offers Microsoft 365 Copilot when ChatGPT runs out either", () => {
+    // It answers plain messages: none of AutoPilot's tools, none of the task.
+    expect(
+      alternativeConnection(
+        [offer({ selectable: false }), microsoft365(), chatgpt()],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
   });
 
   it("has nothing to offer when there are no other connections", () => {

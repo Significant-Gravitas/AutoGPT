@@ -14,10 +14,11 @@ export interface Alternative {
  *
  * The PRD's priority order starts with the platform, because it is the one
  * connection a user is guaranteed to be able to fall back to. Anything else
- * that is selectable will do after that; the one thing excluded is the
- * connection that just refused the turn, which would fail again immediately.
- * Out of AutoPilot budget, a chat continues on ChatGPT only: Microsoft 365
- * Copilot is never offered to carry on a task.
+ * that is selectable will do after that; excluded are the connection that
+ * just refused the turn, which would fail again immediately, and Microsoft
+ * 365 Copilot, which answers plain messages with none of AutoPilot's tools or
+ * the task so far, so it can't carry a task on. Out of AutoPilot budget, a
+ * chat continues on ChatGPT only.
  */
 export function alternativeConnection(
   offers: AIConnectionOffer[] | undefined,
@@ -29,6 +30,7 @@ export function alternativeConnection(
     (offer) =>
       offer.selectable &&
       !isTheOneThatFailed(offer, failure) &&
+      offer.offer_id.split(":")[0] !== "microsoft_365_copilot" &&
       (failure.authProvider !== "platform" ||
         offer.offer_id.split(":")[0] === "codex") &&
       (offer.auth_method === "deployment" || offer.credential_id !== null),
