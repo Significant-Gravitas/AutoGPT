@@ -17,7 +17,7 @@ import { LatestOutputs } from "./components/LatestOutputs";
 import { OverviewCard } from "./components/OverviewCard";
 import { RecentConversations } from "./components/RecentConversations";
 import { StatTile } from "./components/StatTile";
-import { formatDelta } from "./helpers";
+import { formatDelta, getBioLead } from "./helpers";
 import { useExpertOverview } from "./useExpertOverview";
 
 interface Props {
@@ -44,10 +44,9 @@ export function ExpertOverview({
       {expert.bio ? (
         <Text
           variant="body"
-          title={expert.bio}
-          className="line-clamp-2 !text-[15px] !leading-relaxed !text-zinc-600"
+          className="!text-[15px] !leading-relaxed !text-zinc-600"
         >
-          {expert.bio}
+          {getBioLead(expert.bio)}
         </Text>
       ) : null}
 

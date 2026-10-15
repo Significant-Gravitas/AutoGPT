@@ -62,3 +62,10 @@ export function formatDelta(delta: number): string {
   if (delta === 0) return "Same as the 30 days before";
   return `${delta > 0 ? "+" : "−"}${Math.abs(delta)} vs the 30 days before`;
 }
+
+/** The bio's opening sentences, whole: the overview leads with these instead
+ *  of clipping the paragraph mid-sentence. */
+export function getBioLead(bio: string, sentences = 2): string {
+  const parts = bio.trim().split(/(?<=[.!?])\s+/);
+  return parts.slice(0, sentences).join(" ");
+}
