@@ -79,7 +79,7 @@ export function ExpertTeamCard({
       {/* Floated over the cover so the whole body stays one link target. */}
       <div className="absolute right-4 top-4 z-10 flex items-center gap-1.5">
         <Button
-          variant="floating"
+          variant="secondary"
           size="icon-sm"
           aria-label="Edit Soul"
           leadingIcon={PencilEdit02Icon}
