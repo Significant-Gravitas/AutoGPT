@@ -104,10 +104,12 @@ def _passes_a_real_envelope(node: ast.Call) -> bool:
     return any(kw.arg is None for kw in node.keywords)
 
 
-def test_chat_platform_turns_are_rooted_and_born_tainted() -> None:
+def test_chat_platform_turns_take_the_dispatch_marked_as_such() -> None:
     """A chat-platform message is authored off-platform by someone who need
-    not be the account owner, so its turn roots a tree and carries taint."""
+    not be the account owner. Its turn takes the dispatch every turn takes,
+    which roots its tree, and says where it came from, so the executor taints
+    it (``SessionKind.from_chat_platform``)."""
     source = (_PACKAGE_ROOT / "platform_linking" / "chat.py").read_text()
-    assert (
-        "envelope=root_envelope(turn_id, tainted=True, session_id=session_id)" in source
-    )
+    assert "schedule_chat_turn(" in source
+    assert "from_chat_platform=True" in source
+    assert "enqueue_copilot_turn" not in source

@@ -711,7 +711,10 @@ class CoPilotProcessor:
             # The turn's kind, read once: the session's stored facts with the
             # dispatch's own, for every reader from here on.
             kind = SessionKind.for_turn(
-                session, scheduled=entry.unattended, voice=entry.voice
+                session,
+                scheduled=entry.unattended,
+                voice=entry.voice,
+                from_chat_platform=entry.from_chat_platform,
             )
             envelope = taint_for_source_platform(entry.envelope, kind)
             set_turn_unattended(kind.unattended)

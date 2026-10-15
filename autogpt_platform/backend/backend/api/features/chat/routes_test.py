@@ -4654,7 +4654,15 @@ def _mock_route_change(
     *,
     transports: list,
     success: bool = True,
+    builder_graph_id: str | None = None,
 ):
+    info = _make_session_info()
+    info.metadata.builder_graph_id = builder_graph_id
+    mocker.patch(
+        "backend.api.features.chat.routes.get_chat_session_metadata",
+        new_callable=AsyncMock,
+        return_value=info,
+    )
     mocker.patch(
         "backend.api.features.chat.routes.get_chat_transports",
         new_callable=AsyncMock,
@@ -4682,6 +4690,27 @@ def test_change_connection_moves_the_chat(
 
     assert response.status_code == 200
     mock_update.assert_called_once_with("sess-1", test_user_id, "platform", None)
+
+
+def test_change_connection_keeps_a_builder_chat_on_the_platform_route(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A builder chat runs on the platform route only, as when it was
+    created; the same refusal the creation path gives."""
+    mock_update = _mock_route_change(
+        mocker,
+        transports=[_transport("codex", "cred-1")],
+        builder_graph_id="graph-1",
+    )
+
+    response = client.put(
+        "/sessions/sess-1/connection",
+        json={"llm_auth_provider": "codex", "llm_credential_id": "cred-1"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "codex_builder_session_unsupported"
+    mock_update.assert_not_called()
 
 
 def test_change_connection_refuses_a_route_the_user_does_not_have(

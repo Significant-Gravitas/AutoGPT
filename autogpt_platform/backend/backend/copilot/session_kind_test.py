@@ -78,6 +78,13 @@ def test_the_stored_facts_and_the_dispatch_facts_are_read_once():
     }
 
 
+def test_a_bot_prompt_counts_as_one_even_in_a_chat_started_on_the_web():
+    web = _session()
+
+    assert not SessionKind.for_turn(web).from_chat_platform
+    assert SessionKind.for_turn(web, from_chat_platform=True).from_chat_platform
+
+
 @pytest.mark.parametrize(
     "origin, kickoff, hidden",
     [

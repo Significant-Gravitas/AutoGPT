@@ -6,6 +6,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from backend.api.features.store.exceptions import VirusDetectedError, VirusScanError
+from backend.copilot.active_turns import (
+    ConcurrentTurnLimitError,
+    get_inflight_turn_limit,
+)
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
 from backend.util.exceptions import DuplicateChatMessageError, NotFoundError
 
@@ -62,9 +66,8 @@ class TestStartChatTurn:
                 await start_chat_turn(_request())
 
     @pytest.mark.asyncio
-    async def test_duplicate_message_raises_and_skips_stream_create(self):
-        # append_and_save_message returns None → duplicate.
-        # Verify we raise and do NOT create a stream session.
+    async def test_duplicate_message_raises(self):
+        # The dispatch found the message already saved and returned no turn.
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         session = MagicMock(session_id="sess-existing")
@@ -79,27 +82,21 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=session),
             ),
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=AsyncMock(return_value=None),
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
-                new=AsyncMock(),
-            ) as mock_enqueue,
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=AsyncMock(return_value=None),
+            ) as mock_schedule,
         ):
-            mock_stream_registry.create_session = AsyncMock()
 
             with pytest.raises(DuplicateChatMessageError):
                 await start_chat_turn(_request())
-
-        mock_stream_registry.create_session.assert_not_awaited()
-        mock_enqueue.assert_not_awaited()
+        mock_schedule.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_happy_path_creates_stream_and_enqueues(self):
+    async def test_happy_path_dispatches_a_chat_platform_turn(self):
         db_mock = MagicMock()
         db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
         session = MagicMock(session_id="sess-new")
@@ -115,18 +112,14 @@ class TestStartChatTurn:
                 new=mock_create_chat_session,
             ),
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=AsyncMock(return_value=MagicMock()),
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
-                new=AsyncMock(),
-            ) as mock_enqueue,
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=AsyncMock(return_value="turn-1"),
+            ) as mock_schedule,
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(_request())
 
         assert handle.session_id == "sess-new"
@@ -136,11 +129,42 @@ class TestStartChatTurn:
         create_call = mock_create_chat_session.await_args
         assert create_call is not None
         assert create_call.kwargs["source_platform"] == "discord"
-        mock_stream_registry.create_session.assert_awaited_once()
-        mock_enqueue.assert_awaited_once()
-        # Its paid reads count against, and ask on, this chat's spend ceiling.
-        envelope = mock_enqueue.await_args.kwargs["envelope"]
-        assert envelope.tainted and envelope.spend_session_id == "sess-new"
+        mock_schedule.assert_awaited_once()
+        # Through the dispatch every turn takes, into this chat (whose spend
+        # ceiling its paid reads count against), marked as a chat-platform
+        # prompt so the executor taints it, and under the in-flight cap.
+        kwargs = mock_schedule.await_args.kwargs
+        assert kwargs["session_id"] == "sess-new"
+        assert kwargs["from_chat_platform"] is True
+        assert kwargs["capacity"] == get_inflight_turn_limit()
+        assert handle.turn_id == "turn-1"
+
+    @pytest.mark.asyncio
+    async def test_a_turn_past_the_in_flight_cap_is_denied_as_busy(self):
+        db_mock = MagicMock()
+        db_mock.find_user_link_owner = AsyncMock(return_value="owner-1")
+        schedule = AsyncMock(return_value="turn-1")
+
+        with (
+            patch(
+                "backend.platform_linking.chat.platform_linking_db",
+                return_value=db_mock,
+            ),
+            patch(
+                "backend.platform_linking.chat.create_chat_session",
+                new=AsyncMock(return_value=MagicMock(session_id="sess-new")),
+            ),
+            patch(
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(side_effect=ConcurrentTurnLimitError("15 active tasks")),
+            ),
+            patch("backend.platform_linking.chat.schedule_chat_turn", new=schedule),
+        ):
+            handle = await start_chat_turn(_request())
+
+        assert handle.denial == TurnDenial(reason="busy", message="15 active tasks")
+        assert handle.turn_id == ""
+        schedule.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_stale_session_id_falls_back_to_fresh_session(self):
@@ -165,18 +189,14 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=session),
             ) as mock_create,
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=AsyncMock(return_value=MagicMock()),
-            ),
-            patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
+                "backend.platform_linking.chat.check_inflight_cap",
                 new=AsyncMock(),
             ),
+            patch(
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=AsyncMock(return_value="turn-1"),
+            ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(_request(session_id="deleted-session"))
 
         assert handle.session_id == "sess-fresh"
@@ -217,8 +237,7 @@ class TestStartChatTurn:
             organization_id="personal-org",
             team_id="personal-team",
         )
-        mock_append = AsyncMock(return_value=MagicMock())
-        mock_enqueue = AsyncMock()
+        mock_schedule = AsyncMock(return_value="turn-1")
 
         with (
             patch(
@@ -240,18 +259,14 @@ class TestStartChatTurn:
                 ),
             ),
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=mock_append,
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
-                new=mock_enqueue,
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=mock_schedule,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(
                 _request(
                     platform_server_id="guild-1",
@@ -261,9 +276,8 @@ class TestStartChatTurn:
 
         assert handle.session_id == "fresh-autopilot"
         mock_create.assert_awaited_once()
-        assert mock_append.await_args.args[0] == "fresh-autopilot"
-        assert mock_enqueue.await_args.kwargs["organization_id"] == "org-1"
-        assert mock_enqueue.await_args.kwargs["team_id"] == "team-1"
+        assert mock_schedule.await_args.kwargs["organization_id"] == "org-1"
+        assert mock_schedule.await_args.kwargs["team_id"] == "team-1"
 
     @pytest.mark.asyncio
     async def test_shared_server_attachment_rejects_expert_session_before_mutation(
@@ -272,8 +286,7 @@ class TestStartChatTurn:
         db_mock = MagicMock()
         db_mock.find_server_link_owner = AsyncMock(return_value="owner-1")
         expert_session = MagicMock(session_id="expert-session", expert_id="expert-1")
-        mock_append = AsyncMock()
-        mock_enqueue = AsyncMock()
+        mock_schedule = AsyncMock(return_value="turn-1")
 
         with (
             patch(
@@ -285,12 +298,12 @@ class TestStartChatTurn:
                 new=AsyncMock(return_value=expert_session),
             ),
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=mock_append,
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(),
             ),
             patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
-                new=mock_enqueue,
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=mock_schedule,
             ),
         ):
             with pytest.raises(NotFoundError, match="no longer exists"):
@@ -302,8 +315,7 @@ class TestStartChatTurn:
                     )
                 )
 
-        mock_append.assert_not_awaited()
-        mock_enqueue.assert_not_awaited()
+        mock_schedule.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_dm_can_resume_owned_expert_session_in_personal_scope(self):
@@ -315,7 +327,7 @@ class TestStartChatTurn:
             organization_id="personal-org",
             team_id="personal-team",
         )
-        mock_enqueue = AsyncMock()
+        mock_schedule = AsyncMock(return_value="turn-1")
 
         with (
             patch(
@@ -331,8 +343,8 @@ class TestStartChatTurn:
                 new=AsyncMock(),
             ) as mock_create,
             patch(
-                "backend.platform_linking.chat.append_and_save_message",
-                new=AsyncMock(return_value=MagicMock()),
+                "backend.platform_linking.chat.check_inflight_cap",
+                new=AsyncMock(),
             ),
             patch(
                 "backend.platform_linking.chat.orgs_db",
@@ -343,20 +355,16 @@ class TestStartChatTurn:
                 ),
             ),
             patch(
-                "backend.platform_linking.chat.stream_registry"
-            ) as mock_stream_registry,
-            patch(
-                "backend.platform_linking.chat.enqueue_copilot_turn",
-                new=mock_enqueue,
+                "backend.platform_linking.chat.schedule_chat_turn",
+                new=mock_schedule,
             ),
         ):
-            mock_stream_registry.create_session = AsyncMock()
             handle = await start_chat_turn(_request(session_id="expert-session"))
 
         assert handle.session_id == "expert-session"
         mock_create.assert_not_awaited()
-        assert mock_enqueue.await_args.kwargs["organization_id"] == "personal-org"
-        assert mock_enqueue.await_args.kwargs["team_id"] == "personal-team"
+        assert mock_schedule.await_args.kwargs["organization_id"] == "personal-org"
+        assert mock_schedule.await_args.kwargs["team_id"] == "personal-team"
 
 
 class TestListUserChats:

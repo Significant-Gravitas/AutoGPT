@@ -361,6 +361,11 @@ class CoPilotExecutionEntry(BaseModel):
     platform's ``<voice_turn>`` instruction to what the model reads; the
     stored row keeps the user's words."""
 
+    from_chat_platform: bool = False
+    """The prompt was written on a linked chat platform, by someone who need not
+    be the account owner: the executor taints the turn whatever the chat's
+    own record says (``SessionKind.from_chat_platform``)."""
+
     credential_pins: CredentialPins = Field(default_factory=dict)
     """``{provider: pin}``: the accounts the schedule that fired this turn was
     set up to run on. They win over the chat's own picks, and a pinned account
@@ -429,6 +434,7 @@ async def enqueue_copilot_turn(
     unattended: bool = False,
     impersonated: bool = False,
     voice: bool = False,
+    from_chat_platform: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
     trace_headers: Mapping[str, str] | None = None,
@@ -480,6 +486,7 @@ async def enqueue_copilot_turn(
         unattended=unattended,
         impersonated=impersonated,
         voice=voice,
+        from_chat_platform=from_chat_platform,
         credential_pins=credential_pins or {},
         scheduled=scheduled,
         trace_headers=(
@@ -524,6 +531,7 @@ async def schedule_turn(
     scheduled: ScheduledTurnOrigin | None = None,
     delegated: bool = False,
     impersonated: bool = False,
+    root: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -563,12 +571,7 @@ async def schedule_turn(
     with 5 running + 10 queued can't slip a 16th task through this
     path; ``acquire_turn_slot`` only sees the running pool.
     """
-    if user_id:
-        from backend.copilot.turn_queue import count_inflight_turns
-
-        inflight_cap = get_inflight_turn_limit()
-        if await count_inflight_turns(user_id) >= inflight_cap:
-            raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
+    await check_inflight_cap(user_id)
 
     capacity = get_delegated_turn_limit() if delegated else get_inflight_turn_limit()
     async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
@@ -596,7 +599,24 @@ async def schedule_turn(
             credential_pins=credential_pins,
             scheduled=scheduled,
             impersonated=impersonated,
+            root=root,
         )
+
+
+async def check_inflight_cap(user_id: str | None) -> None:
+    """Refuse a turn past the user's in-flight cap (running + queued): the
+    admission for callers with no queue to fall back on, which then take a
+    slot sized to the same cap.
+
+    Raises :class:`ConcurrentTurnLimitError`, before any side effect.
+    """
+    if not user_id:
+        return
+    from backend.copilot.turn_queue import count_inflight_turns
+
+    inflight_cap = get_inflight_turn_limit()
+    if await count_inflight_turns(user_id) >= inflight_cap:
+        raise ConcurrentTurnLimitError(inflight_turn_limit_message(inflight_cap))
 
 
 async def dispatch_turn(
@@ -627,6 +647,7 @@ async def dispatch_turn(
     envelope: TurnEnvelope | None = None,
     impersonated: bool = False,
     voice: bool = False,
+    from_chat_platform: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -718,6 +739,7 @@ async def dispatch_turn(
             unattended=unattended,
             impersonated=impersonated,
             voice=voice,
+            from_chat_platform=from_chat_platform,
             credential_pins=credential_pins,
             scheduled=scheduled,
             trace_headers=trace_headers,
@@ -870,6 +892,8 @@ async def schedule_chat_turn(
     session_source_platform: str | None = None,
     context: dict[str, str] | None = None,
     voice: bool = False,
+    from_chat_platform: bool = False,
+    capacity: int | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
@@ -917,7 +941,7 @@ async def schedule_chat_turn(
     if message and spoken and not message_already_persisted:
         message = strip_server_injected_tags(message)
 
-    async with acquire_turn_slot(user_id, session_id) as slot:
+    async with acquire_turn_slot(user_id, session_id, capacity=capacity) as slot:
         if message_already_persisted and not slot.admitted:
             return None
         is_duplicate = False
@@ -963,6 +987,7 @@ async def schedule_chat_turn(
             request_arrival_at=request_arrival_at,
             impersonated=impersonated,
             voice=spoken,
+            from_chat_platform=from_chat_platform,
         )
         return turn_id
 

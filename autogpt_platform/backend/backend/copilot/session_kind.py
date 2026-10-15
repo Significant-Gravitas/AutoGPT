@@ -40,16 +40,22 @@ class SessionKind(BaseModel):
 
     @classmethod
     def for_turn(
-        cls, session: ChatSession, *, scheduled: bool = False, voice: bool = False
+        cls,
+        session: ChatSession,
+        *,
+        scheduled: bool = False,
+        voice: bool = False,
+        from_chat_platform: bool = False,
     ) -> "SessionKind":
-        """The kind of the turn *session* is about to run. *scheduled* and
-        *voice* are the dispatch's own facts, carried on the queue entry."""
+        """The kind of the turn *session* is about to run. *scheduled*, *voice*
+        and *from_chat_platform* are the dispatch's own facts, carried on the
+        queue entry: a bot's prompt counts even in a chat started on the web."""
         meta = session.metadata
         return cls(
             origin=meta.origin,
             unattended=scheduled or meta.origin == "automation",
             expert_kickoff=is_expert_kickoff_turn(session),
-            from_chat_platform=bool(meta.source_platform),
+            from_chat_platform=from_chat_platform or bool(meta.source_platform),
             builder=meta.builder_graph_id is not None,
             delegated=meta.delegated_by_session_id is not None,
             voice=voice,
