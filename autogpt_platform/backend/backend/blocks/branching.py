@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 from typing import Any
@@ -150,6 +151,21 @@ def _convert_for_match(value: Any, target: Any) -> Any:
                 return value
             if number.is_finite() and number == Decimal(str(target)):
                 return target
+        return value
+    if issubclass(input_type, (list, tuple, set, dict)):
+        # convert() wraps a scalar into a container (["x"], {"value": "x"}),
+        # which made "x" match ["x"]. Accept only text that parses to the
+        # same shape, or a list/tuple holding the same items.
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except ValueError:
+                return value
+            if issubclass(input_type, dict):
+                return parsed if isinstance(parsed, dict) else value
+            return input_type(parsed) if isinstance(parsed, list) else value
+        if isinstance(value, (list, tuple)) and issubclass(input_type, (list, tuple)):
+            return input_type(value)
         return value
     return convert(value, input_type)
 

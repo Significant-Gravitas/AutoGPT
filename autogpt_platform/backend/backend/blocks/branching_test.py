@@ -33,6 +33,13 @@ async def _matches(input_value: Any, value: Any) -> bool:
         (0.1, "0.10000000000000001"),
         (10, "1_0"),
         (1.0, "nan"),
+        (["hello"], "hello"),  # convert() wrapped scalars into containers
+        ([3], 3),
+        ({"value": "x"}, "x"),
+        ({"value": 5}, "5"),
+        (("x",), "x"),
+        ({"x"}, "x"),
+        ([1, 2], '{"a": 1}'),
     ],
 )
 async def test_lossy_conversion_does_not_report_a_match(input_value, value):
@@ -57,6 +64,9 @@ async def test_lossy_conversion_does_not_report_a_match(input_value, value):
         ("hello", "hello"),
         ("5", 5),
         ([1, 2], "[1, 2]"),
+        ([1, 2], (1, 2)),
+        ((1, 2), [1, 2]),
+        ({"a": 1}, '{"a": 1}'),
     ],
 )
 async def test_equivalent_values_still_match(input_value, value):
