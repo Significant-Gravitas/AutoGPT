@@ -28,6 +28,7 @@ from backend.copilot.constants import (
     AUTOPILOT_BLOCK_TOOL_NAME,
     PER_TURN_SPEND_FLOOR_USD,
 )
+from backend.copilot.credit_billing import credits_can_pay_block_turns
 from backend.copilot.permissions import (
     DISABLED_LEGACY_TOOL_NAMES,
     CopilotPermissions,
@@ -747,6 +748,8 @@ def _out_of_budget_message(pause: "TurnPause") -> str:
         "and your credit balance doesn't cover a run (it needs at least "
         f"${PER_TURN_SPEND_FLOOR_USD:.2f}). Add credits at {credits_url} to "
         "run it on credits."
+        if credits_can_pay_block_turns()
+        else f"Out of AutoPilot budget: {allowance} AutoPilot allowance is used up."
     )
     if pause.resets_at is None:
         return message
@@ -928,8 +931,11 @@ async def _enqueue_for_recovery(
                 # executor being a separate process.
                 # TODO(#14244-f5): revisit together with run_agent's tree reset.
                 envelope=root_envelope(recovery_turn_id, session_id=session_id),
-                # Still the block's turn: it may run on credits as the first did.
+                # Still the block's turn: it may run on credits as the first did,
+                # paid from the same tenancy.
                 tool_name=_AUTOPILOT_TOOL_NAME,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
             ),
             timeout=10,
         )
