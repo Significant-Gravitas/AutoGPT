@@ -22,6 +22,7 @@ from backend.blocks.ai_image_generator_block import AIImageGeneratorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.code_executor import ExecuteCodeStepBlock
 from backend.blocks.discord.bot_blocks import SendDiscordMessageBlock
+from backend.blocks.email_block import SendEmailBlock
 from backend.blocks.generic_webhook.triggers import GenericWebhookTriggerBlock
 from backend.blocks.github.issues import GithubAddLabelBlock
 from backend.blocks.github.repo_files import GithubCreateFileBlock
@@ -65,7 +66,13 @@ _AGENT_GRAPH = "backend.copilot.tools.run_agent._agent_graph"
 _REAL_RULE_FOR = chat_rules.rule_for
 _REAL_SET_ASK = chat_rules.set_ask
 _POST = {"channel_name": "general", "message_content": "hi"}
-_EMAIL = {"to": ["sam@example.com"], "subject": "Hi", "body": "hi"}
+# SMTP, so CI (no Google OAuth client) does not disable it as it does Gmail.
+_EMAIL = {
+    "to_email": "sam@example.com",
+    "subject": "Hi",
+    "body": "hi",
+    "config": {"smtp_server": "smtp.example.com", "smtp_port": 587},
+}
 
 
 def _session(mode: AutopilotMode = "auto") -> ChatSession:
@@ -185,15 +192,15 @@ async def test_a_call_that_runs_nothing_never_asks(gate, ran, payload, extra):
 async def test_an_ask_first_block_asks_in_auto_and_the_card_names_it(gate, ran):
     judge = AsyncMock()
     with patch(f"{_GATE}.supervise", judge):
-        result = await _run_capability(_session(), GmailSendBlock().id, _EMAIL)
+        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
     assert _is_held(result)
     ran.assert_not_awaited()
     judge.assert_not_awaited()
     args = gate.open_review.await_args.args
     reason, subject = args[5], args[6]
-    assert subject.name == "Gmail Send"
-    assert subject.key == f"block:{GmailSendBlock().id}"
-    assert reason == "Runs Gmail Send, which reaches outside the platform."
+    assert subject.name == "Send Email"
+    assert subject.key == f"block:{SendEmailBlock().id}"
+    assert reason == "Runs Send Email, which reaches outside the platform."
     assert subject.irreversible
 
 
@@ -231,7 +238,7 @@ async def test_a_judged_block_asks_in_ask_first_mode(gate, ran):
 @pytest.mark.parametrize("scope", ["chat", "expert", "team"])
 async def test_an_ask_first_block_runs_once_allowed_at_any_scope(gate, ran, scope):
     """The card's "don't ask me again": its rule, at the scope the user picked."""
-    key = f"block:{GmailSendBlock().id}"
+    key = f"block:{SendEmailBlock().id}"
     judge = AsyncMock()
     with (
         patch(f"{_GATE}.chat_rules.rule_for", _REAL_RULE_FOR),
@@ -251,14 +258,14 @@ async def test_an_ask_first_block_runs_once_allowed_at_any_scope(gate, ran, scop
             {"r": key},
             {"r": scope},
         )
-        result = await _run_capability(_session(), GmailSendBlock().id, _EMAIL)
+        result = await _run_capability(_session(), SendEmailBlock().id, _EMAIL)
     assert not _is_held(result)
     ran.assert_awaited_once()
     judge.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
-    "block, payload", [(SendDiscordMessageBlock, _POST), (GmailSendBlock, _EMAIL)]
+    "block, payload", [(SendDiscordMessageBlock, _POST), (SendEmailBlock, _EMAIL)]
 )
 async def test_after_a_rejection_the_block_asks_again(gate, ran, block, payload):
     """Judged or not, a declined subject asks from then on; the supervisor
