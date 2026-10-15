@@ -47,8 +47,11 @@ export function ExpertHireActions({
 
   if (hiredExpert) {
     return (
-      <div className="flex flex-wrap items-center gap-3">
-        <Badge variant="success" className={STATUS_CLASS}>
+      <div className="flex flex-col gap-2">
+        <Badge
+          variant="success"
+          className={`${STATUS_CLASS} w-full justify-center`}
+        >
           <Icon icon={CheckmarkCircle02Icon} size={16} />
           On your team
         </Badge>

@@ -238,6 +238,14 @@ class ChatConfig(BaseSettings):
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
         "override: ``copilot-model-routing[thinking][advanced]``.",
     )
+    learning_reviewer_model: str = Field(
+        default="",
+        description="Model for the nightly skill-learning review. Empty (the "
+        "default) routes to ``fast_standard_model`` through the normal chat "
+        "transport so the reviewer follows the same routing and accounting "
+        "as ordinary work; set ``CHAT_LEARNING_REVIEWER_MODEL`` to pin a "
+        "model chosen through evaluation.",
+    )
     title_model: str = Field(
         default=_DEFAULT_TITLE_MODEL,
         description="Model to use for generating session titles (should be "
@@ -471,9 +479,11 @@ class ChatConfig(BaseSettings):
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
         description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths. Prevents runaway tool "
-        "loops from burning budget. Override via CHAT_AGENT_MAX_TURNS env var "
-        "(legacy CHAT_CLAUDE_AGENT_MAX_TURNS still accepted).",
+        "both the baseline and Claude Agent SDK paths, including Codex models "
+        "on the SDK path, where each Codex function call counts as one round. "
+        "Prevents runaway tool loops from burning budget. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
+        "still accepted).",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,

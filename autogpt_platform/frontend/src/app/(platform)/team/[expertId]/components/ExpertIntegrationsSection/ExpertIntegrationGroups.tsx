@@ -18,7 +18,7 @@ import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/Integrat
 import { Delete02Icon, Loading03Icon } from "@hugeicons/core-free-icons";
 import { motion, useReducedMotion, type Variants } from "framer-motion";
 
-const TYPE_LABELS: Record<string, string> = {
+export const TYPE_LABELS: Record<string, string> = {
   api_key: "API Key",
   oauth2: "OAuth",
   user_password: "Username & password",

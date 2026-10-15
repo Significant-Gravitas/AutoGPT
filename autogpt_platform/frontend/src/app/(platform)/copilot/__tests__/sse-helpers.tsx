@@ -200,7 +200,12 @@ export async function typeAndSend(text: string) {
   await user.click(screen.getByRole("button", { name: /submit/i }));
 }
 
+/** Stop ignores taps for a moment after it appears; wait until it takes one. */
 export async function clickStop() {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: "Stop" }));
+  const stop = await screen.findByRole("button", { name: "Stop" });
+  await waitFor(() => expect(stop.hasAttribute("disabled")).toBe(false), {
+    timeout: 3000,
+  });
+  await user.click(stop);
 }

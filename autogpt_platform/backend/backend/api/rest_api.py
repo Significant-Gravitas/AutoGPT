@@ -65,6 +65,7 @@ import backend.api.features.postmark.postmark
 import backend.api.features.push.routes as push_routes
 import backend.api.features.schedules.routes as schedules_routes
 import backend.api.features.search.routes as search_routes
+import backend.api.features.skill_learning.routes as skill_learning_routes
 import backend.api.features.skills.routes as skills_routes
 import backend.api.features.store.model
 import backend.api.features.store.routes
@@ -106,8 +107,8 @@ from backend.util.exceptions import (
     NotFoundError,
     PreconditionFailed,
 )
-from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.service import UnhealthyServiceError
+from backend.util.url_redaction import redact_url
 from backend.util.workspace_storage import shutdown_workspace_storage
 
 from .external.fastapi_app import external_api
@@ -126,18 +127,6 @@ logging.getLogger("autogpt_libs").setLevel(logging.INFO)
 # mount on this API. Owned at module level so `lifespan_context` can close it on
 # shutdown; the routes themselves are mounted further down once `app` exists.
 _webhook_bot_backend = BotBackend()
-
-
-@contextlib.contextmanager
-def feature_flag_context():
-    if settings.config.app_env != backend.util.settings.AppEnvironment.LOCAL:
-        initialize_feature_flags()
-        try:
-            yield
-        finally:
-            shutdown_feature_flags()
-    else:
-        yield
 
 
 @contextlib.asynccontextmanager
@@ -202,8 +191,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # Fail-hard: the catalog is load-bearing — a broken load stops the boot.
     backend.data.llm_registry.load_catalog()
 
-    with feature_flag_context():
-        yield
+    yield
 
     try:
         from backend.api.features.integrations.codex import codex_login_coordinator
@@ -315,7 +303,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.exception(
                     "%s %s failed. Investigate and resolve the underlying issue: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     exc,
                     exc_info=exc,
                 )
@@ -323,7 +311,7 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
                 logger.warning(
                     "%s %s failed with %d: %s",
                     request.method,
-                    request.url.path,
+                    redact_url(request.url.path),
                     status_code,
                     exc,
                 )
@@ -351,7 +339,7 @@ async def validation_error_handler(
     logger.error(
         "Validation failed for %s %s: %s. Fix the request payload and try again.",
         request.method,
-        request.url.path,
+        redact_url(request.url.path),
         exc,
     )
     errors: list | str
@@ -554,6 +542,9 @@ app.include_router(
 app.include_router(experts_routes.public_router, tags=["v2", "experts"], prefix="/api")
 app.include_router(experts_routes.router, tags=["v2", "experts"], prefix="/api")
 app.include_router(memory_routes.router, tags=["v2", "memory"], prefix="/api")
+app.include_router(
+    skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
+)
 app.include_router(home_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
