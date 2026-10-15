@@ -925,11 +925,12 @@ async def get_user_session_count(
 
 
 async def get_last_message_texts(session_ids: list[str]) -> dict[str, str]:
-    """Newest user or assistant text in each session, keyed by session id.
+    """Newest visible user or assistant text in each session, keyed by id.
 
-    Sessions without any such message are left out, so a missing key means
-    the conversation has not started yet. Callers pass ids they already
-    scoped to the user; this does no ownership check of its own.
+    Rows marked hidden (the expert kickoff prompt) are skipped. Sessions
+    without any such message are left out, so a missing key means the
+    conversation has not started yet. Callers pass ids they already scoped
+    to the user; this does no ownership check of its own.
     """
     if not session_ids:
         return {}
@@ -939,6 +940,8 @@ async def get_last_message_texts(session_ids: list[str]) -> dict[str, str]:
         '  SELECT content FROM {schema_prefix}"ChatMessage" '
         "  WHERE \"sessionId\" = s.id AND role IN ('user', 'assistant') "
         "  AND btrim(coalesce(content, '')) <> '' "
+        # Same rule as expert_kickoff.is_hidden_chat_message.
+        "  AND NOT coalesce(metadata->'hidden' = 'true'::jsonb, false) "
         "  ORDER BY sequence DESC LIMIT 1"
         ") m",
         session_ids,
