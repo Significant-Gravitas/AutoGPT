@@ -3,7 +3,12 @@ import { TrialEvent } from "@/services/analytics/posthog-events";
 import { usePostHog } from "@posthog/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { getTrialDaysLeft } from "./helpers";
+import {
+  BILLING_PATH,
+  getTrialDaysLeft,
+  SUBSCRIBE_NOW_PARAM,
+  SUBSCRIBE_NOW_VALUE,
+} from "./helpers";
 
 type EndsAt = TrialStatusResponse["ends_at"];
 
@@ -36,7 +41,9 @@ export function useTrialCanceledDialog({ userID, endsAt }: Args) {
       days_left: getTrialDaysLeft(endsAt),
     });
     setOpenFor(null);
-    router.push("/settings/billing");
+    router.push(
+      `${BILLING_PATH}?${SUBSCRIBE_NOW_PARAM}=${SUBSCRIBE_NOW_VALUE}`,
+    );
   }
 
   return {

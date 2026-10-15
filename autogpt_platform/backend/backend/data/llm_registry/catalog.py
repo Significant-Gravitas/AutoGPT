@@ -716,6 +716,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-4-argon",
+                display_name="Gemini 4 Argon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-10-13: $2/$10 per Mtok,
+                # cache read $0.10/1M, cache write $0.1875/1M.
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                    cache_creation_credits_per_1m=28.125,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemma-4-31b-it",
                 display_name="Gemma 4 31B",
                 provider="open_router",
@@ -823,6 +844,26 @@ def _build_catalog() -> CatalogPayload:
                     input_credits_per_1m=15.0,
                     output_credits_per_1m=30.0,
                     cache_read_credits_per_1m=0.3,
+                ),
+            ),
+            CatalogModel(
+                slug="meta/muse-wonder",
+                display_name="Muse Wonder",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $4/$20 per Mtok, cache read $0.20/1M --
+                # live OpenRouter listing 2026-10-13 (meta/muse-wonder).
+                cost=CatalogModelCost(
+                    run_credits=11,
+                    input_credits_per_1m=600.0,
+                    output_credits_per_1m=3000.0,
+                    cache_read_credits_per_1m=30.0,
                 ),
             ),
             CatalogModel(

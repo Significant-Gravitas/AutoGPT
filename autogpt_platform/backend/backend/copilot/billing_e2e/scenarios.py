@@ -10,6 +10,11 @@ charge is expected to rest on:
   the CLI's price (Anthropic rates) would be far off.
 - ``none``: the user's own subscription pays, or nobody does; the platform
   must not charge the user's spend budgets at all.
+
+A turn the platform relaunches after a provider failure owes only the calls
+billed after the failure. The failed attempt is the platform's to absorb, not
+the user's. A turn the failure ends, because it had already streamed a tool
+call that a relaunch would roll back and could repeat, owes nothing.
 """
 
 from typing import Any, Literal
@@ -51,9 +56,30 @@ class Scenario(BaseModel):
     # Calls the provider bills per turn: one, a tool round of two, one.
     calls_per_turn: tuple[int, int, int] = (1, 2, 1)
     fault: PlannedFault | None = None
+    # Whether the platform relaunches the turn after the fault, rather than
+    # its client retrying the one request. The fault then ends the failed
+    # attempt, so every call after it is the retry's: the CLI's own retries
+    # must be off (``cli_max_retries=0``) for this to hold.
+    fault_relaunches_turn: bool = False
+    # Whether the fault ends the turn in an error instead: the turn had
+    # already streamed a tool call, which a relaunch would roll back out of
+    # the chat and could run again.
+    fault_ends_turn: bool = False
     # CLAUDE_CODE_MAX_RETRIES for the CLI; None keeps its own default.
     cli_max_retries: int | None = None
     known_gap: KnownGap | None = None
+
+    def owed_calls(self, turn: int, calls: list[Call]) -> list[Call]:
+        """The turn's billed calls the user pays for: after a relaunch, only
+        the attempt that succeeded, and none for a turn the fault ended."""
+        fault = self.fault
+        if fault is None or fault.turn != turn:
+            return calls
+        if self.fault_ends_turn:
+            return []
+        if not self.fault_relaunches_turn:
+            return calls
+        return [call for call in calls if call.request > fault.request]
 
     @property
     def needs_cli(self) -> bool:
@@ -88,7 +114,8 @@ def _sdk_anthropic_failing(
     scenario_id: str,
     fault: PlannedFault,
     calls_per_turn: tuple[int, int, int],
-    known_gap: KnownGap | None = None,
+    *,
+    relaunches: bool = True,
 ) -> Scenario:
     """The direct-Anthropic thread with one request failed and the CLI's own
     retries off, so the platform's handling of the failure is what runs."""
@@ -96,47 +123,44 @@ def _sdk_anthropic_failing(
         update={
             "id": scenario_id,
             "fault": fault,
+            "fault_relaunches_turn": relaunches,
+            "fault_ends_turn": not relaunches,
             "calls_per_turn": calls_per_turn,
             "cli_max_retries": 0,
-            "known_gap": known_gap,
         }
     )
 
 
-_RETRY_TOKENS = KnownGap(
-    check="tokens",
-    reason=(
-        "A retried turn is charged the failed attempt's spend, but its "
-        "cost-log row and session usage keep only the retry's tokens"
-    ),
-)
-
 SCENARIOS = [
     _SDK_ANTHROPIC,
-    # The tool round's second call is refused: the platform relaunches the CLI
-    # on the session, and the turn owes the first call and the retry's.
+    # The tool round's second call is refused after the tool ran. Relaunching
+    # would roll the call the user watched out of the chat and could repeat
+    # it, so the turn ends in the error: the provider billed the tool round's
+    # first call, and a turn that failed owes nothing.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-after-tool",
         PlannedFault(kind="overloaded", turn=1, request=2),
-        calls_per_turn=(1, 2, 1),
-        known_gap=_RETRY_TOKENS,
+        calls_per_turn=(1, 1, 1),
+        relaunches=False,
     ),
-    # The connection drops instead, which is transient: the platform stops
-    # reading before the CLI's result and relaunches the CLI on the session.
-    # The turn owes the first call and the retry's.
+    # The connection drops instead, which is transient too, and ends the turn
+    # the same way.
     _sdk_anthropic_failing(
         "sdk-anthropic-dropped-after-tool",
         PlannedFault(kind="dropped", turn=1, request=2),
-        calls_per_turn=(1, 2, 1),
-        known_gap=_RETRY_TOKENS,
+        calls_per_turn=(1, 1, 1),
+        relaunches=False,
     ),
-    # A resumed turn whose first request drops is relaunched before anything
-    # streamed, and charged its one successful call.
+    # A chat's first request drops before anything streamed. The relaunch
+    # starts the CLI session over, which the CLI refuses while the failed
+    # launch's session file is still there, and is charged its one call.
     _sdk_anthropic_failing(
-        "sdk-anthropic-dropped-on-resume",
-        PlannedFault(kind="dropped", turn=2, request=1),
+        "sdk-anthropic-dropped-first-turn",
+        PlannedFault(kind="dropped", turn=0, request=1),
         calls_per_turn=(1, 2, 1),
     ),
+    # A resumed turn whose first request is refused is relaunched on the
+    # session before anything streamed, and charged its one successful call.
     _sdk_anthropic_failing(
         "sdk-anthropic-overloaded-on-resume",
         PlannedFault(kind="overloaded", turn=2, request=1),

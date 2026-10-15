@@ -10,13 +10,13 @@ export function getHomeStatusLine(dashboard: HomeDashboardResponse): string {
   const attention = dashboard.attention.length;
   const active = dashboard.active_tasks.length;
   if (attention > 0 && active > 0) {
-    return `${attention} ${attention === 1 ? "decision" : "decisions"} waiting · ${active} ${active === 1 ? "agent is" : "agents are"} working now`;
+    return `${attention} ${attention === 1 ? "decision" : "decisions"} waiting · ${active} ${active === 1 ? "workflow is" : "workflows are"} running now`;
   }
   if (attention > 0) {
     return `${attention} ${attention === 1 ? "decision needs" : "decisions need"} you`;
   }
   if (active > 0) {
-    return `All clear · ${active} ${active === 1 ? "agent is" : "agents are"} working now`;
+    return `All clear · ${active} ${active === 1 ? "workflow is" : "workflows are"} running now`;
   }
   return "Nothing needs you right now";
 }

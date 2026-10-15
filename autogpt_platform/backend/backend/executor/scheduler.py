@@ -10,8 +10,9 @@ from collections.abc import Callable
 from concurrent.futures import Future
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Annotated, Literal, Optional, Union
+from typing import Annotated, Any, Literal, Optional, Union
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from zoneinfo import ZoneInfoNotFoundError
 
 from apscheduler.events import (
     EVENT_JOB_ERROR,
@@ -2011,11 +2012,37 @@ def _build_trigger(
 ) -> Union[CronTrigger, DateTrigger]:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
-    if cron is not None:
-        return CronTrigger.from_crontab(
-            _normalize_cron_day_of_week(cron), timezone=user_timezone
-        )
-    return DateTrigger(run_date=run_at, timezone=user_timezone)
+    try:
+        if cron is not None:
+            return CronTrigger.from_crontab(
+                _normalize_cron_day_of_week(cron), timezone=user_timezone
+            )
+        return DateTrigger(run_date=run_at, timezone=user_timezone)
+    except ZoneInfoNotFoundError as e:
+        # A KeyError, which the API would turn into a 500, not a 400.
+        raise ValueError(f"Unknown timezone {user_timezone!r}") from e
+
+
+def _updated_graph_job_args(
+    info: GraphExecutionJobInfo,
+    *,
+    name: str | None,
+    cron: str | None,
+    input_data: GraphInput | None,
+    input_credentials: dict[str, CredentialsMetaInput] | None,
+) -> GraphExecutionJobArgs:
+    """The stored job args with each provided field replaced. Identity fields
+    (schedule id, owner, graph, tenancy, expert) are never editable."""
+    current = info.model_dump(include=set(GraphExecutionJobArgs.model_fields))
+    overrides = {
+        "agent_name": normalize_schedule_name(name) if name else None,
+        "cron": cron,
+        "input_data": input_data,
+        "input_credentials": input_credentials,
+    }
+    return GraphExecutionJobArgs.model_validate(
+        current | {k: v for k, v in overrides.items() if v is not None}
+    )
 
 
 def _job_to_info(
@@ -2616,6 +2643,72 @@ class Scheduler(AppService):
         # on the next ``get_execution_schedules`` call.
         self._invalidate_jobs_cache()
         return info
+
+    @expose
+    def update_graph_execution_schedule(
+        self,
+        schedule_id: str,
+        user_id: str,
+        name: Optional[str] = None,
+        cron: Optional[str] = None,
+        user_timezone: Optional[str] = None,
+        input_data: Optional[GraphInput] = None,
+        input_credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    ) -> GraphExecutionJobInfo:
+        """Change an agent schedule's name, timing or inputs in place.
+
+        The job keeps its id, owner, graph and tenancy, so every reference to
+        it (Library links, the schedule index, run attribution) stays valid.
+        Trigger, kwargs and name land in one ``modify_job`` call, which the
+        jobstore writes as a single row update: a concurrent reader sees the
+        old schedule or the new one, never a mix. Omitted fields keep their
+        current value, and a paused schedule stays paused.
+        """
+        job, info = self._authorized_job(schedule_id, user_id, action="update")
+        if not isinstance(info, GraphExecutionJobInfo):
+            raise NotFoundError(f"Workflow schedule #{schedule_id} not found.")
+
+        job_args = _updated_graph_job_args(
+            info,
+            name=name,
+            cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
+        )
+        if input_data is not None or input_credentials is not None:
+            run_async(
+                execution_utils.validate_and_construct_node_execution_input(
+                    graph_id=job_args.graph_id,
+                    user_id=user_id,
+                    graph_inputs=job_args.input_data,
+                    graph_version=job_args.graph_version,
+                    graph_credentials_inputs=job_args.input_credentials,
+                )
+            )
+
+        changes: dict[str, Any] = {"kwargs": job_args.model_dump(mode="json")}
+        if name:
+            changes["name"] = job_args.agent_name
+        if cron is not None or user_timezone:
+            trigger = _build_trigger(
+                cron=job_args.cron,
+                run_at=None,
+                user_timezone=user_timezone or info.timezone,
+            )
+            changes["trigger"] = trigger
+            if job.next_run_time is not None:
+                changes["next_run_time"] = trigger.get_next_fire_time(
+                    None, datetime.now(timezone.utc)
+                )
+        updated = self.scheduler.modify_job(
+            schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
+        )
+        self._invalidate_jobs_cache()
+        logger.info(
+            f"Updated job {schedule_id}: cron '{job_args.cron}' in timezone "
+            f"{_timezone_from_job(updated)}"
+        )
+        return GraphExecutionJobInfo.from_db(job_args, updated)
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
@@ -3592,6 +3685,9 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_graph_execution_schedule)
     add_copilot_turn_schedule = endpoint_to_async(Scheduler.add_copilot_turn_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_graph_execution_schedule)
+    update_execution_schedule = endpoint_to_async(
+        Scheduler.update_graph_execution_schedule
+    )
     pause_schedule = endpoint_to_async(Scheduler.pause_execution_schedule)
     resume_schedule = endpoint_to_async(Scheduler.resume_execution_schedule)
     # Graph-only typed list — for legacy callers that need GraphExecutionJobInfo.

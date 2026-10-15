@@ -9,6 +9,7 @@ import { FLAG_BACKEND, isPostHogFlagsEnabled } from "./flag-backend";
 import { FrontendFlag as Flag } from "@/app/api/__generated__/models/frontendFlag";
 import { useFlagResolutionStarted } from "./flag-resolution";
 import { useFlagSource } from "./flag-source";
+import { usePwFlagOverrides } from "./pw-flag-overrides";
 
 // Declared once, on the backend (`FrontendFlag` in `backend/util/feature_flag/frontend.py`),
 // which is also the set `/api/feature-flags` serves.
@@ -165,9 +166,19 @@ export function envFlagOverride<T extends Flag>(
   return isForceAllFlags ? (true as FlagValues[T]) : undefined;
 }
 
+// A Playwright journey's runtime override wins over the build-time env one.
+function pwFlagOverride<T extends Flag>(
+  overrides: Record<string, unknown> | null,
+  flag: T,
+): FlagValues[T] | undefined {
+  if (!overrides || !(flag in overrides)) return undefined;
+  return resolveFlagValue(flag, overrides[flag]);
+}
+
 export function useGetFlag<T extends Flag>(flag: T): FlagValues[T] {
   const { value } = useFlagSource(flag);
-  const override = envFlagOverride(flag);
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
   const served = override ?? servedFlagValue(flag, value);
   recordFlagForSentry(flag, override === undefined ? served : undefined);
   return served;
@@ -192,7 +203,8 @@ export function useFlagStatus<T extends Flag>(
 ): { enabled: FlagValues[T]; ready: boolean; answered: boolean } {
   const { value, resolved } = useFlagSource(flag);
   const areFlagsEnabled = areFeatureFlagsEnabled();
-  const override = envFlagOverride(flag);
+  const pwOverrides = usePwFlagOverrides();
+  const override = pwFlagOverride(pwOverrides, flag) ?? envFlagOverride(flag);
 
   const resolutionStarted = useFlagResolutionStarted();
   const [timedOut, setTimedOut] = useState(false);
@@ -208,6 +220,11 @@ export function useFlagStatus<T extends Flag>(
   const served = override ?? servedFlagValue(flag, value);
   recordFlagForSentry(flag, override === undefined ? served : undefined);
 
+  // Until hydration ends a Playwright override can't be read yet, so a route
+  // gate must not act on the default it would replace.
+  if (isPwMockEnabled && pwOverrides === null) {
+    return { enabled: served, ready: false, answered: false };
+  }
   if (override !== undefined || !areFlagsEnabled || isPwMockEnabled) {
     return { enabled: served, ready: true, answered: true };
   }

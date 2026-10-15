@@ -261,6 +261,7 @@ class TestPostHogBackend:
             "email_domain": "agpt.co",
             "created_at": "2026-05-07T12:00:00+00:00",
             "is_anonymous": False,
+            "environment": ff.settings.config.app_env.value,
         }
 
     @pytest.mark.asyncio
@@ -293,9 +294,11 @@ class TestPostHogBackend:
         assert result == expected
 
     @pytest.mark.asyncio
-    async def test_an_anonymous_context_carries_only_is_anonymous(self, mocker):
-        """The `"system"`-keyed config flags have no user to describe, and are not
-        the shared signed-out key either."""
+    async def test_an_anonymous_context_carries_only_is_anonymous_and_the_environment(
+        self, mocker
+    ):
+        """The `"system"`-keyed config flags have no user to describe and are not
+        the shared signed-out key, but can still differ between dev and prod."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         client = stub_posthog(mocker, value=True, payload={"TIER": 1.5})
 
@@ -303,7 +306,10 @@ class TestPostHogBackend:
 
         args, kwargs = client.evaluate_flags.call_args
         assert args[0] == "system"
-        assert kwargs["person_properties"] == {"is_anonymous": False}
+        assert kwargs["person_properties"] == {
+            "is_anonymous": False,
+            "environment": ff.settings.config.app_env.value,
+        }
 
     @pytest.mark.asyncio
     async def test_a_split_on_is_anonymous_leaves_out_only_the_shared_signed_out_key(
@@ -331,6 +337,30 @@ class TestPostHogBackend:
         share = sum(v.flags.get(split) is True for v in visitors) / len(visitors)
         # One assertion, so a failure shows both halves.
         assert (anonymous.flags.get(split), 0.1 < share < 0.3) == (False, True), share
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "app_env,expected",
+        [
+            (AppEnvironment.DEVELOPMENT, (True, True)),
+            (AppEnvironment.PRODUCTION, (False, True)),
+        ],
+    )
+    async def test_a_dev_only_rollout_evaluates_in_process(
+        self, mocker, user_context, app_env, expected
+    ):
+        """Dev reads prod's definitions; a release condition on ``environment``
+        is how a flag goes out to dev alone."""
+        use_backend(mocker, FeatureFlagBackend.POSTHOG)
+        mocker.patch.object(ff.settings.config, "app_env", app_env)
+        posthog_client = _posthog_rolled_out_to_dev_only()
+        mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
+        try:
+            result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1")
+        finally:
+            posthog_client.shutdown()
+
+        assert result == expected
 
     def test_lifecycle_starts_only_posthog(self, mocker):
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
@@ -1115,6 +1145,35 @@ def _posthog_with_a_split_on_is_anonymous() -> Posthog:
                             }
                         ],
                         "rollout_percentage": 20,
+                    }
+                ]
+            },
+        }
+    ]
+    client._get_flags_decision = _no_remote_flags
+    return client
+
+
+def _posthog_rolled_out_to_dev_only() -> Posthog:
+    """A flag whose one release condition is ``environment = dev``."""
+    client = Posthog("phc-test", secret_key="phx-test", enable_local_evaluation=False)
+    client.feature_flags = [
+        {
+            "id": 1,
+            "key": Flag.HIRE_EXPERTS.value,
+            "active": True,
+            "filters": {
+                "groups": [
+                    {
+                        "properties": [
+                            {
+                                "key": "environment",
+                                "type": "person",
+                                "operator": "exact",
+                                "value": ["dev"],
+                            }
+                        ],
+                        "rollout_percentage": 100,
                     }
                 ]
             },

@@ -209,7 +209,7 @@ export function LibraryAgentList({
         ) : isFavoritesTab && agents.length === 0 ? (
           <div className="flex h-[200px] flex-col items-center justify-center gap-2 text-zinc-500">
             <Icon icon={FavouriteIcon} className="h-10 w-10" />
-            <Text variant="body">No favorite agents yet</Text>
+            <Text variant="body">No favorite workflows yet</Text>
           </div>
         ) : isPristineEmpty ? (
           <LibraryEmptyState />

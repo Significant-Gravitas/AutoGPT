@@ -24,9 +24,6 @@ from . import (
 VISITOR_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
 # Past this many visitors the oldest entry goes, so a flood of fresh ids cannot grow memory.
 VISITOR_CACHE_SIZE = 4096
-_visitor_flags_cache: TTLCache[str, dict["FrontendFlag", Any]] = TTLCache(
-    maxsize=VISITOR_CACHE_SIZE, ttl=30
-)
 
 
 class FrontendFlag(str, Enum):
@@ -73,6 +70,10 @@ class FrontendFlag(str, Enum):
         handler.resolve_ref_schema(schema)["x-enum-varnames"] = [m.name for m in cls]
         return schema
 
+
+_visitor_flags_cache = TTLCache[str, dict[FrontendFlag, Any]](
+    maxsize=VISITOR_CACHE_SIZE, ttl=30
+)
 
 # Served as payloads, so an env override (a bare true/false) never stands in for them.
 PAYLOAD_FLAGS = frozenset(
