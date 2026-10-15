@@ -76,11 +76,11 @@ export function TaskCard({
               className="rounded-full border border-zinc-200"
             />
           )}
-          <Text variant="small-medium" tone="secondary" className="shrink-0">
+          <Text variant="small" tone="muted" className="shrink-0">
             {name}
           </Text>
           {jobTitle && (
-            <Text variant="small" tone="muted" className="truncate">
+            <Text variant="small" className="truncate text-zinc-400">
               · {jobTitle}
             </Text>
           )}
