@@ -190,7 +190,8 @@ class FakeDreamDb:
     """In-memory stand-in for ``backend.data.dream_pass`` behind ``dream_db()``.
 
     Applies an update by the rules of ``backend/data/dream_pass_update.py``:
-    a ``None`` field leaves its column, status and phase only move forward,
+    a ``None`` field leaves its column, status, phase and the lease's
+    expiry only move forward,
     a batch id lands only while the row has not moved past the update's
     phase, ``phase_outputs`` and ``operations`` merge one field at a time, a
     stop bumps the cancel generation, ``clear`` empties its columns, and a
@@ -234,6 +235,8 @@ class FakeDreamDb:
                 row[field].update(
                     {k: v for k, v in dict(value).items() if v is not None}
                 )
+            elif field == "lease_expires_at" and row.get(field) is not None:
+                row[field] = max(row[field], value)
             else:
                 row[field] = value
         row.update({column: None for column in update.clear})
