@@ -23,7 +23,7 @@ retention job deletes closed passes past their retention
 from datetime import datetime
 
 import prisma.models
-from prisma.types import DreamPassWhereInput
+from prisma.types import DreamPassCreateInput, DreamPassWhereInput
 
 from backend.data.db import execute_raw_with_schema
 from backend.data.dream_pass_models import (
@@ -34,6 +34,7 @@ from backend.data.dream_pass_models import (
     DreamPassUpdate,
 )
 from backend.data.dream_pass_update import TRANSITION_SQL, transition_args
+from backend.util.json import SafeJson
 
 # One batch of the retention delete: at most $3 closed passes created before
 # $2 whose cleanup is not still pending. DELETE takes no LIMIT, so the batch's
@@ -50,21 +51,22 @@ DELETE FROM {schema_prefix}"DreamPass" WHERE "id" IN (
 
 
 async def create_dream_pass(draft: DreamPassDraft) -> DreamPassRecord:
-    row = await prisma.models.DreamPass.prisma().create(
-        data={
-            "id": draft.id,
-            "userId": draft.user_id,
-            "expertId": draft.expert_id,
-            "scopeKey": draft.scope_key,
-            "route": draft.route,
-            "trigger": draft.trigger,
-            "status": draft.status,
-            "phase": draft.phase,
-            "startedAt": draft.started_at,
-            "leaseToken": draft.lease_token,
-            "leaseExpiresAt": draft.lease_expires_at,
-        }
-    )
+    data: DreamPassCreateInput = {
+        "id": draft.id,
+        "userId": draft.user_id,
+        "expertId": draft.expert_id,
+        "scopeKey": draft.scope_key,
+        "route": draft.route,
+        "trigger": draft.trigger,
+        "status": draft.status,
+        "phase": draft.phase,
+        "startedAt": draft.started_at,
+        "leaseToken": draft.lease_token,
+        "leaseExpiresAt": draft.lease_expires_at,
+    }
+    if draft.cost_context is not None:
+        data["costContext"] = SafeJson(draft.cost_context)
+    row = await prisma.models.DreamPass.prisma().create(data=data)
     return DreamPassRecord.from_db(row)
 
 

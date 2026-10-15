@@ -31,6 +31,7 @@ import pytest
 import pytest_asyncio
 
 from backend.copilot import usage_activation_fixtures
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
     OPEN_STATUSES,
     DreamPassDraft,
@@ -210,7 +211,7 @@ class FakeDreamDb:
         if draft.id in self.rows:
             raise ValueError(f"duplicate dream pass {draft.id}")
         self.writes.append((draft.id, draft))
-        self.seed(draft)
+        self._insert(draft)
 
     async def update_dream_pass(self, pass_id: str, update: DreamPassUpdate) -> bool:
         self._raise_if_down()
@@ -327,7 +328,22 @@ class FakeDreamDb:
 
     def seed(self, draft: DreamPassDraft, **columns: Any) -> None:
         """A row as an earlier step (another process) would have left it;
-        *columns* set the rest of it (a lease, when it was last written)."""
+        *columns* set the rest of it (a lease, when it was last written).
+
+        Unless the draft or *columns* say otherwise, the row carries the
+        usage attribution its pass would have started under in these tests
+        (``usage_snapshot``: the owner, ready, untrialed), as ``start_pass``
+        records it; ``cost_context=None`` seeds a row that carries none."""
+        if draft.cost_context is None:
+            columns = {
+                "cost_context": TrialCostContext(
+                    user_id=draft.user_id, trial_id=None
+                ).model_dump(mode="json"),
+                **columns,
+            }
+        self._insert(draft, **columns)
+
+    def _insert(self, draft: DreamPassDraft, **columns: Any) -> None:
         now = datetime.now(timezone.utc)
         self.rows[draft.id] = {
             **dict(draft),

@@ -29,6 +29,7 @@ from prisma.enums import (
 from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
     CLOSED_ROW_CLEARS,
     INITIAL_CANCEL_GENERATION,
@@ -86,10 +87,13 @@ def new_pass(
     trigger: DreamTrigger,
     started_at: datetime,
     lease_token: str,
+    cost_context: TrialCostContext | None,
 ) -> DreamPassDraft:
     """A pass's first row: running, gathering its input, with the lease of
     the lock it is about to take under *lease_token* (the sync TTL from its
-    start)."""
+    start) and the usage attribution it runs under, *cost_context*: the one
+    every charge of its phases goes by, whoever makes it. ``None`` leaves the
+    pass with none, never to be charged."""
     return DreamPassDraft(
         id=pass_id,
         user_id=scope.owner_user_id,
@@ -100,6 +104,9 @@ def new_pass(
         started_at=started_at,
         lease_token=lease_token,
         lease_expires_at=started_at + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+        cost_context=(
+            cost_context.model_dump(mode="json") if cost_context is not None else None
+        ),
     )
 
 

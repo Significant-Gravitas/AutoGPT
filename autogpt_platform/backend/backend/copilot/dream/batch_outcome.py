@@ -70,14 +70,13 @@ async def fail_pass(
     *,
     holds_lock: bool = True,
     provider_batch_id: str | None = None,
-    charge: bool = True,
 ) -> None:
     """Close the pass errored: its admin job and its record first, the
     record marked for the cleanup after it, then that cleanup
     (``clean_up_after``): the batch *provider_batch_id* names stopped at the
-    provider, the phases that landed charged (none when *charge* is false:
-    a pass that cannot be charged under its own usage attribution is
-    charged under no other), the lock released (unless the pass lost it,
+    provider, the phases that landed charged under the usage attribution
+    the pass started under (none when its row carries none,
+    ``batch_costs``), the lock released (unless the pass lost it,
     *holds_lock* false: it is then another pass's) and the per-pass state
     deleted. Each step is best-effort on its own, so one that fails never
     stops the ones after it, and leaves the row marked for the reaper.
@@ -98,9 +97,7 @@ async def fail_pass(
     usage = landed_usage(state, bp.phase_models, bp.pass_id)
     await mark_job_errored(bp.job_id, error, result=_failed_result(bp, error, usage))
     await record_batch_failed(bp.pass_id, error, usage)
-    await clean_up_after(
-        bp, holds_lock=holds_lock, provider_batch_id=provider_batch_id, charge=charge
-    )
+    await clean_up_after(bp, holds_lock=holds_lock, provider_batch_id=provider_batch_id)
 
 
 async def clean_up_after(
@@ -108,7 +105,6 @@ async def clean_up_after(
     *,
     holds_lock: bool = True,
     provider_batch_id: str | None = None,
-    charge: bool = True,
 ) -> None:
     """The cleanup after the ended pass (``cleanup.clean_up_pass``), its lock
     released under the pass's token (``lock_token_of``), then its row's mark
@@ -131,7 +127,6 @@ async def clean_up_after(
         provider_batch_id=provider_batch_id,
         lock_token=await lock_token_of(bp.pass_id) if holds_lock else None,
         release=holds_lock,
-        charge=charge,
     )
     await finish_cleanup(bp.pass_id, cleanup)
 

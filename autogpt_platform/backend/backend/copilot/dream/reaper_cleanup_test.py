@@ -166,17 +166,21 @@ class TestACleanupCutShort:
 
 
 class TestAnUnattributedPass:
+    @pytest.mark.parametrize(
+        "status", [DreamPassStatus.ERRORED, DreamPassStatus.CANCELLED]
+    )
     async def test_is_cleaned_up_without_a_charge(
-        self, fake_dream_db, fake_dream_redis, charges
+        self, fake_dream_db, fake_dream_redis, charges, status
     ):
-        """A batch pass whose result carried no usage attribution (#15208)
-        closed ERRORED and left its cleanup to the reaper: the reaper does it,
-        the lock and the state gone, but charges none of its phases, the one
-        that landed included, under no attribution of its own either."""
+        """A batch pass whose row carries no usage attribution (#15208: one
+        written before the row kept it, or whose capture failed) closed, and
+        left its cleanup to the reaper, however it closed: the reaper does
+        it, the lock and the state gone, but charges none of its phases, the
+        one that landed included, under no attribution of its own either."""
         await _dead_batch_pass(fake_dream_db)
         fake_dream_db.rows["p1"].update(
-            status=DreamPassStatus.ERRORED,
-            error=cleanup_mod.UNATTRIBUTED_ERROR,
+            status=status,
+            cost_context=None,
             cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         fake_dream_redis.store[_LOCK_KEY] = "dead-token"

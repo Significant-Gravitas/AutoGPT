@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from backend.copilot.inference.context import InferenceContext, InferenceScope
 from backend.copilot.inference.routing import anthropic_batch_route
+from backend.copilot.trial_cost_context import restore_cost_context
 
 from .batch_state import (
     claim_per_phase_charging,
@@ -21,6 +22,7 @@ from .batch_state import (
 from .billing import record_phase_cost
 from .phase_jobs import PHASE_TIERS, phase_job
 from .schemas import DreamPassUsage, DreamPhase
+from .store import read_cost_context
 from .usage import batch_pass_usage, landed_phase_usage
 
 logger = logging.getLogger(__name__)
@@ -96,9 +98,35 @@ async def charge_landed_phases(
     model's catalog price card (``backend/copilot/price_card.py``):
     Anthropic's additive cache buckets, less the batch path's half-price
     discount.
+
+    Every charge is made under the usage attribution the pass started under
+    (#15208), read off its row (``store.read_cost_context``) whoever charges
+    and however late: the callback, a failed pass's end, a closed pass's
+    dropped batch, the reaper. Never under the attribution the account has
+    now: a conversion after the pass started does not move what it already
+    ran. A pass whose row carries no attribution is never charged, settled
+    all the same; one whose row cannot be read is left for the next cleanup.
     """
+    try:
+        context = await read_cost_context(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read the usage attribution to "
+            "charge it under; left for the next cleanup",
+            exc_info=True,
+        )
+        return PhaseCharges(settled=False)
+    if context is None or context.user_id != user_id:
+        logger.warning(
+            f"Dream pass {pass_id}: its record carries no usage attribution "
+            f"for user {user_id[:12]}; its landed phases are not charged"
+        )
+        return PhaseCharges(settled=True)
     scope = InferenceScope(user_id=user_id, expert_id=expert_id)
-    task = asyncio.ensure_future(_charge_pass(scope, pass_id, state, phase_models))
+    with restore_cost_context(user_id, context):
+        # The task takes the attribution with it: it copies the context it
+        # is created in, and goes on under it after this returns.
+        task = asyncio.ensure_future(_charge_pass(scope, pass_id, state, phase_models))
     _CHARGES_IN_FLIGHT.add(task)
     task.add_done_callback(_CHARGES_IN_FLIGHT.discard)
     return await asyncio.shield(task)

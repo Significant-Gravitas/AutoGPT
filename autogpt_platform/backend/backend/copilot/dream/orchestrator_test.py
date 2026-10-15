@@ -2147,6 +2147,9 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
             lease_token=draft.lease_token,
             lease_expires_at=result.started_at
             + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+            # The attribution the pass started under: the suite's ready,
+            # untrialed usage state.
+            cost_context={"user_id": "u", "trial_id": None, "generation": None},
         ),
     )
     assert fake_dream_db.statuses(result.pass_id) == [

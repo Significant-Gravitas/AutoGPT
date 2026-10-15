@@ -624,6 +624,9 @@ model DreamPass {
   operations   Json?
   // DreamPassUsage: tokens and cost, per phase and in total.
   usage        Json?
+  // The usage attribution (TrialCostContext) the pass started under, which
+  // every charge of its phases goes by. A row without one is never charged.
+  costContext  Json?
 
   // The episode window the pass gathered.
   windowStart DateTime?
