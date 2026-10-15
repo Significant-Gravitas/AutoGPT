@@ -153,7 +153,10 @@ async def _record(
 ) -> dict[str, Any]:
     """Write the job ids this pass settled on and return the outcomes as
     they stand afterwards: a registration the row could not record is a
-    failure, and one the scope left ACTIVE under is taken down again."""
+    failure, and one the scope left ACTIVE under is ``scope_changed``. Its
+    crons are left where they are: the fire gate holds a scope that is not
+    ACTIVE, the reconcile removes them (``scope_reconcile.py``), and taking
+    them down here could take a concurrent resume's crons with them."""
     ids = {
         job.row_field: _next_job_id(row, job, outcomes.get(job.job_id_prefix), stale)
         for job in DREAM_SYSTEM_JOBS
@@ -179,8 +182,10 @@ async def _record(
         return _replace_registered(outcomes, "record_failed")
     if recorded:
         return outcomes
-    logger.info(f"{scope_label(scope)} left ACTIVE while registering; removing")
-    await remove_scope_jobs(scope)
+    logger.info(
+        f"{scope_label(scope)} left ACTIVE while registering; the reconcile "
+        "removes its crons"
+    )
     return _replace_registered(outcomes, "scope_changed")
 
 

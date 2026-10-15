@@ -8,7 +8,9 @@ row before a successful delete re-created the deleted cron for good, and a
 write blocked on a locked row held its pass, and every pass after it, at
 the same scope. Round 4's: that restore cut short after its stale add, by
 a failed or locked write or a cancellation. A stale add is tagged as the
-reconcile's, and the next pass takes it back.
+reconcile's, and the next pass takes it back. Round 5's: a sibling's repair
+that keeps failing on every pass kept that stray running; the stray now
+goes first, whatever the repair does.
 """
 
 from __future__ import annotations
@@ -415,7 +417,9 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
     add then puts it back. The nightly add after it fails, is cancelled, or
     waits on a row another transaction holds (on PostgreSQL) until the write
     timeout. The community cron came back tagged as the reconcile's, so the
-    next pass takes it back, and three more leave it gone."""
+    next pass takes it back, the nightly's repair failing, cut short or held
+    again there (the round-5 review's production delete race), and three
+    more after the nightly recovers leave it gone."""
     if ending == "pg_timeout" and _postgres_url() is None:
         pytest.skip("needs the PostgreSQL test DB")
     await registry.ensure_scope_scheduled(ACCOUNT)
@@ -465,15 +469,22 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
                 else:
                     report = await asyncio.wait_for(restore, 10)
                     assert report.failed == [ACCOUNT.scope_key]
+                assert _job(service, _COMMUNITY) is not None, "the stale add landed"
+
+                if ending == "cancel":
+                    with pytest.raises(asyncio.CancelledError):
+                        await asyncio.wait_for(_pass(service), 10)
+                else:
+                    report = await asyncio.wait_for(_pass(service), 10)
+                    assert report.dropped == [_COMMUNITY]
+                    assert report.failed == [ACCOUNT.scope_key]
+                assert _job(service, _COMMUNITY) is None, "gone, the repair failing"
             finally:
                 release.set()
                 if hold is not None:
                     hold.rollback()
-            assert _job(service, _COMMUNITY) is not None, "the stale add landed"
             monkeypatch.setattr(service, "_add_memory_job", add)
 
-            report = await _pass(service)
-            assert report.dropped == [_COMMUNITY]
             for _ in range(3):
                 await _pass(service)
 
@@ -481,6 +492,82 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_no_cron_behind(
             assert _job(service, _COMMUNITY) is None
             assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
             if ending == "pg_timeout":
+                with store.engine.begin() as connection:
+                    connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
+    finally:
+        if locker is not None:
+            locker.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["error", "pg_lock"])
+async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
+    env, monkeypatch, tmp_path, failure: str
+):
+    """The round-5 review's sibling failure: the ACTIVE account scope holds a
+    tagged community cron its row no longer records and a nightly cron in
+    the wrong timezone, whose repair fails on every pass (its add raises, or
+    another transaction holds its row on PostgreSQL until the write
+    timeout). The first pass takes the stray back all the same, and the
+    nightly is repaired once its write goes through."""
+    if failure == "pg_lock" and _postgres_url() is None:
+        pytest.skip("needs the PostgreSQL test DB")
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
+    community, nightly = sm.DREAM_SYSTEM_JOBS
+    name = f"memcore_sibling_{uuid.uuid4().hex[:8]}"
+    if failure == "pg_lock":
+        monkeypatch.setattr(sm, "MEMORY_CRON_WRITE_TIMEOUT_SECONDS", 0.2)
+        url = _postgres_url()
+        assert url is not None
+        store = ResilientSQLAlchemyJobStore(url=url, tablename=name)
+    else:
+        store = _sqlite(tmp_path)
+    locker = store.engine.connect() if failure == "pg_lock" else None
+    try:
+        with _scheduler(store) as service:
+            service._add_memory_job(
+                *sm._MEMORY_CRONS[community.job_id_prefix],
+                community,
+                ACCOUNT,
+                TOKYO,
+                True,
+            )
+            service._add_memory_job(
+                *sm._MEMORY_CRONS[nightly.job_id_prefix], nightly, ACCOUNT, TOKYO
+            )
+            await env.db.forget_scope_job(USER, ACCOUNT.scope_key, _COMMUNITY)
+            add = service._add_memory_job
+
+            def failing(*args):
+                raise ConnectionError("the nightly's repair is unavailable")
+
+            hold = locker.begin() if locker is not None else None
+            try:
+                if locker is not None:
+                    locker.execute(
+                        text(f"SELECT id FROM {name} WHERE id = :id FOR UPDATE"),
+                        {"id": _NIGHTLY},
+                    ).all()
+                else:
+                    monkeypatch.setattr(service, "_add_memory_job", failing)
+                reports = [await asyncio.wait_for(_pass(service), 10) for _ in range(3)]
+            finally:
+                if hold is not None:
+                    hold.rollback()
+
+            assert reports[0].dropped == [_COMMUNITY]
+            assert [report.failed for report in reports] == [[ACCOUNT.scope_key]] * 3
+            assert _job(service, _COMMUNITY) is None
+            assert str(_job(service, _NIGHTLY).trigger.timezone) == TOKYO
+            monkeypatch.setattr(service, "_add_memory_job", add)
+
+            report = await _pass(service)
+
+            assert report.restored == [_NIGHTLY] and report.failed == []
+            assert str(_job(service, _NIGHTLY).trigger.timezone) == PARIS
+            assert _job(service, _COMMUNITY) is None
+            if failure == "pg_lock":
                 with store.engine.begin() as connection:
                     connection.execute(text(f"DROP TABLE IF EXISTS {name}"))
     finally:

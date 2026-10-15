@@ -50,67 +50,61 @@ def _lose_every_cron(env: RegistryEnv) -> None:
     env.scheduler.scopes.clear()
 
 
-async def _stale_takedown(env: RegistryEnv, monkeypatch: pytest.MonkeyPatch) -> None:
-    """One interleaving from the review: an ensure parks before recording
-    while a pause lands, its record is refused, and its takedown parks while
-    a resume registers and records the crons; then the stale takedown lands
-    and takes them."""
-    record, remove = env.db.record_scope_jobs, env.scheduler._remove
-    record_reached, record_go = asyncio.Event(), asyncio.Event()
-    remove_reached, remove_go = asyncio.Event(), asyncio.Event()
+async def _refused_then_resumed(
+    env: RegistryEnv, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, Any]:
+    """The interleaving from the round-2 review: an ensure parks before
+    recording while a pause lands, so its record is refused, and a resume
+    registers and records the crons before the ensure goes on. Returns the
+    ensure's outcomes."""
+    record = env.db.record_scope_jobs
+    reached, go = asyncio.Event(), asyncio.Event()
     ensure: asyncio.Task | None = None
 
     async def parked_record(*args: Any, **kwargs: Any) -> bool:
-        if asyncio.current_task() is ensure and not record_reached.is_set():
-            record_reached.set()
-            await record_go.wait()
-        return await record(*args, **kwargs)
-
-    async def parked_remove(*, scope):
-        if asyncio.current_task() is ensure and not remove_reached.is_set():
-            remove_reached.set()
-            await remove_go.wait()
-        return await remove(scope=scope)
+        if asyncio.current_task() is not ensure or reached.is_set():
+            return await record(*args, **kwargs)
+        reached.set()
+        await go.wait()
+        refused = await record(*args, **kwargs)
+        await registry.resume_scope(EXPERT)
+        return refused
 
     monkeypatch.setattr(env.db, "record_scope_jobs", parked_record)
-    env.scheduler.remove_scope_memory_jobs.side_effect = parked_remove
     ensure = asyncio.create_task(
         registry.ensure_scope_scheduled(EXPERT, force_refresh=True)
     )
-    await asyncio.wait_for(record_reached.wait(), TIMEOUT)
+    await asyncio.wait_for(reached.wait(), TIMEOUT)
     assert await registry.pause_scope(EXPERT)
-    record_go.set()
-    await asyncio.wait_for(remove_reached.wait(), TIMEOUT)
-    await registry.resume_scope(EXPERT)
-    assert set(env.scheduler.jobs) == job_ids(EXPERT)
-    remove_go.set()
-    await asyncio.wait_for(ensure, TIMEOUT)
+    go.set()
+    outcomes = await asyncio.wait_for(ensure, TIMEOUT)
     monkeypatch.setattr(env.db, "record_scope_jobs", record)
-    env.scheduler.remove_scope_memory_jobs.side_effect = remove
+    return outcomes
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("cycles", [1, 2])
-async def test_every_pause_resume_interleaving_is_restored_by_one_pass(
+async def test_a_registration_a_pause_refused_takes_no_later_resumes_crons(
     env, monkeypatch, cycles
 ):
-    """After ``cycles`` stale takedowns the row is ACTIVE with both ids
-    recorded and no crons, and an ordinary ensure, trusting the ids,
-    restores nothing. One pass restores them."""
+    """After ``cycles`` of the interleaving the refused registrations report
+    ``scope_changed`` and take nothing down: the row is ACTIVE with both ids
+    recorded and the resume's crons in place, and a pass has nothing to
+    change. (A takedown there once took the resume's crons, for the pass
+    to restore.)"""
     await registry.ensure_scope_scheduled(EXPERT)
     for _ in range(cycles):
-        await _stale_takedown(env, monkeypatch)
+        outcomes = await _refused_then_resumed(env, monkeypatch)
+        assert {r["reason"] for r in outcomes.values()} == {"scope_changed"}
     row = env.db.rows[EXPERT.scope_key]
     assert row.state == ACTIVE
     assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
-    assert env.scheduler.jobs == {}
-    await registry.ensure_scope_scheduled(EXPERT)
-    assert env.scheduler.jobs == {}, "an ensure trusts the recorded ids"
+    assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
     report = await env.reconcile()
 
+    assert (report.restored, report.removed, report.dropped) == ([], [], [])
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
-    assert sorted(report.restored) == sorted(job_ids(EXPERT))
 
 
 @pytest.mark.asyncio
@@ -655,6 +649,62 @@ async def test_a_restore_cut_short_after_a_stale_add_leaves_nothing_next_pass(
 
     assert set(env.scheduler.jobs) == {f"dream_nightly_batch_{ACCOUNT.scope_key}"}
     assert env.db.rows[ACCOUNT.scope_key].community_job_id is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ending", ["error", "cancel"])
+async def test_a_stray_goes_before_a_restore_that_fails_in_its_scope(
+    env, monkeypatch, ending: str
+):
+    """The round-5 review's ordering: the scope's restore fails (or the pass
+    is cancelled there) on every pass; its tagged stray goes first all the
+    same, so a repair that keeps failing never keeps one running."""
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS
+    env.scheduler.tagged.add(community.job_id(ACCOUNT))
+    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
+    env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
+
+    async def failing(job, scope, user_timezone):
+        if ending == "cancel":
+            raise asyncio.CancelledError
+        raise ConnectionError("the nightly's repair is unavailable")
+
+    monkeypatch.setattr(env.crons, "add", failing)
+
+    if ending == "cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await env.reconcile()
+    else:
+        report = await env.reconcile()
+        assert report.dropped == [community.job_id(ACCOUNT)]
+        assert report.failed == [ACCOUNT.scope_key]
+
+    assert community.job_id(ACCOUNT) not in env.scheduler.jobs
+    assert env.scheduler.jobs[nightly.job_id(ACCOUNT)] == TOKYO
+
+
+@pytest.mark.asyncio
+async def test_a_take_back_that_fails_does_not_hold_up_the_restore(env, monkeypatch):
+    """Each step stands on its own: the scope's stray cannot be taken back
+    (its drop fails), and the row's cron running in the wrong timezone is
+    repaired all the same; the scope is reported failed once."""
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS
+    env.scheduler.tagged.add(community.job_id(ACCOUNT))
+    await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
+    env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
+
+    async def failing(job, scope):
+        raise ConnectionError("the take-back is unavailable")
+
+    monkeypatch.setattr(env.crons, "drop", failing)
+
+    report = await env.reconcile()
+
+    assert report.failed == [ACCOUNT.scope_key]
+    assert report.restored == [nightly.job_id(ACCOUNT)]
+    assert env.scheduler.jobs[nightly.job_id(ACCOUNT)] == PARIS
 
 
 @pytest.mark.asyncio

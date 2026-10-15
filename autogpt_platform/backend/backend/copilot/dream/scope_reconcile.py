@@ -15,9 +15,11 @@ listing shows out of step, on the row as read again just before:
     scheduler lacks or runs elsewhere is registered, tagged as the
     reconcile's (``RECONCILED_SUFFIX`` on the job's name);
   * a tagged cron its row does not record, or whose row is not ACTIVE or
-    gone, is removed. So a restore that raced a delete or a pause, failed
+    gone, is removed, before the scope's crons are repaired and whatever
+    that repair does. So a restore that raced a delete or a pause, failed
     partway, was cancelled or finished after its pass, leaves at worst a
-    tagged cron that the next pass reaching the scope takes away;
+    tagged cron that the next pass reaching the scope takes away, even
+    while the scope's repair keeps failing;
   * every cron of a PAUSED or WIPED row, or of an expert with no row, is
     removed. An untagged cron no row records (an account's from before the
     registry, a registration whose record failed) is the registry's, and
@@ -34,7 +36,7 @@ changes nothing.
 import bisect
 import logging
 import random
-from collections.abc import Sequence
+from collections.abc import Awaitable, Sequence
 from typing import ClassVar, Protocol
 
 from prisma.enums import MemoryScopeScheduleState
@@ -159,30 +161,45 @@ async def _settle(
     store: CronStore,
     report: ReconcileReport,
 ) -> None:
-    """Settle the scope on its row as read now: restore an ACTIVE row's
-    crons, remove the crons of a scope that must have none, and take back
-    the tagged crons the row does not record."""
+    """Settle the scope on its row as read now: remove the crons of a scope
+    that must have none; else take back the tagged crons the row does not
+    record, then restore an ACTIVE row's crons. Each step stands on its own,
+    the take-back first, so a restore that keeps failing never keeps a stray
+    running."""
     try:
         row = await _read(scope)
     except Exception:
         logger.warning(f"Could not read {scope_label(scope)} again", exc_info=True)
         return
+    if _straggling(scope, row):
+        await _step(scope, report, _remove(scope, store, report))
+        return
+    await _step(scope, report, _drop(scope, _stray(row, crons), store, report))
+    if row is not None and row.state == _ACTIVE:
+        await _step(scope, report, _restore(scope, row, crons, store, report))
+
+
+async def _step(
+    scope: MemoryScope, report: ReconcileReport, change: Awaitable[None]
+) -> None:
+    """Make one of the scope's changes; a failure is logged and the scope
+    reported failed once, and the pass goes on."""
     try:
-        if row is not None and row.state == _ACTIVE:
-            await _restore(scope, row, crons, store, report)
-        elif _straggling(scope, row):
-            await store.remove(scope)
-            report.removed.append(scope.scope_key)
-            logger.info(
-                f"Memory cron reconcile removed the crons of {scope_label(scope)}"
-            )
-            return
-        await _drop(scope, _stray(row, crons), store, report)
+        await change
     except Exception:
         logger.warning(
             f"Could not settle the crons of {scope_label(scope)}", exc_info=True
         )
-        report.failed.append(scope.scope_key)
+        if scope.scope_key not in report.failed:
+            report.failed.append(scope.scope_key)
+
+
+async def _remove(
+    scope: MemoryScope, store: CronStore, report: ReconcileReport
+) -> None:
+    await store.remove(scope)
+    report.removed.append(scope.scope_key)
+    logger.info(f"Memory cron reconcile removed the crons of {scope_label(scope)}")
 
 
 async def _restore(
