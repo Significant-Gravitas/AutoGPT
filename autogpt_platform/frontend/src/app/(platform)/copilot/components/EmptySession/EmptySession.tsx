@@ -18,7 +18,7 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { TaskBoard } from "@/app/(platform)/home/components/TaskBoard/TaskBoard";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
@@ -198,7 +198,7 @@ export function EmptySession({
         </div>
 
         {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
-          <HomeRecap />
+          <TaskBoard />
         )}
       </motion.div>
     </div>

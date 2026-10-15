@@ -3293,6 +3293,41 @@ def test_list_sessions_returns_source_platform(
     assert response.json()["sessions"][0]["source_platform"] == "discord"
 
 
+def test_list_sessions_returns_last_message_first_line(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.chat.routes.get_user_sessions",
+        new_callable=AsyncMock,
+        return_value=(
+            [_make_session_info("sess-talked"), _make_session_info("sess-new")],
+            2,
+        ),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.get_last_message_texts",
+        new_callable=AsyncMock,
+        return_value={"sess-talked": "\n  Drafted the outline.  \nSecond line"},
+    )
+    mock_redis = MagicMock()
+    mock_pipe = MagicMock()
+    mock_pipe.hget = MagicMock(return_value=None)
+    mock_pipe.execute = AsyncMock(return_value=[None, None])
+    mock_redis.pipeline = MagicMock(return_value=mock_pipe)
+    mocker.patch(
+        "backend.api.features.chat.routes.get_redis_async",
+        new_callable=AsyncMock,
+        return_value=mock_redis,
+    )
+
+    response = client.get("/sessions")
+
+    assert response.status_code == 200
+    sessions = response.json()["sessions"]
+    assert sessions[0]["last_message"] == "Drafted the outline."
+    assert sessions[1]["last_message"] is None
+
+
 def test_list_sessions_returns_is_pinned(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

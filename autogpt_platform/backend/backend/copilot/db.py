@@ -924,6 +924,28 @@ async def get_user_session_count(
     return rows[0]["count"] if rows else 0
 
 
+async def get_last_message_texts(session_ids: list[str]) -> dict[str, str]:
+    """Newest user or assistant text in each session, keyed by session id.
+
+    Sessions without any such message are left out, so a missing key means
+    the conversation has not started yet. Callers pass ids they already
+    scoped to the user; this does no ownership check of its own.
+    """
+    if not session_ids:
+        return {}
+    rows = await db.query_raw_with_schema(
+        'SELECT s.id AS "sessionId", m.content FROM unnest($1::text[]) AS s(id) '
+        "CROSS JOIN LATERAL ("
+        '  SELECT content FROM {schema_prefix}"ChatMessage" '
+        "  WHERE \"sessionId\" = s.id AND role IN ('user', 'assistant') "
+        "  AND btrim(coalesce(content, '')) <> '' "
+        "  ORDER BY sequence DESC LIMIT 1"
+        ") m",
+        session_ids,
+    )
+    return {row["sessionId"]: row["content"] for row in rows}
+
+
 async def user_has_any_session(user_id: str) -> bool:
     """Whether the user has at least one visible chat session.
 

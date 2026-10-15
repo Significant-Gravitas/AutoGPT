@@ -29823,6 +29823,10 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "last_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Message"
           }
         },
         "type": "object",
