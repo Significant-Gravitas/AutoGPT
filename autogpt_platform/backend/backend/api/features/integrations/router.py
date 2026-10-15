@@ -21,6 +21,9 @@ from starlette.status import HTTP_500_INTERNAL_SERVER_ERROR, HTTP_502_BAD_GATEWA
 
 from backend.api.features.library.db import set_preset_webhook, update_preset
 from backend.api.features.library.model import LibraryAgentPreset
+from backend.copilot.scheduled_chats.reconnect import (
+    resume_after_reconnect_in_background,
+)
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger
 from backend.data.graph import NodeModel, get_graph, set_node_webhook
@@ -400,6 +403,8 @@ async def callback(
         credential_type=credentials.type,
         method="oauth",
     )
+    # Reconnecting is the fix for a scheduled chat paused on this provider.
+    resume_after_reconnect_in_background(user_id, provider.value)
 
     return to_meta_response(credentials)
 
@@ -849,6 +854,7 @@ async def device_auth_poll(
             credential_type=credentials.type,
             method="device_code",
         )
+        resume_after_reconnect_in_background(user_id, provider.value)
         return DeviceAuthPollResponse(
             status="approved",
             credentials=to_meta_response(credentials),
@@ -1090,6 +1096,7 @@ async def create_credentials(
         credential_type=credentials.type,
         method="manual",
     )
+    resume_after_reconnect_in_background(user_id, provider.value)
     return to_meta_response(credentials)
 
 

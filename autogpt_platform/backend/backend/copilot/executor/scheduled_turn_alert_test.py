@@ -1,11 +1,13 @@
 import logging
 import threading
+from collections.abc import Iterator
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from backend.copilot import stream_registry
+from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.executor.processor import CoPilotProcessor
 from backend.copilot.executor.scheduled_turn_alert import (
     UNCLASSIFIED,
@@ -18,7 +20,13 @@ from backend.copilot.executor.utils import (
     ScheduledTurnOrigin,
 )
 from backend.copilot.model import ChatSession
-from backend.copilot.response_model import StreamTextDelta, StreamToolOutputAvailable
+from backend.copilot.response_model import (
+    StreamError,
+    StreamTextDelta,
+    StreamToolOutputAvailable,
+)
+from backend.copilot.scheduled_chats.outcomes import RunOutcome
+from backend.copilot.scheduled_chats.streaks import advance
 from backend.copilot.tools.models import ErrorResponse, ExecutionStartedResponse
 from backend.integrations.codex.transport import CodexCredentialIntegrityError
 from backend.monitoring.instrumentation import COPILOT_SCHEDULED_TURN_FAILURES
@@ -75,6 +83,137 @@ def _run_agent_success() -> StreamToolOutputAvailable:
 
 def _failures(reason: str, tool: str) -> float:
     return COPILOT_SCHEDULED_TURN_FAILURES.labels(reason=reason, tool=tool)._value.get()
+
+
+@pytest.fixture(autouse=True)
+def database_manager() -> Iterator[MagicMock]:
+    """Where a scheduled turn records its outcome. Patched for every test so
+    none waits on a DatabaseManager that is not running."""
+    client = MagicMock(record_scheduled_run=AsyncMock())
+    with patch(f"{_ALERT}.get_database_manager_async_client", return_value=client):
+        yield client
+
+
+def _twitter_refused() -> StreamToolOutputAvailable:
+    return StreamToolOutputAvailable(
+        toolCallId="call-2",
+        toolName="run_block",
+        output=ErrorResponse(
+            message="Twitter rejected the saved credential (HTTP 401).",
+            error="credential_rejected",
+            details={"provider": "twitter"},
+            session_id="sess-weekly-report",
+        ).model_dump_json(),
+    )
+
+
+def test_the_watch_sees_a_refused_connection_as_one_failing_step():
+    """The briefing case: one step refused, the rest worked."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_run_agent_success())
+    watch.observe(_twitter_refused())
+
+    outcome = watch.outcome(None)
+
+    assert outcome.failure is not None
+    assert outcome.failure.key == "connection:twitter"
+    assert not outcome.whole_run
+
+
+def test_a_compacted_history_is_not_work_done():
+    """The every-minute monitor has a long history, so its runs compact. A
+    run whose only other output is the failure still failed outright."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(
+        StreamToolOutputAvailable(
+            toolCallId="compaction", toolName=COMPACTION_TOOL_NAME, output="done"
+        )
+    )
+    watch.observe(_twitter_refused())
+
+    outcome = watch.outcome(None)
+
+    assert outcome.failure is not None and outcome.whole_run
+
+
+def _looked_up(tool: str) -> StreamToolOutputAvailable:
+    return StreamToolOutputAvailable(
+        toolCallId=f"call-{tool}", toolName=tool, output='{"type": "capabilities"}'
+    )
+
+
+def _discord_not_connected() -> StreamToolOutputAvailable:
+    return StreamToolOutputAvailable(
+        toolCallId="call-run",
+        toolName="run_capability",
+        output=ErrorResponse(
+            message="This chat has no Discord credential connected.",
+            error="missing_credentials",
+            details={"provider": "discord"},
+            session_id="sess-weekly-report",
+        ).model_dump_json(),
+    )
+
+
+def _discord_monitor_run(*, sent: bool = False) -> RunOutcome:
+    """The every-minute Discord monitor: the model finds the block and reads
+    its schema before it calls it, then the call fails or works."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_looked_up("find_capability"))
+    watch.observe(_looked_up("describe_capability"))
+    watch.observe(_run_agent_success() if sent else _discord_not_connected())
+    return watch.outcome(None)
+
+
+def test_looking_up_the_step_that_failed_is_not_work_done():
+    """Finding the Discord block and reading its schema did none of the
+    work, so a run whose only real step failed failed outright."""
+    outcome = _discord_monitor_run()
+
+    assert outcome.failure is not None
+    assert outcome.failure.key == "connection:discord"
+    assert outcome.whole_run
+
+
+def test_the_discord_monitor_pauses_on_its_third_run():
+    streak = None
+    steps = []
+    for _ in range(3):
+        step = advance(streak, _discord_monitor_run())
+        streak = step.streak
+        steps.append(step)
+
+    assert [s.pause for s in steps] == [False, False, True]
+
+
+def test_a_monitor_run_that_sends_clears_its_streak():
+    step = advance(None, _discord_monitor_run())
+    step = advance(step.streak, _discord_monitor_run())
+
+    assert advance(step.streak, _discord_monitor_run(sent=True)).streak is None
+
+
+def test_a_run_that_only_looked_things_up_tried_nothing():
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(_looked_up("find_capability"))
+    watch.observe(_looked_up("describe_capability"))
+
+    assert watch.outcome(None).idle
+
+
+def test_the_watch_counts_only_platform_tools_as_trying():
+    """A run that only read files with the CLI's own tools tried nothing."""
+    watch = ScheduledTurnWatch.for_entry(_entry(_weekly()))
+    assert watch is not None
+    watch.observe(
+        StreamToolOutputAvailable(toolCallId="c", toolName="Read", output="contents")
+    )
+
+    assert watch.outcome(None).idle
 
 
 def test_interactive_turns_are_not_watched():
@@ -243,7 +382,9 @@ class _Stream:
         pass
 
 
-async def _run_turn(entry: CoPilotExecutionEntry, events) -> MagicMock:
+async def _run_turn(
+    entry: CoPilotExecutionEntry, events, mark_done: AsyncMock | None = None
+) -> MagicMock:
     with (
         patch(
             "backend.copilot.executor.processor.ChatConfig",
@@ -259,7 +400,7 @@ async def _run_turn(entry: CoPilotExecutionEntry, events) -> MagicMock:
         ),
         patch(
             "backend.copilot.executor.processor.stream_registry.mark_session_completed",
-            new=AsyncMock(),
+            new=mark_done or AsyncMock(),
         ),
         patch(
             "backend.copilot.model.get_chat_session",
@@ -286,10 +427,71 @@ async def test_executor_alerts_when_a_scheduled_turns_run_agent_fails():
 
 
 @pytest.mark.asyncio
+async def test_executor_alerts_a_scheduled_turns_error_by_its_code():
+    spending_limit = StreamError(
+        errorText="This turn reached its spending limit. Start a new turn.",
+        code="max_budget_exhausted",
+    )
+
+    sentry = await _run_turn(_entry(_weekly()), [spending_limit])
+
+    scope = sentry.new_scope.return_value.__enter__.return_value
+    _, context = scope.set_context.call_args.args
+    assert context["turn_error_type"] == "max_budget_exhausted"
+    assert "spending limit" not in str(sentry.mock_calls)
+
+
+@pytest.mark.asyncio
 async def test_executor_does_not_alert_for_an_interactive_turn():
     sentry = await _run_turn(_entry(None), [_run_agent_failure()])
 
     sentry.capture_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_executor_records_a_scheduled_turns_outcome(database_manager):
+    """Every scheduled run counts toward its schedule's failure streak; the
+    error's text never leaves the executor, only a hash of it."""
+    await _run_turn(_entry(_weekly()), [_run_agent_failure()])
+
+    database_manager.record_scheduled_run.assert_awaited_once()
+    run = database_manager.record_scheduled_run.await_args.args[0]
+    assert run.user_id == "user-1"
+    assert run.schedule_key == "sched-weekly"
+    assert run.session_id == "sess-weekly-report"
+    assert run.title == "Run the weekly report agent"
+    assert run.outcome.whole_run
+    assert run.outcome.failure.key.startswith("tool:run_agent:")
+    assert "query engine" not in run.model_dump_json()
+
+
+@pytest.mark.asyncio
+async def test_executor_records_after_the_turn_is_marked_done(database_manager):
+    """The owner never waits on the streak: the turn is done first."""
+    order = MagicMock()
+    database_manager.record_scheduled_run.side_effect = lambda *_: order.record()
+    mark_done = AsyncMock(side_effect=lambda *_, **__: order.mark_done())
+
+    await _run_turn(_entry(_weekly()), [_run_agent_failure()], mark_done=mark_done)
+
+    assert [c[0] for c in order.mock_calls] == ["mark_done", "record"]
+
+
+@pytest.mark.asyncio
+async def test_executor_records_nothing_for_an_interactive_turn(database_manager):
+    await _run_turn(_entry(None), [_run_agent_failure()])
+
+    database_manager.record_scheduled_run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_broken_record_never_breaks_the_turn_cleanup(database_manager, caplog):
+    database_manager.record_scheduled_run.side_effect = RuntimeError("db manager down")
+
+    with caplog.at_level(logging.WARNING, logger=_ALERT):
+        await _run_turn(_entry(_weekly()), [_run_agent_success()])
+
+    assert "toward its schedule's failure streak" in caplog.text
 
 
 @pytest.mark.asyncio

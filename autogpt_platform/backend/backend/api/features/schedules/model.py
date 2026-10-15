@@ -22,6 +22,10 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     )
 
 
+class ResumeScheduledChatResponse(pydantic.BaseModel):
+    resumed: bool
+
+
 class ScheduleUpdateRequest(pydantic.BaseModel):
     """Fields to change on an existing schedule; omitted fields keep their value."""
 
