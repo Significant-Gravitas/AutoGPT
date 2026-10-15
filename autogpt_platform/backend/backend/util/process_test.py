@@ -1,11 +1,15 @@
+import importlib
 import logging
 import multiprocessing
 import signal
 import threading
 import time
 
+import pytest
+
 from backend.util import process as process_module
 from backend.util.process import STOP_TIMEOUT_SECONDS, AppProcess
+from backend.util.settings import AppEnvironment
 
 
 def _ignore_sigterm_forever(ready):
@@ -121,3 +125,67 @@ def test_stop_is_a_noop_without_a_process():
     assert service.process is None
     service.stop()
     assert service.process is None
+
+
+STARTS_FLAGS = ["initialize_flags", "run", "cleanup", "shutdown_flags"]
+NO_FLAGS = ["run", "cleanup"]
+
+
+@pytest.mark.parametrize(
+    "service, lifecycle",
+    [
+        ("backend.api.rest_api.AgentServer", STARTS_FLAGS),
+        ("backend.copilot.executor.manager.CoPilotExecutor", STARTS_FLAGS),
+        ("backend.data.db_manager.DatabaseManager", STARTS_FLAGS),
+        ("backend.executor.manager.ExecutionManager", STARTS_FLAGS),
+        ("backend.executor.scheduler.Scheduler", STARTS_FLAGS),
+        ("backend.notifications.notifications.NotificationManager", STARTS_FLAGS),
+        ("backend.platform_linking.manager.PlatformLinkingManager", STARTS_FLAGS),
+        ("backend.api.ws_api.WebsocketServer", NO_FLAGS),
+        ("backend.executor.batch_executor.BatchExecutor", NO_FLAGS),
+        ("backend.copilot.bot.app.CoPilotChatBridge", NO_FLAGS),
+        ("backend.cli.main.MainApp", NO_FLAGS),
+    ],
+)
+def test_a_service_that_reads_flags_starts_them_before_it_runs(
+    mocker, service, lifecycle
+):
+    """Otherwise its first flag read waits for the vendor's first load."""
+    module, name = service.rsplit(".", 1)
+    instance = object.__new__(getattr(importlib.import_module(module), name))
+    order = _record_lifecycle(mocker, instance)
+    mocker.patch.object(process_module.config, "app_env", AppEnvironment.PRODUCTION)
+
+    instance.execute_run_command(silent=False)
+
+    assert order == lifecycle
+
+
+def test_local_starts_no_flags(mocker):
+    instance = _NoopProcess()
+    order = _record_lifecycle(mocker, instance)
+    mocker.patch.object(process_module.config, "app_env", AppEnvironment.LOCAL)
+
+    instance.execute_run_command(silent=False)
+
+    assert order == NO_FLAGS
+
+
+def _record_lifecycle(mocker, instance: AppProcess) -> list[str]:
+    order: list[str] = []
+
+    def record(step: str):
+        return lambda *args, **kwargs: order.append(step)
+
+    mocker.patch.object(
+        process_module, "initialize_feature_flags", record("initialize_flags")
+    )
+    mocker.patch.object(
+        process_module, "shutdown_feature_flags", record("shutdown_flags")
+    )
+    mocker.patch.object(instance, "run", record("run"))
+    mocker.patch.object(instance, "cleanup", record("cleanup"))
+    # Keeps the test runner's own signal handlers and service name.
+    mocker.patch.object(process_module.signal, "signal")
+    mocker.patch.object(process_module, "set_service_name")
+    return order

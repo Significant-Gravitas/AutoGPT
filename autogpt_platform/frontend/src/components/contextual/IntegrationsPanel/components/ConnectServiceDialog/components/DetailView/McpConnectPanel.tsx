@@ -3,6 +3,7 @@
 import type { CredentialsMetaResponse } from "@/app/api/__generated__/models/credentialsMetaResponse";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
 import { MCPAuthSchemeField } from "@/components/contextual/MCPAuthSchemeField/MCPAuthSchemeField";
 import {
@@ -13,8 +14,8 @@ import {
 import { useMCPConnectPanel } from "./useMCPConnectPanel";
 import type { MCPAuthScheme } from "@/lib/mcp-auth";
 import { MCPServerURLField } from "./MCPServerURLField";
-import { MultiToggle } from "@/components/molecules/MultiToggle/MultiToggle";
 import { noPasswordManager } from "./helpers";
+import type { ReactNode } from "react";
 
 interface Props {
   onSuccess: (credential?: CredentialsMetaResponse) => void;
@@ -24,6 +25,8 @@ interface Props {
   oauthScopes?: string[] | null;
   oauthWriteScopes?: string[];
   serverURLOptions?: { label: string; url: string }[];
+  /** Extra buttons for the row that holds Connect. */
+  actions?: ReactNode;
 }
 
 export function McpConnectPanel({
@@ -34,6 +37,7 @@ export function McpConnectPanel({
   oauthScopes,
   oauthWriteScopes = [],
   serverURLOptions,
+  actions,
 }: Props) {
   const state = useMCPConnectPanel({
     onSuccess,
@@ -58,17 +62,22 @@ export function McpConnectPanel({
         options={serverURLOptions}
       />
       {state.phase === "form" && oauthWriteScopes.length > 0 && (
-        <MultiToggle
-          items={[
-            {
-              value: "write",
-              label: "Allow changes",
-              disabled: state.isSubmitting,
-            },
-          ]}
-          selectedValues={state.allowChanges ? ["write"] : []}
-          onChange={(values) => state.setAllowChanges(values.includes("write"))}
-        />
+        <label className="flex cursor-pointer items-start gap-3">
+          <Switch
+            checked={state.allowChanges}
+            onCheckedChange={state.setAllowChanges}
+            disabled={state.isSubmitting}
+            className="mt-0.5"
+          />
+          <span className="flex flex-col">
+            <Text variant="body-medium" as="span">
+              Allow changes
+            </Text>
+            <Text variant="small" as="span" tone="muted">
+              Without this it can only read, not create or edit.
+            </Text>
+          </span>
+        </label>
       )}
       {state.phase === "manual-token" && (
         <>
@@ -111,6 +120,7 @@ export function McpConnectPanel({
         </div>
       )}
       <div className="flex items-center justify-end gap-2">
+        {actions}
         {state.phase === "form" && state.manualSchemes.length > 0 && (
           <Button
             variant="secondary"

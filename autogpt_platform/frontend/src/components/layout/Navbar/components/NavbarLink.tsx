@@ -24,8 +24,8 @@ export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
 
   const isActive =
-    href === "/copilot"
-      ? pathname === "/" || pathname.startsWith("/copilot")
+    href === "/home"
+      ? pathname === "/" || pathname.startsWith("/home")
       : pathname.includes(href);
 
   return (
@@ -66,7 +66,7 @@ export function NavbarLink({ name, href }: Props) {
             )}
           />
         )}
-        {href === "/copilot" && (
+        {href === "/home" && (
           <div
             className={cn(
               iconNudgedClass,

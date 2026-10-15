@@ -5,9 +5,14 @@
 {%- set attn = attention | default([]) -%}
 {{ subject }}
 
-{{ preheader }}
+Hi {{ first_name | default('there', true) }}, here is your {{ period.adjective }} in workflows. {{ preheader }}
+{% if quiet and only_agent %}
+{{ only_agent }} was your only workflow at work {{ period.noun }}. {{ quiet_summary | default('Nothing needed your attention.', true) }}
+{% elif standout %}
+{{ standout }}
+{% endif %}
 
-YOUR {{ {'daily':'DAY','weekly':'WEEK','monthly':'MONTH'}.get(period.frequency, 'WEEK') }} IN AGENTS - {{ period.label }}
+YOUR {{ {'daily':'DAY','weekly':'WEEK','monthly':'MONTH'}.get(period.frequency, 'WEEK') }} IN WORKFLOWS - {{ period.label }}
 {% if attn %}
 NEEDS YOU
 {% for item in attn[:3] %}
@@ -34,21 +39,27 @@ THE LEDGER
 
 {% endfor %}
 {% if ledger_overflow %}
-- + {{ ledger_overflow }} quieter agents: {{ urls.dashboard }}
+- + {{ ledger_overflow }} quieter workflows ran {{ '{:,}'.format(ledger_overflow_runs) }} times, {{ ledger_overflow_issues }} with issues: {{ urls.dashboard }}
 {% endif %}
 
+{{ '{:,}'.format(totals.runs) }} runs, {{ totals.agents_active }} active workflows, {{ totals.agents_idle | default(0) }} on standby, {{ totals.failed }} failed runs.
 {{ '{:,.2f}'.format(totals.credits_used) }} credits used{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}
 {% else %}
-{{ '{:,}'.format(totals.runs) }} runs - {{ totals.agents_active }} active{% if totals.agents_idle %} - {{ totals.agents_idle }} on standby{% endif %} - {{ totals.failed }} issues - {{ '{:,.2f}'.format(totals.credits_used) }} credits
+{{ '{:,}'.format(totals.runs) }} runs - {{ totals.agents_active }} active{% if totals.agents_idle %} - {{ totals.agents_idle }} on standby{% endif %} - {{ totals.failed }} issues - {{ '{:,.2f}'.format(totals.credits_used) }} credits{% if totals.usd_estimate is not none %} (${{ '{:,.2f}'.format(totals.usd_estimate) }}){% endif %} - balance {{ '{:,.2f}'.format(totals.credits_balance) }}
 {% endif %}
 
-Open your dashboard: {{ urls.dashboard }}
+Review run history: {{ urls.dashboard }}
 
 --
-You get this briefing {{ period.frequency }}, and only when your agents
-actually ran. Switch to daily, weekly or monthly, choose alerts only, or
-pause it entirely: {{ urls.settings }}
+You get this briefing {{ period.frequency }}, and only when your workflows
+actually ran. Current frequency: {{ period.frequency }}.
+{% for key, label in [('daily', 'Daily'), ('weekly', 'Weekly'), ('monthly', 'Monthly'), ('alerts', 'Alerts only'), ('off', 'Pause')] %}
+{{ label }}: {{ urls.volume.get(key) or (urls.settings ~ '?f=' ~ key) }}
+{% endfor %}
+Notification settings: {{ urls.settings }}
 
-This is your agent briefing for {{ user_email }}.
+This is your Briefing for {{ user_email }}.
+AutoGPT: https://agpt.co
 AutoGPT, 3rd Floor, 1 Ashley Road, Altrincham, WA14 2DT, UK
 Unsubscribe: {{ urls.unsubscribe }}
+Discord: {{ urls.discord }}

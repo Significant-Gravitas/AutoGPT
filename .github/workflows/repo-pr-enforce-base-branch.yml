@@ -1,7 +1,7 @@
 name: Repo - Enforce dev as base branch
 on:
   pull_request_target:
-    branches: [ master ]
+    branches: [ master, gitbook ]
     types: [ opened ]
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Check if PR is from dev or hotfix
-        if: ${{ !(startsWith(github.event.pull_request.head.ref, 'hotfix/') || github.event.pull_request.head.ref == 'dev') }}
+        if: ${{ github.event.pull_request.base.ref == 'master' && !(startsWith(github.event.pull_request.head.ref, 'hotfix/') || github.event.pull_request.head.ref == 'dev') }}
         run: |
           gh pr comment ${{ github.event.number }} --repo "$REPO" \
             --body $'This PR targets the `master` branch but does not come from `dev` or a `hotfix/*` branch.\n\nAutomatically setting the base branch to `dev`.'
@@ -19,3 +19,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+
+      # `gitbook` is a copy of master's docs/ that only docs-gitbook-sync.yml
+      # writes, so nothing is merged into it. A branch cut from it holds only
+      # docs/, which is why the comment says how to move the commits onto dev.
+      - name: Move a PR opened against gitbook to dev
+        if: ${{ github.event.pull_request.base.ref == 'gitbook' }}
+        run: |
+          gh pr comment ${{ github.event.number }} --repo "$REPO" --body "$MESSAGE"
+          gh pr edit ${{ github.event.number }} --base dev --repo "$REPO"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          MESSAGE: |
+            This PR targets the `gitbook` branch, which is an automated copy of the docs on `master` and does not take pull requests. Docs changes go to `dev`.
+
+            Automatically setting the base branch to `dev`.
+
+            If you created this branch from `gitbook`, it holds only `docs/`, and the pull request will now show the rest of the repository as deleted. Move your commits onto `dev` to fix that, replacing `upstream` with your name for this repository's remote:
+
+            ```shell
+            git fetch upstream dev gitbook
+            git rebase --onto upstream/dev upstream/gitbook
+            git push --force-with-lease
+            ```

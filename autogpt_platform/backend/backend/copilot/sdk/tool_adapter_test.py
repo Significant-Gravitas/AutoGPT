@@ -769,6 +769,12 @@ class TestSDKDisallowedTools:
         a denylist — an unlisted tool falls through and executes."""
         assert tool in BLOCKED_TOOLS
 
+    @pytest.mark.parametrize("tool", ["ListAgents", "SendMessage"])
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_cli_cross_session_tools_are_disallowed(self, tool: str, use_e2b: bool):
+        assert tool in get_sdk_disallowed_tools(use_e2b=use_e2b)
+        assert tool in BLOCKED_TOOLS
+
     def test_orchestrator_block_disallows_every_known_builtin(self):
         # The orchestrator's model gets graph MCP tools only, so its blocklist
         # must cover everything the copilot blocks *and* everything the

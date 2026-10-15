@@ -16,7 +16,7 @@ from backend.blocks.google.gmail import GmailSendBlock
 from backend.blocks.google.sheets import GoogleSheetsUpdateRowBlock
 from backend.blocks.http import SendWebRequestBlock
 from backend.copilot.gate.policy import Effect
-from backend.copilot.gate.review import review_id_for, review_payload
+from backend.copilot.gate.review import payload_headline, review_id_for, review_payload
 from backend.copilot.gate.subject import block_subject, workflow_subject
 from backend.data.graph import GraphModel, NodeModel
 
@@ -29,6 +29,23 @@ _BODY = (
     "Hi Dana,\n\nThe Q3 invoice pack is in the shared Invoices folder. Three of "
     "them are still missing a PO number:\n\n- INV-2041\n- INV-2044\n- INV-2051\n\n"
     "Could you look before Friday?\n\nThanks,\nOtto"
+)
+_POST = (
+    "# How to Write Social Posts People Actually Stop For\n\n"
+    "You have about two seconds. That's roughly how long someone scrolling gives "
+    "your post before deciding to move on.\n\n"
+    "## 1. The hook: earn the next sentence\n\n"
+    "Your first line has one job, which is to make the second line worth reading:\n\n"
+    '- **Name a specific problem.** "Your posts get likes but no customers."\n'
+    '- **Share a surprising result.** "We doubled saves by deleting half our '
+    'hashtags."\n'
+    '- **Make a promise.** "Three edits that turn a lecture into a thread."\n\n'
+)
+# About 20k characters: under the supervisor's ceiling, so the card holds it whole.
+_COMMAND = (
+    "cd /home/user/workspace/blog && cat > post2-hooks-that-convert.md << 'EOF'\n"
+    + _POST * 39
+    + "EOF"
 )
 _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
     (
@@ -93,12 +110,22 @@ _BLOCKS: list[tuple[str, Any, dict[str, Any]]] = [
             "shorten_links": True,
         },
     ),
+    (
+        "Gmail Newsletter",
+        GmailSendBlock(),
+        {
+            "to": ["subscribers@acme.com"],
+            "subject": "How to write social posts people actually stop for",
+            "body": _POST * 39,
+        },
+    ),
 ]
 
 
 def build_cards() -> list[dict[str, Any]]:
     cards = [_block_card(*entry) for entry in _BLOCKS]
     cards.append(_workflow_card())
+    cards.append(_sandbox_command_card())
     return json.loads(json.dumps(cards, default=str))
 
 
@@ -114,6 +141,7 @@ def test_the_frontend_card_fixture_is_what_the_builder_makes():
 # What the supervisor might say of the code block's step; the builder cannot
 # call the model, so this stands in for its verdict.
 _SUPERVISOR = "it reads a local file of invoices and prints what it finds."
+_SUPERVISOR_WRITE = "it overwrites a file in the blog folder if one exists."
 
 
 def _block_card(story: str, block: Any, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -162,6 +190,12 @@ def _workflow_card() -> dict[str, Any]:
     }
 
 
+def _sandbox_command_card() -> dict[str, Any]:
+    args = {"command": _COMMAND, "timeout": 60}
+    row = _row("bash_exec", args, None, _SUPERVISOR_WRITE, "supervisor")
+    return {"story": "Sandbox Command", "review": row, "schema": None}
+
+
 def _row(
     tool: str,
     args: dict[str, Any],
@@ -172,6 +206,16 @@ def _row(
     reason = subject.reason if reason is None else reason
     review_id = review_id_for("session-1", "user-1", tool, args)
     node_id = review_id.split(":")[0]
+    payload = review_payload(
+        tool,
+        args,
+        subject,
+        reason=reason,
+        reason_kind=reason_kind or ("subject" if reason else "mode"),
+        mode="auto",
+        tool_call_id=f"call-{tool}",
+        turn=1,
+    )
     return {
         "node_exec_id": review_id,
         "node_id": node_id,
@@ -180,17 +224,8 @@ def _row(
         "graph_exec_id": None,
         "graph_id": None,
         "graph_version": None,
-        "payload": review_payload(
-            tool,
-            args,
-            subject,
-            reason=reason,
-            reason_kind=reason_kind or ("subject" if reason else "mode"),
-            mode="auto",
-            tool_call_id=f"call-{tool}",
-            turn=1,
-        ),
-        "instructions": subject.name,
+        "payload": payload,
+        "instructions": subject.name if subject else payload_headline(payload),
         "editable": False,
         "status": "WAITING",
     }

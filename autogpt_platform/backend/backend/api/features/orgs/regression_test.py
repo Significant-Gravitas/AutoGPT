@@ -827,10 +827,25 @@ class TestExecutionUserIdIsolationExtended:
         mock_actions = AsyncMock()
         mock_actions.update_many = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.execution.AgentGraphExecution.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.SharedExecutionFile.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.ChatLinkedShare.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.transaction"
+            ) as mock_transaction,
         ):
+            mock_transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+            mock_transaction.return_value.__aexit__ = AsyncMock(return_value=False)
             from backend.data.execution import delete_graph_execution
 
             await delete_graph_execution(EXEC_ID, USER_ID, soft_delete=True)
@@ -1587,6 +1602,10 @@ class TestRegressionUserSettings:
         mock_user.subscriptionTier = "NO_TIER"
         mock_user.defaultChatAuthProvider = None
         mock_user.defaultChatCredentialId = None
+        mock_user.termsAcceptedAt = None
+        mock_user.termsVersion = None
+        mock_user.marketingOptOutAt = None
+        mock_user.marketingOptOutSource = None
         self.mock_user_actions.update = AsyncMock(return_value=mock_user)
 
         from backend.data.user import update_user_timezone
@@ -1646,7 +1665,6 @@ class TestPR10WebhookTenancy:
             "backend.copilot.tools.run_agent._safe_link_to_chat_share",
             AsyncMock(),
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
     @pytest.mark.asyncio
     async def test_copilot_agent_run_passes_org_team_to_execution(self, mocker):
@@ -1677,7 +1695,6 @@ class TestPR10WebhookTenancy:
             new_callable=AsyncMock,
             return_value=mock_lib_agent,
         )
-        mocker.patch("backend.copilot.tools.run_agent.track_agent_run_success")
 
         await tool._run_agent(
             user_id=USER_ID,

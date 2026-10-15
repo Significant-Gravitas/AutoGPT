@@ -5,6 +5,7 @@ import {
   FileEmpty02Icon,
   Image01Icon,
   Pdf01Icon,
+  Presentation01Icon,
   TableIcon,
   Video01Icon,
 } from "@hugeicons/core-free-icons";
@@ -160,12 +161,44 @@ export function isCodeFile(fileName: string | undefined): boolean {
   return ext ? CODE_EXTENSIONS.has(ext[1]) : false;
 }
 
+type OfficeDocKind = "presentation" | "document" | "spreadsheet";
+
+// Extension first: an office file stored with a wrong MIME (e.g. text/plain)
+// must still read as an office document.
+function getOfficeDocKind(
+  mimeType: string,
+  fileName: string,
+): OfficeDocKind | null {
+  if (/\.pptx?$/.test(fileName)) return "presentation";
+  if (/\.docx?$/.test(fileName)) return "document";
+  if (/\.xlsx?$/.test(fileName)) return "spreadsheet";
+  if (mimeType.includes("presentationml") || mimeType.includes("powerpoint"))
+    return "presentation";
+  if (mimeType.includes("wordprocessingml") || mimeType.includes("msword"))
+    return "document";
+  return null;
+}
+
+const OFFICE_LABEL: Record<OfficeDocKind, string> = {
+  presentation: "Presentation",
+  document: "Document",
+  spreadsheet: "Spreadsheet",
+};
+
+const OFFICE_ICON: Record<OfficeDocKind, IconSvgElement> = {
+  presentation: Presentation01Icon,
+  document: File02Icon,
+  spreadsheet: TableIcon,
+};
+
 export function getFileTypeLabel(
   mimeType: string | undefined,
   fileName?: string,
 ): string {
   if (isCodeFile(fileName)) return "Code";
   const mt = (mimeType ?? "").toLowerCase();
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_LABEL[officeKind];
   if (mt.startsWith("image/")) return "Image";
   if (mt.startsWith("video/")) return "Video";
   if (mt.startsWith("audio/")) return "Audio";
@@ -185,6 +218,8 @@ export function getFileTypeIcon(
 ): IconSvgElement {
   if (isCodeFile(fileName)) return CodeIcon;
   const mt = (mimeType ?? "").toLowerCase();
+  const officeKind = getOfficeDocKind(mt, (fileName ?? "").toLowerCase());
+  if (officeKind) return OFFICE_ICON[officeKind];
   if (mt.startsWith("image/")) return Image01Icon;
   if (mt.startsWith("video/")) return Video01Icon;
   if (mt.includes("pdf")) return Pdf01Icon;
