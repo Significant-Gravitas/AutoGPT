@@ -21,10 +21,8 @@ import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedules
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { AUTOPILOT_PILL_CLASS } from "../helpers";
-import {
-  AUTOPILOT_COVER_COLOR,
-  AUTOPILOT_NAME,
-} from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
+import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { AutopilotAboutSection } from "./components/AutopilotAboutSection";
 import { AutopilotHeader } from "./components/AutopilotHeader";
 import { AutopilotSkillsSection } from "./components/AutopilotSkillsSection";
@@ -110,7 +108,7 @@ export default function AutopilotPage() {
             expertName={AUTOPILOT_NAME}
             workflows={workflows}
             accentClassName={AUTOPILOT_PILL_CLASS}
-            coverColor={AUTOPILOT_COVER_COLOR}
+            coverColor={AUTOPILOT_HEX}
             emptyMessage="No workflows yet. Workflows in your library that no expert owns show up here."
           />
         </TabsLineContent>
