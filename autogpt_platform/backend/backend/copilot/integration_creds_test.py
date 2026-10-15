@@ -734,7 +734,15 @@ class TestPlaceholders:
         async def smembers(key):
             return {m.encode() for m in store.get(key, set())}
 
+        async def eval(script, numkeys, key, member, ttl):
+            # The grant script: SADD and EXPIRE together, so no key is left
+            # without a TTL.
+            assert "sadd" in script and "expire" in script and numkeys == 1
+            await sadd(key, member)
+            await expire(key, ttl)
+
         redis.sadd, redis.expire, redis.smembers = sadd, expire, smembers
+        redis.eval = eval
         with patch(
             "backend.copilot.integration_creds.get_redis_async",
             AsyncMock(return_value=redis),
