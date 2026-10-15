@@ -64,6 +64,9 @@ class Flag(str, Enum):
     # ungated behaviour, which is why it defaults False rather than
     # fail-closed. Failures *inside* an enabled gate fail to ASK.
     COPILOT_AUTO_MODE = "copilot-auto-mode"
+    # With COPILOT_AUTO_MODE off: run the gate's judgements on every call and
+    # read and record them, holding nothing. COPILOT_AUTO_MODE wins.
+    COPILOT_AUTO_MODE_SHADOW = "copilot-auto-mode-shadow"
     # Self-distilled skills registry (store_skill / read_skill /
     # delete_skill / list_skills + the per-turn <available_skills>
     # context block).  Default-on — flip off in LaunchDarkly to disable

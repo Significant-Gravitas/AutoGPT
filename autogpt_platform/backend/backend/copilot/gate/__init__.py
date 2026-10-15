@@ -2,7 +2,9 @@
 
 Ordering is the design, cheapest and most certain first:
 
-1. gate inactive                          -> ALLOW (today's behaviour)
+1. gate inactive                          -> ALLOW (today's behaviour); in
+   shadow mode the steps below run after the call is let through, and their
+   verdict is recorded instead of enforced (``shadow.py``)
 2. an approval for exactly these args     -> ALLOW, consumed single-use
 3. what the call acts on: a block, workflow or MCP tool's own effect, or
    the tool's; a call that runs nothing never asks
@@ -14,7 +16,8 @@ a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from functools import partial
+from typing import Any, Awaitable, Callable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -27,6 +30,7 @@ from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import chat_rules, held
 from . import review as review_store
+from . import shadow
 from .classifier import DecidedBy, supervise
 from .headline import Headline
 from .policy import (
@@ -97,15 +101,43 @@ class Decision(BaseModel):
 
 ALLOW = Decision(allowed=True)
 
+GateMode = Literal["enforce", "shadow", "off"]
+
+
+class Ruling(BaseModel):
+    """What the gate decides about a call, before anything is parked."""
+
+    model_config = ConfigDict(frozen=True)
+
+    allowed: bool
+    effect: Effect
+    # Why, as a fixed code: the policy step that decided, or the supervisor's code.
+    code: str
+    reason: str = ""
+    reason_kind: review_store.ReasonKind = "mode"
+    rule_key: str = ""
+    subject: Subject | None = None
+    decided_by: DecidedBy | None = None
+    spend: dict[str, int] | None = None
+
 
 async def gate_active(user_id: str | None, session: ChatSession) -> bool:
+    return await gate_mode(user_id, session) == "enforce"
+
+
+async def gate_mode(user_id: str | None, session: ChatSession) -> GateMode:
     """The gate runs only where a signed-in user can answer; sessions nobody
-    is watching stay ungated until they get their own path."""
+    is watching stay ungated until they get their own path. Enforce wins over
+    shadow, which judges and records without holding anything."""
     if not user_id or session.metadata.origin != "interactive":
-        return False
+        return "off"
     if session.metadata.source_platform in CARDLESS_PLATFORMS:
-        return False
-    return await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False)
+        return "off"
+    if await is_feature_enabled(Flag.COPILOT_AUTO_MODE, user_id, default=False):
+        return "enforce"
+    if await is_feature_enabled(Flag.COPILOT_AUTO_MODE_SHADOW, user_id, default=False):
+        return "shadow"
+    return "off"
 
 
 def resolve_mode(session: ChatSession) -> AutopilotMode:
@@ -133,7 +165,8 @@ async def check_action(
     """``subject_of`` resolves what the call acts on; it runs only once no
     approval answers the call, so an approved call is never re-derived.
     ``context_of`` reads the files the call runs, for the supervisor only."""
-    if not await gate_active(user_id, session):
+    gating = await gate_mode(user_id, session)
+    if gating == "off":
         return ALLOW
     assert user_id is not None
 
@@ -141,6 +174,27 @@ async def check_action(
     # never have been parked, so they skip the review and rule lookups; a paid
     # step can be parked over the ceiling, so it cannot.
     if effect_for(tool_name) not in PARKABLE and not estimate_for(tool_name):
+        return ALLOW
+
+    if gating == "shadow":
+        # Nothing is ever parked in shadow, so there is no review to look up.
+        shadow.judge_later(
+            user_id,
+            session,
+            kind="action",
+            mode=resolve_mode(session),
+            tool_name=tool_name,
+            tool_call_id=tool_call_id,
+            judge=partial(
+                _shadow_finding,
+                tool_name,
+                args,
+                user_id,
+                session,
+                subject_of,
+                context_of,
+            ),
+        )
         return ALLOW
 
     session_id = session.session_id
@@ -167,16 +221,50 @@ async def check_action(
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
+    ruling = await _rule(tool_name, args, user_id, session, subject_of, context_of)
+    if ruling.allowed:
+        return ALLOW
+    call = held.HeldCall(
+        review_id=review_id,
+        tool_name=tool_name,
+        tool_call_id=tool_call_id,
+        args=args,
+        rule_key=ruling.rule_key,
+        envelope=get_current_envelope(),
+    )
+    return await _park(
+        call,
+        user_id,
+        session,
+        ruling.reason,
+        ruling.reason_kind,
+        ruling.subject,
+        ruling.decided_by,
+        ruling.spend,
+    )
+
+
+async def _rule(
+    tool_name: str,
+    args: dict[str, Any],
+    user_id: str,
+    session: ChatSession,
+    subject_of: Callable[[], Awaitable[Subject | None]] | None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
+) -> Ruling:
+    """Steps 3 to 5: the subject, the user's rule, then the mode's verdict."""
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)
     if effect is Effect.UNGATED:
-        return ALLOW
+        return Ruling(allowed=True, effect=effect, code="ungated")
     rule_key = subject.key if subject is not None else tool_name
     mode = resolve_mode(session)
     # Only a subject that can be parked can carry a rule, so reads and
     # workspace work skip the Redis round trip.
     hit = (
-        await chat_rules.rule_for(session_id, rule_key, user_id, session.expert_id)
+        await chat_rules.rule_for(
+            session.session_id, rule_key, user_id, session.expert_id
+        )
         if effect in PARKABLE
         else None
     )
@@ -184,54 +272,90 @@ async def check_action(
     # A judge rule covers irreversible subjects too: the user chose the supervisor.
     verdict = _RULE_VERDICTS[rule] if rule else verdict_for_effect(mode, effect)
     estimate = subject.estimate if subject is not None else estimate_for(tool_name)
-    spend = spend_shown = None
+    held_as = Ruling(
+        allowed=False, effect=effect, code="", rule_key=rule_key, subject=subject
+    )
+    spend = None
     if effect in METERED and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling(user_id)
-    reason_kind: review_store.ReasonKind
-    decided_by: DecidedBy | None = None
     if hit and rule in ("ask", "unreadable"):
-        reason, reason_kind = hit.reason, "rule"
-    elif spend is not None:
-        spend_shown = _spend_shown(estimate, *spend)
+        return held_as.model_copy(
+            update={"reason": hit.reason, "reason_kind": "rule", "code": f"rule_{rule}"}
+        )
+    if spend is not None:
         reason = (
             f"costs about {_dollars(estimate)}, and this chat has spent "
             f"{_dollars(spend[0])} of its {_dollars(spend[1])} ceiling; approving "
             f"adds {_dollars(CEILING_UNIT_MICRODOLLARS)} to it"
         )
-        reason_kind = "spend"
-    elif verdict is Verdict.RUN:
-        return ALLOW
-    elif verdict is Verdict.ASK and subject is not None and subject.reason:
-        reason, reason_kind = subject.reason, "subject"
-    elif verdict is Verdict.ASK:
+        return held_as.model_copy(
+            update={
+                "reason": reason,
+                "reason_kind": "spend",
+                "code": "spend_ceiling",
+                "spend": _spend_shown(estimate, *spend),
+            }
+        )
+    if verdict is Verdict.RUN:
+        code = "rule_allow" if rule == "allow" else "mode_run"
+        return Ruling(allowed=True, effect=effect, code=code)
+    if verdict is Verdict.ASK and subject is not None and subject.reason:
+        return held_as.model_copy(
+            update={
+                "reason": subject.reason,
+                "reason_kind": "subject",
+                "code": "subject_ask",
+            }
+        )
+    if verdict is Verdict.ASK:
         reason = _ASK_FIRST if mode == "ask_first" else _OUTWARD
-        reason_kind = "mode"
-    else:
-        reason_kind = "supervisor"
-        files = await context_of() if context_of is not None else None
-        if unread := [path for path, text in (files or {}).items() if text is None]:
-            reason = (
-                f"Could not read {', '.join(unread)}, so this could not be checked."
-            )
-        else:
-            judgement = await supervise(
-                tool_name=tool_name,
-                args=_judged_args(args, files),
-                user_message=_last_user_message(session),
-            )
-            if judgement.allowed:
-                return ALLOW
-            reason, decided_by = judgement.reason, judgement.decided_by
-    call = held.HeldCall(
-        review_id=review_id,
+        return held_as.model_copy(update={"reason": reason, "code": "mode_ask"})
+    files = await context_of() if context_of is not None else None
+    if unread := [path for path, text in (files or {}).items() if text is None]:
+        reason = f"Could not read {', '.join(unread)}, so this could not be checked."
+        return held_as.model_copy(
+            update={
+                "reason": reason,
+                "reason_kind": "supervisor",
+                "code": "files_unreadable",
+            }
+        )
+    judgement = await supervise(
         tool_name=tool_name,
-        tool_call_id=tool_call_id,
-        args=args,
-        rule_key=rule_key,
-        envelope=get_current_envelope(),
+        args=_judged_args(args, files),
+        user_message=_last_user_message(session),
     )
-    return await _park(
-        call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
+    if judgement.allowed:
+        return Ruling(
+            allowed=True,
+            effect=effect,
+            code=judgement.code,
+            decided_by=judgement.decided_by,
+        )
+    return held_as.model_copy(
+        update={
+            "reason": judgement.reason,
+            "reason_kind": "supervisor",
+            "code": judgement.code,
+            "decided_by": judgement.decided_by,
+        }
+    )
+
+
+async def _shadow_finding(
+    tool_name: str,
+    args: dict[str, Any],
+    user_id: str,
+    session: ChatSession,
+    subject_of: Callable[[], Awaitable[Subject | None]] | None,
+    context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
+) -> shadow.Finding:
+    ruling = await _rule(tool_name, args, user_id, session, subject_of, context_of)
+    return shadow.action_finding(
+        allowed=ruling.allowed,
+        code=ruling.code,
+        effect=ruling.effect.value,
+        decided_by=ruling.decided_by,
     )
 
 
@@ -324,10 +448,12 @@ def _last_user_message(session: ChatSession) -> str:
 __all__ = [
     "RUN_FILES_KEY",
     "Decision",
+    "GateMode",
     "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",
+    "gate_mode",
     "refusal_message",
     "resolve_mode",
 ]

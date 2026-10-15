@@ -45,6 +45,8 @@ class PostHogEvent(StrEnum):
     CHAT_TOOL_CALLED = "chat_tool_called"
     CHAT_OUTCOME = "chat_outcome"
     CHAT_LIBRARY_CHECK_OUTCOME = "chat_library_check_outcome"
+    # backend/copilot/gate/shadow.py
+    CHAT_GATE_SHADOW_DECISION = "chat_gate_shadow_decision"
 
     # Billing: backend/data/credit.py
     TOPUP_COMPLETED = "topup_completed"

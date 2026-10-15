@@ -35,6 +35,13 @@ RUBRIC_QUESTIONS = {
     3: "data leaving the platform",
     4: "a restricted effect by another route",
 }
+# Each question's fixed name, for the shadow gate's events.
+QUESTION_CODES = {
+    1: "beyond_request",
+    2: "irreversible",
+    3: "data_leaves_platform",
+    4: "restricted_route",
+}
 QUESTIONS: dict[str, Choice | Score | Noul] = {
     "verdict": Choice(
         instructions="May the assistant's proposed call run without asking the"

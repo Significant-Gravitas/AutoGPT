@@ -21,6 +21,7 @@ from contextvars import ContextVar
 from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from enum import Enum
+from functools import partial
 from typing import Any, Callable
 from uuid import UUID
 
@@ -35,9 +36,10 @@ from backend.copilot.tools.models import ApprovalRequiredResponse, ResponseType
 from backend.data.db_accessors import experts_db
 from backend.data.workspace_scope import EXPERTS_ROOT, SKILLS_ROOT
 
-from . import active_mode, held
+from . import active_mode, gate_mode, held, resolve_mode
 from . import review as review_store
-from .content import Image, judge_content
+from . import shadow
+from .content import ContentVerdict, Image, judge_content
 from .headline import Headline, named
 from .policy import DEFAULT_MODE
 
@@ -72,6 +74,29 @@ JUDGED_READS: frozenset[str] = frozenset(
         "read_tool_result",
     }
 )
+
+# Where each judged read's bytes come from, for the shadow gate's events.
+_SOURCE_KINDS = {
+    "bash_exec": "shell",
+    "browser_act": "web",
+    "browser_navigate": "web",
+    "browser_screenshot": "web",
+    "delegate_to_expert": "chat",
+    "get_sub_session_result": "chat",
+    "read_expert_chat": "chat",
+    "run_sub_session": "chat",
+    "read_skill": "skill",
+    "read_workspace_file": "file",
+    "glob": "file",
+    "grep": "file",
+    "read_file": "file",
+    "read_tool_result": "file",
+    "run_agent": "workflow",
+    "view_agent_output": "workflow",
+    "search_feature_requests": "platform",
+    "web_fetch": "web",
+    "web_search": "web",
+}
 
 # The SDK engine caps a registry tool's text again after ``BaseTool.execute``
 # returns; it installs that cap here so the judge reads the same text.
@@ -230,22 +255,29 @@ async def screen_read(
         return None
     source = source_of(tool_name, args)
     try:
-        mode = await active_mode(user_id, session)
-        if mode is None or mode == "unsupervised":
-            return None
-        if outside is not None:
-            # AutoGPT writes no images, so a declaration narrows only the text.
-            text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
-        # Bytes nobody can read are not instructions until something decodes
-        # them, and that later read is judged.
-        if not text.strip() and not images:
-            return None
-        verdict = await judge_content(
-            source=judged_source(tool_name, args), text=text, images=images
-        )
-        if not verdict.held:
+        gating = await gate_mode(user_id, session)
+        mode = resolve_mode(session)
+        if gating == "off" or mode == "unsupervised":
             return None
         assert user_id is not None
+        if gating == "shadow":
+            shadow.judge_later(
+                user_id,
+                session,
+                kind="read",
+                mode=mode,
+                tool_name=tool_name,
+                tool_call_id=tool_call_id,
+                source_kind=source_kind(tool_name, args),
+                judge=partial(
+                    _shadow_finding, tool_name, args, text, images, outside, full
+                ),
+            )
+            return None
+        judged = await _judge(tool_name, args, text, images, outside, full)
+        if judged is None or not judged[0].held:
+            return None
+        verdict, text = judged
         call = held.HeldCall(
             review_id=read_review_id(session.session_id, user_id, tool_name, args),
             tool_name=tool_name,
@@ -266,6 +298,50 @@ async def screen_read(
     except Exception:
         logger.warning(f"Held-read screen failed for {tool_name}", exc_info=True)
         return _stub(tool_name, source, _UNRECORDABLE, session)
+
+
+async def _judge(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> tuple[ContentVerdict, str] | None:
+    """The verdict and the text it was reached on; None when nothing is readable."""
+    if outside is not None:
+        # AutoGPT writes no images, so a declaration narrows only the text.
+        text = await asyncio.to_thread(outside_view, outside, full, text, tool_name)
+    # Bytes nobody can read are not instructions until something decodes
+    # them, and that later read is judged.
+    if not text.strip() and not images:
+        return None
+    verdict = await judge_content(
+        source=judged_source(tool_name, args), text=text, images=images
+    )
+    return verdict, text
+
+
+async def _shadow_finding(
+    tool_name: str,
+    args: dict[str, Any],
+    text: str,
+    images: tuple[Image, ...],
+    outside: tuple[Any, ...] | None,
+    full: str,
+) -> shadow.Finding | None:
+    judged = await _judge(tool_name, args, text, images, outside, full)
+    return shadow.read_finding(judged[0]) if judged else None
+
+
+def source_kind(tool_name: str, args: dict[str, Any]) -> str:
+    if tool_name in ("run_capability", "resume_capability"):
+        capability = str(args.get("id") or "")
+        if capability.startswith("https://"):
+            return "mcp"
+        prefix, colon, _ = capability.partition(":")
+        return prefix if colon and prefix in ("block", "mcp") else "capability"
+    return _SOURCE_KINDS.get(tool_name, "other")
 
 
 def trusted_read(tool_name: str, args: dict[str, Any], output: str) -> bool:
