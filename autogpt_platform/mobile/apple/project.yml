@@ -1,0 +1,80 @@
+# XcodeGen specification for the SwiftUI client. The generated
+# AutoGPT.xcodeproj is committed, so CI never needs XcodeGen; regenerate it
+# with `xcodegen generate` from this directory after changing this file.
+name: AutoGPT
+options:
+  bundleIdPrefix: com.agpt.mobile
+  deploymentTarget:
+    iOS: "17.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+  groupSortPosition: top
+  generateEmptyDirectories: false
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+targets:
+  AutoGPT:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: Sources
+      - path: Resources
+    settings:
+      base:
+        PRODUCT_NAME: AutoGPT
+        PRODUCT_BUNDLE_IDENTIFIER: com.agpt.mobile.experimental
+        INFOPLIST_FILE: Resources/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # Ad hoc simulator signing: no Apple account, team or profile. Keep
+        # signing enabled; the simulator's Keychain needs the signed
+        # application identity.
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
+        ENABLE_PREVIEWS: NO
+      configs:
+        Debug:
+          # UI-protocol interaction fixtures exist only in Debug builds and
+          # open only with the -AutoGPTUIProtocolFixtures launch argument.
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG UI_PROTOCOL_FIXTURES
+        Release:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: ""
+    dependencies:
+      - sdk: SwiftUI.framework
+      - sdk: UIKit.framework
+      - sdk: Security.framework
+      - sdk: CryptoKit.framework
+      - sdk: AuthenticationServices.framework
+      - sdk: StoreKit.framework
+      - sdk: UserNotifications.framework
+      - sdk: WebKit.framework
+      - sdk: AVKit.framework
+      - sdk: PDFKit.framework
+      - sdk: QuickLook.framework
+schemes:
+  AutoGPT:
+    build:
+      targets:
+        AutoGPT: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

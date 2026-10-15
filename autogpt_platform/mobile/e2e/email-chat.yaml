@@ -1,0 +1,63 @@
+appId: com.agpt.mobile.experimental
+name: Email sign-in and persisted Otto conversation
+---
+- launchApp:
+    clearState: true
+- assertVisible:
+    id: choose-own-server
+- assertNotVisible: "Couldn't read your saved sign-in."
+- tapOn:
+    id: choose-own-server
+- tapOn:
+    id: own-server-auth-url
+- inputText: ${MAESTRO_AUTH_ORIGIN}
+- tapOn:
+    id: own-server-api-url
+- inputText: ${MAESTRO_API_ORIGIN}
+- hideKeyboard
+- tapOn: "Continue"
+- assertVisible:
+    id: sign-in-email
+- tapOn:
+    id: sign-in-email
+- inputText: ${MAESTRO_EMAIL}
+- tapOn:
+    id: sign-in-password
+- inputText: ${MAESTRO_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: sign-in-submit
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: message-otto
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    id: message-otto
+    retryTapIfNoChange: true
+- tapOn:
+    id: composer-input
+- inputText: "Hello Otto, confirm this native chat is connected."
+- tapOn:
+    id: composer-send
+- extendedWaitUntil:
+    visible: "Your local workspace is connected.*"
+    timeout: 90000
+- hideKeyboard
+- takeScreenshot: otto-conversation
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "chat-row-.*"
+    timeout: 30000
+- tapOn:
+    id: "chat-row-.*"
+    index: 0
+- assertVisible: "Hello Otto, confirm this native chat is connected."
+- assertVisible: "Your local workspace is connected.*"
+- takeScreenshot: otto-conversation-restored

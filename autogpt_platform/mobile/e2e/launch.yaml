@@ -1,0 +1,24 @@
+appId: com.agpt.mobile.experimental
+name: Native app opens to server selection
+---
+- launchApp:
+    clearState: true
+- assertVisible: "AutoGPT"
+- assertVisible:
+    id: choose-cloud
+- assertNotVisible: "Couldn't read your saved sign-in."
+- takeScreenshot: welcome
+- tapOn:
+    id: choose-own-server
+- assertVisible:
+    id: own-server-auth-url
+- tapOn:
+    id: own-server-auth-url
+- inputText: "http://example.com"
+- tapOn:
+    id: own-server-api-url
+- inputText: "https://api.example.com"
+- hideKeyboard
+- tapOn: "Continue"
+- assertVisible: "Sign-in address: Use an https:// address. Plain http only works for localhost."
+- takeScreenshot: own-server-validation

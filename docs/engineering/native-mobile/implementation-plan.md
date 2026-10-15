@@ -28,6 +28,8 @@ The spike contains native navigation, a long streamed conversation, the keyboard
 
 Proceed if the iOS experience passes keyboard, scrolling, text selection, accessibility and lifecycle checks, and the new CI critical path is below ten minutes with cold-cache evidence. Investigate a failed budget once with concrete measurements before replacing the framework. A timeout, a warm-only result, or an estimate is not a passing measurement. If a measurement fails, report it and revise the plan before building the entire card surface.
 
+**CI follow-up, 2026-10-15.** SwiftUI compilation passed on both standard runner architectures, but ARM timed out during the launch journey after a 5m39s boot and Intel timed out during preparation after 5m45s of universal builds. The Intel boot samples showed heavy CPU load with no swap use. Continue the feasibility slice on native ARM with host Spotlight indexing disabled and bounded simulator error logs, retaining both journeys and the ten-minute limit. Do not start the full card surface until this measurement passes. Exact runs and diagnostic limits are recorded in the [mobile build evidence](../../../autogpt_platform/mobile/README.md#checks-and-build-evidence).
+
 ## The two PR layers
 
 | Layer                              | Contents                                                                                                                                                                                                                     | Review boundary                                                                                                                                                                                                     |
