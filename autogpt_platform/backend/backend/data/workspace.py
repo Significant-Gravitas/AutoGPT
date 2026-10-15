@@ -15,6 +15,7 @@ from prisma.errors import UniqueViolationError
 from prisma.models import UserWorkspace, UserWorkspaceFile
 from prisma.types import UserWorkspaceFileWhereInput
 
+from backend.data import db
 from backend.data.skill_capacity import skill_owner_folder
 from backend.data.workspace_scope import (
     SHARED_ROOTS,
@@ -624,3 +625,35 @@ async def get_workspace_total_size(workspace_id: str) -> int:
         where={"workspaceId": workspace_id, "isDeleted": False},
     )
     return sum(f.sizeBytes for f in files)
+
+
+async def count_generated_files_by_session(
+    user_id: str, session_ids: list[str]
+) -> dict[str, int]:
+    """Live files the chat produced in each session, keyed by session id.
+
+    Counts what the chat's files button counts: skips the user's uploads,
+    ``agent.json`` and internal tool output (``purpose == "tool-output"``,
+    or the legacy ``tool-results``/``tool-outputs`` folders when a file has
+    no purpose). Scoped to the user's own workspace; sessions without files
+    are left out.
+    """
+    if not session_ids:
+        return {}
+    rows = await db.query_raw_with_schema(
+        "SELECT substring(f.path from '^/sessions/([^/]+)/') AS \"sessionId\", "
+        'COUNT(*)::int AS "count" '
+        'FROM {schema_prefix}"UserWorkspaceFile" f '
+        'JOIN {schema_prefix}"UserWorkspace" w ON w.id = f."workspaceId" '
+        'WHERE w."userId" = $1 AND NOT f."isDeleted" '
+        "AND substring(f.path from '^/sessions/([^/]+)/') = ANY($2::text[]) "
+        "AND f.metadata->>'origin' IS DISTINCT FROM 'user-upload' "
+        "AND lower(f.name) <> 'agent.json' "
+        "AND CASE WHEN f.metadata->'purpose' IS NOT NULL "
+        "THEN f.metadata->>'purpose' IS DISTINCT FROM 'tool-output' "
+        "ELSE f.path !~* '^/sessions/[^/]+/tool-(results|outputs)/[^/]+$' END "
+        "GROUP BY 1",
+        user_id,
+        session_ids,
+    )
+    return {row["sessionId"]: row["count"] for row in rows}

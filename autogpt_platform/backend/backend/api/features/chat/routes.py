@@ -170,7 +170,10 @@ from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block
+from backend.data.workspace import (
+    build_files_block,
+    count_generated_files_by_session,
+)
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
@@ -477,6 +480,8 @@ class SessionSummaryResponse(BaseModel):
     expert_id: str | None = None
     # First line of the newest user/assistant text; None until the chat starts.
     last_message: str | None = None
+    # Files the chat produced, as counted by the chat's files button.
+    file_count: int = 0
 
 
 LAST_MESSAGE_PREVIEW_CHARS = 200
@@ -606,11 +611,17 @@ async def list_sessions(
             )
 
     previews: dict[str, str] = {}
+    file_counts: dict[str, int] = {}
     if sessions:
+        session_ids = [session.session_id for session in sessions]
         try:
-            texts = await get_last_message_texts(
-                [session.session_id for session in sessions]
+            file_counts = await count_generated_files_by_session(user_id, session_ids)
+        except Exception:
+            logger.warning(
+                "Failed to count session files; defaulting to empty", exc_info=True
             )
+        try:
+            texts = await get_last_message_texts(session_ids)
             previews = {
                 session_id: line
                 for session_id, text in texts.items()
@@ -635,6 +646,7 @@ async def list_sessions(
                 is_pinned=session.is_pinned,
                 expert_id=session.expert_id,
                 last_message=previews.get(session.session_id),
+                file_count=file_counts.get(session.session_id, 0),
             )
             for session in sessions
         ],

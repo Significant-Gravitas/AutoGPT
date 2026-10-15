@@ -29896,6 +29896,11 @@
           "last_message": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Last Message"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
           }
         },
         "type": "object",

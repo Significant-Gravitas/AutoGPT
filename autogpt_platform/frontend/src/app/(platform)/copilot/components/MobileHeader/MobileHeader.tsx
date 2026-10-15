@@ -1,7 +1,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { NAVBAR_HEIGHT_PX } from "@/lib/constants";
 import { useCopilotUIStore } from "../../store";
-import { Folder01Icon, Menu01Icon } from "@hugeicons/core-free-icons";
+import { FileAttachmentIcon, Menu01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function MobileHeader() {
@@ -30,7 +30,7 @@ export function MobileHeader() {
         onClick={() => toggleContextPanelTab("files")}
         className="bg-white shadow-md"
       >
-        <Icon icon={Folder01Icon} width="1.25rem" height="1.25rem" />
+        <Icon icon={FileAttachmentIcon} width="1.25rem" height="1.25rem" />
       </Button>
     </div>
   );

@@ -3293,7 +3293,7 @@ def test_list_sessions_returns_source_platform(
     assert response.json()["sessions"][0]["source_platform"] == "discord"
 
 
-def test_list_sessions_returns_last_message_first_line(
+def test_list_sessions_returns_last_message_and_file_count(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     mocker.patch(
@@ -3308,6 +3308,11 @@ def test_list_sessions_returns_last_message_first_line(
         "backend.api.features.chat.routes.get_last_message_texts",
         new_callable=AsyncMock,
         return_value={"sess-talked": "\n  Drafted the outline.  \nSecond line"},
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.count_generated_files_by_session",
+        new_callable=AsyncMock,
+        return_value={"sess-talked": 3},
     )
     mock_redis = MagicMock()
     mock_pipe = MagicMock()
@@ -3326,6 +3331,8 @@ def test_list_sessions_returns_last_message_first_line(
     sessions = response.json()["sessions"]
     assert sessions[0]["last_message"] == "Drafted the outline."
     assert sessions[1]["last_message"] is None
+    assert sessions[0]["file_count"] == 3
+    assert sessions[1]["file_count"] == 0
 
 
 def test_archive_sessions_scopes_to_user_and_dedupes(

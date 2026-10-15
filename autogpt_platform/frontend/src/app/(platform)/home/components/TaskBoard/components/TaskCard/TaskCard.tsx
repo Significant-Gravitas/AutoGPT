@@ -14,7 +14,10 @@ import {
 } from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
 import { formatTimeAgo } from "@/lib/utils/time";
-import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
+import {
+  FileAttachmentIcon,
+  MoreHorizontalIcon,
+} from "@hugeicons/core-free-icons";
 import Link from "next/link";
 import type { DragEvent } from "react";
 import {
@@ -44,6 +47,7 @@ export function TaskCard({
   const isRunning = isSessionRunning(session);
   const name = expert?.name ?? AUTOPILOT_NAME;
   const jobTitle = expert ? expert.jobTitle || expert.role : "Head of AI";
+  const fileCount = session.file_count ?? 0;
 
   function handleDragStart(e: DragEvent<HTMLElement>) {
     e.dataTransfer.setData(TASK_CARD_MIME, session.id);
@@ -61,7 +65,7 @@ export function TaskCard({
         draggable={false}
         className="block rounded-lg px-3.5 pb-3 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 pr-6">
           {expert ? (
             <ExpertAvatar
               name={expert.name}
@@ -109,11 +113,29 @@ export function TaskCard({
             </span>
           </div>
         )}
-        <Text variant="small" tone="muted" className="mt-2.5">
-          Updated {formatTimeAgo(session.updated_at)}
-        </Text>
+        <div className="mt-2.5 flex items-center gap-3">
+          <Text variant="small" tone="muted">
+            Updated {formatTimeAgo(session.updated_at)}
+          </Text>
+          {fileCount > 0 && (
+            <span
+              className="ml-auto inline-flex items-center gap-1 text-zinc-500"
+              aria-label={`${fileCount} ${fileCount === 1 ? "file" : "files"}`}
+            >
+              <Icon icon={FileAttachmentIcon} size={14} />
+              <Text
+                variant="small"
+                tone="muted"
+                aria-hidden
+                className="tabular-nums"
+              >
+                {fileCount}
+              </Text>
+            </span>
+          )}
+        </div>
       </Link>
-      <div className="absolute bottom-2 right-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+      <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

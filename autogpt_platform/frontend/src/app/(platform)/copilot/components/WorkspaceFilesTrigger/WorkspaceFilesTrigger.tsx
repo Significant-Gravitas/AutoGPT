@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { Folder01Icon } from "@hugeicons/core-free-icons";
+import { FileAttachmentIcon } from "@hugeicons/core-free-icons";
 import { useCopilotUIStore } from "../../store";
 
 interface Props {
@@ -24,7 +24,7 @@ export function WorkspaceFilesTrigger({ className }: Props) {
       onClick={() => toggleContextPanelTab("files")}
       aria-label="Open workspace files"
     >
-      <Icon icon={Folder01Icon} className="!size-5" />
+      <Icon icon={FileAttachmentIcon} className="!size-5" />
     </Button>
   );
 }
