@@ -2416,6 +2416,7 @@ class TestClaude5TemperatureRejection:
             "claude-fable-5",
             "claude-mythos-5",
             "claude-opus-5",
+            "claude-haiku-5-5",
             "claude-opus-4-7",
             "claude-opus-4-8",
         ],
