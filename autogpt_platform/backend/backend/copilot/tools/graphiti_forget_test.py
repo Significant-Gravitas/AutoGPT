@@ -23,6 +23,7 @@ from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 from backend.copilot.tools.graphiti_forget import (
     _MAX_FAILURE_DETAIL,
+    SOFT_FORGET_NOTE,
     MemoryForgetConfirmTool,
     MemoryForgetSearchTool,
     _build_confirm_message,
@@ -318,7 +319,7 @@ class TestForgetConfirmModes:
         assert response.derived_uuids == ["d1", "d2", "d3"]
         assert response.message == (
             "1 memory edge(s) retracted from memory; "
-            "3 fact(s) derived from them retracted too."
+            "3 fact(s) derived from them retracted too. " + SOFT_FORGET_NOTE
         )
 
     @pytest.mark.asyncio
@@ -447,24 +448,48 @@ class TestBuildConfirmMessage:
     threshold and lose all detail)."""
 
     def test_no_failures_returns_summary_only(self) -> None:
-        message = _build_confirm_message(3, "retracted from memory", [])
-        assert message == "3 memory edge(s) retracted from memory."
+        message = _build_confirm_message(3, True, [])
+        assert message == "3 memory edge(s) permanently deleted."
 
     def test_the_facts_derived_from_them_are_counted(self) -> None:
-        message = _build_confirm_message(1, "permanently deleted", [], 3)
+        message = _build_confirm_message(1, True, [], 3)
         assert message == (
             "1 memory edge(s) permanently deleted; "
             "3 fact(s) derived from them retracted too."
         )
 
     def test_edges_already_erased_are_told_apart(self) -> None:
-        message = _build_confirm_message(0, "retracted from memory", [], 2, 1)
+        message = _build_confirm_message(0, False, [], 2, 1)
         assert message == (
             "0 memory edge(s) retracted from memory; "
             "2 fact(s) derived from them retracted too. "
             "1 memory edge(s) had already been erased; what was derived from "
             "them was retracted and erased."
         )
+
+    def test_a_soft_forget_says_it_is_not_a_permanent_deletion(self) -> None:
+        """A model told a user who had asked for a permanent delete that a soft
+        forget was permanent. A soft forget's message says it was not, what it
+        did instead and how to delete permanently; a hard forget's says none
+        of that, and neither does a soft forget that retracted nothing."""
+        soft = _build_confirm_message(1, False, [], 2)
+        assert soft == (
+            "1 memory edge(s) retracted from memory; 2 fact(s) derived from "
+            "them retracted too. This is not a permanent deletion: they are "
+            "hidden from recall, from the memory context chats start with and "
+            "from dreams, and their text is kept for audit. To delete them "
+            "permanently, call tool:memory_forget_confirm with the same UUIDs "
+            "and hard_delete=true."
+        )
+
+        hard = _build_confirm_message(1, True, [], 2)
+        assert hard == (
+            "1 memory edge(s) permanently deleted; "
+            "2 fact(s) derived from them retracted too."
+        )
+
+        nothing = _build_confirm_message(0, False, [])
+        assert nothing == "0 memory edge(s) retracted from memory."
 
     def test_caps_inlined_detail_and_notes_remainder(self) -> None:
         overflow = _MAX_FAILURE_DETAIL + 4
@@ -477,7 +502,7 @@ class TestBuildConfirmMessage:
             for i in range(overflow)
         ]
 
-        message = _build_confirm_message(0, "retracted from memory", failures)
+        message = _build_confirm_message(0, False, failures)
 
         # Full count is reported, but only the first N reasons are inlined.
         assert f"{overflow} failed" in message

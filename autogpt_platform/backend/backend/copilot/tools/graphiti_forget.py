@@ -51,6 +51,16 @@ _BUSY_RETRY_SECONDS = 5
 # size threshold (base.py) and losing all detail to truncation.
 _MAX_FAILURE_DETAIL = 5
 
+# What a soft forget did, told with its result: a model that read only "N
+# memory edge(s) retracted" told a user who had asked for a permanent delete
+# that it was permanent.
+SOFT_FORGET_NOTE = (
+    "This is not a permanent deletion: they are hidden from recall, from the "
+    "memory context chats start with and from dreams, and their text is kept "
+    "for audit. To delete them permanently, call tool:memory_forget_confirm "
+    "with the same UUIDs and hard_delete=true."
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -257,11 +267,10 @@ class MemoryForgetConfirmTool(BaseTool):
                 session_id=session.session_id,
             )
 
-        mode = "permanently deleted" if hard_delete else "retracted from memory"
         return MemoryForgetConfirmResponse(
             message=_build_confirm_message(
                 len(result.deleted),
-                mode,
+                hard_delete,
                 result.failures,
                 len(result.derived),
                 len(result.resumed),
@@ -290,7 +299,7 @@ async def _retract_once_more_if_busy(
 
 def _build_confirm_message(
     deleted_count: int,
-    mode: str,
+    hard: bool,
     failures: list[MemoryForgetFailure],
     derived_count: int = 0,
     resumed_count: int = 0,
@@ -302,13 +311,16 @@ def _build_confirm_message(
     The facts the dream had derived from the forgotten ones, retracted with
     them (``graphiti/recall_cascade.py``), are counted so the user hears of
     them too, and so are the edges an earlier hard forget had already erased,
-    whose derived facts this forget went on to retract and erase.
+    whose derived facts this forget went on to retract and erase. A soft
+    forget that retracted anything says it was not a permanent deletion, what
+    it did instead, and how to delete permanently (``SOFT_FORGET_NOTE``).
 
     Only the first ``_MAX_FAILURE_DETAIL`` reasons are inlined: a large batch
     failing wholesale (e.g. a driver outage) would otherwise push the tool
     output past the persist-and-summarize threshold and lose *all* detail. The
     full per-UUID list stays available in the structured ``failures`` field.
     """
+    mode = "permanently deleted" if hard else "retracted from memory"
     summary = f"{deleted_count} memory edge(s) {mode}."
     if derived_count:
         summary = (
@@ -320,6 +332,8 @@ def _build_confirm_message(
             f" {resumed_count} memory edge(s) had already been erased; what "
             "was derived from them was retracted and erased."
         )
+    if deleted_count and not hard:
+        summary += f" {SOFT_FORGET_NOTE}"
     if not failures:
         return summary
     shown = failures[:_MAX_FAILURE_DETAIL]
