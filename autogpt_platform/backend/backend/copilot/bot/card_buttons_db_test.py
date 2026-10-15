@@ -661,7 +661,7 @@ async def test_a_rule_set_from_the_channel_holds_only_in_that_bot_chat(
     _, _, first = await _held_card(one_linked, test_user_id)
     rules = [o for o in first.options if o not in ("Approve", "Reject")]
     platform = Platform(one_linked.platform.upper())
-    judged_safe = AsyncMock(return_value=MagicMock(allowed=True))
+    judged_safe = AsyncMock(return_value=Judgement(allowed=True, reason=""))
     redis = await get_redis_async()
     wider = [
         chat_rules._scoped_key(scope, test_user_id, None, _POST)
