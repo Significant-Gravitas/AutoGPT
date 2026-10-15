@@ -1468,6 +1468,29 @@ class TestExecuteBlockAutoCredentials:
         assert isinstance(result, SetupRequirementsResponse)
         assert result.setup_info.user_readiness.ready_to_run is False
 
+    async def test_a_refused_picker_credential_is_answered_in_our_own_words(self):
+        """The error wraps the model's own input in our guidance, so the content
+        judge has nothing from outside in it to read."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+
+        with _patch_workspace(), credit_patch:
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {"id": "f", "name": "Q3.xlsx", "_credentials_id": ""}
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-refused",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse) and "re-select" in result.message
+        assert result.outside == ()
+
     async def test_auto_cred_locks_released_when_coerce_raises(self):
         """Regression guard for Sentry r3135420231: if coerce_inputs_to_schema
         raises between acquire_auto_credentials and the inner wait_for try,

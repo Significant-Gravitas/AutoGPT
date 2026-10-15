@@ -108,8 +108,8 @@ export function useAgentInfoStep({
     // Validate that an agent is selected before submission
     if (!selectedAgentId || !selectedAgentVersion) {
       toast({
-        title: "Agent Selection Required",
-        description: "Please select an agent before submitting to the store.",
+        title: "Workflow Selection Required",
+        description: "Please select a workflow before submitting to the store.",
         variant: "destructive",
       });
       return;
@@ -142,10 +142,10 @@ export function useAgentInfoStep({
     } catch (error) {
       Sentry.captureException(error);
       toast({
-        title: "Submit Agent Error",
+        title: "Submit Workflow Error",
         description:
           (error instanceof Error ? error.message : undefined) ||
-          "An error occurred while submitting the agent. Please try again.",
+          "An error occurred while submitting the workflow. Please try again.",
         duration: 3000,
         variant: "destructive",
       });

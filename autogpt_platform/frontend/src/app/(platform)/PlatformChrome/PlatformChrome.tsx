@@ -4,6 +4,7 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
+import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
@@ -16,7 +17,6 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
-import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
@@ -31,7 +31,7 @@ interface Props {
 // Mobile header buttons float over the content, so they get a pill surface to
 // stay readable against whatever scrolls underneath.
 const mobileTriggerClassName =
-  "rounded-full border border-[#DADADC] bg-white hover:bg-[#F5F5F6]";
+  "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
 
 export function PlatformChrome({ children }: Props) {
   const {
@@ -39,7 +39,7 @@ export function PlatformChrome({ children }: Props) {
     isNewLayoutActive,
     showTourSidebar,
     overlayInsetHeader,
-    isCopilotRoute,
+    isChatSession,
     hasInsetHeaderTitle,
     isSettingsRoute,
     isAdminRoute,
@@ -54,8 +54,7 @@ export function PlatformChrome({ children }: Props) {
     </TopUpPromptProvider>
   );
 
-  // Logged-out marketplace visitors browse with the tour demo sidebar as an
-  // upsell — clicking a demo session takes them into /tour/chat.
+  // Logged-out marketplace visitors get public navigation and a trial CTA.
   if (showTourSidebar) {
     return (
       <SidebarProvider style={{ "--sidebar-width": "19rem" } as CSSProperties}>
@@ -93,14 +92,11 @@ export function PlatformChrome({ children }: Props) {
             )}
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="pointer-events-auto md:hidden">
-                <SidebarTrigger className={mobileTriggerClassName} />
-              </div>
-              {/* Copilot treats up-to-lg as mobile (overlay context panel),
-                  so its workspace-files toggle stays visible past md. */}
-              {isCopilotRoute && (
-                <div className="pointer-events-auto lg:hidden">
-                  <WorkspaceFilesTrigger className={mobileTriggerClassName} />
+              {/* An open chat carries both buttons in its thread chip
+                  (ThreadHeader), so they float here everywhere else. */}
+              {!isChatSession && (
+                <div className="pointer-events-auto md:hidden">
+                  <SidebarTrigger className={mobileTriggerClassName} />
                 </div>
               )}
               <InsetHeaderTitle />
@@ -109,7 +105,9 @@ export function PlatformChrome({ children }: Props) {
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
-          <section className="flex-1">{content}</section>
+          <AppSidebarToggleProvider>
+            <section className="flex-1">{content}</section>
+          </AppSidebarToggleProvider>
         </SidebarInset>
       </SidebarProvider>
     );

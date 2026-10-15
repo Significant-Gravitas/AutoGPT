@@ -2,6 +2,7 @@
 
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/molecules/Popover/Popover";
@@ -57,6 +58,11 @@ interface Props {
    */
   connectionLocked?: boolean;
   className?: string;
+  /** Opened from somewhere else (the composer's + menu): no chip of its
+   *  own, the sheet anchors to its parent box instead. */
+  anchorOnly?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -67,6 +73,9 @@ interface Props {
 export function ConnectionPicker({
   connectionLocked = false,
   className,
+  anchorOnly = false,
+  open,
+  onOpenChange,
 }: Props) {
   const {
     offers,
@@ -212,8 +221,12 @@ export function ConnectionPicker({
   );
 
   return (
-    <Popover>
-      {showsTier ? (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      {anchorOnly ? (
+        <PopoverAnchor asChild>
+          <span aria-hidden className="pointer-events-none absolute inset-0" />
+        </PopoverAnchor>
+      ) : showsTier ? (
         <Tooltip>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
           <TooltipContent side="top">{tierLabel(active, tier)}</TooltipContent>
@@ -223,7 +236,8 @@ export function ConnectionPicker({
       )}
 
       <PopoverContent
-        align="end"
+        align={anchorOnly ? "start" : "end"}
+        side={anchorOnly ? "top" : undefined}
         className={cn(
           "max-h-[var(--radix-popover-content-available-height)] w-[24rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-2xl border-zinc-200 bg-[#F9F9FA] p-3 pt-4 text-zinc-900 shadow-lg",
           showMaxUpgrade && "bg-white",
