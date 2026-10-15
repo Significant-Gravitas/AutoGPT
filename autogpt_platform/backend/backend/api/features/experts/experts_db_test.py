@@ -49,7 +49,7 @@ from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
 from backend.api.features.store import db as store_db
-from backend.api.features.store import skill_db
+from backend.api.features.store import skill_db, skill_model
 from backend.api.features.store.categories import StoreCategory
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
@@ -6062,7 +6062,6 @@ async def test_template_package_holds_what_the_marketplace_shows(
 ):
     """End to end over the database: the skill a hire would install, the
     workflow's agent file and the routine, and nothing else."""
-    await skill_db.invalidate_active_versions_cache()
     template = await _template_with_setup(server, hub_listing)
     found = await experts_db.get_template(template.id)
     assert found is not None
@@ -6088,6 +6087,74 @@ async def test_template_package_holds_what_the_marketplace_shows(
     agent_file = await store_db.get_agent(workflow.store_listing_version_id or "")
     assert archive.read(workflow_path(0, workflow.name)).decode() == dumps(agent_file)
     assert [r["key"] for r in manifest["routines"]] == ["queue-sweep"]
+
+
+@pytest.mark.parametrize("stale", ["missing", "retired", "older"])
+@pytest.mark.asyncio(loop_scope="session")
+async def test_template_package_holds_the_live_skill_whatever_the_cache_says(
+    server: SpinTestServer, hub_listing, skills_hub_on, stale
+):
+    """A download is a snapshot, so the reconcile cache lagging a publish must
+    not drop the skill or freeze an older version into the file."""
+    older_id = hub_listing.activeVersionId
+    assert older_id is not None
+    newer = await prisma.models.SkillListingVersion.prisma().create(
+        data={
+            "skillListingId": hub_listing.id,
+            "version": 2,
+            "name": hub_listing.slug,
+            "description": f"{hub_listing.slug} description",
+            "body": "# body v2\n",
+            "isAvailable": True,
+            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+        }
+    )
+    await prisma.models.SkillListingFile.prisma().create(
+        data={
+            "skillListingVersionId": newer.id,
+            "relativePath": "scripts/run.sh",
+            "sizeBytes": 3,
+            "sha256": "x",
+            "isExecutable": True,
+            "content": prisma.Base64.encode(b"ls\n"),
+        }
+    )
+    await prisma.models.SkillListing.prisma().update(
+        where={"id": hub_listing.id}, data={"activeVersionId": newer.id}
+    )
+    template = await _template_with_setup(server, hub_listing)
+    cached = {
+        "missing": {},
+        "retired": {
+            hub_listing.slug: skill_model.ActiveSkillVersion(
+                listing_id=hub_listing.id, version_id=newer.id, retired=True
+            )
+        },
+        "older": {
+            hub_listing.slug: skill_model.ActiveSkillVersion(
+                listing_id=hub_listing.id, version_id=older_id
+            )
+        },
+    }[stale]
+    await skill_db._write_active_versions_cache(cached)
+    try:
+        assert await skill_db._read_active_versions_cache() == cached
+        package = await package_export.build_template_package(template.id, "user-1")
+    finally:
+        await skill_db.invalidate_active_versions_cache()
+
+    archive = zipfile.ZipFile(
+        io.BytesIO(package_export.zip_from_expert_package(package))
+    )
+    folder = f"skills/{hub_listing.slug}/"
+    assert sorted(n for n in archive.namelist() if n.startswith(folder)) == [
+        f"{folder}SKILL.md",
+        f"{folder}scripts/run.sh",
+    ]
+    assert "# body v2" in archive.read(f"{folder}SKILL.md").decode()
+    assert archive.read(f"{folder}scripts/run.sh") == b"ls\n"
+    manifest = json.loads(archive.read("expert.json"))
+    assert [s["slug"] for s in manifest["skills"]] == [hub_listing.slug]
 
 
 @pytest.mark.asyncio(loop_scope="session")

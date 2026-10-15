@@ -22,10 +22,7 @@ from backend.api.features.experts.package_export import (
     zip_from_expert_package,
 )
 from backend.api.features.experts.package_model import ExpertManifest
-from backend.api.features.store.skill_model import (
-    ActiveSkillVersion,
-    SkillVersionPackage,
-)
+from backend.api.features.store.skill_model import SkillVersionPackage
 from backend.blocks.basic import StoreValueBlock
 from backend.copilot.tools.skills import SkillFile
 from backend.data.graph import GraphModel, Link, NodeModel
@@ -129,9 +126,9 @@ def _version(slug: str, files: list[SkillFile]) -> SkillVersionPackage:
     )
 
 
-VERSIONS = {
-    "v-write-briefs": _version("write-briefs", []),
-    "v-run-checks": _version(
+LIVE_PACKAGES = {
+    "l-write-briefs": _version("write-briefs", []),
+    "l-run-checks": _version(
         "run-checks",
         [
             SkillFile(
@@ -166,13 +163,7 @@ def sources(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     mocks = {
         "get_template": AsyncMock(return_value=_template()),
         "with_bundled_skills": AsyncMock(side_effect=with_bundled_skills),
-        "get_active_versions": AsyncMock(
-            return_value={
-                slug: ActiveSkillVersion(listing_id=f"l-{slug}", version_id=f"v-{slug}")
-                for slug in SKILL_MD
-            }
-        ),
-        "get_version_packages": AsyncMock(return_value=VERSIONS),
+        "get_live_packages": AsyncMock(return_value=LIVE_PACKAGES),
         "get_agent": AsyncMock(side_effect=_get_agent),
         "list_template_routines": AsyncMock(
             return_value=[
@@ -191,8 +182,9 @@ def sources(monkeypatch: pytest.MonkeyPatch) -> dict[str, AsyncMock]:
     }
     for name in ("get_template", "with_bundled_skills"):
         monkeypatch.setattr(package_export.experts_db, name, mocks[name])
-    for name in ("get_active_versions", "get_version_packages"):
-        monkeypatch.setattr(package_export.skill_db, name, mocks[name])
+    monkeypatch.setattr(
+        package_export.skill_db, "get_live_packages", mocks["get_live_packages"]
+    )
     monkeypatch.setattr(package_export.store_db, "get_agent", mocks["get_agent"])
     monkeypatch.setattr(
         package_export.routines,
@@ -311,14 +303,16 @@ async def test_a_delisted_workflow_is_left_out_and_the_rest_stay(sources):
     ]
 
 
-async def test_a_retired_or_missing_skill_is_left_out(sources):
-    sources["get_active_versions"].return_value = {
-        "write-briefs": ActiveSkillVersion(
-            listing_id="l-write-briefs", version_id="v-write-briefs", retired=True
-        ),
-        "run-checks": ActiveSkillVersion(
-            listing_id="l-run-checks", version_id="v-run-checks"
-        ),
+async def test_skills_are_loaded_by_the_listings_the_page_shows(sources):
+    await _zip()
+    sources["get_live_packages"].assert_awaited_once_with(
+        ["l-write-briefs", "l-run-checks"]
+    )
+
+
+async def test_a_skill_that_leaves_the_hub_mid_download_is_left_out(sources):
+    sources["get_live_packages"].return_value = {
+        "l-run-checks": LIVE_PACKAGES["l-run-checks"]
     }
     archive = await _zip()
     assert [c.slug for c in _manifest(archive).skills] == ["run-checks"]

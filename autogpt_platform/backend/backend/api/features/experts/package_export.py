@@ -124,19 +124,13 @@ async def _skills(
     bundled: list[ExpertBundledSkill],
 ) -> tuple[list[PackagedSkill], dict[str, SkillPackage]]:
     """Each bundled skill's active version, whole, in roster order."""
-    active = await skill_db.get_active_versions([s.slug for s in bundled])
-    version_ids = {
-        slug: version.version_id
-        for slug, version in active.items()
-        if not version.retired
-    }
-    versions = await skill_db.get_version_packages(list(version_ids.values()))
+    packages_by_listing = await skill_db.get_live_packages([s.id for s in bundled])
     cards: list[PackagedSkill] = []
     packages: dict[str, SkillPackage] = {}
     for skill in bundled:
-        version = versions.get(version_ids.get(skill.slug, ""))
+        version = packages_by_listing.get(skill.id)
         if version is None:
-            logger.warning(f"Bundled skill {skill.slug!r} has no live version")
+            logger.warning(f"Bundled skill {skill.slug!r} left the Hub mid-download")
             continue
         cards.append(
             PackagedSkill(
