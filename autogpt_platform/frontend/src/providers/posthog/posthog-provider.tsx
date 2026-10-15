@@ -21,6 +21,7 @@ import {
   forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
 } from "./posthog-consent";
+import { getPostHogClientHosts } from "./posthog-proxy";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
   const isPostHogEnabled = environment.isPostHogEnabled();
@@ -38,7 +39,7 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       const anonymousID = getAnonymousID();
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
-        api_host: postHogCredentials.host,
+        ...getPostHogClientHosts(postHogCredentials),
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,

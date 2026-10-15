@@ -41,10 +41,6 @@ logger = logging.getLogger(__name__)
 EventHandler = Callable[[CodexStreamEvent], Awaitable[None]]
 ToolHandler = Callable[[CodexDynamicToolCall], Awaitable[CodexDynamicToolResult]]
 
-# A turn that keeps asking for tools without converging is a bug somewhere;
-# stop rather than spending someone's quota in a loop.
-MAX_TOOL_ITERATIONS = 32
-
 
 class CodexHttpSession:
     """One user's Codex turn, run over HTTPS."""
@@ -103,7 +99,10 @@ class CodexHttpSession:
         reasoning_summary = ""
         usage = _ZERO_USAGE
 
-        for _ in range(MAX_TOOL_ITERATIONS):
+        # No round cap here: whoever runs the tools bounds the turn. On the
+        # copilot path that is the Claude CLI, which counts every call against
+        # CHAT_AGENT_MAX_TURNS; the turn and tool timeouts cover the rest.
+        while True:
             turn = await self._stream_turn(request, conversation, tools, event_handler)
 
             response_id = turn.response_id or response_id
@@ -131,10 +130,6 @@ class CodexHttpSession:
 
             for call in turn.tool_calls:
                 conversation.append(await self._dispatch_tool(call, tool_handler))
-
-        raise CodexTurnLimitError(
-            f"Codex turn did not converge within {MAX_TOOL_ITERATIONS} tool rounds"
-        )
 
     async def _dispatch_tool(
         self, call: "_ToolCall", tool_handler: ToolHandler
@@ -265,10 +260,6 @@ async def _consume_event(
 
 class CodexInvocationTimeoutError(RuntimeError):
     """The whole turn exceeded its deadline."""
-
-
-class CodexTurnLimitError(RuntimeError):
-    """The tool loop did not converge."""
 
 
 class CodexTurnFailedError(RuntimeError):

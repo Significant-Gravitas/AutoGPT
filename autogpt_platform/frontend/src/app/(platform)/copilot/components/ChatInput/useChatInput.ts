@@ -1,6 +1,6 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { describeSendFailure } from "./helpers";
-import { toast } from "@/components/molecules/Toast/use-toast";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
+import { useChatDraft } from "./useChatDraft";
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 
 interface Args {
@@ -16,6 +16,7 @@ interface Args {
   /** Allow sending when text is empty (e.g. when files are attached). */
   canSendEmpty?: boolean;
   inputId?: string;
+  draftKey?: string;
 }
 
 export function useChatInput({
@@ -26,8 +27,9 @@ export function useChatInput({
   disabled = false,
   canSendEmpty = false,
   inputId = "chat-input",
+  draftKey,
 }: Args) {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useChatDraft(draftKey);
   const [isSending, setIsSending] = useState(false);
   const [isEnqueueing, setIsEnqueueing] = useState(false);
   // Synchronous guard against double-submit — refs update immediately,
@@ -52,7 +54,7 @@ export function useChatInput({
       ) as HTMLTextAreaElement | null;
       textarea?.focus();
     },
-    [initialPrompt, setInitialPrompt, inputId],
+    [initialPrompt, setInitialPrompt, inputId, setValue],
   );
 
   useEffect(
@@ -88,13 +90,10 @@ export function useChatInput({
       notifyMessageSent();
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "your message is back in the composer",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your message is back in the composer",
       });
     } finally {
       isSubmittingRef.current = false;
@@ -118,13 +117,10 @@ export function useChatInput({
       await onEnqueue(trimmedMessage);
     } catch (error) {
       setValue((current) => restoreFailedDraft(current, message));
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "your message is back in the composer",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "your message is back in the composer",
       });
     } finally {
       isEnqueueingRef.current = false;

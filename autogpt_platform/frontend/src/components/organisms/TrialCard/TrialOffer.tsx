@@ -31,8 +31,8 @@ export function TrialOffer({ trial, isStarting, onStart }: Props) {
           before the trial ends.
         </Text>
         <Text variant="small" className="!text-zinc-500">
-          Trial usage is limited. Canceling ends trial access immediately. You
-          can manage your plan in billing.
+          Trial usage is limited. If you cancel, you keep access until the trial
+          ends. You can manage your plan in billing.
         </Text>
       </div>
       <Button
