@@ -20,6 +20,7 @@ import {
   primaryAction,
 } from "./helpers";
 import { useKeepGoing } from "./useKeepGoing";
+import { useNow } from "./useNow";
 import { useResumeAtReset } from "./useResumeAtReset";
 
 interface Args {
@@ -48,7 +49,9 @@ export function useLivePausedCard({
       )
     : pause;
   const isBudget = isBudgetPause(shown);
-  const budgetBack = isBudget && (isBudgetBack || hasReset(shown));
+  const waitsOnReset = isBudget && !neverResets(shown);
+  const now = useNow(waitsOnReset);
+  const budgetBack = isBudget && (isBudgetBack || hasReset(shown, now));
   const keep = useKeepGoing({
     sessionId,
     onFollow,
@@ -59,7 +62,7 @@ export function useLivePausedCard({
   });
   const resume = useResumeAtReset({
     sessionId,
-    enabled: isBudget && !neverResets(shown),
+    enabled: waitsOnReset,
     onBudgetBack: () => setIsBudgetBack(true),
   });
   // Switching the chat's connection, then picking the task up on it.
@@ -72,8 +75,9 @@ export function useLivePausedCard({
 
   return {
     shown,
+    now,
     title: pauseTitle(shown),
-    body: pauseBody({ pause: shown, name: assistantName, budgetBack }),
+    body: pauseBody({ pause: shown, name: assistantName, budgetBack, now }),
     primary: primaryAction({ pause: shown, budgetBack, resume }),
     canStop: shown.reason === "task" || shown.reason === "steps",
     canUpgrade:

@@ -8,6 +8,7 @@ import {
 import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { server } from "@/mocks/mock-server";
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -470,6 +471,45 @@ describe("TurnPausedCard — Keep going", () => {
     ).toBeDefined();
     expect(screen.getByRole("button", { name: "Keep going" })).toBeDefined();
     expect(screen.queryByRole("button", { name: /^Resume/ })).toBeNull();
+  });
+
+  it("keeps counting down while the chat sits open, and is offered once the reset passes", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(NOW);
+    backend();
+    renderCard(pause());
+    const card = await screen.findByRole("region", {
+      name: "Paused · out of today's budget",
+    });
+    await waitFor(() =>
+      expect(buttonsIn(card)).toEqual(["Resume at 1:00 AM", "Upgrade"]),
+    );
+
+    // Synchronous from here: the usage poll fires but none of its responses
+    // land, so only the card's own clock can move the text.
+    act(() => {
+      vi.advanceTimersByTime(10 * 60_000);
+    });
+
+    expect(
+      within(card).getByText(
+        phrase(
+          "Otto saved its progress above. Your budget resets at 1:00 AM, in 4 h 2 min.",
+        ),
+      ),
+    ).toBeDefined();
+
+    act(() => {
+      vi.setSystemTime(TONIGHT_1AM);
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(
+      within(card).getByText(
+        "Otto saved its progress above. Your budget has reset.",
+      ),
+    ).toBeDefined();
+    expect(buttonsIn(card)).toEqual(["Keep going", "Upgrade"]);
   });
 });
 
