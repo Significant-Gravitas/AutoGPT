@@ -27,6 +27,10 @@ export function useServerFlag(key: string): FlagSourceResult {
       queryKey: [...getGetFeatureFlagsQueryKey(params), userID],
       enabled: !isUserLoading,
       staleTime: FLAGS_STALE_MS,
+      // A consent answer keeps the last flags until the new ones land; another
+      // user never sees them.
+      placeholderData: (previous, previousQuery) =>
+        previousQuery?.queryKey.at(-1) === userID ? previous : undefined,
       // A 200 leaves a flag out while the vendor is down or starting, so ask
       // again, backing off to once a minute, until this one is answered.
       refetchInterval: (query) =>

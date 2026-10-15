@@ -181,6 +181,31 @@ describe("server backend", () => {
     });
   });
 
+  it("never shows one user's flags to the next while theirs load", async () => {
+    let requests = 0;
+    server.use(
+      getGetFeatureFlagsMockHandler(async () => {
+        if (requests++ === 0) {
+          return { flags: { [HIRE_EXPERTS]: true }, configured: true };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { flags: { [HIRE_EXPERTS]: false }, configured: true };
+      }),
+    );
+    const seen = renderRecording(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({ enabled: true, answered: true }),
+    );
+    const before = seen.length;
+
+    act(() => signIn("u-2"));
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({ enabled: false, answered: true }),
+    );
+
+    expect(seen.slice(before).some((s) => s.enabled && s.answered)).toBe(false);
+  });
+
   it("waits for the session, then reads each signed-in user's own flags", async () => {
     const answers = [true, false];
     let requests = 0;
@@ -257,6 +282,30 @@ describe("a signed-out visitor", () => {
     await waitFor(() => expect(sent).toEqual([null]));
   });
 
+  it("keeps the shared answers until their own land when they allow analytics", async () => {
+    installCookiebot();
+    server.use(
+      getGetFeatureFlagsMockHandler(async ({ request }) => {
+        if (!new URL(request.url).searchParams.get("visitor_id")) {
+          return { flags: { [HIRE_EXPERTS]: false }, configured: true };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        return { flags: { [HIRE_EXPERTS]: true }, configured: true };
+      }),
+    );
+    const seen = renderRecording(() => useFlagStatus(Flag.HIRE_EXPERTS));
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({ enabled: false, answered: true }),
+    );
+    const before = seen.length;
+
+    act(() => answerCookiebot({ statistics: true }));
+    await waitFor(() => expect(seen.at(-1)).toMatchObject({ enabled: true }));
+
+    // A gate must not drop back to "not answered yet" while their own load.
+    expect(seen.slice(before).every((s) => s.answered)).toBe(true);
+  });
+
   it("is read again under their id when they allow analytics", async () => {
     installCookiebot();
     const sent = recordVisitorIDs();
@@ -288,6 +337,19 @@ describe("the frontend's flags are the set the endpoint serves", () => {
     );
   });
 });
+
+function renderRecording<T>(read: () => T) {
+  const seen: T[] = [];
+  renderHook(
+    () => {
+      const value = read();
+      seen.push(value);
+      return value;
+    },
+    { wrapper: withQueryClient() },
+  );
+  return seen;
+}
 
 function recordVisitorIDs() {
   const sent: Array<string | null> = [];
