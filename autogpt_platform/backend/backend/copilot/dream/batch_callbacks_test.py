@@ -905,13 +905,14 @@ class TestErrorPaths:
             return_value=MagicMock(provider_batch_id="msgbatch_recombine")
         )
         mark_errored = AsyncMock()
-        with patch(
-            "backend.copilot.dream.batch_callbacks.submit_phase", submit_phase
-        ), patch("backend.copilot.dream.job_status.mark_errored", mark_errored), patch(
-            "backend.copilot.dream.job_status.update_status_phase", AsyncMock()
-        ), patch(
-            "backend.copilot.dream.batch_callbacks._anthropic_api_key",
-            return_value="sk-ant-test",
+        with (
+            patch("backend.copilot.dream.batch_callbacks.submit_phase", submit_phase),
+            patch("backend.copilot.dream.job_status.mark_errored", mark_errored),
+            patch("backend.copilot.dream.job_status.update_status_phase", AsyncMock()),
+            patch(
+                "backend.copilot.dream.batch_callbacks._anthropic_api_key",
+                return_value="sk-ant-test",
+            ),
         ):
             await handle_dream_batch_result(
                 _entry(phase="consolidate"),
