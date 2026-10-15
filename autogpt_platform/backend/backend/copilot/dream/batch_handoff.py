@@ -27,12 +27,7 @@ from backend.copilot.config import ChatConfig
 from backend.executor.batch_executor import remove_pending
 
 from .batch_state import best_effort_cleanup
-from .batch_submit import (
-    delete_input_bundle,
-    persist_input_bundle,
-    phase_models_for_config,
-    submit_phase,
-)
+from .batch_submit import persist_input_bundle, phase_models_for_config, submit_phase
 from .cancel import stopped_error
 from .fetch import DreamInput
 from .locks import BATCH_LOCK_TTL_SECONDS, DreamLockHandle
@@ -40,7 +35,7 @@ from .pass_record import stop_error
 from .pass_run import DreamPassRun
 from .provider_batch import cancel_provider_batch
 from .schemas import DreamPassResult
-from .store import read_pass, record_submitted
+from .store import read_pass, record_submitted, record_taken_back
 
 logger = logging.getLogger(__name__)
 
@@ -107,15 +102,13 @@ async def _hand_off(
 
     A failed extend means the lock expired before the handoff — a newer pass
     may already own the graph, so the just-submitted batch must never be
-    applied: revoke the pending entry (the poller then never dispatches the
-    callback chain) and drop the input bundle. The provider batch is orphaned;
-    its results are discarded. The lock is NOT disowned, so the context
-    manager's compare-and-delete release stays a safe no-op.
+    applied: it is taken back (``_take_back``). The lock is NOT disowned, so
+    the context manager's compare-and-delete release stays a safe no-op.
 
     A row that refuses the submit (a stop closed it meanwhile, or it is gone),
-    or does not hold it (``_record_submit``), gets the same revoke, the
-    provider batch cancelled too by the id the pass holds, and keeps the lock
-    to release on the way out. Nothing has landed yet, so nothing is charged.
+    or does not hold it (``_record_submit``), gets the same take-back and
+    keeps the lock to release on the way out. Nothing has landed yet, so
+    nothing is charged.
     """
     logger.info(
         "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
@@ -123,14 +116,12 @@ async def _hand_off(
         provider_batch_id,
     )
     if not await lock_handle.extend(BATCH_LOCK_TTL_SECONDS):
-        await remove_pending(provider_batch_id)
-        await delete_input_bundle(run.pass_id)
-        return run.failure(
-            "anthropic_batch: dream lock lost before handoff — batch revoked"
-        )
+        error = "anthropic_batch: dream lock lost before handoff — batch revoked"
+        await _take_back(run, lock_handle, provider_batch_id, error)
+        return run.failure(error)
     stopped = await _record_submit(run, lock_handle, provider_batch_id, input_bundle)
     if stopped is not None:
-        await _revoke_stopped(run.pass_id, provider_batch_id)
+        await _take_back(run, lock_handle, provider_batch_id, stopped)
         return run.failure(stopped)
     lock_handle.disown()
     return run.handed_off()
@@ -205,10 +196,49 @@ async def _submit_on_record(pass_id: str, provider_batch_id: str) -> str | None:
     return UNRECORDED_SUBMIT_ERROR
 
 
-async def _revoke_stopped(pass_id: str, provider_batch_id: str) -> None:
-    """Take back a stopped pass's just-submitted batch: off the executor's
-    queue, cancelled at the provider (best-effort), its bundle dropped."""
-    logger.info(f"Dream pass {pass_id} not handed off; taking its batch back")
+async def _take_back(
+    run: DreamPassRun,
+    lock_handle: DreamLockHandle,
+    provider_batch_id: str,
+    error: str,
+) -> None:
+    """Take back the batch a pass just submitted and must not hand off: the
+    provider asked to stop it by the id the pass holds, then the batch off
+    the executor's queue and the pass's bundle dropped.
+
+    A batch that may still be running is never left without someone to stop
+    it. When the provider does not confirm the stop (it refused, or the call
+    failed or ran out of time), the pass's row closes ERRORED with *error*,
+    the batch on it and marked (``pass_record.taken_back``), so the reaper's
+    cleanup asks the provider again until the batch has stopped or ended.
+    When that write does not land either (the row closed meanwhile, gone, or
+    the store down), the batch stays on the executor's queue: the drop of a
+    closed pass's batch (``batch_deliveries.drop_closed``), or the callback
+    of a pass without a record, stops it by its id. The lock is left to the
+    context manager's single release on the way out."""
+    pass_id = run.pass_id
+    logger.info(
+        f"Dream pass {pass_id} not handed off; taking batch {provider_batch_id} back"
+    )
+    if not await cancel_provider_batch(provider_batch_id):
+        recorded = await record_taken_back(
+            pass_id,
+            error,
+            provider_batch_id=provider_batch_id,
+            lease_token=lock_handle.token,
+        )
+        if not recorded:
+            logger.warning(
+                f"Dream pass {pass_id}: batch {provider_batch_id} is not "
+                "confirmed stopped and not on its record; left on the executor's "
+                "queue, whose drop or callback stops it"
+            )
+            await best_effort_cleanup(pass_id)
+            return
+        logger.warning(
+            f"Dream pass {pass_id}: batch {provider_batch_id} is not confirmed "
+            "stopped; its record keeps it for the reaper's cleanup"
+        )
     try:
         await remove_pending(provider_batch_id)
     except Exception:
@@ -216,5 +246,4 @@ async def _revoke_stopped(pass_id: str, provider_batch_id: str) -> None:
             f"Dream pass {pass_id}: could not revoke batch {provider_batch_id}",
             exc_info=True,
         )
-    await cancel_provider_batch(provider_batch_id)
     await best_effort_cleanup(pass_id)

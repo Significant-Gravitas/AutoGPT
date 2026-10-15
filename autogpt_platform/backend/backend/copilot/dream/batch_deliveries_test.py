@@ -105,6 +105,33 @@ class TestShouldDispatch:
         # Every step finished, so the drop cleared the mark the cancel set.
         assert (row["cleanup_pending_at"], row["lease_token"]) == (None, None)
 
+    async def test_a_closed_pass_with_no_owner_on_record_still_has_its_batch_stopped(
+        self, mocker, fake_dream_db, fake_dream_redis, provider_cancel, charges
+    ):
+        """The batch a take-back left on the queue (its stop unconfirmed,
+        its row refusing it): neither the row nor the bundle can be read
+        when the drop runs, so nobody is charged or unlocked on the payload's
+        word, but the batch is still asked to stop, by its id."""
+        await _in_flight(fake_dream_db, fake_dream_redis)
+        assert (await cancel_dream_pass("p1", user_id="u1", reason="testing")).cancelled
+        provider_cancel.reset_mock()
+        mocker.patch.object(
+            deliveries_mod,
+            "read_pass",
+            AsyncMock(side_effect=TimeoutError("dream pass database stalled")),
+        )
+        mocker.patch.object(
+            deliveries_mod,
+            "read_input_bundle",
+            AsyncMock(side_effect=ConnectionError("redis down")),
+        )
+
+        await drop_closed(_entry("recombine"))
+
+        provider_cancel.assert_awaited_once()
+        assert provider_cancel.await_args.kwargs["provider_batch_id"] == "b-rec"
+        charges.assert_not_awaited()
+
     async def test_an_expired_pass_whose_lock_a_newer_pass_holds_keeps_that_lock(
         self, fake_dream_db, fake_dream_redis
     ):

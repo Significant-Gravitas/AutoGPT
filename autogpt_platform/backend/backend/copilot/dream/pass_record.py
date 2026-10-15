@@ -228,6 +228,27 @@ def failed(
     )
 
 
+def taken_back(
+    error: str, *, provider_batch_id: str, lease_token: str
+) -> DreamPassUpdate:
+    """A pass took back the batch it had just submitted and the provider did
+    not confirm its stop: ERRORED with *error*, the batch on the row and the
+    row marked, so the reaper's cleanup keeps asking the provider to stop it
+    until it has stopped or ended. The lease token stays, the key to release
+    the lock with should the pass not have."""
+    now = datetime.now(timezone.utc)
+    return DreamPassUpdate(
+        status=DreamPassStatus.ERRORED,
+        phase=_PHASE_STEPS["consolidate"],
+        provider_batch_id=provider_batch_id,
+        lease_token=lease_token,
+        error=error[:MAX_ERROR_CHARS],
+        completed_at=now,
+        cleanup_pending_at=now,
+        clear=MARKED_ROW_CLEARS,
+    )
+
+
 def cancelled(reason: str, *, owner_user_id: str) -> DreamPassUpdate:
     """A cancel: the owner's open pass closes CANCELLED with *reason* as its
     error, its cancel generation bumped so the running pass stops at its next

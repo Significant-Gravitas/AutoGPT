@@ -60,6 +60,7 @@ from .pass_record import (
     outcome,
     phase_output,
     submitted,
+    taken_back,
 )
 from .pass_run import DreamPassRun
 from .schemas import DreamOperations, DreamPassResult, DreamPassUsage, DreamPhase
@@ -156,6 +157,21 @@ async def record_submitted(
             provider_batch_id=provider_batch_id,
             lease_token=lease_token,
             lease_ttl_seconds=lease_ttl_seconds,
+        ),
+    )
+
+
+async def record_taken_back(
+    pass_id: str, error: str, *, provider_batch_id: str, lease_token: str
+) -> bool | None:
+    """The pass took its just-submitted batch back without the provider
+    confirming the stop: the row closes with the batch on it, marked for the
+    reaper's cleanup (see ``_write``)."""
+    return await _write(
+        pass_id,
+        "the batch taken back",
+        lambda: taken_back(
+            error, provider_batch_id=provider_batch_id, lease_token=lease_token
         ),
     )
 
