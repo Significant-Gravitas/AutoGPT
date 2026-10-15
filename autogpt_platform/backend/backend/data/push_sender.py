@@ -43,6 +43,17 @@ _FORWARDED_FIELDS = (
     "session_title",
 )
 
+# Byte budget for the encoded push payload. Web Push carries ~4 KB including
+# content-coding overhead (~100 bytes for aes128gcm), and an oversized
+# payload fails delivery — counting toward the failure janitor that deletes
+# the subscription. Measured in UTF-8 bytes, not characters.
+MAX_PUSH_BYTES = 3800
+
+# Optional fields, shed first (in order) when the payload would exceed the
+# byte budget. The notification still renders from title/body, degrading to
+# the default icon only if those don't bring it under budget either.
+_DROPPABLE_FIELDS = ("session_title", "expert_name", "icon")
+
 
 def _extract_status_code(e: WebPushException) -> int | None:
     """Extract HTTP status code from a pywebpush exception."""
@@ -54,8 +65,32 @@ def _extract_status_code(e: WebPushException) -> int | None:
     return int(match.group(1)) if match else None
 
 
+def _encode_push_payload(compact: dict[str, object]) -> str:
+    # ensure_ascii=False: escaped \uXXXX sequences cost 6 bytes per CJK
+    # character and 12 per emoji, while the UTF-8 bytes webpush sends cost 3
+    # and 4. The service worker parses either form as JSON.
+    return json.dumps(compact, ensure_ascii=False)
+
+
+def _fit_push_payload(compact: dict[str, object]) -> str:
+    """Serialize under MAX_PUSH_BYTES, shedding optional fields first.
+
+    Drops session_title, expert_name, then icon until the UTF-8 encoded
+    payload fits: the notification still renders from title/body. Returns
+    best-effort if even those are shed — every current publisher bounds its
+    required fields, so that only fires on a future unbounded one.
+    """
+    payload_json = _encode_push_payload(compact)
+    for field in _DROPPABLE_FIELDS:
+        if len(payload_json.encode("utf-8")) <= MAX_PUSH_BYTES:
+            return payload_json
+        compact.pop(field, None)
+        payload_json = _encode_push_payload(compact)
+    return payload_json
+
+
 def _build_push_payload(payload: NotificationPayload) -> str:
-    """Build a compact JSON payload (<4KB) for the push message.
+    """Build a compact JSON payload for the push message.
 
     ``id`` is a per-push UUID used by the service worker to build a unique
     notification tag, so repeat pushes don't get coalesced by the OS.
@@ -69,7 +104,7 @@ def _build_push_payload(payload: NotificationPayload) -> str:
     for key in _FORWARDED_FIELDS:
         if key in data:
             compact[key] = data[key]
-    return json.dumps(compact)
+    return _fit_push_payload(compact)
 
 
 async def send_push_for_user(user_id: str, payload: NotificationPayload) -> None:

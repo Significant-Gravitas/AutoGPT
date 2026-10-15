@@ -330,10 +330,10 @@ class TestBuildPayload:
     async def test_oversized_session_title_stays_within_push_limit(self):
         """A user-set title has no length cap, but Web Push rejects payloads
         past ~4 KB — and repeated push failures get the subscription deleted.
-        The structured fields are truncated so even a pathological title
-        keeps the push payload small."""
+        The structured fields are truncated so even a pathological emoji
+        title keeps the encoded push payload within budget."""
         chat_db, experts_db = _mock_dbs(
-            session=_session(title="t" * 5000),
+            session=_session(title="🎉" * 5000),
             expert=SimpleNamespace(name="n" * 500, avatar_url=None),
         )
         with (
@@ -347,7 +347,10 @@ class TestBuildPayload:
         assert len(payload.session_title) <= completion_notify.MAX_BODY_LEN
         assert payload.expert_name is not None
         assert len(payload.expert_name) <= completion_notify.MAX_TITLE_LEN
-        assert len(push_sender._build_push_payload(payload).encode()) < 4096
+        assert (
+            len(push_sender._build_push_payload(payload).encode("utf-8"))
+            <= push_sender.MAX_PUSH_BYTES
+        )
 
 
 class TestPublishCopilotCompletion:

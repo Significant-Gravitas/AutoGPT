@@ -150,6 +150,69 @@ class TestBuildPushPayload:
         assert "id" in first and "id" in second
         assert first["id"] != second["id"]
 
+    def test_uses_utf8_not_ascii_escapes(self):
+        """Escaped \\uXXXX sequences cost 6 bytes per CJK char and 12 per
+        emoji; raw UTF-8 costs 3 and 4. The SW parses either form."""
+        payload = _make_payload(body="完成 🎉")
+
+        result = push_sender._build_push_payload(payload)
+
+        assert "完成 🎉" in result
+        assert "\\u" not in result
+
+    def test_drops_session_title_first_until_fits(self):
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            icon="/a.webp",
+            expert_name="Maria",
+            session_title="t" * 4000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        import json
+
+        parsed = json.loads(result)
+        assert "session_title" not in parsed
+        assert parsed["expert_name"] == "Maria"
+        assert parsed["icon"] == "/a.webp"
+        assert parsed["title"] == "Maria"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
+
+    def test_drops_all_optional_fields_for_oversized_payload(self):
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            icon="i" * 3900,
+            expert_name="e" * 500,
+            session_title="t" * 1000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        import json
+
+        parsed = json.loads(result)
+        assert "session_title" not in parsed
+        assert "expert_name" not in parsed
+        assert "icon" not in parsed
+        assert parsed["title"] == "Maria"
+        assert parsed["body"] == "Finished: something"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
+
+    def test_returns_best_effort_when_required_fields_overflow(self):
+        """Completion payloads bound title/body, but the sender is generic:
+        a future unbounded required field still goes out rather than being
+        silently dropped."""
+        payload = _make_payload(body="x" * 5000)
+
+        result = push_sender._build_push_payload(payload)
+
+        import json
+
+        assert json.loads(result)["body"] == "x" * 5000
+
 
 class TestSendPushForUser:
     @pytest.mark.asyncio
