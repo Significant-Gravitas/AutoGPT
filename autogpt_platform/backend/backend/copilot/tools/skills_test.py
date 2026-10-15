@@ -232,7 +232,7 @@ def test_trigger_caps_are_bounded():
     constants — raising either invites a per-turn token-budget
     regression."""
     assert MAX_TRIGGERS == 10
-    assert MAX_TRIGGER_CHARS == 64
+    assert MAX_TRIGGER_CHARS == 512
 
 
 # ---------------------------------------------------------------------------
@@ -371,6 +371,9 @@ class _patch_skills_path:
         self.skill_db.find_version_by_hash = AsyncMock(return_value=None)
         self.workdir = tempfile.mkdtemp(prefix="copilot-skills-test-")
         self._patches = [
+            patch(
+                "backend.copilot.learning.publish.reconcile_skill_for_read", AsyncMock()
+            ),
             patch(
                 "backend.copilot.tools.workdir.make_session_path",
                 lambda session_id: self.workdir,

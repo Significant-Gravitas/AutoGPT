@@ -167,6 +167,7 @@ async def get_chat_messages_paginated(
     organization_id: str | None = None,
     *,
     after_sequence: int | None = None,
+    message_sequences: list[int] | None = None,
 ) -> PaginatedMessages | None:
     """Get a window of messages for a session in ascending sequence order.
 
@@ -189,6 +190,9 @@ async def get_chat_messages_paginated(
     ``has_more`` is ``True`` iff the underlying query found more rows than
     ``limit`` (i.e. the cap engaged); irrelevant for range fetches but
     harmlessly populated.
+
+    ``message_sequences`` selects exact message numbers within any bounds;
+    tool-pair and visibility expansion are disabled for this selection.
     """
     session_where: ChatSessionWhereInput = {"id": session_id}
     if user_id is not None:
@@ -201,6 +205,8 @@ async def get_chat_messages_paginated(
         msg_filter["lt"] = before_sequence
     if after_sequence is not None:
         msg_filter["gte"] = after_sequence
+    if message_sequences is not None:
+        msg_filter["in"] = message_sequences
 
     msg_include: FindManyChatMessageArgsFromChatSession = {
         "order_by": {"sequence": "desc"},
@@ -226,7 +232,7 @@ async def get_chat_messages_paginated(
     # Range fetches (after_sequence set) ask for an exact window — never expand
     # outside it. Cursor / tail loads get the boundary + visibility fixes so
     # the UI render and LLM-context build are well-formed.
-    is_range_fetch = after_sequence is not None
+    is_range_fetch = after_sequence is not None or message_sequences is not None
     if not is_range_fetch:
         if results and results[0].role == "tool":
             results, has_more = await _expand_tool_boundary(

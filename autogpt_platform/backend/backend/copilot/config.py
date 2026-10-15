@@ -238,6 +238,14 @@ class ChatConfig(BaseSettings):
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
         "override: ``copilot-model-routing[thinking][advanced]``.",
     )
+    learning_reviewer_model: str = Field(
+        default="",
+        description="Model for the nightly skill-learning review. Empty (the "
+        "default) routes to ``fast_standard_model`` through the normal chat "
+        "transport so the reviewer follows the same routing and accounting "
+        "as ordinary work; set ``CHAT_LEARNING_REVIEWER_MODEL`` to pin a "
+        "model chosen through evaluation.",
+    )
     title_model: str = Field(
         default=_DEFAULT_TITLE_MODEL,
         description="Model to use for generating session titles (should be "

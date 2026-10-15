@@ -49,6 +49,48 @@ def stub_user_lookup_in_helpers(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def stub_learning_registry(monkeypatch):
+    """Route the skill registry's learning hooks to an in-memory store.
+
+    ``store_user_skill`` appends a version and ``list_all_skills`` /
+    ``read_skill`` consult the learning registry through the
+    ``skill_versions_db()`` accessor. Without a connected Prisma client that
+    accessor is the DatabaseManager RPC client, whose connection retries
+    would make every registry test crawl. Tests that need the store can
+    request ``fake_learning_store``.
+    """
+    from backend.copilot.learning._fake_store import FakeLearningStore
+
+    store = FakeLearningStore()
+    seen: dict[str, str] = {}
+
+    async def mark_seen(session_id, revision):
+        seen[session_id] = revision
+
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.read_seen_index_revision",
+        AsyncMock(side_effect=lambda session_id: seen.get(session_id)),
+    )
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.mark_index_revision_seen", mark_seen
+    )
+    for target in (
+        "backend.copilot.learning.retrieval.skill_versions_db",
+        "backend.copilot.learning.retrieval.skill_use_db",
+        "backend.copilot.learning.history.skill_versions_db",
+        "backend.copilot.learning.history.skill_publication_db",
+        "backend.copilot.tools.skills.skill_versions_db",
+    ):
+        monkeypatch.setattr(target, lambda: store)
+    return store
+
+
+@pytest.fixture
+def fake_learning_store(stub_learning_registry):
+    return stub_learning_registry
+
+
+@pytest.fixture(autouse=True)
 def login_chain_unchanged(request):
     """Sandbox doubles hold no login files; tests of that check opt out."""
     if request.node.get_closest_marker("real_login_chain"):
