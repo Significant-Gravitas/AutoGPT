@@ -22,7 +22,7 @@ import {
   Settings01Icon,
   SparklesIcon,
   AiBrain01Icon,
-  UserIcon,
+  DashboardSquare01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { notFound, useParams, useRouter } from "next/navigation";
@@ -38,7 +38,7 @@ import {
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
-import { ExpertAboutSection } from "./components/ExpertAboutSection";
+import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
@@ -47,7 +47,6 @@ import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/Expert
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
-import { ExpertSummaryCard } from "./components/ExpertSummaryCard";
 import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
@@ -56,7 +55,7 @@ const MAIN_CLASS =
   "container min-h-screen max-w-[1180px] space-y-5 pb-16 pt-6 sm:px-8 md:px-12";
 
 const TABS = [
-  { value: "basics", label: "Basics", icon: UserIcon },
+  { value: "basics", label: "Overview", icon: DashboardSquare01Icon },
   { value: "soul", label: "Soul", icon: AiBrain01Icon },
   { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
@@ -182,15 +181,13 @@ export default function ExpertDetailPage() {
           </TabsLineList>
 
           <TabsLineContent value="basics">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
-              <ExpertAboutSection bio={expert.bio} />
-              <ExpertSummaryCard
-                expert={expert}
-                activity={activity}
-                isActivityLoading={isActivityLoading}
-                isActivityError={isActivityError}
-              />
-            </div>
+            <ExpertOverview
+              expert={expert}
+              activity={activity}
+              isActivityLoading={isActivityLoading}
+              isActivityError={isActivityError}
+              onChat={toggleChat}
+            />
           </TabsLineContent>
 
           <TabsLineContent value="soul">
