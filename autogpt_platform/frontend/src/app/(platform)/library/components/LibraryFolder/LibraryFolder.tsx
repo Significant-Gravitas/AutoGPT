@@ -91,7 +91,7 @@ export function LibraryFolder({
               className="text-zinc-500"
               data-testid="library-folder-agent-count"
             >
-              {agentCount} {agentCount === 1 ? "agent" : "agents"}
+              {agentCount} {agentCount === 1 ? "workflow" : "workflows"}
             </Text>
             {worstStatus && worstStatus !== "idle" && (
               <StatusBadge status={worstStatus} />

@@ -369,7 +369,7 @@ def test_otto_uses_the_configured_image_host(monkeypatch):
     )
     assert 'src="https://assets.example/email/logo-light.png"' in email.html
     assert (
-        'src="https://assets.example/autogpt-characters/v1.1/otto/neutral/256.png"'
+        'src="https://assets.example/autogpt-characters/v1.1/otto/neutral-transparent/256.png"'
         in email.html
     )
 

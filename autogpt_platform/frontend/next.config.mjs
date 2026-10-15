@@ -10,10 +10,13 @@ const skipBuildChecks = process.env.NEXT_SKIP_BUILD_CHECKS === "true";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // VERCEL_ENV is server-only. Mirror it into the browser bundle so Sentry can
-  // tag preview deployments as previews rather than as production.
+  // VERCEL_ENV and VERCEL_TARGET_ENV are server-only. Mirror them into the
+  // browser bundle so Sentry and PostHog can tag branch previews as previews
+  // rather than as production, and custom environments (the dev deployment's
+  // `staging`) as themselves.
   env: {
     NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV ?? "",
+    NEXT_PUBLIC_VERCEL_TARGET_ENV: process.env.VERCEL_TARGET_ENV ?? "",
     // Sentry initialises in the browser too, so its kill switch must reach it.
     DISABLE_SENTRY: process.env.DISABLE_SENTRY ?? "",
   },

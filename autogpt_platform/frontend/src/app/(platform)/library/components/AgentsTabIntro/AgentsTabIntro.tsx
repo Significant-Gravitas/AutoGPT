@@ -15,7 +15,10 @@ export function AgentsTabIntro() {
       icon={GridViewIcon}
       title="Your mission control."
       body="What's running, what's scheduled, what needs you, and what it costs — all in one place."
-      cta={{ label: "See my agents", onClick: () => takeAction("see_agents") }}
+      cta={{
+        label: "See my workflows",
+        onClick: () => takeAction("see_agents"),
+      }}
       onDismiss={dismiss}
     />
   );

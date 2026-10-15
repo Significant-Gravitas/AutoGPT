@@ -96,19 +96,19 @@ export function getAnimationText(part: {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
-      return "Creating agent, this might take a minute";
+      return "Creating workflow, this might take a minute";
     case "output-available": {
       const output = parseOutput(part.output);
-      if (!output) return "Creating agent, this might take a minute";
+      if (!output) return "Creating workflow, this might take a minute";
       if (isAgentSavedOutput(output)) return `Saved ${output.agent_name}`;
       if (isAgentPreviewOutput(output)) return `Preview "${output.agent_name}"`;
       if (isSuggestedGoalOutput(output)) return "Goal needs refinement";
-      return "Error creating agent";
+      return "Error creating workflow";
     }
     case "output-error":
-      return "Error creating agent";
+      return "Error creating workflow";
     default:
-      return "Creating agent, this might take a minute";
+      return "Creating workflow, this might take a minute";
   }
 }
 
