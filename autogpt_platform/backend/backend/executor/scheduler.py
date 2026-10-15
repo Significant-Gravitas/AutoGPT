@@ -42,8 +42,10 @@ from backend.copilot.dream.scheduling import (
     COMMUNITY_REBUILD_JOB_PREFIX,
     DREAM_SYSTEM_JOBS,
     NIGHTLY_BATCH_JOB_PREFIX,
+    SKILL_LEARNING_JOB_PREFIX,
     DreamSystemJob,
     dream_system_job,
+    jobs_for,
 )
 from backend.copilot.dream.scope_crons import (
     forget_registration,
@@ -1300,6 +1302,61 @@ def _submit_nightly_batch(
     return result
 
 
+def execute_skill_learning_sync(user_id: str):
+    """The account's nightly skill-learning cron body (independent of the
+    dream pass); the job is ``skill_learning_nightly_{user_id}``.
+
+    Runs only while ``_memory_scope_may_fire`` lets the account's scope, as
+    the other dream-system crons do: a cron that straggles past a pause or a
+    wipe of the account's memory does nothing. Runtime flag gate (layer 3):
+    if ``DREAM_SKILL_LEARNING_ENABLED`` flipped off after the cron was
+    registered, the body returns before any work. The pass itself never
+    raises; its outcome is logged here and kept in the per-source review
+    ledger.
+    """
+    from backend.copilot.learning.nightly import run_skill_learning_pass
+    from backend.util.feature_flag import Flag, is_feature_enabled
+
+    if not _memory_scope_may_fire(MemoryScope.for_user(user_id)):
+        return None
+    if not run_async(is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)):
+        logger.info(
+            "Skill learning skipped for user %s — flag flipped off", user_id[:12]
+        )
+        return None
+
+    result = run_async(
+        run_skill_learning_pass(user_id, trigger="nightly"),
+        timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+    )
+    if result.error:
+        logger.warning(
+            "Skill learning errored for user %s (run %s): %s",
+            user_id[:12],
+            result.run_id,
+            result.error,
+        )
+    elif result.skipped:
+        logger.info(
+            "Skill learning skipped for user %s (run %s): %s",
+            user_id[:12],
+            result.run_id,
+            result.skip_reason,
+        )
+    else:
+        logger.info(
+            "Skill learning completed for user %s in %.1fs (run %s): "
+            "reviewed=%d applied=%d proposed=%d",
+            user_id[:12],
+            result.elapsed_seconds or 0.0,
+            result.run_id,
+            result.reviewed,
+            result.applied,
+            result.proposed,
+        )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # *_with_status wrappers — used by fire-and-forget admin triggers
 # ---------------------------------------------------------------------------
@@ -1641,6 +1698,14 @@ def execute_community_rebuild_with_status(user_id: str, job_id: str):
 _MEMORY_CRONS: dict[str, tuple[Callable[..., object], str]] = {
     COMMUNITY_REBUILD_JOB_PREFIX: (execute_community_rebuild, "0 4 * * 0"),
     NIGHTLY_BATCH_JOB_PREFIX: (execute_nightly_batch_sync, "0 3 * * *"),
+    SKILL_LEARNING_JOB_PREFIX: (execute_skill_learning_sync, "0 3 * * *"),
+}
+# A missed run is caught up only within this many seconds; None (the
+# scheduler's default) catches it up however late. Skill learning's catch-up
+# after downtime is capped to the same morning: at most one run (coalesce),
+# and the pass re-checks every source's eligibility anyway.
+_MEMORY_CRON_MISFIRE_GRACE: dict[str, int | None] = {
+    SKILL_LEARNING_JOB_PREFIX: 6 * 3600,
 }
 
 
@@ -3579,15 +3644,16 @@ class Scheduler(AppService):
 
     @expose
     def remove_scope_memory_jobs(self, scope: MemoryScope) -> list[str]:
-        """Remove every dream-system cron of one memory scope; returns the
-        job ids removed. The ids derive from the scope, so a caller can only
-        ever reach that scope's crons. The registry calls this when it
-        pauses or wipes a scope."""
+        """Remove every dream-system cron of one memory scope (``jobs_for``:
+        an expert's has no skill-learning cron); returns the job ids removed.
+        The ids derive from the scope, so a caller can only ever reach that
+        scope's crons. The registry calls this when it pauses or wipes a
+        scope."""
         jobs = [
             self.scheduler.get_job(
                 job.job_id(scope), jobstore=Jobstores.EXECUTION.value
             )
-            for job in DREAM_SYSTEM_JOBS
+            for job in jobs_for(scope)
         ]
         removed = [job.id for job in jobs if job is not None and _removed(job)]
         if removed:
@@ -3664,6 +3730,7 @@ class Scheduler(AppService):
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=True,
             max_instances=1,
+            misfire_grace_time=_MEMORY_CRON_MISFIRE_GRACE.get(job.job_id_prefix),
         )
         logger.info(
             "Registered %s job %s for %s in tz %s",
@@ -3933,6 +4000,83 @@ class Scheduler(AppService):
             user_id, dream_system_job(NIGHTLY_BATCH_JOB_PREFIX)
         )
 
+    @expose
+    def add_skill_learning_schedule(
+        self,
+        user_id: str,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """The account's nightly skill-learning cron: the scope-keyed method
+        for ``MemoryScope.for_user(user_id)``, whose job id is unchanged."""
+        return self.add_scope_skill_learning_schedule(
+            MemoryScope.for_user(user_id), user_timezone
+        )
+
+    @expose
+    def add_scope_skill_learning_schedule(
+        self,
+        scope: MemoryScope,
+        user_timezone: str = "UTC",
+    ) -> dict:
+        """Register the nightly skill-learning cron of an account's scope.
+
+        Gated by ``Flag.DREAM_SKILL_LEARNING_ENABLED`` for the owner,
+        independent of the dream pass gate. An expert's scope has no such
+        cron (one pass reviews the account's skills and its experts'), so it
+        is refused. Fires at 03:00 owner-local. A cron already registered in
+        that timezone is kept as it is, its next run included, so an overdue
+        run is not pushed back a day, and reported as registered. A missed
+        run is caught up only the same morning
+        (``_MEMORY_CRON_MISFIRE_GRACE``): at most one run, and the pass
+        re-checks every source's eligibility, so a stale proposal is never
+        applied by a catch-up run. Only adds the job: the registry row that
+        lets it fire is the registry's to write.
+        """
+        from backend.util.feature_flag import Flag, is_feature_enabled
+
+        user_timezone = user_timezone or "UTC"
+        if scope.is_expert:
+            return memory_job_skipped(scope, user_timezone, "account_only")
+        if not run_async(
+            is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, scope.owner_user_id)
+        ):
+            logger.info(
+                "Skill learning registration skipped for %s — "
+                "DREAM_SKILL_LEARNING_ENABLED flag is off.",
+                scope_label(scope),
+            )
+            return memory_job_skipped(scope, user_timezone, "skill_learning_disabled")
+        job = dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+        existing = self.scheduler.get_job(
+            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is not None and _job_timezone_name(existing) == user_timezone:
+            return memory_job_result(
+                scope, existing.id, existing.next_run_time, user_timezone
+            )
+        added = self._add_memory_job(
+            *_MEMORY_CRONS[SKILL_LEARNING_JOB_PREFIX], job, scope, user_timezone
+        )
+        return memory_job_result(scope, added.id, added.next_run_time, user_timezone)
+
+    @expose
+    def delete_skill_learning_schedule(self, user_id: str) -> bool:
+        """Remove the account's nightly skill-learning cron."""
+        return self._delete_account_memory_job(
+            user_id, dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+        )
+
+    @expose
+    def execute_skill_learning_now(self, user_id: str) -> dict:
+        """Run one skill-learning pass synchronously (owner/admin trigger)."""
+        from backend.copilot.learning.nightly import run_skill_learning_pass
+
+        result = run_async(
+            run_skill_learning_pass(user_id, trigger="admin"),
+            timeout=SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS,
+        )
+        return result.model_dump(mode="json")
+
     # ---- Fire-and-forget admin triggers (JobStatus-aware) -------------------
     #
     # The ``schedule_immediate_*`` methods schedule the matching
@@ -4103,6 +4247,16 @@ class SchedulerClient(AppServiceClient):
     delete_nightly_batch_schedule = endpoint_to_async(
         Scheduler.delete_nightly_batch_schedule
     )
+    add_skill_learning_schedule = endpoint_to_async(
+        Scheduler.add_skill_learning_schedule
+    )
+    add_scope_skill_learning_schedule = endpoint_to_async(
+        Scheduler.add_scope_skill_learning_schedule
+    )
+    delete_skill_learning_schedule = endpoint_to_async(
+        Scheduler.delete_skill_learning_schedule
+    )
+    execute_skill_learning_now = endpoint_to_async(Scheduler.execute_skill_learning_now)
 
     # Ratification stays synchronous — Cypher-only, finishes in seconds.
     # The admin viz "Ratification" button still calls this directly.

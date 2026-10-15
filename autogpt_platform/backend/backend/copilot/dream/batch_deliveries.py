@@ -43,6 +43,7 @@ from .batch_outcome import BatchPass, clean_up_after, fail_pass, mark_job_errore
 from .batch_submit import read_input_bundle
 from .fetch import DreamInput
 from .pass_record import stop_error
+from .provider_batch import provider_batch_stopped
 from .schemas import DreamOperations, DreamPassResult, IngestionDrainStatus
 from .store import read_pass, record_batch_failed, record_expired
 
@@ -76,9 +77,10 @@ async def drop_closed(entry: PendingEntry) -> None:
     closed pass's batch off the queue: the pass ended out as the owner a
     record of it names (``_owner_of``), its batch stopped at the provider as
     part of the cleanup. The row refuses the failure ``fail_pass`` writes:
-    it keeps how it closed. With no owner to go by, the drop does no more:
-    the closed row is marked, and the reaper cleans up after the pass from
-    it."""
+    it keeps how it closed. With no owner to go by, the batch is still
+    stopped by its id (a pass that took back a batch whose stop the provider
+    did not confirm leaves it here, its bundle gone); the rest is the
+    reaper's, from the closed row."""
     bp = BatchPass.from_payload(entry.payload or {})
     row, owner = await _owner_of(bp)
     reason = "pass already closed"
@@ -90,6 +92,12 @@ async def drop_closed(entry: PendingEntry) -> None:
     )
     if owner is not None:
         await fail_pass(owner, reason, provider_batch_id=entry.provider_batch_id)
+        return
+    if not await provider_batch_stopped(entry.provider_batch_id):
+        logger.warning(
+            f"Dream batch {entry.provider_batch_id} of pass {bp.pass_id}: its "
+            "stop is not confirmed and nothing names its owner"
+        )
 
 
 async def end_dead_end(bp: BatchPass, error: str) -> None:

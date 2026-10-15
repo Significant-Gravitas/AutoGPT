@@ -30,6 +30,8 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
+from backend.copilot import usage_activation_fixtures
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.dream_pass_models import (
     OPEN_STATUSES,
     DreamPassDraft,
@@ -188,7 +190,8 @@ class FakeDreamDb:
     """In-memory stand-in for ``backend.data.dream_pass`` behind ``dream_db()``.
 
     Applies an update by the rules of ``backend/data/dream_pass_update.py``:
-    a ``None`` field leaves its column, status and phase only move forward,
+    a ``None`` field leaves its column, status, phase and the lease's
+    expiry only move forward,
     a batch id lands only while the row has not moved past the update's
     phase, ``phase_outputs`` and ``operations`` merge one field at a time, a
     stop bumps the cancel generation, ``clear`` empties its columns, and a
@@ -209,7 +212,7 @@ class FakeDreamDb:
         if draft.id in self.rows:
             raise ValueError(f"duplicate dream pass {draft.id}")
         self.writes.append((draft.id, draft))
-        self.seed(draft)
+        self._insert(draft)
 
     async def update_dream_pass(self, pass_id: str, update: DreamPassUpdate) -> bool:
         self._raise_if_down()
@@ -232,6 +235,8 @@ class FakeDreamDb:
                 row[field].update(
                     {k: v for k, v in dict(value).items() if v is not None}
                 )
+            elif field == "lease_expires_at" and row.get(field) is not None:
+                row[field] = max(row[field], value)
             else:
                 row[field] = value
         row.update({column: None for column in update.clear})
@@ -326,7 +331,22 @@ class FakeDreamDb:
 
     def seed(self, draft: DreamPassDraft, **columns: Any) -> None:
         """A row as an earlier step (another process) would have left it;
-        *columns* set the rest of it (a lease, when it was last written)."""
+        *columns* set the rest of it (a lease, when it was last written).
+
+        Unless the draft or *columns* say otherwise, the row carries the
+        usage attribution its pass would have started under in these tests
+        (``usage_snapshot``: the owner, ready, untrialed), as ``start_pass``
+        records it; ``cost_context=None`` seeds a row that carries none."""
+        if draft.cost_context is None:
+            columns = {
+                "cost_context": TrialCostContext(
+                    user_id=draft.user_id, trial_id=None
+                ).model_dump(mode="json"),
+                **columns,
+            }
+        self._insert(draft, **columns)
+
+    def _insert(self, draft: DreamPassDraft, **columns: Any) -> None:
         now = datetime.now(timezone.utc)
         self.rows[draft.id] = {
             **dict(draft),
@@ -405,6 +425,12 @@ def _order(value: Enum | None) -> int:
     enums."""
     assert value is not None
     return list(type(value)).index(value)
+
+
+# A pass captures its usage attribution before its first provider call
+# (#15208's ``attributed_usage``); every dream test gets the ready, untrialed
+# usage state unless it sets its own.
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 
 @pytest.fixture(autouse=True)

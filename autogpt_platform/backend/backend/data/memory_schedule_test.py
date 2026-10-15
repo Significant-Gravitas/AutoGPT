@@ -27,6 +27,7 @@ def _row(**overrides) -> SimpleNamespace:
         "state": ACTIVE,
         "communityJobId": "community_rebuild_user-1",
         "nightlyJobId": None,
+        "learningJobId": None,
         "lastNightlyRunAt": None,
         "lastCommunityRunAt": None,
         "createdAt": now,
@@ -149,11 +150,18 @@ async def test_record_jobs_only_writes_an_active_row(table):
         user_timezone="UTC",
         community_job_id="c",
         nightly_job_id="n",
+        learning_job_id="l",
     )
 
     assert recorded is False
     where = table.update_many.await_args.kwargs["where"]
     assert where == {"scopeKey": "user-1", "userId": "user-1", "state": ACTIVE}
+    assert table.update_many.await_args.kwargs["data"] == {
+        "timezone": "UTC",
+        "communityJobId": "c",
+        "nightlyJobId": "n",
+        "learningJobId": "l",
+    }
 
 
 @pytest.mark.asyncio
@@ -162,7 +170,12 @@ async def test_leaving_active_forgets_the_job_ids(table):
 
     assert table.update_many.await_args.kwargs == {
         "where": {"scopeKey": "user-1", "userId": "user-1"},
-        "data": {"state": PAUSED, "communityJobId": None, "nightlyJobId": None},
+        "data": {
+            "state": PAUSED,
+            "communityJobId": None,
+            "nightlyJobId": None,
+            "learningJobId": None,
+        },
     }
 
 
@@ -193,14 +206,27 @@ async def test_a_guarded_state_change_only_moves_those_states(table):
 
 @pytest.mark.asyncio
 async def test_forget_clears_whichever_column_holds_the_job(table):
-    table.update_many.side_effect = [0, 1]
+    table.update_many.side_effect = [0, 1, 0]
 
     assert await memory_schedule.forget_scope_job("user-1", "user-1", "job-1")
 
-    community, nightly = table.update_many.await_args_list
+    community, nightly, learning = table.update_many.await_args_list
     assert community.kwargs["where"]["communityJobId"] == "job-1"
     assert nightly.kwargs["data"] == {"nightlyJobId": None}
-    assert all(c.kwargs["where"]["userId"] == "user-1" for c in (community, nightly))
+    assert learning.kwargs["where"]["learningJobId"] == "job-1"
+    assert learning.kwargs["data"] == {"learningJobId": None}
+    assert all(
+        c.kwargs["where"]["userId"] == "user-1" for c in (community, nightly, learning)
+    )
+
+
+@pytest.mark.asyncio
+async def test_forget_finds_the_learning_job(table):
+    table.update_many.side_effect = [0, 0, 1]
+
+    assert await memory_schedule.forget_scope_job(
+        "user-1", "user-1", "skill_learning_nightly_user-1"
+    )
 
 
 @pytest.mark.asyncio

@@ -84,9 +84,11 @@ class TestABundleThatLostItsToken:
         self, monkeypatch, fake_dream_db, fake_dream_redis, apply, charges
     ):
         """The row's token cannot be read either (the store down for reads):
-        ownership is unknown, so apply does not run; the landed phases are
-        charged once and the row closes ERRORED, marked, its token kept, the
-        lock left held. The reaper then releases the lock by that token."""
+        ownership is unknown, so apply does not run; nor can the usage
+        attribution the landed phases are charged under, so their charge
+        waits; the row closes ERRORED, marked, its token kept, the lock left
+        held. The reaper then charges the phases once, by the row, and
+        releases the lock by its token."""
         await _last_phase_in_flight_without_a_bundle_token(
             fake_dream_db, fake_dream_redis
         )
@@ -102,7 +104,7 @@ class TestABundleThatLostItsToken:
         monkeypatch.setattr(fake_dream_db, "get_dream_pass", read_row)
         apply.assert_not_awaited()
         _assert_errored_and_marked(fake_dream_db, token="tok")
-        assert _charged(charges) == _ALL_THREE
+        assert _charged(charges) == []
         assert fake_dream_redis.store[_LOCK_KEY] == "tok"
         assert fake_dream_redis.ttls[_LOCK_KEY] == BATCH_LOCK_TTL_SECONDS
 

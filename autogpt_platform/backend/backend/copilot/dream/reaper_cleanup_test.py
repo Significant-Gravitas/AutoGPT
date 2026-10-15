@@ -165,6 +165,35 @@ class TestACleanupCutShort:
         assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
 
 
+class TestAnUnattributedPass:
+    @pytest.mark.parametrize(
+        "status", [DreamPassStatus.ERRORED, DreamPassStatus.CANCELLED]
+    )
+    async def test_is_cleaned_up_without_a_charge(
+        self, fake_dream_db, fake_dream_redis, charges, status
+    ):
+        """A batch pass whose row carries no usage attribution (#15208: one
+        written before the row kept it, or whose capture failed) closed, and
+        left its cleanup to the reaper, however it closed: the reaper does
+        it, the lock and the state gone, but charges none of its phases, the
+        one that landed included, under no attribution of its own either."""
+        await _dead_batch_pass(fake_dream_db)
+        fake_dream_db.rows["p1"].update(
+            status=status,
+            cost_context=None,
+            cleanup_pending_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        )
+        fake_dream_redis.store[_LOCK_KEY] = "dead-token"
+
+        run = await reap_expired_passes()
+
+        assert run.outcomes == {"cleaned": 1}
+        charges.assert_not_awaited()
+        assert state_key("p1") not in fake_dream_redis.hashes
+        assert _LOCK_KEY not in fake_dream_redis.store
+        assert fake_dream_db.rows["p1"]["cleanup_pending_at"] is None
+
+
 class TestTheListing:
     async def test_lapsed_passes_and_pending_cleanups_take_turns_within_the_cap(
         self, mocker, fake_dream_db

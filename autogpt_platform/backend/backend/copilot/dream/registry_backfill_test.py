@@ -44,6 +44,7 @@ def _row(user_id: str, expert_id: str | None = None) -> MemoryScopeSchedule:
         state=MemoryScopeScheduleState.ACTIVE,
         community_job_id=None,
         nightly_job_id=None,
+        learning_job_id=None,
         last_nightly_run_at=None,
         last_community_run_at=None,
         created_at=now,

@@ -5,7 +5,8 @@ lock), and the lock of a sync pass that stopped without giving it back.
 Four steps, in this order, each idempotent, each bounded, and each saying
 whether it finished:
 
-  charge    every phase landed in the pass's Redis state charged once
+  charge    every phase landed in the pass's Redis state charged once,
+            under the usage attribution its row carries and never another
             (``batch_costs.charge_landed_phases``); a state that cannot be
             read is not an empty one, and one that is gone while the row
             says phases landed is usage lost, logged as an error
@@ -112,7 +113,9 @@ async def clean_up_pass(
     no token) and the lock is found not to be the pass's. *landed* are the
     phases the pass's row says landed: should their state be gone before
     they were charged, that usage is reported lost (an error), not taken for
-    nothing to charge."""
+    nothing to charge. Each phase is charged under the usage attribution
+    the pass started under, read off its row (``batch_costs``); a row
+    without one is charged nothing, and the state goes all the same."""
     unfinished: list[CleanupStep] = []
     charges = await _charge(pass_id, scope, phase_models, landed)
     if not charges.settled:

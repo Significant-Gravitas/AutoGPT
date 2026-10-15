@@ -40,6 +40,7 @@ class MemoryScopeSchedule(BaseModel):
     state: MemoryScopeScheduleState
     community_job_id: str | None
     nightly_job_id: str | None
+    learning_job_id: str | None
     last_nightly_run_at: datetime | None
     last_community_run_at: datetime | None
     created_at: datetime
@@ -55,6 +56,7 @@ class MemoryScopeSchedule(BaseModel):
             state=row.state,
             community_job_id=row.communityJobId,
             nightly_job_id=row.nightlyJobId,
+            learning_job_id=row.learningJobId,
             last_nightly_run_at=row.lastNightlyRunAt,
             last_community_run_at=row.lastCommunityRunAt,
             created_at=row.createdAt,
@@ -128,6 +130,7 @@ async def record_scope_jobs(
     user_timezone: str,
     community_job_id: str | None,
     nightly_job_id: str | None,
+    learning_job_id: str | None,
 ) -> bool:
     """Record the scope's job ids and the timezone they run in.
 
@@ -150,6 +153,7 @@ async def record_scope_jobs(
             "timezone": user_timezone,
             "communityJobId": community_job_id,
             "nightlyJobId": nightly_job_id,
+            "learningJobId": learning_job_id,
         },
     )
     return updated > 0
@@ -180,6 +184,7 @@ async def set_scope_state(
     if state != MemoryScopeScheduleState.ACTIVE:
         data["communityJobId"] = None
         data["nightlyJobId"] = None
+        data["learningJobId"] = None
     updated = await prisma.models.MemoryScopeSchedule.prisma().update_many(
         where=where, data=data
     )
@@ -198,7 +203,11 @@ async def forget_scope_job(user_id: str, scope_key: str, job_id: str) -> bool:
         where={"scopeKey": scope_key, "userId": user_id, "nightlyJobId": job_id},
         data={"nightlyJobId": None},
     )
-    return community + nightly > 0
+    learning = await table.update_many(
+        where={"scopeKey": scope_key, "userId": user_id, "learningJobId": job_id},
+        data={"learningJobId": None},
+    )
+    return community + nightly + learning > 0
 
 
 async def record_scope_run(user_id: str, scope_key: str, kind: ScopeRunKind) -> bool:

@@ -74,11 +74,12 @@ async def fail_pass(
     """Close the pass errored: its admin job and its record first, the
     record marked for the cleanup after it, then that cleanup
     (``clean_up_after``): the batch *provider_batch_id* names stopped at the
-    provider, the phases that landed charged, the lock released (unless the
-    pass lost it, *holds_lock* false: it is then another pass's) and the
-    per-pass state deleted. Each step is best-effort on its own, so one that
-    fails never stops the ones after it, and leaves the row marked for the
-    reaper.
+    provider, the phases that landed charged under the usage attribution
+    the pass started under (none when its row carries none,
+    ``batch_costs``), the lock released (unless the pass lost it,
+    *holds_lock* false: it is then another pass's) and the per-pass state
+    deleted. Each step is best-effort on its own, so one that fails never
+    stops the ones after it, and leaves the row marked for the reaper.
 
     The record and the job's result carry the usage of the phases that
     landed, read off the pass's state (a stop that closed the record first
@@ -100,7 +101,10 @@ async def fail_pass(
 
 
 async def clean_up_after(
-    bp: BatchPass, *, holds_lock: bool = True, provider_batch_id: str | None = None
+    bp: BatchPass,
+    *,
+    holds_lock: bool = True,
+    provider_batch_id: str | None = None,
 ) -> None:
     """The cleanup after the ended pass (``cleanup.clean_up_pass``), its lock
     released under the pass's token (``lock_token_of``), then its row's mark

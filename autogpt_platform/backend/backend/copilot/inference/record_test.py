@@ -223,7 +223,7 @@ _NO_TOKENS = {
 
 
 @pytest.mark.parametrize(
-    "kind", ["dream", "briefing_narrative", "consult", "eval_judge"]
+    "kind", ["dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"]
 )
 @pytest.mark.asyncio
 async def test_a_call_that_reported_no_usage_writes_no_row(persist, kind):
@@ -261,3 +261,21 @@ async def test_a_cost_the_provider_stated_is_recorded_even_at_zero(persist):
 def test_price_leaves_a_priced_usage_alone():
     usage = _usage(0.5)
     assert price(usage, _sync_route()) is usage
+
+
+def test_price_leaves_a_call_that_reported_no_usage_unpriced():
+    usage = _usage(None, **_NO_TOKENS)
+    assert price(usage, _sync_route()) is usage
+
+
+@pytest.mark.asyncio
+async def test_a_call_priced_before_it_is_recorded_still_writes_no_row(persist):
+    """A caller that prices a call first, to report its cost even when the
+    record fails, hands ``record`` what ``price`` returned: a call that
+    reported no usage must still write no row, not a $0 one."""
+    usage = _usage(None, **_NO_TOKENS)
+
+    recorded = await record(_ctx(), price(usage, _sync_route()), block_name="b")
+
+    persist.assert_not_awaited()
+    assert recorded.cost_usd is None

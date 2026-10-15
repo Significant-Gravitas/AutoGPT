@@ -20,10 +20,12 @@ from prisma.enums import (
     DreamPassRoute,
     DreamPassStatus,
     DreamPassTrigger,
+    SubscriptionTier,
 )
 
 from backend.copilot import rate_limit as rate_limit_mod
 from backend.copilot import token_tracking as token_tracking_mod
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import (
@@ -32,8 +34,9 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.inference.trace import TracedCall
-from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.dream_pass_models import DreamPassDraft
+from backend.data.pro_activation import UsageActivationState
 from backend.executor.batch_executor import PendingEntry
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 from backend.util.llm.providers import BatchResultRow
@@ -558,9 +561,7 @@ def test_consolidate_budget_leaves_a_thinking_model_room_to_answer():
     """Regression pin: the consolidate budget covers a thinking model's
     reasoning as well as its answer, and the batch path asks for the same
     budgets as the sync one."""
-    assert (
-        orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
-    )
+    assert orchestrator_mod.CONSOLIDATE_MAX_TOKENS > _THINKING_CONSOLIDATE_ANSWER_TOKENS
     assert batch_submit.PHASE_MAX_TOKENS == {
         "consolidate": orchestrator_mod.CONSOLIDATE_MAX_TOKENS,
         "recombine": orchestrator_mod.RECOMBINE_MAX_TOKENS,
@@ -2035,6 +2036,22 @@ class TestNearDuplicateWriteDedup:
         assert dropped == 0
         assert len(kept) == 2
 
+    @pytest.mark.parametrize(
+        "negated",
+        ["User can't use vim", "User can’t use vim"],
+        ids=["apostrophe", "typographic_apostrophe"],
+    )
+    def test_a_contracted_negation_is_not_merged(self, negated):
+        """Split at its apostrophe, "can't" left only "t" between the two
+        facts, no marker, and their 3/4 overlap merged them."""
+        writes = [
+            ConsolidatedFact(content="User can use vim", confidence=0.7),
+            ConsolidatedFact(content=negated, confidence=0.7),
+        ]
+        kept, dropped = dedup_mod.dedupe_near_duplicate_writes(writes)
+        assert dropped == 0
+        assert [w.content for w in kept] == ["User can use vim", negated]
+
     def test_clamp_collapses_duplicate_writes(self):
         ops = DreamOperations(
             writes=[
@@ -2063,9 +2080,10 @@ class TestNearDuplicateWriteDedup:
 @pytest.mark.asyncio
 async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     """If the dream lock cannot be extended to the batch window, the
-    just-submitted batch must never be applied: the pending entry is
-    removed (poller never dispatches callbacks), the input bundle is
-    dropped, the lock is NOT disowned, and the pass reports failure."""
+    just-submitted batch must never be applied: it is taken back (stopped at
+    the provider, then its pending entry removed so the poller never
+    dispatches callbacks, and the bundle dropped), the lock is NOT disowned,
+    and the pass reports failure."""
     submission = mocker.MagicMock(provider_batch_id="batch-xyz")
     mocker.patch(
         "backend.copilot.dream.batch_handoff.persist_input_bundle", AsyncMock()
@@ -2078,11 +2096,15 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         "backend.copilot.dream.batch_handoff.submit_phase",
         AsyncMock(return_value=submission),
     )
+    cancel = mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     remove_pending = mocker.patch(
         "backend.copilot.dream.batch_handoff.remove_pending", AsyncMock()
     )
-    delete_bundle = mocker.patch(
-        "backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock()
+    cleanup = mocker.patch(
+        "backend.copilot.dream.batch_handoff.best_effort_cleanup", AsyncMock()
     )
     handle = mocker.MagicMock()
     handle.extend = AsyncMock(return_value=False)
@@ -2101,8 +2123,9 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
         lock_handle=handle,
     )
 
+    cancel.assert_awaited_once_with("batch-xyz")
     remove_pending.assert_awaited_once_with("batch-xyz")
-    delete_bundle.assert_awaited_once_with(run.pass_id)
+    cleanup.assert_awaited_once_with(run.pass_id)
     handle.disown.assert_not_called()
     assert result.error and "lock lost" in result.error
 
@@ -2138,6 +2161,9 @@ async def test_a_sync_pass_records_each_step_on_its_row(mocker, fake_dream_db):
             lease_token=draft.lease_token,
             lease_expires_at=result.started_at
             + timedelta(seconds=DEFAULT_LOCK_TTL_SECONDS),
+            # The attribution the pass started under: the suite's ready,
+            # untrialed usage state.
+            cost_context={"user_id": "u", "trial_id": None, "generation": None},
         ),
     )
     assert fake_dream_db.statuses(result.pass_id) == [
@@ -2364,8 +2390,11 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
     mocker, fake_dream_db
 ):
     _batch_route(mocker, lock_extends=False)
+    mocker.patch(
+        "backend.copilot.dream.batch_handoff.cancel_provider_batch",
+        AsyncMock(return_value=True),
+    )
     mocker.patch("backend.copilot.dream.batch_handoff.remove_pending", AsyncMock())
-    mocker.patch("backend.copilot.dream.batch_handoff.delete_input_bundle", AsyncMock())
     mocker.patch.object(
         orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
     )
@@ -2378,8 +2407,8 @@ async def test_a_batch_handoff_that_lost_the_lock_is_recorded_errored(
         DreamPassStatus.ERRORED,
     ]
     assert "provider_batch_id" not in fake_dream_db.rows[result.pass_id]
-    # The revoked batch still runs and bills at the provider, unread: what
-    # the pass used is unknown, not zero.
+    # The batch taken back may have run, and billed, at the provider before
+    # its cancel: what the pass used is unknown, not zero.
     assert result.usage is None
     assert "usage" not in fake_dream_db.rows[result.pass_id]
 
@@ -2492,13 +2521,16 @@ def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
         + [ConnectionError("trial cost database unavailable")]
     )
     mocker.patch.object(token_tracking_mod, "_schedule_cost_log")
-    mocker.patch.object(
-        rate_limit_mod, "record_attributed_trial_cost", AsyncMock(return_value=False)
-    )
-    mocker.patch.object(
-        rate_limit_mod,
-        "_fetch_user_tier",
-        AsyncMock(return_value=SubscriptionTier.TRIAL),
+    mocker.patch(
+        "backend.copilot.trial_cost_context.get_ready_usage_state",
+        AsyncMock(
+            side_effect=lambda user_id: UsageActivationState(
+                user_id=user_id,
+                tier=SubscriptionTier.TRIAL,
+                ready=True,
+                trial_id="trial-1",
+            )
+        ),
     )
     mocker.patch.object(
         rate_limit_mod,
@@ -2629,6 +2661,7 @@ def _consolidate_delivery(pass_id: str) -> tuple[PendingEntry, list[BatchResultR
         next_poll_at=now,
         payload={
             "user_id": "u",
+            "cost_context": {"user_id": "u", "trial_id": None, "generation": None},
             "pass_id": pass_id,
             "job_id": "",
             "phase": "consolidate",
@@ -2749,3 +2782,69 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
 
     ratification.assert_awaited_once_with("u", expert_id=None)
     assert result.dream is not None and result.dream.error is None
+
+
+@pytest.mark.asyncio
+async def test_each_phase_cost_is_charged_under_the_passs_trial_attribution(
+    mocker, usage_snapshot
+):
+    """The pass captures the trial or paid attribution before its first
+    provider call (#15208's ``attributed_usage``), and every phase's cost
+    record (``record_phase_cost``, the inference layer's ``record``) charges
+    under it: a trial user's dream lands in the trial ledger, the trial
+    converting mid-pass or not."""
+    usage_snapshot.side_effect = lambda user_id: UsageActivationState(
+        user_id=user_id,
+        tier=SubscriptionTier.TRIAL,
+        ready=True,
+        trial_id="trial-1",
+        generation="generation-1",
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    usage = InferenceUsage(
+        model="test-model",
+        input_tokens=100,
+        output_tokens=10,
+        cost_usd=0.001,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    outputs = [
+        ConsolidationOutput(
+            facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+        ),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="quiet night"),
+    ]
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[StructuredCompletion(value=o, usage=usage) for o in outputs]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+    charged_under: list[str | None] = []
+
+    async def charge(ctx, usage):
+        context = get_trial_cost_context(ctx.scope.user_id)
+        charged_under.append(context.trial_id if context else None)
+        return usage
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=charge)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert charged_under == ["trial-1", "trial-1", "trial-1"]
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
