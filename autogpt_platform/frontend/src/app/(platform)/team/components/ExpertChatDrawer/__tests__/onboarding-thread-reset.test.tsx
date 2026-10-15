@@ -57,8 +57,11 @@ test("an old chat creation cannot settle setup in a new thread", async () => {
   finishCreate();
   await waitFor(() => {
     expect(
-      (screen.getByRole("button", { name: "Skip" }) as HTMLButtonElement)
-        .disabled,
+      (
+        screen.getByRole("button", {
+          name: "Skip questions",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
   });
   expect(screen.getByText("Which outcome should I start with?")).toBeDefined();

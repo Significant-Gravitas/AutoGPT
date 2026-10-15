@@ -20,7 +20,7 @@ export function CronSchedulerDialog({
   setOpen,
 
   defaultCronExpression = "",
-  title = "Schedule Graph",
+  title = "Schedule Workflow",
   inputs,
   credentials,
 }: CronSchedulerDialogProps) {

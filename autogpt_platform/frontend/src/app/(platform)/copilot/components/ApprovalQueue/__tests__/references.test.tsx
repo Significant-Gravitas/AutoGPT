@@ -83,7 +83,7 @@ test("hovering a resolved link shows its kind, description, facts and ID", async
   await userEvent.hover(view.getByRole("link", { name: "Morning digest" }));
 
   const tip = within(await screen.findByRole("tooltip"));
-  expect(tip.getByText("Agent")).toBeDefined();
+  expect(tip.getByText("Workflow")).toBeDefined();
   expect(tip.getByText("Morning digest")).toBeDefined();
   expect(
     tip.getByText("Summarises overnight email and news at 7am."),
@@ -226,7 +226,7 @@ test("unresolved agent IDs stay listed beside a resolved folder headline", async
   const view = await card();
   expect(
     view.getByRole("heading", {
-      name: /Move agents into library folder Archive/,
+      name: /Move workflows into library folder Archive/,
     }),
   ).toBeDefined();
   expect(view.getByText(/lib-lost-1/)).toBeDefined();

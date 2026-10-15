@@ -85,32 +85,17 @@ Measuring the candidate preview against `app:dev-behave:cloud` at dev HEAD in th
 
 A preview's backend is `https://pr-<N>-server.agpt.co` (REST under `/api`, health at `/health`), and its frontend is `https://autogpt-pr-<N>.vercel.app`.
 
-The k6 tests are in `autogpt_platform/backend/load-tests/`. `K6_ENVIRONMENT=PREVIEW` with `PR_NUMBER=<N>` targets a preview.
+The k6 tests are in `autogpt_platform/backend/load-tests/`; its `README.md` covers every test and setting. Run them on your own machine: `./k6.sh` runs k6 in Docker (`grafana/k6`), so nothing else needs installing, and a local run costs nothing beyond the load on the target. Do not run them on Grafana Cloud k6. It bills every virtual-user hour, so `./k6.sh` refuses cloud runs unless they are explicitly opted into, and the README reserves them for rare runs the team has agreed to. `K6_ENVIRONMENT=PREVIEW` with `PR_NUMBER=<N>` targets a preview:
 
-- **No token needed:** `tests/marketplace/public-access-test.js` (store agents, search, creators).
+```bash
+cd autogpt_platform/backend/load-tests
+export K6_ENVIRONMENT=PREVIEW PR_NUMBER=<N>
+VUS=5 DURATION=10m RAMP_UP=30s RAMP_DOWN=30s ./k6.sh run tests/api/core-api-test.js
+```
 
-  ```bash
-  cd autogpt_platform/backend/load-tests
-  k6 run --env K6_ENVIRONMENT=PREVIEW --env PR_NUMBER=<N> \
-    --env VUS=5 --env DURATION=10m --env RAMP_UP=30s --env RAMP_DOWN=30s \
-    tests/marketplace/public-access-test.js
-  ```
-
-- **Token needed:** `tests/api/core-api-test.js`, `tests/api/graph-execution-test.js`, `tests/marketplace/library-access-test.js`, `tests/comprehensive/platform-journey-test.js`. These read `configs/pre-authenticated-tokens.js`, which is gitignored; copy it from `configs/pre-authenticated-tokens.example.js`.
-  - The backend verifies Better Auth tokens (ES256, audience `authenticated`) against `<frontend>/api/auth/jwks` and rejects HS256. `generate-tokens.js` signs in against dev's Supabase, so its tokens do not work.
-  - Mint a token for a preview's seeded account instead. The `preview-*@previews.agpt.co` accounts use the `PREVIEW_ACCOUNTS_PASSWORD` secret, which is in the team Bitwarden. Tokens last one hour.
-  - Export the password first. The recipe below reads it from the environment and sends it on stdin, so it never appears on a command line other users can see. The cookie jar is a private temporary file.
-
-    ```bash
-    F=https://autogpt-pr-<N>.vercel.app
-    jar=$(mktemp)
-    python3 -c 'import json, os; print(json.dumps({"email": "preview-existing@previews.agpt.co", "password": os.environ["PREVIEW_ACCOUNTS_PASSWORD"]}))' |
-      curl -sS -c "$jar" -H "Origin: $F" -H 'Content-Type: application/json' \
-        --data-binary @- "$F/api/auth/sign-in/email" > /dev/null
-    curl -sS -b "$jar" "$F/api/auth/token"   # {"token": "..."}
-    rm -f "$jar"
-    ```
-
+- **Authentication needs no setup on a preview.** The authenticated tests (`tests/api/*`, `tests/basic/*`, `tests/marketplace/library-access-test.js`, `tests/comprehensive/platform-journey-test.js`) sign up throwaway `loadtest-*@previews.agpt.co` accounts in `setup()`, once per run, and use the Better Auth tokens the preview's frontend issues for them. `LOAD_TEST_ACCOUNT_COUNT` sets how many (default 5). `tests/marketplace/public-access-test.js` needs no account at all.
+- **To run as specific accounts**, such as the seeded `preview-*@previews.agpt.co` personas, set `LOAD_TEST_ACCOUNTS` to a JSON array of `{"email", "password"}`. The tests sign each one in once per run. Dev has no throwaway sign-up, so it always needs `LOAD_TEST_ACCOUNTS`.
+- **Note the run's UTC window** (`date -u +%FT%TZ` before and after) for the baseline and candidate windows above, and drive the same test, VUs and duration at both sides.
 - **Previews start with an empty database.** Store and library lists return nothing, so costs that grow with data (N+1 queries, scans) do not show. Seed data through the API first, or confirm on dev and prod after merge.
 - None of the k6 tests open copilot chats. To measure copilot turns, run chats against the preview yourself, or measure on dev and prod traffic.
 - The repository's evals (`backend/copilot/eval`, `backend/copilot/capabilities/eval`, `poetry run expert-style-eval`, `poetry run brain-dump-eval`) are offline quality and cost harnesses. They send no traffic to a deploy.

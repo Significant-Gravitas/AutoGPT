@@ -6,10 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.executor import utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry
 from backend.copilot.tree import root_envelope
 from backend.util import tracing
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 
 def _published_entry(publish: AsyncMock) -> CoPilotExecutionEntry:

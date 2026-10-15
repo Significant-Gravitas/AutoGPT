@@ -236,17 +236,22 @@ export function setToolDisplayName(
 
 /**
  * Row rule 8: drained follow-ups are user rows, keyed by pending message id,
- * at the hint's place in the stream.
+ * at the hint's place in the stream, with the metadata their stored row has.
  */
 export function appendDrainedUserRows(
   log: TurnLog,
-  messages: readonly { id: string; content: string }[],
+  messages: readonly {
+    id: string;
+    content: string;
+    metadata?: Record<string, unknown> | null;
+  }[],
 ) {
   const known = new Set(log.rows.map((r) => r.key));
   const rows = messages
     .map((m) => ({
       ...assistantRow(`user:${m.id}`, m.content),
       role: "user" as const,
+      metadata: m.metadata ?? null,
     }))
     .filter((row) => !known.has(row.key));
   return rows.reduce(pushRow, log);

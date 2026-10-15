@@ -39,7 +39,7 @@ from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
 from backend.copilot.tree import TurnEnvelope, get_tree_ledger, root_envelope
-from backend.copilot.turn_queue import WAKE_LATER
+from backend.copilot.turn_queue import WAKE_LATER, minimal_wake_envelope
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 
@@ -288,11 +288,10 @@ async def test_a_wake_in_a_sub_session_leaves_the_users_last_slot(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_chat(
+async def test_a_call_rebuilt_without_usage_origin_asks_for_resend_in_own_chat(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Its record was lost, but a turn in the user's own chat is a root anyway:
-    the wake starts as one, under the session's permissions as they are now."""
+    """The card alone cannot establish which allowance bought the work."""
     session = await _new_session(test_user_id)
     review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
@@ -310,38 +309,57 @@ async def test_a_call_rebuilt_from_its_card_wakes_as_a_root_in_the_users_own_cha
     ):
         await held.wake(test_user_id, session.session_id, rows.values())
 
-    woken = dispatch.await_args.kwargs
-    assert (woken["envelope"], woken["root"]) == (None, True)
-    assert woken["permissions"] == today
+    dispatch.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert any("send the request again" in (m.content or "") for m in reloaded.messages)
 
 
-@pytest.mark.parametrize(
-    "text, tools",
-    [
-        ("lost in Redis", frozenset({_TOOL})),
-        # The card's clipped copy cannot run, so its tool is not needed.
-        ("clipped " + "x" * 30_000, frozenset()),
-    ],
-    ids=["intact", "clipped"],
-)
 @pytest.mark.asyncio(loop_scope="session")
-async def test_a_call_rebuilt_from_its_card_in_a_sub_session_wakes_minimal(
-    setup_test_user, test_user_id, gate_on, post_tool, text, tools
+async def test_a_call_rebuilt_from_its_card_in_a_sub_session_asks_for_resend(
+    setup_test_user, test_user_id, gate_on, post_tool
 ):
-    """Nothing on the row bounds what the call was held under there, so the
-    wake gets only the approved call's tool, on a small fresh tree."""
+    """Without its usage origin it never runs, so no minimal tree is opened."""
     session = await _new_session(test_user_id, delegated_by="parent-session")
-    review_id = await _hold(session, test_user_id, text)
+    review_id = await _hold(session, test_user_id, "lost in Redis")
     assert await held._claim(session.session_id, review_id)
     await _answer(review_id, ReviewStatus.APPROVED)
     rows = await review_db().get_reviews_by_node_exec_ids([review_id], test_user_id)
     dispatch = AsyncMock()
+    minimal = AsyncMock(wraps=minimal_wake_envelope)
 
-    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+    with (
+        patch("backend.copilot.executor.utils.dispatch_turn", dispatch),
+        patch("backend.copilot.turn_queue.minimal_wake_envelope", minimal),
+    ):
         await held.wake(test_user_id, session.session_id, rows.values())
 
+    dispatch.assert_not_awaited()
+    minimal.assert_not_awaited()
+    reloaded = await get_chat_session(session.session_id, test_user_id)
+    assert reloaded is not None
+    assert any("send the request again" in (m.content or "") for m in reloaded.messages)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_held_call_whose_envelope_is_gone_in_a_sub_session_wakes_minimal(
+    setup_test_user, test_user_id, gate_on, post_tool
+):
+    """Nothing on the row bounds what the call was held under there, so the
+    wake gets only the approved call's tool, on a small fresh tree."""
+    session = await _new_session(test_user_id, delegated_by="parent-session")
+    review_id = await _hold(session, test_user_id, "envelope gone")
+    [call] = (await held._held(session.session_id)).values()
+    unbounded = call.model_copy(update={"envelope": None})
+    assert await held.remember(session.session_id, unbounded)
+    await _answer(review_id, ReviewStatus.APPROVED)
+    dispatch = AsyncMock()
+
+    with patch("backend.copilot.executor.utils.dispatch_turn", dispatch):
+        await held.wake(test_user_id, session.session_id)
+
     woken = dispatch.await_args.kwargs["envelope"]
-    assert woken.tools == tools
+    assert woken.tools == frozenset({_TOOL})
     assert (woken.depth, woken.tainted) == (1, True)
     assert woken.deadline_at <= datetime.now(UTC) + timedelta(minutes=15)
     tree = await (await get_tree_ledger()).snapshot(woken.tree_id)
@@ -447,7 +465,7 @@ async def test_a_held_calls_arguments_are_never_stored_in_the_clear(
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
+async def test_an_approval_whose_usage_origin_was_lost_does_not_run_from_the_card(
     setup_test_user, test_user_id, gate_on, post_tool
 ):
     session = await _new_session(test_user_id)
@@ -456,8 +474,8 @@ async def test_an_approval_whose_held_call_was_lost_runs_from_the_card(
 
     [delivered] = await held.resolve_answered(test_user_id, session)
 
-    assert post_tool.runs == [{"text": "from the card"}]
-    assert "posted from the card" in delivered.content
+    assert post_tool.runs == []
+    assert "send the request again" in delivered.content
     # The card kept the call's id, so the chain row still finds its result.
     assert delivered.metadata["held_call"]["tool_call_id"] == "call-1"
     assert await _row(review_id, test_user_id) is None

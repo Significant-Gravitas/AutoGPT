@@ -114,7 +114,7 @@ function ReceiptDestination({ transaction }: Props) {
       ? "Run unavailable"
       : transaction.execution_available
         ? "Not in your library"
-        : "Agent and run unavailable";
+        : "Workflow and run unavailable";
     return (
       <Text variant="small" className="text-zinc-600">
         {label}

@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from prisma.errors import UniqueViolationError
+from pydantic import ValidationError
 
 from backend.copilot import turn_queue
 from backend.copilot.gate import held
@@ -21,6 +22,9 @@ from backend.copilot.model import ChatMessage as PydanticChatMessage
 from backend.copilot.model import ChatSessionInfo
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.tree import MAX_DEPTH, TreeRefusal, TurnEnvelope
+from backend.copilot.trial_cost_context import TrialCostContext
+
+_COST_CONTEXT = TrialCostContext(user_id="u1", trial_id=None)
 
 
 class _NoopAsyncCM:
@@ -52,6 +56,10 @@ def _pyd_message(**overrides) -> PydanticChatMessage:
         "sequence": 1,
     }
     base.update(overrides)
+    base["metadata"] = {
+        "cost_context": _COST_CONTEXT.model_dump(mode="json"),
+        **(base["metadata"] or {}),
+    }
     return PydanticChatMessage(**base)
 
 
@@ -84,6 +92,13 @@ def tracked_message(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     tracker = MagicMock()
     monkeypatch.setattr(turn_queue, "track_user_message", tracker)
     return tracker
+
+
+@pytest.fixture(autouse=True)
+def cost_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        turn_queue, "capture_cost_context", AsyncMock(return_value=_COST_CONTEXT)
+    )
 
 
 # ── enqueue_turn payload encoding ──────────────────────────────────────
@@ -136,10 +151,29 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
 
 
 @pytest.mark.asyncio
-async def test_enqueue_turn_only_includes_default_transport_without_extra_params() -> (
-    None
-):
-    """A turn with no extra params only persists its default LLM transport."""
+async def test_enqueue_turn_records_an_impersonated_turn() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "count_inflight_turns", new=AsyncMock(return_value=0)),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.try_enqueue_turn(
+            user_id="u1",
+            inflight_cap=15,
+            session_id="s1",
+            message="hello",
+            impersonated=True,
+        )
+    assert db.add_chat_message.call_args.kwargs["metadata"]["impersonated"] is True
+
+
+@pytest.mark.asyncio
+async def test_enqueue_turn_includes_default_transport_and_attribution() -> None:
+    """A turn with no extra params persists transport and usage attribution."""
     db = MagicMock()
     db.get_next_sequence = AsyncMock(return_value=1)
     db.add_chat_message = AsyncMock(return_value=_pyd_message())
@@ -151,7 +185,8 @@ async def test_enqueue_turn_only_includes_default_transport_without_extra_params
     ):
         await turn_queue.enqueue_turn(user_id="u1", session_id="s1", message="hello")
     assert db.add_chat_message.call_args.kwargs["metadata"] == {
-        "llm_auth_provider": "platform"
+        "llm_auth_provider": "platform",
+        "cost_context": _COST_CONTEXT.model_dump(mode="json"),
     }
 
 
@@ -994,6 +1029,42 @@ async def test_a_failure_between_the_claim_and_the_dispatch_requeues_the_turn(
 
 
 @pytest.mark.asyncio
+async def test_a_queued_wake_without_usage_origin_opens_no_tree_and_stays_queued() -> (
+    None
+):
+    """Queued before its usage origin was recorded, in a sub-session: kept for
+    recovery, and no minimal tree is opened on each retry."""
+    head = _queued_row()
+    head.metadata.delegated_by_session_id = "parent"
+    head.metadata.llm_auth_provider = "codex"
+    db = MagicMock()
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    db.get_latest_user_message_in_session = AsyncMock(
+        return_value=_pyd_message(metadata={held._WAKE_KEY: True, "cost_context": None})
+    )
+    minimal = AsyncMock()
+
+    with (
+        _patch_queued_list([head]),
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "has_codex_access", new=AsyncMock(return_value=True)),
+        patch.object(
+            turn_queue, "claim_queued_session", new=AsyncMock(return_value="admitted")
+        ),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+        patch.object(turn_queue, "minimal_wake_envelope", new=minimal),
+        patch.object(held, "answered", new=AsyncMock(return_value=[])),
+        pytest.raises(ValidationError),
+    ):
+        await turn_queue.dispatch_next_for_user("u1")
+
+    minimal.assert_not_awaited()
+    db.update_chat_session_status.assert_awaited_once_with(
+        session_id="s1", expect_status="running", status="queued"
+    )
+
+
+@pytest.mark.asyncio
 async def test_dispatch_returns_false_when_queue_empty() -> None:
     with _patch_queued_list([]):
         promoted = await turn_queue.dispatch_next_for_user("u1")
@@ -1493,11 +1564,16 @@ async def test_dispatch_defers_on_rate_limit_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_happy_path_claims_and_dispatches() -> None:
+@pytest.mark.parametrize("impersonated", [False, True])
+async def test_dispatch_happy_path_claims_and_dispatches(impersonated: bool) -> None:
     """All gates pass → claim session queued → running, build a TurnSlot,
-    dispatch_turn, invalidate cache, return True."""
+    dispatch_turn, invalidate cache, return True. A turn queued by an
+    impersonating admin is promoted as one."""
     head = _queued_row(session_id="s1")
-    pending = _pyd_message(metadata={"mode": "extended_thinking"})
+    stored: dict = {"mode": "extended_thinking"}
+    if impersonated:
+        stored["impersonated"] = True
+    pending = _pyd_message(metadata=stored)
     db = MagicMock()
     db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
@@ -1528,6 +1604,7 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is True
     dispatch_turn_mock.assert_awaited_once()
+    assert dispatch_turn_mock.await_args.kwargs["impersonated"] is impersonated
     invalidate.assert_awaited_once_with("s1")
     # Claimed queued → running under the user's cap; nothing restored.
     assert db.admit_chat_session_turn.await_args.kwargs == {

@@ -450,6 +450,12 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for database server API to run on",
     )
 
+    swap_credential_service_port: int = Field(
+        default=8012,
+        description="The port for the swap proxy's service "
+        "(backend.copilot.swap_service)",
+    )
+
     agent_api_host: str = Field(
         default="0.0.0.0",
         description="The host for agent server API to run on",
@@ -1417,12 +1423,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     posthog_host: str = Field(
         default="https://eu.i.posthog.com", description="PostHog host URL"
     )
+    posthog_flags_api_key: str = Field(
+        default="",
+        description="Project API key of the PostHog project feature flags are read "
+        "from, when that is not the analytics project. Dev sets prod's, so both "
+        "share one set of flag definitions while dev's events stay in its own "
+        "project. Blank reads flags from the POSTHOG_API_KEY project.",
+    )
     posthog_secret_key: str = Field(
         default="",
         description="PostHog Feature Flags Secure API Key (project settings > "
-        "Feature Flags), for local flag evaluation; without it flag reads fall back "
-        "to a remote /flags call. A personal API key also works, but PostHog is "
-        "deprecating that use.",
+        "Feature Flags) of the project flags are read from, for local flag "
+        "evaluation; without it flag reads fall back to a remote /flags call, or "
+        "serve their defaults when POSTHOG_FLAGS_API_KEY names another project. "
+        "A personal API key also works, but PostHog is deprecating that use.",
     )
 
     # Add more secret fields as needed
