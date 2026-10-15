@@ -8,6 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [September 24 – September 30](september-24-september-30-2026.md) | A bigger roster, Clay & Rock avatars, nested folders, multi-select answers, free trial on the paywall |
 | [September 19](september-19-2026.md) | Meet your Experts: hire or raise an Expert, Expert pages, routines, Skills marketplace, Otto's desktop |
 | [August 21 – September 4](august-21-september-4-2026.md) | Chat shows its work, clickable answers, redesigned emails, memory settings |
 | [July 29 – August 13](july-29-august-13-2026.md) | Paste screenshots into chat, voice onboarding, Claude Sonnet 5, single-container self-hosting |
