@@ -47,6 +47,8 @@ def proxy_off():
     """No swap proxy unless a test says so: the behaviour before it existed."""
     with patch("backend.copilot.tools.bash_exec.proxy_address", return_value=None):
         yield
+
+
 class _FakeRedisLock:
     """redis-py's ``Lock``, held in-process: one holder per name at a time."""
 
@@ -550,6 +552,8 @@ class TestBashExecWithoutTheSwapProxy:
         envs = sandbox.commands.run.call_args[1]["envs"]
         assert envs["GH_TOKEN"] == "gh-secret"
         assert "GIT_CONFIG_COUNT" not in envs
+
+
 # ---------------------------------------------------------------------------
 # Timeouts against a box that behaves like E2B's
 # ---------------------------------------------------------------------------
