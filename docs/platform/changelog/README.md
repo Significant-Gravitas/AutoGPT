@@ -8,6 +8,7 @@ Release windows reflect how changes were grouped for publication and may overlap
 
 | Date | Highlights |
 | ---- | ---------- |
+| [August 21 – September 4](august-21-september-4-2026.md) | Chat shows its work, clickable answers, redesigned emails, memory settings |
 | [July 29 – August 13](july-29-august-13-2026.md) | Paste screenshots into chat, voice onboarding, Claude Sonnet 5, single-container self-hosting |
 | [July 15 – July 22](july-15-july-22-2026.md) | New sidebar, composer plus menu, Telegram, workflow-building mode |
 | [June 18 – July 9](june-18-july-9-2026.md) | File folders, shareable chats, Discord bot |
