@@ -1,0 +1,798 @@
+[
+  {
+    "id": "01-trial-popup",
+    "width": 390,
+    "title": "Trial \u00b7 limit popup",
+    "identical": true
+  },
+  {
+    "id": "01-trial-popup",
+    "width": 1280,
+    "title": "Trial \u00b7 limit popup",
+    "identical": true
+  },
+  {
+    "id": "02-trial-chat",
+    "width": 390,
+    "title": "Trial \u00b7 in-chat notice",
+    "identical": true
+  },
+  {
+    "id": "02-trial-chat",
+    "width": 1280,
+    "title": "Trial \u00b7 in-chat notice",
+    "identical": true
+  },
+  {
+    "id": "03-trial-billing",
+    "width": 390,
+    "title": "Trial \u00b7 exhausted allowance",
+    "identical": true
+  },
+  {
+    "id": "03-trial-billing",
+    "width": 1280,
+    "title": "Trial \u00b7 exhausted allowance",
+    "identical": true
+  },
+  {
+    "id": "04-trial-active",
+    "width": 390,
+    "title": "Trial \u00b7 allowance remaining",
+    "identical": true
+  },
+  {
+    "id": "04-trial-active",
+    "width": 1280,
+    "title": "Trial \u00b7 allowance remaining",
+    "identical": true
+  },
+  {
+    "id": "05-pro-popup",
+    "width": 390,
+    "title": "Pro \u00b7 daily limit",
+    "identical": false,
+    "sheet": "05-pro-popup-390.png",
+    "size": [
+      864,
+      884
+    ]
+  },
+  {
+    "id": "05-pro-popup",
+    "width": 1280,
+    "title": "Pro \u00b7 daily limit",
+    "identical": false,
+    "sheet": "05-pro-popup-1280.png",
+    "size": [
+      1204,
+      832
+    ]
+  },
+  {
+    "id": "06-pro-chat",
+    "width": 390,
+    "title": "Pro \u00b7 in-chat notice",
+    "identical": false,
+    "sheet": "06-pro-chat-390.png",
+    "size": [
+      864,
+      652
+    ]
+  },
+  {
+    "id": "06-pro-chat",
+    "width": 1280,
+    "title": "Pro \u00b7 in-chat notice",
+    "identical": false,
+    "sheet": "06-pro-chat-1280.png",
+    "size": [
+      1620,
+      516
+    ]
+  },
+  {
+    "id": "07-pro-billing",
+    "width": 390,
+    "title": "Pro \u00b7 both limits reached",
+    "identical": true
+  },
+  {
+    "id": "07-pro-billing",
+    "width": 1280,
+    "title": "Pro \u00b7 both limits reached",
+    "identical": true
+  },
+  {
+    "id": "08-pro-weekly",
+    "width": 390,
+    "title": "Pro \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "08-pro-weekly-390.png",
+    "size": [
+      864,
+      916
+    ]
+  },
+  {
+    "id": "08-pro-weekly",
+    "width": 1280,
+    "title": "Pro \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "08-pro-weekly-1280.png",
+    "size": [
+      1204,
+      832
+    ]
+  },
+  {
+    "id": "09-max-popup",
+    "width": 390,
+    "title": "Max \u00b7 daily limit",
+    "identical": false,
+    "sheet": "09-max-popup-390.png",
+    "size": [
+      864,
+      688
+    ]
+  },
+  {
+    "id": "09-max-popup",
+    "width": 1280,
+    "title": "Max \u00b7 daily limit",
+    "identical": false,
+    "sheet": "09-max-popup-1280.png",
+    "size": [
+      1204,
+      620
+    ]
+  },
+  {
+    "id": "10-max-chat",
+    "width": 390,
+    "title": "Max \u00b7 in-chat notice",
+    "identical": false,
+    "sheet": "10-max-chat-390.png",
+    "size": [
+      864,
+      620
+    ]
+  },
+  {
+    "id": "10-max-chat",
+    "width": 1280,
+    "title": "Max \u00b7 in-chat notice",
+    "identical": false,
+    "sheet": "10-max-chat-1280.png",
+    "size": [
+      1620,
+      484
+    ]
+  },
+  {
+    "id": "11-max-billing",
+    "width": 390,
+    "title": "Max \u00b7 billing and capacity",
+    "identical": true
+  },
+  {
+    "id": "11-max-billing",
+    "width": 1280,
+    "title": "Max \u00b7 billing and capacity",
+    "identical": true
+  },
+  {
+    "id": "12-team-popup",
+    "width": 390,
+    "title": "Team \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "12-team-popup-390.png",
+    "size": [
+      864,
+      688
+    ]
+  },
+  {
+    "id": "12-team-popup",
+    "width": 1280,
+    "title": "Team \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "12-team-popup-1280.png",
+    "size": [
+      1204,
+      644
+    ]
+  },
+  {
+    "id": "13-team-billing",
+    "width": 390,
+    "title": "Team \u00b7 billing and usage",
+    "identical": true
+  },
+  {
+    "id": "13-team-billing",
+    "width": 1280,
+    "title": "Team \u00b7 billing and usage",
+    "identical": true
+  },
+  {
+    "id": "14-enterprise-popup",
+    "width": 390,
+    "title": "Enterprise \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "14-enterprise-popup-390.png",
+    "size": [
+      864,
+      736
+    ]
+  },
+  {
+    "id": "14-enterprise-popup",
+    "width": 1280,
+    "title": "Enterprise \u00b7 weekly limit",
+    "identical": false,
+    "sheet": "14-enterprise-popup-1280.png",
+    "size": [
+      1204,
+      644
+    ]
+  },
+  {
+    "id": "15-enterprise-billing",
+    "width": 390,
+    "title": "Enterprise \u00b7 billing and usage",
+    "identical": true
+  },
+  {
+    "id": "15-enterprise-billing",
+    "width": 1280,
+    "title": "Enterprise \u00b7 billing and usage",
+    "identical": true
+  },
+  {
+    "id": "16-basic-chat",
+    "width": 390,
+    "title": "Basic \u00b7 legacy-plan notice",
+    "identical": false,
+    "sheet": "16-basic-chat-390.png",
+    "size": [
+      864,
+      526
+    ]
+  },
+  {
+    "id": "16-basic-chat",
+    "width": 1280,
+    "title": "Basic \u00b7 legacy-plan notice",
+    "identical": false,
+    "sheet": "16-basic-chat-1280.png",
+    "size": [
+      1620,
+      438
+    ]
+  },
+  {
+    "id": "17-basic-billing",
+    "width": 390,
+    "title": "Basic \u00b7 legacy-plan settings",
+    "identical": true
+  },
+  {
+    "id": "17-basic-billing",
+    "width": 1280,
+    "title": "Basic \u00b7 legacy-plan settings",
+    "identical": true
+  },
+  {
+    "id": "18-choose-plan",
+    "width": 390,
+    "title": "No active plan \u00b7 plan selection",
+    "identical": true
+  },
+  {
+    "id": "18-choose-plan",
+    "width": 1280,
+    "title": "No active plan \u00b7 plan selection",
+    "identical": true
+  },
+  {
+    "id": "19-no-plan-billing",
+    "width": 390,
+    "title": "No active plan \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "19-no-plan-billing",
+    "width": 1280,
+    "title": "No active plan \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "20-trial-ended",
+    "width": 390,
+    "title": "Trial ended \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "20-trial-ended",
+    "width": 1280,
+    "title": "Trial ended \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "21-trial-canceled",
+    "width": 390,
+    "title": "Trial canceled \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "21-trial-canceled",
+    "width": 1280,
+    "title": "Trial canceled \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "22-payment-failed",
+    "width": 390,
+    "title": "Payment failure \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "22-payment-failed",
+    "width": 1280,
+    "title": "Payment failure \u00b7 recovery",
+    "identical": true
+  },
+  {
+    "id": "23-payment-billing",
+    "width": 390,
+    "title": "Payment failure \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "23-payment-billing",
+    "width": 1280,
+    "title": "Payment failure \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "24-usage-unavailable",
+    "width": 390,
+    "title": "Usage unavailable \u00b7 in-chat feedback",
+    "identical": true
+  },
+  {
+    "id": "24-usage-unavailable",
+    "width": 1280,
+    "title": "Usage unavailable \u00b7 in-chat feedback",
+    "identical": true
+  },
+  {
+    "id": "25-unavailable-billing",
+    "width": 390,
+    "title": "Usage unavailable \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "25-unavailable-billing",
+    "width": 1280,
+    "title": "Usage unavailable \u00b7 settings",
+    "identical": true
+  },
+  {
+    "id": "26-linked-provider",
+    "width": 390,
+    "title": "Connected provider \u00b7 continuation",
+    "identical": true
+  },
+  {
+    "id": "26-linked-provider",
+    "width": 1280,
+    "title": "Connected provider \u00b7 continuation",
+    "identical": true
+  },
+  {
+    "id": "27-pro-review",
+    "width": 390,
+    "title": "Start Pro \u00b7 payment review",
+    "identical": true
+  },
+  {
+    "id": "27-pro-review",
+    "width": 1280,
+    "title": "Start Pro \u00b7 payment review",
+    "identical": true
+  },
+  {
+    "id": "28-max-review",
+    "width": 390,
+    "title": "Pro to Max \u00b7 upgrade review",
+    "identical": true
+  },
+  {
+    "id": "28-max-review",
+    "width": 1280,
+    "title": "Pro to Max \u00b7 upgrade review",
+    "identical": true
+  },
+  {
+    "id": "29-payment-pending",
+    "width": 390,
+    "title": "Start Pro \u00b7 payment processing",
+    "identical": true
+  },
+  {
+    "id": "29-payment-pending",
+    "width": 1280,
+    "title": "Start Pro \u00b7 payment processing",
+    "identical": true
+  },
+  {
+    "id": "30-activation-success",
+    "width": 390,
+    "title": "Pro activated \u00b7 return to work",
+    "identical": true
+  },
+  {
+    "id": "30-activation-success",
+    "width": 1280,
+    "title": "Pro activated \u00b7 return to work",
+    "identical": true
+  },
+  {
+    "id": "31-fresh-billing",
+    "width": 390,
+    "title": "Pro activated \u00b7 fresh allowance",
+    "identical": true
+  },
+  {
+    "id": "31-fresh-billing",
+    "width": 1280,
+    "title": "Pro activated \u00b7 fresh allowance",
+    "identical": true
+  },
+  {
+    "id": "32-cancel-pending-billing",
+    "width": 390,
+    "title": "Trial cancellation pending \u00b7 billing",
+    "identical": true
+  },
+  {
+    "id": "32-cancel-pending-billing",
+    "width": 1280,
+    "title": "Trial cancellation pending \u00b7 billing",
+    "identical": true
+  },
+  {
+    "id": "33-cancel-pending-notice",
+    "width": 390,
+    "title": "Trial cancellation pending \u00b7 chat notice",
+    "identical": true
+  },
+  {
+    "id": "33-cancel-pending-notice",
+    "width": 1280,
+    "title": "Trial cancellation pending \u00b7 chat notice",
+    "identical": true
+  },
+  {
+    "id": "34-payment-paywall",
+    "width": 390,
+    "title": "Payment failure \u00b7 paywall",
+    "identical": true
+  },
+  {
+    "id": "34-payment-paywall",
+    "width": 1280,
+    "title": "Payment failure \u00b7 paywall",
+    "identical": true
+  },
+  {
+    "id": "x01-pro-low",
+    "width": 390,
+    "title": "Pro \u00b7 running low (85% of today)",
+    "identical": false,
+    "sheet": "x01-pro-low-390.png",
+    "size": [
+      864,
+      334
+    ]
+  },
+  {
+    "id": "x01-pro-low",
+    "width": 1280,
+    "title": "Pro \u00b7 running low (85% of today)",
+    "identical": false,
+    "sheet": "x01-pro-low-1280.png",
+    "size": [
+      1620,
+      272
+    ]
+  },
+  {
+    "id": "x02-trial-low",
+    "width": 390,
+    "title": "Trial \u00b7 running low (85% of the allowance)",
+    "identical": false,
+    "sheet": "x02-trial-low-390.png",
+    "size": [
+      864,
+      355
+    ]
+  },
+  {
+    "id": "x02-trial-low",
+    "width": 1280,
+    "title": "Trial \u00b7 running low (85% of the allowance)",
+    "identical": false,
+    "sheet": "x02-trial-low-1280.png",
+    "size": [
+      1620,
+      272
+    ]
+  },
+  {
+    "id": "x03-pro-weekly-chat",
+    "width": 390,
+    "title": "Pro \u00b7 weekly limit, in the chat",
+    "identical": false,
+    "sheet": "x03-pro-weekly-chat-390.png",
+    "size": [
+      864,
+      652
+    ]
+  },
+  {
+    "id": "x03-pro-weekly-chat",
+    "width": 1280,
+    "title": "Pro \u00b7 weekly limit, in the chat",
+    "identical": false,
+    "sheet": "x03-pro-weekly-chat-1280.png",
+    "size": [
+      1620,
+      516
+    ]
+  },
+  {
+    "id": "x04-max-weekly-chat",
+    "width": 390,
+    "title": "Max \u00b7 weekly limit, in the chat",
+    "identical": false,
+    "sheet": "x04-max-weekly-chat-390.png",
+    "size": [
+      864,
+      620
+    ]
+  },
+  {
+    "id": "x04-max-weekly-chat",
+    "width": 1280,
+    "title": "Max \u00b7 weekly limit, in the chat",
+    "identical": false,
+    "sheet": "x04-max-weekly-chat-1280.png",
+    "size": [
+      1620,
+      484
+    ]
+  },
+  {
+    "id": "x05-max-weekly-dialog",
+    "width": 390,
+    "title": "Max \u00b7 weekly limit, the dialog",
+    "identical": false,
+    "sheet": "x05-max-weekly-dialog-390.png",
+    "size": [
+      864,
+      688
+    ]
+  },
+  {
+    "id": "x05-max-weekly-dialog",
+    "width": 1280,
+    "title": "Max \u00b7 weekly limit, the dialog",
+    "identical": false,
+    "sheet": "x05-max-weekly-dialog-1280.png",
+    "size": [
+      1204,
+      644
+    ]
+  },
+  {
+    "id": "x06-trial-weekly-cap-chat",
+    "width": 390,
+    "title": "Trial at its own weekly cap, in the chat",
+    "identical": false,
+    "sheet": "x06-trial-weekly-cap-chat-390.png",
+    "size": [
+      864,
+      697
+    ]
+  },
+  {
+    "id": "x06-trial-weekly-cap-chat",
+    "width": 1280,
+    "title": "Trial at its own weekly cap, in the chat",
+    "identical": false,
+    "sheet": "x06-trial-weekly-cap-chat-1280.png",
+    "size": [
+      1620,
+      516
+    ]
+  },
+  {
+    "id": "x07-trial-weekly-cap-dialog",
+    "width": 390,
+    "title": "Trial at its own weekly cap, the dialog",
+    "identical": false,
+    "sheet": "x07-trial-weekly-cap-dialog-390.png",
+    "size": [
+      864,
+      907
+    ]
+  },
+  {
+    "id": "x07-trial-weekly-cap-dialog",
+    "width": 1280,
+    "title": "Trial at its own weekly cap, the dialog",
+    "identical": false,
+    "sheet": "x07-trial-weekly-cap-dialog-1280.png",
+    "size": [
+      1204,
+      778
+    ]
+  },
+  {
+    "id": "x08-pro-daily-scheduled",
+    "width": 390,
+    "title": "Pro \u00b7 daily limit, a message set to send at reset",
+    "identical": false,
+    "sheet": "x08-pro-daily-scheduled-390.png",
+    "size": [
+      864,
+      727
+    ]
+  },
+  {
+    "id": "x08-pro-daily-scheduled",
+    "width": 1280,
+    "title": "Pro \u00b7 daily limit, a message set to send at reset",
+    "identical": false,
+    "sheet": "x08-pro-daily-scheduled-1280.png",
+    "size": [
+      1620,
+      570
+    ]
+  },
+  {
+    "id": "x09-max-daily-linked-chat",
+    "width": 390,
+    "title": "Max \u00b7 daily limit with a linked subscription, in the chat",
+    "identical": false,
+    "sheet": "x09-max-daily-linked-chat-390.png",
+    "size": [
+      864,
+      754
+    ]
+  },
+  {
+    "id": "x09-max-daily-linked-chat",
+    "width": 1280,
+    "title": "Max \u00b7 daily limit with a linked subscription, in the chat",
+    "identical": false,
+    "sheet": "x09-max-daily-linked-chat-1280.png",
+    "size": [
+      1620,
+      553
+    ]
+  },
+  {
+    "id": "x10-max-daily-linked-dialog",
+    "width": 390,
+    "title": "Max \u00b7 daily limit with a linked subscription, the dialog",
+    "identical": false,
+    "sheet": "x10-max-daily-linked-dialog-390.png",
+    "size": [
+      864,
+      822
+    ]
+  },
+  {
+    "id": "x10-max-daily-linked-dialog",
+    "width": 1280,
+    "title": "Max \u00b7 daily limit with a linked subscription, the dialog",
+    "identical": false,
+    "sheet": "x10-max-daily-linked-dialog-1280.png",
+    "size": [
+      1204,
+      716
+    ]
+  },
+  {
+    "id": "x11-paused-pro-daily",
+    "width": 390,
+    "title": "Pro \u00b7 a task runs out of today's budget",
+    "identical": false,
+    "sheet": "x11-paused-pro-daily-390.png",
+    "size": [
+      864,
+      853
+    ]
+  },
+  {
+    "id": "x11-paused-pro-daily",
+    "width": 1280,
+    "title": "Pro \u00b7 a task runs out of today's budget",
+    "identical": false,
+    "sheet": "x11-paused-pro-daily-1280.png",
+    "size": [
+      1620,
+      717
+    ]
+  },
+  {
+    "id": "x12-paused-max-weekly",
+    "width": 390,
+    "title": "Max \u00b7 a task runs out of this week's budget",
+    "identical": false,
+    "sheet": "x12-paused-max-weekly-390.png",
+    "size": [
+      864,
+      821
+    ]
+  },
+  {
+    "id": "x12-paused-max-weekly",
+    "width": 1280,
+    "title": "Max \u00b7 a task runs out of this week's budget",
+    "identical": false,
+    "sheet": "x12-paused-max-weekly-1280.png",
+    "size": [
+      1620,
+      665
+    ]
+  },
+  {
+    "id": "x13-paused-trial",
+    "width": 390,
+    "title": "Trial \u00b7 a task uses up the allowance",
+    "identical": false,
+    "sheet": "x13-paused-trial-390.png",
+    "size": [
+      864,
+      848
+    ]
+  },
+  {
+    "id": "x13-paused-trial",
+    "width": 1280,
+    "title": "Trial \u00b7 a task uses up the allowance",
+    "identical": false,
+    "sheet": "x13-paused-trial-1280.png",
+    "size": [
+      1620,
+      739
+    ]
+  },
+  {
+    "id": "x14-paused-steps",
+    "width": 390,
+    "title": "A long task checks in (400 steps)",
+    "identical": false,
+    "sheet": "x14-paused-steps-390.png",
+    "size": [
+      864,
+      472
+    ]
+  },
+  {
+    "id": "x14-paused-steps",
+    "width": 1280,
+    "title": "A long task checks in (400 steps)",
+    "identical": false,
+    "sheet": "x14-paused-steps-1280.png",
+    "size": [
+      1620,
+      404
+    ]
+  }
+]
