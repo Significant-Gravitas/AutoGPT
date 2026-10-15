@@ -19,7 +19,6 @@ import sentry_sdk
 from claude_agent_sdk import AssistantMessage, ClaudeAgentOptions, ToolUseBlock
 from langfuse import get_client
 
-from backend.copilot.expert_kickoff import is_expert_kickoff_turn
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import CopilotPermissions
 from backend.copilot.sdk.compaction import CompactionTracker
@@ -32,6 +31,7 @@ from backend.copilot.sdk.turn_summary_model import (
     record_options,
     record_usage,
 )
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ class TurnSummaryCollector:
         session: ChatSession,
         permissions: CopilotPermissions | None,
         envelope: TurnEnvelope | None,
+        kind: SessionKind,
     ) -> None:
         """Identity and session-kind facts known when the turn starts."""
         meta = session.metadata
@@ -91,14 +92,14 @@ class TurnSummaryCollector:
         s.turn = turn
         s.message_id = message_id
         s.first_turn = len(session.messages) <= 1
-        s.origin = meta.origin
+        s.origin = kind.origin
         s.session_kind = meta.kind
-        s.builder_session = meta.builder_graph_id is not None
+        s.builder_session = kind.builder
         s.expert_session = session.expert_id is not None
-        s.expert_kickoff = is_expert_kickoff_turn(session)
+        s.expert_kickoff = kind.expert_kickoff
         s.sub_session = envelope is not None and envelope.depth > 0
-        s.delegated = meta.delegated_by_session_id is not None
-        s.unattended = meta.origin == "automation"
+        s.delegated = kind.delegated
+        s.unattended = kind.unattended
         s.permission_filtered = permissions is not None
         s.dry_run = meta.dry_run
 

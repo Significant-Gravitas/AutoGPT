@@ -22,7 +22,6 @@ from backend.copilot.context import (
     set_execution_context,
     set_turn_unattended,
 )
-from backend.copilot.model import ChatSessionMetadata
 from backend.copilot.permissions import CopilotPermissions
 
 
@@ -367,21 +366,13 @@ class TestEnvelopeDoesNotEscapeItsTurn:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "origin, scheduled, unattended",
-    [
-        ("automation", False, True),
-        ("interactive", True, True),
-        ("interactive", False, False),
-        (None, False, False),
-    ],
-    ids=["automation chat", "scheduled into a user chat", "user chat", "legacy chat"],
-)
-def test_set_turn_unattended(origin, scheduled, unattended):
-    session = MagicMock(metadata=ChatSessionMetadata(origin=origin))
+@pytest.mark.parametrize("unattended", [True, False])
+def test_set_turn_unattended(unattended):
+    """Records the turn kind's answer (``SessionKind.unattended``, where the
+    rule lives) for the tools to read."""
 
     def turn() -> bool:
-        set_turn_unattended(session, scheduled=scheduled)
+        set_turn_unattended(unattended)
         return is_unattended_turn()
 
     assert contextvars.copy_context().run(turn) is unattended

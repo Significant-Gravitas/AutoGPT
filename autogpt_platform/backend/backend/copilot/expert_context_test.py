@@ -834,7 +834,13 @@ class TestInjectUserContextExpertWiring:
         mock_db.get_expert = AsyncMock(return_value=_expert())
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], user_id="user-1", expert_id="exp-1"
+                None,
+                "hello",
+                "sess-1",
+                [msg],
+                user_id="user-1",
+                expert_id="exp-1",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -879,6 +885,7 @@ class TestInjectUserContextExpertWiring:
                 [kickoff],
                 user_id="user-1",
                 expert_id="exp-1",
+                kickoff_turn=True,
             )
 
         assert result is not None
@@ -924,6 +931,7 @@ class TestInjectUserContextExpertWiring:
                 [msg],
                 user_id="user-1",
                 expert_id="exp-1",
+                kickoff_turn=False,
             )
 
         assert result is not None
@@ -944,7 +952,7 @@ class TestInjectUserContextExpertWiring:
         mock_db.list_routines = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
             result = await inject_user_context(
-                None, "hello", "sess-1", [msg], user_id="user-1"
+                None, "hello", "sess-1", [msg], user_id="user-1", kickoff_turn=False
             )
 
         assert result.endswith("hello")

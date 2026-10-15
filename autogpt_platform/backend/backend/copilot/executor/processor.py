@@ -30,6 +30,7 @@ from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
 from backend.copilot.sdk.dummy import stream_chat_completion_dummy
 from backend.copilot.sdk.launch_env import inherited_env
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
@@ -157,7 +158,7 @@ def sync_fail_close_session(
 
 
 def taint_for_source_platform(
-    envelope: "TurnEnvelope | None", session: "ChatSession"
+    envelope: "TurnEnvelope | None", kind: SessionKind
 ) -> "TurnEnvelope | None":
     """Mark a turn tainted when its prompt came from a chat platform.
 
@@ -166,7 +167,7 @@ def taint_for_source_platform(
     only ever rises, and a turn with no envelope stays that way rather than
     having one invented for it.
     """
-    if envelope is None or not session.metadata.source_platform or envelope.tainted:
+    if envelope is None or not kind.from_chat_platform or envelope.tainted:
         return envelope
     return envelope.model_copy(update={"tainted": True})
 
@@ -707,8 +708,13 @@ class CoPilotProcessor:
             # publishing so subscribers on the session Redis stream
             # (e.g. wait_for_session_result, SSE clients) receive the
             # same events as they are produced.
-            envelope = taint_for_source_platform(entry.envelope, session)
-            set_turn_unattended(session, scheduled=entry.unattended)
+            # The turn's kind, read once: the session's stored facts with the
+            # dispatch's own, for every reader from here on.
+            kind = SessionKind.for_turn(
+                session, scheduled=entry.unattended, voice=entry.voice
+            )
+            envelope = taint_for_source_platform(entry.envelope, kind)
+            set_turn_unattended(kind.unattended)
             set_turn_impersonated(entry.impersonated)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)
@@ -723,7 +729,7 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,
-                voice=entry.voice,
+                session_kind=kind,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id

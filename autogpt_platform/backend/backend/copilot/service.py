@@ -35,7 +35,6 @@ from .anthropic_rate_card import compute_anthropic_cost_usd
 from .config import ChatConfig
 from .expert_context import OWNED_BLOCK_TAGS as _EXPERT_BLOCK_TAGS
 from .expert_context import build_expert_context, escape_prompt_xml_tags
-from .expert_kickoff import is_expert_kickoff_message
 from .llm_attribution import openrouter_attribution
 from .model import (
     ChatMessage,
@@ -612,6 +611,8 @@ async def inject_user_context(
     skills_ctx: str = "",
     user_id: str | None = None,
     expert_id: str | None = None,
+    *,
+    kickoff_turn: bool,
 ) -> str | None:
     """Prepend trusted context blocks to the first user message.
 
@@ -701,7 +702,7 @@ async def inject_user_context(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=expert_id,
-            kickoff_turn=_is_expert_kickoff_turn(session_messages),
+            kickoff_turn=kickoff_turn,
         )
         + sanitized_message
     )
@@ -838,14 +839,6 @@ async def build_injected_context_prefix(
             + prefix
         )
     return prefix
-
-
-def _is_expert_kickoff_turn(session_messages: list[ChatMessage]) -> bool:
-    """Whether the current turn's user message is the hire's kickoff."""
-    for session_msg in reversed(session_messages):
-        if session_msg.role == "user":
-            return is_expert_kickoff_message(session_msg)
-    return False
 
 
 def _normalize_title_model_for_aux() -> str | None:

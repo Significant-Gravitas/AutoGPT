@@ -54,6 +54,7 @@ from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
+from backend.copilot.session_kind import SessionKind
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.learning.capture import capture_chat_turn, find_initiating_user_row
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
@@ -189,7 +190,6 @@ from ..builder_context import (
     build_builder_system_prompt_suffix,
 )
 from ..expert_context import build_expert_identity_suffix
-from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     SKILLS_CONTEXT_TAG,
     _build_system_prompt,
@@ -207,8 +207,6 @@ from ..token_tracking import persist_and_record_usage
 from ..tools import (
     ToolGroup,
     expert_tool_disabled_groups,
-    kickoff_turn_disabled_tools,
-    origin_disabled_tools,
     tool_names_in_groups,
 )
 from ..tools.e2b_sandbox import get_or_create_sandbox, pause_sandbox_direct
@@ -4648,7 +4646,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     message_metadata: dict[str, Any] | None = None,
     turn_start: int | None = None,
     continued_pending: list[PendingMessage] | None = None,
-    voice: bool = False,
+    session_kind: SessionKind | None = None,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4729,8 +4727,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
 
+    # The turn's kind, read once for every reader below: the executor's,
+    # or this session's own for a caller that dispatches no turn.
+    kind = session_kind or SessionKind.for_turn(session)
     turn_summary = TurnSummaryCollector(
-        session_id, voice=voice, is_user_message=is_user_message
+        session_id, voice=kind.voice, is_user_message=is_user_message
     )
 
     # Strip any user-injected <user_context> tags on every turn.
@@ -4833,6 +4834,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         session=session,
         permissions=permissions,
         envelope=envelope,
+        kind=kind,
     )
     e2b_sandbox = None
     use_resume = False
@@ -5118,23 +5120,16 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # fallback; read_skill("agent_building_guide") remains as escape
         # hatch. The baseline path (no prompt machinery) keeps the tool.
 
-        # A hire's kickoff turn is a server-sent control message, so nothing
-        # on it was asked for: narrow it to the onboarding card and nothing
-        # else. Hiding is the enforcement here — an unregistered MCP tool
-        # does not exist for the CLI, so there is no call left to deny.
-        kickoff_hidden = (
-            kickoff_turn_disabled_tools()
-            if is_expert_kickoff_turn(session)
-            else frozenset()
-        )
-        # A machine-authored session cannot staff the team, so it is not
-        # offered the proposal tools its own guard would refuse.
+        # What the turn's kind does not offer: a hire's kickoff is narrowed
+        # to the onboarding card, and a session no person drives is not
+        # offered the staffing tools its own guard would refuse. Hiding is
+        # the enforcement here: an unregistered MCP tool does not exist for
+        # the CLI, so there is no call left to deny.
         hidden_tools = (
             _hidden_short_names_for_permissions(permissions)
             | tool_names_in_groups(disabled_tool_groups)
             | {"get_agent_building_guide"}
-            | kickoff_hidden
-            | origin_disabled_tools(session.metadata.origin)
+            | kind.hidden_tools()
         )
         # run_capability reaches deferred tools by id; the same hidden set
         # must bound it, so it travels with the turn's execution context.
@@ -5200,7 +5195,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             permissions,
             use_e2b=use_e2b,
             disabled_groups=disabled_tool_groups,
-            denied_tools=kickoff_hidden,
+            denied_tools=kind.hidden_tools(),
         )
 
         security_hooks = create_security_hooks(
@@ -5217,6 +5212,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 use_e2b=use_e2b,
                 log_prefix=log_prefix,
                 hidden_tools=hidden_tools,
+                kickoff_turn=kind.expert_kickoff,
                 turn_summary=turn_summary,
             ),
             allowed_tools=tool_options["allowed_tools"],
@@ -5440,6 +5436,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 skills_ctx=skills_ctx_content,
                 user_id=user_id,
                 expert_id=session.expert_id,
+                kickoff_turn=kind.expert_kickoff,
             )
             if prefixed_message is not None:
                 current_message = prefixed_message
@@ -5450,6 +5447,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 sdk_cwd=sdk_cwd,
                 use_e2b=use_e2b,
                 log_prefix=log_prefix,
+                kickoff_turn=kind.expert_kickoff,
                 reason="no-resume fallback",
             )
 
@@ -5520,7 +5518,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # only: added after the inbound strip, so it is the platform's own,
         # and never written to ``current_message`` or the stored row.
         turn_text = budget_status + current_message
-        if voice:
+        if kind.voice:
             turn_text = f"{turn_text}\n\n{VOICE_TURN_INSTRUCTION}"
 
         query_message, compaction_stats = await _build_query_message(
@@ -5741,6 +5739,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                         sdk_cwd=sdk_cwd,
                         use_e2b=use_e2b,
                         log_prefix=log_prefix,
+                        kickoff_turn=kind.expert_kickoff,
                         reason="no-resume fallback",
                     )
                 (
@@ -6660,6 +6659,11 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
+                    # A new reading for the queued messages it answers, not
+                    # a kickoff and not spoken; still unattended if this was.
+                    session_kind=SessionKind.for_turn(
+                        session, scheduled=kind.unattended
+                    ),
                     turn_start=turn_start,
                     continued_pending=_auto_pending_messages,
                 ):
@@ -6767,6 +6771,7 @@ async def _context_after_compaction(
     use_e2b: bool,
     log_prefix: str,
     hidden_tools: frozenset[str] = frozenset(),
+    kickoff_turn: bool = False,
     turn_summary: TurnSummaryCollector | None = None,
 ) -> list[str]:
     """What the ``SessionStart`` hook hands the model after the CLI compacts.
@@ -6788,6 +6793,7 @@ async def _context_after_compaction(
         sdk_cwd=sdk_cwd,
         use_e2b=use_e2b,
         log_prefix=log_prefix,
+        kickoff_turn=kickoff_turn,
         reason="compaction",
     )
     fitted = fit_after_compaction(
@@ -6816,6 +6822,7 @@ async def _rebuild_first_turn_prefix(
     use_e2b: bool,
     log_prefix: str,
     reason: str,
+    kickoff_turn: bool,
 ) -> str:
     """Render the first-turn prefix again for a context that has lost it.
 
@@ -6845,7 +6852,7 @@ async def _rebuild_first_turn_prefix(
             skills_ctx=skills_ctx,
             user_id=user_id,
             expert_id=session.expert_id,
-            kickoff_turn=is_expert_kickoff_turn(session),
+            kickoff_turn=kickoff_turn,
         )
     except Exception:
         logger.exception(
