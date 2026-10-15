@@ -155,11 +155,6 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        {expert.tagline ? (
-          <Text variant="body" tone="secondary">
-            {expert.tagline}
-          </Text>
-        ) : null}
 
         <ExpertNeedsYouSection
           expert={expert}
