@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsBillingEnabled } from "@/hooks/useIsBillingEnabled";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { okData } from "@/app/api/helpers";
 import { IconType } from "@/components/__legacy__/ui/icons";
@@ -24,7 +25,7 @@ import { getAccountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 const MOBILE_NAV_ICONS: Readonly<Record<string, IconType>> = {
   "/marketplace": IconType.Marketplace,
   "/build": IconType.Builder,
-  "/copilot": IconType.Chat,
+  "/home": IconType.Chat,
   "/library": IconType.Library,
   "/monitor": IconType.Library,
 };
@@ -37,7 +38,12 @@ export function Navbar() {
   const { user, isLoggedIn, isUserLoading } = useAuth();
   const breakpoint = useBreakpoint();
   const isSmallScreen = breakpoint === "sm" || breakpoint === "base";
-  const dynamicMenuItems = getAccountMenuItems(user?.role);
+  const isBillingEnabled = useIsBillingEnabled();
+  const dynamicMenuItems = getAccountMenuItems(
+    user?.role,
+    false,
+    isBillingEnabled,
+  );
   const previewBranchName = environment.getPreviewStealingDev();
   const logoutInProgress = isLogoutInProgress();
 
@@ -59,8 +65,8 @@ export function Navbar() {
   // Files is reached via the icon in the CoPilot sidebar (gated by
   // ARTIFACTS_PAGE), not the top nav — it's an entry point, not a product.
   const actualLoggedInLinks = [
-    { name: "Home", href: "/copilot" },
-    { name: "Agents", href: "/library" },
+    { name: "Home", href: "/home" },
+    { name: "Workflows", href: "/library" },
     ...loggedInLinks,
   ];
 
@@ -114,7 +120,7 @@ export function Navbar() {
             <div className="flex flex-1 items-center justify-end gap-4">
               <div className="flex items-center gap-4">
                 <OrgTeamSwitcher />
-                <FeedbackButton />
+                {environment.isCloud() && <FeedbackButton />}
                 <AgentActivityDropdown />
                 {profile && <Wallet key={profile.username} />}
                 <AccountMenu

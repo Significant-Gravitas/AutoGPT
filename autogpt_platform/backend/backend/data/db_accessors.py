@@ -105,6 +105,19 @@ def search():
     return search
 
 
+def embeddings_db():
+    if db.is_connected():
+        from backend.api.features.search import embeddings as _embeddings_db
+
+        embeddings_db = _embeddings_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        embeddings_db = get_database_manager_async_client()
+
+    return embeddings_db
+
+
 def execution_db():
     if db.is_connected():
         from backend.data import execution as _execution_db

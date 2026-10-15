@@ -1,13 +1,19 @@
 """Tests for execute_block, prepare_block_for_execution, and check_hitl_review."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from typing import Any, ClassVar, Literal
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import SecretStr
 
 from backend.blocks._base import BlockType
+from backend.blocks.exa.search import ExaSearchBlock
 from backend.copilot.constants import COPILOT_NODE_PREFIX, COPILOT_SESSION_PREFIX
+from backend.copilot.context import set_turn_unattended
+from backend.copilot.credential_selection import CredentialPin, set_turn_credential_pins
+from backend.copilot.model import ChatSession
 from backend.copilot.rate_limit import UserPaywalledError
 from backend.copilot.tools.helpers import (
     BlockPreparation,
@@ -28,10 +34,13 @@ from backend.copilot.tools.models import (
     SetupRequirementsResponse,
 )
 from backend.data.model import (
+    APIKeyCredentials,
     CredentialsFieldInfo,
     CredentialsMetaInput,
     CredentialsType,
+    OAuth2Credentials,
 )
+from backend.integrations.credentials_store import exa_credentials
 from backend.integrations.providers import ProviderName
 
 from ._test_data import make_session
@@ -1459,6 +1468,29 @@ class TestExecuteBlockAutoCredentials:
         assert isinstance(result, SetupRequirementsResponse)
         assert result.setup_info.user_readiness.ready_to_run is False
 
+    async def test_a_refused_picker_credential_is_answered_in_our_own_words(self):
+        """The error wraps the model's own input in our guidance, so the content
+        judge has nothing from outside in it to read."""
+        block = _make_block_with_auto_creds()
+        credit_patch, _ = _patch_credit_db()
+
+        with _patch_workspace(), credit_patch:
+            result = await execute_block(
+                block=block,
+                block_id="drive-consumer",
+                input_data={
+                    "spreadsheet": {"id": "f", "name": "Q3.xlsx", "_credentials_id": ""}
+                },
+                user_id=_USER,
+                session_id=_SESSION,
+                node_exec_id="exec-drive-refused",
+                matched_credentials={},
+                dry_run=False,
+            )
+
+        assert isinstance(result, ErrorResponse) and "re-select" in result.message
+        assert result.outside == ()
+
     async def test_auto_cred_locks_released_when_coerce_raises(self):
         """Regression guard for Sentry r3135420231: if coerce_inputs_to_schema
         raises between acquire_auto_credentials and the inner wait_for try,
@@ -2003,3 +2035,240 @@ async def _store_workspace_file(path: str):
             dry_run=False,
             expert_id="expert-a",
         )
+
+
+# ---------------------------------------------------------------------------
+# Credential choice on unattended turns (SECRT-2804)
+# ---------------------------------------------------------------------------
+
+
+def _exa_key(cred_id: str) -> APIKeyCredentials:
+    return APIKeyCredentials(
+        id=cred_id, provider="exa", title=cred_id, api_key=SecretStr("k")
+    )
+
+
+async def _prepare_exa_search(
+    session: ChatSession,
+    saved_creds: list,
+    *,
+    scheduled: bool = False,
+    pins: dict[str, CredentialPin] | None = None,
+    chat_picks: dict[str, str] | None = None,
+) -> Any:
+    """Prepare an Exa search the way run_block does, in a turn the executor
+    marked the way it marks every turn, with the pins of the schedule that
+    fired it. Run as its own task so the marking stays inside it."""
+    redis = MagicMock()
+    redis.hgetall = AsyncMock(return_value=chat_picks or {})
+
+    async def turn():
+        set_turn_unattended(session, scheduled=scheduled)
+        set_turn_credential_pins(pins)
+        with (
+            patch(
+                "backend.copilot.tools.utils.IntegrationCredentialsManager"
+            ) as creds_mgr,
+            patch(
+                "backend.copilot.credential_selection.get_redis_async",
+                AsyncMock(return_value=redis),
+            ),
+            patch(
+                "backend.copilot.tools.helpers.expand_file_refs_in_args",
+                AsyncMock(side_effect=lambda d, *a, **kw: d),
+            ),
+        ):
+            creds_mgr.return_value.store = AsyncMock()
+            # The store lists the user's own credentials first, oldest first,
+            # then the platform's.
+            creds_mgr.return_value.store.get_all_creds.return_value = [
+                *saved_creds,
+                exa_credentials,
+            ]
+            return await prepare_block_for_execution(
+                block_id=ExaSearchBlock().id,
+                input_data={"query": "daily briefing"},
+                user_id=_USER,
+                session=session,
+                session_id=session.session_id,
+                dry_run=False,
+            )
+
+    return await asyncio.create_task(turn())
+
+
+def _scheduled_session() -> ChatSession:
+    session = make_session(_USER)
+    session.metadata.origin = "automation"
+    return session
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_with_two_exa_keys_runs_on_the_first_saved() -> None:
+    # Nobody is watching a scheduled turn, so a "which account?" card would
+    # never be answered and the step would end as "not configured".
+    result = await _prepare_exa_search(
+        _scheduled_session(), [_exa_key("exa-old"), _exa_key("exa-new")]
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-old"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_into_a_users_chat_does_not_ask_either() -> None:
+    # A pinned follow-up fires into the user's own (interactive) chat; the
+    # turn is still unattended.
+    result = await _prepare_exa_search(
+        make_session(_USER),
+        [_exa_key("exa-old"), _exa_key("exa-new")],
+        scheduled=True,
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-old"
+
+
+@pytest.mark.asyncio
+async def test_interactive_turn_with_two_exa_keys_still_asks() -> None:
+    result = await _prepare_exa_search(
+        make_session(_USER), [_exa_key("exa-old"), _exa_key("exa-new")]
+    )
+
+    assert isinstance(result, SetupRequirementsResponse)
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_without_any_exa_key_fails_naming_the_provider() -> None:
+    # No platform key configured and none saved: nothing fits.
+    missing = CredentialsMetaInput(
+        id="credentials", provider=ProviderName("exa"), type="api_key"
+    )
+    with patch(
+        "backend.copilot.tools.helpers.match_credentials_to_requirements",
+        AsyncMock(return_value=({}, [missing])),
+    ):
+        result = await _prepare_exa_search(_scheduled_session(), [])
+
+    assert isinstance(result, ErrorResponse)
+    assert "exa" in result.message.lower()
+    assert ExaSearchBlock().name in result.message
+
+
+@pytest.mark.asyncio
+async def test_scheduled_expert_turn_names_the_credential_to_grant() -> None:
+    # The account has an Exa key, but the expert was never granted it, so
+    # connecting another one would not help: the reply must say to grant it.
+    missing = CredentialsMetaInput(
+        id="credentials", provider=ProviderName("exa"), type="api_key"
+    )
+    session = make_session(_USER, expert_id="expert-a")
+    session.metadata.origin = "automation"
+    with (
+        patch(
+            "backend.copilot.tools.helpers.match_credentials_to_requirements",
+            AsyncMock(return_value=({}, [missing])),
+        ),
+        patch(
+            "backend.copilot.tools.expert_scope._ungranted_credentials",
+            AsyncMock(return_value=[_exa_key("exa-old")]),
+        ),
+    ):
+        result = await _prepare_exa_search(session, [])
+
+    assert isinstance(result, ErrorResponse)
+    assert "exa-old" in result.message
+    assert "grant" in result.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_scheduled_turn_uses_the_pinned_exa_key_not_the_oldest() -> None:
+    # The user picked the newer key when the schedule was made.
+    result = await _prepare_exa_search(
+        _scheduled_session(),
+        [_exa_key("exa-old"), _exa_key("exa-new")],
+        pins={"exa": CredentialPin(id="exa-new", title="Work key")},
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-new"
+
+
+@pytest.mark.asyncio
+async def test_the_schedules_pin_wins_over_a_pick_in_the_chat_it_lands_in() -> None:
+    # A follow-up firing into the user's own chat, where they later picked the
+    # other key for something else: the schedule still runs on its own.
+    result = await _prepare_exa_search(
+        make_session(_USER),
+        [_exa_key("exa-old"), _exa_key("exa-new")],
+        scheduled=True,
+        pins={"exa": CredentialPin(id="exa-new", title="Work key")},
+        chat_picks={"exa": "exa-old"},
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-new"
+
+
+@pytest.mark.asyncio
+async def test_a_deleted_pinned_key_fails_naming_it_instead_of_switching() -> None:
+    # The pinned key is gone. The other key and the platform's would both fit,
+    # and running on either is the silent switch the pin exists to prevent.
+    result = await _prepare_exa_search(
+        _scheduled_session(),
+        [_exa_key("exa-old")],
+        pins={"exa": CredentialPin(id="exa-new", title="Work key")},
+    )
+
+    assert isinstance(result, ErrorResponse), result
+    assert result.error == "pinned_credential_missing"
+    assert "Work key" in result.message
+    assert "exa-new" in result.message
+    assert "exa-old" not in result.message
+
+
+@pytest.mark.asyncio
+async def test_a_pin_for_another_provider_leaves_exa_alone() -> None:
+    result = await _prepare_exa_search(
+        _scheduled_session(),
+        [_exa_key("exa-old"), _exa_key("exa-new")],
+        pins={"github": CredentialPin(id="gh-gone", title="Old GitHub")},
+    )
+
+    assert isinstance(result, BlockPreparation), getattr(result, "message", result)
+    assert result.matched_credentials["credentials"].id == "exa-old"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_expert_turn_does_not_offer_a_credential_of_the_wrong_type() -> (
+    None
+):
+    # The Exa block takes an API key. An ungranted Exa OAuth credential would
+    # be refused by the next run too, so it must not be the one to grant.
+    missing = CredentialsMetaInput(
+        id="credentials", provider=ProviderName("exa"), type="api_key"
+    )
+    session = make_session(_USER, expert_id="expert-a")
+    session.metadata.origin = "automation"
+    wrong_type = OAuth2Credentials(
+        id="exa-oauth",
+        provider="exa",
+        title="exa-oauth",
+        access_token=SecretStr("t"),
+        scopes=[],
+    )
+    with (
+        patch(
+            "backend.copilot.tools.helpers.match_credentials_to_requirements",
+            AsyncMock(return_value=({}, [missing])),
+        ),
+        patch(
+            "backend.copilot.tools.expert_scope._ungranted_credentials",
+            AsyncMock(return_value=[wrong_type]),
+        ),
+    ):
+        result = await _prepare_exa_search(session, [])
+
+    assert isinstance(result, ErrorResponse)
+    assert "exa-oauth" not in result.message
+    assert "connect exa" in result.message

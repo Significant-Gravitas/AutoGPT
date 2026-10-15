@@ -115,7 +115,7 @@ describe("getEarnGroups", () => {
 });
 
 describe("WalletCompactPanel", () => {
-  it("shows the balance and one header row per group", () => {
+  it("shows onboarding groups and unfinished tasks as soon as the wallet opens", () => {
     render(
       <WalletCompactPanel
         groups={groups}
@@ -128,9 +128,62 @@ describe("WalletCompactPanel", () => {
     expect(screen.getByText("Automation credits")).toBeDefined();
     expect(screen.getByText("$9.79")).toBeDefined();
     expect(screen.getByText("Earn credits")).toBeDefined();
+    expect(
+      screen.getByText("Credits used when your automations run."),
+    ).toBeDefined();
     expect(screen.getByText("First Wins · 2 of 2")).toBeDefined();
     expect(screen.getByText("Done")).toBeDefined();
     expect(screen.getByText("Consistency Challenge · 0 of 2")).toBeDefined();
+    expect(screen.getByText("Schedule your first agent")).toBeDefined();
+    expect(screen.getByText("Run agents 3 days in a row")).toBeDefined();
+  });
+
+  it("clearly identifies onboarding tasks when collapsed and restores them on expand", async () => {
+    render(
+      <WalletCompactPanel
+        groups={groups}
+        completedSteps={completedSteps}
+        formattedCredits="$9.79"
+        onAddCredits={() => {}}
+      />,
+    );
+
+    const hideTasks = screen.getByRole("button", {
+      name: /Hide onboarding tasks/,
+    });
+    await userEvent.click(screen.getByRole("button", { name: /First Wins/ }));
+    await userEvent.click(
+      screen.getByRole("button", { name: /Consistency Challenge/ }),
+    );
+
+    expect(hideTasks.getAttribute("aria-expanded")).toBe("true");
+    await userEvent.click(hideTasks);
+
+    const showTasks = screen.getByRole("button", {
+      name: /Show onboarding tasks/,
+    });
+    expect(showTasks.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByText("Earn credits")).toBeDefined();
+    expect(screen.getByText("$3.00 available")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /First Wins/ })).toBeNull();
+    expect(screen.getByText("Automation credits")).toBeDefined();
+
+    await userEvent.click(showTasks);
+    expect(
+      screen
+        .getByRole("button", { name: /First Wins/ })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: /Consistency Challenge/ })
+        .getAttribute("aria-expanded"),
+    ).toBe("false");
+    await userEvent.click(
+      screen.getByRole("button", { name: /Consistency Challenge/ }),
+    );
+    expect(screen.getByText("Schedule your first agent")).toBeDefined();
+    expect(screen.getByText("Run agents 3 days in a row")).toBeDefined();
   });
 
   it("hides a completed group's tasks until its header is expanded", async () => {
@@ -173,7 +226,7 @@ describe("WalletCompactPanel", () => {
     expect(screen.queryByText("Schedule your first agent")).toBeNull();
   });
 
-  it("collapses a group once its last task is completed", () => {
+  it("collapses a group once its last task is completed", async () => {
     const { rerender } = render(
       <WalletCompactPanel
         groups={groups}

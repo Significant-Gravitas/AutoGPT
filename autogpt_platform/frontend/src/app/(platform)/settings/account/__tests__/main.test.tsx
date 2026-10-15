@@ -255,6 +255,11 @@ describe("SettingsPreferencesPage", () => {
 
     // One click, not two: the design calls these "live one-click links".
     await waitFor(() => expect(applied).toBeDefined());
+    // Must reach the backend through the proxy, not the Next.js
+    // /api/auth/* (Better Auth) catch-all, which 404s.
+    expect(applied?.pathname).toBe(
+      "/api/proxy/api/auth/user/preferences/from-email",
+    );
     expect(applied?.searchParams.get("choice")).toBe("alerts");
     // Token-authenticated, so a bare ?f= from a third-party link is inert.
     expect(applied?.searchParams.get("token")).toBe("signed-token");

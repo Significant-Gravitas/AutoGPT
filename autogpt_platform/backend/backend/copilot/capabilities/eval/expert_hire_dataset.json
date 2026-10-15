@@ -1,0 +1,1155 @@
+{
+ "source": "Hand-written 2026-10-02 before the first scored run (SECRT-2814); labels are roster template names, any one counts as a hit",
+ "items": [
+  {
+   "query": "product manager",
+   "group": "plain",
+   "expect": [
+    "Alex",
+    "Priya"
+   ]
+  },
+  {
+   "query": "hire expert product",
+   "group": "plain",
+   "expect": [
+    "Alex",
+    "Priya"
+   ]
+  },
+  {
+   "query": "partnerships manager",
+   "group": "plain",
+   "expect": [
+    "Anika"
+   ]
+  },
+  {
+   "query": "expert for partnerships and alliances",
+   "group": "plain",
+   "expect": [
+    "Anika"
+   ]
+  },
+  {
+   "query": "QA engineer",
+   "group": "plain",
+   "expect": [
+    "Casey"
+   ]
+  },
+  {
+   "query": "code review expert",
+   "group": "plain",
+   "expect": [
+    "Casey"
+   ]
+  },
+  {
+   "query": "video producer",
+   "group": "plain",
+   "expect": [
+    "Clip"
+   ]
+  },
+  {
+   "query": "motion graphics expert",
+   "group": "plain",
+   "expect": [
+    "Clip"
+   ]
+  },
+  {
+   "query": "financial analyst",
+   "group": "plain",
+   "expect": [
+    "Daniel"
+   ]
+  },
+  {
+   "query": "hire a finance expert",
+   "group": "plain",
+   "expect": [
+    "Daniel",
+    "Mina",
+    "Theo"
+   ]
+  },
+  {
+   "query": "application security engineer",
+   "group": "plain",
+   "expect": [
+    "Devon"
+   ]
+  },
+  {
+   "query": "dependency security expert",
+   "group": "plain",
+   "expect": [
+    "Devon"
+   ]
+  },
+  {
+   "query": "contract manager",
+   "group": "plain",
+   "expect": [
+    "Ellis"
+   ]
+  },
+  {
+   "query": "expert to manage contracts",
+   "group": "plain",
+   "expect": [
+    "Ellis"
+   ]
+  },
+  {
+   "query": "hire an ops expert",
+   "group": "plain",
+   "expect": [
+    "Frankie",
+    "James"
+   ]
+  },
+  {
+   "query": "executive assistant",
+   "group": "plain",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "recruiter",
+   "group": "plain",
+   "expect": [
+    "Harper",
+    "Sofia"
+   ]
+  },
+  {
+   "query": "recruiting and hiring expert",
+   "group": "plain",
+   "expect": [
+    "Harper",
+    "Sofia"
+   ]
+  },
+  {
+   "query": "people operations specialist",
+   "group": "plain",
+   "expect": [
+    "Ines"
+   ]
+  },
+  {
+   "query": "HR expert",
+   "group": "plain",
+   "expect": [
+    "Ines"
+   ]
+  },
+  {
+   "query": "operations manager",
+   "group": "plain",
+   "expect": [
+    "James",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "operations expert",
+   "group": "plain",
+   "expect": [
+    "James",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "deal desk manager",
+   "group": "plain",
+   "expect": [
+    "Jordan"
+   ]
+  },
+  {
+   "query": "proposal writing expert",
+   "group": "plain",
+   "expect": [
+    "Jordan"
+   ]
+  },
+  {
+   "query": "social media manager",
+   "group": "plain",
+   "expect": [
+    "Jules"
+   ]
+  },
+  {
+   "query": "hire expert social media",
+   "group": "plain",
+   "expect": [
+    "Jules"
+   ]
+  },
+  {
+   "query": "personal assistant expert",
+   "group": "plain",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "hire an executive assistant",
+   "group": "plain",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "compliance analyst",
+   "group": "plain",
+   "expect": [
+    "Lena"
+   ]
+  },
+  {
+   "query": "privacy and compliance expert",
+   "group": "plain",
+   "expect": [
+    "Lena"
+   ]
+  },
+  {
+   "query": "performance marketer",
+   "group": "plain",
+   "expect": [
+    "Marco"
+   ]
+  },
+  {
+   "query": "paid ads expert",
+   "group": "plain",
+   "expect": [
+    "Marco"
+   ]
+  },
+  {
+   "query": "SEO content manager",
+   "group": "plain",
+   "expect": [
+    "Maria"
+   ]
+  },
+  {
+   "query": "SEO expert",
+   "group": "plain",
+   "expect": [
+    "Maria"
+   ]
+  },
+  {
+   "query": "account executive",
+   "group": "plain",
+   "expect": [
+    "Max"
+   ]
+  },
+  {
+   "query": "sales expert",
+   "group": "plain",
+   "expect": [
+    "Max"
+   ]
+  },
+  {
+   "query": "marketing manager",
+   "group": "plain",
+   "expect": [
+    "Maya",
+    "Zara"
+   ]
+  },
+  {
+   "query": "hire a marketing expert",
+   "group": "plain",
+   "expect": [
+    "Maya",
+    "Zara"
+   ]
+  },
+  {
+   "query": "bookkeeper",
+   "group": "plain",
+   "expect": [
+    "Mina"
+   ]
+  },
+  {
+   "query": "invoicing and bookkeeping expert",
+   "group": "plain",
+   "expect": [
+    "Mina"
+   ]
+  },
+  {
+   "query": "market research analyst",
+   "group": "plain",
+   "expect": [
+    "Nadia"
+   ]
+  },
+  {
+   "query": "competitor intelligence expert",
+   "group": "plain",
+   "expect": [
+    "Nadia"
+   ]
+  },
+  {
+   "query": "communications manager",
+   "group": "plain",
+   "expect": [
+    "Noor"
+   ]
+  },
+  {
+   "query": "PR expert",
+   "group": "plain",
+   "expect": [
+    "Noor"
+   ]
+  },
+  {
+   "query": "revenue operations analyst",
+   "group": "plain",
+   "expect": [
+    "Omar"
+   ]
+  },
+  {
+   "query": "CRM hygiene expert",
+   "group": "plain",
+   "expect": [
+    "Omar"
+   ]
+  },
+  {
+   "query": "product management expert",
+   "group": "plain",
+   "expect": [
+    "Priya",
+    "Alex"
+   ]
+  },
+  {
+   "query": "product management specialist",
+   "group": "plain",
+   "expect": [
+    "Priya",
+    "Alex"
+   ]
+  },
+  {
+   "query": "data analyst",
+   "group": "plain",
+   "expect": [
+    "Quinn"
+   ]
+  },
+  {
+   "query": "KPI analysis expert",
+   "group": "plain",
+   "expect": [
+    "Quinn"
+   ]
+  },
+  {
+   "query": "email marketing manager",
+   "group": "plain",
+   "expect": [
+    "Remy"
+   ]
+  },
+  {
+   "query": "lifecycle email expert",
+   "group": "plain",
+   "expect": [
+    "Remy"
+   ]
+  },
+  {
+   "query": "customer success manager",
+   "group": "plain",
+   "expect": [
+    "Riley"
+   ]
+  },
+  {
+   "query": "retention expert",
+   "group": "plain",
+   "expect": [
+    "Riley"
+   ]
+  },
+  {
+   "query": "customer support specialist",
+   "group": "plain",
+   "expect": [
+    "Robin",
+    "Sasha"
+   ]
+  },
+  {
+   "query": "customer support expert",
+   "group": "plain",
+   "expect": [
+    "Robin",
+    "Sasha"
+   ]
+  },
+  {
+   "query": "help desk support specialist",
+   "group": "plain",
+   "expect": [
+    "Sasha",
+    "Robin"
+   ]
+  },
+  {
+   "query": "support ticket expert",
+   "group": "plain",
+   "expect": [
+    "Sasha",
+    "Robin"
+   ]
+  },
+  {
+   "query": "recruiter for my startup",
+   "group": "plain",
+   "expect": [
+    "Sofia",
+    "Harper"
+   ]
+  },
+  {
+   "query": "hire a recruiting expert",
+   "group": "plain",
+   "expect": [
+    "Sofia",
+    "Harper"
+   ]
+  },
+  {
+   "query": "investor relations manager",
+   "group": "plain",
+   "expect": [
+    "Theo"
+   ]
+  },
+  {
+   "query": "fundraising expert",
+   "group": "plain",
+   "expect": [
+    "Theo"
+   ]
+  },
+  {
+   "query": "procurement specialist",
+   "group": "plain",
+   "expect": [
+    "Vera"
+   ]
+  },
+  {
+   "query": "vendor management expert",
+   "group": "plain",
+   "expect": [
+    "Vera"
+   ]
+  },
+  {
+   "query": "GTM strategist",
+   "group": "plain",
+   "expect": [
+    "Zara"
+   ]
+  },
+  {
+   "query": "go-to-market expert",
+   "group": "plain",
+   "expect": [
+    "Zara"
+   ]
+  },
+  {
+   "query": "someone to run my LinkedIn",
+   "group": "near",
+   "expect": [
+    "Jules",
+    "Maya"
+   ]
+  },
+  {
+   "query": "post our blog content on social",
+   "group": "near",
+   "expect": [
+    "Jules"
+   ]
+  },
+  {
+   "query": "turn my podcast into posts",
+   "group": "near",
+   "expect": [
+    "Jules",
+    "Clip"
+   ]
+  },
+  {
+   "query": "chase my unpaid invoices",
+   "group": "near",
+   "expect": [
+    "Mina"
+   ]
+  },
+  {
+   "query": "reconcile my bank statements",
+   "group": "near",
+   "expect": [
+    "Mina",
+    "Daniel"
+   ]
+  },
+  {
+   "query": "write my product spec",
+   "group": "near",
+   "expect": [
+    "Alex",
+    "Priya"
+   ]
+  },
+  {
+   "query": "prioritize our feature backlog",
+   "group": "near",
+   "expect": [
+    "Alex",
+    "Priya"
+   ]
+  },
+  {
+   "query": "review my pull requests",
+   "group": "near",
+   "expect": [
+    "Casey"
+   ]
+  },
+  {
+   "query": "write test plans for releases",
+   "group": "near",
+   "expect": [
+    "Casey"
+   ]
+  },
+  {
+   "query": "make a video ad for our app",
+   "group": "near",
+   "expect": [
+    "Clip"
+   ]
+  },
+  {
+   "query": "budget vs actuals every month",
+   "group": "near",
+   "expect": [
+    "Daniel"
+   ]
+  },
+  {
+   "query": "check our npm packages for vulnerabilities",
+   "group": "near",
+   "expect": [
+    "Devon"
+   ]
+  },
+  {
+   "query": "review an NDA against our playbook",
+   "group": "near",
+   "expect": [
+    "Ellis"
+   ]
+  },
+  {
+   "query": "track contract renewals",
+   "group": "near",
+   "expect": [
+    "Ellis",
+    "Vera"
+   ]
+  },
+  {
+   "query": "brief me every morning before meetings",
+   "group": "near",
+   "expect": [
+    "Frankie",
+    "Kai"
+   ]
+  },
+  {
+   "query": "sort my inbox",
+   "group": "near",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "screen resumes for an open role",
+   "group": "near",
+   "expect": [
+    "Harper",
+    "Sofia"
+   ]
+  },
+  {
+   "query": "write a job description",
+   "group": "near",
+   "expect": [
+    "Harper",
+    "Sofia"
+   ]
+  },
+  {
+   "query": "build an onboarding plan for new hires",
+   "group": "near",
+   "expect": [
+    "Ines"
+   ]
+  },
+  {
+   "query": "write our company handbook policies",
+   "group": "near",
+   "expect": [
+    "Ines"
+   ]
+  },
+  {
+   "query": "write SOPs for the team",
+   "group": "near",
+   "expect": [
+    "James"
+   ]
+  },
+  {
+   "query": "draft a statement of work",
+   "group": "near",
+   "expect": [
+    "Jordan"
+   ]
+  },
+  {
+   "query": "answer a security questionnaire",
+   "group": "near",
+   "expect": [
+    "Lena"
+   ]
+  },
+  {
+   "query": "map where we store personal data",
+   "group": "near",
+   "expect": [
+    "Lena"
+   ]
+  },
+  {
+   "query": "find wasted spend in google ads",
+   "group": "near",
+   "expect": [
+    "Marco"
+   ]
+  },
+  {
+   "query": "write blog articles that rank",
+   "group": "near",
+   "expect": [
+    "Maria"
+   ]
+  },
+  {
+   "query": "find prospects and draft cold emails",
+   "group": "near",
+   "expect": [
+    "Max"
+   ]
+  },
+  {
+   "query": "plan our content calendar",
+   "group": "near",
+   "expect": [
+    "Maya",
+    "Jules"
+   ]
+  },
+  {
+   "query": "teardown of our competitors",
+   "group": "near",
+   "expect": [
+    "Nadia"
+   ]
+  },
+  {
+   "query": "write a press release for our launch",
+   "group": "near",
+   "expect": [
+    "Noor"
+   ]
+  },
+  {
+   "query": "clean up duplicate deals in our CRM",
+   "group": "near",
+   "expect": [
+    "Omar"
+   ]
+  },
+  {
+   "query": "explain why signups dropped last week",
+   "group": "near",
+   "expect": [
+    "Quinn"
+   ]
+  },
+  {
+   "query": "build a weekly KPI report",
+   "group": "near",
+   "expect": [
+    "Quinn"
+   ]
+  },
+  {
+   "query": "write our onboarding email sequence",
+   "group": "near",
+   "expect": [
+    "Remy"
+   ]
+  },
+  {
+   "query": "plan renewals for our biggest accounts",
+   "group": "near",
+   "expect": [
+    "Riley"
+   ]
+  },
+  {
+   "query": "reply to customer support tickets",
+   "group": "near",
+   "expect": [
+    "Robin",
+    "Sasha"
+   ]
+  },
+  {
+   "query": "turn repeat questions into help center articles",
+   "group": "near",
+   "expect": [
+    "Sasha",
+    "Robin"
+   ]
+  },
+  {
+   "query": "prepare a pitch deck for investors",
+   "group": "near",
+   "expect": [
+    "Theo"
+   ]
+  },
+  {
+   "query": "compare quotes from three vendors",
+   "group": "near",
+   "expect": [
+    "Vera"
+   ]
+  },
+  {
+   "query": "figure out our pricing and positioning",
+   "group": "near",
+   "expect": [
+    "Zara"
+   ]
+  },
+  {
+   "query": "I need more followers",
+   "group": "leap",
+   "expect": [
+    "Jules",
+    "Maya"
+   ]
+  },
+  {
+   "query": "nobody engages with our posts",
+   "group": "leap",
+   "expect": [
+    "Jules"
+   ]
+  },
+  {
+   "query": "customers keep cancelling",
+   "group": "leap",
+   "expect": [
+    "Riley"
+   ]
+  },
+  {
+   "query": "our churn is too high",
+   "group": "leap",
+   "expect": [
+    "Riley"
+   ]
+  },
+  {
+   "query": "I'm drowning in email",
+   "group": "leap",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "my calendar is a mess",
+   "group": "leap",
+   "expect": [
+    "Kai",
+    "Frankie"
+   ]
+  },
+  {
+   "query": "we're about to raise a seed round",
+   "group": "leap",
+   "expect": [
+    "Theo"
+   ]
+  },
+  {
+   "query": "I can't keep up with my books",
+   "group": "leap",
+   "expect": [
+    "Mina"
+   ]
+  },
+  {
+   "query": "nobody visits our website",
+   "group": "leap",
+   "expect": [
+    "Maria",
+    "Marco",
+    "Maya"
+   ]
+  },
+  {
+   "query": "our ads cost too much",
+   "group": "leap",
+   "expect": [
+    "Marco"
+   ]
+  },
+  {
+   "query": "we need to grow headcount",
+   "group": "leap",
+   "expect": [
+    "Harper",
+    "Sofia"
+   ]
+  },
+  {
+   "query": "I'm worried about GDPR",
+   "group": "leap",
+   "expect": [
+    "Lena"
+   ]
+  },
+  {
+   "query": "our app keeps shipping bugs",
+   "group": "leap",
+   "expect": [
+    "Casey"
+   ]
+  },
+  {
+   "query": "we got hit by a vulnerable library",
+   "group": "leap",
+   "expect": [
+    "Devon"
+   ]
+  },
+  {
+   "query": "launch is next week and the press doesn't know",
+   "group": "leap",
+   "expect": [
+    "Noor"
+   ]
+  },
+  {
+   "query": "our sales pipeline is a mess",
+   "group": "leap",
+   "expect": [
+    "Omar",
+    "Max"
+   ]
+  },
+  {
+   "query": "I don't know what my competitors charge",
+   "group": "leap",
+   "expect": [
+    "Nadia",
+    "Zara"
+   ]
+  },
+  {
+   "query": "we're entering a new market",
+   "group": "leap",
+   "expect": [
+    "Zara",
+    "Nadia"
+   ]
+  },
+  {
+   "query": "our support queue is overflowing",
+   "group": "leap",
+   "expect": [
+    "Sasha",
+    "Robin"
+   ]
+  },
+  {
+   "query": "nobody opens our newsletter",
+   "group": "leap",
+   "expect": [
+    "Remy"
+   ]
+  },
+  {
+   "query": "too many feature requests and no idea what to build",
+   "group": "leap",
+   "expect": [
+    "Priya",
+    "Alex"
+   ]
+  },
+  {
+   "query": "the numbers in our report don't add up",
+   "group": "leap",
+   "expect": [
+    "Quinn",
+    "Daniel"
+   ]
+  },
+  {
+   "query": "I'm paying for software we don't use",
+   "group": "leap",
+   "expect": [
+    "Vera"
+   ]
+  },
+  {
+   "query": "we keep losing deals at the proposal stage",
+   "group": "leap",
+   "expect": [
+    "Jordan"
+   ]
+  },
+  {
+   "query": "need a demo video for our product launch",
+   "group": "leap",
+   "expect": [
+    "Clip"
+   ]
+  },
+  {
+   "query": "our processes break whenever someone is out",
+   "group": "leap",
+   "expect": [
+    "James"
+   ]
+  },
+  {
+   "query": "the new hire starts monday",
+   "group": "leap",
+   "expect": [
+    "Ines"
+   ]
+  },
+  {
+   "query": "I signed a contract without reading it",
+   "group": "leap",
+   "expect": [
+    "Ellis"
+   ]
+  },
+  {
+   "query": "we want to co-sell with a bigger company",
+   "group": "leap",
+   "expect": [
+    "Anika"
+   ]
+  },
+  {
+   "query": "we don't know when we'll run out of cash",
+   "group": "leap",
+   "expect": [
+    "Daniel",
+    "Theo"
+   ]
+  },
+  {
+   "query": "convert this PDF to text",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "what's the weather in Paris",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "create a Linear issue",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "send a Slack message to the team channel",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "add a row to my google sheet",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "run this python script",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "http request to an API",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "search the web for the latest news",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "resize an image",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "transcribe this audio file",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "translate this text into Spanish",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "read a file from my workspace",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "create a GitHub pull request",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "get the current time",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "list my google calendar events",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "fetch a webpage",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "generate an image of a cat",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "summarize this document",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "post a tweet",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "upload a file to google drive",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "query my postgres database",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "create a notion page",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "send an SMS",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "unzip this archive",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "schedule this agent to run daily",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "extract text from a website",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "make a QR code",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "calculate a math expression",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "send a discord message",
+   "group": "miss",
+   "expect": []
+  },
+  {
+   "query": "check the stock price of apple",
+   "group": "miss",
+   "expect": []
+  }
+ ]
+}

@@ -45,7 +45,7 @@ function tierLabel(
 interface Props {
   data: UserRateLimitResponse;
   onReset: (resetWeekly: boolean) => Promise<void>;
-  onTierChange?: (newTier: string) => Promise<void>;
+  onTierChange?: (newTier: string) => Promise<string | null>;
   /** Full per-tier multiplier map (incl. admin-managed tiers) from the admin rate-limit endpoint. */
   tierMultipliers?: Record<string, number>;
   /** Override the outer container classes (default: bordered card). */
@@ -93,7 +93,15 @@ export function RateLimitDisplay({
 
     setIsChangingTier(true);
     try {
-      await onTierChange(newTier);
+      const warning = await onTierChange(newTier);
+      if (warning) {
+        toast({
+          title: `Tier set to ${newTier}, but Stripe will revert it`,
+          description: warning,
+          variant: "destructive",
+        });
+        return;
+      }
       toast({
         title: "Tier updated",
         description: `Changed to ${newTier} (${tierLabel(newTier as Tier, tierMultipliers)}).`,

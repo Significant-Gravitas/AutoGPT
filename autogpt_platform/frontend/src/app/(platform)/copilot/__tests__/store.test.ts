@@ -522,15 +522,13 @@ describe("lastArtifact session scoping", () => {
     expect(useCopilotUIStore.getState().artifactPanel.lastArtifact).toBeNull();
   });
 
-  it("clearLastArtifact forgets the previous chat's expert integrations", () => {
+  it("clearLastArtifact leaves the previous chat's integrations tab", () => {
     useCopilotUIStore
       .getState()
       .toggleIntegrationsPanel({ id: "expert-maria", name: "Maria" });
     useCopilotUIStore.getState().closeArtifactPanel();
     useCopilotUIStore.getState().clearLastArtifact();
-    const s = useCopilotUIStore.getState();
-    expect(s.contextPanelExpert).toBeNull();
-    expect(s.artifactPanel.activeTab).toBe("files");
+    expect(useCopilotUIStore.getState().artifactPanel.activeTab).toBe("files");
   });
 
   it("closing the artifacts tab forgets the remembered preview", () => {
