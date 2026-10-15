@@ -25,7 +25,12 @@ import {
   Folder01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
-import { notFound, useParams, useRouter } from "next/navigation";
+import {
+  notFound,
+  useParams,
+  useRouter,
+  useSearchParams,
+} from "next/navigation";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import { ExpertChatDrawer } from "../components/ExpertChatDrawer/ExpertChatDrawer";
 import { expertToChatTarget } from "../components/ExpertChatDrawer/helpers";
@@ -69,6 +74,13 @@ const TABS = [
 export default function ExpertDetailPage() {
   const { expertId } = useParams<{ expertId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedTab = searchParams.get("tab");
+  const initialTab = TABS.some((tab) => tab.value === requestedTab)
+    ? (requestedTab as (typeof TABS)[number]["value"])
+    : "basics";
+  const requestedSkill = searchParams.get("skill");
+  const requestedVersion = searchParams.get("version");
   const { enabled, ready } = useFlagStatus(Flag.HIRE_EXPERTS);
   const {
     expert,
@@ -162,7 +174,7 @@ export default function ExpertDetailPage() {
           enabled={Boolean(enabled) && ready}
         />
 
-        <TabsLine data-profile-tabs variant="compact" defaultValue="basics">
+        <TabsLine data-profile-tabs variant="compact" defaultValue={initialTab}>
           <TabsLineList
             flush={false}
             className={PROFILE_TABS_LIST_CLASS}
@@ -248,6 +260,8 @@ export default function ExpertDetailPage() {
               accentClassName={
                 getRaisedExpertAccent(expert.role, expert.color).pill
               }
+              initialSkill={requestedSkill}
+              initialVersionId={requestedVersion}
             />
           </TabsLineContent>
 
