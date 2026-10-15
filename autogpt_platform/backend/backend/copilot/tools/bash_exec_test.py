@@ -511,6 +511,23 @@ class TestBashExecBehindTheSwapProxy:
         self.grant.assert_awaited_once_with("sb-1", {})
 
     @pytest.mark.asyncio(loop_scope="session")
+    async def test_the_grant_lands_before_the_command_starts(self):
+        """The proxy resolves a placeholder only once it is granted, so the
+        command's first request would be refused if the grant came after."""
+        order: list[str] = []
+        sandbox = _make_sandbox(stdout="ok")
+        run = sandbox.commands.run.side_effect
+
+        async def started(*args, **kwargs):
+            order.append("run")
+            return await run(*args, **kwargs)
+
+        self.grant.side_effect = lambda *_: order.append("grant")
+        sandbox.commands.run = AsyncMock(side_effect=started)
+        await self._run(sandbox)
+        assert order[:2] == ["grant", "run"]
+
+    @pytest.mark.asyncio(loop_scope="session")
     async def test_a_grant_that_fails_does_not_stop_the_command(self):
         sandbox = _make_sandbox(stdout="ok")
         self.grant.side_effect = ConnectionError("redis down")

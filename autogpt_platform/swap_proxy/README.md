@@ -277,6 +277,11 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 ## Known limits
 
+- An expert's box is shared by its chats, so it starts with the user's default
+  account for each provider in its own environment (for the desktop's terminal
+  and browser), and that account is granted to it. A chat on that expert that
+  picked another account can still act as the default from the box. A chat's
+  own box starts with the chat's pick instead.
 - Images and binary bodies are neither swapped (above 5 MiB) nor scrubbed (at
   any size). What counts as text is the content type the sender declares.
 - A value goes into the `Authorization` header and nowhere else. A provider

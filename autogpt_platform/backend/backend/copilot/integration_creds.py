@@ -51,6 +51,13 @@ PROVIDER_ENV_VARS: dict[str, list[str]] = {
 _GRANT_KEY_PREFIX = "e2b:egress:grant:"
 # As long as a paused box can keep a placeholder (E2B's paused-sandbox life).
 _GRANT_TTL = 48 * 3600
+# Add a grant and arm its expiry in one script: a member added without its
+# EXPIRE would leave the key with no TTL.
+_GRANT_SCRIPT = (
+    'redis.call("sadd", KEYS[1], ARGV[1]) '
+    'redis.call("expire", KEYS[1], ARGV[2]) '
+    "return 1"
+)
 
 # 60 s, not the original 300 s: the pub/sub invalidation below is best-effort
 # (a Redis blip drops the message), so the TTL is the floor on how long a stale
@@ -472,9 +479,13 @@ async def grant_to_box(sandbox_id: str, grants: Mapping[str, str]) -> None:
         return
     redis = await get_redis_async()
     for provider, credential_id in grants.items():
-        key = _grant_key(sandbox_id, provider)
-        await redis.sadd(key, credential_id)
-        await redis.expire(key, _GRANT_TTL)
+        await redis.eval(
+            _GRANT_SCRIPT,
+            1,
+            _grant_key(sandbox_id, provider),
+            credential_id,
+            _GRANT_TTL,
+        )
 
 
 async def renew_box_grants(sandbox_id: str) -> None:

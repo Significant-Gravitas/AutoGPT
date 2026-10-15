@@ -124,9 +124,8 @@ async def resolve_swap_credential(
     values: dict[str, str] = {}
     failure: ProviderTokenUnavailable | None = None
     for credential_id in sorted(granted):
-        # The token cache's path, keyed by the credential: a lookup a
-        # command's placeholder already warmed, not one per stored account.
-        # Locked: concurrent resolves for two hosts must not both spend a
+        # The token cache's path, keyed by the credential: one lookup per
+        # granted credential, not one per stored account.  Locked: concurrent resolves for two hosts must not both spend a
         # single-use refresh token, and this service runs on one event loop.
         try:
             token = await get_provider_token(
