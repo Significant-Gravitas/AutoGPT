@@ -256,11 +256,13 @@ async def download_brain_dump_recording(
 ) -> RedirectResponse:
     """Hand back the user's own recording, for as long as it is kept.
 
-    Kept working even when ``status`` is ``failed`` — "your recording is
-    safe" has to be true, and this is what makes it checkable. Recordings
-    are deleted within 7 days (see ``retention.py``), and one that is due
-    is refused even before the sweep reaches it; a signed URL for one that
-    is gone would only fail at the bucket, so say so here instead.
+    Meant for a take that failed: "your recording is safe" has to be
+    true, and this is what makes it checkable. A transcribed take has no
+    recording left, since only the transcript is kept. A failed take's
+    recording is deleted within 48 hours (see ``retention.py``), and one
+    that is due is refused even before the sweep reaches it; a signed URL
+    for one that is gone would only fail at the bucket, so say so here
+    instead.
     """
     dump = await db.get_dump(user_id)
     if dump is None or not dump.audioPath:

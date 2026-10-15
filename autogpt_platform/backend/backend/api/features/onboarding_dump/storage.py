@@ -19,7 +19,12 @@ from typing import Any, Awaitable, cast
 
 from backend.data import redis_client
 from backend.util.cloud_storage import get_cloud_storage_handler
-from backend.util.gcs_utils import blob_created_at, parse_gcs_path
+from backend.util.gcs_utils import (
+    blob_created_at,
+    fresh_gcs_client,
+    is_not_found_error,
+    parse_gcs_path,
+)
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -29,9 +34,12 @@ logger = logging.getLogger(__name__)
 # accumulate.
 PART_BUFFER_TTL_SECONDS = 6 * 60 * 60
 
-# Privacy policy: "We delete the recording within 7 days and keep the
-# transcript while your account exists." ``retention.py`` enforces it.
-AUDIO_RETENTION = timedelta(days=7)
+# Privacy policy: "We delete the recording as soon as it is transcribed
+# (within 48 hours at most) and keep the transcript while your account
+# exists." The pipeline deletes a recording once its transcript is stored;
+# ``retention.py`` deletes every other one (failed, unfinished or orphaned
+# takes, and deletes that failed) once it reaches this age.
+AUDIO_RETENTION = timedelta(hours=48)
 
 # The blob's own expiry, read by the generic cleanup, is only a backstop for
 # a sweep that keeps failing. It sits a day past the sweep's reach, so it
@@ -173,6 +181,25 @@ async def audio_available(audio_path: str, now: datetime | None = None) -> bool:
     if created is None:
         return False
     return (now or datetime.now(timezone.utc)) - created < audio_max_age()
+
+
+async def delete_audio(audio_path: str) -> None:
+    """Delete one stored recording; one that is already gone counts as deleted.
+
+    Any other failure raises, for the caller to leave the file to the
+    retention sweep. A path outside the configured private bucket is
+    refused rather than deleted.
+    """
+    handler = await get_cloud_storage_handler()
+    bucket, blob = parse_gcs_path(audio_path)
+    if bucket != handler.config.gcs_bucket_name:
+        raise ValueError("Recording is not in the configured private bucket")
+    async with fresh_gcs_client() as client:
+        try:
+            await client.delete(bucket, blob)
+        except Exception as e:
+            if not is_not_found_error(e):
+                raise
 
 
 async def audio_download_url(user_id: str, audio_path: str) -> str:

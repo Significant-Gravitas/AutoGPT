@@ -1,8 +1,10 @@
 """The brain-dump pipeline: parts → audio → transcript → understanding.
 
 Every step advances ``OnboardingBrainDump.status`` so the loading screen
-can narrate honestly, and no failure ever deletes the audio — a failed
-dump stays downloadable and retryable.
+can narrate honestly. Only the transcript is kept: the recording is deleted
+as soon as the transcript is stored. Until then no failure deletes it, so a
+failed take stays downloadable and retryable until the retention sweep
+takes it (``storage.AUDIO_RETENTION``).
 """
 
 import asyncio
@@ -130,6 +132,13 @@ async def finalize_voice_dump(
             current.status, current.transcript, BrainDumpInputMode.voice
         )
 
+    # A retry of a failed take stores the recording again, so the copy the
+    # failed attempt stored has to go too once this one is transcribed.
+    earlier_audio_path = (
+        existing.audioPath
+        if existing is not None and existing.recordingId == recording_id
+        else None
+    )
     await _admit_processing(user_id, recording_id)
     audio = await storage.assemble_parts(user_id, recording_id)
     if not audio:
@@ -191,16 +200,22 @@ async def finalize_voice_dump(
         time.monotonic() - started_at,
         len(result.text),
     )
-    await db.update_dump(
+    # The row forgets the recording in the same write that stores the
+    # transcript, so it never points at a file that is about to go.
+    transcript_saved = await db.update_dump(
         user_id,
         recording_id,
         status=BrainDumpStatus.transcribed,
         transcript=result.text,
         transcriptLang=result.language,
+        audioPath=None,
     )
+    if transcript_saved:
+        await _delete_recordings([audio_path, earlier_audio_path])
     # The transcript is stored *before* the gate so a rejected dump keeps
-    # its text (and audio) for recovery and debugging — the gate only
-    # decides whether the personalized pipeline below may run on it.
+    # its text for debugging — the gate only decides whether the
+    # personalized pipeline below may run on it. The recording is not kept
+    # for a rejected take either: the user re-records from the browser.
     quality_error = await quality.check_transcript_quality(result.text)
     if quality_error is not None:
         return await _quality_rejection(
@@ -297,6 +312,26 @@ async def finalize_typed_dump(
     return _pipeline_response(
         BrainDumpStatus.transcribed, text.strip(), BrainDumpInputMode.typed
     )
+
+
+async def _delete_recordings(audio_paths: list[str | None]) -> None:
+    """Delete a transcribed take's recordings, best effort.
+
+    The transcript is already stored, so a failed delete must not fail the
+    take. The row no longer points at the files, and the retention sweep
+    deletes them within ``storage.AUDIO_RETENTION``. The log carries no
+    paths: they carry user IDs.
+    """
+    paths = [path for path in audio_paths if path]
+    outcomes = await asyncio.gather(
+        *(storage.delete_audio(path) for path in paths), return_exceptions=True
+    )
+    errors = [type(o).__name__ for o in outcomes if isinstance(o, BaseException)]
+    if errors:
+        logger.warning(
+            f"Brain dump recordings not deleted after transcription ({len(errors)} "
+            f"of {len(paths)}), left to the retention sweep: {', '.join(errors)}"
+        )
 
 
 async def _admit_processing(user_id: str, recording_id: str) -> None:

@@ -208,6 +208,7 @@ def storage_mocks(mocker: MockerFixture) -> dict[str, AsyncMock]:
         "discard_parts": AsyncMock(),
         "audio_download_url": AsyncMock(return_value="https://signed.example/audio"),
         "audio_available": AsyncMock(return_value=True),
+        "delete_audio": AsyncMock(),
     }
     for name, mock in mocks.items():
         mocker.patch(f"{module}.{name}", new=mock)
@@ -302,7 +303,10 @@ def finalize(**overrides: Any):
 
 
 def test_parts_upload_then_finalize_completes_with_full_transcript(
-    dumps: DumpStore, stt_create: AsyncMock, extraction: dict[str, AsyncMock]
+    dumps: DumpStore,
+    stt_create: AsyncMock,
+    extraction: dict[str, AsyncMock],
+    storage_mocks: dict[str, AsyncMock],
 ):
     part = upload_part()
     assert part.status_code == 200
@@ -336,7 +340,9 @@ def test_parts_upload_then_finalize_completes_with_full_transcript(
     ]
     assert dumps.row is not None
     assert dumps.row.transcript == TRANSCRIPT
-    assert dumps.row.audioPath == "brain-dumps/rec-1.webm"
+    # Only the transcript is kept: the recording went once it was stored.
+    assert dumps.row.audioPath is None
+    storage_mocks["delete_audio"].assert_awaited_once_with("brain-dumps/rec-1.webm")
     stt_create.assert_awaited_once()
     extraction["upsert_business_understanding"].assert_awaited_once()
 
@@ -456,7 +462,9 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
 ):
     """The API state the frontend branches on: a 200 envelope with
     ``failed`` + a quality error code, distinct from a transcription
-    failure — with transcript and audio still on the row."""
+    failure — with the transcript still on the row. The recording is not:
+    it went once the transcript was stored, and a re-record starts a new
+    take from the browser."""
     upload_part()
     quality_gate.return_value = "insufficient_content"
 
@@ -470,7 +478,7 @@ def test_quality_rejected_voice_finalize_reports_the_error_code(
     assert dumps.row.status == BrainDumpStatus.failed
     assert dumps.row.errorCode == "insufficient_content"
     assert dumps.row.transcript == TRANSCRIPT
-    assert dumps.row.audioPath is not None
+    assert dumps.row.audioPath is None
     extraction["upsert_business_understanding"].assert_not_awaited()
 
 
@@ -526,7 +534,7 @@ def test_skipped_finalize_records_the_skip_without_a_transcript(dumps: DumpStore
     assert dumps.row.transcript is None
 
 
-def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
+def test_a_transcribed_take_offers_no_recording(dumps: DumpStore):
     upload_part()
     finalize()
 
@@ -536,11 +544,27 @@ def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
         "status": BrainDumpStatus.completed,
         "input_mode": BrainDumpInputMode.voice,
         "error_code": None,
-        "has_audio": True,
+        "has_audio": False,
         # The greeting is stored in the same update that completes the
         # dump, so a completed voice dump is always greeting-ready.
         "greeting_ready": True,
     }
+
+    recording = client.get(RECORDING_URL, follow_redirects=False)
+    assert recording.status_code == 404
+    assert recording.json()["detail"] == "No recording found"
+
+
+def test_a_failed_take_keeps_its_recording_downloadable(
+    dumps: DumpStore, stt_create: AsyncMock
+):
+    upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
+    finalize()
+
+    status = client.get(STATUS_URL)
+    assert status.json()["status"] == BrainDumpStatus.failed
+    assert status.json()["has_audio"] is True
 
     recording = client.get(RECORDING_URL, follow_redirects=False)
     assert recording.status_code == 307
@@ -548,9 +572,10 @@ def test_status_and_recording_reflect_the_stored_dump(dumps: DumpStore):
 
 
 def test_recording_deleted_by_retention_is_404_not_a_dead_link(
-    dumps: DumpStore, storage_mocks: dict[str, AsyncMock]
+    dumps: DumpStore, storage_mocks: dict[str, AsyncMock], stt_create: AsyncMock
 ):
     upload_part()
+    stt_create.side_effect = RuntimeError("provider down")
     finalize()
     storage_mocks["audio_available"].return_value = False
 

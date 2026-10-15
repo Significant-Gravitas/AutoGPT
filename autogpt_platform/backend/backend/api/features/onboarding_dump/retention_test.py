@@ -1,4 +1,4 @@
-"""The 7-day sweep that deletes brain-dump voice recordings.
+"""The 48-hour sweep that deletes brain-dump voice recordings.
 
 The bucket is a fake listing; ``clear_audio_paths`` is a recorder standing
 in for the database manager, so the order of "clear the row" and "delete
@@ -20,7 +20,7 @@ BUCKET = "private-bucket"
 NOW = datetime(2026, 10, 13, 12, 0, tzinfo=timezone.utc)
 # After every unmarked recording is gone: only the marker counts.
 LATER = datetime(2026, 12, 1, 12, 0, tzinfo=timezone.utc)
-MAX_AGE = timedelta(days=6, hours=18)
+MAX_AGE = timedelta(hours=42)
 OLD = "uploads/users/user-1/uuid-a/brain-dump-rec-old.webm"
 RECENT = "uploads/users/user-1/uuid-b/brain-dump-rec-new.webm"
 MARKER = {storage.RECORDING_MARKER_KEY: storage.RECORDING_MARKER_VALUE}

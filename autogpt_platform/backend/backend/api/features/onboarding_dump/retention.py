@@ -1,8 +1,12 @@
 """Deleting brain-dump voice recordings after the retention window.
 
-The privacy policy promises the recording is gone within 7 days; the
-transcript stays while the account exists. This sweep is what keeps that
-promise, and it works from the bucket rather than from the table:
+The privacy policy promises the recording is deleted as soon as it is
+transcribed, within 48 hours at most; the transcript stays while the
+account exists. The pipeline deletes a recording once its transcript is
+stored (``service.finalize_voice_dump``). This sweep catches every other
+one: takes that failed or never finished, which keep their recording so
+the user can download it or retry, and transcribed ones whose delete
+failed. It works from the bucket rather than from the table:
 
 - A row only points at the user's *current* take. Re-recording resets
   ``audioPath``, and deleting the account cascades the row away, but
