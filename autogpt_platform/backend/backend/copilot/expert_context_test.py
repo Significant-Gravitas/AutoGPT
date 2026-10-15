@@ -30,6 +30,10 @@ from backend.copilot.expert_context import (
     ExpertSessionUnavailableError,
     build_expert_identity_suffix,
 )
+from backend.copilot.expert_tenancy import (
+    remember_expert_tenancy,
+    sharing_expert_tenancy,
+)
 from backend.copilot.rate_limit import SubscriptionTier
 from backend.util.feature_flag import Flag
 
@@ -164,6 +168,48 @@ class TestBuildExpertIdentitySuffix:
         assert "never present yourself as Otto" in result
         assert "call `expert_onboarding` exactly once" in result
         assert "Do not use `ask_question` for it" in result
+
+    @pytest.mark.asyncio
+    async def test_in_a_turn_it_holds_the_chat_to_the_tenancy_the_turn_checked(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("another-org", None)
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_tenancy(),
+        ):
+            remember_expert_tenancy(
+                "user-1", "exp-1", ("personal-org", "personal-team")
+            )
+            result = await build_expert_identity_suffix(
+                "user-1",
+                "exp-1",
+                organization_id="personal-org",
+                team_id="personal-team",
+            )
+
+        assert "<expert_identity>" in result
+
+    @pytest.mark.asyncio
+    async def test_in_a_turn_a_chat_outside_the_checked_tenancy_is_refused(self):
+        mock_db = MagicMock()
+        mock_db.get_expert = AsyncMock(return_value=_expert())
+        mock_db.resolve_private_expert_tenancy = AsyncMock(
+            return_value=("team-org", "team-team")
+        )
+        with (
+            patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)),
+            sharing_expert_tenancy(),
+            pytest.raises(ExpertSessionUnavailableError, match="personal workspace"),
+        ):
+            remember_expert_tenancy(
+                "user-1", "exp-1", ("personal-org", "personal-team")
+            )
+            await build_expert_identity_suffix(
+                "user-1", "exp-1", organization_id="team-org", team_id="team-team"
+            )
 
     @pytest.mark.asyncio
     async def test_plain_session_returns_empty(self):

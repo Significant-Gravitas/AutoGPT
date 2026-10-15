@@ -25,6 +25,10 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
 )
+from backend.copilot.expert_tenancy import (
+    remember_expert_tenancy,
+    sharing_expert_tenancy,
+)
 from backend.copilot.llm_attribution import set_turn_impersonated
 from backend.copilot.response_model import StreamError, StreamStatus
 from backend.copilot.sdk import service as sdk_service
@@ -214,6 +218,9 @@ async def _normalize_private_expert_session_tenancy(
         raise ExpertSessionUnavailableError(EXPERT_SESSION_MISSING_MESSAGE) from e
     except ExpertPrivateTenancyNotFoundError as e:
         raise ExpertSessionUnavailableError(EXPERT_SESSION_TEMPORARY_MESSAGE) from e
+    remember_expert_tenancy(
+        session.user_id, session.expert_id, (organization_id, team_id)
+    )
     if (session.organization_id, session.team_id) == (organization_id, team_id):
         return session
 
@@ -554,7 +561,7 @@ class CoPilotProcessor:
             cluster_lock: Distributed lock for refresh
             log: Structured logger
         """
-        with turn_transaction(entry) as turn:
+        with turn_transaction(entry) as turn, sharing_expert_tenancy():
             await self._run_turn(entry, cancel, cluster_lock, log, turn)
 
     async def _run_turn(

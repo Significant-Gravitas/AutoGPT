@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.api.features.experts.models import PROTECTED_SOUL_RULES, Expert
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -32,6 +33,7 @@ from backend.copilot.expert_context import (
     EXPERT_SESSION_MISSING_MESSAGE,
     EXPERT_SESSION_TEMPORARY_MESSAGE,
     ExpertSessionUnavailableError,
+    build_expert_identity_suffix,
 )
 from backend.copilot.llm_attribution import is_turn_impersonated
 from backend.copilot.model import ChatSession
@@ -890,6 +892,125 @@ async def test_expert_tenancy_errors_publish_actionable_copy(
     mark_completed.assert_awaited_once_with(
         "sess-1", error_message=expected_message, turn_id="turn-1"
     )
+
+
+class TestExpertTurnsCheckTheirExpert:
+    """An expert's turn checks the expert's tenancy before its engine runs,
+    and the identity block the engine builds is held to that turn's check.
+    The engine here builds the identity the way the real ones do, inside the
+    turn and behind the processor's heartbeat stream."""
+
+    @staticmethod
+    def _session() -> ChatSession:
+        session = ChatSession.new(
+            "user-1",
+            dry_run=False,
+            organization_id="personal-org",
+            team_id="personal-team",
+            expert_id="expert-1",
+        )
+        session.session_id = "sess-1"
+        return session
+
+    @staticmethod
+    async def _run_turn(session: ChatSession, resolve, identities: list[str]):
+        store = MagicMock()
+        store.resolve_private_expert_tenancy = AsyncMock(side_effect=resolve)
+        store.expert_setup_status = AsyncMock(return_value="ready")
+        store.get_expert = AsyncMock(
+            return_value=Expert(
+                id="expert-1",
+                name="Maria",
+                avatar_url=None,
+                role="SEO Specialist",
+                tagline=None,
+                bio=None,
+                skills=[],
+                identity="You are Maria.",
+                voice_preferences="Direct.",
+                boundaries="Ask first.",
+                protected_soul_rules=list(PROTECTED_SOUL_RULES),
+                is_template=False,
+                source_template_id=None,
+                is_archived=False,
+                workflows=[],
+            )
+        )
+
+        async def engine(*, session: ChatSession, **_kwargs):
+            identities.append(
+                await build_expert_identity_suffix(
+                    session.user_id,
+                    session.expert_id,
+                    organization_id=session.organization_id,
+                    team_id=session.team_id,
+                )
+            )
+            yield StreamTextDelta(id="t", delta="hi")
+
+        with (
+            patch(
+                "backend.copilot.executor.processor.ChatConfig",
+                return_value=MagicMock(test_mode=True),
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_chat_completion_dummy",
+                engine,
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.stream_and_publish",
+                side_effect=lambda **kwargs: kwargs["stream"],
+            ),
+            patch(
+                "backend.copilot.executor.processor.stream_registry.mark_session_completed",
+                new=AsyncMock(),
+            ),
+            patch(
+                "backend.copilot.model.get_chat_session",
+                new=AsyncMock(return_value=session),
+            ),
+            patch("backend.data.db_accessors.experts_db", return_value=store),
+            patch("backend.copilot.expert_context.experts_db", return_value=store),
+        ):
+            await CoPilotProcessor()._execute_async(
+                _make_entry(), threading.Event(), MagicMock(), _make_log()
+            )
+
+    @pytest.mark.asyncio
+    async def test_the_turn_after_the_expert_went_away_is_refused(self) -> None:
+        session = self._session()
+        gone = False
+        identities: list[str] = []
+
+        async def resolve(user_id: str, expert_id: str):
+            if gone:
+                raise ExpertNotFoundError(expert_id)
+            return ("personal-org", "personal-team")
+
+        await self._run_turn(session, resolve, identities)
+        gone = True
+        with pytest.raises(ExpertSessionUnavailableError):
+            await self._run_turn(session, resolve, identities)
+
+        assert len(identities) == 1
+        assert "<expert_identity>" in identities[0]
+
+    @pytest.mark.asyncio
+    async def test_a_turn_is_held_to_the_tenancy_it_checked_first(self) -> None:
+        """The expert's tenancy changes after the turn checked it: the turn
+        answers from the check it started with rather than refusing
+        halfway through."""
+        session = self._session()
+        answers = iter([("personal-org", "personal-team")])
+        identities: list[str] = []
+
+        async def resolve(user_id: str, expert_id: str):
+            return next(answers, ("another-org", None))
+
+        await self._run_turn(session, resolve, identities)
+
+        assert len(identities) == 1
+        assert "<expert_identity>" in identities[0]
 
 
 def _codex_entry(
