@@ -196,6 +196,33 @@ async def test_live_skills_holds_only_listings_on_the_shelf():
     assert live[live_one.id].name == "Live One"
 
 
+async def test_live_packages_hold_each_live_listings_active_version_whole():
+    live_one = await _make_listing("live-one")
+    assert live_one.activeVersionId is not None
+    await prisma.models.SkillListingFile.prisma().create(
+        data={
+            "skillListingVersionId": live_one.activeVersionId,
+            "relativePath": "scripts/run.py",
+            "sizeBytes": 5,
+            "sha256": "x",
+            "isExecutable": True,
+            "content": prisma.Base64.encode(b"print"),
+        }
+    )
+    off_shelf = await _make_listing("off-shelf-one", available=False)
+
+    packages = await skill_db.get_live_packages(
+        [live_one.id, off_shelf.id, "missing-one"]
+    )
+
+    assert list(packages) == [live_one.id]
+    package = packages[live_one.id]
+    assert (package.slug, package.version_id) == ("live-one", live_one.activeVersionId)
+    assert [(f.relative_path, f.content, f.is_executable) for f in package.files] == [
+        ("scripts/run.py", b"print", True)
+    ]
+
+
 @pytest.mark.parametrize("expert_id", [None, "expert-1"])
 async def test_install_stores_under_the_listing_slug_and_counts(mocker, expert_id):
     listing = await _make_listing(

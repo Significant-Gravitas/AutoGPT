@@ -184,28 +184,55 @@ async def get_version_packages(
         where={"id": {"in": version_ids}}, include={"SkillListing": True}
     )
     files = await _read_versions_files([row.id for row in rows])
-    packages: dict[str, skill_model.SkillVersionPackage] = {}
-    for row in rows:
-        if row.SkillListing is None:
-            continue
-        slug = row.SkillListing.slug
-        skill_markdown = row.skillMarkdown or skill_model.legacy_skill_markdown(
-            row, slug
-        )
-        package = files.get(row.id, [])
-        packages[row.id] = skill_model.SkillVersionPackage(
-            version_id=row.id,
-            listing_id=row.skillListingId,
-            slug=slug,
-            version=row.version,
-            package_sha256=row.packageSha256
-            or skill_model.package_sha256_of(skill_markdown, _hashed_files(package)),
-            skill_markdown=skill_markdown,
-            files=package,
-            required_providers=list(row.requiredProviders),
-            scanned_checksums=list(row.scannedSha256),
-        )
-    return packages
+    return {
+        row.id: _to_version_package(row, row.SkillListing.slug, files)
+        for row in rows
+        if row.SkillListing is not None
+    }
+
+
+async def get_live_packages(
+    listing_ids: list[str],
+) -> dict[str, skill_model.SkillVersionPackage]:
+    """The active version's whole package per live listing, keyed by listing
+    id, read from the database rather than the reconcile cache: a downloaded
+    file is a snapshot, so a stale entry would be frozen into it for good."""
+    if not listing_ids:
+        return {}
+    listings = await prisma.models.SkillListing.prisma().find_many(
+        where=_live_listing_where({"id": {"in": listing_ids}}),
+        include={"ActiveVersion": True},
+    )
+    actives = {
+        listing.id: (skill_model.active_version(listing), listing.slug)
+        for listing in listings
+    }
+    files = await _read_versions_files([active.id for active, _ in actives.values()])
+    return {
+        listing_id: _to_version_package(active, slug, files)
+        for listing_id, (active, slug) in actives.items()
+    }
+
+
+def _to_version_package(
+    row: prisma.models.SkillListingVersion,
+    slug: str,
+    files: dict[str, list[SkillFile]],
+) -> skill_model.SkillVersionPackage:
+    skill_markdown = row.skillMarkdown or skill_model.legacy_skill_markdown(row, slug)
+    package = files.get(row.id, [])
+    return skill_model.SkillVersionPackage(
+        version_id=row.id,
+        listing_id=row.skillListingId,
+        slug=slug,
+        version=row.version,
+        package_sha256=row.packageSha256
+        or skill_model.package_sha256_of(skill_markdown, _hashed_files(package)),
+        skill_markdown=skill_markdown,
+        files=package,
+        required_providers=list(row.requiredProviders),
+        scanned_checksums=list(row.scannedSha256),
+    )
 
 
 async def find_version_by_hash(listing_id: str, package_sha256: str) -> str | None:
