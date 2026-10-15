@@ -36,13 +36,11 @@ const TERMINAL = ["COMPLETED", "FAILED", "TERMINATED"];
 const RUN_TIMEOUT_MS = Number(__ENV.GRAPH_RUN_TIMEOUT_MS || 60000);
 const WS_OPEN_TIMEOUT_MS = 10000;
 
-let announcedSkip = false;
-
 export function graphRun(data, profile) {
   if (!data.graphs.enabled) {
-    if (!announcedSkip) {
+    // Once per run: the scenario's first iteration, whichever VU runs it.
+    if (exec.scenario.iterationInTest === 0) {
       console.warn(`graph_run: skipped: ${data.graphs.reason}`);
-      announcedSkip = true;
     }
     return;
   }

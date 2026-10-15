@@ -22,8 +22,6 @@ export const MESSAGES = [
   "Name one block that fetches a web page. One sentence.",
 ];
 
-let announcedSkip = false;
-
 export function copilotReads(data, profile) {
   const phase = currentPhase(profile);
   const random = iterationRandom(
@@ -65,9 +63,9 @@ export function copilotReads(data, profile) {
 
 export function copilotTurn(data, profile) {
   if (!data.copilot.enabled) {
-    if (!announcedSkip) {
+    // Once per run: the scenario's first iteration, whichever VU runs it.
+    if (exec.scenario.iterationInTest === 0) {
       console.warn(`copilot_turn: skipped: ${data.copilot.reason}`);
-      announcedSkip = true;
     }
     return;
   }
