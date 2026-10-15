@@ -829,7 +829,7 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
     assert {c.kwargs["message"] for c in dispatched.await_args_list} == {
         held.WAKE_MESSAGE
     }
-    assert supervise.await_args.kwargs["user_message"] == request
+    assert supervise.await_args.kwargs["user_messages"][-1] == request
     said = [c.args[:2] for c in bot.adapter.send_message.await_args_list]
     assert said == [(thread, executor.reply)]
 

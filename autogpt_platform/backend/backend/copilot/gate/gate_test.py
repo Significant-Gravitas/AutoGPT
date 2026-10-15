@@ -511,3 +511,32 @@ async def test_the_judge_reads_the_users_words_not_the_first_turn_prefix(
     assert words in request
     assert "<available_skills>" not in request
     assert "<user_context>" not in request
+
+
+async def test_the_judge_is_handed_every_message_the_user_typed(
+    gate_on, clean_session_state
+):
+    """The supervisor picks its window from these; neither an answered card's rows
+    nor a row of nothing but the server's context take a place among them."""
+    session = _session()
+    session.messages = [
+        ChatMessage(role="user", content="Find student housing in Delft"),
+        ChatMessage(role="assistant", content="Here is a method."),
+        ChatMessage(role="user", content="<user_context>a</user_context>\n\n"),
+        ChatMessage(role="user", content="Use that method for Leiden too"),
+        ChatMessage(
+            role="user",
+            content=held.WAKE_MESSAGE,
+            metadata={"held_calls_answered": True},
+        ),
+        ChatMessage(role="user", content="carry on"),
+    ]
+    supervisor = AsyncMock(return_value=Judgement(allowed=True, reason="asked"))
+    with patch(f"{_GATE}.supervise", supervisor):
+        await check_action("bash_exec", {"command": "python3 run.py"}, "u", session)
+
+    assert supervisor.await_args.kwargs["user_messages"] == [
+        "Find student housing in Delft",
+        "Use that method for Leiden too",
+        "carry on",
+    ]
