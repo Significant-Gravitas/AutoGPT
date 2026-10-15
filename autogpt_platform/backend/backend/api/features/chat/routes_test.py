@@ -835,6 +835,7 @@ class _ClaimRedis:
 
     def __init__(self) -> None:
         self.values: dict[str, str] = {}
+        self.receipt_deadlines: dict[str, int] = {}
 
     @property
     def keys(self) -> set[str]:
@@ -851,6 +852,9 @@ class _ClaimRedis:
     async def get(self, key: str) -> str | None:
         return self.values.get(key)
 
+    async def pexpiretime(self, key: str) -> int:
+        return self.receipt_deadlines.get(key, -2)
+
     async def eval(
         self,
         script: str,
@@ -858,10 +862,12 @@ class _ClaimRedis:
         key: str,
         expected: str,
         new: str,
-        ttl_seconds: int,
+        expiry_value: int,
         or_missing: str,
+        expiry_mode: str,
     ) -> int:
         """``string_compare_and_set``, which settles a claim."""
+        assert expiry_mode in {"EX", "PXAT"}
         current = self.values.get(key)
         if current != expected and not (current is None and or_missing == "1"):
             return 0
@@ -885,8 +891,24 @@ def _mock_client_message_claims(mocker: pytest_mock.MockerFixture) -> _ClaimRedi
     return redis
 
 
-def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
+def _mock_pending_push(
+    mocker: pytest_mock.MockerFixture, claims: _ClaimRedis
+) -> AsyncMock:
     """Run the real ``queue_pending_for_http`` down to the Redis push."""
+
+    async def receive(
+        session_id: str,
+        message: pending_messages_module.PendingMessage,
+        **_kwargs: object,
+    ) -> int:
+        receipt_key = pending_messages_module.pending_message_receipt_key(
+            session_id, message.id
+        )
+        claims.receipt_deadlines[receipt_key] = int(
+            (datetime.now(UTC) + timedelta(hours=1)).timestamp() * 1000
+        )
+        return 1
+
     mocker.patch(
         "backend.copilot.pending_message_helpers.get_redis_async",
         new_callable=AsyncMock,
@@ -900,7 +922,7 @@ def _mock_pending_push(mocker: pytest_mock.MockerFixture) -> AsyncMock:
     return mocker.patch(
         "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
         new_callable=AsyncMock,
-        return_value=1,
+        side_effect=receive,
     )
 
 
@@ -911,7 +933,7 @@ def test_stream_chat_retransmits_of_a_started_turn_queue_nothing(
     land once the turn is running used to be buffered as follow-ups, each
     one becoming another user message and another turn."""
     mocks = _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     in_flight = mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -935,7 +957,7 @@ def test_stream_chat_retransmits_of_a_queued_send_are_buffered_once(
     send is queued. Its copies must neither queue again nor, once the turn
     has drained it, start a turn of their own."""
     mocks = _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     in_flight = mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -956,8 +978,8 @@ def test_stream_chat_distinct_message_ids_are_each_queued(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
     """Two clicks with the same text are two messages."""
-    _mock_stream_internals(mocker)
-    push = _mock_pending_push(mocker)
+    mocks = _mock_stream_internals(mocker)
+    push = _mock_pending_push(mocker, mocks.claims)
     mocker.patch(
         "backend.api.features.chat.routes.is_turn_in_flight",
         new_callable=AsyncMock,
@@ -2752,12 +2774,8 @@ def test_queue_pending_message_same_message_id_is_buffered_once(
     the turn ended is answered as accepted rather than 409 (which would send
     the client to POST /stream with the message all over again)."""
     _mock_stream_queue_internals(mocker)
-    _mock_client_message_claims(mocker)
-    push = mocker.patch(
-        "backend.copilot.pending_message_helpers.push_pending_message_if_session_running",
-        new_callable=AsyncMock,
-        return_value=1,
-    )
+    claims = _mock_client_message_claims(mocker)
+    push = _mock_pending_push(mocker, claims)
     body = {"message": "follow-up", "message_id": "client-click-id"}
 
     for _ in range(2):
