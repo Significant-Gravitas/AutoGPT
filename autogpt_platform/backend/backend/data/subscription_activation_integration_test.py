@@ -214,7 +214,7 @@ async def test_admin_tier_edits_and_nontrial_payment_preserve_usage(
     case = activation_case
     await case.add_cost(None, 71)
     for tier in (SubscriptionTier.PRO, SubscriptionTier.MAX, SubscriptionTier.PRO):
-        await set_subscription_tier(case.user_id, tier, track_lifecycle=False)
+        await set_subscription_tier(case.user_id, tier)
         assert (await get_usage_activation_state(case.user_id)).generation is None
         assert await case.counters(None) == (71, 71)
     assert await case.activate()
