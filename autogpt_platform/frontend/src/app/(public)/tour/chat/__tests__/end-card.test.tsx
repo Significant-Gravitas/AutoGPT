@@ -77,7 +77,7 @@ describe("Tour demo end state", () => {
     expect(screen.queryByText(/Simulated demo/i)).toBeNull();
 
     const pricingCta = screen
-      .getByText("Make this agent yours")
+      .getByText("Make this workflow yours")
       .closest("a") as HTMLAnchorElement;
     expect(pricingCta.href).toContain(
       "agpt.co/pricing?utm_source=tour&utm_medium=end_card",
@@ -87,14 +87,13 @@ describe("Tour demo end state", () => {
     ).toBeDefined();
   });
 
-  test("marks the finished scenario as watched in the sidebar", async () => {
+  test("records the finished scenario for subsequent recommendations", async () => {
     render(<TourChatPage />);
     await playDemoThrough();
 
     expect(useTourStore.getState().watchedScenarioIds).toEqual([
       DEFAULT_SCENARIO_ID,
     ]);
-    expect(screen.getByText("watched")).toBeDefined();
   });
 
   test("idling after the demo keeps the finished chat controls hidden", async () => {

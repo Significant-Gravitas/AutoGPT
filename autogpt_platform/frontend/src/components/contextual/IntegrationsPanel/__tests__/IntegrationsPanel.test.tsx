@@ -18,7 +18,7 @@ describe("IntegrationsPanel", () => {
     const headings = await screen.findAllByRole("heading", { level: 2 });
     expect(headings.map((heading) => heading.textContent)).toEqual([
       "AI subscriptions",
-      "Tools your agents use",
+      "Tools your experts and workflows use",
       "Available integrations",
     ]);
   });
@@ -31,7 +31,9 @@ describe("IntegrationsPanel", () => {
     render(<IntegrationsPanel />);
 
     expect(
-      await screen.findByRole("heading", { name: "Tools your agents use" }),
+      await screen.findByRole("heading", {
+        name: "Tools your experts and workflows use",
+      }),
     ).toBeDefined();
   });
 });

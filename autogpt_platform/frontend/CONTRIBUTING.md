@@ -804,7 +804,7 @@ import LibraryPage from "../page";
 test("renders agent list", async () => {
   server.use(getGetV2ListLibraryAgentsMockHandler200());
   render(<LibraryPage />);
-  expect(await screen.findByText("My Agents")).toBeDefined();
+  expect(await screen.findByText("All Workflows")).toBeDefined();
 });
 ```
 

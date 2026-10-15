@@ -98,6 +98,17 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
+        """An expert session's ``find_capability`` reports an account-owned
+        credential the expert lacks as ``needs_expert_grant``; the model must
+        ask for a grant, not send the user back through sign-in."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index('`connected: "needs_expert_grant"`') :]
+        step = " ".join(step[: step.index("4. `review_required`")].split())
+        assert "Do NOT ask the user to sign in" in step
+        assert "Grant button" in step
+        assert "ask the user to grant access" in step
+
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge
         that takes one side drops a rule silently."""
@@ -105,6 +116,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "refused a credential the user already has" in result
         assert "Connecting is not running" in result
         assert "The card asks for credentials, not inputs" in result
+
+    def test_prompt_states_the_one_connect_convention(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert 'input={"connect": true}' in result
+        assert "for any capability" in result
+
+    def test_prompt_tells_experts_the_vendor_integration_comes_first(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "own integration is listed first" in result
+        assert "only for an action it does not offer" in result
 
 
 class TestToolDiscoveryPriorityAntiPattern:
@@ -292,6 +313,27 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestReplyStyle:
+    # The base prompt comes from Langfuse in production, so the style rules
+    # ride SHARED_TOOL_NOTES, which both engines append for Otto and experts.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_reply_style_rules(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "### Reply style" in result
+        assert "Default to 1 to 3 sentences." in result
+        assert "Never write an em dash or an en dash" in result
+
+    def test_baseline_mode_gets_the_same_rules(self):
+        assert "### Reply style" in prompting.SHARED_TOOL_NOTES
+        assert "never its length" in prompting.SHARED_TOOL_NOTES
+
+    def test_the_rules_do_not_model_the_dashes_they_forbid(self):
+        start = prompting.SHARED_TOOL_NOTES.index("### Reply style")
+        end = prompting.SHARED_TOOL_NOTES.index("### Math")
+        section = prompting.SHARED_TOOL_NOTES[start:end]
+        assert "—" not in section and "–" not in section
 
 
 class TestMathGuidance:

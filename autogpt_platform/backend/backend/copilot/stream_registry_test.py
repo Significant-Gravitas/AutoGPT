@@ -256,6 +256,9 @@ class _FakeRedis:
         self._meta = dict(meta)
         self.deleted_keys: list[str] = []
         self.delete = AsyncMock(side_effect=self._record_delete)
+        self.expire = AsyncMock()
+        # No turn has a checkpoint, so completion trims nothing.
+        self.hget = AsyncMock(return_value=None)
 
     async def _record_delete(self, *keys: str):
         self.deleted_keys.extend(keys)
@@ -568,11 +571,12 @@ async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
     while not queue.empty():
         delivered.append(queue.get_nowait())
 
-    assert len(delivered) == 4
-    assert isinstance(delivered[0], StreamTextStart)
-    assert isinstance(delivered[1], StreamTextDelta)
-    assert isinstance(delivered[2], StreamTextEnd)
-    assert isinstance(delivered[3], stream_registry.StreamFinish)
+    assert [(frame_id, type(chunk)) for frame_id, chunk in delivered] == [
+        ("turn-1:9999-0", StreamTextStart),
+        ("turn-1:9999-1", StreamTextDelta),
+        ("turn-1:9999-2", StreamTextEnd),
+        (None, stream_registry.StreamFinish),
+    ]
 
 
 def test_reconstruct_chunk_round_trips_pending_drained():

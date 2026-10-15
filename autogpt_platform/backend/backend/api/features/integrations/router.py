@@ -2,7 +2,7 @@ import asyncio
 import logging
 import secrets
 from contextlib import suppress
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, List, Literal, TypeGuard, get_args
 
 from autogpt_libs.auth import get_optional_user_id, get_user_id
@@ -33,7 +33,6 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import (
-    APIKeyCredentials,
     Credentials,
     CredentialsType,
     HostScopedCredentials,
@@ -43,7 +42,6 @@ from backend.data.model import (
 )
 from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor.utils import add_graph_execution
-from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.codex.access import (
     enforce_codex_access_http,
     has_codex_access_for_discovery,
@@ -60,13 +58,13 @@ from backend.integrations.creds_manager import (
     IntegrationCredentialsManager,
     create_mcp_oauth_handler,
 )
-from backend.integrations.managed_credentials import (
-    ensure_managed_credential,
-    ensure_managed_credentials,
-)
-from backend.integrations.managed_providers.ayrshare import AyrshareManagedProvider
+from backend.integrations.managed_credentials import ensure_managed_credentials
 from backend.integrations.managed_providers.ayrshare import (
-    settings_available as ayrshare_settings_available,
+    AyrshareNotConfiguredError,
+    AyrshareProvisioningError,
+)
+from backend.integrations.managed_providers.ayrshare import (
+    get_sso_link as get_ayrshare_sso_link,
 )
 from backend.integrations.mcp_catalog import get_mcp_catalog
 from backend.integrations.oauth import (
@@ -76,13 +74,17 @@ from backend.integrations.oauth import (
 )
 from backend.integrations.oauth.device_base import BaseDeviceAuthHandler
 from backend.integrations.providers import ProviderName, provider_key
+from backend.integrations.service_identity import (
+    service_for_catalog_entry,
+    service_for_credential,
+    service_for_provider,
+)
 from backend.integrations.webhooks import get_webhook_manager
 from backend.util import product_analytics
 from backend.util.exceptions import (
     ExpertRunPausedError,
     GraphNotAccessibleError,
     GraphNotInLibraryError,
-    MissingConfigError,
     NeedConfirmation,
     NotFoundError,
 )
@@ -249,6 +251,9 @@ class CredentialsMetaResponse(BaseModel):
         description="Manual authorization scheme for MCP credentials",
     )
     is_managed: bool = False
+    service: str = ""
+    service_name: str | None = None
+    service_icon: str | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -290,6 +295,7 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         if stored_scheme in get_args(MCPAuthScheme):
             mcp_auth_scheme = stored_scheme
 
+    identity = service_for_credential(cred)
     return CredentialsMetaResponse(
         id=cred.id,
         provider=cred.provider,
@@ -300,6 +306,9 @@ def to_meta_response(cred: Credentials) -> CredentialsMetaResponse:
         host=CredentialsMetaResponse.get_host(cred),
         mcp_auth_scheme=mcp_auth_scheme,
         is_managed=cred.is_managed,
+        service=identity.service,
+        service_name=identity.name,
+        service_icon=identity.icon,
     )
 
 
@@ -1730,7 +1739,7 @@ async def remove_all_webhooks_for_credentials(
     )
     if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
         raise NeedConfirmation(
-            "Some webhooks linked to these credentials are still in use by an agent"
+            "Some webhooks linked to these credentials are still in use by a workflow"
         )
     for webhook in webhooks:
         # Unlink all nodes & presets
@@ -1939,82 +1948,13 @@ async def get_ayrshare_sso_url(
     hosted social-linking page; all profile lifecycle logic lives with the
     managed provider.
     """
-    if not ayrshare_settings_available():
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
     try:
-        client = AyrshareClient()
-    except MissingConfigError:
-        raise HTTPException(
-            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Ayrshare integration is not configured",
-        )
-
-    # On-demand provisioning: AyrshareManagedProvider opts out of the
-    # credentials sweep (profile quota is per-user subscription-bound).  This
-    # endpoint is the only trigger that provisions a profile — one Ayrshare
-    # profile per user who actually opens the connect flow, not one per
-    # every authenticated user.
-    provisioned = await ensure_managed_credential(
-        user_id, creds_manager.store, AyrshareManagedProvider()
-    )
-    if not provisioned:
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-
-    ayrshare_creds = [
-        c
-        for c in await creds_manager.store.get_creds_by_provider(user_id, "ayrshare")
-        if c.is_managed and isinstance(c, APIKeyCredentials)
-    ]
-    if not ayrshare_creds:
-        logger.error(
-            "Ayrshare credential provisioning did not produce a credential for user %s",
-            user_id,
-        )
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY,
-            detail="Failed to provision Ayrshare profile",
-        )
-    profile_key_str = ayrshare_creds[0].api_key.get_secret_value()
-
-    private_key = settings.secrets.ayrshare_jwt_key
-    # Ayrshare JWT max lifetime is 2880 minutes (48 h).
-    max_expiry_minutes = 2880
-    try:
-        jwt_response = await client.generate_jwt(
-            private_key=private_key,
-            profile_key=profile_key_str,
-            # `allowed_social` is the set of networks the Ayrshare-hosted
-            # social-linking page will *offer* the user to connect.  Blocks
-            # exist for more platforms than are listed here; the list is
-            # deliberately narrower so the rollout can verify each network
-            # end-to-end before widening the user-visible surface.  Keep
-            # in sync with tested platforms — extend as each is verified
-            # against the block + Ayrshare's network-specific quirks.
-            allowed_social=[
-                SocialPlatform.TWITTER,
-                SocialPlatform.LINKEDIN,
-                SocialPlatform.INSTAGRAM,
-                SocialPlatform.YOUTUBE,
-                SocialPlatform.TIKTOK,
-            ],
-            expires_in=max_expiry_minutes,
-            verify=True,
-        )
-    except Exception as exc:
-        logger.error("Error generating Ayrshare JWT for user %s: %s", user_id, exc)
-        raise HTTPException(
-            status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
-        )
-
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=max_expiry_minutes)
-    return AyrshareSSOResponse(sso_url=jwt_response.url, expires_at=expires_at)
+        link = await get_ayrshare_sso_link(user_id, creds_manager.store)
+    except AyrshareNotConfiguredError as exc:
+        raise HTTPException(status_code=HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+    except AyrshareProvisioningError as exc:
+        raise HTTPException(status_code=HTTP_502_BAD_GATEWAY, detail=str(exc))
+    return AyrshareSSOResponse(sso_url=link.url, expires_at=link.expires_at)
 
 
 # === PROVIDER DISCOVERY ENDPOINTS ===
@@ -2048,21 +1988,32 @@ async def list_providers(
     all_providers = get_all_provider_names()
     if user_id is None or not await has_codex_access_for_discovery(user_id):
         all_providers = [name for name in all_providers if name != ProviderName.CODEX]
-    return [
-        ProviderMetadata(
+
+    def _native(name: str) -> ProviderMetadata:
+        identity = service_for_provider(name)
+        return ProviderMetadata(
             name=name,
             description=get_provider_description(name),
             supported_auth_types=get_supported_auth_types(name),
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
         )
-        for name in all_providers
-    ] + [
-        ProviderMetadata(
+
+    def _catalog(entry) -> ProviderMetadata:
+        identity = service_for_catalog_entry(entry)
+        return ProviderMetadata(
             name=entry.name,
             display_name=entry.display_name,
             description=entry.description,
             mcp_server=entry.mcp_server,
+            service=identity.service,
+            service_name=identity.name,
+            service_icon=identity.icon,
         )
-        for entry in get_mcp_catalog()
+
+    return [_native(name) for name in all_providers] + [
+        _catalog(entry) for entry in get_mcp_catalog()
     ]
 
 

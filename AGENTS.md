@@ -11,6 +11,13 @@ This guide provides context for coding agents when updating the **autogpt_platfo
 
 See `docs/platform/getting-started.md` for setup instructions.
 
+## Documentation
+
+- `docs/home/`, `docs/platform/` and `docs/integrations/` are the public docs site (agpt.co/docs). Only pages written for people outside the team go there: people using, self-hosting or contributing to AutoGPT.
+- The team's working documents go in `docs/engineering/`, which is not on the docs site: analytics and tracking plans, rollout plans, runbooks, internal references, and design and architecture notes. It is still public, like the rest of the repository, so no secrets or confidential material.
+
+See `docs/AGENTS.md` before adding a document.
+
 ## Code style
 
 - Format Python code with `poetry run format`.
@@ -44,6 +51,20 @@ See `/frontend/CONTRIBUTING.md` for complete patterns. Quick reference:
 - Do not use `useCallback` or `useMemo` unless asked to optimise a given function
 - Do not type hook returns, let Typescript infer as much as possible
 - Never type with `any`, if not types available use `unknown`
+
+## User-facing copy
+
+In text people read in the product, never write "agent" or "graph" in any form ("AI agent", "agent builder", "Graph ID"). What the code calls an agent or graph is a **workflow**. The AI doing the work is **Otto** (not AutoPilot or Copilot), an **expert** or **your team** ("experts and workflows" when a sentence covers both), and Otto's helper runs are **subtasks**. Choose the noun by meaning — never search-and-replace, and never call a workflow an expert. See PR #15251.
+
+- Frontend: every string in `autogpt_platform/frontend` a person can see, `.ts` helpers and `__legacy__` components included: toasts and the `Error` messages they show, page titles, default names, `aria-label`/`title`/alt text, and messages the app sends to Otto for the user.
+- Backend: strings a person reads follow the same nouns when you add or edit them: Otto tool-response `message`/`title`/`missing_message`, approval-card schema `title`/`description`, error `detail`s, emails and notifications, and Home attention items. Fix them in the backend; never patch backend text with a frontend replace. Keep tool names, arguments and descriptions Otto reads, prompts, log lines, OpenAPI `summary`/`description`, the "Scheduled agent run" analytics title, the "You have no credits left to run an agent." error that analytics queries match, and `pipeline.py::_GENERIC_NAMES`.
+- Change copy only, because renaming breaks things. Keep agent, graph, copilot and autopilot in every identifier and every value code compares or stores, e.g. routes (`/library/agents/[id]`), API fields and values (`"agent_run"`), tool names and arguments even inside messages to Otto (`find_library_agent`, `agent_id`), `TOOL_AGENT = "Agent"`, `data-testid`/`data-id`, and analytics, storage and flag keys. A value that is both shown and sent as a tag (ErrorCard `context`) is copy. Never hand-edit generated files (`src/app/api/__generated__`, `openapi.json`, the approval-card `realCards.json`/`referenceCards.json`); regenerate them instead.
+- A label built from a key or tool name that would show agent or graph gets an entry in a key-to-label map (e.g. `TOOL_DISPLAY_NAMES`); never rename the key or show it humanized (`humanizeKey` turns `agent_ids` into "Agent ids").
+- Before rewording, search for a distinctive fragment of the string from the repo root (`git grep -inF '<fragment>' -- autogpt_platform`). If code or SQL matches it, reword only outside the matched part and keep the matcher, since saved messages keep the old text (e.g. the `**Here are my answers:**` frame `experts/onboarding.py` reads from stored chats). Update tests and Playwright page objects asserting the string in the same PR; never pin old copy in a new test or story.
+- Do not take wording from identifiers, your task or PR text. Recheck any string you move into a helper, rewrite in a new conditional, copy from a neighbouring message or carry through a merge conflict.
+- Leave as is: the `agent.json` file name, the "Your agents have moved" notice, hidden search keywords (`GlobalSearchModal/navigation.tsx`), admin and dev pages (`copilot/styleguide`), anything users name or type, third-party names (AgentMail, GitHub Copilot, Microsoft 365 Copilot, including a bare "Copilot" that means Microsoft's), titles of third-party pages we link to (the n8n examples in `ExternalWorkflowTab`) and other senses (user-agent, knowledge graph, charts).
+- Awaiting a product decision, so leave them as they appear, without a display map, and do not copy their wording: SEO metadata and og:image alt text (`SITE_DESCRIPTION`, `public/manifest.webmanifest`, the marketplace home and tour pages), `TourHero`, `SignupMarketingPanel`, the `plans.ts` pricing bullets, block names, categories and descriptions however the builder shows them ("Agent Input"), and the `humanizePermission` API-key labels. New text added beside any of these exceptions follows the rule.
+- Out of scope: `classic/`, `docs/`, code comments, test names, and commit and PR text.
 
 ## Testing
 

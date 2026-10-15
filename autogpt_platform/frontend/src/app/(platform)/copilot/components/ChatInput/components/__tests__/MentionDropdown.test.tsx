@@ -142,6 +142,29 @@ describe("MentionDropdown", () => {
     ).toBeTruthy();
   });
 
+  it("names an MCP credential by its service and server, never as MCP", () => {
+    const [sentry] = connectedIntegrationsFromCredentials([
+      {
+        id: "cred-sentry",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.sentry.dev",
+        username: null,
+        scopes: null,
+        service: "sentry",
+        service_name: "Sentry",
+      },
+    ]);
+    renderDropdown({
+      options: [{ kind: "integration", integration: sentry }],
+      hasIntegrations: true,
+    });
+    const option = screen.getByRole("option");
+    expect(option.textContent).toContain("mcp.sentry.dev");
+    expect(option.textContent).toContain("Sentry");
+    expect(option.textContent).not.toMatch(/mcp:|\bMcp\b|\bMCP\b/);
+  });
+
   it("drops the headings when files are not part of the picker", () => {
     renderDropdown({
       options: [GOOGLE_ITEM],
