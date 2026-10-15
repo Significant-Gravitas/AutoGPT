@@ -51,6 +51,7 @@ from backend.data.stripe_authentication import requires_authentication
 from backend.data.stripe_client import stripe_call
 from backend.data.subscription_checkout import AnotherPlanLive
 from backend.data.subscription_payment_failure import (
+    PaymentFailureOutcome,
     handle_subscription_payment_failure,
 )
 from backend.data.subscription_trial import TrialState
@@ -942,9 +943,12 @@ async def stripe_webhook(request: Request):
             await notify_trial(data_object, "ending")
 
         if event_type == "invoice.payment_failed":
-            await handle_subscription_payment_failure(data_object)
-            if not await on_trial_invoice(data_object, paid=False):
-                await lifecycle.on_payment_failed(data_object)
+            outcome = await handle_subscription_payment_failure(data_object)
+            if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                if not await on_trial_invoice(data_object, paid=False):
+                    await lifecycle.on_payment_failed(
+                        data_object, attempted_at=event.get("created")
+                    )
 
         # New Stripe API (≥2025-04-01) split the per-payment events off the
         # Invoice resource. data.object is an InvoicePayment, not an Invoice,
@@ -963,9 +967,12 @@ async def stripe_webhook(request: Request):
                     await handle_subscription_payment_success(invoice_payload)
                     await on_trial_invoice(invoice_payload, paid=True)
                 else:
-                    await handle_subscription_payment_failure(invoice_payload)
-                    if not await on_trial_invoice(invoice_payload, paid=False):
-                        await lifecycle.on_payment_failed(invoice_payload)
+                    outcome = await handle_subscription_payment_failure(invoice_payload)
+                    if outcome == PaymentFailureOutcome.NEEDS_ACTION:
+                        if not await on_trial_invoice(invoice_payload, paid=False):
+                            await lifecycle.on_payment_failed(
+                                invoice_payload, attempted_at=event.get("created")
+                            )
 
         # `handle_dispute` and `deduct_credits` expect Stripe SDK typed objects
         # (Dispute/Refund). The Stripe webhook payload's `data.object` is a
