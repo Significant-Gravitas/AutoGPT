@@ -12,7 +12,12 @@ from backend.data import graph as graph_db
 from backend.executor import utils as execution_utils
 
 from ..errors import ErrorResponse
-from ..idempotency import idempotency_key, idempotent_run, replayed_run
+from ..idempotency import (
+    idempotency_key,
+    idempotent_run,
+    replayed_run,
+    request_fingerprint,
+)
 from ..integrations.helpers import get_credential_requirements
 from ..models import (
     AgentGraphRun,
@@ -170,6 +175,11 @@ async def fork_library_agent(
             "model": ErrorResponse,
             "description": "The `Idempotency-Key`'s run has not been recorded yet",
         },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "model": ErrorResponse,
+            "description": "Invalid inputs, or an `Idempotency-Key` already used "
+            "for a different request",
+        },
     },
 )
 async def execute_agent(
@@ -184,12 +194,17 @@ async def execute_agent(
 
     Send an `Idempotency-Key` to make a retry safe: a second request carrying the
     same key returns the run the first one started rather than starting another.
+    Reusing a key for a different agent or body is a 422.
 
     **Rate limit:** 60 requests per minute per user.
     """
     await enforce(graph_exec_limiter, auth.user_id, response)
 
-    async with idempotent_run(idempotency, auth) as claim:
+    async with idempotent_run(
+        idempotency,
+        auth,
+        request_fingerprint(agent_id, request.model_dump(mode="json")),
+    ) as claim:
         if claim.existing_run_id:
             return await replayed_run(claim, auth)
 

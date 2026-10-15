@@ -7,12 +7,15 @@ about whether it started. Without a key the only safe retry is no retry.
 The caller sends `Idempotency-Key: <a value they choose>`. The first request to
 claim it runs; a later request with the same key gets back the run the first one
 created. A request that arrives while the first is still in flight is a 409 —
-there is no run to hand back yet.
+there is no run to hand back yet. A key reused on a different request is a 422,
+never the run the key was first used for (draft-ietf-httpapi-idempotency-key-header).
 """
 
+import hashlib
+import json
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 from fastapi import Header, HTTPException
 from starlette import status
@@ -40,17 +43,23 @@ def idempotency_key(
         max_length=255,
         description=(
             "Retry-safety token. Repeating a request with the same value returns "
-            "the run the first one started instead of starting another. Scoped to "
-            "the caller and its organization; expires after 24 hours."
+            "the run the first one started instead of starting another; reusing it "
+            "on a different request is a 422. Scoped to the caller and its "
+            "organization; expires after 24 hours."
         ),
     ),
 ) -> Optional[str]:
     return (key or "").strip() or None
 
 
+def request_fingerprint(*parts: Any) -> str:
+    """What a request asked for, so a key reused on a different one is caught."""
+    return hashlib.sha256(json.dumps(parts, sort_keys=True).encode()).hexdigest()
+
+
 @asynccontextmanager
 async def idempotent_run(
-    key: Optional[str], auth: TenantContext
+    key: Optional[str], auth: TenantContext, fingerprint: str
 ) -> AsyncIterator["RunClaim"]:
     """Claim `key` for this request, or report the run it already produced.
 
@@ -58,7 +67,10 @@ async def idempotent_run(
     the caller loses retry safety, which is where a caller without a key already is.
     """
     claim = RunClaim(
-        key=key, user_id=auth.user_id, organization_id=auth.organization_id
+        key=key,
+        user_id=auth.user_id,
+        organization_id=auth.organization_id,
+        fingerprint=fingerprint,
     )
     if key is None:
         yield claim
@@ -66,7 +78,9 @@ async def idempotent_run(
 
     try:
         redis = await get_redis_async()
-        claimed = await redis.set(claim.redis_key, _IN_FLIGHT, nx=True, ex=_TTL_SECONDS)
+        claimed = await redis.set(
+            claim.redis_key, claim.stored(_IN_FLIGHT), nx=True, ex=_TTL_SECONDS
+        )
     except Exception as e:
         logger.warning(f"Idempotency store unavailable, proceeding without it: {e}")
         yield claim
@@ -106,10 +120,13 @@ async def replayed_run(claim: "RunClaim", auth: TenantContext) -> AgentGraphRun:
 class RunClaim:
     """One request's hold on an idempotency key."""
 
-    def __init__(self, key: Optional[str], user_id: str, organization_id: str) -> None:
+    def __init__(
+        self, key: Optional[str], user_id: str, organization_id: str, fingerprint: str
+    ) -> None:
         self.key = key
         self.user_id = user_id
         self.organization_id = organization_id
+        self.fingerprint = fingerprint
         self.holds_key = False
         self.run_id: Optional[str] = None
         self.existing_run_id: Optional[str] = None
@@ -120,8 +137,12 @@ class RunClaim:
         # requests from another, so a shared key there must start its own run.
         return f"v2:idem:{self.user_id}:{self.organization_id}:{self.key}"
 
+    def stored(self, state: str) -> str:
+        return f"{self.fingerprint}:{state}"
+
     async def resolve_existing(self) -> str:
-        """The run id the first request recorded, or 409 while it is still running."""
+        """The run id the first request recorded: 409 while it is still running,
+        422 if that request asked for something else."""
         try:
             redis = await get_redis_async()
             stored = await redis.get(self.redis_key)
@@ -131,14 +152,21 @@ class RunClaim:
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail="Cannot tell whether this request already ran; retry shortly.",
             )
-        if stored in (None, _IN_FLIGHT):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
-                "in flight. Retry once it completes.",
-            )
+        if stored is None:
+            raise self._in_flight()
         # The client decodes responses; the redis stubs still admit bytes.
-        return stored if isinstance(stored, str) else stored.decode()
+        fingerprint, _, state = (
+            stored if isinstance(stored, str) else stored.decode()
+        ).partition(":")
+        if fingerprint != self.fingerprint:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"{IDEMPOTENCY_HEADER} '{self.key}' was already used for a "
+                "different request. Send a new key for a new request.",
+            )
+        if state == _IN_FLIGHT:
+            raise self._in_flight()
+        return state
 
     async def record(self, run_id: str) -> None:
         """Point the key at the run, so a later retry gets this one back."""
@@ -147,7 +175,7 @@ class RunClaim:
             return
         try:
             redis = await get_redis_async()
-            await redis.set(self.redis_key, run_id, ex=_TTL_SECONDS)
+            await redis.set(self.redis_key, self.stored(run_id), ex=_TTL_SECONDS)
         except Exception as e:
             logger.warning(f"Could not record idempotent run {run_id}: {e}")
 
@@ -161,3 +189,10 @@ class RunClaim:
             await redis.delete(self.redis_key)
         except Exception as e:
             logger.warning(f"Could not release idempotency key: {e}")
+
+    def _in_flight(self) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A request with {IDEMPOTENCY_HEADER} '{self.key}' is still "
+            "in flight. Retry once it completes.",
+        )

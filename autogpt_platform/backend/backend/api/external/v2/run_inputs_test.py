@@ -85,6 +85,42 @@ def test_a_422_does_not_hold_the_idempotency_key(
     started.assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    "path,inputs,replayed",
+    [
+        ("/library/agents/agent-1/runs", {"tone": "dry", "topic": "AI"}, True),
+        ("/library/agents/agent-2/runs", {"topic": "AI", "tone": "dry"}, False),
+        ("/library/agents/agent-1/runs", {"topic": "ML", "tone": "dry"}, False),
+    ],
+    ids=["same-request", "other-agent", "other-inputs"],
+)
+def test_a_key_reused_on_a_different_request_is_a_422_not_the_earlier_run(
+    client: fastapi.testclient.TestClient,
+    started: mock.AsyncMock,
+    mocker: pytest_mock.MockFixture,
+    path: str,
+    inputs: dict[str, Any],
+    replayed: bool,
+) -> None:
+    mocker.patch(
+        "backend.data.execution.get_graph_execution",
+        new_callable=mock.AsyncMock,
+        return_value=_run(),
+    )
+    headers = {IDEMPOTENCY_HEADER: "reused"}
+    first = client.post(
+        "/library/agents/agent-1/runs",
+        json={"inputs": {"topic": "AI", "tone": "dry"}},
+        headers=headers,
+    )
+
+    second = client.post(path, json={"inputs": inputs}, headers=headers)
+
+    assert first.status_code == 202, first.text
+    assert second.status_code == (202 if replayed else 422), second.text
+    started.assert_awaited_once()
+
+
 @pytest.fixture
 def client(mocker: pytest_mock.MockFixture) -> fastapi.testclient.TestClient:
     store: dict[str, str] = {}
