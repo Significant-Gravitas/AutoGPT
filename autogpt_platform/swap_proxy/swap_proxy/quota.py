@@ -12,6 +12,7 @@ count cannot be taken, the request goes out with no value in it.  Only
 credentialed requests count; everything else a box does is untouched.
 """
 
+import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -20,13 +21,17 @@ from typing import Any, Awaitable, Optional, Protocol
 logger = logging.getLogger(__name__)
 
 KEY_PREFIX = "swap:quota:"
+# A count that takes longer is refused rather than held: while Redis is down
+# the client's own timeouts and retries would stall every credentialed request.
+_TAKE_TIMEOUT = 2.0
 
 
 # One round trip, atomic, over every scope at once: each counter is checked
 # first, and only if all are under their limit are all incremented (a new key
 # gets its expiry in the same step).  A request refused on one scope spends
 # nothing on another.  Returns 0, or the 1-based index of the scope that
-# refused.  KEYS[i] pairs with ARGV[i + 1] (its limit); ARGV[1] is the window.
+# refused.  KEYS[i] pairs with ARGV[i + 1] (its limit); ARGV[1] is the seconds
+# left in the window, so a key goes when its window does.
 _TAKE_SCRIPT = """
 for i, key in ipairs(KEYS) do
   local count = tonumber(redis.call('GET', key) or '0')
@@ -114,8 +119,11 @@ class RequestQuota:
         limits = [limit for _, _, limit in scopes]
         try:
             refused = int(
-                await self._redis.eval(
-                    _TAKE_SCRIPT, len(keys), *keys, self._window, *limits
+                await asyncio.wait_for(
+                    self._redis.eval(
+                        _TAKE_SCRIPT, len(keys), *keys, retry_after, *limits
+                    ),
+                    timeout=_TAKE_TIMEOUT,
                 )
             )
         except Exception:

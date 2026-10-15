@@ -188,7 +188,7 @@ poetry run swap-proxy
 | `SWAP_PROXY_EGRESS_ALLOW` | empty | comma-separated private hosts or CIDRs boxes may reach anyway |
 | `SWAP_PROXY_QUOTA_PER_BOX` / `SWAP_PROXY_QUOTA_PER_USER` | `1000` / `3000` | credentialed requests per box (session or expert) and per user in each window; `0` turns one off |
 | `SWAP_PROXY_QUOTA_WINDOW_SECONDS` | `3600` | the quota's fixed window |
-| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`, `REDIS_CLUSTER_HOST`, `REDIS_CLUSTER_PORT`, `REDIS_USE_ANNOUNCED_ADDRESS` | | same meaning as in the backend. The quota runs one script, under the proxy's own Redis user: besides what the credential lookup needs, that user needs `+eval +get +incr +expire ~swap:quota:*`. Without them every count fails and every credentialed request gets a `503` |
 
 ### The signing CA
 
@@ -367,7 +367,8 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   be answered with the `429`: it goes out with its placeholder, no value in
   it, and the provider refuses it; the audit still says why. A request with no
   body to stream (an HTTP/2 `GET` has no length either) is answered. A body
-  swapped while it streams (`swap_anywhere` only) is not counted.
+  swapped while it streams, and a websocket message a box sends after its
+  upgrade was counted, are not counted (`swap_anywhere` only, for both).
 - NAT64 (`64:ff9b::/96`, and its local-use prefix) and 6to4 addresses are judged
   by the IPv4 address they carry. Teredo and operator-chosen NAT64 prefixes are
   not recognised.

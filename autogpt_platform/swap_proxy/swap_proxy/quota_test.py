@@ -1,5 +1,7 @@
 """The request quota: counted per box and per user, failing closed."""
 
+import asyncio
+
 import fakeredis
 import pytest
 
@@ -69,8 +71,20 @@ async def test_the_window_is_fixed_and_the_count_expires_with_it():
     assert (await q.take("session:s-1", "user-a", now=NOW)).allowed
     assert not (await q.take("session:s-1", "user-a", now=NOW)).allowed
     assert (await q.take("session:s-1", "user-a", now=NOW + 3600)).allowed
-    # Set by the script on first increment, and only then.
-    assert set((await redis.ttls()).values()) == {3600}
+    # Set by the script on first increment, and only then: to the window's
+    # edge, so a key made late in a window does not outlive it.
+    assert set((await redis.ttls()).values()) == {3600 - 600}
+
+
+async def test_a_count_that_hangs_is_refused_not_held(monkeypatch):
+    monkeypatch.setattr("swap_proxy.quota._TAKE_TIMEOUT", 0.01)
+
+    class Hanging:
+        async def eval(self, *args):
+            await asyncio.sleep(10)
+
+    verdict = await quota(Hanging()).take("session:s-1", "user-a", now=NOW)
+    assert verdict.reason == "quota-unavailable"
 
 
 async def test_a_count_that_cannot_be_taken_refuses():

@@ -1010,6 +1010,8 @@ async def test_the_quota_answer_reaches_the_box_when_the_backend_is_down(caplog,
         await addon.requestheaders(flow)
         await addon.request(flow)
         setattr(source, which, True)
+        # mitmproxy fires both hooks for an answer the addon set itself.
+        await addon.responseheaders(flow)
         await addon.response(flow)
     assert flow.error is None
     assert flow.response is not None and flow.response.status_code == 429
