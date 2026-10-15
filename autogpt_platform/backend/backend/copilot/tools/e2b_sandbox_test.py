@@ -2083,6 +2083,10 @@ class TestCreationEnvBehindTheSwapProxy:
             patch(
                 "backend.copilot.tools.e2b_sandbox.grant_to_box", AsyncMock()
             ) as grant,
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-default"}),
+            ),
         ):
             mock_cls.create = AsyncMock(return_value=new_sb)
             asyncio.run(
@@ -2098,8 +2102,42 @@ class TestCreationEnvBehindTheSwapProxy:
         kwargs = self._create(proxy="proxy:1080", user_id="user-a")
         assert kwargs["envs"]["GH_TOKEN"] == "hsurr:github:cred-default"
         assert kwargs["envs"]["GITHUB_TOKEN"] == "hsurr:github:cred-default"
-        self.lookup.assert_awaited_once_with("user-a", providers=None)
+        # A chat's own box starts with the chat's pick, under the turn's ceiling.
+        self.lookup.assert_awaited_once_with(
+            "user-a", providers=None, selected={"github": "cred-default"}
+        )
         self.grant.assert_awaited_once_with("sb-new", {"github": "cred-default"})
+
+    @pytest.mark.parametrize(
+        "session_id, selected",
+        [("sess-1", {"github": "cred-b"}), (None, None)],
+        ids=["a chat's box: its pick", "an expert's box: the default"],
+    )
+    def test_the_box_is_granted_the_chats_pick_not_the_default(
+        self, session_id, selected
+    ):
+        """A chat that picked account B is not also granted the default A."""
+        from backend.util.e2b_network import EgressOwner
+
+        from .e2b_sandbox import _placeholder_grants
+
+        owner = EgressOwner(kind="session", id="sess-1", user_id="user-a")
+        with (
+            patch(
+                "backend.copilot.tools.e2b_sandbox.proxy_address",
+                return_value="proxy:1080",
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.selected_credentials",
+                AsyncMock(return_value={"github": "cred-b"}),
+            ),
+            patch(
+                "backend.copilot.tools.e2b_sandbox.placeholder_grants",
+                AsyncMock(return_value={}),
+            ) as lookup,
+        ):
+            asyncio.run(_placeholder_grants(owner, session_id))
+        lookup.assert_awaited_once_with("user-a", providers=None, selected=selected)
 
     def test_without_the_proxy_the_create_call_is_unchanged(self):
         kwargs = self._create(proxy=None, user_id="user-a")
@@ -2363,6 +2401,31 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
             )
         assert connect.pinned.providers is None
         assert redis.hashes == {}
+
+
+class TestATurnWhoseBoxNeverCameUp:
+    """Its release will not run, so its ceiling entry is dropped at once
+    rather than holding every other session's pin down until it expires."""
+
+    def test_its_sessions_entry_goes_and_no_other(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, _EXPERT_ID))
+        redis.hdel.assert_awaited_once_with(
+            f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings", _SESSION_ID
+        )
+
+    def test_a_chats_own_box_has_none_to_drop(self):
+        from .e2b_sandbox import forget_turn_ceiling
+
+        redis = MagicMock()
+        redis.hdel = AsyncMock()
+        with _patch_redis(redis):
+            asyncio.run(forget_turn_ceiling(_SESSION_ID, None))
+        redis.hdel.assert_not_awaited()
 
 
 class TestNoCeilingGivenKeepsTheBoxs:

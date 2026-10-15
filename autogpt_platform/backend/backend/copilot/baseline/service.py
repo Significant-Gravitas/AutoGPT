@@ -146,6 +146,7 @@ from backend.copilot.tools import (
 )
 from backend.copilot.tools.e2b_sandbox import (
     count_expert_turn,
+    forget_turn_ceiling,
     get_or_create_sandbox,
     pause_sandbox_direct,
 )
@@ -1900,6 +1901,7 @@ async def stream_chat_completion_baseline(
             )
         except Exception:
             logger.warning("[Baseline] E2B sandbox setup failed", exc_info=True)
+            await forget_turn_ceiling(session_id, session.expert_id)
 
     # --- Transcript support (feature parity with SDK path) ---
     transcript_builder = TranscriptBuilder()

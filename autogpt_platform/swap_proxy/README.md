@@ -234,7 +234,9 @@ backend service.
 
 That service is `SwapCredentialService` (`backend/copilot/swap_service.py`),
 and it answers the two calls the proxy makes (`get_swap_bindings`,
-`resolve_swap_credential`) and nothing else: every other backend method is on
+`resolve_swap_credential`) and no other backend method (it also serves the
+health checks and FastAPI's schema pages, as every service does): every other
+backend method is on
 another service's port, so a proxy that can reach only this port cannot call
 it, whatever it sends. It runs beside `DatabaseManager` in the backend's `db`
 entrypoint, on its own port (`SWAP_CREDENTIAL_SERVICE_PORT`, default 8012); the
@@ -301,6 +303,11 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 
 ## Known limits
 
+- An expert's box is shared by its chats, so it starts with the user's default
+  account for each provider in its own environment (for the desktop's terminal
+  and browser), and that account is granted to it. A chat on that expert that
+  picked another account can still act as the default from the box. A chat's
+  own box starts with the chat's pick instead.
 - Images and binary bodies are neither swapped (above 5 MiB) nor scrubbed (at
   any size). What counts as text is the content type the sender declares.
 - A value goes into the `Authorization` header and nowhere else. A provider
@@ -342,7 +349,10 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
   other host passes through unread: a mirror, a CDN the provider does not
   declare, a third party the value was copied to, or an archive
   (`codeload.github.com` is not bound, as it serves only binary archives,
-  which are never scrubbed wherever they come from). The name is the box's to
+  which are never scrubbed wherever they come from). GitHub Pages
+  (`*.github.io`) is not bound either, though it serves back what a repository
+  publishes: a token committed to a Pages branch can be read back from it. The
+  name is the box's to
   choose: TLS to a provider's address under an SNI that is not bound, or plain
   http with such a `Host`, is the same case. For a box that gets swaps, TLS
   with no SNI at all and plain http to a bare address are refused

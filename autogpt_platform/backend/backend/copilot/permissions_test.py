@@ -875,6 +875,13 @@ class TestProviders:
 
     def test_flattening_keeps_an_open_ceiling_open(self):
         assert CopilotPermissions().flattened_providers() == ([], True)
+        # Under a parent too: not an allow-list of today's providers, which
+        # would deny one added later.
+        merged = CopilotPermissions().merged_with_parent(
+            CopilotPermissions(tools=["web_fetch"], tools_exclude=True),
+            ALL_TOOL_NAMES,
+        )
+        assert merged.flattened_providers() == ([], True)
         merged = CopilotPermissions().merged_with_parent(
             CopilotPermissions(), ALL_TOOL_NAMES
         )

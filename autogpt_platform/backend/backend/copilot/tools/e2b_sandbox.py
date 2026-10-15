@@ -90,6 +90,7 @@ from e2b.exceptions import NotFoundException
 from pydantic import BaseModel, ConfigDict
 
 from backend.blocks.desktop._api import DesktopSession, resolve_volume
+from backend.copilot.credential_selection import selected_credentials
 from backend.copilot.integration_creds import (
     grant_to_box,
     placeholder_env,
@@ -769,6 +770,18 @@ def _active_turns_key(owner: SandboxOwner) -> str:
     return f"{owner.key()}:active"
 
 
+async def forget_turn_ceiling(session_id: str, expert_id: str | None) -> None:
+    """Drop the ceiling a turn of *session_id* recorded on its expert's box,
+    for a turn whose box never came up: its release will not run, and the
+    entry would hold every other session's pin down until it expires."""
+    owner = SandboxOwner.for_session(session_id, expert_id)
+    if not owner.is_expert:
+        return
+    with contextlib.suppress(Exception):
+        redis = await get_redis_async()
+        await redis.hdel(_pin_ceilings_key(owner), session_id)
+
+
 def _pin_ceilings_key(owner: SandboxOwner) -> str:
     # Tagged with the whole turn-counter key, so on Redis Cluster both hash to
     # one slot: the release script touches the two together.
@@ -831,10 +844,16 @@ async def _release_turn(owner: SandboxOwner, session_id: str | None = None) -> b
         return False
 
 
-async def _placeholder_grants(egress_owner: EgressOwner) -> dict[str, str]:
+async def _placeholder_grants(
+    egress_owner: EgressOwner, session_id: str | None = None
+) -> dict[str, str]:
     """The credentials a new box starts with in its own environment, when it
-    egresses through the swap proxy: the user's default for each connected
-    provider (no chat's pick applies to the box itself).
+    egresses through the swap proxy, and which are granted to it.
+
+    A chat's own box (*session_id*) starts with the chat's picks, so a chat
+    that picked account B is not also granted the default A.  An expert's box
+    is shared by its chats, so no one chat's pick applies: it starts with the
+    user's default for each connected provider.
 
     Commands get their variables per call as well (``bash_exec``); these are
     for what does not start through a command, the desktop's browser and
@@ -845,8 +864,9 @@ async def _placeholder_grants(egress_owner: EgressOwner) -> dict[str, str]:
         return {}
     assert egress_owner.user_id is not None  # ``swaps`` requires one
     try:
+        selected = await selected_credentials(session_id) if session_id else None
         return await placeholder_grants(
-            egress_owner.user_id, providers=egress_owner.providers
+            egress_owner.user_id, providers=egress_owner.providers, selected=selected
         )
     except Exception as exc:
         # Commands still get theirs; a box without them is no less safe.
@@ -890,7 +910,8 @@ async def get_or_create_owner_sandbox(
     *providers* is the turn's ceiling on the user's connected accounts
     (``permissions.allowed_providers``), recorded when the box's egress is
     pinned; ``None`` leaves every provider usable.  Left out, a reconnect
-    keeps the ceiling the box already has, and a new box gets none.
+    keeps the ceiling the box already has, and a new box (opened from the UI,
+    outside any turn) gets every provider; a turn always passes its own.
 
     Raises :class:`SandboxLookupError` when E2B cannot say whether an expert
     already has a box: a fresh box would fork the expert's durable state.
@@ -999,7 +1020,9 @@ async def get_or_create_owner_sandbox(
                     else await _shared_ceiling(owner, providers, None, session_id)
                 ),
             )
-            box_grants = await _placeholder_grants(egress_owner)
+            box_grants = await _placeholder_grants(
+                egress_owner, None if owner.is_expert else session_id
+            )
             box_env = placeholder_env(box_grants) if box_grants else {}
             last_exc: Exception | None = None
             for attempt in range(1, _SANDBOX_CREATE_MAX_RETRIES + 1):

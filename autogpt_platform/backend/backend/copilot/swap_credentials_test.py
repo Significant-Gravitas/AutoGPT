@@ -286,12 +286,38 @@ def test_every_provider_says_where_its_token_may_go():
 
 def test_no_host_is_bound_to_two_providers():
     """A host names one provider's credential; two would make the proxy fetch
-    and scrub both, and leave which one a request meant to the box."""
-    seen: dict[str, str] = {}
+    and scrub both, and leave which one a request meant to the box.  Compared
+    as bindings, not strings: ``.example.com`` binds ``api.example.com``."""
     for slug, entry in SUPPORTED_PROVIDERS.items():
         for host in [*entry["swap_hosts"], *entry["content_hosts"]]:
-            assert host not in seen, (host, seen.get(host), slug)
-            seen[host] = slug
+            for other, other_entry in SUPPORTED_PROVIDERS.items():
+                if other == slug:
+                    continue
+                other_hosts = [
+                    *other_entry["swap_hosts"],
+                    *other_entry["content_hosts"],
+                ]
+                assert not _host_is_bound(host.lstrip("."), other_hosts), (
+                    host,
+                    slug,
+                    other,
+                )
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_swaps_nothing_still_has_its_content_hosts_scrubbed():
+    """An empty ``swap_hosts`` means the token is never swapped in, not that
+    its content hosts may pass unread."""
+    entry = {
+        "name": "Files",
+        "env_vars": [],
+        "default_scopes": [],
+        "swap_hosts": [],
+        "content_hosts": [".files.example.com"],
+    }
+    with patch.dict(SUPPORTED_PROVIDERS, {"files": entry}):
+        bindings = await get_swap_bindings()
+    assert bindings["files"] == [".files.example.com"]
 
 
 def test_minted_usernames_are_what_the_proxy_accepts():

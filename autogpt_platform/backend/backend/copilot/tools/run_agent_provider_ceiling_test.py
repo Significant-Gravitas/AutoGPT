@@ -78,3 +78,38 @@ async def test_the_refusal_comes_before_any_setup_card():
     assert isinstance(response, ErrorResponse)
     assert "GitHub account" in response.message
     prerequisites.assert_not_awaited()
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_agent_with_an_autopilot_block_is_refused_under_a_ceiling():
+    """Its nested turn runs in the graph executor, which the ceiling does not
+    reach, so it could act with any connected account."""
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+
+    session = make_session(user_id="user-1")
+    graph = _graph(ProviderName.CODEX)
+    graph.nodes = [MagicMock(block_id=AUTOPILOT_BLOCK_ID)]
+    graph.sub_graphs = []
+    token = _current_permissions.set(
+        CopilotPermissions(providers=["github"], providers_exclude=True)
+    )
+    try:
+        response = await RunAgentTool()._run_agent(
+            "user-1", session, graph, {}, {}, False
+        )
+    finally:
+        _current_permissions.reset(token)
+    assert isinstance(response, ErrorResponse)
+    assert "GitHub account" in response.message
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_autopilot_agent_runs_for_an_unrestricted_turn():
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+    from backend.copilot.permissions import denied_graph_providers
+
+    graph = _graph(ProviderName.CODEX)
+    graph.nodes = [MagicMock(block_id=AUTOPILOT_BLOCK_ID)]
+    graph.sub_graphs = []
+    assert denied_graph_providers(None, graph) == []
+    assert denied_graph_providers(CopilotPermissions(), graph) == []

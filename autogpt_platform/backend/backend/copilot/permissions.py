@@ -503,6 +503,10 @@ class CopilotPermissions(BaseModel):
         if not self.providers and self._parent is None:
             return [], True
         allowed = [p for p in SUPPORTED_PROVIDERS if self.is_provider_allowed(p)]
+        if len(allowed) == len(SUPPORTED_PROVIDERS):
+            # No filter, not an allow-list of today's providers: one added
+            # later must not be denied to an unrestricted run.
+            return [], True
         if allowed:
             return allowed, False
         return list(SUPPORTED_PROVIDERS), True
@@ -635,11 +639,32 @@ def denied_graph_providers(
     permissions: CopilotPermissions | None, graph: Any
 ) -> list[str]:
     """``denied_block_providers`` for every block of an agent graph: an agent
-    run is its blocks acting with the user's credentials."""
+    run is its blocks acting with the user's credentials.
+
+    An AutoPilot block counts as acting with every provider: its turn runs in
+    the graph executor, which this run's ceiling does not reach, so it could
+    use any account the user connected."""
     if permissions is None or allowed_providers(permissions) is None:
         return []
     fields = graph.aggregate_credentials_inputs()
-    return _denied(permissions, (info for info, _, _ in fields.values()))
+    denied = _denied(permissions, (info for info, _, _ in fields.values()))
+    if _runs_autopilot(graph):
+        denied += [
+            p
+            for p in SUPPORTED_PROVIDERS
+            if p not in denied and not permissions.is_provider_allowed(p)
+        ]
+    return denied
+
+
+def _runs_autopilot(graph: Any) -> bool:
+    from backend.blocks.autopilot import AUTOPILOT_BLOCK_ID
+
+    return any(
+        node.block_id == AUTOPILOT_BLOCK_ID
+        for g in [graph, *graph.sub_graphs]
+        for node in g.nodes
+    )
 
 
 def denied_tool_names(permissions: CopilotPermissions | None) -> frozenset[str]:

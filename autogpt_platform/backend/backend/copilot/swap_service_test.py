@@ -9,7 +9,7 @@ from starlette.routing import Route
 from backend.copilot.swap_credentials import NoLiveBox, SwapCredential
 from backend.copilot.swap_service import SwapCredentialService
 from backend.data.db_manager import DatabaseManager
-from backend.util.service import EXPOSED_FLAG
+from backend.util.service import EXPOSED_FLAG, UnhealthyServiceError
 
 _SWAP_METHODS = {"get_swap_bindings", "resolve_swap_credential"}
 
@@ -109,7 +109,7 @@ async def test_health_check_runs_a_query_not_just_the_connected_flag():
     with (
         patch("backend.copilot.swap_service.db.is_connected", return_value=True),
         patch("backend.copilot.swap_service.db.query_raw_with_schema", query),
-        pytest.raises(RuntimeError, match="wedged"),
+        pytest.raises(UnhealthyServiceError, match="wedged"),
     ):
         await SwapCredentialService().health_check()
     query.assert_awaited_once()
