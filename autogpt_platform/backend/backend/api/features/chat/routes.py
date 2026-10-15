@@ -22,6 +22,7 @@ from backend.copilot.active_turns import (
     get_inflight_turn_limit,
     inflight_turn_limit_message,
 )
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.computer import (
     ComputerInfo,
     computer_owner,
@@ -2141,6 +2142,10 @@ async def stream_chat_post(
             logger.warning(
                 "[STREAM] Failed to publish initial status chunk", exc_info=True
             )
+        if request.is_user_message:
+            # The user carried the chat on, so a pending "Resume at reset"
+            # would repeat their turn.
+            cancel_resume_at_reset_in_background(session_id, user_id)
 
     setup_time = (time.perf_counter() - stream_start_time) * 1000
     logger.info(
