@@ -480,19 +480,23 @@ The exact sandbox path is shown in the `[Sandbox copy available at ...]` note.
 """
 
 
-# Prepended to the user's message on voice turns only. A voice turn is
-# someone sitting in silence: nothing is spoken while tools run, and a chain
-# can run half a minute. Announcing each batch keeps the gaps filled, not
-# just the opening one. Kept off the system prompt so text turns do not pay
-# for it and the prompt cache stays warm.
+# Follows the user's words in a voice turn's query. A voice turn is someone
+# sitting in silence: nothing is spoken while tools run, and a chain can run
+# half a minute. Announcing each batch keeps the gaps filled, not just the
+# opening one. Kept off the system prompt so text turns do not pay for it
+# and the prompt cache stays warm, and off the stored row, which keeps the
+# user's own words. The engine adds it after sanitising inbound text, which
+# strips a user-typed copy.
 VOICE_TURN_TAG = "voice_turn"
-VOICE_TURN_PREFIX = (
+VOICE_TURN_INSTRUCTION = (
     f"<{VOICE_TURN_TAG}>\n"
     "Spoken aloud. Briefly announce each batch of tool calls before making "
     "them.\n"
-    f"</{VOICE_TURN_TAG}>\n"
-    "\n"
+    f"</{VOICE_TURN_TAG}>"
 )
+# How a voice row was stored before the instruction moved to the query; the
+# display strip still peels it off those rows.
+VOICE_TURN_PREFIX = f"{VOICE_TURN_INSTRUCTION}\n\n"
 
 
 # Environment-specific supplement templates

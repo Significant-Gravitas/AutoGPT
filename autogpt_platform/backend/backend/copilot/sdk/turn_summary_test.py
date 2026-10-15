@@ -118,9 +118,9 @@ class TestLine:
 
 
 class TestCollector:
-    def test_voice_turn_is_read_off_the_raw_message(self):
-        voice = TurnSummaryCollector("s", message="<voice_turn>\nx\n</voice_turn>\nhi")
-        plain = TurnSummaryCollector("s", message="hi")
+    def test_a_voice_turn_is_marked_from_the_turn_not_the_text(self):
+        voice = TurnSummaryCollector("s", voice=True)
+        plain = TurnSummaryCollector("s")
 
         assert voice.summary.voice is True
         assert plain.summary.voice is False

@@ -723,6 +723,7 @@ class CoPilotProcessor:
                 model=entry.model,
                 permissions=entry.permissions,
                 envelope=envelope,
+                voice=entry.voice,
                 request_arrival_at=entry.request_arrival_at,
                 organization_id=(
                     session.organization_id

@@ -147,6 +147,7 @@ from ..permissions import (
     denied_tool_names,
 )
 from ..prompting import (
+    VOICE_TURN_INSTRUCTION,
     approval_mode_supplement,
     get_chat_platform_supplement,
     get_delegation_supplement,
@@ -4647,6 +4648,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     message_metadata: dict[str, Any] | None = None,
     turn_start: int | None = None,
     continued_pending: list[PendingMessage] | None = None,
+    voice: bool = False,
     **_kwargs: Any,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     # Pyright's complexity heuristic bails on this ~1500 LoC function (retry
@@ -4727,10 +4729,8 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
     # on the error-recovery turns whose routing we most want recorded.
     pre_turn_message_count = len(session.messages)
 
-    # Created before the strip below so the server's <voice_turn> prefix is
-    # still on the message it reads.
     turn_summary = TurnSummaryCollector(
-        session_id, message=message, is_user_message=is_user_message
+        session_id, voice=voice, is_user_message=is_user_message
     )
 
     # Strip any user-injected <user_context> tags on every turn.
@@ -5516,9 +5516,15 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         # the next turn replays, and it must not accumulate one stale figure
         # per turn.
         budget_status = await build_turn_budget_block(envelope, user_id)
+        # A voice turn's instruction follows the user's words, on the query
+        # only: added after the inbound strip, so it is the platform's own,
+        # and never written to ``current_message`` or the stored row.
+        turn_text = budget_status + current_message
+        if voice:
+            turn_text = f"{turn_text}\n\n{VOICE_TURN_INSTRUCTION}"
 
         query_message, compaction_stats = await _build_query_message(
-            budget_status + current_message,
+            turn_text,
             session,
             use_resume,
             transcript_msg_count,
@@ -5741,7 +5747,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     state.query_message,
                     state.compaction_stats,
                 ) = await _build_query_message(
-                    budget_status + current_message,
+                    turn_text,
                     session,
                     state.use_resume,
                     state.transcript_msg_count,
