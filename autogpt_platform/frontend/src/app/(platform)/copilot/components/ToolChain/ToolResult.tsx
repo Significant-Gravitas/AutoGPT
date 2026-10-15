@@ -2,6 +2,7 @@
 
 import type { SetupRequirementsResponse } from "@/app/api/__generated__/models/setupRequirementsResponse";
 import { HeldCallDetail } from "./HeldCallRowParts";
+import { heldShowsOwnCall } from "./heldRow";
 import { useContext } from "react";
 import { PendingQuestionsContext } from "../QuestionDock/PendingQuestionsContext";
 import { QuestionsForm } from "../QuestionDock/QuestionDock";
@@ -246,6 +247,71 @@ function setupRequirementsCard(row: ChainRow, output: Record<string, unknown>) {
   );
 }
 
+/** Every tool with a card of its own. toolCard's switch is typed against
+ *  this list, so a new case cannot land without joining it — and the
+ *  chat-surface parity test renders each entry on every chat, not just the
+ *  main one. */
+export const TOOL_CARD_TOOLS = [
+  "run_agent",
+  "schedule_agent",
+  "view_agent_output",
+  "create_agent",
+  "customize_agent",
+  "edit_agent",
+  "run_sub_session",
+  "get_sub_session_result",
+  "delegate_to_expert",
+  "handoff_to_expert",
+  "consult_teammate",
+  "find_agent",
+  "find_library_agent",
+  "find_block",
+  "find_capability",
+  "run_block",
+  "continue_run_block",
+  "describe_capability",
+  "run_capability",
+  "resume_capability",
+  "connect_integration",
+  "decompose_goal",
+  "validate_agent_graph",
+  "fix_agent_graph",
+  "ask_question",
+  "list_schedules",
+  "schedule_followup",
+  "list_folders",
+  "create_folder",
+  "update_folder",
+  "move_folder",
+  "list_workspace_files",
+  "search_docs",
+  "get_doc_page",
+  "setup_agent_webhook_trigger",
+  "search_feature_requests",
+  "create_feature_request",
+  "run_mcp_tool",
+  "store_skill",
+  "read_skill",
+  "delete_skill",
+  "list_skills",
+  "list_chat_platform_channels",
+  "web_search",
+  "bash_exec",
+  "start_desktop",
+  "TodoWrite",
+  "read_workspace_file",
+  "write_workspace_file",
+  "delete_workspace_file",
+  "Read",
+  "Write",
+] as const;
+
+type ToolCardTool = (typeof TOOL_CARD_TOOLS)[number];
+
+function cardTool(tool: string | undefined): ToolCardTool | undefined {
+  return TOOL_CARD_TOOLS.find((name) => name === tool);
+}
+
 function toolCard(
   row: ChainRow,
   output: Record<string, unknown> | null,
@@ -260,7 +326,7 @@ function toolCard(
     if (questions) return <QuestionsCard questions={questions} />;
   }
 
-  switch (row.tool) {
+  switch (cardTool(row.tool)) {
     case "run_agent":
     case "schedule_agent": {
       const name =
@@ -508,10 +574,25 @@ export function ToolResult({ row, readOnly = false }: Props) {
     );
   }
 
-  if (row.held && row.held.state !== "approved") {
-    return <HeldCallDetail held={row.held} />;
+  if (row.held) {
+    const approved = row.held.state === "approved";
+    const ownCall = heldShowsOwnCall(row);
+    const ran = row.output !== undefined && row.output !== "";
+    return (
+      <div className="flex flex-col gap-2">
+        <HeldCallDetail held={row.held} showArgs={!ownCall} />
+        {approved && (ran || ownCall) && (
+          <ToolOutput row={row} readOnly={readOnly} />
+        )}
+      </div>
+    );
   }
 
+  return <ToolOutput row={row} readOnly={readOnly} />;
+}
+
+function ToolOutput({ row, readOnly }: Required<Props>) {
+  const output = asObject(row.output);
   const target = capabilityTargetRow(row);
   const card =
     toolCard(target, output, readOnly) ??

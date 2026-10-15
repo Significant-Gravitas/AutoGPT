@@ -18,6 +18,7 @@ import {
 import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
 import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
 import { FilterIconMenu } from "./FilterIconMenu";
+import { useExpertWorkflowAgents } from "./useExpertWorkflowAgents";
 import { useExpertWorkflowsView } from "./useExpertWorkflowsView";
 import { ViewToggle } from "./ViewToggle";
 
@@ -51,6 +52,7 @@ export function ExpertWorkflowsSection({
   const [filter, setFilter] = useState<WorkflowFilter>("all");
   const { view, setView } = useExpertWorkflowsView();
   const visible = filterExpertWorkflows(workflows, query, filter);
+  const agentsByID = useExpertWorkflowAgents(workflows);
 
   return (
     <section>
@@ -101,6 +103,7 @@ export function ExpertWorkflowsSection({
             <ExpertWorkflowListItem
               key={workflow.id}
               workflow={workflow}
+              libraryAgent={agentsByID.get(workflow.library_agent_id ?? "")}
               expertId={expertId}
               accentClassName={accentClassName}
               onAsk={onAskWorkflow}
@@ -113,6 +116,7 @@ export function ExpertWorkflowsSection({
             <ExpertWorkflowCard
               key={workflow.id}
               workflow={workflow}
+              libraryAgent={agentsByID.get(workflow.library_agent_id ?? "")}
               expertId={expertId}
               coverColor={coverColor}
               onAsk={onAskWorkflow}

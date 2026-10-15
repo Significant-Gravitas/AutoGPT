@@ -23,7 +23,7 @@ const props: ChatContainerProps = {
   messages: [],
   status: "ready",
   error: undefined,
-  sessionId: null,
+  sessionId: "empty-session",
   isLoadingSession: false,
   isCreatingSession: false,
   onCreateSession: vi.fn(),
@@ -83,23 +83,26 @@ describe("new full-page expert chats", () => {
     ).toBe("true");
   });
 
-  test.each([null, "empty-session"])(
-    "shows pending onboarding in chat %s",
-    async (sessionId) => {
-      mockOnboarding();
-      const onSend = vi.fn();
-      render(
-        <ChatContainer {...props} sessionId={sessionId} onSend={onSend} />,
-      );
-      expect(await screen.findByText("What topic?")).toBeDefined();
-      fireEvent.click(screen.getByRole("button", { name: "Skip" }));
-      await waitFor(() =>
-        expect(onSend).toHaveBeenCalledWith(
-          "Let's skip the setup questions for now.",
-        ),
-      );
-    },
-  );
+  test("shows pending onboarding in an empty chat", async () => {
+    mockOnboarding();
+    const onSend = vi.fn();
+    render(<ChatContainer {...props} onSend={onSend} />);
+    expect(await screen.findByText("What topic?")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Skip" }));
+    await waitFor(() =>
+      expect(onSend).toHaveBeenCalledWith(
+        "Let's skip the setup questions for now.",
+      ),
+    );
+  });
+
+  test("keeps the home hero when an expert is picked before a chat exists", async () => {
+    const request = mockOnboarding();
+    render(<ChatContainer {...props} sessionId={null} />);
+    expect(await screen.findByRole("textbox")).toBeDefined();
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.queryByText("What topic?")).toBeNull();
+  });
 
   test("sends completed answers through the new chat's send handler", async () => {
     mockOnboarding();

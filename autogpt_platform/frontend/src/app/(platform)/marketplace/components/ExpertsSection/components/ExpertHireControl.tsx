@@ -8,7 +8,6 @@ import { Dialog } from "@/components/molecules/Dialog/Dialog";
 import { VoicePicker } from "@/components/organisms/VoicePicker/VoicePicker";
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { trackFunnel } from "@/services/experts/experts-analytics";
-import { markHireStarted } from "@/services/experts/hire-timing";
 import { useHireFlow } from "@/services/experts/useHireFlow";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AddTeamIcon, CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
@@ -54,11 +53,13 @@ function EnabledExpertHireControl({ expert, isHired }: Props) {
   } = useHireFlow(expert);
   const isInFlight = isHiring || isVoicePickOpen || hireResult !== null;
 
-  // The clock starts on the click, not on the request: the flow finishes in
-  // a dialog, and sometimes on another page entirely.
+  // The card runs the expert page's hire flow, which reports the hire as
+  // `expert_page`, so its hire_started does too.
   function handleHire() {
-    markHireStarted(expert.id);
-    trackFunnel("hire_started", { template_id: expert.id });
+    trackFunnel("hire_started", {
+      template_id: expert.id,
+      surface: "expert_page",
+    });
     hire();
   }
 

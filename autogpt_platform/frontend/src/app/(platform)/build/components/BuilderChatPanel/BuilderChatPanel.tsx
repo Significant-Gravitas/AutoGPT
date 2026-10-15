@@ -5,6 +5,7 @@ import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatM
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { cn } from "@/lib/utils";
 import { useRef } from "react";
+import { NoModelNotice } from "./components/NoModelNotice";
 import { PanelHeader } from "./components/PanelHeader";
 import { useBuilderChatPanel } from "./useBuilderChatPanel";
 import { BubbleChatIcon, Cancel01Icon } from "@hugeicons/core-free-icons";
@@ -27,24 +28,31 @@ export function BuilderChatPanel({ className }: Props) {
     onSend,
     queuedMessages,
     isBootstrapping,
+    hasNoModel,
     revertTargetVersion,
     handleRevert,
     bindError,
     bootstrapError,
     retryBind,
     retryBootstrap,
+    transportCheckError,
+    retryTransportCheck,
   } = useBuilderChatPanel({ panelRef });
 
   const isStreaming = status === "streaming" || status === "submitted";
-  const activeError = bindError ?? bootstrapError ?? null;
+  const activeError = bindError ?? bootstrapError ?? transportCheckError;
   const activeRetry = bindError
     ? retryBind
     : bootstrapError
       ? retryBootstrap
-      : null;
+      : transportCheckError
+        ? retryTransportCheck
+        : null;
   const activeErrorTitle = bindError
     ? "Could not start the builder chat"
-    : "Could not create a blank agent";
+    : bootstrapError
+      ? "Could not create a blank workflow"
+      : "Could not check the AI connection";
 
   return (
     <div
@@ -69,7 +77,9 @@ export function BuilderChatPanel({ className }: Props) {
             />
 
             <div className="flex h-0 min-h-0 flex-1 flex-col">
-              {activeError && activeRetry ? (
+              {hasNoModel ? (
+                <NoModelNotice />
+              ) : activeError && activeRetry ? (
                 <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 py-6 text-center text-sm text-slate-600">
                   <p className="font-medium text-slate-800">
                     {activeErrorTitle}
@@ -109,14 +119,14 @@ export function BuilderChatPanel({ className }: Props) {
                       isStreaming={isStreaming}
                       onStop={stop}
                       onEnqueue={onSend}
-                      placeholder="Ask the builder to edit or run this agent…"
+                      placeholder="Ask the builder to edit or run this workflow…"
                       hasSession={true}
                     />
                   </div>
                 </>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
-                  Open an agent to start chatting with the builder.
+                  Open a workflow to start chatting with the builder.
                 </div>
               )}
             </div>

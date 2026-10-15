@@ -6,10 +6,7 @@ from typing import Any
 
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
-from backend.copilot.permissions import denied_block_providers
-from backend.copilot.providers import SUPPORTED_PROVIDERS
 from backend.data.activity_event import ActivityEventDraft
 
 from .base import BaseTool
@@ -145,19 +142,19 @@ class RunBlockTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a block_id",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not isinstance(input_data, dict):
             return ErrorResponse(
                 message="input_data must be an object",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         logger.info("Preparing block %s for user %s", block_id, user_id)
 
@@ -173,42 +170,6 @@ class RunBlockTool(BaseTool):
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
         prep: BlockPreparation = prep_or_err
-
-        # Check block-level permissions before execution.
-        perms = get_current_permissions()
-        if perms is not None and not perms.is_block_allowed(block_id, prep.block.name):
-            available_hint = (
-                f"Allowed identifiers: {perms.blocks!r}. "
-                if not perms.blocks_exclude and perms.blocks
-                else (
-                    f"Blocked identifiers: {perms.blocks!r}. "
-                    if perms.blocks_exclude and perms.blocks
-                    else ""
-                )
-            )
-            return ErrorResponse(
-                message=(
-                    f"Block '{prep.block.name}' ({block_id}) is not permitted "
-                    f"by the current execution permissions. {available_hint}"
-                    "Use find_capability to discover blocks that are allowed."
-                ),
-                session_id=session_id,
-            )
-
-        # The run's ceiling on connected accounts covers blocks too: a block that
-        # would act with a provider's stored credential the run may not use is
-        # refused here, as the sandbox's placeholders are by the swap service.
-        denied = denied_block_providers(perms, prep.block)
-        if denied:
-            names = ", ".join(SUPPORTED_PROVIDERS[p]["name"] for p in denied)
-            return ErrorResponse(
-                message=(
-                    f"Block '{prep.block.name}' ({block_id}) acts with the user's "
-                    f"{names} account, which this run is not permitted to use. "
-                    "Tell the user it is outside what this run was allowed to do."
-                ),
-                session_id=session_id,
-            )
 
         # Dry-run fast-path: skip credential/HITL checks — simulation never calls
         # the real service so credentials and review gates are not needed.
@@ -252,7 +213,7 @@ class RunBlockTool(BaseTool):
                     message=f"Block '{prep.block.name}' has an invalid output schema",
                     error=str(e),
                     session_id=session_id,
-                )
+                ).from_outside()
 
             credentials_meta = list(prep.matched_credentials.values())
             missing = sorted(
@@ -296,7 +257,7 @@ class RunBlockTool(BaseTool):
                     credentials=credentials_meta,
                 ),
                 user_authenticated=True,
-            )
+            ).from_outside()
 
         if not dry_run:
             spend_gate = await check_spend_approval(prep, user_id, session)

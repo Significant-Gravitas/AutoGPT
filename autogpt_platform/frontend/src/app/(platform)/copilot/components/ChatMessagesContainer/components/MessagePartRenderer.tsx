@@ -1,3 +1,4 @@
+import { parseSpecialMarkers } from "../../../helpers/messageMarkers";
 import { CredentialMentionMarkdown } from "../../CredentialMention/CredentialMentionMarkdown";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { StoppedTaskCard } from "./StoppedTaskCard";
@@ -35,7 +36,6 @@ import { COMPACTION_PART_TYPE } from "../../ToolChain/helpers";
 import {
   extractWorkspaceArtifacts,
   isRetiredCompactionRow,
-  parseSpecialMarkers,
   resolveWorkspaceUrls,
 } from "../helpers";
 import { ReasoningCollapse } from "./ReasoningCollapse";

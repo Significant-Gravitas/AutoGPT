@@ -582,16 +582,17 @@ def _build_catalog() -> CatalogPayload:
                 context_window=1048576,
                 max_output_tokens=384000,
                 price_tier=1,
-                # Live OpenRouter rate as of 2026-09-26: $0.30/$1.20 per 1M
-                # (OpenRouter raised this route from $0.14/$0.42). OpenRouter
-                # reprices this route continuously (by design); this is the
-                # latest snapshot at PR time, re-checked immediately before
-                # merge. Flagged by scripts/check_openrouter_prices.py.
+                # Live OpenRouter rate as of 2026-10-02: $0.03/$0.75 per
+                # 1M (cache read $0.00375), down from $0.30/$1.20 on
+                # 2026-09-26. OpenRouter reprices this route continuously
+                # (by design); this is the latest snapshot at PR time,
+                # re-checked immediately before merge. Flagged by
+                # scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=1,
-                    input_credits_per_1m=45.0,
-                    output_credits_per_1m=180.0,
-                    cache_read_credits_per_1m=0.63,
+                    input_credits_per_1m=4.5,
+                    output_credits_per_1m=112.5,
+                    cache_read_credits_per_1m=0.5625,
                 ),
             ),
             CatalogModel(
@@ -715,6 +716,27 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="google/gemini-4-argon",
+                display_name="Gemini 4 Argon",
+                provider="open_router",
+                creator="google",
+                context_window=1048576,
+                max_output_tokens=65536,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter listing 2026-10-13: $2/$10 per Mtok,
+                # cache read $0.10/1M, cache write $0.1875/1M.
+                cost=CatalogModelCost(
+                    run_credits=5,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
+                    cache_creation_credits_per_1m=28.125,
+                ),
+            ),
+            CatalogModel(
                 slug="google/gemma-4-31b-it",
                 display_name="Gemma 4 31B",
                 provider="open_router",
@@ -825,6 +847,26 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-wonder",
+                display_name="Muse Wonder",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=3,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $4/$20 per Mtok, cache read $0.20/1M --
+                # live OpenRouter listing 2026-10-13 (meta/muse-wonder).
+                cost=CatalogModelCost(
+                    run_credits=11,
+                    input_credits_per_1m=600.0,
+                    output_credits_per_1m=3000.0,
+                    cache_read_credits_per_1m=30.0,
+                ),
+            ),
+            CatalogModel(
                 slug="microsoft/phi-4",
                 display_name="Phi-4",
                 provider="open_router",
@@ -848,6 +890,63 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="mistralai/ministral-14b-2512",
+                display_name="Ministral 3 14B 2512",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=262144,
+                max_output_tokens=209715,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                # Live OpenRouter rate as of 2026-10-06: $0.20/$0.20 per 1M,
+                # cache read $0.02/1M.
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=30.0,
+                    output_credits_per_1m=30.0,
+                    cache_read_credits_per_1m=3.0,
+                ),
+            ),
+            CatalogModel(
+                slug="mistralai/ministral-8b-2512",
+                display_name="Ministral 3 8B 2512",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=262144,
+                max_output_tokens=209715,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                # Live OpenRouter rate as of 2026-10-06: $0.15/$0.15 per 1M,
+                # cache read $0.015/1M.
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=22.5,
+                    output_credits_per_1m=22.5,
+                    cache_read_credits_per_1m=2.25,
+                ),
+            ),
+            CatalogModel(
+                slug="mistralai/ministral-3b-2512",
+                display_name="Ministral 3 3B 2512",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=131072,
+                max_output_tokens=104857,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                # Live OpenRouter rate as of 2026-10-06: $0.10/$0.10 per 1M,
+                # cache read $0.01/1M.
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=15.0,
+                    output_credits_per_1m=15.0,
+                    cache_read_credits_per_1m=1.5,
+                ),
+            ),
+            CatalogModel(
                 slug="mistralai/mistral-large-2512",
                 display_name="Mistral Large 3 2512",
                 provider="open_router",
@@ -863,16 +962,55 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="mistralai/mistral-large-4-0",
+                display_name="Mistral Large 4",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=524288,
+                max_output_tokens=262144,
+                price_tier=2,
+                # Live OpenRouter rate as of 2026-10-06: $0.68/$2.09 per 1M
+                # (cache read $0.07); 150 credits per USD.
+                cost=CatalogModelCost(
+                    run_credits=2,
+                    input_credits_per_1m=102.0,
+                    output_credits_per_1m=313.5,
+                    cache_read_credits_per_1m=10.5,
+                ),
+            ),
+            CatalogModel(
                 slug="mistralai/mistral-medium-3.1",
                 display_name="Mistral Medium 3.1",
                 provider="open_router",
                 creator="mistral-ai",
                 context_window=131072,
                 price_tier=2,
+                # Retired by Mistral 2026-08-31 in favour of Medium 3.5.
+                is_enabled=False,
+                fallback_model_slug="mistralai/mistral-medium-3-5",
                 cost=CatalogModelCost(
                     run_credits=2,
                     input_credits_per_1m=60.0,
                     output_credits_per_1m=300.0,
+                ),
+            ),
+            CatalogModel(
+                slug="mistralai/mistral-medium-3-5",
+                display_name="Mistral Medium 3.5",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=262144,
+                max_output_tokens=209715,
+                price_tier=2,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter rate as of 2026-10-06: $1.50/$7.50 per 1M,
+                # no cached rate published.
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=225.0,
+                    output_credits_per_1m=1125.0,
                 ),
             ),
             CatalogModel(
@@ -883,10 +1021,33 @@ def _build_catalog() -> CatalogPayload:
                 context_window=131072,
                 max_output_tokens=131072,
                 price_tier=1,
+                # Retired by Mistral 2026-07-31 in favour of Small 4.
+                is_enabled=False,
+                fallback_model_slug="mistralai/mistral-small-2603",
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=14.0625,
                     output_credits_per_1m=37.5,
+                ),
+            ),
+            CatalogModel(
+                slug="mistralai/mistral-small-2603",
+                display_name="Mistral Small 4",
+                provider="open_router",
+                creator="mistral-ai",
+                context_window=262144,
+                max_output_tokens=209715,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Live OpenRouter rate as of 2026-10-06: $0.15/$0.60 per 1M,
+                # cache read $0.015/1M.
+                cost=CatalogModelCost(
+                    run_credits=1,
+                    input_credits_per_1m=22.5,
+                    output_credits_per_1m=90.0,
+                    cache_read_credits_per_1m=2.25,
                 ),
             ),
             CatalogModel(
@@ -925,10 +1086,13 @@ def _build_catalog() -> CatalogPayload:
                 context_window=262144,
                 max_output_tokens=262144,
                 price_tier=2,
+                # Live OpenRouter rate as of 2026-10-02: $0.43415/$1.828 per
+                # 1M (cheapest route, Baidu), down from $0.65/$3.41.
+                # Flagged by scripts/check_openrouter_prices.py.
                 cost=CatalogModelCost(
                     run_credits=2,
-                    input_credits_per_1m=97.5,
-                    output_credits_per_1m=511.5,
+                    input_credits_per_1m=65.1225,
+                    output_credits_per_1m=274.2,
                 ),
             ),
             CatalogModel(
@@ -991,7 +1155,7 @@ def _build_catalog() -> CatalogPayload:
                 max_output_tokens=131072,
                 price_tier=1,
                 cost=CatalogModelCost(
-                    run_credits=1, input_credits_per_1m=22.5, output_credits_per_1m=90.0
+                    run_credits=1, input_credits_per_1m=5.55, output_credits_per_1m=25.5
                 ),
             ),
             CatalogModel(
@@ -1576,6 +1740,24 @@ def _build_catalog() -> CatalogPayload:
                     run_credits=4,
                     input_credits_per_1m=300.0,
                     output_credits_per_1m=1500.0,
+                ),
+            ),
+            CatalogModel(
+                slug="gpt-6.1-sol",
+                display_name="GPT-6.1 Sol",
+                provider="openai",
+                creator="openai",
+                context_window=1050000,
+                max_output_tokens=128000,
+                # $2/1M in, $10/1M out — same list price as gpt-6-sol,
+                # live OpenRouter rate as of 2026-09-30. Tier 2 like
+                # gpt-6-sol.
+                price_tier=2,
+                cost=CatalogModelCost(
+                    run_credits=4,
+                    input_credits_per_1m=300.0,
+                    output_credits_per_1m=1500.0,
+                    cache_read_credits_per_1m=15.0,
                 ),
             ),
             CatalogModel(

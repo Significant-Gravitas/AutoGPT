@@ -12,6 +12,7 @@ interface Props {
   selected?: boolean;
   onClick?: () => void;
   actions?: React.ReactNode;
+  testID?: string;
 }
 
 export function SidebarItemCard({
@@ -22,6 +23,7 @@ export function SidebarItemCard({
   selected,
   onClick,
   actions,
+  testID,
 }: Props) {
   return (
     <div
@@ -30,6 +32,7 @@ export function SidebarItemCard({
         selected ? "border-slate-800 ring-slate-800" : undefined,
       )}
       onClick={onClick}
+      data-testid={testID}
     >
       <div className="flex min-w-0 items-center justify-start gap-3">
         {icon}

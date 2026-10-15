@@ -20,7 +20,7 @@ export function WebhookTriggerBanner() {
           <div className="mt-2 text-sm text-blue-700">
             <p>
               This will create a webhook endpoint that automatically runs your
-              agent when triggered by external events.
+              workflow when triggered by external events.
             </p>
           </div>
         </div>
