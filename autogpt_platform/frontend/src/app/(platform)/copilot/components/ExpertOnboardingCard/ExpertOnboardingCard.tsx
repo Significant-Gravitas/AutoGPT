@@ -12,7 +12,6 @@ import type { ToolUIPart } from "ai";
 import { domAnimation, LazyMotion, m } from "framer-motion";
 import { useContext, useId } from "react";
 import { useExpertMap } from "../../useExpertMap";
-import { ExpertAvatar } from "../ChatMessagesContainer/components/ExpertAvatar/ExpertAvatar";
 import { MorphingTextAnimation } from "../MorphingTextAnimation/MorphingTextAnimation";
 import { OnboardingChoices } from "./components/OnboardingChoices/OnboardingChoices";
 import { parseExpertOnboarding, type ExpertOnboardingOutput } from "./helpers";
@@ -109,7 +108,7 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
   const total = onboarding.steps.length;
 
   return (
-    <div className="w-full max-w-xl overflow-hidden rounded-3xl border border-zinc-100 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
+    <div className="w-full max-w-xl overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-[0_16px_40px_-24px_rgba(0,0,0,0.25)]">
       <div
         role="progressbar"
         aria-label="Setup progress"
@@ -125,33 +124,8 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
         />
       </div>
 
-      <div className="flex items-start justify-between gap-3 px-5 pt-4">
-        <span className="flex min-w-0 items-center gap-3">
-          <ExpertAvatar name={name} avatarUrl={expert?.avatarUrl ?? null} />
-          <span className="flex min-w-0 flex-col">
-            <span className="truncate text-sm font-medium text-zinc-900">
-              {name}
-            </span>
-            {onboarding.greeting && (
-              <span className="line-clamp-2 text-xs text-zinc-500">
-                {onboarding.greeting}
-              </span>
-            )}
-          </span>
-        </span>
-        <button
-          type="button"
-          onClick={skip}
-          disabled={isSending}
-          className="shrink-0 rounded-full px-2 py-0.5 text-xs text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:opacity-50"
-        >
-          Skip
-        </button>
-      </div>
-
       {/* Wraps only the pager, not the whole card: ``strict`` rejects any
-            ``motion`` component below it, and the header's ExpertAvatar
-            animates its face with the full ``motion`` build. */}
+            ``motion`` component below it. */}
       <LazyMotion features={domAnimation} strict>
         <m.div
           key={currentStep.keyword}
@@ -189,25 +163,35 @@ function OnboardingForm({ callId, onboarding, isLive }: FormProps) {
           aria-label="Previous question"
           disabled={current === 0}
           onClick={goBack}
-          className="flex size-8 items-center justify-center rounded-full text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:invisible"
+          className="flex size-8 items-center justify-center rounded-md text-zinc-400 transition-colors enabled:hover:bg-zinc-100 enabled:hover:text-zinc-600 disabled:invisible"
         >
           <Icon icon={ArrowLeft01Icon} size={16} />
         </button>
-        <button
-          type="button"
-          aria-label={isLast ? "Send answers" : "Next question"}
-          disabled={!isAnswered || isSending}
-          onClick={advance}
-          className={cn(
-            "flex h-8 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-all duration-200 enabled:active:scale-95",
-            isAnswered && !isSending
-              ? "bg-zinc-900 text-white hover:bg-zinc-800"
-              : "bg-zinc-100 text-zinc-400",
-          )}
-        >
-          {isLast ? "Send" : "Next"}
-          <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={14} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={skip}
+            disabled={isSending}
+            className="flex h-8 items-center rounded-md border border-zinc-200 bg-white px-3.5 text-sm font-medium text-zinc-700 transition-colors enabled:hover:border-zinc-300 enabled:hover:bg-zinc-50 disabled:opacity-50"
+          >
+            Skip questions
+          </button>
+          <button
+            type="button"
+            aria-label={isLast ? "Send answers" : "Next question"}
+            disabled={!isAnswered || isSending}
+            onClick={advance}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-md px-4 text-sm font-medium transition-all duration-200 enabled:active:scale-95",
+              isAnswered && !isSending
+                ? "bg-zinc-900 text-white hover:bg-zinc-800"
+                : "bg-zinc-100 text-zinc-400",
+            )}
+          >
+            {isLast ? "Send" : "Next"}
+            <Icon icon={isLast ? SentIcon : ArrowRight01Icon} size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );

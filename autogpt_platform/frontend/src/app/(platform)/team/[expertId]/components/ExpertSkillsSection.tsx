@@ -4,13 +4,20 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Switch } from "@/components/atoms/Switch/Switch";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  BookOpen01Icon,
+  BulbIcon,
+  PlusSignIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
 import { SkillLearningSheet } from "@/components/organisms/SkillLearningSheet/SkillLearningSheet";
 import { useExpertLearning } from "./useExpertLearning";
 import { useExpertSkills } from "./useExpertSkills";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
 
 interface Props {
   expert: Expert;
@@ -55,7 +62,7 @@ export function ExpertSkillsSection({
         <Text variant="large-medium" tone="primary">
           {expert.name}&apos;s Skills
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Button
             variant="secondary"
             size="small"
@@ -64,12 +71,11 @@ export function ExpertSkillsSection({
           >
             Add skill
           </Button>
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-skills-search"
+            label="Search skills"
             value={query}
             onChange={setQuery}
-            placeholder="Search skills"
-            className="w-48"
           />
         </div>
       </div>
@@ -99,16 +105,48 @@ export function ExpertSkillsSection({
         </div>
       ) : null}
       {!hasAny ? (
-        <Text variant="body" tone="muted" className="pt-4">
-          No skills yet. Add skills from your library so {expert.name} knows how
-          you like things done.
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <Icon
+              key="book"
+              icon={BookOpen01Icon}
+              size={22}
+              className="text-sky-500"
+            />,
+            <Icon
+              key="bulb"
+              icon={BulbIcon}
+              size={22}
+              className="text-amber-500"
+            />,
+            <Icon
+              key="sparkles"
+              icon={SparklesIcon}
+              size={22}
+              className="text-violet-500"
+            />,
+          ]}
+          title="No skills yet"
+          description={`Add skills from your library so ${expert.name} knows how you like things done.`}
+        >
+          <Button
+            variant="primary"
+            size="small"
+            leadingIcon={PlusSignIcon}
+            onClick={openAdd}
+          >
+            Add skill
+          </Button>
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted" className="pt-4">
           No skills match.
         </Text>
       ) : (
-        <ul className="flex flex-col gap-3 pt-4" aria-label="Expert skills">
+        <ul
+          className="grid grid-cols-1 gap-3 pt-4 md:grid-cols-2"
+          aria-label="Expert skills"
+        >
           {visible.map((entry) => (
             <li key={entry.name}>
               <ExpertSkillListItem
