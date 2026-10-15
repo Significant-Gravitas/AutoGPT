@@ -46,11 +46,6 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
             : "."}
         </p>
       </div>
-
-      <p className="mt-4 text-xs leading-5 text-zinc-500">
-        Hire an AI Expert for supported tasks you might otherwise contract out.
-        Review outputs before using them.
-      </p>
     </aside>
   );
 }

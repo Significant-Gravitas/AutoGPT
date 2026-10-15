@@ -115,7 +115,7 @@ export function ExpertPage() {
   );
   const stats = getExpertStats(expert, accessProviders.length);
 
-  let actions: ReactNode = <Skeleton className="h-9 w-28 rounded-full" />;
+  let actions: ReactNode = <Skeleton className="h-9 w-full rounded-full" />;
   if (isActionReady) {
     actions = isHiringOpen ? (
       <ExpertHireActions
