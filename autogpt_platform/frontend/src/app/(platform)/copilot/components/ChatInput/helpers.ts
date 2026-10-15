@@ -46,8 +46,9 @@ export const GLASS_CIRCLE_CLASS =
 
 export const CARD_GLASS_ICON_BUTTON_CLASS = `size-9 p-0 ${GLASS_CIRCLE_CLASS} transition-[transform,color] duration-200 ease-out hover:scale-105 hover:border-white hover:bg-transparent hover:text-zinc-900 active:scale-[0.98] aria-expanded:text-zinc-900 motion-reduce:transition-none`;
 
-export const CARD_ICON_BUTTON_CLASS =
-  "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-zinc-900 shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-zinc-900 active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
+/** Bare icon button for the card composer, matching the Test mode toggle. */
+export const CARD_PLAIN_ICON_BUTTON_CLASS =
+  "size-8 rounded-full border-transparent bg-transparent p-0 text-zinc-500 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-700";
 
 export const COMPACT_ICON_BUTTON_CLASS =
   "size-8 rounded-lg border-transparent bg-transparent p-0 text-zinc-700 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-900 aria-expanded:bg-zinc-100";

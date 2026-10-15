@@ -52,7 +52,7 @@ import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import {
   CARD_GLASS_ICON_BUTTON_CLASS,
-  CARD_ICON_BUTTON_CLASS,
+  CARD_PLAIN_ICON_BUTTON_CLASS,
   CARD_SEND_BUTTON_CLASS,
   COMPACT_ICON_BUTTON_CLASS,
   COMPACT_SEND_BUTTON_CLASS,
@@ -372,7 +372,7 @@ export function ChatInput({
       : []),
   ];
   const iconButtonClass = stacked
-    ? CARD_ICON_BUTTON_CLASS
+    ? CARD_PLAIN_ICON_BUTTON_CLASS
     : isCompact
       ? COMPACT_ICON_BUTTON_CLASS
       : undefined;
