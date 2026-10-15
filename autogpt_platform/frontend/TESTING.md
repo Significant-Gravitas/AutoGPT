@@ -60,7 +60,7 @@ describe("LibraryPage", () => {
 
     render(<LibraryPage />);
 
-    expect(await screen.findByText("My Agents")).toBeDefined();
+    expect(await screen.findByText("All Workflows")).toBeDefined();
   });
 
   test("shows error state on API failure", async () => {

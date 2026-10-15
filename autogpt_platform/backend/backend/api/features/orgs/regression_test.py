@@ -827,10 +827,25 @@ class TestExecutionUserIdIsolationExtended:
         mock_actions = AsyncMock()
         mock_actions.update_many = AsyncMock(return_value=1)
 
-        with patch(
-            "backend.data.execution.AgentGraphExecution.prisma",
-            return_value=mock_actions,
+        with (
+            patch(
+                "backend.data.execution.AgentGraphExecution.prisma",
+                return_value=mock_actions,
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.SharedExecutionFile.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.ChatLinkedShare.prisma",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "backend.data.sharing.execution_shares.transaction"
+            ) as mock_transaction,
         ):
+            mock_transaction.return_value.__aenter__ = AsyncMock(return_value=None)
+            mock_transaction.return_value.__aexit__ = AsyncMock(return_value=False)
             from backend.data.execution import delete_graph_execution
 
             await delete_graph_execution(EXEC_ID, USER_ID, soft_delete=True)

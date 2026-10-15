@@ -203,7 +203,7 @@ class TestBlockWithoutCredential:
         assert isinstance(result, ErrorResponse)
         assert result.error == "ayrshare_accounts_not_linked"
         assert "choosing Connect on the Ayrshare card" in result.message
-        assert f"or {BUILDER_CONNECT_BUTTON} in the agent builder" in result.message
+        assert f"or {BUILDER_CONNECT_BUTTON} in the workflow builder" in result.message
 
     async def test_a_block_the_session_may_not_run_provisions_nothing(self):
         block_id = PostToLinkedInBlock().id

@@ -37,6 +37,8 @@ from backend.copilot.baseline.service import (
 )
 from backend.copilot.context import get_execution_context, set_execution_context
 from backend.copilot.expert_context import ExpertSessionUnavailableError
+from backend.copilot.llm_attribution import set_turn_impersonated
+from backend.copilot.llm_attribution import settings as attribution_settings
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.model_router import ResolvedModel
 from backend.copilot.response_model import (
@@ -1208,8 +1210,79 @@ class TestBaselineCostExtraction:
         create_mock.assert_awaited_once()
         await_args = create_mock.await_args
         assert await_args is not None
-        assert await_args.kwargs["extra_body"] == {"usage": {"include": True}}
+        assert await_args.kwargs["extra_body"]["usage"] == {"include": True}
         assert await_args.kwargs["stream_options"] == {"include_usage": True}
+
+    @pytest.mark.asyncio
+    async def test_openrouter_request_attributes_the_turn_for_broadcast(self):
+        """OpenRouter Broadcast puts the generation on the user's PostHog
+        person and the chat's ``$ai_session_id`` from these fields."""
+        state = _BaselineStreamState(
+            model="gpt-4o-mini", user_id="user-1", session_id="sess-1"
+        )
+        create_mock = AsyncMock(return_value=_make_stream_mock())
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = create_mock
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", True),
+            patch("backend.copilot.baseline.service.config.api_key", "or-key"),
+            patch(
+                "backend.copilot.baseline.service.config.base_url",
+                "https://openrouter.ai/api/v1",
+            ),
+        ):
+            set_turn_impersonated(True)
+            try:
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
+            finally:
+                set_turn_impersonated(False)
+
+        assert create_mock.await_args is not None
+        extra_body = create_mock.await_args.kwargs["extra_body"]
+        assert extra_body["user"] == "user-1"
+        assert extra_body["session_id"] == "sess-1"
+        assert extra_body["trace"] == {
+            "generation_name": "copilot-baseline",
+            "environment": attribution_settings.config.app_env.value,
+            "impersonated": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_direct_anthropic_request_carries_no_broadcast_fields(self):
+        """Anthropic's OpenAI-compat endpoint 400s on unknown body fields,
+        and Broadcast never sees a call that skips OpenRouter."""
+        state = _BaselineStreamState(
+            model="claude-sonnet-4-6", user_id="user-1", session_id="sess-1"
+        )
+        create_mock = AsyncMock(return_value=_make_stream_mock())
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = create_mock
+
+        with (
+            patch(
+                "backend.copilot.baseline.service._get_main_client",
+                return_value=mock_client,
+            ),
+            patch("backend.copilot.baseline.service.config.use_openrouter", False),
+        ):
+            await _baseline_llm_caller(
+                messages=[{"role": "user", "content": "hi"}],
+                tools=[],
+                state=state,
+            )
+
+        assert create_mock.await_args is not None
+        extra_body = create_mock.await_args.kwargs["extra_body"] or {}
+        assert not {"user", "session_id", "trace"} & extra_body.keys()
 
 
 class TestMidLoopPendingFlushOrdering:

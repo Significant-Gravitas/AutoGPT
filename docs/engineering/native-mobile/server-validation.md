@@ -27,7 +27,9 @@ The auth fixture starts its own auth process on an available loopback port and s
 
 `platform-native-mobile-ci.yml` runs these journeys explicitly on `ubuntu-latest`, using PostgreSQL with pgvector and a three-node Redis cluster. It installs the locked frontend and backend dependencies concurrently, caches dependency downloads/environments, and avoids a Next.js production build or full application seeding. The native auth file is named `auth_journey.py` so backend-only jobs do not collect tests requiring Node and the frontend installation. This dedicated lane invokes it explicitly. The job records cache hits and publishes JUnit results.
 
-The [first GitHub run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38154751772/job/114515310236), at `8ddfe5627f108e080286b916fed95e7ec86cb833`, passed 20 journeys in a full job duration of **4m55s** (16:16:15–16:21:10 UTC on 2026-10-11). Both dependency caches were absent. This is measured cold-cache evidence below the ten-minute target; warm-cache timing is still pending. The subsequent override-cleanup regression adds one auth case. iOS simulator build/runtime measurements are separate and remain open.
+The [first GitHub run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38154751772/job/114515310236), at `8ddfe5627f108e080286b916fed95e7ec86cb833`, passed 20 journeys in a full job duration of **4m55s** (11:16:15–11:21:10 America/Chicago on 2026-10-11). Both dependency caches were absent. The [subsequent warm run](https://github.com/Significant-Gravitas/AutoGPT/actions/runs/38156630654/job/114522397959) restored both caches and passed 21 journeys, including the override-cleanup regression, in **3m28s** (11:50:58–11:54:26 America/Chicago on the same date). These are measured historical server-lane results below the ten-minute target; they do not establish timings for later dependency changes. iOS simulator build/runtime measurements are separate and remain open.
+
+The independent foundation landing criteria and client-facing contract are recorded in the [backend handoff](backend-handoff.md).
 
 ## Pending-message evidence and remaining limits
 

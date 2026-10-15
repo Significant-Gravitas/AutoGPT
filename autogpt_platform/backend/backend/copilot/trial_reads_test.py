@@ -152,7 +152,11 @@ async def test_the_stream_route_runs_its_checks_in_one_block():
         pytest.raises(_StopTheTurn),
     ):
         await stream_chat_post(
-            "session-1", StreamChatRequest(message="hi"), "u1", MagicMock()
+            "session-1",
+            StreamChatRequest(message="hi"),
+            "u1",
+            MagicMock(),
+            http_request=MagicMock(),
         )
 
     assert read.await_count == 1

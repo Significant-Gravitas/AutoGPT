@@ -55,6 +55,7 @@ from backend.copilot.gate.held import resolve_answered
 from backend.copilot.graphiti.config import is_enabled_for_user
 from backend.copilot.graphiti.context import fetch_warm_context
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.llm_attribution import openrouter_attribution
 from backend.copilot.local_context_probe import (
     compaction_target_for_window,
     probe_local_context_window,
@@ -510,6 +511,10 @@ class _BaselineStreamState:
     # what already ran; see backend/copilot/segments.py.
     llm_auth_provider: CopilotLlmAuthProvider | None = None
     llm_credential_id: str | None = None
+    # Whose turn this is and in which chat, sent on OpenRouter requests so
+    # Broadcast attributes each generation (see ``llm_attribution``).
+    user_id: str | None = None
+    session_id: str | None = None
     # Live delivery channel drained concurrently by ``stream_chat_completion_baseline``
     # so reasoning / text / tool events reach the SSE wire **during** the upstream
     # LLM stream, not after ``_baseline_llm_caller`` returns.  Before this was a
@@ -916,8 +921,16 @@ async def _baseline_llm_caller(
             # which stricter local backends reject outright.
             pass
         elif is_openrouter_transport:
-            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning.
+            # OR-only: Anthropic's compat endpoint 400s on usage.include + reasoning
+            # and on the Broadcast fields, which only OpenRouter reads anyway.
             extra_body.update(dict(_OPENROUTER_INCLUDE_USAGE_COST))
+            extra_body.update(
+                openrouter_attribution(
+                    user_id=state.user_id,
+                    session_id=state.session_id,
+                    generation_name="copilot-baseline",
+                )
+            )
             reasoning_param = reasoning_extra_body(
                 state.model, config.claude_agent_max_thinking_tokens
             )
@@ -2393,6 +2406,8 @@ async def stream_chat_completion_baseline(
         llm_credential_id=(
             session.metadata.llm_credential_id if session is not None else None
         ),
+        user_id=user_id,
+        session_id=session_id,
     )
 
     # Queued, not yielded: the loop below yields them inside the try whose

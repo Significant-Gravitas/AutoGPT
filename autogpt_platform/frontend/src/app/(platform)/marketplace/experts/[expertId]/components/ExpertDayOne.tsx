@@ -9,39 +9,47 @@ interface Props {
   accent: ExpertAccent;
 }
 
+/** Day one as a timeline: numbered steps joined by a line, each with its
+ *  timing on the right. */
 export function ExpertDayOne({ name, items, accent }: Props) {
   if (items.length === 0) return null;
 
   return (
     <ExpertSection title={`What ${name} sets up on day one`}>
-      <ol className="flex flex-col divide-y divide-zinc-100 rounded-xl border border-zinc-200 bg-white">
+      <ol className="rounded-2xl bg-white p-5 smooth-shadow-ring-sm">
         {items.map((item, index) => (
           <li
             key={`${index}-${item.title}`}
-            className="flex items-start gap-3 px-4 py-3.5"
+            className="relative flex items-start gap-4 pb-6 last:pb-0"
           >
+            {index < items.length - 1 ? (
+              <span
+                aria-hidden
+                className="absolute left-[15px] top-9 h-[calc(100%-2.25rem)] w-px bg-zinc-200"
+              />
+            ) : null}
             <span
               aria-hidden="true"
               className={cn(
-                "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums",
+                "relative flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold tabular-nums ring-4 ring-white",
                 accent.pill,
               )}
             >
               {index + 1}
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
+            <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-1 sm:flex-row sm:items-start sm:gap-3">
               <div className="min-w-0 flex-1">
                 <div className="break-words text-base font-semibold leading-6 text-zinc-900">
                   {item.title}
                 </div>
                 {item.description ? (
-                  <p className="break-words text-sm leading-6 text-zinc-500">
+                  <p className="mt-0.5 break-words text-[15px] leading-6 text-zinc-500">
                     {item.description}
                   </p>
                 ) : null}
               </div>
               {item.timing ? (
-                <span className="shrink-0 self-start whitespace-nowrap rounded-full bg-zinc-100 px-2.5 py-0.5 text-xs font-medium leading-5 text-zinc-600">
+                <span className="shrink-0 self-start whitespace-nowrap rounded-full border border-zinc-200 bg-gradient-to-b from-white to-zinc-50 px-2.5 py-0.5 text-xs font-medium leading-5 text-zinc-600">
                   {item.timing}
                 </span>
               ) : null}

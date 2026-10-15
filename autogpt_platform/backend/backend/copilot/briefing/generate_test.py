@@ -825,7 +825,7 @@ async def test_generate_writes_recomposed_content_back_to_an_unreadable_row(
     client.create_briefing.assert_not_awaited()
     update_call = client.update_briefing_content.await_args
     assert update_call.args[:2] == ("user-1", "briefing-1")
-    assert update_call.args[2]["run_items"][0]["agent_name"] == "Agent task"
+    assert update_call.args[2]["run_items"][0]["agent_name"] == "Workflow task"
 
 
 @pytest.mark.asyncio

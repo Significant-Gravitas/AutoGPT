@@ -11,6 +11,7 @@ import fastapi.testclient
 import httpx
 import pytest
 import pytest_mock
+from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from pydantic import SecretStr
 from sentry_sdk.integrations.asgi import SentryAsgiMiddleware
 
@@ -73,7 +74,6 @@ def test_tool_response_union_exports_expert_soul_response() -> None:
 def setup_app_auth(mock_jwt_user, mocker: pytest_mock.MockerFixture):
     """Setup auth overrides for all tests in this module"""
     from autogpt_libs.auth.dependencies import get_request_context
-    from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
     app.dependency_overrides[get_request_context] = mock_jwt_user["get_request_context"]
@@ -438,6 +438,78 @@ def test_stream_chat_accepts_20_file_ids(mocker: pytest_mock.MockerFixture):
     )
     # Should get past validation — 200 streaming response expected
     assert response.status_code == 200
+
+
+def _mock_rate_limits_for_an_unseeded_user(mocker: pytest_mock.MockerFixture) -> None:
+    """The impersonated user has no row in the test database, so the tier
+    lookup behind the rate limit would fail before the turn is scheduled."""
+    mocker.patch(
+        "backend.api.features.chat.routes.get_global_rate_limits",
+        new_callable=AsyncMock,
+        return_value=(0, 0, SubscriptionTier.BASIC),
+    )
+    mocker.patch(
+        "backend.api.features.chat.routes.check_rate_limit", new_callable=AsyncMock
+    )
+
+
+def test_stream_chat_turn_is_not_impersonated_by_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "hello"})
+
+    assert response.status_code == 200
+    assert mocks.enqueue.await_args.kwargs["impersonated"] is False
+
+
+def test_stream_chat_marks_a_turn_an_impersonating_admin_starts(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+) -> None:
+    """The turn still runs and is still tracked, as the user, but its LLM
+    analytics say an admin sent it."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+
+    response = client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert response.status_code == 200
+    kwargs = mocks.enqueue.await_args.kwargs
+    assert kwargs["user_id"] == target_user_id
+    assert kwargs["impersonated"] is True
+
+
+def test_stream_chat_queues_an_impersonated_turn_as_impersonated(
+    mocker: pytest_mock.MockerFixture,
+    mock_jwt_admin,
+    target_user_id: str,
+) -> None:
+    """A turn queued behind the running cap is promoted later, from the stored
+    row, so the row has to say an admin sent it."""
+    app.dependency_overrides[get_jwt_payload] = mock_jwt_admin["get_jwt_payload"]
+    mocks = _mock_stream_internals(mocker)
+    _mock_rate_limits_for_an_unseeded_user(mocker)
+    mocks.enqueue.side_effect = chat_routes.ConcurrentTurnLimitError("busy")
+    queue = mocker.patch.object(
+        chat_routes.turn_queue, "try_enqueue_turn", new_callable=AsyncMock
+    )
+
+    client.post(
+        "/sessions/sess-1/stream",
+        json={"message": "hello"},
+        headers={"X-Act-As-User-Id": target_user_id},
+    )
+
+    assert queue.await_args.kwargs["user_id"] == target_user_id
+    assert queue.await_args.kwargs["impersonated"] is True
 
 
 def test_stream_chat_allows_an_active_expert_session(

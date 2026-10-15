@@ -325,7 +325,7 @@ async def test_persisted_summaries_are_scrubbed_when_the_activity_flag_is_off(
     assert dashboard.briefing.outcomes[0].summary == "Completed successfully."
     # The hybrid response also appends the live run; a one-sided scrub that
     # covered only the stored half would still leak through that one.
-    assert dashboard.briefing.outcomes[1].title == "Agent task finished"
+    assert dashboard.briefing.outcomes[1].title == "Workflow task finished"
     assert dashboard.briefing.outcomes[1].summary == "Completed successfully."
 
 
@@ -354,7 +354,7 @@ async def test_activity_summary_hidden_when_flag_disabled(
 
     dashboard = await build_home_dashboard(user_id="user-1")
 
-    assert dashboard.briefing.outcomes[0].title == "Agent task finished"
+    assert dashboard.briefing.outcomes[0].title == "Workflow task finished"
 
 
 @pytest.mark.asyncio

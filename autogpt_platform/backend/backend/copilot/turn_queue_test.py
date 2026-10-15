@@ -136,6 +136,27 @@ async def test_enqueue_turn_packs_metadata_into_metadata_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_enqueue_turn_records_an_impersonated_turn() -> None:
+    db = MagicMock()
+    db.get_next_sequence = AsyncMock(return_value=1)
+    db.add_chat_message = AsyncMock(return_value=_pyd_message())
+    db.update_chat_session_status = AsyncMock(return_value=True)
+    with (
+        patch.object(turn_queue, "chat_db", return_value=db),
+        patch.object(turn_queue, "count_inflight_turns", new=AsyncMock(return_value=0)),
+        patch.object(turn_queue, "invalidate_session_cache", new=AsyncMock()),
+    ):
+        await turn_queue.try_enqueue_turn(
+            user_id="u1",
+            inflight_cap=15,
+            session_id="s1",
+            message="hello",
+            impersonated=True,
+        )
+    assert db.add_chat_message.call_args.kwargs["metadata"]["impersonated"] is True
+
+
+@pytest.mark.asyncio
 async def test_enqueue_turn_only_includes_default_transport_without_extra_params() -> (
     None
 ):
@@ -1439,11 +1460,16 @@ async def test_dispatch_defers_on_rate_limit_unavailable() -> None:
 
 
 @pytest.mark.asyncio
-async def test_dispatch_happy_path_claims_and_dispatches() -> None:
+@pytest.mark.parametrize("impersonated", [False, True])
+async def test_dispatch_happy_path_claims_and_dispatches(impersonated: bool) -> None:
     """All gates pass → claim session queued → running, build a TurnSlot,
-    dispatch_turn, invalidate cache, return True."""
+    dispatch_turn, invalidate cache, return True. A turn queued by an
+    impersonating admin is promoted as one."""
     head = _queued_row(session_id="s1")
-    pending = _pyd_message(metadata={"mode": "extended_thinking"})
+    stored: dict = {"mode": "extended_thinking"}
+    if impersonated:
+        stored["impersonated"] = True
+    pending = _pyd_message(metadata=stored)
     db = MagicMock()
     db.admit_chat_session_turn = AsyncMock(return_value="admitted")
     db.update_chat_session_status = AsyncMock(return_value=True)
@@ -1474,6 +1500,7 @@ async def test_dispatch_happy_path_claims_and_dispatches() -> None:
         promoted = await turn_queue.dispatch_next_for_user("u1")
     assert promoted is True
     dispatch_turn_mock.assert_awaited_once()
+    assert dispatch_turn_mock.await_args.kwargs["impersonated"] is impersonated
     invalidate.assert_awaited_once_with("s1")
     # Claimed queued → running under the user's cap; nothing restored.
     assert db.admit_chat_session_turn.await_args.kwargs == {
