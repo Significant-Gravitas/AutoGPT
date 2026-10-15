@@ -285,10 +285,10 @@ class BashExecTool(BaseTool):
                 ),
             )
 
-        # Bubblewrap fallback: local isolated execution.
+        # Local isolated sandbox fallback (Vetto or bubblewrap).
         if not has_full_sandbox():
             return ErrorResponse(
-                message="bash_exec requires bubblewrap sandbox (Linux only).",
+                message="bash_exec requires a sandbox runtime (Vetto or bubblewrap).",
                 error="sandbox_unavailable",
                 session_id=session_id,
             ).from_outside()
