@@ -346,8 +346,10 @@ async def execute_block(
         try:
             for field_name, cred_meta in matched_credentials.items():
                 credential_field_name = field_name
-                if field_name not in input_data:
-                    input_data[field_name] = cred_meta.model_dump()
+                # Always overwrite: the block runs with the resolved
+                # credential below, so the input it is priced on must name
+                # that same credential, not whatever the model passed.
+                input_data[field_name] = cred_meta.model_dump()
                 if cred_meta.provider == ProviderName.CODEX:
                     lease = await creds_manager.acquire_lease(user_id, cred_meta.id)
                     credential_leases[field_name] = lease
@@ -1340,8 +1342,10 @@ async def check_spend_approval(
     threshold (SECRT-2599). None means the block may run."""
     if session.expert_id is None:
         return None
+    # Price with the credentials the run will use, not the model's own.
+    resolved = {f: m.model_dump() for f, m in prep.matched_credentials.items()}
     cost, _ = block_usage_cost(
-        prep.block, prep.input_data, use_preflight_estimate=False
+        prep.block, {**prep.input_data, **resolved}, use_preflight_estimate=False
     )
     if cost <= 0:
         return None
