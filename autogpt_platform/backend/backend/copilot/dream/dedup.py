@@ -36,9 +36,14 @@ _DEDUP_CONTAINMENT_MIN_TOKENS = 3
 _DEDUP_BIGRAM_THRESHOLD = 0.6
 # A negation marker present in one fact but not the other flips the
 # meaning ("uses vim" vs "never uses vim") — never merge across it.
-# The tokenizer splits contractions ("doesn't" → "doesn", "t"), so the
-# bare stems cover the apostrophe forms; a false veto only ever KEEPS
-# both facts, which is the conservative direction.
+# A contraction's "n't" is folded into its word before the split
+# (``_CONTRACTED_NOT``: "can't" and "can’t" read "cant"), so the folded
+# forms are the markers; split, "can't" would read "can" and "t", neither
+# of them a marker, and "can't use vim" would merge into "can use vim".
+# The bare stems ("doesn") cover a contraction spelled with a space. A
+# false veto only ever KEEPS both facts, which is the conservative
+# direction.
+_CONTRACTED_NOT = re.compile(r"n['’]t\b")
 _DEDUP_NEGATION_MARKERS = frozenset(
     {
         "no",
@@ -62,6 +67,11 @@ _DEDUP_NEGATION_MARKERS = frozenset(
         "weren",
         "wont",
         "cant",
+        "aint",
+        "shant",
+        "mustnt",
+        "neednt",
+        "mightnt",
         "hasnt",
         "hasn",
         "havent",
@@ -123,18 +133,20 @@ _DEDUP_STOPWORDS = frozenset(
 def _content_tokens(content: str) -> frozenset[str]:
     """Lowercased alphanumeric content words, minus a small stopword set.
     ``user`` is a stopword because nearly every fact begins with it."""
-    return frozenset(
-        t
-        for t in re.findall(r"[a-z0-9]+", content.lower())
-        if t not in _DEDUP_STOPWORDS
-    )
+    return frozenset(t for t in _words(content) if t not in _DEDUP_STOPWORDS)
 
 
 def _word_bigrams(content: str) -> frozenset[tuple[str, str]]:
     """Adjacent word pairs over the full (unfiltered) word sequence — the
     order-sensitive signal used when two facts' token sets are equal."""
-    words = re.findall(r"[a-z0-9]+", content.lower())
+    words = _words(content)
     return frozenset(zip(words, words[1:]))
+
+
+def _words(content: str) -> list[str]:
+    """The lowercased alphanumeric words of *content*, each contraction's
+    "n't" folded into its word first."""
+    return re.findall(r"[a-z0-9]+", _CONTRACTED_NOT.sub("nt", content.lower()))
 
 
 def _near_duplicate(
