@@ -12,6 +12,7 @@ import pytest
 from aiohttp import web
 from pydantic import BaseModel
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.config import ChatConfig
 from backend.copilot.dream import batch_callbacks, orchestrator
 from backend.copilot.dream.llm import (
@@ -300,3 +301,6 @@ async def test_subscription_never_hands_an_integration_key_to_a_background_call(
     assert batch_callbacks._anthropic_api_key() is None
     sync_dispatch.assert_not_awaited()
     batch_dispatch.assert_not_awaited()
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
