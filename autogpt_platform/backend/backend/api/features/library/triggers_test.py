@@ -10,18 +10,28 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from backend.api.features.experts import experts_db
+from backend.api.features.library.model import node_input_mask_key
 from backend.api.features.library.triggers import (
     delete_preset_with_webhook_cleanup,
     setup_triggered_preset,
     update_triggered_preset,
 )
+from backend.blocks import _base as block_base
 from backend.blocks.allquiet._webhook import AllQuietWebhooksManager
 from backend.blocks.generic_webhook._webhook import GenericWebhooksManager
+from backend.blocks.github.triggers import GithubPullRequestTriggerBlock
+from backend.blocks.io import AgentNumberInputBlock
+from backend.data.graph import Graph, GraphModel, Node, make_graph_model
 from backend.data.integrations import WebhookWithRelations
+from backend.executor import utils as executor_utils
 from backend.util.exceptions import InvalidInputError, MissingConfigError, NotFoundError
 
 _USER = "test-user-triggers"
 _PATH = "backend.api.features.library.triggers"
+_DELIVERY_VALIDATION_CASES = [
+    pytest.param(True, False, id="valid-without-credentials"),
+    pytest.param("yes", True, id="event-filter-not-boolean"),
+]
 
 
 @pytest.fixture(autouse=True)
@@ -355,6 +365,35 @@ async def test_invalid_inputs_rejected_before_webhook_setup():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("opened, refused", _DELIVERY_VALIDATION_CASES)
+async def test_setup_refuses_what_delivery_refuses(monkeypatch, opened, refused):
+    """Setup runs the executor's validation, so a trigger config delivery would
+    refuse is refused before the webhook exists; only credentials may be unset."""
+    graph = _github_trigger_graph(monkeypatch)
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_create,
+        p_webhook as webhook_mock,
+        _real_execution_input_validator(graph),
+        _refusal(refused),
+    ):
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id=graph.id,
+            graph_version=graph.version,
+            name="PR agent",
+            description="",
+            trigger_config={"repo": "owner/repo", "events": {"opened": opened}},
+            agent_credentials={},
+            constant_inputs={"count": 3},
+        )
+    assert webhook_mock.await_count == (0 if refused else 1)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "manager, secret_field",
     [
@@ -595,6 +634,25 @@ async def test_update_reconfigure_validates_mask_apart_from_graph_inputs(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("opened, refused", _DELIVERY_VALIDATION_CASES)
+async def test_reconfigure_refuses_what_delivery_refuses(monkeypatch, opened, refused):
+    graph = _github_trigger_graph(monkeypatch)
+    trigger_config = {"repo": "owner/repo", "events": {"opened": opened}}
+    with (
+        _update_patches(current=_preset(webhook_id="wh-old"), graph=graph) as m,
+        _real_execution_input_validator(graph),
+        _refusal(refused),
+    ):
+        await update_triggered_preset(
+            user_id=_USER,
+            preset_id="preset-1",
+            inputs={"count": 3, node_input_mask_key("trigger"): trigger_config},
+            credentials={},
+        )
+    assert m["setup"].await_count == (0 if refused else 1)
+
+
+@pytest.mark.asyncio
 async def test_update_reconfigure_stores_new_credentials_in_mask():
     """The stored mask wins over preset.credentials at execution, so replaced
     credentials the caller echoed back in the mask must not survive the update."""
@@ -763,3 +821,57 @@ async def test_prune_dangling_webhook_is_best_effort():
     ):
         # Must not raise.
         await _prune_dangling_webhook(_USER, "wh-1")
+
+
+def _github_trigger_graph(monkeypatch) -> GraphModel:
+    """A GitHub pull-request trigger beside a number input, as the executor sees it."""
+    # Trigger blocks are disabled without a platform URL, which CI does not set.
+    monkeypatch.setattr(
+        block_base.app_config, "platform_base_url", "https://example.com"
+    )
+    return make_graph_model(
+        Graph(
+            id="graph-1",
+            version=1,
+            name="PR agent",
+            description="",
+            nodes=[
+                Node(id="trigger", block_id=GithubPullRequestTriggerBlock().id),
+                Node(
+                    id="count",
+                    block_id=AgentNumberInputBlock().id,
+                    input_default={"name": "count"},
+                ),
+            ],
+            links=[],
+        ),
+        _USER,
+    )
+
+
+@contextlib.contextmanager
+def _real_execution_input_validator(graph: GraphModel):
+    """Undo the autouse stub: run the executor's validation with only its DB
+    reads stubbed."""
+    with (
+        patch(
+            f"{_PATH}.validate_and_construct_node_execution_input",
+            new=executor_utils.validate_and_construct_node_execution_input,
+        ),
+        patch.object(executor_utils, "prisma", MagicMock(is_connected=lambda: True)),
+        patch.object(
+            executor_utils.graph_db, "get_graph", new=AsyncMock(return_value=graph)
+        ),
+        patch.object(
+            executor_utils.graph_db,
+            "validate_graph_execution_permissions",
+            new=AsyncMock(),
+        ),
+    ):
+        yield
+
+
+def _refusal(refused: bool):
+    if not refused:
+        return contextlib.nullcontext()
+    return pytest.raises(InvalidInputError, match="'yes' is not of type 'boolean'")
