@@ -14,6 +14,9 @@ interface Props {
    *  sits on its baseline. */
   nameAlign?: "center" | "baseline";
   areaClassName?: string;
+  /** Category colour for the title on the name line: a gradient fill with
+   *  a soft glow in that colour (card and page sizes only). */
+  areaColor?: string;
 }
 
 export function ExpertIdentityDetails({
@@ -25,6 +28,7 @@ export function ExpertIdentityDetails({
   nameAccessory,
   nameAlign = "center",
   areaClassName,
+  areaColor,
 }: Props) {
   const compact = size === "compact";
   const Container = compact ? "span" : "div";
@@ -77,7 +81,27 @@ export function ExpertIdentityDetails({
             )}
             title={titleOnNameLine}
           >
-            {"•"} {titleOnNameLine}
+            {areaColor ? (
+              <>
+                {"• "}
+                <span
+                  className={cn(
+                    "bg-clip-text font-medium text-transparent",
+                    size === "card" && "text-[15px]",
+                  )}
+                  style={{
+                    backgroundImage: `linear-gradient(90deg, color-mix(in srgb, ${areaColor} 60%, #18181b), color-mix(in srgb, ${areaColor} 85%, #18181b))`,
+                    filter: `drop-shadow(0 0 6px color-mix(in srgb, ${areaColor} 45%, transparent))`,
+                  }}
+                >
+                  {titleOnNameLine}
+                </span>
+              </>
+            ) : (
+              <>
+                {"•"} {titleOnNameLine}
+              </>
+            )}
           </Text>
         ) : null}
         {nameAccessory}

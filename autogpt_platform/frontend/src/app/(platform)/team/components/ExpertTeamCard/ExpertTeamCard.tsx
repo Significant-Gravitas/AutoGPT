@@ -1,6 +1,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { GraphExecutionJobInfo } from "@/app/api/__generated__/models/graphExecutionJobInfo";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
+import { getCategoryHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertIdentityDetails } from "@/components/molecules/ExpertIdentityDetails/ExpertIdentityDetails";
 import { CategoryTag } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { ExpertTagline } from "@/components/molecules/ExpertIdentityDetails/components/ExpertTagline";
@@ -144,6 +145,7 @@ export function ExpertTeamCard({
             role={expert.role}
             jobTitle={expert.job_title}
             nameAlign="baseline"
+            areaColor={getCategoryHex(topic)}
           />
           <div className="flex items-center gap-2 empty:hidden">
             {topic ? <CategoryTag category={topic} /> : null}
