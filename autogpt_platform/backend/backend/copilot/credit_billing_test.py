@@ -7,11 +7,12 @@ the balance covers and charged the cost it recorded when it ends.
 
 import asyncio
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
 from claude_agent_sdk import AssistantMessage, TextBlock
 
+from backend.copilot.config import ChatConfig
 from backend.copilot.constants import AUTOPILOT_BLOCK_ID
 from backend.copilot.credit_billing import (
     CreditBilledTurn,
@@ -34,13 +35,22 @@ OUT_OF_TODAY = TurnPause(
 )
 KIMI = "moonshotai/kimi-k2.6"
 
+_CREDITS_ON = "backend.copilot.credit_billing.settings.config.enable_credit"
+
 
 @pytest.fixture
 def credits(mocker) -> MagicMock:
     db = MagicMock()
     db.get_credits = AsyncMock(return_value=500)
     db.spend_credits = AsyncMock(return_value=0)
+    db.get_org_credits = AsyncMock(return_value=0)
+    db.spend_org_credits = AsyncMock(return_value=0)
     mocker.patch("backend.copilot.credit_billing.credit_db", return_value=db)
+    # A deployment that bills credits, on a route the SDK engine can take.
+    mocker.patch(_CREDITS_ON, True)
+    mocker.patch.object(
+        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=True
+    )
     return db
 
 
@@ -104,6 +114,75 @@ async def test_only_the_blocks_turns_bill_to_credits(credits, tool_name):
 
     assert turn is None
     credits.get_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_no_turn_bills_to_credits_where_credits_are_off(credits, mocker):
+    # The disabled credit model reads a balance and charges nothing: a turn
+    # billed there would run free.
+    mocker.patch(_CREDITS_ON, False)
+
+    assert await _bill(organization_id=None) is None
+    credits.get_credits.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_no_turn_bills_to_credits_without_the_engine_that_caps_it(
+    credits, mocker
+):
+    mocker.patch.object(
+        ChatConfig, "thinking_available", new_callable=PropertyMock, return_value=False
+    )
+
+    assert await _bill(organization_id=None) is None
+
+
+@pytest.mark.asyncio
+async def test_an_organizations_run_bills_the_organizations_balance(credits):
+    credits.get_credits.return_value = 0
+    credits.get_org_credits.return_value = 300
+
+    turn = await _bill(organization_id="org-1", team_id="team-1")
+    assert turn is not None and turn.cap_credits == 300
+    await turn.record(1_000_000)
+    await turn.end()
+
+    credits.get_org_credits.assert_awaited_once_with(org_id="org-1")
+    credits.spend_credits.assert_not_awaited()
+    charge = credits.spend_org_credits.await_args.kwargs
+    assert (charge["org_id"], charge["user_id"], charge["team_id"]) == (
+        "org-1",
+        "user-1",
+        "team-1",
+    )
+    assert charge["cost"] == 100
+
+
+@pytest.mark.asyncio
+async def test_a_turn_cancelled_while_its_charge_waits_is_still_charged(credits):
+    turn = await _billed(credits, balance=500)
+    await turn.record(1_000_000)
+    reconcile = asyncio.create_task(asyncio.sleep(3600))
+    turn.wait_for(reconcile)
+
+    ending = asyncio.create_task(turn.end())
+    await asyncio.sleep(0)
+    ending.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await ending
+    reconcile.cancel()
+
+    assert _charged(credits) == [100]
+
+
+async def _bill(**tenancy) -> CreditBilledTurn | None:
+    return await bill_to_credits(
+        user_id="user-1",
+        session_id="sess-1",
+        tool_name="autopilot_block",
+        refusal=OUT_OF_TODAY,
+        **tenancy,
+    )
 
 
 @pytest.mark.asyncio
