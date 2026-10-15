@@ -319,7 +319,21 @@ async def test_a_schedule_pinned_to_a_discord_account_keeps_its_own_error():
 
     assert isinstance(result, ErrorResponse)
     assert result.error == "missing_credentials"
+    assert "post_to_chat_platform" not in result.message
     links.list_server_links.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_pinned_schedule_with_no_link_gets_no_bot_hint_either():
+    result = await _prepare(
+        "SendDiscordMessageBlock",
+        _links(),
+        unattended=True,
+        pins={"discord": MagicMock()},
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert "post_to_chat_platform" not in result.message
 
 
 @pytest.mark.asyncio
@@ -332,7 +346,19 @@ async def test_an_ungranted_discord_credential_keeps_the_grant_card():
 
     assert isinstance(result, SetupRequirementsResponse)
     assert hint in result.message
+    assert "post_to_chat_platform" not in result.message
     links.list_server_links.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_an_ungranted_credential_on_a_scheduled_turn_gets_no_bot_hint():
+    hint = " The account already has a discord credential: grant it."
+    result = await _prepare(
+        "SendDiscordMessageBlock", _links(), unattended=True, grant_hint=hint
+    )
+
+    assert isinstance(result, ErrorResponse)
+    assert "post_to_chat_platform" not in result.message
 
 
 # The redirect says the user never needs a token, so it may fire only where
