@@ -48,7 +48,7 @@ export function RunAgentModal({
   onRunCreated,
   onTriggerSetup,
   onScheduleCreated,
-  title = "Run Agent",
+  title = "Run Workflow",
   dialogVariant = "default",
 }: Props) {
   const {

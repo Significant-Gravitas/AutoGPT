@@ -254,7 +254,7 @@ class RunAgentTool(BaseTool):
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Marketplace format 'username/agent-name'.",
-                    "title": "Marketplace agent",
+                    "title": "Marketplace workflow",
                 },
                 "library_agent_id": {
                     "type": "string",
@@ -397,7 +397,7 @@ class RunAgentTool(BaseTool):
             )
             if has_library_id and library_agent is None:
                 return ErrorResponse(
-                    message=f"Library agent '{params.library_agent_id}' not found",
+                    message=f"Library workflow '{params.library_agent_id}' not found",
                     session_id=session_id,
                 ).from_outside()
             if not graph:
@@ -407,7 +407,7 @@ class RunAgentTool(BaseTool):
                     else params.username_agent_slug
                 )
                 return ErrorResponse(
-                    message=f"Agent '{identifier}' not found",
+                    message=f"Workflow '{identifier}' not found",
                     session_id=session_id,
                 ).from_outside()
             scope_error = await require_installed_workflow(
@@ -427,8 +427,8 @@ class RunAgentTool(BaseTool):
             if builder_graph_id and graph.id != builder_graph_id:
                 return ErrorResponse(
                     message=(
-                        "This chat is bound to the builder's current agent. "
-                        "Running a different agent is not allowed here."
+                        "This chat is bound to the builder's current workflow. "
+                        "Running a different workflow is not allowed here."
                     ),
                     error="builder_session_graph_mismatch",
                     session_id=session_id,
@@ -444,7 +444,7 @@ class RunAgentTool(BaseTool):
                 )
                 return AgentDetailsResponse(
                     message=(
-                        f"Agent '{graph.name}' runs on a webhook trigger, so it "
+                        f"Workflow '{graph.name}' runs on a webhook trigger, so it "
                         "can't be run or scheduled directly. Set it up with "
                         "tool:setup_agent_webhook_trigger using the trigger "
                         "block's config (see trigger_info.config_schema), plus "
@@ -518,7 +518,7 @@ class RunAgentTool(BaseTool):
             ).from_outside()
         except NotFoundError as e:
             return ErrorResponse(
-                message=f"Agent '{params.username_agent_slug}' not found",
+                message=f"Workflow '{params.username_agent_slug}' not found",
                 error=str(e) if str(e) else "not_found",
                 session_id=session_id,
             ).from_outside()
@@ -568,7 +568,7 @@ class RunAgentTool(BaseTool):
         required_names = [i["name"] for i in inputs_list if i["required"]]
         optional_names = [i["name"] for i in inputs_list if not i["required"]]
 
-        message_parts = [f"Agent '{graph.name}' accepts the following inputs:"]
+        message_parts = [f"Workflow '{graph.name}' accepts the following inputs:"]
         if required_names:
             message_parts.append(f"Required: {', '.join(required_names)}.")
         if optional_names:
@@ -576,7 +576,7 @@ class RunAgentTool(BaseTool):
                 f"Optional (have defaults): {', '.join(optional_names)}."
             )
         if not inputs_list:
-            message_parts = [f"Agent '{graph.name}' has no required inputs."]
+            message_parts = [f"Workflow '{graph.name}' has no required inputs."]
         message_parts.append(suffix)
 
         return " ".join(message_parts)
@@ -633,7 +633,7 @@ class RunAgentTool(BaseTool):
         missing = build_missing_credentials_from_graph(graph, None)
         if is_unattended_turn():
             return await unattended_missing_credentials_error(
-                f"Agent '{graph.name}'",
+                f"Workflow '{graph.name}'",
                 missing,
                 session_id,
                 user_id,
@@ -642,7 +642,7 @@ class RunAgentTool(BaseTool):
         credentials_dict = await annotate_expert_grants(user_id, expert_id, missing)
         return SetupRequirementsResponse(
             message=(
-                f"Agent '{graph.name}' has credentials that are missing or "
+                f"Workflow '{graph.name}' has credentials that are missing or "
                 "no longer valid. Please connect the required account(s) "
                 "and try again."
             ),
@@ -702,7 +702,7 @@ class RunAgentTool(BaseTool):
             return creds_setup
         return ErrorResponse(
             message=(
-                f"Agent has configuration issues that need to be resolved "
+                f"Workflow has configuration issues that need to be resolved "
                 f"before {action_verb}: {error}"
             ),
             error="graph_validation_failed",
@@ -741,7 +741,7 @@ class RunAgentTool(BaseTool):
                 InputValidationErrorResponse(
                     message=(
                         f"Unknown input field(s) provided: {', '.join(sorted(unrecognized_fields))}. "
-                        f"Agent was not executed. Please use the correct field names from the schema."
+                        f"Workflow was not executed. Please use the correct field names from the schema."
                     ),
                     session_id=session_id,
                     unrecognized_fields=sorted(unrecognized_fields),
@@ -765,7 +765,7 @@ class RunAgentTool(BaseTool):
             )
             if is_unattended_turn():
                 return graph_credentials, await unattended_missing_credentials_error(
-                    f"Agent '{graph.name}'",
+                    f"Workflow '{graph.name}'",
                     missing_credentials_dict,
                     session_id,
                     user_id,
@@ -837,9 +837,9 @@ class RunAgentTool(BaseTool):
                 graph_credentials,
                 AgentDetailsResponse(
                     message=(
-                        f"Agent '{graph.name}' is missing required inputs: "
+                        f"Workflow '{graph.name}' is missing required inputs: "
                         f"{', '.join(missing_inputs)}. "
-                        "Please provide these values to run the agent."
+                        "Please provide these values to run the workflow."
                     ),
                     session_id=session_id,
                     agent=self._build_agent_details(graph, credentials),
@@ -868,7 +868,7 @@ class RunAgentTool(BaseTool):
         if params.username_agent_slug or params.library_agent_id:
             return ErrorResponse(
                 message=(
-                    "Use either preset_id or an agent identifier "
+                    "Use either preset_id or a workflow identifier "
                     "(username_agent_slug / library_agent_id), not both."
                 ),
                 session_id=session_id,
@@ -899,7 +899,7 @@ class RunAgentTool(BaseTool):
         if not graph:
             return ErrorResponse(
                 message=(
-                    f"The agent for preset '{params.preset_id}' is not "
+                    f"The workflow for preset '{params.preset_id}' is not "
                     "accessible (anymore)."
                 ),
                 session_id=session_id,
@@ -917,8 +917,8 @@ class RunAgentTool(BaseTool):
         if builder_graph_id and graph.id != builder_graph_id:
             return ErrorResponse(
                 message=(
-                    "This chat is bound to the builder's current agent. "
-                    "Running a preset for a different agent is not allowed here."
+                    "This chat is bound to the builder's current workflow. "
+                    "Running a preset for a different workflow is not allowed here."
                 ),
                 error="builder_session_graph_mismatch",
                 session_id=session_id,
@@ -1007,7 +1007,7 @@ class RunAgentTool(BaseTool):
             and session.successful_agent_runs.get(graph.id, 0) >= config.max_agent_runs
         ):
             return ErrorResponse(
-                message="Maximum agent runs reached for this session. Please try again later.",
+                message="Maximum workflow runs reached for this session. Please try again later.",
                 session_id=session_id,
             ).from_outside()
 
@@ -1066,7 +1066,7 @@ class RunAgentTool(BaseTool):
             # approves it on Home or the run page. Not a successful run yet.
             return ExecutionStartedResponse(
                 message=(
-                    f"Agent '{library_agent.name}' is waiting for the user's "
+                    f"Workflow '{library_agent.name}' is waiting for the user's "
                     "approval to spend more credits (spend threshold reached). "
                     f"It runs once they approve it on Home or at "
                     f"{library_agent_link}. {MSG_DO_NOT_RUN_AGAIN}"
@@ -1166,13 +1166,13 @@ class RunAgentTool(BaseTool):
                 )
                 if health_warning:
                     message = (
-                        f"Agent '{library_agent.name}' finished with status "
+                        f"Workflow '{library_agent.name}' finished with status "
                         f"COMPLETED. {health_warning} "
                         f"View at {library_agent_link}."
                     )
                 else:
                     message = (
-                        f"Agent '{library_agent.name}' completed successfully. "
+                        f"Workflow '{library_agent.name}' completed successfully. "
                         f"View at {library_agent_link}."
                     )
                 return AgentOutputResponse(
@@ -1204,7 +1204,7 @@ class RunAgentTool(BaseTool):
                 )
                 return ErrorResponse(
                     message=(
-                        f"Agent '{library_agent.name}' execution failed. "
+                        f"Workflow '{library_agent.name}' execution failed. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
@@ -1221,7 +1221,7 @@ class RunAgentTool(BaseTool):
                 )
                 return ErrorResponse(
                     message=(
-                        f"Agent '{library_agent.name}' execution was terminated. "
+                        f"Workflow '{library_agent.name}' execution was terminated. "
                         f"View details at {library_agent_link}."
                     ),
                     session_id=session_id,
@@ -1234,7 +1234,7 @@ class RunAgentTool(BaseTool):
                 )
                 return ExecutionStartedResponse(
                     message=(
-                        f"Agent '{library_agent.name}' is awaiting human review. "
+                        f"Workflow '{library_agent.name}' is awaiting human review. "
                         f"The user can approve or reject inline. After approval, "
                         f"the execution resumes automatically. Use tool:view_agent_output "
                         f"with execution_id='{execution.id}' to check the result."
@@ -1254,7 +1254,7 @@ class RunAgentTool(BaseTool):
                 )
                 return ExecutionStartedResponse(
                     message=(
-                        f"Agent '{library_agent.name}' is still {status} after "
+                        f"Workflow '{library_agent.name}' is still {status} after "
                         f"{wait_for_result}s. Check results later at "
                         f"{library_agent_link}. "
                         f"Use tool:view_agent_output with wait_if_running to check again."
@@ -1271,7 +1271,7 @@ class RunAgentTool(BaseTool):
         await _safe_link_to_chat_share(session_id=session_id, execution_id=execution.id)
         return ExecutionStartedResponse(
             message=(
-                f"Agent '{library_agent.name}' execution started successfully. "
+                f"Workflow '{library_agent.name}' execution started successfully. "
                 f"View at {library_agent_link}. "
                 f"{MSG_DO_NOT_RUN_AGAIN}"
             ),
@@ -1316,7 +1316,7 @@ class RunAgentTool(BaseTool):
             >= config.max_agent_schedules
         ):
             return ErrorResponse(
-                message="Maximum agent schedules reached for this session.",
+                message="Maximum workflow schedules reached for this session.",
                 session_id=session_id,
             ).from_outside()
 
@@ -1413,7 +1413,7 @@ class RunAgentTool(BaseTool):
         library_agent_link = f"/library/agents/{library_agent.id}"
         return ExecutionStartedResponse(
             message=(
-                f"Agent '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
+                f"Workflow '{library_agent.name}' scheduled successfully as '{schedule_name}'. "
                 f"View at {library_agent_link}. "
                 f"{MSG_DO_NOT_SCHEDULE_AGAIN}"
             ),
