@@ -1,0 +1,229 @@
+"""The note a delegated Expert's turn end leaves for the session that delegated it.
+
+Driven through the executor's turn end (``mark_session_completed``) against a
+live Redis, so the claim, the waiter marker and the pending buffer run for
+real; only the Postgres reads (the child session, the Expert's name, its open
+reviews) are stood in for.
+"""
+
+import asyncio
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
+
+from backend.copilot import delegation_report, stream_registry
+from backend.copilot.gate import held
+from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.pending_message_helpers import drain_pending_safe
+from backend.copilot.pending_messages import (
+    _buffer_key,
+    clear_pending_messages_unsafe,
+    push_pending_message,
+)
+from backend.copilot.result_waiters import is_result_awaited
+from backend.copilot.sdk.session_waiter import wait_for_session_result
+from backend.data import redis_client
+from backend.data.redis_client import get_redis_async
+from backend.util.testing import is_tcp_port_reachable
+
+pytestmark = pytest.mark.skipif(
+    not is_tcp_port_reachable(redis_client.HOST, redis_client.PORT),
+    reason="no local Redis reachable; the pending buffer needs one to run",
+)
+
+USER = "user-delegation-report"
+
+
+@pytest.fixture
+def ids():
+    return SimpleNamespace(
+        otto=f"otto-{uuid.uuid4().hex}",
+        bit=f"bit-{uuid.uuid4().hex}",
+        helper=f"helper-{uuid.uuid4().hex}",
+        # The turn's stream is keyed by its id; a shared one replays old ends.
+        turn=f"turn-{uuid.uuid4().hex}",
+    )
+
+
+@pytest.fixture
+async def world(monkeypatch, ids):
+    sessions: dict[str, ChatSession] = {}
+    open_reviews: dict[str, list[object]] = {}
+    pushes: list[str] = []
+
+    async def get_chat_session(session_id: str, user_id: str):
+        return sessions.get(session_id)
+
+    async def get_expert(user_id: str, expert_id: str, **_):
+        return SimpleNamespace(name="Bit") if expert_id else None
+
+    async def get_pending_reviews_for_chat_session(session_id: str, user_id: str):
+        return open_reviews.get(session_id, [])
+
+    async def recording_push(session_id, message, **kwargs):
+        pushes.append(session_id)
+        return await push_pending_message(session_id, message, **kwargs)
+
+    monkeypatch.setattr(delegation_report, "get_chat_session", get_chat_session)
+    monkeypatch.setattr(
+        delegation_report,
+        "experts_db",
+        lambda: SimpleNamespace(get_expert=get_expert),
+    )
+    monkeypatch.setattr(
+        delegation_report,
+        "review_db",
+        lambda: SimpleNamespace(
+            get_pending_reviews_for_chat_session=get_pending_reviews_for_chat_session
+        ),
+    )
+    monkeypatch.setattr(delegation_report, "push_pending_message", recording_push)
+    # The turn end's other steps reach the database; this file is about the report.
+    monkeypatch.setattr(stream_registry, "release_turn_slot", AsyncMock())
+    monkeypatch.setattr(stream_registry, "dispatch_next_for_user", AsyncMock())
+    monkeypatch.setattr(
+        stream_registry,
+        "chat_db",
+        lambda: SimpleNamespace(set_turn_duration=AsyncMock()),
+    )
+    monkeypatch.setattr(held, "wake", AsyncMock())
+
+    yield SimpleNamespace(sessions=sessions, open_reviews=open_reviews, pushes=pushes)
+
+    redis = await get_redis_async()
+    for session_id in (ids.otto, ids.bit, ids.helper):
+        await clear_pending_messages_unsafe(session_id)
+        await redis.delete(stream_registry.get_session_meta_key(session_id))
+
+
+def add_session(
+    world,
+    session_id: str,
+    *,
+    delegated_by: str | None,
+    reply: str = "Opened the draft PR and CI is green.",
+    handed_off: bool = False,
+) -> None:
+    session = ChatSession.new(
+        USER,
+        dry_run=False,
+        session_id=session_id,
+        expert_id="expert-bit",
+        delegated_by_session_id=delegated_by,
+        handed_off_from_expert_id="expert-otto" if handed_off else None,
+    )
+    session.messages = [
+        ChatMessage(role="user", content="Open a draft PR for the fix."),
+        ChatMessage(role="assistant", content=reply),
+    ]
+    world.sessions[session_id] = session
+
+
+async def end_turn(session_id: str, turn_id: str, error: str | None = None) -> None:
+    await stream_registry.create_session(session_id, USER, "", "", turn_id=turn_id)
+    await stream_registry.mark_session_completed(
+        session_id, error_message=error, turn_id=turn_id
+    )
+
+
+async def test_a_delegated_turn_end_leaves_one_note_the_delegators_next_turn_reads(
+    world, ids
+):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+
+    await end_turn(ids.bit, ids.turn)
+
+    notes = await drain_pending_safe(ids.otto)
+    assert len(notes) == 1
+    assert notes[0].content.startswith(
+        "Bit finished: Opened the draft PR and CI is green."
+    )
+    assert notes[0].metadata == {
+        "from_session_id": ids.bit,
+        "from_expert_id": "expert-bit",
+        "from_expert_name": "Bit",
+    }
+
+
+async def test_a_note_outlives_the_buffers_one_hour(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+
+    await end_turn(ids.bit, ids.turn)
+
+    redis = await get_redis_async()
+    assert await redis.ttl(_buffer_key(ids.otto)) > 3600
+
+
+async def test_no_note_while_the_delegator_waits_on_the_result(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    await stream_registry.create_session(ids.bit, USER, "", "", turn_id=ids.turn)
+    waiter = asyncio.create_task(
+        wait_for_session_result(session_id=ids.bit, user_id=USER, timeout=10)
+    )
+    for _ in range(50):
+        if await is_result_awaited(ids.bit):
+            break
+        await asyncio.sleep(0.02)
+
+    await stream_registry.mark_session_completed(ids.bit, turn_id=ids.turn)
+    outcome, _ = await waiter
+
+    assert outcome == "completed"
+    assert await drain_pending_safe(ids.otto) == []
+
+
+async def test_no_note_for_a_session_nobody_delegated(world, ids):
+    add_session(world, ids.bit, delegated_by=None)
+
+    await end_turn(ids.bit, ids.turn)
+
+    assert world.pushes == []
+
+
+async def test_no_note_for_a_thread_handed_off_to_the_expert(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto, handed_off=True)
+
+    await end_turn(ids.bit, ids.turn)
+
+    assert world.pushes == []
+
+
+async def test_a_turn_that_ended_on_an_approval_says_the_expert_is_waiting(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    world.open_reviews[ids.bit] = [object()]
+
+    await end_turn(ids.bit, ids.turn)
+
+    notes = await drain_pending_safe(ids.otto)
+    assert [n.content.split("\n")[0] for n in notes] == [
+        "Bit is waiting on your approval."
+    ]
+
+
+async def test_a_turn_the_user_stopped_leaves_no_note(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+
+    await end_turn(ids.bit, ids.turn, error=stream_registry.CANCELLED_MESSAGE)
+
+    assert world.pushes == []
+
+
+async def test_the_same_turn_ending_twice_leaves_one_note(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+
+    await delegation_report.report_to_delegator(USER, ids.bit, ids.turn, failed=False)
+    await delegation_report.report_to_delegator(USER, ids.bit, ids.turn, failed=False)
+
+    assert len(await drain_pending_safe(ids.otto)) == 1
+
+
+async def test_a_note_goes_one_hop_up_a_delegation_chain(world, ids):
+    add_session(world, ids.bit, delegated_by=ids.otto)
+    add_session(world, ids.helper, delegated_by=ids.bit)
+
+    await end_turn(ids.helper, ids.turn)
+
+    assert len(await drain_pending_safe(ids.bit)) == 1
+    assert await drain_pending_safe(ids.otto) == []
