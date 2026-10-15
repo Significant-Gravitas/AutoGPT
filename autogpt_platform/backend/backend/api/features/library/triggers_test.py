@@ -17,6 +17,7 @@ from backend.api.features.library.triggers import (
     update_triggered_preset,
 )
 from backend.blocks import _base as block_base
+from backend.blocks import get_block, get_webhook_block_ids
 from backend.blocks.allquiet._webhook import AllQuietWebhooksManager
 from backend.blocks.generic_webhook._webhook import GenericWebhooksManager
 from backend.blocks.github.triggers import GithubPullRequestTriggerBlock
@@ -366,10 +367,12 @@ async def test_invalid_inputs_rejected_before_webhook_setup():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("opened, refused", _DELIVERY_VALIDATION_CASES)
-async def test_setup_refuses_what_delivery_refuses(monkeypatch, opened, refused):
+async def test_setup_refuses_what_delivery_refuses(
+    trigger_blocks_enabled, opened, refused
+):
     """Setup runs the executor's validation, so a trigger config delivery would
     refuse is refused before the webhook exists; only credentials may be unset."""
-    graph = _github_trigger_graph(monkeypatch)
+    graph = _trigger_graph(GithubPullRequestTriggerBlock().id)
     p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
     with (
         p_graph,
@@ -391,6 +394,44 @@ async def test_setup_refuses_what_delivery_refuses(monkeypatch, opened, refused)
             constant_inputs={"count": 3},
         )
     assert webhook_mock.await_count == (0 if refused else 1)
+
+
+@pytest.mark.asyncio
+async def test_setup_accepts_every_trigger_block_before_its_first_event(
+    trigger_blocks_enabled,
+):
+    """No event exists at setup, so the placeholder payload must pass for every
+    trigger block, including one whose payload is a typed model (Compass)."""
+    checked, refused = [], {}
+    for block_id in get_webhook_block_ids():
+        if (block := get_block(block_id)).disabled:
+            continue
+        graph = _trigger_graph(block_id)
+        p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+        with (
+            p_graph,
+            p_creds,
+            p_webhook,
+            p_create,
+            p_expert,
+            _real_execution_input_validator(graph),
+        ):
+            try:
+                await setup_triggered_preset(
+                    user_id=_USER,
+                    graph_id=graph.id,
+                    graph_version=graph.version,
+                    name=block.name,
+                    description="",
+                    trigger_config=_example_trigger_config(block),
+                    agent_credentials={},
+                    constant_inputs={"count": 3},
+                )
+            except InvalidInputError as e:
+                refused[block.name] = str(e)
+        checked.append(block.name)
+    assert "CompassAITriggerBlock" in checked
+    assert refused == {}
 
 
 @pytest.mark.asyncio
@@ -635,8 +676,10 @@ async def test_update_reconfigure_validates_mask_apart_from_graph_inputs(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("opened, refused", _DELIVERY_VALIDATION_CASES)
-async def test_reconfigure_refuses_what_delivery_refuses(monkeypatch, opened, refused):
-    graph = _github_trigger_graph(monkeypatch)
+async def test_reconfigure_refuses_what_delivery_refuses(
+    trigger_blocks_enabled, opened, refused
+):
+    graph = _trigger_graph(GithubPullRequestTriggerBlock().id)
     trigger_config = {"repo": "owner/repo", "events": {"opened": opened}}
     with (
         _update_patches(current=_preset(webhook_id="wh-old"), graph=graph) as m,
@@ -823,12 +866,16 @@ async def test_prune_dangling_webhook_is_best_effort():
         await _prune_dangling_webhook(_USER, "wh-1")
 
 
-def _github_trigger_graph(monkeypatch) -> GraphModel:
-    """A GitHub pull-request trigger beside a number input, as the executor sees it."""
+@pytest.fixture
+def trigger_blocks_enabled(monkeypatch):
     # Trigger blocks are disabled without a platform URL, which CI does not set.
     monkeypatch.setattr(
         block_base.app_config, "platform_base_url", "https://example.com"
     )
+
+
+def _trigger_graph(trigger_block_id: str) -> GraphModel:
+    """A trigger beside a number input, as the executor sees it."""
     return make_graph_model(
         Graph(
             id="graph-1",
@@ -836,7 +883,7 @@ def _github_trigger_graph(monkeypatch) -> GraphModel:
             name="PR agent",
             description="",
             nodes=[
-                Node(id="trigger", block_id=GithubPullRequestTriggerBlock().id),
+                Node(id="trigger", block_id=trigger_block_id),
                 Node(
                     id="count",
                     block_id=AgentNumberInputBlock().id,
@@ -875,3 +922,15 @@ def _refusal(refused: bool):
     if not refused:
         return contextlib.nullcontext()
     return pytest.raises(InvalidInputError, match="'yes' is not of type 'boolean'")
+
+
+def _example_trigger_config(block) -> dict:
+    example = (
+        block.test_input[0] if isinstance(block.test_input, list) else block.test_input
+    )
+    credentials = block.input_schema.get_credentials_fields()
+    return {
+        k: v
+        for k, v in (example or {}).items()
+        if k != "payload" and k not in credentials
+    }

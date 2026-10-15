@@ -321,7 +321,7 @@ def validate_exec(
     data: BlockInput,
     resolve_input: bool = True,
     dry_run: bool = False,
-    allow_missing_credentials: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[BlockInput | None, str]:
     """
     Validate the input data for a node execution.
@@ -333,9 +333,10 @@ def validate_exec(
         dry_run: When True, credential fields are allowed to be missing — they
             will be substituted with a sentinel so the node can be queued and
             later executed via simulate_block.
-        allow_missing_credentials: When True, absent credential fields are left
-            out of the missing-input and schema checks; everything else is
-            validated as for a real run.
+        trigger_setup: Validate a trigger before its first event: absent
+            credential fields and a webhook block's ``payload`` are left out of
+            the missing-input and schema checks; everything else is validated as
+            for a real run.
 
     Returns:
         A tuple of the validated data and the block name.
@@ -371,14 +372,16 @@ def validate_exec(
     # Coerce non-matching data types to the expected input schema.
     coerce_inputs_to_schema(data, schema)
 
-    absent_credentials = (
-        {f for f in schema.get_credentials_fields() if data.get(f) is None}
-        if allow_missing_credentials
-        else set()
-    )
+    unchecked_fields: set[str] = set()
+    if trigger_setup:
+        unchecked_fields = {
+            f for f in schema.get_credentials_fields() if data.get(f) is None
+        }
+        if node_block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL):
+            unchecked_fields.add("payload")
 
     # Input data post-merge should contain all required fields from the schema.
-    if missing_input := schema.get_missing_input(data) - absent_credentials:
+    if missing_input := schema.get_missing_input(data) - unchecked_fields:
         if dry_run:
             # In dry-run mode all missing inputs are tolerated — simulate_block()
             # generates synthetic outputs without needing real input values.
@@ -391,8 +394,8 @@ def validate_exec(
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
         if error := (
-            schema.validate_data(data, exclude_fields=absent_credentials)
-            if absent_credentials
+            schema.validate_data(data, exclude_fields=unchecked_fields)
+            if unchecked_fields
             else schema.get_mismatch_error(data)
         ):
             error_message = f"{error_prefix} {error}"
@@ -821,7 +824,7 @@ async def _construct_starting_node_execution_input(
     graph_inputs: GraphInput,
     nodes_input_masks: Optional[NodesInputMasks] = None,
     dry_run: bool = False,
-    allow_missing_credentials: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -835,8 +838,8 @@ async def _construct_starting_node_execution_input(
         data (GraphInput): The input data for the graph execution.
         node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
         dry_run: When True, skip credential validation errors (simulation needs no real creds).
-        allow_missing_credentials: Skip credential validation errors, but validate
-            every other input as for a real run.
+        trigger_setup: Skip credential errors and a webhook block's payload checks,
+            validating every other input as for a real run.
 
     Returns:
         tuple[
@@ -849,9 +852,9 @@ async def _construct_starting_node_execution_input(
     validation_errors, nodes_to_skip = await validate_graph_with_credentials(
         graph, user_id, nodes_input_masks
     )
-    # Dry runs simulate every block, and allow_missing_credentials callers
-    # validate without them: strip credential-only errors so the graph can proceed.
-    if (dry_run or allow_missing_credentials) and validation_errors:
+    # Dry runs simulate every block, and trigger setup runs before credentials are
+    # picked: strip credential-only errors so the graph can proceed.
+    if (dry_run or trigger_setup) and validation_errors:
         validation_errors = {
             node_id: {
                 field: msg
@@ -911,7 +914,7 @@ async def _construct_starting_node_execution_input(
             node,
             input_data,
             dry_run=dry_run,
-            allow_missing_credentials=allow_missing_credentials,
+            trigger_setup=trigger_setup,
         )
         if input_data is None:
             raise ValueError(error)
@@ -935,7 +938,7 @@ async def validate_and_construct_node_execution_input(
     nodes_input_masks: Optional[NodesInputMasks] = None,
     is_sub_graph: bool = False,
     dry_run: bool = False,
-    allow_missing_credentials: bool = False,
+    trigger_setup: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
     """
     Public wrapper that handles graph fetching, credential mapping, and validation+construction.
@@ -1004,7 +1007,7 @@ async def validate_and_construct_node_execution_input(
         graph_inputs=graph_inputs,
         nodes_input_masks=nodes_input_masks,
         dry_run=dry_run,
-        allow_missing_credentials=allow_missing_credentials,
+        trigger_setup=trigger_setup,
     )
 
     return graph, starting_nodes_input, nodes_input_masks, nodes_to_skip

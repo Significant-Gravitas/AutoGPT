@@ -105,8 +105,8 @@ async def setup_triggered_preset(
     # inputs as graph inputs, trigger config as the trigger node's mask — so an
     # invalid preset is rejected before any webhook is registered. A placeholder
     # `payload` stands in for the (not-yet-received) webhook event, which the
-    # trigger node requires to pass execution-input construction. Credentials
-    # are the only check skipped.
+    # trigger node requires to pass execution-input construction. It and the
+    # credentials are the only inputs left unchecked.
     try:
         await validate_and_construct_node_execution_input(
             graph_id=graph.id,
@@ -117,7 +117,7 @@ async def setup_triggered_preset(
             nodes_input_masks={
                 trigger_node.id: {**trigger_config_with_credentials, "payload": {}}
             },
-            allow_missing_credentials=True,
+            trigger_setup=True,
         )
     except ValueError as e:
         raise InvalidInputError(f"Invalid preset inputs: {e}")
@@ -251,7 +251,7 @@ async def update_triggered_preset(
                             "payload": {},
                         }
                     },
-                    allow_missing_credentials=True,
+                    trigger_setup=True,
                 )
             except ValueError as e:
                 raise InvalidInputError(f"Invalid preset inputs: {e}")
