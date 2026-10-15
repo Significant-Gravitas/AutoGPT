@@ -1383,18 +1383,6 @@ trio = ["trio (>=0.30)"]
 wmi = ["wmi (>=1.5.1) ; platform_system == \"Windows\""]
 
 [[package]]
-name = "dockerfile-parse"
-version = "2.0.1"
-description = "Python library for Dockerfile manipulation"
-optional = false
-python-versions = ">=3.6"
-groups = ["main"]
-files = [
-    {file = "dockerfile-parse-2.0.1.tar.gz", hash = "sha256:3184ccdc513221983e503ac00e1aa504a2aa8f84e5de673c46b0b6eee99ec7bc"},
-    {file = "dockerfile_parse-2.0.1-py2.py3-none-any.whl", hash = "sha256:bdffd126d2eb26acf1066acb54cb2e336682e1d72b974a40894fac76a4df17f6"},
-]
-
-[[package]]
 name = "docstring-parser"
 version = "0.17.0"
 description = "Parse Python docstrings in reST, Google and Numpydoc format"
@@ -1469,20 +1457,20 @@ pgp = ["gpg"]
 
 [[package]]
 name = "e2b"
-version = "2.49.1"
+version = "2.55.1"
 description = "E2B SDK that give agents cloud environments"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "e2b-2.49.1-py3-none-any.whl", hash = "sha256:2ea7c10927ab6e75aae54badef41b49ab0ef0db03b747bf09db2a86f7906ffe6"},
-    {file = "e2b-2.49.1.tar.gz", hash = "sha256:300810e78cdd7d9a0b96b0c66e26ed53ed643bc3227f8dd7e9725e04f271dff3"},
+    {file = "e2b-2.55.1-py3-none-any.whl", hash = "sha256:30aec382a7cac5401e0aa0efb156422459f586101809c3e9f34a6fcf797097db"},
+    {file = "e2b-2.55.1.tar.gz", hash = "sha256:5255f9a01dc484c343f750d13d3a9c857ef3511222a240572ddce2563dd301d9"},
 ]
 
 [package.dependencies]
 attrs = ">=23.2.0"
 connectrpc = ">=0.11.1,<0.12"
-dockerfile-parse = ">=2.0.1,<3"
+e2b-dockerfile-utils = ">=0.1.0,<0.2"
 h2 = ">=4.4.1,<5"
 httpx = ">=0.27.0,<1.0.0"
 packaging = ">=24.1"
@@ -1509,6 +1497,32 @@ files = [
 attrs = ">=21.3.0"
 e2b = ">=2.44.0,<3.0.0"
 httpx = ">=0.20.0,<1.0.0"
+
+[[package]]
+name = "e2b-dockerfile-utils"
+version = "0.1.0"
+description = "E2B Dockerfile utils - Dockerfile parser, shell lexer and .dockerignore matcher ported from BuildKit and Moby"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+markers = "python_version == \"3.10\""
+files = [
+    {file = "e2b_dockerfile_utils-0.1.0-py3-none-any.whl", hash = "sha256:fedc7d036d8a23cb962c01b90882ebec154520ec1bed064e1fe92796a7971553"},
+    {file = "e2b_dockerfile_utils-0.1.0.tar.gz", hash = "sha256:f840a3e30b2e4140ef4ebb67013a399b568ce4bf62de9f9c1d069d3e47ac9992"},
+]
+
+[[package]]
+name = "e2b-dockerfile-utils"
+version = "0.1.1"
+description = "E2B Dockerfile utils - Dockerfile parser, shell lexer and .dockerignore matcher ported from BuildKit and Moby"
+optional = false
+python-versions = ">=3.11"
+groups = ["main"]
+markers = "python_version >= \"3.11\""
+files = [
+    {file = "e2b_dockerfile_utils-0.1.1-py3-none-any.whl", hash = "sha256:c648ecf56b3ffdb6d91469580850f4691f019cb2c925405e776ad36b761204f1"},
+    {file = "e2b_dockerfile_utils-0.1.1.tar.gz", hash = "sha256:c1d4179bae6f3131fe0bbb1e6787ffb07c6c6dca8bdb3399abb3de9056b2a08f"},
+]
 
 [[package]]
 name = "elevenlabs"
