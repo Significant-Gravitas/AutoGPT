@@ -4,6 +4,8 @@ Runs before anything is deleted, so a blocked deletion leaves the account
 exactly as it was.
 """
 
+from datetime import datetime, timedelta, timezone
+
 from prisma.models import (
     AuthUser,
     Expert,
@@ -14,36 +16,9 @@ from prisma.models import (
     User,
     UserWorkspace,
 )
-from pydantic import BaseModel
 
-from backend.data.account_deletion.models import Blocker, Subject
-from backend.data.db import query_raw_with_schema
-
-# Other accounts' rows that point at this account's agents. The database
-# refuses to delete an agent graph while a library entry, preset or store
-# version of another account still references it.
-_SHARED_AGENT_COUNTS = """
-    SELECT
-      (SELECT COUNT(*) FROM {schema_prefix}"LibraryAgent" la
-         JOIN {schema_prefix}"AgentGraph" g
-           ON g."id" = la."agentGraphId" AND g."version" = la."agentGraphVersion"
-        WHERE g."userId" = $1 AND la."userId" <> $1)::int AS library_entries,
-      (SELECT COUNT(*) FROM {schema_prefix}"AgentPreset" p
-         JOIN {schema_prefix}"AgentGraph" g
-           ON g."id" = p."agentGraphId" AND g."version" = p."agentGraphVersion"
-        WHERE g."userId" = $1 AND p."userId" <> $1)::int AS presets,
-      (SELECT COUNT(*) FROM {schema_prefix}"StoreListingVersion" v
-         JOIN {schema_prefix}"StoreListing" l ON l."id" = v."storeListingId"
-         JOIN {schema_prefix}"AgentGraph" g
-           ON g."id" = v."agentGraphId" AND g."version" = v."agentGraphVersion"
-        WHERE g."userId" = $1 AND l."owningUserId" <> $1)::int AS foreign_listings
-"""
-
-
-class SharedAgentCounts(BaseModel):
-    library_entries: int = 0
-    presets: int = 0
-    foreign_listings: int = 0
+from backend.data.account_deletion.deleted_user import DELETED_USER_ID
+from backend.data.account_deletion.models import UNDO_WINDOW, Blocker, Subject
 
 
 async def load_subject(user_id: str, email: str | None = None) -> Subject:
@@ -63,34 +38,20 @@ async def load_subject(user_id: str, email: str | None = None) -> Subject:
         sole_org_ids=[org.id for org in sole_orgs],
         stripe_customer_ids=await _stripe_customers(user, sole_orgs),
         expert_ids=[expert.id for expert in experts],
+        locked_at=user.deletionLockedAt if user else None,
     )
 
 
 async def find_blockers(
-    subject: Subject, shared: SharedAgentCounts, *, remove_shared_agents: bool
+    subject: Subject, *, force: bool = False, now: datetime | None = None
 ) -> list[Blocker]:
+    """What stops the full deletion. `force` skips the undo window only."""
+    if system := system_account(subject.user_id):
+        return system
     _, solely_owned_shared_orgs = await _orgs(subject.user_id)
     blockers: list[Blocker] = []
-    if shared.library_entries + shared.presets and not remove_shared_agents:
-        blockers.append(
-            Blocker(
-                name="agents_used_by_other_accounts",
-                count=shared.library_entries + shared.presets,
-                resolution="Other accounts have this account's agents in their "
-                "library or presets. Re-run with --remove-shared-agents to take "
-                "them out (their runs of those agents go too), once that is "
-                "agreed.",
-            )
-        )
-    if shared.foreign_listings:
-        blockers.append(
-            Blocker(
-                name="agents_listed_by_other_accounts",
-                count=shared.foreign_listings,
-                resolution="Another account lists one of this account's agents "
-                "in the marketplace. Remove that listing by hand first.",
-            )
-        )
+    if not force and subject.has_user_row:
+        blockers += _undo_window(subject.locked_at, now or datetime.now(timezone.utc))
     if solely_owned_shared_orgs:
         blockers.append(
             Blocker(
@@ -103,11 +64,45 @@ async def find_blockers(
     return blockers
 
 
-async def shared_agent_counts(user_id: str) -> SharedAgentCounts:
-    rows = await query_raw_with_schema(
-        _SHARED_AGENT_COUNTS, user_id, model=SharedAgentCounts
-    )
-    return rows[0] if rows else SharedAgentCounts()
+def system_account(user_id: str) -> list[Blocker]:
+    """The placeholder that owns deleted creators' shared agents."""
+    if user_id != DELETED_USER_ID:
+        return []
+    return [
+        Blocker(
+            name="system_account",
+            count=1,
+            resolution="This is the account deleted creators' shared agents "
+            "belong to. It is never locked or deleted.",
+        )
+    ]
+
+
+def _undo_window(locked_at: datetime | None, now: datetime) -> list[Blocker]:
+    """The deletion waits `UNDO_WINDOW` after the lock, so a request can
+    still be withdrawn. The count is the days left."""
+    if locked_at is None:
+        return [
+            Blocker(
+                name="not_locked",
+                count=UNDO_WINDOW.days,
+                resolution="Lock the account first (--lock --apply); the "
+                f"deletion can run {UNDO_WINDOW.days} days later. --force "
+                "skips the wait.",
+            )
+        ]
+    due = locked_at + UNDO_WINDOW
+    if now >= due:
+        return []
+    return [
+        Blocker(
+            name="undo_window_open",
+            # Whole days left, rounded up.
+            count=-((now - due) // timedelta(days=1)),
+            resolution=f"Locked on {locked_at:%Y-%m-%d}; the deletion can run "
+            f"from {due:%Y-%m-%d %H:%M} UTC. --force skips the wait.",
+        )
+    ]
 
 
 async def _orgs(user_id: str) -> tuple[list[Organization], list[Organization]]:

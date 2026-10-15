@@ -10,76 +10,105 @@ if TYPE_CHECKING:
 
 @click.command(name="delete-account")
 @click.argument("account")
-@click.option("--apply", is_flag=True, help="Delete. Without it, dry run.")
+@click.option(
+    "--lock",
+    is_flag=True,
+    help="Stop the account and start the 14-day undo window, instead of "
+    "deleting it.",
+)
+@click.option(
+    "--unlock",
+    is_flag=True,
+    help="Let a locked account back in. Cancelled subscriptions stay cancelled.",
+)
+@click.option("--apply", is_flag=True, help="Make the change. Without it, dry run.")
 @click.option("--yes", is_flag=True, help="With --apply, skip the confirmation.")
 @click.option(
-    "--remove-shared-agents",
+    "--force",
     is_flag=True,
-    help="Take this account's agents out of other accounts' libraries, which "
-    "otherwise blocks the deletion. Their runs of those agents go too.",
+    help="Delete without waiting out the undo window (or without a lock).",
 )
 def delete_account_command(
-    account: str, apply: bool, yes: bool, remove_shared_agents: bool
+    account: str, lock: bool, unlock: bool, apply: bool, yes: bool, force: bool
 ):
     """Delete an account and everything it holds, for a deletion request.
 
-    ACCOUNT is the user ID or the account's email. Stops the account first
-    (sign-in, schedules, runs, Stripe subscriptions, integrations), then
-    deletes its marketplace listings and reviews, its files in every bucket,
+    ACCOUNT is the user ID or the account's email. Two steps, 14 days apart:
+
+    --lock --apply stops the account: it bans sign-in and ends its sessions,
+    opts it out of marketing, cancels its Stripe subscriptions and deletes
+    its schedules and stops its runs. --unlock --apply lets it back in.
+
+    Without --lock, the full deletion: it repeats those, hands the agents
+    other accounts use (with their listings) to a "deleted user" account,
+    deletes the rest of its marketplace presence, its files in every bucket,
     its AutoPilot memory, its PostHog person and MailerLite subscriber, and
-    its rows and auth identity last. Stripe's billing records stay.
+    its rows and auth identity last. The credit ledger and Stripe's billing
+    records stay. It refuses until 14 days after the lock, unless --force.
 
     Dry run by default, with counts only. Idempotent: a failed --apply stops
     with the account in place, and running it again resumes. Run the dry run
     again afterwards to confirm nothing is left. The runbook is
     docs/engineering/account-deletion.md.
     """
+    if lock and unlock:
+        raise click.UsageError("Pass --lock or --unlock, not both.")
+    if force and (lock or unlock):
+        raise click.UsageError("--force only applies to the full deletion.")
     # Keep Prisma and client chatter out of the report.
     logging.disable(logging.INFO)
-    asyncio.run(
-        _run(account, apply=apply, yes=yes, remove_shared_agents=remove_shared_agents)
-    )
+    mode = "lock" if lock else "unlock" if unlock else "delete"
+    asyncio.run(_run(account, mode=mode, apply=apply, yes=yes, force=force))
 
 
-async def _run(
-    account: str, *, apply: bool, yes: bool, remove_shared_agents: bool
-) -> None:
+_CONFIRM = {
+    "lock": "Lock account {}: ban sign-in, cancel its subscriptions, delete "
+    "its schedules?",
+    "unlock": "Unlock account {}?",
+    "delete": "Delete account {} for good?",
+}
+
+
+async def _run(account: str, *, mode: str, apply: bool, yes: bool, force: bool):
     from backend.data.account_deletion.models import AccountDeletionBlocked
-    from backend.data.account_deletion.routine import delete_account
     from backend.data.db import connect, disconnect
 
     await connect()
     try:
         user_id, email = await _resolve(account)
-        plan = await delete_account(
-            user_id,
-            dry_run=True,
-            email=email,
-            remove_shared_agents=remove_shared_agents,
-        )
+        plan = await _call(mode, user_id, email, dry_run=True, force=force)
         _report(plan)
         if not apply:
-            click.echo("\nDry run: nothing was deleted. Re-run with --apply.")
+            click.echo("\nDry run: nothing was changed. Re-run with --apply.")
             return
         if plan.blockers:
             raise click.ClickException("Blocked: resolve the blockers above first.")
         if not yes:
-            click.confirm(f"\nDelete account {user_id} for good?", abort=True)
+            click.confirm("\n" + _CONFIRM[mode].format(user_id), abort=True)
         try:
-            result = await delete_account(
-                user_id,
-                dry_run=False,
-                email=email,
-                remove_shared_agents=remove_shared_agents,
-            )
+            result = await _call(mode, user_id, email, dry_run=False, force=force)
         except AccountDeletionBlocked as e:
             _report(e.report)
-            raise click.ClickException("Blocked since the dry run; nothing deleted.")
+            raise click.ClickException("Blocked since the dry run; nothing changed.")
         click.echo("")
         _report(result)
-        _finish(result)
+        _finish(result, mode)
     finally:
         await disconnect()
+
+
+async def _call(
+    mode: str, user_id: str, email: str | None, *, dry_run: bool, force: bool
+) -> "DeletionReport":
+    from backend.data.account_deletion import routine
+
+    if mode == "lock":
+        return await routine.lock_account(user_id, dry_run=dry_run, email=email)
+    if mode == "unlock":
+        return await routine.unlock_account(user_id, dry_run=dry_run)
+    return await routine.delete_account(
+        user_id, dry_run=dry_run, email=email, force=force
+    )
 
 
 async def _resolve(account: str) -> tuple[str, str | None]:
@@ -117,12 +146,21 @@ def _report(report: "DeletionReport") -> None:
         click.echo(f"{line}  ({step.note})" if step.note else line)
 
 
-def _finish(report: "DeletionReport") -> None:
-    """Fail the command unless everything went, so a script never reads a
-    partial deletion as done."""
+_DONE = {
+    "lock": "\nLocked. Run the full deletion after the date above, or --unlock "
+    "to let the account back in.",
+    "unlock": "\nUnlocked. Subscriptions stay cancelled and deleted schedules "
+    "are not restored: tell the requester.",
+    "delete": "\nDone. Run the dry run again to confirm nothing is left.",
+}
+
+
+def _finish(report: "DeletionReport", mode: str) -> None:
+    """Fail the command unless every step went through, so a script never
+    reads a partial run as done."""
     if not report.complete:
         raise click.ClickException(
-            "The deletion did not finish (see the failed step above and the "
-            "log); run it again to resume."
+            "The run did not finish (see the failed step above and the log); "
+            "run it again to resume."
         )
-    click.echo("\nDone. Run the dry run again to confirm nothing is left.")
+    click.echo(_DONE[mode])

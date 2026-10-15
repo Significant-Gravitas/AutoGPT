@@ -2,13 +2,15 @@
 
 Most tables cascade from `User`. This deletes, before it, the rows that would
 block that delete or survive it: rows with a user ID and no foreign key, the
-credit ledger (its foreign key refuses the delete), the orgs only this account
-belongs to, and leftover webhook rows. The auth identity goes in the same
-transaction as the `User` row, so the orphan-healing job
-(`heal_orphaned_auth_identities`) never sees an identity without its account
-and re-creates it.
+orgs only this account belongs to, and leftover webhook rows. The auth
+identity goes in the same transaction as the `User` row, so the
+orphan-healing job (`heal_orphaned_auth_identities`) never sees an identity
+without its account and re-creates it.
 
-Kept on purpose, with no link left to the account:
+Kept on purpose:
+- The credit ledger (`CreditTransaction`), a billing record kept for six
+  years, with its user ID: `ledger.py` strips the personal content from its
+  metadata, in the same transaction.
 - `PlatformCostLog` (our provider costs): the foreign key nulls its user ID.
 - `SubscriptionTrialClaim`: hashes that stop a re-signup from claiming a
   second trial; they carry no account ID.
@@ -19,19 +21,18 @@ from datetime import timedelta
 
 from pydantic import BaseModel
 
+from backend.data.account_deletion.ledger import count_unscrubbed, scrub_ledger
 from backend.data.account_deletion.models import StepReport, StepStatus, Subject
 from backend.data.db import execute_raw_with_schema, query_raw_with_schema, transaction
 from backend.data.user import _invalidate_user_caches
 
 # Executions hold most of an active account's rows (node executions and their
 # inputs and outputs), so they go first, in batches, outside the transaction.
-# Runs of this account's agents by other accounts are included: deleting the
-# agent graph would cascade to them anyway.
+# Only its own: an agent another account has run went to the "deleted user"
+# account (`shared_agents.py`) with those runs.
 _EXECUTIONS = """
     FROM {schema_prefix}"AgentGraphExecution" e
    WHERE e."userId" = $1
-      OR e."agentGraphId" IN (
-           SELECT g."id" FROM {schema_prefix}"AgentGraph" g WHERE g."userId" = $1)
 """
 _EXECUTION_BATCH = 200
 _TRANSACTION_TIMEOUT = timedelta(minutes=5)
@@ -50,7 +51,10 @@ class Deletion(BaseModel):
 async def delete_rows(subject: Subject, *, dry_run: bool) -> StepReport:
     deletions = planned_deletions(subject)
     if dry_run:
-        counts = {"executions": await _count(_EXECUTIONS, [subject.user_id])}
+        counts = {
+            "executions": await _count(_EXECUTIONS, [subject.user_id]),
+            "credit_transactions_scrubbed": await count_unscrubbed(subject.user_id),
+        }
         for deletion in deletions:
             counts[deletion.label] = await _count(
                 f'FROM {{schema_prefix}}"{deletion.table}" WHERE {deletion.condition}',
@@ -60,6 +64,9 @@ async def delete_rows(subject: Subject, *, dry_run: bool) -> StepReport:
 
     counts = {"executions": await _delete_executions(subject.user_id)}
     async with transaction(timeout=_TRANSACTION_TIMEOUT) as tx:
+        counts["credit_transactions_scrubbed"] = await scrub_ledger(
+            subject.user_id, client=tx
+        )
         for deletion in deletions:
             counts[deletion.label] = await execute_raw_with_schema(
                 f'DELETE FROM {{schema_prefix}}"{deletion.table}" '
@@ -87,10 +94,6 @@ _BEFORE_ORGS = [
     ("kv_data", "AgentNodeExecutionKeyValueData", '"userId" = $1'),
     ("refund_requests", "CreditRefundRequest", '"userId" = $1'),
     ("private_embeddings", "UnifiedContentEmbedding", '"userId" = $1'),
-    # Kept by #10917 "for bookkeeping", but its NO ACTION foreign key makes
-    # the account undeletable while any row exists. Stripe holds the billing
-    # records accounting needs; see docs/engineering/account-deletion.md.
-    ("credit_transactions", "CreditTransaction", '"userId" = $1'),
     # The account's own stored credentials in shared orgs; those in its sole
     # orgs go with the org. Team and org credentials stay.
     (

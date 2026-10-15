@@ -1,16 +1,20 @@
 """Delete an account and everything it holds (SECRT-2854).
 
-`delete_account` runs idempotent steps in a safe order: first stop the
-account (sign-in, schedules, runs, billing, integrations), then remove what
-lives outside its rows (marketplace, files, memory, PostHog, MailerLite), and
-its rows last. The rows go last because they are how every earlier step finds
-its data, so a step that fails leaves the account in place for a rerun to
-finish. A rerun of a finished deletion finds nothing and changes nothing.
+Two phases, with an undo window between them:
+
+- `lock_account` stops the account: no sign-in, no schedules, no runs, no
+  subscription. It records when, and `unlock_account` undoes what it can.
+- `delete_account` runs once `UNDO_WINDOW` has passed since the lock (or with
+  `force`). It repeats the stop steps, then hands the agents other accounts
+  still use to the "deleted user" account, removes what lives outside the
+  account's rows (marketplace, files, memory, PostHog, MailerLite), and its
+  rows last. The rows go last because they are how every earlier step finds
+  its data, so a step that fails leaves the account in place for a rerun to
+  finish. A rerun of a finished deletion finds nothing and changes nothing.
 """
 
 import logging
 from collections.abc import Awaitable, Callable
-from functools import partial
 
 from backend.data.account_deletion.activity import (
     disable_sign_in,
@@ -19,10 +23,12 @@ from backend.data.account_deletion.activity import (
 )
 from backend.data.account_deletion.database import delete_rows
 from backend.data.account_deletion.integrations import release_integrations
+from backend.data.account_deletion.lock import lift_lock, record_lock
 from backend.data.account_deletion.marketplace import delete_marketplace
 from backend.data.account_deletion.memory import delete_memory
 from backend.data.account_deletion.models import (
     AccountDeletionBlocked,
+    Blocker,
     DeletionReport,
     StepReport,
     StepStatus,
@@ -31,7 +37,11 @@ from backend.data.account_deletion.models import (
 from backend.data.account_deletion.preflight import (
     find_blockers,
     load_subject,
-    shared_agent_counts,
+    system_account,
+)
+from backend.data.account_deletion.shared_agents import (
+    plan_transfer,
+    transfer_shared_agents,
 )
 from backend.data.account_deletion.storage import delete_files
 from backend.data.account_deletion.subscriptions import cancel_subscriptions
@@ -45,59 +55,104 @@ logger = logging.getLogger(__name__)
 Step = Callable[..., Awaitable[StepReport]]
 
 
+async def lock_account(
+    user_id: str, *, dry_run: bool = True, email: str | None = None
+) -> DeletionReport:
+    """Stop the account and start the undo window. Deletes no data. Raises
+    `AccountDeletionBlocked` for the placeholder or an unknown account."""
+    subject = await load_subject(user_id, email)
+    return await _run(subject, _lock_steps(), _lockable(subject), dry_run)
+
+
+async def unlock_account(user_id: str, *, dry_run: bool = True) -> DeletionReport:
+    """Let a locked account back in: its ban and the marketing opt-out the
+    lock set are lifted, and the lock cleared. Subscriptions the lock
+    cancelled stay cancelled, and deleted schedules are not restored."""
+    subject = await load_subject(user_id)
+    steps: list[tuple[str, Step]] = [("unlock", lift_lock)]
+    return await _run(subject, steps, _lockable(subject), dry_run)
+
+
 async def delete_account(
     user_id: str,
     *,
     dry_run: bool = True,
     email: str | None = None,
-    remove_shared_agents: bool = False,
+    force: bool = False,
 ) -> DeletionReport:
     """Delete the account, or with `dry_run` (the default) only count what
     would go. `email` finds the MailerLite subscriber of an account whose rows
-    are already gone. `remove_shared_agents` lets the deletion take this
-    account's agents out of other accounts' libraries, which is otherwise a
-    blocker.
+    are already gone. `force` skips the undo window (no lock, or a lock less
+    than `UNDO_WINDOW` old); other blockers still stop it.
 
     Raises `AccountDeletionBlocked` before deleting anything when a blocker
     needs a decision; a dry run reports blockers instead. Returns the report;
     `report.complete` says whether everything is gone."""
     subject = await load_subject(user_id, email)
-    shared = await shared_agent_counts(user_id)
+    plan = await plan_transfer(user_id)
+    subject.shared_graph_ids = plan.graph_ids
+    subject.kept_listing_ids = plan.listing_ids
+    blockers = await find_blockers(subject, force=force)
+    return await _run(subject, _deletion_steps(), blockers, dry_run)
+
+
+async def _run(
+    subject: Subject,
+    steps: list[tuple[str, Step]],
+    blockers: list[Blocker],
+    dry_run: bool,
+) -> DeletionReport:
     report = DeletionReport(
-        user_id=user_id,
+        user_id=subject.user_id,
         dry_run=dry_run,
         account_found=subject.has_user_row or subject.has_auth_identity,
-        blockers=await find_blockers(
-            subject, shared, remove_shared_agents=remove_shared_agents
-        ),
+        blockers=blockers,
     )
     if report.blockers and not dry_run:
         raise AccountDeletionBlocked(report)
-    marketplace = partial(
-        delete_marketplace,
-        shared_agent_rows=shared.library_entries + shared.presets,
-        remove_shared_agents=remove_shared_agents,
-    )
-    for name, step in _steps(marketplace):
+    for name, step in steps:
         result = await _run_step(name, step, subject, dry_run)
         report.steps.append(result)
         if result.status == StepStatus.FAILED and not dry_run:
             break
     logger.info(
-        f"Account deletion of {user_id}: dry_run={dry_run}, "
-        f"complete={report.complete}"
+        f"Account deletion ({', '.join(name for name, _ in steps)}) of "
+        f"{subject.user_id}: dry_run={dry_run}, complete={report.complete}"
     )
     return report
 
 
-def _steps(marketplace: Step) -> list[tuple[str, Step]]:
+def _lockable(subject: Subject) -> list[Blocker]:
+    if subject.has_user_row or subject.has_auth_identity:
+        return system_account(subject.user_id)
+    return [
+        Blocker(
+            name="account_not_found",
+            count=0,
+            resolution="No platform account or auth identity has this ID.",
+        )
+    ]
+
+
+def _stop_steps() -> list[tuple[str, Step]]:
     return [
         ("sign_in", disable_sign_in),
         ("schedules", stop_schedules),
         ("executions", stop_executions),
         ("subscriptions", cancel_subscriptions),
+    ]
+
+
+def _lock_steps() -> list[tuple[str, Step]]:
+    return [*_stop_steps(), ("lock", record_lock)]
+
+
+def _deletion_steps() -> list[tuple[str, Step]]:
+    return [
+        *_stop_steps(),
         ("integrations", release_integrations),
-        ("marketplace", marketplace),
+        ("shared_agents", transfer_shared_agents),
+        ("marketplace", delete_marketplace),
         ("files", delete_files),
         ("memory", delete_memory),
         ("posthog", delete_posthog_person),

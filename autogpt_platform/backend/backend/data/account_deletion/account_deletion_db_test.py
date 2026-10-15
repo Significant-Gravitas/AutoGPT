@@ -1,9 +1,18 @@
-"""Against the real schema: an account with a marketplace listing, a review of
-another account's listing (both ON DELETE RESTRICT), a credit ledger (NO
-ACTION), a library entry on its own agent in a folder, a personal org, an
-auth identity with sessions and sign-in accounts is deleted completely, the
-other account is untouched, a rerun is a no-op, and the orphan-healing job
-finds nothing to bring the account back from."""
+"""Against the real schema.
+
+An account with a published agent (and the sub-agent it runs) that another
+account has in its library and has run, a private agent in a folder, a draft
+listing, reviews both ways, a credit ledger and a personal org is deleted:
+- its published agent, sub-agent and listing go to the "deleted user"
+  account, and the other account can still open and run it;
+- everything else of the account goes, including its auth identity, and the
+  orphan-healing job finds nothing to bring it back from;
+- the ledger stays, stripped of the block inputs and personal Stripe details;
+- a rerun is a no-op.
+
+And the lock and unlock: a lock bans sign-in and records the date, an unlock
+lifts only what the lock did.
+"""
 
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -12,10 +21,26 @@ import prisma.enums
 import prisma.models
 import pytest
 
+from backend.blocks.agent import AgentExecutorBlock
+from backend.data.account_deletion.activity import disable_sign_in
 from backend.data.account_deletion.database import delete_rows
+from backend.data.account_deletion.deleted_user import (
+    DELETED_USER_ID,
+    DELETED_USER_NAME,
+)
+from backend.data.account_deletion.lock import lift_lock, record_lock
 from backend.data.account_deletion.marketplace import delete_marketplace
+from backend.data.account_deletion.models import Subject
 from backend.data.account_deletion.preflight import load_subject
+from backend.data.account_deletion.shared_agents import (
+    plan_transfer,
+    transfer_shared_agents,
+)
+from backend.data.account_deletion.storage import kept_media
+from backend.data.db import execute_raw_with_schema
+from backend.data.graph import get_graph
 from backend.data.user import find_orphaned_auth_identities, get_or_create_user
+from backend.util.json import SafeJson
 from backend.util.test import SpinTestServer
 
 
@@ -46,17 +71,42 @@ async def _account() -> str:
     return user_id
 
 
-async def _listing(owner_id: str) -> str:
-    """A graph of `owner_id`'s with an approved listing; the version ID."""
-    graph = await prisma.models.AgentGraph.prisma().create(
-        data={"userId": owner_id, "name": "Deletion test agent"}
+async def _graph(owner_id: str, name: str, sub_graph_id: str | None = None):
+    nodes = (
+        {
+            "Nodes": {
+                "create": [
+                    {
+                        "agentBlockId": AgentExecutorBlock().id,
+                        "constantInput": SafeJson(
+                            {"graph_id": sub_graph_id, "graph_version": 1}
+                        ),
+                    }
+                ]
+            }
+        }
+        if sub_graph_id
+        else {}
     )
+    return await prisma.models.AgentGraph.prisma().create(
+        data={"userId": owner_id, "name": name, **nodes}
+    )
+
+
+async def _listing(
+    owner_id: str,
+    graph,
+    *,
+    status=prisma.enums.SubmissionStatus.APPROVED,
+    image_urls: list[str] | None = None,
+) -> str:
+    """A listing of `graph`; the version ID."""
     listing = await prisma.models.StoreListing.prisma().create(
         data={
             "slug": f"deletion-{graph.id}",
             "agentGraphId": graph.id,
             "owningUserId": owner_id,
-            "hasApprovedVersion": True,
+            "hasApprovedVersion": status == prisma.enums.SubmissionStatus.APPROVED,
         }
     )
     version = await prisma.models.StoreListingVersion.prisma().create(
@@ -66,13 +116,28 @@ async def _listing(owner_id: str) -> str:
             "name": "Deletion test agent",
             "subHeading": "Test",
             "description": "Test",
-            "imageUrls": [],
+            "imageUrls": image_urls or [],
             "categories": [],
             "storeListingId": listing.id,
-            "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
+            "submissionStatus": status,
         }
     )
     return version.id
+
+
+async def _list_under_personal_org(user_id: str, version_id: str) -> None:
+    """As the org cutover did: the listing belongs to the personal org, which
+    goes with the account while the listing stays."""
+    org = await prisma.models.Organization.prisma().find_first_or_raise(
+        where={"bootstrapUserId": user_id, "isPersonal": True}
+    )
+    await execute_raw_with_schema(
+        'UPDATE {schema_prefix}"StoreListing" SET "owningOrgId" = $1 '
+        'WHERE "id" = (SELECT "storeListingId" FROM '
+        '{schema_prefix}"StoreListingVersion" WHERE "id" = $2)',
+        org.id,
+        version_id,
+    )
 
 
 async def _review(version_id: str, reviewer_id: str) -> None:
@@ -85,18 +150,53 @@ async def _review(version_id: str, reviewer_id: str) -> None:
     )
 
 
-async def _holdings(user_id: str) -> None:
-    """A credit ledger row and a library entry of its own agent in a folder."""
-    await prisma.models.CreditTransaction.prisma().create(
+async def _uses(other_id: str, graph, creator_id: str) -> None:
+    """`other_id` adds `graph` from the marketplace and runs it."""
+    creator = await prisma.models.Profile.prisma().find_unique_or_raise(
+        where={"userId": creator_id}
+    )
+    await prisma.models.LibraryAgent.prisma().create(
         data={
-            "userId": user_id,
-            "amount": 100,
-            "type": prisma.enums.CreditTransactionType.GRANT,
+            "userId": other_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+            "creatorId": creator.id,
         }
     )
-    graph = await prisma.models.AgentGraph.prisma().create(
-        data={"userId": user_id, "name": "Own agent"}
+    await prisma.models.AgentGraphExecution.prisma().create(
+        data={
+            "userId": other_id,
+            "agentGraphId": graph.id,
+            "agentGraphVersion": graph.version,
+        }
     )
+
+
+async def _holdings(user_id: str) -> None:
+    """Ledger rows and a library entry of its own agent in a folder."""
+    for metadata in (
+        {
+            "graph_exec_id": "exec-1",
+            "block_id": "block-1",
+            "input": {"prompt": "my secret plans"},
+            "reason": "Ran a block",
+        },
+        {
+            "id": "cs_test_1",
+            "payment_intent": {"id": "pi_test_1", "receipt_email": "sam@x.com"},
+            "customer_details": {"email": "sam@x.com", "name": "Sam"},
+            "amount_total": 500,
+        },
+    ):
+        await prisma.models.CreditTransaction.prisma().create(
+            data={
+                "userId": user_id,
+                "amount": 100,
+                "type": prisma.enums.CreditTransactionType.GRANT,
+                "metadata": SafeJson(metadata),
+            }
+        )
+    graph = await _graph(user_id, "Own agent")
     folder = await prisma.models.LibraryFolder.prisma().create(
         data={"userId": user_id, "name": "Mine"}
     )
@@ -110,10 +210,15 @@ async def _holdings(user_id: str) -> None:
     )
 
 
-async def _delete(user_id: str) -> None:
+async def _delete(user_id: str) -> Subject:
     subject = await load_subject(user_id)
+    plan = await plan_transfer(user_id)
+    subject.shared_graph_ids = plan.graph_ids
+    subject.kept_listing_ids = plan.listing_ids
+    await transfer_shared_agents(subject, dry_run=False)
     await delete_marketplace(subject, dry_run=False)
     await delete_rows(subject, dry_run=False)
+    return subject
 
 
 async def _left_of(user_id: str) -> dict[str, int]:
@@ -126,39 +231,103 @@ async def _left_of(user_id: str) -> dict[str, int]:
         "sign_in_accounts": await prisma.models.AuthAccount.prisma().count(
             where={"userId": user_id}
         ),
-        "credit_transactions": await prisma.models.CreditTransaction.prisma().count(
-            where={"userId": user_id}
-        ),
         "personal_orgs": await prisma.models.Organization.prisma().count(
             where={"bootstrapUserId": user_id}
         ),
         "graphs": await prisma.models.AgentGraph.prisma().count(
             where={"userId": user_id}
         ),
+        "listings": await prisma.models.StoreListing.prisma().count(
+            where={"owningUserId": user_id}
+        ),
     }
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_an_account_is_deleted_completely_and_stays_deleted(
+async def test_an_account_is_deleted_and_its_shared_agents_keep_working(
     server: SpinTestServer,
 ):
     user_id = await _account()
     other_id = await _account()
-    own_version = await _listing(user_id)
-    other_version = await _listing(other_id)
+    sub_agent = await _graph(user_id, "Sub-agent")
+    published = await _graph(user_id, "Published agent", sub_graph_id=sub_agent.id)
+    image = f"https://storage.googleapis.com/media/users/{user_id}/images/a.png"
+    own_version = await _listing(user_id, published, image_urls=[image])
+    await _list_under_personal_org(user_id, own_version)
+    draft = await _graph(user_id, "Draft agent")
+    await _listing(user_id, draft, status=prisma.enums.SubmissionStatus.DRAFT)
+    other_version = await _listing(other_id, await _graph(other_id, "Theirs"))
     await _review(other_version, user_id)
     await _review(own_version, other_id)
+    await _uses(other_id, published, creator_id=user_id)
     await _holdings(user_id)
 
+    plan = await plan_transfer(user_id)
+    assert sorted(plan.graph_ids) == sorted([published.id, sub_agent.id])
+    assert len(plan.listing_ids) == 1
     dry = await delete_rows(await load_subject(user_id), dry_run=True)
     assert dry.counts["user"] == 1
-    assert (await _left_of(user_id))["user"] == 1
+    assert dry.counts["credit_transactions_scrubbed"] == 2
 
-    await _delete(user_id)
+    subject = await _delete(user_id)
 
     assert set((await _left_of(user_id)).values()) == {0}
-    # The other account keeps its listing; only the review the deleted
-    # account wrote on it is gone.
+    # The published agent, its sub-agent and its listing now belong to the
+    # placeholder, and the listing stays live with the other's review on it.
+    for graph in (published, sub_agent):
+        kept = await prisma.models.AgentGraph.prisma().find_first_or_raise(
+            where={"id": graph.id}
+        )
+        assert kept.userId == DELETED_USER_ID
+    assert not await prisma.models.AgentGraph.prisma().count(where={"id": draft.id})
+    version = await prisma.models.StoreListingVersion.prisma().find_unique_or_raise(
+        where={"id": own_version}, include={"StoreListing": True}
+    )
+    assert version.StoreListing and version.StoreListing.owningUserId == (
+        DELETED_USER_ID
+    )
+    assert version.submissionStatus == prisma.enums.SubmissionStatus.APPROVED
+    assert await prisma.models.StoreListingReview.prisma().count(
+        where={"storeListingVersionId": own_version}
+    )
+    placeholder = await prisma.models.Profile.prisma().find_unique_or_raise(
+        where={"userId": DELETED_USER_ID}
+    )
+    assert placeholder.name == DELETED_USER_NAME
+
+    # The other account keeps its library entry (now by the placeholder),
+    # its run, and can still open the agent with its sub-agent.
+    entry = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
+        where={"userId": other_id, "agentGraphId": published.id}
+    )
+    assert entry.creatorId == placeholder.id
+    assert await prisma.models.AgentGraphExecution.prisma().count(
+        where={"userId": other_id, "agentGraphId": published.id}
+    )
+    opened = await get_graph(
+        published.id, published.version, other_id, include_subgraphs=True
+    )
+    assert opened is not None
+    assert [g.id for g in opened.sub_graphs] == [sub_agent.id]
+    # The listing's image is kept; nothing else of the account's is.
+    assert await kept_media(subject) == {f"users/{user_id}/images/a.png"}
+
+    # The ledger stays, without the block input or the Stripe customer.
+    ledger = await prisma.models.CreditTransaction.prisma().find_many(
+        where={"userId": user_id}
+    )
+    metadata = [row.metadata for row in ledger]
+    assert len(metadata) == 2
+    assert {"graph_exec_id": "exec-1", "block_id": "block-1"} in metadata
+    assert {
+        "id": "cs_test_1",
+        "payment_intent": "pi_test_1",
+        "amount_total": 500,
+    } in metadata
+    assert [row.amount for row in ledger] == [100, 100]
+
+    # The other account is untouched; only the review the deleted account
+    # wrote on its listing is gone.
     assert (await _left_of(other_id))["user"] == 1
     assert await prisma.models.StoreListingVersion.prisma().count(
         where={"id": other_version}
@@ -170,6 +339,7 @@ async def test_an_account_is_deleted_completely_and_stays_deleted(
     # A rerun finds nothing and changes nothing.
     again = await delete_rows(await load_subject(user_id), dry_run=False)
     assert set(again.counts.values()) == {0}
+    assert await plan_transfer(user_id) == type(plan)()
 
     # The healing job finds no orphaned identity to re-create the account
     # from. (Its query, read-only: healing would provision other tests' rows.)
@@ -179,3 +349,35 @@ async def test_an_account_is_deleted_completely_and_stays_deleted(
     assert user_id not in {orphan.id for orphan in orphans}
 
     await _delete(other_id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_lock_bans_sign_in_and_an_unlock_lifts_only_that(
+    server: SpinTestServer,
+):
+    user_id = await _account()
+    subject = await load_subject(user_id)
+
+    await disable_sign_in(subject, dry_run=False)
+    await record_lock(subject, dry_run=False)
+
+    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
+        where={"id": user_id}
+    )
+    user = await prisma.models.User.prisma().find_unique_or_raise(where={"id": user_id})
+    assert identity.banned
+    assert user.deletionLockedAt is not None
+    assert user.marketingOptOutAt is not None
+    assert not await prisma.models.AuthSession.prisma().count(where={"userId": user_id})
+
+    await lift_lock(await load_subject(user_id), dry_run=False)
+
+    identity = await prisma.models.AuthUser.prisma().find_unique_or_raise(
+        where={"id": user_id}
+    )
+    user = await prisma.models.User.prisma().find_unique_or_raise(where={"id": user_id})
+    assert not identity.banned
+    assert user.deletionLockedAt is None
+    assert user.marketingOptOutAt is None
+
+    await _delete(user_id)

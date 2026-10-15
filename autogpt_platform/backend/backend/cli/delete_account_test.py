@@ -1,6 +1,7 @@
 """The delete-account command: a dry run unless --apply, a dry run first even
 with it, blockers stop it before anything goes, a partial deletion fails the
-command, and nothing it prints carries the email."""
+command, and nothing it prints carries the email. --lock and --unlock run the
+two ends of the undo window the same way."""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -55,11 +56,21 @@ def run(monkeypatch):
         side_effect=lambda user_id, *, dry_run, **kw: _report(dry_run=dry_run)
     )
     monkeypatch.setattr(routine, "delete_account", deleting)
+    locking = AsyncMock(
+        side_effect=lambda user_id, *, dry_run, **kw: _report(dry_run=dry_run)
+    )
+    monkeypatch.setattr(routine, "lock_account", locking)
+    unlocking = AsyncMock(
+        side_effect=lambda user_id, *, dry_run, **kw: _report(dry_run=dry_run)
+    )
+    monkeypatch.setattr(routine, "unlock_account", unlocking)
 
     def invoke(*args: str):
         return CliRunner().invoke(cli.delete_account_command, [EMAIL, *args])
 
-    return SimpleNamespace(invoke=invoke, deleting=deleting)
+    return SimpleNamespace(
+        invoke=invoke, deleting=deleting, locking=locking, unlocking=unlocking
+    )
 
 
 def _dry_runs(deleting: AsyncMock) -> list[bool]:
@@ -71,7 +82,7 @@ def test_without_apply_it_is_a_dry_run(run):
 
     assert result.exit_code == 0
     assert _dry_runs(run.deleting) == [True]
-    assert "Dry run: nothing was deleted" in result.output
+    assert "Dry run: nothing was changed" in result.output
     assert "objects=3" in result.output
     assert EMAIL not in result.output
 
@@ -116,7 +127,7 @@ def test_a_blocker_that_appears_after_the_dry_run_stops_too(run):
     result = run.invoke("--apply", "--yes")
 
     assert result.exit_code == 1
-    assert "nothing deleted" in result.output
+    assert "nothing changed" in result.output
 
 
 def test_a_partial_deletion_fails_the_command(run):
@@ -131,11 +142,51 @@ def test_a_partial_deletion_fails_the_command(run):
     assert "run it again to resume" in result.output
 
 
-def test_shared_agent_removal_is_passed_through(run):
-    run.invoke("--apply", "--yes", "--remove-shared-agents")
+def test_force_is_passed_through_to_both_runs(run):
+    run.invoke("--apply", "--yes", "--force")
 
     for call in run.deleting.await_args_list:
-        assert call.kwargs["remove_shared_agents"] is True
+        assert call.kwargs["force"] is True
+
+
+def test_lock_without_apply_is_a_dry_run(run):
+    result = run.invoke("--lock")
+
+    assert result.exit_code == 0, result.output
+    assert _dry_runs(run.locking) == [True]
+    run.deleting.assert_not_awaited()
+    assert "nothing was changed" in result.output
+
+
+def test_lock_apply_locks_after_its_dry_run(run):
+    result = run.invoke("--lock", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert _dry_runs(run.locking) == [True, False]
+    run.deleting.assert_not_awaited()
+    assert "Locked" in result.output
+    assert "--unlock" in result.output
+
+
+def test_unlock_apply_says_what_is_not_restored(run):
+    result = run.invoke("--unlock", "--apply", "--yes")
+
+    assert result.exit_code == 0, result.output
+    assert _dry_runs(run.unlocking) == [True, False]
+    assert "stay cancelled" in result.output
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("--lock", "--unlock"), ("--lock", "--force"), ("--unlock", "--force")],
+)
+def test_conflicting_flags_are_refused(run, args):
+    result = run.invoke(*args)
+
+    assert result.exit_code != 0
+    run.deleting.assert_not_awaited()
+    run.locking.assert_not_awaited()
+    run.unlocking.assert_not_awaited()
 
 
 @pytest.fixture

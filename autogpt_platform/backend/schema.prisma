@@ -141,6 +141,10 @@ model User {
   // MailerLite for good (backend/notifications/consent.py).
   marketingExcludedCountry String?
 
+  // Set by `delete-account --lock`: sign-in is banned and the account waits
+  // out the undo window before the full deletion may run (SECRT-2854).
+  deletionLockedAt DateTime?
+
   // Default AutoPilot connection for chats the caller didn't route explicitly
   // (bot links, schedules, a fresh /copilot session). NULL means "automatic" —
   // the server picks, exactly as it did before this setting existed. The
@@ -158,7 +162,6 @@ model User {
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
-  CreditTransactions   CreditTransaction[]
   UserBalance          UserBalance?
   ChatSessions         ChatSession[]
   ChatMessageFeedback  ChatMessageFeedback[]
@@ -1924,8 +1927,10 @@ model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
 
+  // No foreign key: the ledger is a billing record and outlives the account
+  // (kept six years). Account deletion strips the personal content from its
+  // metadata instead (backend/data/account_deletion/database.py).
   userId String
-  User   User?  @relation(fields: [userId], references: [id], onDelete: NoAction)
 
   amount Int
   type   CreditTransactionType

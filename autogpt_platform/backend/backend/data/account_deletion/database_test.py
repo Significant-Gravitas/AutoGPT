@@ -1,7 +1,7 @@
 """The rows go in one transaction, everything that would block or survive the
 account's delete before it, and the auth identity with it so the
-orphan-healing job never sees an identity without its account. A dry run only
-counts."""
+orphan-healing job never sees an identity without its account. The credit
+ledger stays, scrubbed in the same transaction. A dry run only counts."""
 
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock
@@ -33,7 +33,6 @@ def test_the_account_and_its_identity_go_last_identity_first():
 def test_everything_that_blocks_the_account_delete_goes_before_it():
     labels = _labels(SUBJECT)
     for blocker in (
-        "credit_transactions",
         "webhooks",
         "library_agents",
         "presets",
@@ -56,6 +55,11 @@ def test_rows_without_a_foreign_key_are_deleted_explicitly():
         "team_invitations",
     ):
         assert orphan in labels
+
+
+def test_the_credit_ledger_is_never_deleted():
+    tables = {deletion.table for deletion in database.planned_deletions(SUBJECT)}
+    assert "CreditTransaction" not in tables
 
 
 def test_without_sole_orgs_no_org_is_touched():
@@ -96,7 +100,12 @@ def db(monkeypatch):
     monkeypatch.setattr(database, "execute_raw_with_schema", execute)
     monkeypatch.setattr(database, "query_raw_with_schema", query)
     monkeypatch.setattr(database, "_invalidate_user_caches", invalidate)
-    return MagicMock(tx=tx, execute=execute, query=query, invalidate=invalidate)
+    scrub = AsyncMock(return_value=5)
+    monkeypatch.setattr(database, "scrub_ledger", scrub)
+    monkeypatch.setattr(database, "count_unscrubbed", AsyncMock(return_value=6))
+    return MagicMock(
+        tx=tx, execute=execute, query=query, invalidate=invalidate, scrub=scrub
+    )
 
 
 @pytest.mark.asyncio
@@ -108,6 +117,8 @@ async def test_a_dry_run_only_counts(db):
     assert report.status == StepStatus.WOULD_DO
     assert report.counts["user"] == 7
     assert report.counts["executions"] == 7
+    assert report.counts["credit_transactions_scrubbed"] == 6
+    db.scrub.assert_not_awaited()
     for call in db.query.await_args_list:
         assert call.args[0].startswith("SELECT COUNT(*)")
 
@@ -145,3 +156,25 @@ async def test_executions_go_in_batches_outside_the_transaction(db):
     assert len(batches) == 3
     assert all("client" not in call.kwargs for call in batches)
     assert report.counts["executions"] == 403
+
+
+@pytest.mark.asyncio
+async def test_the_ledger_is_scrubbed_in_the_same_transaction(db):
+    report = await database.delete_rows(SUBJECT, dry_run=False)
+
+    db.scrub.assert_awaited_once_with(USER_ID, client=db.tx)
+    assert report.counts["credit_transactions_scrubbed"] == 5
+
+
+@pytest.mark.asyncio
+async def test_only_the_accounts_own_runs_are_deleted(db):
+    await database.delete_rows(SUBJECT, dry_run=False)
+
+    batch = next(
+        call.args[0]
+        for call in db.execute.await_args_list
+        if '"AgentGraphExecution"' in call.args[0]
+    )
+    # Not runs of its agents by other accounts: those agents were handed over.
+    assert '"AgentGraph"' not in batch
+    assert 'e."userId" = $1' in batch

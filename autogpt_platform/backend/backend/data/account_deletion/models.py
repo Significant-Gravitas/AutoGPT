@@ -1,6 +1,11 @@
+from datetime import datetime, timedelta
 from enum import Enum
 
 from pydantic import BaseModel
+
+# How long a locked account waits before the full deletion may run, so a
+# request can still be undone (`delete-account --unlock`).
+UNDO_WINDOW = timedelta(days=14)
 
 
 class StepStatus(str, Enum):
@@ -67,6 +72,14 @@ class Subject(BaseModel):
     stripe_customer_ids: list[str] = []
     # Experts it owns, each with its own memory graph.
     expert_ids: list[str] = []
+    # When `delete-account --lock` stopped the account; the full deletion
+    # waits `UNDO_WINDOW` from then.
+    locked_at: datetime | None = None
+    # Its agents other accounts still use (`shared_agents.py`): handed to the
+    # "deleted user" account instead of deleted, all versions of each.
+    shared_graph_ids: list[str] = []
+    # Its marketplace listings of those agents, handed over with them.
+    kept_listing_ids: list[str] = []
 
 
 class AccountDeletionBlocked(RuntimeError):
