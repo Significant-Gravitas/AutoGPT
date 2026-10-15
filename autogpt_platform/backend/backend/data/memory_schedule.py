@@ -131,8 +131,14 @@ async def record_scope_jobs(
 ) -> bool:
     """Record the scope's job ids and the timezone they run in.
 
-    Writes only an ACTIVE row. False means the scope was paused, wiped or
-    deleted meanwhile, and the caller must take down what it just registered.
+    Writes only an ACTIVE row: False means the write was refused, the row
+    being paused, wiped or deleted meanwhile. The caller reports
+    ``scope_changed`` and takes nothing down
+    (``copilot/dream/scope_jobs._record``): the fire gate skips a run under a
+    PAUSED or WIPED row or an expert with no row, and the scheduler's
+    reconcile removes those crons (``copilot/dream/scope_reconcile.py``). An
+    account with no row is the exception: it is not gated, and the reconcile
+    leaves the crons its registration made (untagged) where they are.
     """
     updated = await prisma.models.MemoryScopeSchedule.prisma().update_many(
         where={
