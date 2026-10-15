@@ -894,28 +894,34 @@ PY
 
 assert_request_tokens_absent_from_logs() {
   local sentinel=AUTOGPT_LOG_SENTINEL_6f2b3cb87e9a
-  local websocket_key=dGhlIHNhbXBsZSBub25jZQ== # pragma: allowlist secret # gitleaks:allow
-  local websocket_status
   local container_logs
 
   curl --fail --silent --show-error --max-time 30 \
     "${PUBLIC_URL}/_agpt/health?token=${sentinel}" >/dev/null
   curl --silent --show-error --max-time 30 \
     "${PUBLIC_URL}/link/${sentinel}?token=${sentinel}" >/dev/null
-  websocket_status="$(
-    curl --silent --show-error --max-time 30 --http1.1 \
-      --output /dev/null --write-out '%{http_code}' \
-      --header 'Connection: Upgrade' \
-      --header 'Upgrade: websocket' \
-      --header 'Sec-WebSocket-Version: 13' \
-      --header "Sec-WebSocket-Key: ${websocket_key}" \
-      --header "Origin: ${PUBLIC_URL}" \
-      "${PUBLIC_URL}/_agpt/ws?token=${sentinel}"
-  )"
-  [[ "${websocket_status}" == 403 ]] || {
-    echo "invalid-token WebSocket handshake returned ${websocket_status}, expected 403" >&2
-    return 1
-  }
+  docker exec --interactive --user autogpt \
+    --env "SMOKE_PUBLIC_URL=${PUBLIC_URL}" \
+    --env "SMOKE_LOG_SENTINEL=${sentinel}" \
+    "${CONTAINER_NAME}" \
+    /app/autogpt_platform/backend/.venv/bin/python - <<'PY'
+import os
+
+from websockets.exceptions import ConnectionClosedError
+from websockets.sync.client import connect
+
+url = f"ws://127.0.0.1:3000/_agpt/ws?token={os.environ['SMOKE_LOG_SENTINEL']}"
+with connect(
+    url, origin=os.environ["SMOKE_PUBLIC_URL"], open_timeout=10, close_timeout=3
+) as websocket:
+    try:
+        websocket.recv(timeout=10)
+    except ConnectionClosedError as exc:
+        if exc.rcvd is None or exc.rcvd.code != 4003:
+            raise SystemExit("invalid-token WebSocket did not close with code 4003")
+    else:
+        raise SystemExit("invalid-token WebSocket received application data")
+PY
   sleep 2
   if ! container_logs="$(docker logs "${CONTAINER_NAME}" 2>&1)"; then
     echo "could not inspect container logs for request-token leakage" >&2
