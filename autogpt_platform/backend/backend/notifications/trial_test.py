@@ -247,6 +247,53 @@ def test_ending_reminder_sent_just_before_three_day_mark(trial):
     assert notices._notice_applies(trial, "ending", raw)
 
 
+def test_ending_reminder_dropped_just_past_reminder_window(trial):
+    trial_end = datetime.now(UTC) + notices.TRIAL_REMINDER_WINDOW + timedelta(hours=1)
+    raw = {
+        "status": "trialing",
+        "trial_end": int(trial_end.timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial ends after the reminder window"
+    )
+
+
+def test_replayed_ending_reminder_for_ended_trial_names_the_real_reason(trial):
+    raw = {
+        "status": "canceled",
+        "trial_end": int((datetime.now(UTC) + timedelta(days=7)).timestamp()),
+        "cancel_at_period_end": False,
+    }
+    assert notices._notice_skip_reason(trial, "ending", raw) == (
+        "trial is no longer running"
+    )
+
+
+@pytest.mark.parametrize(
+    "kind, current, reason",
+    [
+        ("converted", {}, "subscription is unknown, not converted"),
+        (
+            "payment_failed",
+            {"status": "active"},
+            "subscription is active, not a failed conversion",
+        ),
+        (
+            "ended",
+            {"status": "trialing"},
+            "subscription is trialing, not an ended trial",
+        ),
+        ("canceled", {"status": "trialing"}, "cancellation is not scheduled"),
+    ],
+)
+def test_skip_reason_names_why_the_notice_no_longer_applies(
+    trial, kind, current, reason
+):
+    current = {**current, "trial_end": int(trial.ends_at.timestamp())}
+    assert notices._notice_skip_reason(trial, kind, current) == reason
+
+
 @pytest.mark.asyncio
 async def test_dropped_notice_is_logged_without_sending(trial, caplog):
     raw = {

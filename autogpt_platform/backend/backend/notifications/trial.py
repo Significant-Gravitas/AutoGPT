@@ -298,7 +298,7 @@ def _notice_skip_reason(
     trial: TrialState, kind: TrialNoticeKind, current: dict
 ) -> str | None:
     """Why the notice no longer describes the subscription, or None."""
-    status = current.get("status")
+    status = current.get("status") or "unknown"
     if kind == "converted":
         if status == "active" and trial.converted_at is not None:
             return None
@@ -319,10 +319,10 @@ def _running_trial_skip_reason(
 ) -> str | None:
     trial_end = current.get("trial_end") or 0
     now = datetime.now(UTC).timestamp()
-    if kind == "ending" and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds():
-        return "trial ends after the reminder window"
     if current.get("status") != "trialing" or trial_end <= now:
         return "trial is no longer running"
+    if kind == "ending" and trial_end > now + TRIAL_REMINDER_WINDOW.total_seconds():
+        return "trial ends after the reminder window"
     # A canceled notice promises access until trial_end, which only a verified
     # card gives.
     if trial.card_verified_at is None:
