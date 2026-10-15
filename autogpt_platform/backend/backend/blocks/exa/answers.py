@@ -1,5 +1,3 @@
-from typing import Optional
-
 from exa_py import AsyncExa
 from exa_py.api import AnswerResponse
 from pydantic import BaseModel
@@ -26,16 +24,16 @@ class AnswerCitation(BaseModel):
 
     id: str = SchemaField(description="The temporary ID for the document")
     url: str = SchemaField(description="The URL of the search result")
-    title: Optional[str] = SchemaField(description="The title of the search result")
-    author: Optional[str] = SchemaField(description="The author of the content")
-    publishedDate: Optional[str] = SchemaField(
+    title: str | None = SchemaField(description="The title of the search result")
+    author: str | None = SchemaField(description="The author of the content")
+    publishedDate: str | None = SchemaField(
         description="An estimate of the creation date"
     )
-    text: Optional[str] = SchemaField(description="The full text content of the source")
-    image: Optional[MediaFileType] = SchemaField(
+    text: str | None = SchemaField(description="The full text content of the source")
+    image: MediaFileType | None = SchemaField(
         description="The URL of the image associated with the result"
     )
-    favicon: Optional[MediaFileType] = SchemaField(
+    favicon: MediaFileType | None = SchemaField(
         description="The URL of the favicon for the domain"
     )
 

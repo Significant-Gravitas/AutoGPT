@@ -1,7 +1,7 @@
 import time
 from datetime import datetime
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any
 
 from exa_py import AsyncExa, Exa
 from exa_py.websets.types import (
@@ -72,27 +72,27 @@ class Webset(BaseModel):
     """
     The status of the webset
     """
-    external_id: Annotated[Optional[str], Field(alias="externalId")] = None
+    external_id: Annotated[str | None, Field(alias="externalId")] = None
     """
     The external identifier for the webset
     NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    searches: List[dict[str, Any]] | None = None
+    searches: list[dict[str, Any]] | None = None
     """
     The searches that have been performed on the webset.
     NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    enrichments: List[dict[str, Any]] | None = None
+    enrichments: list[dict[str, Any]] | None = None
     """
     The Enrichments to apply to the Webset Items.
     NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    monitors: List[dict[str, Any]] | None = None
+    monitors: list[dict[str, Any]] | None = None
     """
     The Monitors for the Webset.
     NOTE: Returning dict to avoid ui crashing due to nested objects
     """
-    metadata: Optional[Dict[str, Any]] = {}
+    metadata: dict[str, Any] | None = {}
     """
     Set of key-value pairs you want to associate with this object.
     """
@@ -117,7 +117,7 @@ class ExaCreateWebsetBlock(Block):
             description="Your search query. Use this to describe what you are looking for. Any URL provided will be crawled and used as context for the search.",
             placeholder="Marketing agencies based in the US, that focus on consumer products",
         )
-        search_count: Optional[int] = SchemaField(
+        search_count: int | None = SchemaField(
             default=10,
             description="Number of items the search will attempt to find. The actual number of items found may be less than this number depending on the search complexity.",
             ge=1,
@@ -128,7 +128,7 @@ class ExaCreateWebsetBlock(Block):
             description="Entity type: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, we automatically detect the entity from the query.",
             advanced=True,
         )
-        search_entity_description: Optional[str] = SchemaField(
+        search_entity_description: str | None = SchemaField(
             default=None,
             description="Description for custom entity type (required when search_entity_type is 'custom')",
             advanced=True,
@@ -210,13 +210,13 @@ class ExaCreateWebsetBlock(Block):
         )
 
         # Webset metadata
-        external_id: Optional[str] = SchemaField(
+        external_id: str | None = SchemaField(
             default=None,
             description="External identifier for the webset. You can use this to reference the webset by your own internal identifiers.",
             placeholder="my-webset-123",
             advanced=True,
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default_factory=dict,
             description="Key-value pairs to associate with this webset",
             advanced=True,
@@ -237,10 +237,10 @@ class ExaCreateWebsetBlock(Block):
 
     class Output(BlockSchemaOutput):
         webset: Webset = SchemaField(description="The created webset with full details")
-        initial_item_count: Optional[int] = SchemaField(
+        initial_item_count: int | None = SchemaField(
             description="Number of items found in the initial search (only if wait_for_initial_results was True)"
         )
-        completion_time: Optional[float] = SchemaField(
+        completion_time: float | None = SchemaField(
             description="Time taken to complete the initial search in seconds (only if wait_for_initial_results was True)"
         )
 
@@ -439,7 +439,7 @@ class ExaCreateOrFindWebsetBlock(Block):
             placeholder="my-unique-webset-id",
         )
 
-        search_query: Optional[str] = SchemaField(
+        search_query: str | None = SchemaField(
             default=None,
             description="Search query (optional - only needed if creating new webset)",
             placeholder="Marketing agencies based in the US",
@@ -451,7 +451,7 @@ class ExaCreateOrFindWebsetBlock(Block):
             le=1000,
         )
 
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Key-value pairs to associate with the webset",
             advanced=True,
@@ -526,7 +526,7 @@ class ExaUpdateWebsetBlock(Block):
             description="The ID or external ID of the Webset to update",
             placeholder="webset-id-or-external-id",
         )
-        metadata: Optional[dict] = SchemaField(
+        metadata: dict | None = SchemaField(
             default=None,
             description="Key-value pairs to associate with this webset (set to null to clear)",
         )
@@ -534,7 +534,7 @@ class ExaUpdateWebsetBlock(Block):
     class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
-        external_id: Optional[str] = SchemaField(
+        external_id: str | None = SchemaField(
             description="The external identifier for the webset"
         )
         metadata: dict = SchemaField(description="Updated metadata for the webset")
@@ -589,7 +589,7 @@ class ExaListWebsetsBlock(Block):
             description="Trigger for the webset, value is ignored!",
             advanced=False,
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination through results",
             advanced=True,
@@ -607,7 +607,7 @@ class ExaListWebsetsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more results to paginate through"
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results"
         )
 
@@ -654,7 +654,7 @@ class ExaGetWebsetBlock(Block):
     class Output(BlockSchemaOutput):
         webset_id: str = SchemaField(description="The unique identifier for the webset")
         status: str = SchemaField(description="The status of the webset")
-        external_id: Optional[str] = SchemaField(
+        external_id: str | None = SchemaField(
             description="The external identifier for the webset"
         )
         searches: list[dict] = SchemaField(
@@ -742,7 +742,7 @@ class ExaDeleteWebsetBlock(Block):
         webset_id: str = SchemaField(
             description="The unique identifier for the deleted webset"
         )
-        external_id: Optional[str] = SchemaField(
+        external_id: str | None = SchemaField(
             description="The external identifier for the deleted webset"
         )
         status: str = SchemaField(description="The status of the deleted webset")
@@ -794,7 +794,7 @@ class ExaCancelWebsetBlock(Block):
         status: str = SchemaField(
             description="The status of the webset after cancellation"
         )
-        external_id: Optional[str] = SchemaField(
+        external_id: str | None = SchemaField(
             description="The external identifier for the webset"
         )
         success: str = SchemaField(
@@ -847,7 +847,7 @@ class PreviewEnrichmentModel(BaseModel):
 
     description: str
     format: str
-    options: List[str]
+    options: list[str]
 
     @classmethod
     def from_sdk(cls, sdk_enrichment) -> "PreviewEnrichmentModel":
@@ -875,8 +875,8 @@ class PreviewSearchModel(BaseModel):
     """Stable model for preview search details."""
 
     entity_type: str
-    entity_description: Optional[str]
-    criteria: List[PreviewCriterionModel]
+    entity_description: str | None
+    criteria: list[PreviewCriterionModel]
 
     @classmethod
     def from_sdk(cls, sdk_search) -> "PreviewSearchModel":
@@ -902,7 +902,7 @@ class PreviewWebsetModel(BaseModel):
     """Stable model for preview response."""
 
     search: PreviewSearchModel
-    enrichments: List[PreviewEnrichmentModel]
+    enrichments: list[PreviewEnrichmentModel]
 
     @classmethod
     def from_sdk(cls, sdk_preview) -> "PreviewWebsetModel":
@@ -925,12 +925,12 @@ class ExaPreviewWebsetBlock(Block):
             description="Your search query to preview. Use this to see how Exa will interpret your search before creating a webset.",
             placeholder="Marketing agencies based in the US, with brands worked with and city",
         )
-        entity_type: Optional[SearchEntityType] = SchemaField(
+        entity_type: SearchEntityType | None = SchemaField(
             default=None,
             description="Entity type to force: 'company', 'person', 'article', 'research_paper', or 'custom'. If not provided, Exa will auto-detect.",
             advanced=True,
         )
-        entity_description: Optional[str] = SchemaField(
+        entity_description: str | None = SchemaField(
             default=None,
             description="Description for custom entity type (required when entity_type is 'custom')",
             advanced=True,
@@ -943,7 +943,7 @@ class ExaPreviewWebsetBlock(Block):
         entity_type: str = SchemaField(
             description="The detected or specified entity type"
         )
-        entity_description: Optional[str] = SchemaField(
+        entity_description: str | None = SchemaField(
             description="Description of the entity type"
         )
         criteria: list[PreviewCriterionModel] = SchemaField(
@@ -1111,7 +1111,7 @@ class SearchSummaryModel(BaseModel):
     total_searches: int
     completed_searches: int
     total_items_found: int
-    queries: List[str]
+    queries: list[str]
 
 
 class EnrichmentSummaryModel(BaseModel):
@@ -1119,8 +1119,8 @@ class EnrichmentSummaryModel(BaseModel):
 
     total_enrichments: int
     completed_enrichments: int
-    enrichment_types: List[str]
-    titles: List[str]
+    enrichment_types: list[str]
+    titles: list[str]
 
 
 class MonitorSummaryModel(BaseModel):
@@ -1128,7 +1128,7 @@ class MonitorSummaryModel(BaseModel):
 
     total_monitors: int
     active_monitors: int
-    next_run: Optional[datetime] = None
+    next_run: datetime | None = None
 
 
 class WebsetStatisticsModel(BaseModel):
@@ -1175,7 +1175,7 @@ class ExaWebsetSummaryBlock(Block):
         status: str = SchemaField(description="Current status")
         entity_type: str = SchemaField(description="Type of entities in the webset")
         total_items: int = SchemaField(description="Total number of items")
-        sample_items: list[Dict[str, Any]] = SchemaField(
+        sample_items: list[dict[str, Any]] = SchemaField(
             description="Sample items from the webset"
         )
         search_summary: SearchSummaryModel = SchemaField(

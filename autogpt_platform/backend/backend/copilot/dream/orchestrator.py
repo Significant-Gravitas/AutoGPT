@@ -21,7 +21,7 @@ import logging
 import re
 import uuid as uuidlib
 from collections.abc import Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TypeVar
 
 from backend.copilot.config import ChatConfig
@@ -682,7 +682,7 @@ async def _read_last_completed_marker(
             user_id[:12],
         )
         return None
-    return marker if marker.tzinfo else marker.replace(tzinfo=timezone.utc)
+    return marker if marker.tzinfo else marker.replace(tzinfo=UTC)
 
 
 async def _stamp_last_completed_marker(
@@ -747,7 +747,7 @@ async def _execute_dream_pass_async(
 ) -> DreamPassResult:
     config = config or ChatConfig()
     pass_id = str(uuidlib.uuid4())
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     monotonic_start = asyncio.get_event_loop().time()
 
     has_anthropic_key = bool(config.direct_anthropic_api_key)
@@ -794,7 +794,7 @@ async def _execute_dream_pass_async(
                     user_id=user_id,
                     pass_id=pass_id,
                     started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
                     execution_path=execution_path,
                     skipped=True,
@@ -810,7 +810,7 @@ async def _execute_dream_pass_async(
                     user_id=user_id,
                     pass_id=pass_id,
                     started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
                     execution_path=execution_path,
                     skipped=True,
@@ -848,7 +848,7 @@ async def _execute_dream_pass_async(
                     user_id=user_id,
                     pass_id=pass_id,
                     started_at=started_at,
-                    completed_at=datetime.now(timezone.utc),
+                    completed_at=datetime.now(UTC),
                     elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
                     execution_path=execution_path,
                     skipped=True,
@@ -984,7 +984,7 @@ async def _execute_dream_pass_async(
                 user_id, input_bundle.window_end, expert_id
             )
 
-            completed_at = datetime.now(timezone.utc)
+            completed_at = datetime.now(UTC)
             snapshot = apply_stats.get("snapshot")
             raw_session_id = apply_stats.get("session_id")
 
@@ -1025,7 +1025,7 @@ async def _execute_dream_pass_async(
             user_id=user_id,
             pass_id=pass_id,
             started_at=started_at,
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.now(UTC),
             elapsed_seconds=(asyncio.get_event_loop().time() - monotonic_start),
             execution_path=execution_path,
             skipped=True,
@@ -1059,7 +1059,7 @@ def _failure_result(
         user_id=user_id,
         pass_id=pass_id,
         started_at=started_at,
-        completed_at=datetime.now(timezone.utc),
+        completed_at=datetime.now(UTC),
         elapsed_seconds=asyncio.get_event_loop().time() - monotonic_start,
         execution_path=execution_path,
         error=error,
@@ -1171,7 +1171,7 @@ async def _submit_dream_pass_batch(
             f"anthropic_batch: phase 1 submit failed: {exc}",
         )
 
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
     logger.info(
         "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
         pass_id,

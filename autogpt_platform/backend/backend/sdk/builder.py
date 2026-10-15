@@ -4,7 +4,7 @@ Builder class for creating provider configurations with a fluent API.
 
 import logging
 import os
-from typing import Callable, List, Optional, Type
+from collections.abc import Callable
 
 from pydantic import SecretStr
 
@@ -29,25 +29,25 @@ class ProviderBuilder:
 
     def __init__(self, name: str):
         self.name = name
-        self._oauth_config: Optional[OAuthConfig] = None
-        self._webhook_manager: Optional[Type[BaseWebhooksManager]] = None
-        self._default_credentials: List[Credentials] = []
-        self._base_costs: List[BlockCost] = []
+        self._oauth_config: OAuthConfig | None = None
+        self._webhook_manager: type[BaseWebhooksManager] | None = None
+        self._default_credentials: list[Credentials] = []
+        self._base_costs: list[BlockCost] = []
         self._supported_auth_types: set[CredentialsType] = set()
-        self._api_client_factory: Optional[Callable] = None
-        self._error_handler: Optional[Callable[[Exception], str]] = None
-        self._default_scopes: Optional[List[str]] = None
-        self._client_id_env_var: Optional[str] = None
-        self._client_secret_env_var: Optional[str] = None
-        self._description: Optional[str] = None
+        self._api_client_factory: Callable | None = None
+        self._error_handler: Callable[[Exception], str] | None = None
+        self._default_scopes: list[str] | None = None
+        self._client_id_env_var: str | None = None
+        self._client_secret_env_var: str | None = None
+        self._description: str | None = None
         self._extra_config: dict = {}
 
     def with_oauth(
         self,
-        handler_class: Type[BaseOAuthHandler],
-        scopes: Optional[List[str]] = None,
-        client_id_env_var: Optional[str] = None,
-        client_secret_env_var: Optional[str] = None,
+        handler_class: type[BaseOAuthHandler],
+        scopes: list[str] | None = None,
+        client_id_env_var: str | None = None,
+        client_secret_env_var: str | None = None,
     ) -> "ProviderBuilder":
         """Add OAuth support."""
         if not client_id_env_var or not client_secret_env_var:
@@ -147,7 +147,7 @@ class ProviderBuilder:
         return self
 
     def with_webhook_manager(
-        self, manager_class: Type[BaseWebhooksManager]
+        self, manager_class: type[BaseWebhooksManager]
     ) -> "ProviderBuilder":
         """Register webhook manager for this provider."""
         self._webhook_manager = manager_class

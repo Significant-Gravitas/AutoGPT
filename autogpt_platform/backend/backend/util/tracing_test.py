@@ -202,9 +202,8 @@ def test_a_unit_of_work_becomes_one_transaction(sentry_transactions) -> None:
         "copilot.turn",
         tags={"copilot.engine": "sdk"},
         data={"copilot.session_id": "s-1"},
-    ):
-        with sentry_sdk.start_span(op="db.redis", name="GET"):
-            pass
+    ), sentry_sdk.start_span(op="db.redis", name="GET"):
+        pass
 
     [transaction] = sentry_transactions
     assert transaction["transaction"] == "copilot.turn"

@@ -145,9 +145,8 @@ async def test_api_key_invalid(api_key_auth, mock_request):
     # Mock the parent class to return an invalid API key
     with patch.object(
         api_key_auth.__class__.__bases__[0], "__call__", return_value="invalid-token"
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await api_key_auth(mock_request)
+    ), pytest.raises(HTTPException) as exc_info:
+        await api_key_auth(mock_request)
 
     assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED
     assert exc_info.value.detail == "Invalid API key"
@@ -176,9 +175,8 @@ async def test_custom_status_and_message(mock_request):
     # Test invalid key
     with patch.object(
         auth.__class__.__bases__[0], "__call__", return_value="invalid-token"
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await auth(mock_request)
+    ), pytest.raises(HTTPException) as exc_info:
+        await auth(mock_request)
 
     assert exc_info.value.status_code == HTTP_403_FORBIDDEN
     assert exc_info.value.detail == "Access forbidden"
@@ -207,9 +205,8 @@ async def test_custom_sync_validator_invalid(
         api_key_auth_custom_validator.__class__.__bases__[0],
         "__call__",
         return_value="invalid-key",
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await api_key_auth_custom_validator(mock_request)
+    ), pytest.raises(HTTPException) as exc_info:
+        await api_key_auth_custom_validator(mock_request)
 
     assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED
     assert exc_info.value.detail == "Invalid API key"
@@ -237,9 +234,8 @@ async def test_custom_async_validator_invalid(
         api_key_auth_async_validator.__class__.__bases__[0],
         "__call__",
         return_value="invalid-key",
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await api_key_auth_async_validator(mock_request)
+    ), pytest.raises(HTTPException) as exc_info:
+        await api_key_auth_async_validator(mock_request)
 
     assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED
     assert exc_info.value.detail == "Invalid API key"
@@ -268,9 +264,8 @@ async def test_validator_returns_none(api_key_auth_object_validator, mock_reques
         api_key_auth_object_validator.__class__.__bases__[0],
         "__call__",
         return_value="invalid-key",
-    ):
-        with pytest.raises(HTTPException) as exc_info:
-            await api_key_auth_object_validator(mock_request)
+    ), pytest.raises(HTTPException) as exc_info:
+        await api_key_auth_object_validator(mock_request)
 
     assert exc_info.value.status_code == HTTP_401_UNAUTHORIZED
     assert exc_info.value.detail == "Invalid API key"
@@ -306,9 +301,8 @@ async def test_validator_database_lookup_simulation(mock_request):
     # Test non-existent key
     with patch.object(
         auth.__class__.__bases__[0], "__call__", return_value="nonexistent"
-    ):
-        with pytest.raises(HTTPException):
-            await auth(mock_request)
+    ), pytest.raises(HTTPException):
+        await auth(mock_request)
 
 
 # ========== Default Validator Tests ========== #

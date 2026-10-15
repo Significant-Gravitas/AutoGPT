@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from prisma.enums import CreditTransactionType
@@ -48,7 +48,7 @@ async def get_credit_history(
         CreditTransactionType(transaction_type)
     scope = cursor_scope(user_id, organization_id, transaction_type)
     position = decode_cursor(cursor, scope) if cursor is not None else None
-    snapshot = position.snapshot_at if position else datetime.now(timezone.utc)
+    snapshot = position.snapshot_at if position else datetime.now(UTC)
     ceiling = as_utc(transaction_time_ceiling) if transaction_time_ceiling else None
     rows = await query_raw_with_schema(
         credit_history_query(organization=organization_id is not None),

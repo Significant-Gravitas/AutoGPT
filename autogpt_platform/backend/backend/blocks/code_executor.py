@@ -89,24 +89,24 @@ class MainCodeExecutionResult(BaseModel):
     The result can contain multiple types of data, such as text, images, plots, etc. Each type of data is represented
     as a string, and the result can contain multiple types of data. The display calls don't have to have text representation,
     for the actual result the representation is always present for the result, the other representations are always optional.
-    """  # noqa
+    """
 
     class Chart(BaseModel, E2BExecutionResultChart):
         pass
 
-    text: Optional[str] = None
-    html: Optional[str] = None
-    markdown: Optional[str] = None
-    svg: Optional[str] = None
-    png: Optional[str] = None
-    jpeg: Optional[str] = None
-    pdf: Optional[str] = None
-    latex: Optional[str] = None
-    json_data: Optional[JsonValue] = Field(None, alias="json")
-    javascript: Optional[str] = None
-    data: Optional[dict] = None
-    chart: Optional[Chart] = None
-    extra: Optional[dict] = None
+    text: str | None = None
+    html: str | None = None
+    markdown: str | None = None
+    svg: str | None = None
+    png: str | None = None
+    jpeg: str | None = None
+    pdf: str | None = None
+    latex: str | None = None
+    json_data: JsonValue | None = Field(None, alias="json")
+    javascript: str | None = None
+    data: dict | None = None
+    chart: Chart | None = None
+    extra: dict | None = None
     """Extra data that can be included. Not part of the standard types."""
 
 
@@ -114,7 +114,7 @@ class CodeExecutionResult(MainCodeExecutionResult):
     __doc__ = MainCodeExecutionResult.__doc__
 
     is_main_result: bool = False
-    """Whether this data is the main result of the cell. Data can be produced by display calls of which can be multiple in a cell."""  # noqa
+    """Whether this data is the main result of the cell. Data can be produced by display calls of which can be multiple in a cell."""
 
 
 class BaseE2BExecutorMixin:
@@ -129,14 +129,14 @@ class BaseE2BExecutorMixin:
         code: str,
         language: ProgrammingLanguage,
         template_id: str = "",
-        setup_commands: Optional[list[str]] = None,
-        timeout: Optional[int] = None,
-        sandbox_id: Optional[str] = None,
+        setup_commands: list[str] | None = None,
+        timeout: int | None = None,
+        sandbox_id: str | None = None,
         dispose_sandbox: bool = False,
         execution_context: Optional["ExecutionContext"] = None,
         extract_files: bool = False,
-        envs: Optional[dict[str, str]] = None,
-        metadata: Optional[dict[str, str]] = None,
+        envs: dict[str, str] | None = None,
+        metadata: dict[str, str] | None = None,
     ):
         """
         Unified code execution method that handles all three use cases:
@@ -147,7 +147,7 @@ class BaseE2BExecutorMixin:
         Args:
             extract_files: If True and execution_context provided, extract files
                            created/modified during execution and store to workspace.
-        """  # noqa
+        """
         sandbox = None
         files: list[SandboxFileOutput] = []
         owner_user_id = execution_context.user_id if execution_context else None

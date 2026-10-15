@@ -14,7 +14,8 @@ a run into a question, never the reverse.
 """
 
 import logging
-from typing import Any, Awaitable, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict
@@ -322,9 +323,9 @@ def _last_user_message(session: ChatSession) -> str:
 
 
 __all__ = [
+    "LINKED_CHAT_PLATFORMS",
     "RUN_FILES_KEY",
     "Decision",
-    "LINKED_CHAT_PLATFORMS",
     "active_mode",
     "check_action",
     "gate_active",

@@ -252,7 +252,7 @@ def checkout_fields(
     *,
     email: str,
     created_at: datetime,
-    opened_at: datetime | int | float | None,
+    opened_at: datetime | float | None,
     signin_providers: Iterable[str],
     timezone: str | None,
     stripe_country: str | None = None,

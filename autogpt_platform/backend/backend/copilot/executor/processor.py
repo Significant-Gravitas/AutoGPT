@@ -11,8 +11,9 @@ import os
 import subprocess
 import threading
 import time
+from collections.abc import Callable
 from contextlib import AsyncExitStack
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 from backend.copilot import stream_registry
 from backend.copilot.baseline import stream_chat_completion_baseline

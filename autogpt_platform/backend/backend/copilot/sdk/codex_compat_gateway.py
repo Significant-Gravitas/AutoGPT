@@ -239,7 +239,7 @@ class CodexAnthropicGateway:
     async def start(self) -> None:
         await self.__aenter__()
 
-    async def __aenter__(self) -> "CodexAnthropicGateway":
+    async def __aenter__(self) -> CodexAnthropicGateway:
         if self._runner is not None:
             return self
         if self._agent_session is None:
@@ -570,7 +570,7 @@ class CodexAnthropicGateway:
             )
             await conversation.queue.put(_Failed(error=exc))
 
-    def _failure_response(self, failed: "_Failed") -> web.Response:
+    def _failure_response(self, failed: _Failed) -> web.Response:
         """Answer a failed conversation with a status the CLI can act on.
 
         Every failure used to become ``502 api_error``, which reads as a

@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -57,8 +57,8 @@ def _make_workspace() -> Workspace:
     return Workspace(
         id="ws-001",
         user_id="test-user-id",
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -68,8 +68,8 @@ def _make_folder(**overrides) -> WorkspaceFolder:
         "workspace_id": "ws-001",
         "name": "Reports",
         "icon": None,
-        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
         "file_count": 0,
     }
     defaults.update(overrides)
@@ -80,8 +80,8 @@ def _make_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": "file-001",
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
-        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
         "name": "test.txt",
         "path": "/test.txt",
         "storage_path": "local://test.txt",

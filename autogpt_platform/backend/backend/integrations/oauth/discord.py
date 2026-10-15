@@ -1,5 +1,4 @@
 import time
-from typing import Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -31,7 +30,7 @@ class DiscordOAuthHandler(BaseOAuthHandler):
         self.revoke_url = "https://discord.com/api/oauth2/token/revoke"
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: Optional[str]
+        self, scopes: list[str], state: str, code_challenge: str | None
     ) -> str:
         # Handle default scopes
         scopes = self.handle_default_scopes(scopes)
@@ -52,7 +51,7 @@ class DiscordOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: Optional[str]
+        self, code: str, scopes: list[str], code_verifier: str | None
     ) -> OAuth2Credentials:
         params = {
             "code": code,
@@ -107,7 +106,7 @@ class DiscordOAuthHandler(BaseOAuthHandler):
     async def _request_tokens(
         self,
         params: dict[str, str],
-        current_credentials: Optional[OAuth2Credentials] = None,
+        current_credentials: OAuth2Credentials | None = None,
     ) -> OAuth2Credentials:
         request_body = {
             "client_id": self.client_id,

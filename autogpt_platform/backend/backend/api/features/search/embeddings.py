@@ -490,7 +490,7 @@ async def backfill_all_content_types(batch_size: int = 10) -> dict[str, Any]:
             if failed > 0:
                 for result in results:
                     if isinstance(result, Exception):
-                        error_key = f"{type(result).__name__}: {str(result)}"
+                        error_key = f"{type(result).__name__}: {result!s}"
                         all_errors[error_key] = all_errors.get(error_key, 0) + 1
 
             results_by_type[content_type.value] = {
@@ -715,10 +715,8 @@ async def semantic_search(
     if not query:
         return []
 
-    if limit < 1:
-        limit = 1
-    if limit > 100:
-        limit = 100
+    limit = max(limit, 1)
+    limit = min(limit, 100)
 
     # Generate query embedding
     try:
@@ -730,7 +728,7 @@ async def semantic_search(
         params: list[Any] = [limit]
         user_filter = ""
         if user_id is not None:
-            user_filter = 'AND "userId" = ${}'.format(len(params) + 1)
+            user_filter = f'AND "userId" = ${len(params) + 1}'
             params.append(user_id)
 
         # Add content type parameters and build placeholders dynamically
@@ -792,7 +790,7 @@ async def semantic_search(
     params_lexical: list[Any] = [limit]
     user_filter = ""
     if user_id is not None:
-        user_filter = 'AND "userId" = ${}'.format(len(params_lexical) + 1)
+        user_filter = f'AND "userId" = ${len(params_lexical) + 1}'
         params_lexical.append(user_id)
 
     # Add content type parameters and build placeholders dynamically

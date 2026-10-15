@@ -408,7 +408,7 @@ class TestProviderBuilder:
         """Test building a provider with error handler."""
 
         def mock_error_handler(exc: Exception) -> str:
-            return f"Error: {str(exc)}"
+            return f"Error: {exc!s}"
 
         provider = (
             ProviderBuilder("error_test").with_error_handler(mock_error_handler).build()
@@ -493,7 +493,6 @@ class TestSDKImports:
         """Test type alias imports are removed."""
         # Type aliases have been removed from SDK
         # Users should import from typing or use built-in types directly
-        pass
 
     def test_cost_system_imports(self):
         """Test cost system imports."""

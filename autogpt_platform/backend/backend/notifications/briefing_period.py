@@ -5,7 +5,7 @@ at 3am reads as a machine talking, not a chief of staff. The scheduler runs
 hourly and this module decides, per user, whether this is their hour.
 """
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -114,7 +114,7 @@ def period_window(
 
 
 def _utc_midnight(day: date, zone: ZoneInfo) -> datetime:
-    return datetime.combine(day, time.min, tzinfo=zone).astimezone(timezone.utc)
+    return datetime.combine(day, time.min, tzinfo=zone).astimezone(UTC)
 
 
 def _format_day(day: date) -> str:

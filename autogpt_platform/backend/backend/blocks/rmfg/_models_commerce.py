@@ -1,7 +1,5 @@
 """Response models for RMFG quotes, carts, orders and review links."""
 
-from typing import Optional
-
 from backend.sdk import BaseModel, Field
 
 from ._models import DFMReport, ManufacturingReviewWarning, Requirement, ResourceError
@@ -71,8 +69,8 @@ class QuoteLineItem(BaseModel):
     quantity: int = 0
     unit_amount_cents: int = 0
     amount_cents: int = 0
-    material_id: Optional[str] = None
-    tube_profile_id: Optional[str] = None
+    material_id: str | None = None
+    tube_profile_id: str | None = None
     breakdown: list[LineItemBreakdown] = Field(default_factory=list)
 
 
@@ -80,9 +78,9 @@ class QuotedDesign(BaseModel):
     design_id: str = ""
     quantity: int = 1
     status: ManufacturabilityStatus = ManufacturabilityStatus.READY
-    client_reference_id: Optional[str] = None
-    unit_amount_cents: Optional[int] = None
-    amount_cents: Optional[int] = None
+    client_reference_id: str | None = None
+    unit_amount_cents: int | None = None
+    amount_cents: int | None = None
     assembly_operations_amount_cents: int = 0
     quantity_options: list[QuantityOption] = Field(default_factory=list)
     dfm: DFMReport = Field(default_factory=DFMReport)
@@ -95,18 +93,18 @@ class Quote(BaseModel):
 
     id: str = ""
     status: QuoteStatus = QuoteStatus.PROCESSING
-    design_id: Optional[str] = None
+    design_id: str | None = None
     currency: str = "usd"
-    amount_subtotal_cents: Optional[int] = None
-    amount_shipping_cents: Optional[int] = None
-    amount_tax_cents: Optional[int] = None
-    amount_total_cents: Optional[int] = None
+    amount_subtotal_cents: int | None = None
+    amount_shipping_cents: int | None = None
+    amount_tax_cents: int | None = None
+    amount_total_cents: int | None = None
     items: list[QuotedDesign] = Field(default_factory=list)
     requirements: list[Requirement] = Field(default_factory=list)
-    fulfillment: Optional[FulfillmentEstimate] = None
+    fulfillment: FulfillmentEstimate | None = None
     created_at: str = ""
-    expires_at: Optional[str] = None
-    error: Optional[ResourceError] = None
+    expires_at: str | None = None
+    error: ResourceError | None = None
 
     @property
     def shipping_options(self) -> list[ShippingOption]:
@@ -124,9 +122,9 @@ class CartTotals(BaseModel):
     """Every amount checkout charges, in USD cents."""
 
     amount_subtotal_cents: int = 0
-    amount_shipping_cents: Optional[int] = None
-    amount_production_surcharge_cents: Optional[int] = None
-    amount_tax_cents: Optional[int] = None
+    amount_shipping_cents: int | None = None
+    amount_production_surcharge_cents: int | None = None
+    amount_tax_cents: int | None = None
     tax_status: str = "destination_required"
     amount_total_cents: int = 0
 
@@ -134,10 +132,10 @@ class CartTotals(BaseModel):
 class CartPayment(BaseModel):
     cart_id: str = ""
     status: PaymentStatus = PaymentStatus.PROCESSING
-    payment_intent_id: Optional[str] = None
+    payment_intent_id: str | None = None
     amount_total_cents: int = 0
-    order_id: Optional[str] = None
-    paid_at: Optional[str] = None
+    order_id: str | None = None
+    paid_at: str | None = None
 
 
 class CartItem(BaseModel):
@@ -152,7 +150,7 @@ class CartItem(BaseModel):
     configuration: ManufacturingConfiguration = Field(
         default_factory=ManufacturingConfiguration
     )
-    client_reference_id: Optional[str] = None
+    client_reference_id: str | None = None
     quantity_options: list[int] = Field(default_factory=list)
 
 
@@ -167,43 +165,43 @@ class Cart(BaseModel):
     status: CartStatus = CartStatus.OPEN
     cart_url: str = ""
     items: list[CartItem] = Field(default_factory=list)
-    ship_to: Optional[ShipTo] = None
-    shipping_option_id: Optional[str] = None
-    selected_shipping_option: Optional[ShippingOption] = None
+    ship_to: ShipTo | None = None
+    shipping_option_id: str | None = None
+    selected_shipping_option: ShippingOption | None = None
     quote: Quote = Field(default_factory=Quote)
     totals: CartTotals = Field(default_factory=CartTotals)
     manufacturing_warnings: list[ManufacturingReviewWarning] = Field(
         default_factory=list
     )
-    order_id: Optional[str] = None
-    payment: Optional[CartPayment] = None
-    client_reference_id: Optional[str] = None
+    order_id: str | None = None
+    payment: CartPayment | None = None
+    client_reference_id: str | None = None
     created_at: str = ""
-    expires_at: Optional[str] = None
+    expires_at: str | None = None
 
 
 class OrderTracking(BaseModel):
-    carrier: Optional[str] = None
-    service: Optional[str] = None
-    number: Optional[str] = None
-    url: Optional[str] = None
-    shipped_at: Optional[str] = None
-    delivered_at: Optional[str] = None
+    carrier: str | None = None
+    service: str | None = None
+    number: str | None = None
+    url: str | None = None
+    shipped_at: str | None = None
+    delivered_at: str | None = None
 
 
 class OrderLineItem(BaseModel):
     id: str = ""
     type: str = "part"
-    part_id: Optional[str] = None
-    design_id: Optional[str] = None
-    name: Optional[str] = None
+    part_id: str | None = None
+    design_id: str | None = None
+    name: str | None = None
     quantity: int = 0
     unit_amount_cents: int = 0
     amount_cents: int = 0
-    material_id: Optional[str] = None
-    tube_profile_id: Optional[str] = None
-    powder_coat_color_id: Optional[str] = None
-    finish_id: Optional[str] = None
+    material_id: str | None = None
+    tube_profile_id: str | None = None
+    powder_coat_color_id: str | None = None
+    finish_id: str | None = None
     hole_operation_count: int = 0
 
 
@@ -218,20 +216,20 @@ class Order(BaseModel):
     id: str = ""
     status: OrderStatus = OrderStatus.RECEIVED
     created_at: str = ""
-    cart_id: Optional[str] = None
-    quote_id: Optional[str] = None
-    amount_subtotal_cents: Optional[int] = None
-    amount_discount_cents: Optional[int] = None
-    amount_tax_cents: Optional[int] = None
-    amount_total_cents: Optional[int] = None
+    cart_id: str | None = None
+    quote_id: str | None = None
+    amount_subtotal_cents: int | None = None
+    amount_discount_cents: int | None = None
+    amount_tax_cents: int | None = None
+    amount_total_cents: int | None = None
     expedited: bool = False
     production_hold: bool = False
-    estimated_ship_date: Optional[str] = None
-    delivered_at: Optional[str] = None
-    tracking: Optional[OrderTracking] = None
+    estimated_ship_date: str | None = None
+    delivered_at: str | None = None
+    tracking: OrderTracking | None = None
     line_items: list[OrderLineItem] = Field(default_factory=list)
     events: list[OrderEvent] = Field(default_factory=list)
-    po_number: Optional[str] = None
+    po_number: str | None = None
 
 
 class ReviewLink(BaseModel):
@@ -240,11 +238,11 @@ class ReviewLink(BaseModel):
     id: str = ""
     status: str = "open"
     design_id: str = ""
-    dfm_id: Optional[str] = None
+    dfm_id: str | None = None
     review_url: str = ""
     configuration: ManufacturingConfiguration = Field(
         default_factory=ManufacturingConfiguration
     )
-    configuration_updated_at: Optional[str] = None
+    configuration_updated_at: str | None = None
     created_at: str = ""
-    expires_at: Optional[str] = None
+    expires_at: str | None = None

@@ -18,7 +18,7 @@ and surfaced via ``RatificationResult`` for the scheduler wrapper.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -81,14 +81,14 @@ async def run_ratification_pass(
       * Per-edge failure is captured in ``per_edge_errors`` so one bad
         edge can't poison the rest of the pass.
     """
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
     result = RatificationResult(user_id=user_id, started_at=started_at)
 
     try:
         group_id = derive_memory_group_id(user_id, expert_id)
     except ValueError as exc:
         result.error = f"invalid_user_id: {exc}"
-        result.completed_at = datetime.now(timezone.utc)
+        result.completed_at = datetime.now(UTC)
         logger.warning(
             "Ratification skipped — invalid user_id %s: %s", user_id[:12], exc
         )
@@ -108,7 +108,7 @@ async def run_ratification_pass(
             tentatives = await _list_tentative_edges(driver)
         except Exception as exc:
             result.error = f"list_tentative_edges_failed: {exc}"
-            result.completed_at = datetime.now(timezone.utc)
+            result.completed_at = datetime.now(UTC)
             logger.warning(
                 "Ratification list failed for user %s",
                 user_id[:12],
@@ -118,14 +118,14 @@ async def run_ratification_pass(
 
         result.examined_count = len(tentatives)
         if not tentatives:
-            result.completed_at = datetime.now(timezone.utc)
+            result.completed_at = datetime.now(UTC)
             logger.info(
                 "Ratification no-op for user %s — no tentative edges",
                 user_id[:12],
             )
             return result
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         for edge in tentatives:
             try:
                 await _process_edge(
@@ -152,7 +152,7 @@ async def run_ratification_pass(
     finally:
         await driver.close()
 
-    result.completed_at = datetime.now(timezone.utc)
+    result.completed_at = datetime.now(UTC)
     logger.info(
         "Ratification complete for user %s: examined=%d ratified=%d superseded=%d errors=%d",
         user_id[:12],
@@ -258,7 +258,7 @@ async def _promote_edge(driver: AutoGPTFalkorDriver, edge_uuid: str) -> bool:
     RETURN e.uuid AS uuid
     """
     result = await driver.execute_query(
-        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
+        query, uuid=edge_uuid, now=datetime.now(UTC).isoformat()
     )
     records = result[0] if result else []
     return bool(records)
@@ -366,7 +366,7 @@ async def _promote_if_tentative(driver: AutoGPTFalkorDriver, edge_uuid: str) -> 
     RETURN e.uuid AS uuid
     """
     result = await driver.execute_query(
-        query, uuid=edge_uuid, now=datetime.now(timezone.utc).isoformat()
+        query, uuid=edge_uuid, now=datetime.now(UTC).isoformat()
     )
     records = result[0] if result else []
     return bool(records)

@@ -602,7 +602,7 @@ class ChatConfig(BaseSettings):
             "Applies to models that emit a reasoning channel — Sonnet, Opus, "
             "and Mythos (adaptive thinking) and Kimi K2.6 "
             "(OpenRouter ``reasoning`` extension lit up by #12871). "
-            "Check https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking "  # noqa
+            "Check https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking "
             "for model compatibility and guidance. "
             "None = let the model decide. Override via CHAT_CLAUDE_AGENT_THINKING_EFFORT.",
         )
@@ -774,8 +774,7 @@ class ChatConfig(BaseSettings):
         if not self.use_openrouter:
             return False
         base = (self.base_url or "").rstrip("/")
-        if base.endswith("/v1"):
-            base = base[:-3]
+        base = base.removesuffix("/v1")
         return bool(self.api_key and base and base.startswith("http"))
 
     @property

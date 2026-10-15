@@ -8,7 +8,7 @@ import signal
 import subprocess
 import sys
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -538,9 +538,7 @@ class _FakeBox:
 
     async def _get_info(self) -> SimpleNamespace:
         left = self.end_at - self._loop.time()
-        return SimpleNamespace(
-            end_at=datetime.now(timezone.utc) + timedelta(seconds=left)
-        )
+        return SimpleNamespace(end_at=datetime.now(UTC) + timedelta(seconds=left))
 
     def seconds_left(self) -> float:
         return self.end_at - self._loop.time()

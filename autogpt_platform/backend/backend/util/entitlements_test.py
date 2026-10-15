@@ -102,12 +102,12 @@ async def test_require_entitlement_raises_below_minimum_tier():
             "get_database_manager_async_client",
             return_value=client,
         ),
+        pytest.raises(EntitlementRequiredError) as exc_info,
     ):
-        with pytest.raises(EntitlementRequiredError) as exc_info:
-            await entitlements.require_entitlement(
-                "user-1",
-                Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
-            )
+        await entitlements.require_entitlement(
+            "user-1",
+            Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
+        )
 
     assert exc_info.value.entitlement == Entitlement.CODEX_SUBSCRIPTION_TRANSPORT
     assert exc_info.value.minimum_tier == SubscriptionTier.MAX
@@ -123,12 +123,12 @@ async def test_database_manager_error_propagates():
             "get_database_manager_async_client",
             return_value=client,
         ),
+        pytest.raises(RuntimeError, match="database unavailable"),
     ):
-        with pytest.raises(RuntimeError, match="database unavailable"):
-            await entitlements.has_entitlement(
-                "user-1",
-                Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
-            )
+        await entitlements.has_entitlement(
+            "user-1",
+            Entitlement.CODEX_SUBSCRIPTION_TRANSPORT,
+        )
 
 
 @pytest.mark.asyncio

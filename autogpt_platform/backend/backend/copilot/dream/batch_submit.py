@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -115,7 +115,7 @@ def _to_native_anthropic_model(model: str) -> str:
     return model.replace(".", "-")
 
 
-def phase_models_for_config(config: "ChatConfig") -> dict[str, str]:
+def phase_models_for_config(config: ChatConfig) -> dict[str, str]:
     """Per-phase model map (native-Anthropic form) for the batch path.
 
     Mirrors the sync orchestrator's per-phase choice: the standard tier
@@ -495,4 +495,4 @@ def _dict_to_input_bundle(data: dict) -> DreamInput:
 
 def _dummy_now() -> datetime:
     """Stub kept for symmetry with Step 4b; never called."""
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)

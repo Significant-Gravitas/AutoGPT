@@ -6,18 +6,18 @@ BLOCK_COSTS configuration used by the execution system.
 """
 
 import logging
-from typing import List, Type, TypeVar
+from typing import TypeVar
 
 from backend.blocks._base import Block, BlockCost
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.sdk.registry import AutoRegistry
 
-BlockT = TypeVar("BlockT", bound=Type[Block])
+BlockT = TypeVar("BlockT", bound=type[Block])
 
 logger = logging.getLogger(__name__)
 
 
-def register_provider_costs_for_block(block_class: Type[Block]) -> None:
+def register_provider_costs_for_block(block_class: type[Block]) -> None:
     """
     Register provider base costs for a specific block in BLOCK_COSTS.
 
@@ -63,7 +63,7 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
             continue
 
         # For each provider, check if it has base costs
-        block_costs: List[BlockCost] = []
+        block_costs: list[BlockCost] = []
         for provider_name in providers:
             provider = AutoRegistry.get_provider(provider_name)
             if not provider:
@@ -111,7 +111,7 @@ def sync_all_provider_costs() -> None:
     logger.info(f"Synced {total_costs} costs to {blocks_with_costs} blocks")
 
 
-def get_block_costs(block_class: Type[Block]) -> List[BlockCost]:
+def get_block_costs(block_class: type[Block]) -> list[BlockCost]:
     """
     Get all costs for a block, including both explicit and provider costs.
 

@@ -31,7 +31,8 @@ cancels manually.
 
 import logging
 import uuid
-from typing import Any, Literal, Mapping
+from collections.abc import Mapping
+from typing import Any, Literal
 
 from prisma.errors import UniqueViolationError
 from pydantic import BaseModel, ValidationError

@@ -1115,7 +1115,7 @@ async def _drift_check_background(user_id: str, tier: SubscriptionTier) -> None:
             user_id,
             tier.value,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(
             "set_user_tier: drift check timed out for user=%s admin_tier=%s",
             user_id,

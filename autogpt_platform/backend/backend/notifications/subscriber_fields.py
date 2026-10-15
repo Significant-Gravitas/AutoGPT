@@ -32,12 +32,12 @@ logger = logging.getLogger(__name__)
 Fields = dict[SubscriberField, str | None]
 
 
-def mailerlite_date(value: datetime | int | float | None) -> str:
+def mailerlite_date(value: datetime | float | None) -> str:
     """A Stripe timestamp or a datetime as a MailerLite date, in UTC."""
     return utc_moment(value).strftime("%Y-%m-%d")
 
 
-def utc_moment(value: datetime | int | float | None) -> datetime:
+def utc_moment(value: datetime | float | None) -> datetime:
     """A Stripe timestamp or a datetime, in UTC. Only an event without a
     timestamp of its own falls back to now."""
     if value is None:

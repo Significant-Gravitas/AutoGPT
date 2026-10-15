@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from typing_extensions import TypedDict
 
@@ -100,7 +101,7 @@ async def wait_for_execution(
             timeout=timeout_seconds,
         )
         return result
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.info(f"Timeout waiting for execution {execution_id}")
     except Exception as e:
         logger.error(f"Error waiting for execution: {e}", exc_info=True)

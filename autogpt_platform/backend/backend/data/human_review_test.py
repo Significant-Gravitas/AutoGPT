@@ -31,7 +31,7 @@ def sample_db_review():
     mock_review.reviewMessage = None
     mock_review.wasEdited = False
     mock_review.processed = False
-    mock_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
+    mock_review.createdAt = datetime.datetime.now(datetime.UTC)
     mock_review.updatedAt = None
     mock_review.reviewedAt = None
     return mock_review
@@ -220,9 +220,9 @@ async def test_process_all_reviews_for_execution_success(
     updated_review.reviewMessage = "Approved"
     updated_review.wasEdited = True
     updated_review.processed = False
-    updated_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
-    updated_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
-    updated_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
+    updated_review.createdAt = datetime.datetime.now(datetime.UTC)
+    updated_review.updatedAt = datetime.datetime.now(datetime.UTC)
+    updated_review.reviewedAt = datetime.datetime.now(datetime.UTC)
     mock_prisma.return_value.update = AsyncMock(return_value=updated_review)
 
     # Mock gather to simulate parallel updates
@@ -319,7 +319,7 @@ async def test_process_all_reviews_mixed_approval_rejection(
     second_review.reviewMessage = None
     second_review.wasEdited = False
     second_review.processed = False
-    second_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
+    second_review.createdAt = datetime.datetime.now(datetime.UTC)
     second_review.updatedAt = None
     second_review.reviewedAt = None
 
@@ -344,9 +344,9 @@ async def test_process_all_reviews_mixed_approval_rejection(
     approved_review.reviewMessage = "Approved"
     approved_review.wasEdited = True
     approved_review.processed = False
-    approved_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
-    approved_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
-    approved_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
+    approved_review.createdAt = datetime.datetime.now(datetime.UTC)
+    approved_review.updatedAt = datetime.datetime.now(datetime.UTC)
+    approved_review.reviewedAt = datetime.datetime.now(datetime.UTC)
 
     rejected_review = Mock()
     rejected_review.nodeExecId = "test_node_456"
@@ -362,9 +362,9 @@ async def test_process_all_reviews_mixed_approval_rejection(
     rejected_review.reviewMessage = "Rejected"
     rejected_review.wasEdited = False
     rejected_review.processed = False
-    rejected_review.createdAt = datetime.datetime.now(datetime.timezone.utc)
-    rejected_review.updatedAt = datetime.datetime.now(datetime.timezone.utc)
-    rejected_review.reviewedAt = datetime.datetime.now(datetime.timezone.utc)
+    rejected_review.createdAt = datetime.datetime.now(datetime.UTC)
+    rejected_review.updatedAt = datetime.datetime.now(datetime.UTC)
+    rejected_review.reviewedAt = datetime.datetime.now(datetime.UTC)
 
     mocker.patch(
         "backend.data.human_review.asyncio.gather",
@@ -413,9 +413,7 @@ async def test_a_chat_with_legacy_and_new_rows_syncs_one_alert(
         r.reviewMessage = None
         r.wasEdited = False
         r.processed = False
-        r.createdAt = r.updatedAt = r.reviewedAt = datetime.datetime.now(
-            datetime.timezone.utc
-        )
+        r.createdAt = r.updatedAt = r.reviewedAt = datetime.datetime.now(datetime.UTC)
         return r
 
     rows = [

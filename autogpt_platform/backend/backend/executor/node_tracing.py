@@ -12,7 +12,7 @@ so a run's trace can be opened from its id. A node run inside another node's
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sentry_sdk.tracing import NoOpSpan, Span
@@ -69,7 +69,7 @@ def node_transaction(
         },
     ) as span:
         if node_exec.queued_at is not None:
-            queue_wait = datetime.now(timezone.utc) - node_exec.queued_at
+            queue_wait = datetime.now(UTC) - node_exec.queued_at
             tracing.set_timing(
                 "executor.node.queue_wait_ms",
                 queue_wait.total_seconds() * 1000,

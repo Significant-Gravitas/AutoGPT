@@ -5,7 +5,7 @@ Linear OAuth handler implementation.
 import base64
 import json
 import time
-from typing import ClassVar, Optional
+from typing import ClassVar
 from urllib.parse import urlencode
 
 from backend.sdk import (
@@ -47,7 +47,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
         self.migrate_url = "https://api.linear.app/oauth/migrate_old_token"
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: Optional[str]
+        self, scopes: list[str], state: str, code_challenge: str | None
     ) -> str:
         params = {
             "client_id": self.client_id,
@@ -59,7 +59,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: Optional[str]
+        self, code: str, scopes: list[str], code_verifier: str | None
     ) -> OAuth2Credentials:
         return await self._request_tokens(
             {"code": code, "redirect_uri": self.redirect_uri}
@@ -170,7 +170,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
     async def _request_tokens(
         self,
         params: dict[str, str],
-        current_credentials: Optional[OAuth2Credentials] = None,
+        current_credentials: OAuth2Credentials | None = None,
     ) -> OAuth2Credentials:
         # Determine if this is a refresh token request
         is_refresh = params.get("grant_type") == "refresh_token"
@@ -296,7 +296,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             and credentials.refresh_token is None
         )
 
-    async def _request_username(self, access_token: str) -> Optional[str]:
+    async def _request_username(self, access_token: str) -> str | None:
         # Use the LinearClient to fetch user details using GraphQL
         from ._api import LinearClient
 

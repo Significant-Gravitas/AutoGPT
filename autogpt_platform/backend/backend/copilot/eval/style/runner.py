@@ -17,7 +17,7 @@ import asyncio
 import logging
 import statistics
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import openai
@@ -351,7 +351,7 @@ def summarize(
     costs = [u.cost_usd for u in usages]
     return StyleEvalResult(
         run_id=f"style-{uuid.uuid4().hex[:8]}",
-        ts=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        ts=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
         fingerprint=fingerprint_value,
         chat_model=chat_model,
         judge_model=judge_model,

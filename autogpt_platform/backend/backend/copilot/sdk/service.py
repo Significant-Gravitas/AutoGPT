@@ -3,11 +3,10 @@
 # isort: skip_file  — double-dot relative imports must stay relative to avoid Pyright type collisions
 
 import asyncio
+import base64
 import contextlib
 import contextvars
-import base64
 import functools
-from copy import copy
 import json
 import logging
 import os
@@ -18,6 +17,7 @@ import sys
 import time
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator
+from copy import copy
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
@@ -46,42 +46,45 @@ from opentelemetry import trace as otel_trace
 from pydantic import BaseModel
 
 from backend.blocks.desktop._common import workspace_volume_mounts
+from backend.copilot.budget_signal import build_turn_budget_block
+from backend.copilot.feedback_db import RATEABLE_ROLES
+from backend.copilot.gate import active_mode
+from backend.copilot.gate.held import resolve_answered
+from backend.copilot.graphiti.context import fetch_warm_context
+from backend.copilot.graphiti.ingest import enqueue_conversation_turn
+from backend.copilot.markers import append_error_marker
 from backend.copilot.model_router import (
     ResolvedModel,
     RoutingSource,
     resolve_codex_model_route,
     resolve_model_route,
 )
-from backend.copilot.budget_signal import build_turn_budget_block
-from backend.copilot.feedback_db import RATEABLE_ROLES
-from backend.copilot.graphiti.context import fetch_warm_context
-from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
-from backend.copilot.segments import Segment, stamp_segment
-from backend.copilot.graphiti.ingest import enqueue_conversation_turn
 from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
-from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
+)
+from backend.copilot.sdk.cost_tracking import (
     read_cli_session_usage,
 )
+from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
+from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.tool_display import tool_calls_for_provider
 from backend.data.db_accessors import chat_db
+from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
 from backend.data.redis_client import get_redis_async
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.integrations.codex.models import CodexReasoningEffort, CodexTokenUsage
 from backend.integrations.codex.transport import CodexCredentialLease
 from backend.integrations.credential_lease import CredentialLease
 from backend.util.exceptions import NotFoundError
-from backend.copilot.gate import active_mode
-from backend.copilot.gate.held import resolve_answered
+from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.llm.provider_billing import (
     PROVIDER_UNAVAILABLE_CODE,
     PROVIDER_UNAVAILABLE_MESSAGE,
     is_provider_out_of_credits,
     report_provider_out_of_credits,
 )
-from backend.util.feature_flag import Flag, is_feature_enabled
 from backend.util.prompt import (
     DEFAULT_COMPRESSION_RESERVE,
     estimate_token_count,
@@ -89,6 +92,10 @@ from backend.util.prompt import (
 )
 from backend.util.settings import Settings
 
+from ..builder_context import (
+    build_builder_context_turn_prefix,
+    build_builder_system_prompt_suffix,
+)
 from ..config import ChatConfig, CopilotLLMModel
 from ..constants import (
     COPILOT_ERROR_PREFIX,
@@ -101,15 +108,10 @@ from ..constants import (
     is_transient_api_error,
     is_transient_assistant_error,
 )
-from ..session_cleanup import prune_orphan_tool_calls
 from ..context import encode_cwd_for_cli, get_workspace_manager
+from ..expert_context import build_expert_identity_suffix
+from ..expert_kickoff import is_expert_kickoff_turn
 from ..graphiti.config import is_enabled_for_user
-from ..model_normalize import normalize_model_for_transport
-from backend.data.llm_registry.llm_models import MODEL_DATE_SUFFIX_RE
-
-from ..moonshot import (
-    is_moonshot_model as _is_moonshot_model,
-)
 from ..model import (
     ChatMessage,
     ChatSession,
@@ -117,6 +119,10 @@ from ..model import (
     get_chat_session,
     maybe_append_user_message,
     upsert_chat_session,
+)
+from ..model_normalize import normalize_model_for_transport
+from ..moonshot import (
+    is_moonshot_model as _is_moonshot_model,
 )
 from ..pending_message_helpers import (
     combine_pending_with_current,
@@ -141,9 +147,9 @@ from ..prompting import (
     get_chat_platform_supplement,
     get_delegation_supplement,
     get_expert_oversight_supplement,
-    get_team_building_supplement,
     get_graphiti_supplement,
     get_sdk_supplement,
+    get_team_building_supplement,
 )
 from ..rate_limit import (
     get_global_rate_limits,
@@ -156,10 +162,10 @@ from ..response_model import (
     StreamCompactionProgress,
     StreamError,
     StreamFinish,
-    StreamProviderFailure,
     StreamFinishStep,
     StreamHeartbeat,
     StreamPendingDrained,
+    StreamProviderFailure,
     StreamReasoningDelta,
     StreamReasoningEnd,
     StreamReasoningStart,
@@ -174,12 +180,6 @@ from ..response_model import (
     StreamToolOutputAvailable,
     StreamUsage,
 )
-from ..builder_context import (
-    build_builder_context_turn_prefix,
-    build_builder_system_prompt_suffix,
-)
-from ..expert_context import build_expert_identity_suffix
-from ..expert_kickoff import is_expert_kickoff_turn
 from ..service import (
     _build_system_prompt,
     _is_langfuse_configured,
@@ -187,6 +187,7 @@ from ..service import (
     inject_user_context,
     strip_user_context_tags,
 )
+from ..session_cleanup import prune_orphan_tool_calls
 from ..stream_checkpoint import turn_checkpoint
 from ..thinking_stripper import ThinkingStripper
 from ..token_tracking import persist_and_record_usage
@@ -204,8 +205,8 @@ from ..tools.session_context import build_session_context
 from ..tools.skills import build_skills_context, build_skills_update_notice
 from ..tracking import track_user_message
 from ..transcript import (
-    _run_compression,
     TranscriptDownload,
+    _run_compression,
     cleanup_stale_project_dirs,
     cli_session_path,
     compact_transcript,
@@ -226,13 +227,13 @@ from .compaction import (
     sdk_compaction_stats,
     transcript_stats,
 )
-from .env import build_sdk_env  # noqa: F401 — re-export for backward compat
+from .env import build_sdk_env
 from .openrouter_cost import TurnGenerations, record_turn_cost_from_openrouter
 from .response_adapter import SDKResponseAdapter
 from .security_hooks import create_security_hooks
 from .tool_adapter import (
-    cap_late_tool_result,
     MCP_TOOL_PREFIX,
+    cap_late_tool_result,
     create_copilot_mcp_server,
     get_copilot_tool_names,
     get_sdk_disallowed_tools,
@@ -4273,9 +4274,9 @@ async def _run_stream_attempt(
                 "parent_tool_use_id": None,
                 "session_id": ctx.session_id,
             }
-            if client._transport is None:  # noqa: SLF001
+            if client._transport is None:
                 raise RuntimeError("ClaudeSDKClient transport is not initialized")
-            await client._transport.write(json.dumps(user_msg) + "\n")  # noqa: SLF001
+            await client._transport.write(json.dumps(user_msg) + "\n")
             state.transcript_builder.append_user(
                 content=[
                     *ctx.attachments.image_blocks,
@@ -6843,8 +6844,7 @@ def _canonical_model(model: str) -> str:
     """Spelling-insensitive model identity for fallback detection:
     vendor prefix stripped, dots→dashes, trailing -YYYYMMDD dropped."""
     tail = model.lower().split("/")[-1]
-    if tail.startswith("anthropic."):
-        tail = tail[len("anthropic.") :]
+    tail = tail.removeprefix("anthropic.")
     return MODEL_DATE_SUFFIX_RE.sub("", tail.replace(".", "-"))
 
 

@@ -1,4 +1,4 @@
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -15,10 +15,10 @@ class ApiResponse(BaseModel):
 
 
 class GraphData(BaseModel):
-    nodes: list[Dict[str, Any]]
-    edges: list[Dict[str, Any]]
-    graph_name: Optional[str] = None
-    graph_description: Optional[str] = None
+    nodes: list[dict[str, Any]]
+    edges: list[dict[str, Any]]
+    graph_name: str | None = None
+    graph_description: str | None = None
 
 
 class Message(BaseModel):
@@ -31,4 +31,4 @@ class ChatRequest(BaseModel):
     conversation_history: list[Message]
     message_id: str
     include_graph_data: bool = False
-    graph_id: Optional[str] = None
+    graph_id: str | None = None

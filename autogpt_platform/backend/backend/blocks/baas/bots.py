@@ -2,8 +2,6 @@
 Meeting BaaS bot (recording) blocks.
 """
 
-from typing import Optional
-
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
     APIKeyCredentials,
@@ -59,7 +57,7 @@ class BaasBotJoinMeetingBlock(Block):
             description="Use a reserved bot slot (joins 4 min before meeting)",
             default=False,
         )
-        start_time: Optional[int] = SchemaField(
+        start_time: int | None = SchemaField(
             description="Unix timestamp (ms) when bot should join", default=None
         )
         webhook_url: str | None = SchemaField(

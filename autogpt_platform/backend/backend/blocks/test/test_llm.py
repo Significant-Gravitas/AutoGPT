@@ -10,7 +10,7 @@ import httpx
 import openai
 import pytest
 
-import backend.blocks.llm as llm
+from backend.blocks import llm
 from backend.blocks._base import DEFAULT_BLOCK_EXECUTION_TIMEOUT_SECONDS
 from backend.data.execution import ExecutionContext
 from backend.data.model import NodeExecutionStats
@@ -29,7 +29,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_llm_call_returns_token_counts(self):
         """Test that llm_call returns proper token counts in LLMResponse."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         # Mock the OpenAI Responses API response
         mock_response = MagicMock()
@@ -59,7 +59,7 @@ class TestLLMStatsTracking:
         """Test that llm_call returns cache read/creation tokens from Anthropic."""
         from pydantic import SecretStr
 
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
         from backend.data.model import APIKeyCredentials
 
         anthropic_creds = APIKeyCredentials(
@@ -109,7 +109,7 @@ class TestLLMStatsTracking:
         """Test that AIStructuredResponseGeneratorBlock correctly tracks stats."""
         from unittest.mock import patch
 
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -156,7 +156,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_text_generator_block_tracks_stats(self):
         """Test that AITextGeneratorBlock correctly tracks stats through delegation."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextGeneratorBlock()
 
@@ -196,7 +196,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_stats_accumulation_with_retries(self):
         """Test that stats correctly accumulate across retries."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -264,7 +264,7 @@ class TestLLMStatsTracking:
         Each LLM call incurs a real cost, including failed validation attempts.
         The total cost is the sum of all attempts so no billed USD is lost.
         """
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -319,7 +319,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_cache_tokens_accumulated_in_stats(self):
         """Cache read/creation tokens are tracked per-attempt and accumulated."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -357,7 +357,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_failure_path_persists_accumulated_cost(self):
         """When all retries are exhausted, accumulated provider_cost is preserved."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -393,7 +393,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_text_summarizer_multiple_chunks(self):
         """Test that AITextSummarizerBlock correctly accumulates stats across multiple chunks."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -456,7 +456,7 @@ class TestLLMStatsTracking:
         """Test AITextSummarizer with real LLM call mocking to verify llm_call_count."""
         from unittest.mock import AsyncMock, MagicMock, patch
 
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -510,7 +510,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_conversation_block_tracks_stats(self):
         """Test that AIConversationBlock correctly tracks stats."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIConversationBlock()
 
@@ -553,7 +553,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_ai_list_generator_basic_functionality(self):
         """Test that AIListGeneratorBlock correctly works with structured responses."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIListGeneratorBlock()
 
@@ -602,7 +602,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_merge_llm_stats(self):
         """Test the merge_llm_stats method correctly merges stats from another block."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block1 = llm.AITextGeneratorBlock()
         block2 = llm.AIStructuredResponseGeneratorBlock()
@@ -629,7 +629,7 @@ class TestLLMStatsTracking:
     @pytest.mark.asyncio
     async def test_stats_initialization(self):
         """Test that blocks properly initialize stats when not present."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -833,7 +833,7 @@ class TestAITextSummarizerValidation:
     @pytest.mark.asyncio
     async def test_summarize_chunk_rejects_list_response(self):
         """Test that _summarize_chunk raises ValueError when LLM returns a list instead of string."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -868,7 +868,7 @@ class TestAITextSummarizerValidation:
     @pytest.mark.asyncio
     async def test_combine_summaries_rejects_list_response(self):
         """Test that _combine_summaries raises ValueError when LLM returns a list instead of string."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -914,7 +914,7 @@ class TestAITextSummarizerValidation:
     @pytest.mark.asyncio
     async def test_summarize_chunk_accepts_valid_string_response(self):
         """Test that _summarize_chunk accepts valid string responses."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -944,7 +944,7 @@ class TestAITextSummarizerValidation:
     @pytest.mark.asyncio
     async def test_combine_summaries_accepts_valid_string_response(self):
         """Test that _combine_summaries accepts valid string responses."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -975,7 +975,7 @@ class TestAITextSummarizerValidation:
     @pytest.mark.asyncio
     async def test_summarize_chunk_rejects_dict_response(self):
         """Test that _summarize_chunk raises ValueError when LLM returns a dict instead of string."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AITextSummarizerBlock()
 
@@ -1032,7 +1032,7 @@ class TestUserErrorStatusCodeHandling:
     @pytest.mark.parametrize("status_code", [401, 403, 429])
     async def test_anthropic_user_error_breaks_retry_loop(self, status_code: int):
         """401/403/429 Anthropic errors should break immediately, not retry."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -1063,7 +1063,7 @@ class TestUserErrorStatusCodeHandling:
     @pytest.mark.parametrize("status_code", [401, 403, 429])
     async def test_openai_user_error_breaks_retry_loop(self, status_code: int):
         """401/403/429 OpenAI errors should break immediately, not retry."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -1093,7 +1093,7 @@ class TestUserErrorStatusCodeHandling:
     @pytest.mark.asyncio
     async def test_server_error_retries(self):
         """500 errors should be retried (not break immediately)."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
         call_count = 0
@@ -1123,7 +1123,7 @@ class TestUserErrorStatusCodeHandling:
     @pytest.mark.asyncio
     async def test_user_error_logs_warning_not_exception(self):
         """User-caused errors should log with logger.warning, not logger.exception."""
-        import backend.blocks.llm as llm
+        from backend.blocks import llm
 
         block = llm.AIStructuredResponseGeneratorBlock()
 
@@ -1678,7 +1678,7 @@ class TestLLMRequestTimeout:
                 elapsed=99.0,
                 llm_model=llm.DEFAULT_LLM_MODEL,
                 execution_context=None,
-                error=asyncio.TimeoutError(),
+                error=TimeoutError(),
             )
         assert self._alerts(records)[0].json_fields["error"] == "TimeoutError()"
 

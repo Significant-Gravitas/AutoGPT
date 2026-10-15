@@ -7,8 +7,8 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import Future, ThreadPoolExecutor
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
+from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -238,8 +238,8 @@ async def execute_node(
     data: NodeExecutionEntry,
     execution_processor: "ExecutionProcessor",
     execution_stats: NodeExecutionStats | None = None,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
-    nodes_to_skip: Optional[set[str]] = None,
+    nodes_input_masks: NodesInputMasks | None = None,
+    nodes_to_skip: set[str] | None = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -566,7 +566,7 @@ async def _enqueue_next_nodes(
     graph_id: str,
     graph_version: int,
     log_metadata: LogMetadata,
-    nodes_input_masks: Optional[NodesInputMasks],
+    nodes_input_masks: NodesInputMasks | None,
     execution_context: ExecutionContext,
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
@@ -588,7 +588,7 @@ async def _enqueue_next_nodes(
             block_id=block_id,
             inputs=data,
             execution_context=execution_context,
-            queued_at=datetime.now(timezone.utc),
+            queued_at=datetime.now(UTC),
             queued_by="node_output",
         )
 
@@ -745,16 +745,16 @@ class ExecutionProcessor:
     """
 
     # Per-graph-execution state, populated by on_graph_execution.
-    nodes_input_masks: Optional[NodesInputMasks] = None
+    nodes_input_masks: NodesInputMasks | None = None
 
     @async_error_logged(swallow=True)
     async def on_node_execution(
         self,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
-        nodes_input_masks: Optional[NodesInputMasks],
+        nodes_input_masks: NodesInputMasks | None,
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
-        nodes_to_skip: Optional[set[str]] = None,
+        nodes_to_skip: set[str] | None = None,
     ) -> NodeExecutionStats:
         """Run one node and account for it, as one Sentry ``executor.node``
         transaction named after its block."""
@@ -775,9 +775,9 @@ class ExecutionProcessor:
         node_exec: NodeExecutionEntry,
         block: "AnyBlockSchema | None",
         node_exec_progress: NodeExecutionProgress,
-        nodes_input_masks: Optional[NodesInputMasks],
+        nodes_input_masks: NodesInputMasks | None,
         graph_stats_pair: tuple[GraphExecutionStats, threading.Lock],
-        nodes_to_skip: Optional[set[str]],
+        nodes_to_skip: set[str] | None,
         span: Span,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
@@ -898,8 +898,8 @@ class ExecutionProcessor:
         stats: NodeExecutionStats,
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
-        nodes_input_masks: Optional[NodesInputMasks] = None,
-        nodes_to_skip: Optional[set[str]] = None,
+        nodes_input_masks: NodesInputMasks | None = None,
+        nodes_to_skip: set[str] | None = None,
     ) -> ExecutionStatus:
         status = ExecutionStatus.RUNNING
         outputs = 0
@@ -959,7 +959,7 @@ class ExecutionProcessor:
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
             status = ExecutionStatus.COMPLETED
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             block_timeout = node.block.execution_timeout_seconds
             stats.error = TimeoutError(
                 f"Node execution exceeded {block_timeout}s wall-clock cap"
@@ -1215,7 +1215,7 @@ class ExecutionProcessor:
                     self.node_evaluation_loop,
                 ).result(timeout=30.0):
                     raise moderation_error
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log_metadata.warning(
                     f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
                 )
@@ -1413,7 +1413,7 @@ class ExecutionProcessor:
                     self.node_evaluation_loop,
                 ).result(timeout=30.0):
                     raise moderation_error
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log_metadata.warning(
                     f"Output moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation and continuing execution"
                 )
@@ -1547,7 +1547,7 @@ class ExecutionProcessor:
         node_id: str,
         graph_exec: GraphExecutionEntry,
         log_metadata: LogMetadata,
-        nodes_input_masks: Optional[NodesInputMasks],
+        nodes_input_masks: NodesInputMasks | None,
         execution_queue: ExecutionQueue[NodeExecutionEntry],
     ) -> None:
         """Process a node's output, update its status, and enqueue next nodes,
@@ -1906,7 +1906,7 @@ class ExecutionManager(AppProcess):
                 user_id=user_id,
                 graph_id=graph_id,
                 statuses=[ExecutionStatus.RUNNING],
-                created_time_gte=datetime.now(timezone.utc) - timedelta(hours=24),
+                created_time_gte=datetime.now(UTC) - timedelta(hours=24),
             )
 
             if (

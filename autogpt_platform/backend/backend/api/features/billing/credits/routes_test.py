@@ -1,7 +1,7 @@
 """Tests for the credit ledger routes."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import ANY, AsyncMock, Mock
 
 import fastapi
@@ -396,7 +396,7 @@ def test_list_invoices_returns_mapped_payload(
     invoice = InvoiceListItem(
         id="in_1",
         number="INV-001",
-        created_at=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 4, 1, tzinfo=UTC),
         total_cents=2500,
         amount_paid_cents=0,
         currency="usd",

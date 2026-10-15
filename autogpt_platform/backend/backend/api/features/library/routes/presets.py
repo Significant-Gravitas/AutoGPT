@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Security, status
@@ -42,7 +42,7 @@ async def list_presets(
     user_id: str = Security(autogpt_auth_lib.get_user_id),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1),
-    graph_id: Optional[str] = Query(
+    graph_id: str | None = Query(
         description="Allows to filter presets by a specific agent graph"
     ),
 ) -> models.LibraryAgentPresetResponse:

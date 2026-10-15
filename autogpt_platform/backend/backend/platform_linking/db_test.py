@@ -1,7 +1,7 @@
 """Unit tests for platform_linking DB operations."""
 
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -243,7 +243,7 @@ class TestGetLinkTokenStatus:
 
     @pytest.mark.asyncio
     async def test_pending(self):
-        future = datetime.now(timezone.utc) + timedelta(minutes=10)
+        future = datetime.now(UTC) + timedelta(minutes=10)
         fake_token = MagicMock(usedAt=None, expiresAt=future)
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
@@ -254,7 +254,7 @@ class TestGetLinkTokenStatus:
 
     @pytest.mark.asyncio
     async def test_expired_by_time(self):
-        past = datetime.now(timezone.utc) - timedelta(minutes=10)
+        past = datetime.now(UTC) - timedelta(minutes=10)
         fake_token = MagicMock(usedAt=None, expiresAt=past)
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
@@ -266,7 +266,7 @@ class TestGetLinkTokenStatus:
     @pytest.mark.asyncio
     async def test_used_with_user_link_reports_linked(self):
         fake_token = MagicMock(
-            usedAt=datetime.now(timezone.utc),
+            usedAt=datetime.now(UTC),
             linkType=LinkType.USER.value,
             platform="DISCORD",
             platformUserId="pu1",
@@ -288,7 +288,7 @@ class TestGetLinkTokenStatus:
     async def test_used_without_link_reports_expired(self):
         # Superseded token: usedAt set, but no backing link row.
         fake_token = MagicMock(
-            usedAt=datetime.now(timezone.utc),
+            usedAt=datetime.now(UTC),
             linkType=LinkType.SERVER.value,
             platform="DISCORD",
             platformServerId="g1",
@@ -315,7 +315,7 @@ class TestGetLinkTokenInfo:
 
     @pytest.mark.asyncio
     async def test_used_returns_not_found(self):
-        fake_token = MagicMock(usedAt=datetime.now(timezone.utc))
+        fake_token = MagicMock(usedAt=datetime.now(UTC))
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
                 return_value=fake_token
@@ -325,7 +325,7 @@ class TestGetLinkTokenInfo:
 
     @pytest.mark.asyncio
     async def test_expired_raises_expired(self):
-        past = datetime.now(timezone.utc) - timedelta(minutes=5)
+        past = datetime.now(UTC) - timedelta(minutes=5)
         fake_token = MagicMock(usedAt=None, expiresAt=past)
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
@@ -336,7 +336,7 @@ class TestGetLinkTokenInfo:
 
     @pytest.mark.asyncio
     async def test_success_returns_display_info(self):
-        future = datetime.now(timezone.utc) + timedelta(minutes=10)
+        future = datetime.now(UTC) + timedelta(minutes=10)
         fake_token = MagicMock(
             usedAt=None,
             expiresAt=future,
@@ -377,9 +377,7 @@ class TestConfirmServerLink:
 
     @pytest.mark.asyncio
     async def test_already_used(self):
-        fake_token = MagicMock(
-            linkType=LinkType.SERVER.value, usedAt=datetime.now(timezone.utc)
-        )
+        fake_token = MagicMock(linkType=LinkType.SERVER.value, usedAt=datetime.now(UTC))
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
                 return_value=fake_token
@@ -392,7 +390,7 @@ class TestConfirmServerLink:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) - timedelta(minutes=5),
+            expiresAt=datetime.now(UTC) - timedelta(minutes=5),
         )
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
@@ -406,7 +404,7 @@ class TestConfirmServerLink:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
         )
@@ -429,7 +427,7 @@ class TestConfirmServerLink:
         fake_token = MagicMock(
             linkType=LinkType.SERVER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformServerId="g1",
         )
@@ -471,7 +469,7 @@ class TestConfirmUserLink:
         fake_token = MagicMock(
             linkType=LinkType.USER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) - timedelta(minutes=5),
+            expiresAt=datetime.now(UTC) - timedelta(minutes=5),
         )
         with patch("backend.platform_linking.db.PlatformLinkToken") as mock_model:
             mock_model.prisma.return_value.find_unique = AsyncMock(
@@ -485,7 +483,7 @@ class TestConfirmUserLink:
         fake_token = MagicMock(
             linkType=LinkType.USER.value,
             usedAt=None,
-            expiresAt=datetime.now(timezone.utc) + timedelta(minutes=10),
+            expiresAt=datetime.now(UTC) + timedelta(minutes=10),
             platform="DISCORD",
             platformUserId="pu1",
         )
@@ -553,7 +551,7 @@ class TestCleanupExpired:
         where = mock_model.prisma.return_value.delete_many.await_args.kwargs["where"]
         assert "expiresAt" in where and "lt" in where["expiresAt"]
         cutoff = where["expiresAt"]["lt"]
-        delta = datetime.now(timezone.utc) - cutoff
+        delta = datetime.now(UTC) - cutoff
         assert (
             timedelta(hours=LINK_TOKEN_RETENTION_HOURS - 1)
             < delta

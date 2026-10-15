@@ -1034,10 +1034,10 @@ async def fill_hole_between_transcript_and_gap(
 
 async def extract_context_messages(
     download: TranscriptDownload | None,
-    session_messages: "list[ChatMessage]",
+    session_messages: list[ChatMessage],
     *,
     session_id: str | None = None,
-) -> "list[ChatMessage]":
+) -> list[ChatMessage]:
     """Return context messages for the current turn: transcript + (hole-fill) + gap.
 
     Shared primitive used by both SDK (``use_resume=False`` →

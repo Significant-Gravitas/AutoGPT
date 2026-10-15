@@ -1,6 +1,6 @@
 import logging
 from enum import Enum
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 
 from typing_extensions import TypedDict
 
@@ -36,9 +36,9 @@ class GithubCreatePRReviewBlock(Block):
     class Input(BlockSchemaInput):
         class ReviewComment(TypedDict, total=False):
             path: str
-            position: Optional[int]
+            position: int | None
             body: str
-            line: Optional[int]  # Will be used as position if position not provided
+            line: int | None  # Will be used as position if position not provided
 
         credentials: GithubCredentialsInput = GithubCredentialsField("repo")
         repo: str = SchemaField(
@@ -62,7 +62,7 @@ class GithubCreatePRReviewBlock(Block):
             default=False,
             advanced=False,
         )
-        comments: Optional[List[ReviewComment]] = SchemaField(
+        comments: list[ReviewComment] | None = SchemaField(
             description="Optional inline comments to add to specific files/lines. Note: Only path, body, and position are supported. Position is line number in diff from first @@ hunk.",
             default=None,
             advanced=True,
@@ -121,7 +121,7 @@ class GithubCreatePRReviewBlock(Block):
         body: str,
         event: ReviewEvent,
         create_as_draft: bool,
-        comments: Optional[List[Input.ReviewComment]] = None,
+        comments: list[Input.ReviewComment] | None = None,
     ) -> tuple[int, str, str]:
         api = get_api(credentials, convert_urls=False)
 
@@ -649,7 +649,7 @@ class GithubGetPRReviewCommentsBlock(Block):
             description="Pull request number",
             placeholder="123",
         )
-        review_id: Optional[int] = SchemaField(
+        review_id: int | None = SchemaField(
             description="ID of a specific review to get comments from (optional)",
             placeholder="123456",
             default=None,
@@ -666,7 +666,7 @@ class GithubGetPRReviewCommentsBlock(Block):
             side: str
             created_at: str
             updated_at: str
-            in_reply_to_id: Optional[int]
+            in_reply_to_id: int | None
             html_url: str
 
         comment: CommentItem = SchemaField(
@@ -748,7 +748,7 @@ class GithubGetPRReviewCommentsBlock(Block):
         credentials: GithubCredentials,
         repo: str,
         pr_number: int,
-        review_id: Optional[int] = None,
+        review_id: int | None = None,
     ) -> list[Output.CommentItem]:
         api = get_api(credentials, convert_urls=False)
 
@@ -813,29 +813,29 @@ class GithubCreateCommentObjectBlock(Block):
             description="The comment text",
             placeholder="Please fix this issue",
         )
-        position: Optional[int] = SchemaField(
+        position: int | None = SchemaField(
             description="Position in the diff (line number from first @@ hunk). Use this OR line.",
             placeholder="6",
             default=None,
             advanced=True,
         )
-        line: Optional[int] = SchemaField(
+        line: int | None = SchemaField(
             description="Line number in the file (will be used as position if position not provided)",
             placeholder="42",
             default=None,
             advanced=True,
         )
-        side: Optional[str] = SchemaField(
+        side: str | None = SchemaField(
             description="Side of the diff to comment on (NOTE: Only for standalone comments, not review comments)",
             default="RIGHT",
             advanced=True,
         )
-        start_line: Optional[int] = SchemaField(
+        start_line: int | None = SchemaField(
             description="Start line for multi-line comments (NOTE: Only for standalone comments, not review comments)",
             default=None,
             advanced=True,
         )
-        start_side: Optional[str] = SchemaField(
+        start_side: str | None = SchemaField(
             description="Side for the start of multi-line comments (NOTE: Only for standalone comments, not review comments)",
             default=None,
             advanced=True,

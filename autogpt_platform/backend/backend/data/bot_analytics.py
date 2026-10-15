@@ -11,7 +11,7 @@ transparently routed via ``DatabaseManagerAsyncClient``.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from prisma.models import BotEvent, BotGuild
 
@@ -52,7 +52,7 @@ async def record_guild_joined(guild: BotGuildInput) -> None:
             "update": {
                 "name": guild.name,
                 "leftAt": None,
-                "lastSeenAt": datetime.now(timezone.utc),
+                "lastSeenAt": datetime.now(UTC),
             },
         },
     )
@@ -65,7 +65,7 @@ async def mark_guild_left(platform: Platform, server_id: str) -> None:
             "serverId": server_id,
             "leftAt": None,
         },
-        data={"leftAt": datetime.now(timezone.utc)},
+        data={"leftAt": datetime.now(UTC)},
     )
 
 
@@ -83,5 +83,5 @@ async def sync_guild_presence(platform: Platform, guilds: list[BotGuildInput]) -
     if stale_ids:
         await BotGuild.prisma().update_many(
             where={"id": {"in": stale_ids}},
-            data={"leftAt": datetime.now(timezone.utc)},
+            data={"leftAt": datetime.now(UTC)},
         )

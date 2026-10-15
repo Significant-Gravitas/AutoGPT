@@ -1,7 +1,5 @@
 """LoopVideoBlock - Loop a video to a given duration or number of repeats."""
 
-from typing import Optional
-
 from moviepy.video.fx.Loop import Loop
 from moviepy.video.io.VideoFileClip import VideoFileClip
 
@@ -25,13 +23,13 @@ class LoopVideoBlock(Block):
         video_in: MediaFileType = SchemaField(
             description="The input video (can be a URL, data URI, or local path)."
         )
-        duration: Optional[float] = SchemaField(
+        duration: float | None = SchemaField(
             description="Target duration (in seconds) to loop the video to. Either duration or n_loops must be provided.",
             default=None,
             ge=0.0,
             le=3600.0,  # Max 1 hour to prevent disk exhaustion
         )
-        n_loops: Optional[int] = SchemaField(
+        n_loops: int | None = SchemaField(
             description="Number of times to repeat the video. Either n_loops or duration must be provided.",
             default=None,
             ge=1,

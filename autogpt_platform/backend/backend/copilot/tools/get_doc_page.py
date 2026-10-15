@@ -134,7 +134,7 @@ class GetDocPageTool(BaseTool):
         except Exception as e:
             logger.error(f"Failed to read documentation page {path}: {e}")
             return ErrorResponse(
-                message=f"Failed to read documentation page: {str(e)}",
+                message=f"Failed to read documentation page: {e!s}",
                 error="read_failed",
                 session_id=session_id,
             )

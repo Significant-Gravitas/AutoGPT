@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field
@@ -125,7 +125,7 @@ async def write_initial_status(
     """
     from backend.data.redis_client import get_redis_async
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     status: JobStatus[Any] = JobStatus(
         job_id=job_id,
         user_id=user_id,
@@ -167,7 +167,7 @@ async def update_status_phase(
         )
         return None
 
-    update: dict[str, Any] = {"updated_at": datetime.now(timezone.utc)}
+    update: dict[str, Any] = {"updated_at": datetime.now(UTC)}
     if state is not None:
         update["state"] = state
     if current_phase is not None:
@@ -211,7 +211,7 @@ async def mark_complete(
         )
         return existing
     serialized = result.model_dump() if isinstance(result, BaseModel) else result
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = existing.model_copy(
         update={
             "state": "complete",
@@ -251,7 +251,7 @@ async def mark_errored(
             error[:200],
         )
         return existing
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     updated = existing.model_copy(
         update={
             "state": "errored",

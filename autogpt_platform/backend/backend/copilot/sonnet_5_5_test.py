@@ -11,9 +11,9 @@ import os
 import pytest
 
 import backend.copilot.model_router as router
-import backend.data.llm_registry.registry as registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.model_normalize import normalize_model_for_transport
+from backend.data.llm_registry import registry
 from backend.util.settings import BehaveAs
 
 

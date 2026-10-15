@@ -2,7 +2,7 @@
 DataForSEO Google Keyword Suggestions block.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
@@ -25,22 +25,20 @@ class KeywordSuggestion(BlockSchemaInput):
     """Schema for a keyword suggestion result."""
 
     keyword: str = SchemaField(description="The keyword suggestion")
-    search_volume: Optional[int] = SchemaField(
+    search_volume: int | None = SchemaField(
         description="Monthly search volume", default=None
     )
-    competition: Optional[float] = SchemaField(
+    competition: float | None = SchemaField(
         description="Competition level (0-1)", default=None
     )
-    cpc: Optional[float] = SchemaField(
-        description="Cost per click in USD", default=None
-    )
-    keyword_difficulty: Optional[int] = SchemaField(
+    cpc: float | None = SchemaField(description="Cost per click in USD", default=None)
+    keyword_difficulty: int | None = SchemaField(
         description="Keyword difficulty score", default=None
     )
-    serp_info: Optional[Dict[str, Any]] = SchemaField(
+    serp_info: dict[str, Any] | None = SchemaField(
         description="data from SERP for each keyword", default=None
     )
-    clickstream_data: Optional[Dict[str, Any]] = SchemaField(
+    clickstream_data: dict[str, Any] | None = SchemaField(
         description="Clickstream data metrics", default=None
     )
 
@@ -53,11 +51,11 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             description="DataForSEO credentials (username and password)"
         )
         keyword: str = SchemaField(description="Seed keyword to get suggestions for")
-        location_code: Optional[int] = SchemaField(
+        location_code: int | None = SchemaField(
             description="Location code for targeting (e.g., 2840 for USA)",
             default=2840,  # USA
         )
-        language_code: Optional[str] = SchemaField(
+        language_code: str | None = SchemaField(
             description="Language code (e.g., 'en' for English)",
             default="en",
         )
@@ -81,7 +79,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        suggestions: List[KeywordSuggestion] = SchemaField(
+        suggestions: list[KeywordSuggestion] = SchemaField(
             description="List of keyword suggestions with metrics"
         )
         suggestion: KeywordSuggestion = SchemaField(
@@ -221,7 +219,7 @@ class DataForSeoKeywordSuggestionsBlock(Block):
             yield "total_count", len(suggestions)
             yield "seed_keyword", input_data.keyword
         except Exception as e:
-            yield "error", f"Failed to fetch keyword suggestions: {str(e)}"
+            yield "error", f"Failed to fetch keyword suggestions: {e!s}"
 
 
 class KeywordSuggestionExtractorBlock(Block):
@@ -234,22 +232,22 @@ class KeywordSuggestionExtractorBlock(Block):
 
     class Output(BlockSchemaOutput):
         keyword: str = SchemaField(description="The keyword suggestion")
-        search_volume: Optional[int] = SchemaField(
+        search_volume: int | None = SchemaField(
             description="Monthly search volume", default=None
         )
-        competition: Optional[float] = SchemaField(
+        competition: float | None = SchemaField(
             description="Competition level (0-1)", default=None
         )
-        cpc: Optional[float] = SchemaField(
+        cpc: float | None = SchemaField(
             description="Cost per click in USD", default=None
         )
-        keyword_difficulty: Optional[int] = SchemaField(
+        keyword_difficulty: int | None = SchemaField(
             description="Keyword difficulty score", default=None
         )
-        serp_info: Optional[Dict[str, Any]] = SchemaField(
+        serp_info: dict[str, Any] | None = SchemaField(
             description="data from SERP for each keyword", default=None
         )
-        clickstream_data: Optional[Dict[str, Any]] = SchemaField(
+        clickstream_data: dict[str, Any] | None = SchemaField(
             description="Clickstream data metrics", default=None
         )
 

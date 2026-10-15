@@ -1,6 +1,6 @@
 """Unit tests for helpers and async functions in platform_cost module."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -72,13 +72,13 @@ class TestBuildWhere:
         assert params == []
 
     def test_start_only(self):
-        dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 1, 1, tzinfo=UTC)
         sql, params = _build_where(dt, None, None, None)
         assert '"createdAt" >= $1::timestamptz' in sql
         assert params == [dt]
 
     def test_end_only(self):
-        dt = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 6, 1, tzinfo=UTC)
         sql, params = _build_where(None, dt, None, None)
         assert '"createdAt" <= $1::timestamptz' in sql
         assert params == [dt]
@@ -97,8 +97,8 @@ class TestBuildWhere:
         assert params == ["user-123"]
 
     def test_all_filters(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         sql, params = _build_where(start, end, "Anthropic", "u1")
         assert "$1" in sql
         assert "$2" in sql
@@ -109,14 +109,14 @@ class TestBuildWhere:
         assert params == [start, end, "anthropic", "u1"]
 
     def test_table_alias(self):
-        dt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        dt = datetime(2026, 1, 1, tzinfo=UTC)
         sql, params = _build_where(dt, None, None, None, table_alias="p")
         assert 'p."createdAt"' in sql
         assert params == [dt]
 
     def test_clauses_joined_with_and(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         sql, _ = _build_where(start, end, None, None)
         assert " AND " in sql
 
@@ -168,18 +168,18 @@ class TestBuildWhere:
 
 class TestBuildPrismaWhere:
     def test_both_start_and_end(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         where = _build_prisma_where(start, end, None, None)
         assert where["createdAt"] == {"gte": start, "lte": end}
 
     def test_end_only(self):
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         where = _build_prisma_where(None, end, None, None)
         assert where["createdAt"] == {"lte": end}
 
     def test_start_only(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
         where = _build_prisma_where(start, None, None, None)
         assert where["createdAt"] == {"gte": start}
 
@@ -219,7 +219,7 @@ class TestBuildRawWhere:
         assert "metadata->>'billing_mode' IS DISTINCT FROM 'user_subscription'" in sql
 
     def test_end_filter(self):
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         sql, params = _build_raw_where(None, end, None, None)
         assert '"createdAt" <= $2::timestamptz' in sql
         assert end in params
@@ -235,8 +235,8 @@ class TestBuildRawWhere:
         assert "LLMBlock" in params
 
     def test_all_filters_combined(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        end = datetime(2026, 6, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2026, 6, 1, tzinfo=UTC)
         sql, params = _build_raw_where(
             start, end, "anthropic", "u1", model="claude-3", block_name="LLM"
         )
@@ -695,7 +695,7 @@ class TestGetPlatformCostDashboard:
 
     @pytest.mark.asyncio
     async def test_passes_filters_to_queries(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
 
         mock_actions = MagicMock()
         group_mock = AsyncMock(side_effect=[[], [], [], [], []])
@@ -821,7 +821,7 @@ def _make_prisma_log_row(
 ) -> MagicMock:
     row = MagicMock()
     row.id = f"log-{i}"
-    row.createdAt = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    row.createdAt = datetime(2026, 3, 1, tzinfo=UTC)
     row.userId = "u1"
     row.graphExecId = None
     row.chatSessionId = None
@@ -835,7 +835,7 @@ def _make_prisma_log_row(
     row.duration = 0.5
     row.model = "gpt-4"
     # cacheReadTokens / cacheCreationTokens may not exist on older Prisma clients
-    row.configure_mock(**{"cacheReadTokens": None, "cacheCreationTokens": None})
+    row.configure_mock(cacheReadTokens=None, cacheCreationTokens=None)
     if user_email is not None:
         row.User = MagicMock()
         row.User.email = user_email
@@ -899,7 +899,7 @@ class TestGetPlatformCostLogs:
 
     @pytest.mark.asyncio
     async def test_explicit_start_skips_default(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
         ids_mock = AsyncMock(return_value=([], 0))
         with patch(
             "backend.data.platform_cost._ids_matching_metadata_filter",
@@ -1000,7 +1000,7 @@ class TestGetPlatformCostLogsForExport:
     @pytest.mark.asyncio
     async def test_maps_cache_tokens(self):
         row = _make_prisma_log_row(0)
-        row.configure_mock(**{"cacheReadTokens": 50, "cacheCreationTokens": 25})
+        row.configure_mock(cacheReadTokens=50, cacheCreationTokens=25)
         mock_actions = MagicMock()
         mock_actions.find_many = AsyncMock(return_value=[row])
 
@@ -1037,7 +1037,7 @@ class TestGetPlatformCostLogsForExport:
 
     @pytest.mark.asyncio
     async def test_explicit_start_skips_default(self):
-        start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        start = datetime(2026, 1, 1, tzinfo=UTC)
         ids_mock = AsyncMock(return_value=([], 0))
         with patch(
             "backend.data.platform_cost._ids_matching_metadata_filter",

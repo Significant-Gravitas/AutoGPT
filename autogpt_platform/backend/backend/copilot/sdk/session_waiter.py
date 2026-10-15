@@ -135,7 +135,7 @@ async def wait_for_session_result(
             if isinstance(event, StreamError):
                 outcome = "failed"
                 break
-    except asyncio.TimeoutError:
+    except TimeoutError:
         pass
     finally:
         await stream_registry.unsubscribe_from_session(
@@ -157,7 +157,7 @@ async def run_copilot_turn_via_queue(
     user_id: str,
     message: str,
     timeout: float,
-    permissions: "CopilotPermissions | None" = None,
+    permissions: CopilotPermissions | None = None,
     tool_call_id: str,
     tool_name: str,
     spawn: SpawnRequest | None = None,
@@ -350,7 +350,7 @@ async def _queue_for_slot(
     user_id: str,
     message: str,
     timeout: float,
-    permissions: "CopilotPermissions | None",
+    permissions: CopilotPermissions | None,
     tool_call_id: str,
     tool_name: str,
     spawn: SpawnRequest | None,

@@ -79,7 +79,7 @@ class CodexHttpSession:
                 self._run(request, dynamic_tools, tool_handler, event_handler),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise CodexInvocationTimeoutError("codex_copilot_turn_timeout") from None
 
     async def _run(
@@ -147,7 +147,7 @@ class CodexHttpSession:
                 tool_handler(request), timeout=self._tool_timeout_seconds
             )
             output = result.content
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Report the timeout to the model rather than failing the turn: it
             # can usually recover by trying something else.
             output = f"Tool {call.name!r} timed out."
@@ -267,7 +267,7 @@ class CodexTurnFailedError(RuntimeError):
 
 
 class _ToolCall:
-    __slots__ = ("call_id", "name", "arguments", "response_id")
+    __slots__ = ("arguments", "call_id", "name", "response_id")
 
     def __init__(
         self, call_id: str, name: str, arguments: object, response_id: str

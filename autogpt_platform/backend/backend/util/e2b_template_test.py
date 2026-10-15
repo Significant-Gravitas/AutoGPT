@@ -263,9 +263,9 @@ class TestEnsureTemplate:
         with (
             patch(f"{_M}.get_template_state", AsyncMock(side_effect=OSError("403"))),
             caplog.at_level("ERROR"),
+            pytest.raises(OSError),
         ):
-            with pytest.raises(OSError):
-                await ensure_template(DESKTOP_IMAGE.alias, _KEY)
+            await ensure_template(DESKTOP_IMAGE.alias, _KEY)
         assert "CHAT_E2B_SANDBOX_TEMPLATE=base" in caplog.text
         assert not e2b_template._inflight
 
@@ -360,9 +360,9 @@ class TestEnsureTemplate:
             ),
             patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_M}.asyncio.sleep", AsyncMock()),
+            pytest.raises(TimeoutError),
         ):
-            with pytest.raises(TimeoutError):
-                await ensure_template(DESKTOP_IMAGE.alias, _KEY)
+            await ensure_template(DESKTOP_IMAGE.alias, _KEY)
         assert not e2b_template._ready
 
 

@@ -8,9 +8,9 @@ import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import Future
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from typing import Annotated, Any, Literal, Optional, Union
+from typing import Annotated, Any, Literal
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfoNotFoundError
 
@@ -808,7 +808,7 @@ async def _reschedule_one_shot(
         await _drop_job_from_routine(args)
         return False
     try:
-        new_run_at = datetime.now(tz=timezone.utc) + timedelta(
+        new_run_at = datetime.now(tz=UTC) + timedelta(
             seconds=_CONCURRENCY_RETRY_DELAY_SECONDS
         )
         await get_scheduler_client().add_copilot_turn_schedule(
@@ -1283,7 +1283,7 @@ def execute_nightly_batch_with_status(user_id: str, job_id: str):
         # so the polling client sees the run completed-as-skipped.
         from backend.copilot.dream.nightly_batch import NightlyBatchResult
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         result = NightlyBatchResult(
             user_id=user_id,
             nightly_id="",
@@ -1933,7 +1933,7 @@ class CopilotTurnJobInfo(CopilotTurnJobArgs):
 # Polymorphic schedule info — the kind discriminator picks the right shape
 # during deserialization on the client side.
 ScheduleInfo = Annotated[
-    Union[GraphExecutionJobInfo, CopilotTurnJobInfo],
+    GraphExecutionJobInfo | CopilotTurnJobInfo,
     Field(discriminator="kind"),
 ]
 
@@ -2009,7 +2009,7 @@ def _normalize_cron_day_of_week(cron: str) -> str:
 
 def _build_trigger(
     *, cron: str | None, run_at: datetime | None, user_timezone: str
-) -> Union[CronTrigger, DateTrigger]:
+) -> CronTrigger | DateTrigger:
     if (cron is None) == (run_at is None):
         raise ValueError("Exactly one of `cron` or `run_at` must be provided")
     try:
@@ -2047,7 +2047,7 @@ def _updated_graph_job_args(
 
 def _job_to_info(
     job: JobObj,
-) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo, None]:
+) -> GraphExecutionJobInfo | CopilotTurnJobInfo | None:
     """Materialize a polymorphic ``ScheduleInfo`` from an APScheduler job.
 
     Returns ``None`` if the job's kwargs don't deserialize as either kind
@@ -2351,7 +2351,7 @@ class Scheduler(AppService):
                 hours=6,
                 # Due now rather than called inline below: run_service() is what
                 # starts the event loop uvicorn binds the RPC port on.
-                next_run_time=datetime.now(timezone.utc)
+                next_run_time=datetime.now(UTC)
                 + timedelta(
                     hours=0 if config.scheduler_startup_embedding_backfill else 6
                 ),
@@ -2489,11 +2489,11 @@ class Scheduler(AppService):
         cron: str,
         input_data: GraphInput,
         input_credentials: dict[str, CredentialsMetaInput],
-        name: Optional[str] = None,
+        name: str | None = None,
         user_timezone: str | None = None,
-        organization_id: Optional[str] = None,
-        team_id: Optional[str] = None,
-        expert_id: Optional[str] = None,
+        organization_id: str | None = None,
+        team_id: str | None = None,
+        expert_id: str | None = None,
     ) -> GraphExecutionJobInfo:
         name = normalize_schedule_name(name)
 
@@ -2551,7 +2551,7 @@ class Scheduler(AppService):
         session_id: str | None = None,
         cron: str | None = None,
         run_at: datetime | None = None,
-        name: Optional[str] = None,
+        name: str | None = None,
         user_timezone: str | None = None,
         cap_retry_count: int = 0,
         expert_lookup_retry_count: int = 0,
@@ -2628,7 +2628,7 @@ class Scheduler(AppService):
     @expose
     def delete_graph_execution_schedule(
         self, schedule_id: str, user_id: str
-    ) -> Union[GraphExecutionJobInfo, CopilotTurnJobInfo]:
+    ) -> GraphExecutionJobInfo | CopilotTurnJobInfo:
         """Delete a schedule by id, regardless of kind.
 
         Endpoint name kept for wire back-compat; the client binding is
@@ -2649,11 +2649,11 @@ class Scheduler(AppService):
         self,
         schedule_id: str,
         user_id: str,
-        name: Optional[str] = None,
-        cron: Optional[str] = None,
-        user_timezone: Optional[str] = None,
-        input_data: Optional[GraphInput] = None,
-        input_credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+        name: str | None = None,
+        cron: str | None = None,
+        user_timezone: str | None = None,
+        input_data: GraphInput | None = None,
+        input_credentials: dict[str, CredentialsMetaInput] | None = None,
     ) -> GraphExecutionJobInfo:
         """Change an agent schedule's name, timing or inputs in place.
 
@@ -2698,7 +2698,7 @@ class Scheduler(AppService):
             changes["trigger"] = trigger
             if job.next_run_time is not None:
                 changes["next_run_time"] = trigger.get_next_fire_time(
-                    None, datetime.now(timezone.utc)
+                    None, datetime.now(UTC)
                 )
         updated = self.scheduler.modify_job(
             schedule_id, jobstore=Jobstores.EXECUTION.value, **changes
@@ -2712,7 +2712,7 @@ class Scheduler(AppService):
 
     def _authorized_job(
         self, schedule_id: str, user_id: str, *, action: str
-    ) -> tuple[JobObj, Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+    ) -> tuple[JobObj, GraphExecutionJobInfo | CopilotTurnJobInfo]:
         """Load a schedule and check *user_id* owns it.
 
         Shared by delete/pause/resume so all three authorize identically:
@@ -3130,7 +3130,7 @@ class Scheduler(AppService):
         organization_id: str | None = None,
         team_ids: list[str] | None = None,
         include_paused: bool = False,
-    ) -> list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]]:
+    ) -> list[GraphExecutionJobInfo | CopilotTurnJobInfo]:
         """Return schedules of both kinds, filtered by the given fields.
 
         *kind* may be ``"graph"``, ``"copilot_turn"``, or ``None`` for all.
@@ -3161,7 +3161,7 @@ class Scheduler(AppService):
             organization_id=organization_id,
             include_paused=include_paused,
         )
-        results: list[Union[GraphExecutionJobInfo, CopilotTurnJobInfo]] = []
+        results: list[GraphExecutionJobInfo | CopilotTurnJobInfo] = []
         for job in jobs:
             info = _job_to_info(job)
             if info is None:
@@ -3587,7 +3587,7 @@ class Scheduler(AppService):
             execute_nightly_batch_with_status,
             kwargs={"user_id": user_id, "job_id": job_id},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,
@@ -3610,7 +3610,7 @@ class Scheduler(AppService):
             execute_dream_pass_with_status,
             kwargs={"user_id": user_id, "job_id": job_id},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,
@@ -3633,7 +3633,7 @@ class Scheduler(AppService):
             execute_community_rebuild_with_status,
             kwargs={"user_id": user_id, "job_id": job_id},
             trigger="date",
-            run_date=_dt.datetime.now(_dt.timezone.utc),
+            run_date=_dt.datetime.now(_dt.UTC),
             id=scheduler_job_id,
             jobstore=Jobstores.EXECUTION.value,
             replace_existing=False,

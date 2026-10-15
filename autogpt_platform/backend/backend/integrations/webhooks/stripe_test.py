@@ -269,16 +269,15 @@ async def test_register_webhook_surfaces_stripe_error_message() -> None:
     with patch(
         "backend.integrations.webhooks.stripe.Requests.post",
         new=AsyncMock(return_value=response),
-    ):
-        with pytest.raises(ValueError, match="You have reached the maximum"):
-            await StripeWebhooksManager()._register_webhook(
-                credentials=api_key_credentials(),
-                webhook_type=StripeWebhookType.ACCOUNT,
-                resource="",
-                events=["customer.subscription.created"],
-                ingress_url="https://example.com/ingress",
-                secret="unused",
-            )
+    ), pytest.raises(ValueError, match="You have reached the maximum"):
+        await StripeWebhooksManager()._register_webhook(
+            credentials=api_key_credentials(),
+            webhook_type=StripeWebhookType.ACCOUNT,
+            resource="",
+            events=["customer.subscription.created"],
+            ingress_url="https://example.com/ingress",
+            secret="unused",
+        )
 
 
 @pytest.mark.asyncio
@@ -292,16 +291,15 @@ async def test_register_webhook_error_falls_back_when_body_is_not_json() -> None
     with patch(
         "backend.integrations.webhooks.stripe.Requests.post",
         new=AsyncMock(return_value=response),
-    ):
-        with pytest.raises(ValueError, match="HTTP 502"):
-            await StripeWebhooksManager()._register_webhook(
-                credentials=api_key_credentials(),
-                webhook_type=StripeWebhookType.ACCOUNT,
-                resource="",
-                events=["customer.subscription.created"],
-                ingress_url="https://example.com/ingress",
-                secret="unused",
-            )
+    ), pytest.raises(ValueError, match="HTTP 502"):
+        await StripeWebhooksManager()._register_webhook(
+            credentials=api_key_credentials(),
+            webhook_type=StripeWebhookType.ACCOUNT,
+            resource="",
+            events=["customer.subscription.created"],
+            ingress_url="https://example.com/ingress",
+            secret="unused",
+        )
 
 
 @pytest.mark.asyncio
@@ -322,7 +320,7 @@ async def test_register_webhook_requires_api_key_credentials() -> None:
 async def test_deregister_webhook_deletes_endpoint() -> None:
     response = AsyncMock()
     response.status = 200
-    response.json = lambda: {}
+    response.json = dict
 
     with patch(
         "backend.integrations.webhooks.stripe.Requests.delete",
@@ -393,13 +391,12 @@ async def test_register_webhook_rejects_success_body_without_secret() -> None:
     with patch(
         "backend.integrations.webhooks.stripe.Requests.post",
         new=AsyncMock(return_value=response),
-    ):
-        with pytest.raises(ValueError, match="no endpoint ID or signing secret"):
-            await StripeWebhooksManager()._register_webhook(
-                credentials=api_key_credentials(),
-                webhook_type=StripeWebhookType.ACCOUNT,
-                resource="",
-                events=["customer.subscription.created"],
-                ingress_url="https://example.com/ingress",
-                secret="unused",
-            )
+    ), pytest.raises(ValueError, match="no endpoint ID or signing secret"):
+        await StripeWebhooksManager()._register_webhook(
+            credentials=api_key_credentials(),
+            webhook_type=StripeWebhookType.ACCOUNT,
+            resource="",
+            events=["customer.subscription.created"],
+            ingress_url="https://example.com/ingress",
+            secret="unused",
+        )

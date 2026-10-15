@@ -1,4 +1,4 @@
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -45,9 +45,9 @@ def test_type_conversion():
     assert convert([1, 2, 3], dict) == {0: 1, 1: 2, 2: 3}
     assert convert((1, 2, 3), dict) == {0: 1, 1: 2, 2: 3}
 
-    assert convert("5", List[int]) == [5]
-    assert convert("[5,4,2]", List[int]) == [5, 4, 2]
-    assert convert([5, 4, 2], List[str]) == ["5", "4", "2"]
+    assert convert("5", list[int]) == [5]
+    assert convert("[5,4,2]", list[int]) == [5, 4, 2]
+    assert convert([5, 4, 2], list[str]) == ["5", "4", "2"]
 
     # Test the specific case that was failing: empty list to Optional[str]
     assert convert([], Optional[str]) == "[]"
@@ -210,7 +210,7 @@ class UnionSchema(BaseModel):
 
 
 class OptionalSchema(BaseModel):
-    label: Optional[str] = None
+    label: str | None = None
     value: int = 0
 
 

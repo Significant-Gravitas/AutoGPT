@@ -195,7 +195,7 @@ async def read_file_bytes(
             # inherit from standard exceptions.  Import lazily to avoid a
             # hard dependency on e2b at module level.
             try:
-                from e2b.exceptions import SandboxException  # noqa: PLC0415
+                from e2b.exceptions import SandboxException
 
                 if isinstance(exc, SandboxException):
                     raise ValueError(

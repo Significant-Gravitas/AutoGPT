@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -23,8 +23,8 @@ def history_row(
         id=key,
         transaction_key=key,
         amount=-50,
-        transaction_time=datetime(2026, 9, 4, tzinfo=timezone.utc),
-        usage_start_time=datetime(2026, 9, 3, tzinfo=timezone.utc),
+        transaction_time=datetime(2026, 9, 4, tzinfo=UTC),
+        usage_start_time=datetime(2026, 9, 3, tzinfo=UTC),
         usage_execution_id=execution_id,
         usage_chat_session_id=session_id,
         usage_graph_id="graph-1",
@@ -37,13 +37,13 @@ def history_row(
                 id="charge",
                 amount=-100,
                 charge_type="usage",
-                posted_at=datetime(2026, 9, 3, tzinfo=timezone.utc),
+                posted_at=datetime(2026, 9, 3, tzinfo=UTC),
             ),
             CreditHistoryCharge(
                 id="adjustment",
                 amount=50,
                 charge_type="adjustment",
-                posted_at=datetime(2026, 9, 4, tzinfo=timezone.utc),
+                posted_at=datetime(2026, 9, 4, tzinfo=UTC),
             ),
         ],
     )
@@ -104,7 +104,7 @@ async def test_org_uses_same_query_contract_and_scope(monkeypatch):
     assert '"orgId" = $1' in args[0]
     assert args[1] == "org-1"
     assert args[3] == "USAGE"
-    assert args[6] == datetime(2026, 9, 5, 10, tzinfo=timezone.utc)
+    assert args[6] == datetime(2026, 9, 5, 10, tzinfo=UTC)
     assert result.transactions[0].user_id == "viewer"
 
 
@@ -227,8 +227,8 @@ def test_raw_query_dates_are_unambiguously_utc():
     )
     row.charges[0].posted_at = datetime(2026, 9, 5, 9)
     item = _to_item(row, "user")
-    assert item.transaction_time == datetime(2026, 9, 5, 10, tzinfo=timezone.utc)
-    assert item.charges[0].posted_at == datetime(2026, 9, 5, 9, tzinfo=timezone.utc)
+    assert item.transaction_time == datetime(2026, 9, 5, 10, tzinfo=UTC)
+    assert item.charges[0].posted_at == datetime(2026, 9, 5, 9, tzinfo=UTC)
 
 
 @pytest.mark.parametrize("serialized", [False, True])

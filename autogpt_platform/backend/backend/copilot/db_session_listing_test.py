@@ -398,9 +398,11 @@ def test_pending_question_projection_columns_exist_in_schema():
     would otherwise only surface as a runtime query error on Home.
     """
     schema = (Path(__file__).parents[2] / "schema.prisma").read_text()
-    model = re.search(r"^model ChatSession \{(.*?)^\}", schema, re.S | re.M)
+    model = re.search(
+        r"^model ChatSession \{(.*?)^\}", schema, re.DOTALL | re.MULTILINE
+    )
     assert model is not None, "ChatSession model not found in schema.prisma"
-    fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
+    fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.MULTILINE))
 
     projected = set(re.findall(r'"(\w+)"', _PENDING_QUESTION_SESSION_COLUMNS))
     assert projected <= fields

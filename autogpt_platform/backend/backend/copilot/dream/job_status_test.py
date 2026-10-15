@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -237,7 +237,7 @@ class TestReadStatus:
 
 class TestJobStatusModel:
     def test_default_terminal_fields_are_none(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         s = JobStatus(
             job_id="x",
             user_id="u",

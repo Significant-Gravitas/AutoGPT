@@ -201,7 +201,7 @@ async def fix_validate_and_save(
     except Exception as e:
         logger.error(f"Failed to save agent: {e}", exc_info=True)
         return ErrorResponse(
-            message=f"Failed to save the workflow: {str(e)}",
+            message=f"Failed to save the workflow: {e!s}",
             error="save_failed",
             details={"exception": str(e)},
             session_id=session_id,

@@ -1,11 +1,11 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.api.features.experts.models import Expert
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 
 from .outcome import as_utc, compose_run_outcome, run_link, split_summary
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
 
 
 def _execution(

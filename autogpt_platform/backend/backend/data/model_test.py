@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from prisma.models import User as PrismaUser
@@ -255,7 +255,7 @@ class TestNodeExecutionStatsIadd:
 class TestUserFromDbConsent:
     @staticmethod
     def _row(**consent: datetime | str | None) -> PrismaUser:
-        now = datetime(2026, 10, 2, tzinfo=timezone.utc)
+        now = datetime(2026, 10, 2, tzinfo=UTC)
         return PrismaUser.model_validate(
             {
                 "id": "user-1",
@@ -276,8 +276,8 @@ class TestUserFromDbConsent:
         )
 
     def test_maps_the_consent_fields(self):
-        accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
-        opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=timezone.utc)
+        accepted_at = datetime(2026, 10, 2, 12, 0, tzinfo=UTC)
+        opted_out_at = datetime(2026, 10, 2, 12, 1, tzinfo=UTC)
 
         user = User.from_db(
             self._row(

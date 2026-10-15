@@ -164,7 +164,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         if webhook_type == self.WebhookType.REPO:
             repo = webhook.resource
-            delete_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{webhook.provider_webhook_id}"  # noqa
+            delete_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{webhook.provider_webhook_id}"
         else:
             raise NotImplementedError(
                 f"Unsupported webhook type '{webhook.webhook_type}'"

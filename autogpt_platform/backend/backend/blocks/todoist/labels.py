@@ -1,5 +1,4 @@
 from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
 
 from backend.blocks._base import (
     Block,
@@ -27,8 +26,8 @@ class TodoistCreateLabelBlock(Block):
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         name: str = SchemaField(description="Name of the label")
-        order: Optional[int] = SchemaField(description="Label order", default=None)
-        color: Optional[Colors] = SchemaField(
+        order: int | None = SchemaField(description="Label order", default=None)
+        color: Colors | None = SchemaField(
             description="The color of the label icon", default=Colors.charcoal
         )
         is_favorite: bool = SchemaField(
@@ -278,11 +277,11 @@ class TodoistUpdateLabelBlock(Block):
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         label_id: str = SchemaField(description="ID of the label to update")
-        name: Optional[str] = SchemaField(
+        name: str | None = SchemaField(
             description="New name of the label", default=None
         )
-        order: Optional[int] = SchemaField(description="Label order", default=None)
-        color: Optional[Colors] = SchemaField(
+        order: int | None = SchemaField(description="Label order", default=None)
+        color: Colors | None = SchemaField(
             description="The color of the label icon", default=None
         )
         is_favorite: bool = SchemaField(

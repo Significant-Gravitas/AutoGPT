@@ -5,7 +5,8 @@ API Key authentication utilities for FastAPI applications.
 import inspect
 import logging
 import secrets
-from typing import Any, Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from fastapi import HTTPException, Request
 from fastapi.security import APIKeyHeader
@@ -63,10 +64,8 @@ class APIKeyAuthenticator(APIKeyHeader):
     def __init__(
         self,
         header_name: str,
-        expected_token: Optional[str] = None,
-        validator: Optional[
-            Callable[[str], Any] | Callable[[str], Awaitable[Any]]
-        ] = None,
+        expected_token: str | None = None,
+        validator: Callable[[str], Any] | Callable[[str], Awaitable[Any]] | None = None,
         status_if_missing: int = HTTP_401_UNAUTHORIZED,
         message_if_invalid: str = "Invalid API key",
     ):

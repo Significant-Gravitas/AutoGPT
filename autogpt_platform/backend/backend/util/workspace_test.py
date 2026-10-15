@@ -3,7 +3,7 @@ Tests for WorkspaceManager.write_file UniqueViolationError handling.
 """
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +12,7 @@ from prisma.errors import UniqueViolationError
 from backend.data.workspace import WorkspaceFile
 from backend.util.workspace import WorkspaceManager
 
-_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2024, 1, 1, tzinfo=UTC)
 
 
 def _make_workspace_file(
@@ -94,11 +94,9 @@ async def test_write_file_no_overwrite_unique_violation_raises_and_cleans_up(
             "backend.util.workspace.get_workspace_storage_limit_bytes",
             return_value=250 * 1024 * 1024,
         ),
+        pytest.raises(ValueError, match="File already exists"),
     ):
-        with pytest.raises(ValueError, match="File already exists"):
-            await manager.write_file(
-                filename="test.txt", content=b"hello", overwrite=False
-            )
+        await manager.write_file(filename="test.txt", content=b"hello", overwrite=False)
 
     mock_storage.delete.assert_called_once()
 

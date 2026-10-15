@@ -22,15 +22,14 @@ async def test_a_refused_turn_raises_instead_of_returning_an_empty_success():
     with patch(
         "backend.copilot.sdk.session_waiter.run_copilot_turn_via_queue",
         new=AsyncMock(return_value=("refused", SessionResult(refusal=refusal))),
-    ):
-        with pytest.raises(RuntimeError, match="already has a turn in flight"):
-            await AutoPilotBlock().execute_copilot(
-                prompt="do the thing",
-                system_context="",
-                session_id="sess-busy",
-                max_recursion_depth=3,
-                user_id="u1",
-            )
+    ), pytest.raises(RuntimeError, match="already has a turn in flight"):
+        await AutoPilotBlock().execute_copilot(
+            prompt="do the thing",
+            system_context="",
+            session_id="sess-busy",
+            max_recursion_depth=3,
+            user_id="u1",
+        )
 
 
 @pytest.mark.asyncio
@@ -40,12 +39,11 @@ async def test_a_refusal_with_no_message_still_raises():
     with patch(
         "backend.copilot.sdk.session_waiter.run_copilot_turn_via_queue",
         new=AsyncMock(return_value=("refused", SessionResult())),
-    ):
-        with pytest.raises(RuntimeError, match="refused"):
-            await AutoPilotBlock().execute_copilot(
-                prompt="do the thing",
-                system_context="",
-                session_id="sess-busy",
-                max_recursion_depth=3,
-                user_id="u1",
-            )
+    ), pytest.raises(RuntimeError, match="refused"):
+        await AutoPilotBlock().execute_copilot(
+            prompt="do the thing",
+            system_context="",
+            session_id="sess-busy",
+            max_recursion_depth=3,
+            user_id="u1",
+        )

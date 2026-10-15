@@ -197,7 +197,7 @@ def test_graph_subpath_is_served_by_the_expected_module(path: str, module: str):
 def test_agent_server_helpers_reference_this_module():
     """rest_api.py's AgentServer test helpers call these five directly, and the
     whole backend suite reaches graphs through them."""
-    import backend.api.rest_api as rest_api
+    from backend.api import rest_api
 
     for name in (
         "execute_graph",

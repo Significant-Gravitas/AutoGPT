@@ -5,8 +5,7 @@ Handles all database operations for pending human reviews.
 
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from datetime import UTC, datetime
 
 from prisma.enums import ReviewStatus
 from prisma.models import (
@@ -33,16 +32,13 @@ from backend.data.execution import get_graph_execution_meta
 from backend.notifications.review_alerts import sync_awaiting_review
 from backend.util.json import SafeJson
 
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 
 class ReviewResult(BaseModel):
     """Result of a review operation."""
 
-    data: Optional[SafeJsonData] = None
+    data: SafeJsonData | None = None
     status: ReviewStatus
     message: str = ""
     processed: bool
@@ -82,7 +78,7 @@ async def check_approval(
     input_data: SafeJsonData | None = None,
     graph_exec_id: str | None = None,
     chat_session_id: str | None = None,
-) -> Optional[ReviewResult]:
+) -> ReviewResult | None:
     """
     Check if there's an existing approval for this node execution.
 
@@ -195,7 +191,7 @@ async def create_auto_approval_record(
                 "editable": False,
                 "status": ReviewStatus.APPROVED,
                 "processed": True,
-                "reviewedAt": datetime.now(timezone.utc),
+                "reviewedAt": datetime.now(UTC),
             },
             "update": {},  # Already exists, no update needed
         },
@@ -214,7 +210,7 @@ async def get_or_create_human_review(
     chat_session_id: str | None = None,
     organization_id: str | None = None,
     team_id: str | None = None,
-) -> Optional[ReviewResult]:
+) -> ReviewResult | None:
     """
     Get existing review or create a new pending review entry.
 
@@ -264,7 +260,7 @@ async def get_or_create_human_review(
         )
     except Exception as e:
         logger.error(
-            f"Database error in get_or_create_human_review for node {node_exec_id}: {str(e)}"
+            f"Database error in get_or_create_human_review for node {node_exec_id}: {e!s}"
         )
         raise
 
@@ -340,7 +336,7 @@ def _scope_columns(
 
 async def get_pending_review_by_node_exec_id(
     node_exec_id: str, user_id: str
-) -> Optional[PendingHumanReviewModel]:
+) -> PendingHumanReviewModel | None:
     """
     Get a pending review by its node execution ID.
 
@@ -744,7 +740,7 @@ async def process_all_reviews_for_execution(
             "status": new_status,
             "reviewMessage": message,
             "wasEdited": has_data_changes,
-            "reviewedAt": datetime.now(timezone.utc),
+            "reviewedAt": datetime.now(UTC),
         }
 
         if has_data_changes:
@@ -831,7 +827,7 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
             "status": ReviewStatus.REJECTED,
             "reviewMessage": "Execution was stopped by user",
             "processed": True,
-            "reviewedAt": datetime.now(timezone.utc),
+            "reviewedAt": datetime.now(UTC),
         },
     )
     await sync_awaiting_review(user_id, graph_exec.graph_id)

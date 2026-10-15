@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,8 +20,8 @@ def _folder_record(**overrides):
     rec.name = overrides.get("name", "Reports")
     rec.icon = overrides.get("icon", None)
     rec.parentId = overrides.get("parentId", None)
-    rec.createdAt = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    rec.updatedAt = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    rec.createdAt = datetime(2026, 1, 1, tzinfo=UTC)
+    rec.updatedAt = datetime(2026, 1, 1, tzinfo=UTC)
     rec.Files = overrides.get("Files", [])
     return rec
 

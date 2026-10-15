@@ -10,9 +10,10 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, AsyncGenerator, Awaitable, Callable, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -502,10 +503,10 @@ class BotBackend:
         platform: str,
         platform_user_id: str,
         message: str,
-        session_id: Optional[str] = None,
-        platform_server_id: Optional[str] = None,
-        file_ids: Optional[list[str]] = None,
-        on_session_id: Optional[Callable[[str], Awaitable[None]]] = None,
+        session_id: str | None = None,
+        platform_server_id: str | None = None,
+        file_ids: list[str] | None = None,
+        on_session_id: Callable[[str], Awaitable[None]] | None = None,
         on_setup_required: SetupRequiredCallback | None = None,
         on_setup_dropped: SetupDroppedCallback | None = None,
         on_clarification_needed: ClarificationNeededCallback | None = None,
@@ -603,7 +604,7 @@ class BotBackend:
                     _, chunk = await asyncio.wait_for(
                         queue.get(), timeout=STREAM_CHUNK_TIMEOUT_SECONDS
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning(
                         "Stream idle timeout after %ss for session %s",
                         STREAM_CHUNK_TIMEOUT_SECONDS,

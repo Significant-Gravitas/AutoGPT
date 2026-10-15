@@ -20,7 +20,7 @@ import random
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import bcrypt
 import prisma.enums as prisma_enums
@@ -200,16 +200,16 @@ class TestDataCreator:
     """Creates test data using API functions for E2E tests."""
 
     def __init__(self):
-        self.users: List[Dict[str, Any]] = []
-        self.agent_blocks: List[Dict[str, Any]] = []
-        self.agent_graphs: List[Dict[str, Any]] = []
-        self.library_agents: List[Dict[str, Any]] = []
-        self.store_submissions: List[Dict[str, Any]] = []
-        self.api_keys: List[Dict[str, Any]] = []
-        self.presets: List[Dict[str, Any]] = []
-        self.profiles: List[Dict[str, Any]] = []
+        self.users: list[dict[str, Any]] = []
+        self.agent_blocks: list[dict[str, Any]] = []
+        self.agent_graphs: list[dict[str, Any]] = []
+        self.library_agents: list[dict[str, Any]] = []
+        self.store_submissions: list[dict[str, Any]] = []
+        self.api_keys: list[dict[str, Any]] = []
+        self.presets: list[dict[str, Any]] = []
+        self.profiles: list[dict[str, Any]] = []
         # Org/workspace context per user (populated after migration runs)
-        self._user_org_cache: Dict[str, tuple[str | None, str | None]] = {}
+        self._user_org_cache: dict[str, tuple[str | None, str | None]] = {}
 
     async def _get_user_org_ws(self, user_id: str) -> tuple[str | None, str | None]:
         """Get (organization_id, team_id) for a user, with caching."""
@@ -234,12 +234,14 @@ class TestDataCreator:
         created = await create_orgs_for_existing_users()
         print(f"Bootstrapped personal orgs for {created} seeded user(s)")
 
-    async def create_test_users(self) -> List[Dict[str, Any]]:
+    async def create_test_users(self) -> list[dict[str, Any]]:
         """Create test users with login-able Better Auth credential accounts."""
         print(f"Creating {NUM_USERS} test users...")
 
         users = []
-        password = "testpassword123"  # Standard test password # pragma: allowlist secret # noqa
+        password = (
+            "testpassword123"  # Standard test password # pragma: allowlist secret
+        )
         password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
         for i in range(NUM_USERS):
@@ -297,7 +299,7 @@ class TestDataCreator:
         )
         return user_id
 
-    async def get_available_blocks(self) -> List[Dict[str, Any]]:
+    async def get_available_blocks(self) -> list[dict[str, Any]]:
         """Get available agent blocks from database."""
         print("Getting available agent blocks...")
 
@@ -339,7 +341,7 @@ class TestDataCreator:
         print(f"Found {len(self.agent_blocks)} blocks in database")
         return self.agent_blocks
 
-    async def create_test_graphs(self) -> List[Dict[str, Any]]:
+    async def create_test_graphs(self) -> list[dict[str, Any]]:
         """Create test graphs using the API function."""
         print("Creating test graphs...")
 
@@ -524,7 +526,7 @@ class TestDataCreator:
         self.agent_graphs = graphs
         return graphs
 
-    async def create_test_library_agents(self) -> List[Dict[str, Any]]:
+    async def create_test_library_agents(self) -> list[dict[str, Any]]:
         """Create test library agents using the API function."""
         print("Creating test library agents...")
 
@@ -566,7 +568,7 @@ class TestDataCreator:
         self.library_agents = library_agents
         return library_agents
 
-    async def create_test_presets(self) -> List[Dict[str, Any]]:
+    async def create_test_presets(self) -> list[dict[str, Any]]:
         """Create test presets using the API function."""
         print("Creating test presets...")
 
@@ -605,7 +607,7 @@ class TestDataCreator:
         self.presets = presets
         return presets
 
-    async def create_test_api_keys(self) -> List[Dict[str, Any]]:
+    async def create_test_api_keys(self) -> list[dict[str, Any]]:
         """Create test API keys using the API function."""
         print("Creating test API keys...")
 
@@ -636,7 +638,7 @@ class TestDataCreator:
         self.api_keys = api_keys
         return api_keys
 
-    async def update_test_profiles(self) -> List[Dict[str, Any]]:
+    async def update_test_profiles(self) -> list[dict[str, Any]]:
         """Update existing user profiles to make some into featured creators."""
         print("Updating user profiles to create featured creators...")
 
@@ -740,7 +742,7 @@ class TestDataCreator:
         self.profiles = profiles
         return profiles
 
-    async def create_test_store_submissions(self) -> List[Dict[str, Any]]:
+    async def create_test_store_submissions(self) -> list[dict[str, Any]]:
         """Create test store submissions using the API function.
 
         DETERMINISTIC: Guarantees minimum featured agents for E2E tests.
@@ -1376,7 +1378,7 @@ class TestDataCreator:
                     backfill_all_content_types(EMBEDDING_BACKFILL_BATCH_SIZE),
                     _seconds_left(deadline),
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 print(
                     "::warning title=e2e-embeddings-incomplete::Embedding backfill "
                     f"did not reach full coverage within "

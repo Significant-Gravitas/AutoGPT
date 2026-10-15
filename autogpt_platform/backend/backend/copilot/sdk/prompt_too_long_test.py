@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -562,7 +561,7 @@ class TestRunCompressionTimeout:
             call_args.append(kwargs)
             if kwargs.get("client") is not None:
                 # Simulate timeout by raising asyncio.TimeoutError
-                raise asyncio.TimeoutError("LLM compaction timed out")
+                raise TimeoutError("LLM compaction timed out")
             return truncation_result
 
         with (

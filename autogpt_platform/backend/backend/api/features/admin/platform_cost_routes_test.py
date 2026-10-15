@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 
 import fastapi
@@ -196,7 +196,7 @@ def test_get_dashboard_repeated_requests(
 def _make_cost_log_row() -> CostLogRow:
     return CostLogRow(
         id="log-1",
-        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
         user_id="user-1",
         email="u***@example.com",
         graph_exec_id="graph-1",

@@ -1,4 +1,4 @@
-from typing import Literal, Union, cast
+from typing import Literal, cast
 
 import tweepy
 from pydantic import BaseModel
@@ -50,7 +50,7 @@ class TwitterGetUserBlock(Block):
             ["users.read", "offline.access"]
         )
 
-        identifier: Union[UserId, Username] = SchemaField(
+        identifier: UserId | Username = SchemaField(
             discriminator="discriminator",
             description="Choose whether to identify the user by their unique Twitter ID or by their username",
             advanced=False,
@@ -119,7 +119,7 @@ class TwitterGetUserBlock(Block):
     @staticmethod
     def get_user(
         credentials: TwitterCredentials,
-        identifier: Union[UserId, Username],
+        identifier: UserId | Username,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,
@@ -226,7 +226,7 @@ class TwitterGetUsersBlock(Block):
             ["users.read", "offline.access"]
         )
 
-        identifier: Union[UserIdList, UsernameList] = SchemaField(
+        identifier: UserIdList | UsernameList = SchemaField(
             discriminator="discriminator",
             description="Choose whether to identify users by their unique Twitter IDs or by their usernames",
             advanced=False,
@@ -300,7 +300,7 @@ class TwitterGetUsersBlock(Block):
     @staticmethod
     def get_users(
         credentials: TwitterCredentials,
-        identifier: Union[UserIdList, UsernameList],
+        identifier: UserIdList | UsernameList,
         expansions: UserExpansionsFilter | None,
         tweet_fields: TweetFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,

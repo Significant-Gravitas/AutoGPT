@@ -4,7 +4,7 @@ A search filter is ``{op, conditions: [{column, type, value, value2?}]}``.
 """
 
 from enum import Enum
-from typing import Any, Optional
+from typing import Any
 
 
 def _to_str(x: Any) -> str:
@@ -31,7 +31,7 @@ def coerce_scalar(value: Any) -> Any:
         return s
 
 
-def build_slot_condition(column: Any, operator: Any, raw: Any) -> Optional[dict]:
+def build_slot_condition(column: Any, operator: Any, raw: Any) -> dict | None:
     """Build one filter condition from a (column, operator, value) slot.
 
     Returns None when the slot is empty.
@@ -75,7 +75,7 @@ def build_slot_condition(column: Any, operator: Any, raw: Any) -> Optional[dict]
     return {"column": column, "type": op, "value": coerce_scalar(raw)}
 
 
-def finalize_filters(conditions: list, match: Any, advanced: Any) -> Optional[dict]:
+def finalize_filters(conditions: list, match: Any, advanced: Any) -> dict | None:
     """Combine slot conditions (with AND/OR) and optional advanced JSON filters."""
     op = str(match).strip().lower() if match else "and"
     if op not in ("and", "or"):

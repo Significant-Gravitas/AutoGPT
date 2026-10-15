@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from pydantic import BaseModel, SecretStr
 
@@ -295,6 +295,5 @@ async def get_sso_link(
 
     return AyrshareSSOLink(
         url=jwt_response.url,
-        expires_at=datetime.now(timezone.utc)
-        + timedelta(minutes=SSO_MAX_EXPIRY_MINUTES),
+        expires_at=datetime.now(UTC) + timedelta(minutes=SSO_MAX_EXPIRY_MINUTES),
     )

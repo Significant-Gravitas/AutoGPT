@@ -106,24 +106,19 @@ async def bounce_handler(event: PostmarkBounceWebhook):
 
 def spam_handler(event: PostmarkSpamComplaintWebhook):
     logger.info("Spam handler")
-    pass
 
 
 def delivery_handler(event: PostmarkDeliveryWebhook):
     logger.info("Delivery handler")
-    pass
 
 
 def open_handler(event: PostmarkOpenWebhook):
     logger.info("Open handler")
-    pass
 
 
 def click_handler(event: PostmarkClickWebhook):
     logger.info("Click handler")
-    pass
 
 
 def subscription_handler(event: PostmarkSubscriptionChangeWebhook):
     logger.info("Subscription handler")
-    pass

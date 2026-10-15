@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -67,7 +67,7 @@ async def build_home_dashboard(
     user_id: str,
     ctx: RequestContext | None = None,
 ) -> HomeDashboardResponse:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_start = now - timedelta(days=7)
     data = await _load_home_source_data(
         user_id=user_id,

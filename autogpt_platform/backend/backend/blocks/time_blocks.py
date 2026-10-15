@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta
-from typing import Any, Literal, Union
+from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel
@@ -142,7 +142,7 @@ class GetCurrentTimeBlock(Block):
         trigger: str = SchemaField(
             description="Trigger any data to output the current time"
         )
-        format_type: Union[TimeStrftimeFormat, TimeISO8601Format] = SchemaField(
+        format_type: TimeStrftimeFormat | TimeISO8601Format = SchemaField(
             discriminator="discriminator",
             description="Format type for time output (strftime with custom format or ISO 8601)",
             default=TimeStrftimeFormat(discriminator="strftime"),
@@ -232,12 +232,12 @@ class GetCurrentDateBlock(Block):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date"
         )
-        offset: Union[int, str] = SchemaField(
+        offset: int | str = SchemaField(
             title="Days Offset",
             description="Offset in days from the current date",
             default=0,
         )
-        format_type: Union[DateStrftimeFormat, DateISO8601Format] = SchemaField(
+        format_type: DateStrftimeFormat | DateISO8601Format = SchemaField(
             discriminator="discriminator",
             description="Format type for date output (strftime with custom format or ISO 8601)",
             default=DateStrftimeFormat(discriminator="strftime"),
@@ -344,7 +344,7 @@ class GetCurrentDateAndTimeBlock(Block):
         trigger: str = SchemaField(
             description="Trigger any data to output the current date and time"
         )
-        format_type: Union[StrftimeFormat, ISO8601Format] = SchemaField(
+        format_type: StrftimeFormat | ISO8601Format = SchemaField(
             discriminator="discriminator",
             description="Format type for date and time output (strftime with custom format or ISO 8601/RFC 3339)",
             default=StrftimeFormat(discriminator="strftime"),
@@ -434,16 +434,16 @@ class CountdownTimerBlock(Block):
             description="Message to output after the timer finishes",
             default="timer finished",
         )
-        seconds: Union[int, str] = SchemaField(
+        seconds: int | str = SchemaField(
             advanced=False, description="Duration in seconds", default=0
         )
-        minutes: Union[int, str] = SchemaField(
+        minutes: int | str = SchemaField(
             advanced=False, description="Duration in minutes", default=0
         )
-        hours: Union[int, str] = SchemaField(
+        hours: int | str = SchemaField(
             advanced=False, description="Duration in hours", default=0
         )
-        days: Union[int, str] = SchemaField(
+        days: int | str = SchemaField(
             advanced=False, description="Duration in days", default=0
         )
         repeat: int = SchemaField(
@@ -484,7 +484,7 @@ class CountdownTimerBlock(Block):
         )
 
     @staticmethod
-    def _coerce_duration_field(field_name: str, value: Union[int, str]) -> int:
+    def _coerce_duration_field(field_name: str, value: int | str) -> int:
         try:
             return int(value)
         except (TypeError, ValueError):

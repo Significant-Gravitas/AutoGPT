@@ -6,7 +6,7 @@ Credential grants are the owner's decision, so grant/revoke live in the
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.api.features.experts.models import ExpertCredentialRef, ExpertWorkflowRef
@@ -633,7 +633,7 @@ class RequestCredentialGrantTool(BaseTool):
             + ". Approve it on my Integrations page, or tell personal AutoPilot "
             f"to run tool:grant_expert_credential for expert {session.expert_id}."
         )
-        asked_at = datetime.now(timezone.utc)
+        asked_at = datetime.now(UTC)
         try:
             await chat_db().set_session_pending_question(
                 session_id, session.user_id, text, asked_at

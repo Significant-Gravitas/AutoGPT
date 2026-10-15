@@ -86,7 +86,7 @@ class _RestrictedEnvironment(SandboxedEnvironment):
     intercepted_binops = frozenset(["**", "*"])
 
     def call(
-        __self,  # noqa: N805 – Jinja2 convention
+        __self,
         __context,
         __obj,
         *args,

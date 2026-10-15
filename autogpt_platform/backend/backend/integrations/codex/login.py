@@ -421,7 +421,7 @@ class CodexLoginCoordinator:
                 if not state_task.result():
                     await session.cancel()
                 login_task.cancel()
-        except asyncio.TimeoutError:
+        except TimeoutError:
             await session.cancel()
             await self._mark_failed(user_id, login_id, "ChatGPT sign-in timed out")
         except asyncio.CancelledError:
@@ -478,7 +478,7 @@ class CodexLoginCoordinator:
                     cancel_event.wait(),
                     timeout=self._state_poll_interval_seconds,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     async def _keep_owner_lease_alive(self, user_id: str, login_id: str) -> None:
@@ -504,29 +504,28 @@ class CodexLoginCoordinator:
         credentials = credentials_from_bundle(completion.bundle)
         async with self._credentials_manager.locked_provider_credentials(
             user_id, credentials.provider
-        ):
-            async with self._state_store.locked(user_id):
-                state = await self._state_store.get(user_id, login_id)
-                if state is None or state.status != "pending":
-                    return
-                if not await self._state_store.refresh_active(user_id, login_id):
-                    state.status = "failed"
-                    state.error = "ChatGPT sign-in ownership was lost. Try again."
-                    await self._state_store.write(state, login_id)
-                    return
-                commit = asyncio.create_task(
-                    self._commit_completed_login(
-                        user_id,
-                        login_id,
-                        state,
-                        credentials,
-                    )
+        ), self._state_store.locked(user_id):
+            state = await self._state_store.get(user_id, login_id)
+            if state is None or state.status != "pending":
+                return
+            if not await self._state_store.refresh_active(user_id, login_id):
+                state.status = "failed"
+                state.error = "ChatGPT sign-in ownership was lost. Try again."
+                await self._state_store.write(state, login_id)
+                return
+            commit = asyncio.create_task(
+                self._commit_completed_login(
+                    user_id,
+                    login_id,
+                    state,
+                    credentials,
                 )
-                try:
-                    await asyncio.shield(commit)
-                except asyncio.CancelledError:
-                    await commit
-                    raise
+            )
+            try:
+                await asyncio.shield(commit)
+            except asyncio.CancelledError:
+                await commit
+                raise
 
     async def _commit_completed_login(
         self,

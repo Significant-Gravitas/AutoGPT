@@ -20,7 +20,7 @@ import base64
 import io
 import logging
 import zipfile
-from typing import Awaitable, Callable, Optional
+from collections.abc import Awaitable, Callable
 
 import fastapi
 import pypdfium2
@@ -261,7 +261,7 @@ def _pdfium_first_page(content: bytes, width: int) -> bytes:
         pdf.close()
 
 
-def _extract_zip_thumbnail(content: bytes) -> Optional[bytes]:
+def _extract_zip_thumbnail(content: bytes) -> bytes | None:
     """Return the embedded ``docProps/thumbnail.*`` image from an openxml file."""
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         names = {name.lower(): name for name in archive.namelist()}

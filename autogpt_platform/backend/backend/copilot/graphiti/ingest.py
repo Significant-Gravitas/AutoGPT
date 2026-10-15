@@ -8,7 +8,7 @@ Otto and each hired expert serialize their own writes independently.
 import asyncio
 import logging
 import weakref
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from graphiti_core.nodes import EpisodeType
 
@@ -78,7 +78,7 @@ class IngestionCompletion:
     interleave can never drive the outstanding count negative.
     """
 
-    __slots__ = ("_registered", "_completed", "_event")
+    __slots__ = ("_completed", "_event", "_registered")
 
     def __init__(self) -> None:
         self._registered = 0
@@ -114,7 +114,7 @@ class IngestionCompletion:
         try:
             await asyncio.wait_for(self._event.wait(), timeout_seconds)
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
 
 
@@ -190,7 +190,7 @@ async def _stamp_edge_metadata(
     exists with graphiti's defaults; only the dream metadata is missing.
     """
     episode_uuid = result.episode.uuid
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     targets = [
         edge.uuid
         for edge in result.edges
@@ -262,7 +262,7 @@ async def _ingestion_worker(user_id: str, group_id: str, queue: asyncio.Queue) -
                 payload = await asyncio.wait_for(
                     queue.get(), timeout=_WORKER_IDLE_TIMEOUT
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Coordinate retirement with enqueue. Without this shared
                 # lock, an enqueuer can retain this queue just before we
                 # unregister it, then put work onto a queue with no worker.
@@ -409,7 +409,7 @@ async def enqueue_conversation_turn(
             "episode_body": episode_body_for_graphiti,
             "source": EpisodeType.message,
             "source_description": source_description,
-            "reference_time": datetime.now(timezone.utc),
+            "reference_time": datetime.now(UTC),
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
         },
@@ -443,7 +443,7 @@ async def enqueue_conversation_turn(
                     "episode_body": envelope.model_dump_json(),
                     "source": EpisodeType.json,
                     "source_description": f"Assistant-derived finding in session {session_id}",
-                    "reference_time": datetime.now(timezone.utc),
+                    "reference_time": datetime.now(UTC),
                     "group_id": group_id,
                     "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
                 },
@@ -517,7 +517,7 @@ async def enqueue_episode(
             "episode_body": episode_body,
             "source": source,
             "source_description": source_description,
-            "reference_time": datetime.now(timezone.utc),
+            "reference_time": datetime.now(UTC),
             "group_id": group_id,
             "custom_extraction_instructions": CUSTOM_EXTRACTION_INSTRUCTIONS,
             # Sidecar — popped by the worker before the add_episode

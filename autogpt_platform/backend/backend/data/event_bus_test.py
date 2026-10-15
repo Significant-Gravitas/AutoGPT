@@ -1,6 +1,7 @@
 """Tests for event_bus publish/listen paths."""
 
 import asyncio
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -136,7 +137,7 @@ async def test_ssubscribe_end_to_end_async():
 async def test_execution_bus_listen_and_listen_graph_both_deliver():
     """Per-exec and per-graph channels both receive every execution event."""
     import asyncio
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from backend.data import redis_client
     from backend.data.execution import (
@@ -151,7 +152,7 @@ async def test_execution_bus_listen_and_listen_graph_both_deliver():
     user_id = "user-it"
     graph_id = "graph-it"
     exec_id = "exec-it"
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
 
     event = GraphExecutionEvent(
         id=exec_id,
@@ -230,7 +231,7 @@ def test_serialize_message_tags_full_channel_name():
 def test_serialize_message_truncates_oversized_payload(monkeypatch):
     """If the payload exceeds max_message_size_limit, it's replaced with an
     ``error_comms_update`` payload rather than crashing the cluster."""
-    import backend.data.event_bus as event_bus
+    from backend.data import event_bus
 
     bus = _BusUnderTest()
     # Cap tiny to force truncation.
@@ -511,10 +512,9 @@ async def test_async_listen_events_closes_on_exception():
     with patch(
         "backend.data.event_bus.redis.connect_sharded_pubsub_async",
         AsyncMock(return_value=fake_client),
-    ):
-        with pytest.raises(_Boom):
-            async for _ in bus.listen_events("chan"):
-                pass
+    ), pytest.raises(_Boom):
+        async for _ in bus.listen_events("chan"):
+            pass
 
     # close() must have fired (both aclose calls).
     fake_pubsub.aclose.assert_awaited_once()

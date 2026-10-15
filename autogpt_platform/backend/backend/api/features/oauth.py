@@ -18,7 +18,7 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Literal
 from urllib.parse import unquote, urlencode, urlparse
 
 from autogpt_libs.auth import get_user_id
@@ -78,15 +78,15 @@ class ErrorResponse(BaseModel):
     """OAuth 2.0 error response"""
 
     error: str
-    error_description: Optional[str] = None
+    error_description: str | None = None
 
 
 class OAuthApplicationPublicInfo(BaseModel):
     """Public information about an OAuth application (for consent screen)"""
 
     name: str
-    description: Optional[str] = None
-    logo_url: Optional[str] = None
+    description: str | None = None
+    logo_url: str | None = None
     scopes: list[str]
 
 
@@ -296,7 +296,7 @@ def _error_redirect_url(
     redirect_uri: str,
     state: str,
     error: str,
-    error_description: Optional[str] = None,
+    error_description: str | None = None,
 ) -> AuthorizeResponse:
     """Helper to build redirect URL with OAuth error parameters"""
     params = {
@@ -457,7 +457,7 @@ async def token(
 @router.post("/introspect")
 async def introspect(
     token: str = Body(description="Token to introspect"),
-    token_type_hint: Optional[Literal["access_token", "refresh_token"]] = Body(
+    token_type_hint: Literal["access_token", "refresh_token"] | None = Body(
         None, description="Hint about token type ('access_token' or 'refresh_token')"
     ),
     client_id: str = Body(description="Client identifier"),
@@ -497,7 +497,7 @@ async def introspect(
 @router.post("/revoke")
 async def revoke(
     token: str = Body(description="Token to revoke"),
-    token_type_hint: Optional[Literal["access_token", "refresh_token"]] = Body(
+    token_type_hint: Literal["access_token", "refresh_token"] | None = Body(
         None, description="Hint about token type ('access_token' or 'refresh_token')"
     ),
     client_id: str = Body(description="Client identifier"),

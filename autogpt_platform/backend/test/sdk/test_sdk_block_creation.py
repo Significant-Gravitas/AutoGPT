@@ -5,7 +5,7 @@ This test suite verifies that blocks can be created using only SDK imports
 and that they work correctly without decorators.
 """
 
-from typing import Any, Optional, Union
+from typing import Any
 
 import pytest
 
@@ -258,7 +258,7 @@ class TestComplexBlockScenarios:
 
             class Input(BlockSchemaInput):
                 required_field: str = SchemaField(description="Required field")
-                optional_field: Optional[str] = SchemaField(
+                optional_field: str | None = SchemaField(
                     description="Optional field",
                     default=None,
                 )
@@ -269,9 +269,7 @@ class TestComplexBlockScenarios:
 
             class Output(BlockSchemaOutput):
                 has_optional: bool = SchemaField(description="Has optional value")
-                optional_value: Optional[str] = SchemaField(
-                    description="Optional value"
-                )
+                optional_value: str | None = SchemaField(description="Optional value")
                 default_value: str = SchemaField(description="Default value")
 
             def __init__(self):
@@ -386,7 +384,7 @@ class TestComplexBlockScenarios:
 
             class Output(BlockSchemaOutput):
                 result: int = SchemaField(description="Result")
-                error_message: Optional[str] = SchemaField(
+                error_message: str | None = SchemaField(
                     description="Error if any", default=None
                 )
 
@@ -483,7 +481,7 @@ class TestComplexBlockScenarios:
             # Use BlockSchemaInput as base to avoid automatic error field
             class Output(BlockSchema):  # Not BlockSchemaOutput!
                 result: int = SchemaField(description="Result")
-                error: Optional[dict[str, str]] = SchemaField(
+                error: dict[str, str] | None = SchemaField(
                     description="Structured error information",
                     default=None,
                 )
@@ -703,7 +701,7 @@ class TestAuthenticationVariants:
                 self,
                 input_data: Input,
                 *,
-                credentials: Union[APIKeyCredentials, OAuth2Credentials],
+                credentials: APIKeyCredentials | OAuth2Credentials,
                 **kwargs,
             ) -> BlockOutput:
                 # Handle different credential types
@@ -825,7 +823,7 @@ class TestAuthenticationVariants:
                 secondary_data: str = SchemaField(
                     description="Data from secondary service"
                 )
-                merged_result: Optional[str] = SchemaField(
+                merged_result: str | None = SchemaField(
                     description="Merged data if requested"
                 )
 

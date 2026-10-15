@@ -1,8 +1,9 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Awaitable, Sequence, get_args, get_origin
+from typing import Any, get_args, get_origin
 
 import prisma
 from prisma.models import mv_suggested_blocks

@@ -1,8 +1,7 @@
-from typing import Literal, Union
+from typing import Literal
 
 from pydantic import BaseModel
 from todoist_api_python.api import TodoistAPI
-from typing_extensions import Optional
 
 from backend.blocks._base import (
     Block,
@@ -39,13 +38,13 @@ class TodoistCreateCommentBlock(Block):
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         content: str = SchemaField(description="Comment content")
-        id_type: Union[TaskId, ProjectId] = SchemaField(
+        id_type: TaskId | ProjectId = SchemaField(
             discriminator="discriminator",
             description="Specify either task_id or project_id to comment on",
             default=TaskId(discriminator="task", task_id=""),
             advanced=False,
         )
-        attachment: Optional[dict] = SchemaField(
+        attachment: dict | None = SchemaField(
             description="Optional file attachment", default=None
         )
 
@@ -53,10 +52,10 @@ class TodoistCreateCommentBlock(Block):
         id: str = SchemaField(description="ID of created comment")
         content: str = SchemaField(description="Comment content")
         posted_at: str = SchemaField(description="Comment timestamp")
-        task_id: Optional[str] = SchemaField(
+        task_id: str | None = SchemaField(
             description="Associated task ID", default=None
         )
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Associated project ID", default=None
         )
 
@@ -96,9 +95,9 @@ class TodoistCreateCommentBlock(Block):
     def create_comment(
         credentials: TodoistCredentials,
         content: str,
-        task_id: Optional[str] = None,
-        project_id: Optional[str] = None,
-        attachment: Optional[dict] = None,
+        task_id: str | None = None,
+        project_id: str | None = None,
+        attachment: dict | None = None,
     ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
@@ -153,7 +152,7 @@ class TodoistGetCommentsBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        id_type: Union[TaskId, ProjectId] = SchemaField(
+        id_type: TaskId | ProjectId = SchemaField(
             discriminator="discriminator",
             description="Specify either task_id or project_id to get comments for",
             default=TaskId(discriminator="task", task_id=""),
@@ -208,8 +207,8 @@ class TodoistGetCommentsBlock(Block):
     @staticmethod
     def get_comments(
         credentials: TodoistCredentials,
-        task_id: Optional[str] = None,
-        project_id: Optional[str] = None,
+        task_id: str | None = None,
+        project_id: str | None = None,
     ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
@@ -256,13 +255,13 @@ class TodoistGetCommentBlock(Block):
         content: str = SchemaField(description="Comment content")
         id: str = SchemaField(description="Comment ID")
         posted_at: str = SchemaField(description="Comment timestamp")
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Associated project ID", default=None
         )
-        task_id: Optional[str] = SchemaField(
+        task_id: str | None = SchemaField(
             description="Associated task ID", default=None
         )
-        attachment: Optional[dict] = SchemaField(
+        attachment: dict | None = SchemaField(
             description="Optional file attachment", default=None
         )
 

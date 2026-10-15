@@ -4,8 +4,9 @@ import math
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Mapping
 from concurrent.futures import Future
-from typing import Literal, Mapping, Optional, cast, get_args
+from typing import Literal, cast, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, JsonValue, ValidationError
@@ -98,7 +99,7 @@ class LogMetadata(TruncatedLogger):
         prefix = (
             "[ExecutionManager]"
             if is_structured_logging_enabled()
-            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"  # noqa
+            else f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
         )
         super().__init__(
             logger,
@@ -450,7 +451,7 @@ def is_credential_validation_error_message(message: str) -> bool:
 async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_input_masks: NodesInputMasks | None = None,
 ) -> tuple[dict[str, dict[str, str]], set[str]]:
     """
     Checks all credentials for all nodes of the graph and returns structured errors
@@ -769,7 +770,7 @@ def make_node_credentials_input_map(
 async def validate_graph_with_credentials(
     graph: GraphModel,
     user_id: str,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_input_masks: NodesInputMasks | None = None,
 ) -> tuple[Mapping[str, Mapping[str, str]], set[str]]:
     """
     Validate graph including credentials and return structured errors per node,
@@ -805,7 +806,7 @@ async def _construct_starting_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: GraphInput,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
+    nodes_input_masks: NodesInputMasks | None = None,
     dry_run: bool = False,
 ) -> tuple[list[tuple[str, BlockInput]], set[str]]:
     """
@@ -908,9 +909,9 @@ async def validate_and_construct_node_execution_input(
     graph_id: str,
     user_id: str,
     graph_inputs: GraphInput,
-    graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
+    graph_version: int | None = None,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput] | None = None,
+    nodes_input_masks: NodesInputMasks | None = None,
     is_sub_graph: bool = False,
     dry_run: bool = False,
 ) -> tuple[GraphModel, list[tuple[str, BlockInput]], NodesInputMasks, set[str]]:
@@ -1230,7 +1231,7 @@ async def _resolve_expert_execution_tenancy(
 async def _enforce_expert_credential_scope(
     user_id: str,
     expert_id: str,
-    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]],
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput] | None,
 ) -> None:
     """Reject a run that would use credentials this expert was not granted.
 
@@ -1265,23 +1266,23 @@ async def _enforce_expert_credential_scope(
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: Optional[GraphInput] = None,
-    preset_id: Optional[str] = None,
-    graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
-    execution_context: Optional[ExecutionContext] = None,
-    graph_exec_id: Optional[str] = None,
+    inputs: GraphInput | None = None,
+    preset_id: str | None = None,
+    graph_version: int | None = None,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput] | None = None,
+    nodes_input_masks: NodesInputMasks | None = None,
+    execution_context: ExecutionContext | None = None,
+    graph_exec_id: str | None = None,
     dry_run: bool = False,
-    organization_id: Optional[str] = None,
-    team_id: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     *,
-    expert_id: Optional[str] = None,
-    schedule_id: Optional[str] = None,
-    webhook_id: Optional[str] = None,
+    expert_id: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
-    trigger_ref: Optional[str] = None,
+    trigger_ref: str | None = None,
     pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """Add a graph execution to the queue, recording the outcome.
@@ -1330,23 +1331,23 @@ async def add_graph_execution(
 async def _add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: Optional[GraphInput] = None,
-    preset_id: Optional[str] = None,
-    graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[Mapping[str, CredentialsMetaInput]] = None,
-    nodes_input_masks: Optional[NodesInputMasks] = None,
-    execution_context: Optional[ExecutionContext] = None,
-    graph_exec_id: Optional[str] = None,
+    inputs: GraphInput | None = None,
+    preset_id: str | None = None,
+    graph_version: int | None = None,
+    graph_credentials_inputs: Mapping[str, CredentialsMetaInput] | None = None,
+    nodes_input_masks: NodesInputMasks | None = None,
+    execution_context: ExecutionContext | None = None,
+    graph_exec_id: str | None = None,
     dry_run: bool = False,
-    organization_id: Optional[str] = None,
-    team_id: Optional[str] = None,
+    organization_id: str | None = None,
+    team_id: str | None = None,
     *,
-    expert_id: Optional[str] = None,
-    schedule_id: Optional[str] = None,
-    webhook_id: Optional[str] = None,
+    expert_id: str | None = None,
+    schedule_id: str | None = None,
+    webhook_id: str | None = None,
     bypass_paywall: bool = False,
     trigger: ExecutionTrigger = ExecutionTrigger.MANUAL,
-    trigger_ref: Optional[str] = None,
+    trigger_ref: str | None = None,
     pause_irreversible_actions: bool = False,
 ) -> GraphExecutionWithNodes:
     """
@@ -1880,9 +1881,8 @@ class NodeExecutionProgress:
             pass
         except Exception as e:
             logger.error(
-                f"Task for exec ID {exec_id} failed with error: {e.__class__.__name__} {str(e)}"
+                f"Task for exec ID {exec_id} failed with error: {e.__class__.__name__} {e!s}"
             )
-            pass
         return self.is_done(0)
 
     def stop(self) -> list[str]:

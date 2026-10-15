@@ -9,7 +9,7 @@ import datetime
 import enum
 import logging
 from json import JSONDecodeError
-from typing import Any, Optional, TypeVar
+from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -42,32 +42,32 @@ class UseCache(enum.Enum):
 class SocialMediaProfiles(BaseModel):
     """Social media profiles model."""
 
-    twitter: Optional[str] = None
-    facebook: Optional[str] = None
-    github: Optional[str] = None
+    twitter: str | None = None
+    facebook: str | None = None
+    github: str | None = None
 
 
 class Experience(BaseModel):
     """Experience model for LinkedIn profiles."""
 
-    company: Optional[str] = None
-    title: Optional[str] = None
-    description: Optional[str] = None
-    location: Optional[str] = None
-    starts_at: Optional[dict[str, int]] = None
-    ends_at: Optional[dict[str, int]] = None
-    company_linkedin_profile_url: Optional[str] = None
+    company: str | None = None
+    title: str | None = None
+    description: str | None = None
+    location: str | None = None
+    starts_at: dict[str, int] | None = None
+    ends_at: dict[str, int] | None = None
+    company_linkedin_profile_url: str | None = None
 
 
 class Education(BaseModel):
     """Education model for LinkedIn profiles."""
 
-    school: Optional[str] = None
-    degree_name: Optional[str] = None
-    field_of_study: Optional[str] = None
-    starts_at: Optional[dict[str, int]] = None
-    ends_at: Optional[dict[str, int]] = None
-    school_linkedin_profile_url: Optional[str] = None
+    school: str | None = None
+    degree_name: str | None = None
+    field_of_study: str | None = None
+    starts_at: dict[str, int] | None = None
+    ends_at: dict[str, int] | None = None
+    school_linkedin_profile_url: str | None = None
 
 
 class PersonProfileResponse(BaseModel):
@@ -94,27 +94,27 @@ class PersonProfileResponse(BaseModel):
     }
     """
 
-    public_identifier: Optional[str] = None
-    profile_pic_url: Optional[str] = None
-    full_name: Optional[str] = None
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    occupation: Optional[str] = None
-    headline: Optional[str] = None
-    summary: Optional[str] = None
-    country: Optional[str] = None
-    country_full_name: Optional[str] = None
-    city: Optional[str] = None
-    state: Optional[str] = None
-    experiences: Optional[list[Experience]] = None
-    education: Optional[list[Education]] = None
-    languages: Optional[list[str]] = None
-    skills: Optional[list[str]] = None
-    inferred_salary: Optional[dict[str, Any]] = None
-    personal_email: Optional[str] = None
-    personal_contact_number: Optional[str] = None
-    social_media_profiles: Optional[SocialMediaProfiles] = None
-    extra: Optional[dict[str, Any]] = None
+    public_identifier: str | None = None
+    profile_pic_url: str | None = None
+    full_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    occupation: str | None = None
+    headline: str | None = None
+    summary: str | None = None
+    country: str | None = None
+    country_full_name: str | None = None
+    city: str | None = None
+    state: str | None = None
+    experiences: list[Experience] | None = None
+    education: list[Education] | None = None
+    languages: list[str] | None = None
+    skills: list[str] | None = None
+    inferred_salary: dict[str, Any] | None = None
+    personal_email: str | None = None
+    personal_contact_number: str | None = None
+    social_media_profiles: SocialMediaProfiles | None = None
+    extra: dict[str, Any] | None = None
 
 
 class SimilarProfile(BaseModel):
@@ -163,8 +163,8 @@ class RoleLookupResponse(BaseModel):
     }
     """
 
-    linkedin_profile_url: Optional[str] = None
-    profile_data: Optional[PersonProfileResponse] = None
+    linkedin_profile_url: str | None = None
+    profile_data: PersonProfileResponse | None = None
 
 
 class ProfilePictureResponse(BaseModel):
@@ -196,8 +196,8 @@ class EnrichlayerClient:
 
     def __init__(
         self,
-        credentials: Optional[APIKeyCredentials] = None,
-        custom_requests: Optional[Requests] = None,
+        credentials: APIKeyCredentials | None = None,
+        custom_requests: Requests | None = None,
     ):
         """
         Initialize the Enrichlayer client.
@@ -312,8 +312,8 @@ class EnrichlayerClient:
         first_name: str,
         company_domain: str,
         last_name: str | None = None,
-        location: Optional[str] = None,
-        title: Optional[str] = None,
+        location: str | None = None,
+        title: str | None = None,
         include_similarity_checks: bool = False,
         enrich_profile: bool = False,
     ) -> PersonLookupResponse:

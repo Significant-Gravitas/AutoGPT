@@ -34,7 +34,7 @@ def GithubCredentialsField(scope: str) -> GithubCredentialsInput:
 
     Params:
         scope: The authorization scope needed for the block to work. ([list of available scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes))
-    """  # noqa
+    """
     return CredentialsField(
         required_scopes={scope},
         description="The GitHub integration can be used with OAuth, "

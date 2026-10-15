@@ -11,7 +11,7 @@ import logging
 import threading
 import time
 from collections import Counter as _Counter
-from typing import Iterator
+from collections.abc import Iterator
 
 from prometheus_client import Counter, Gauge
 from pydantic import BaseModel

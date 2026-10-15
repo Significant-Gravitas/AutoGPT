@@ -1,9 +1,9 @@
-from typing import Annotated, Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Annotated, Any
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
 from fastapi import APIRouter, Body, Depends, HTTPException, Security
-from typing_extensions import Optional
 
 from backend.api.features.graphs.model import (
     DeleteGraphResponse,
@@ -336,8 +336,8 @@ async def execute_graph(
         dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
     ],
     source: Annotated[GraphExecutionSource | None, Body(embed=True)] = None,
-    graph_version: Optional[int] = None,
-    preset_id: Optional[str] = None,
+    graph_version: int | None = None,
+    preset_id: str | None = None,
     dry_run: Annotated[bool, Body(embed=True)] = False,
 ) -> execution_db.GraphExecutionMeta:
     if not dry_run:

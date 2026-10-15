@@ -232,7 +232,7 @@ async def test_expand_invalid_range_end_less_than_start_surfaces_inline():
 
 @pytest.mark.asyncio
 async def test_expand_ref_error_surfaces_inline():
-    async def _raise(*args, **kwargs):  # noqa: ARG001
+    async def _raise(*args, **kwargs):
         raise ValueError("file not found")
 
     with patch(
@@ -345,19 +345,18 @@ async def test_expand_args_raises_on_file_ref_error():
     """expand_file_refs_in_args raises FileRefExpansionError instead of passing
     the inline error string to the tool, blocking tool execution."""
 
-    async def _raise(*args, **kwargs):  # noqa: ARG001
+    async def _raise(*args, **kwargs):
         raise ValueError("path does not exist")
 
     with patch(
         "backend.copilot.sdk.file_ref.resolve_file_ref",
         new=AsyncMock(side_effect=_raise),
-    ):
-        with pytest.raises(FileRefExpansionError) as exc_info:
-            await expand_file_refs_in_args(
-                {"prompt": "@@agptfile:/home/user/missing.txt"},
-                user_id="u1",
-                session=_make_session(),
-            )
+    ), pytest.raises(FileRefExpansionError) as exc_info:
+        await expand_file_refs_in_args(
+            {"prompt": "@@agptfile:/home/user/missing.txt"},
+            user_id="u1",
+            session=_make_session(),
+        )
     assert "path does not exist" in str(exc_info.value)
 
 
@@ -370,7 +369,7 @@ async def test_expand_args_raises_on_file_ref_error():
 async def test_bare_ref_json_returns_parsed():
     """Bare ref to a .json file returns parsed dict, not a string."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return '{"key": "value"}'
 
     with patch(
@@ -389,7 +388,7 @@ async def test_bare_ref_json_returns_parsed():
 async def test_bare_ref_csv_returns_rows():
     """Bare ref to a .csv file returns list[list[str]]."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return "Name,Score\nAlice,90\nBob,85"
 
     with patch(
@@ -408,7 +407,7 @@ async def test_bare_ref_csv_returns_rows():
 async def test_bare_ref_unknown_extension_falls_back_to_string():
     """Bare ref with unknown extension returns plain string."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return "plain text content"
 
     with (
@@ -433,7 +432,7 @@ async def test_bare_ref_unknown_extension_falls_back_to_string():
 async def test_bare_ref_invalid_json_falls_back_to_string():
     """Bare ref to .json file with invalid content falls back to string."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return "not valid json"
 
     with patch(
@@ -452,7 +451,7 @@ async def test_bare_ref_invalid_json_falls_back_to_string():
 async def test_embedded_ref_stays_string_even_for_json():
     """Embedded ref (mixed with text) always returns plain string."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return '{"key": "value"}'
 
     with patch(
@@ -473,19 +472,18 @@ async def test_embedded_ref_stays_string_even_for_json():
 async def test_bare_ref_oversized_raises_error():
     """Bare ref exceeding _MAX_BARE_REF_BYTES raises FileRefExpansionError."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return "x" * (_MAX_BARE_REF_BYTES + 1)
 
     with patch(
         "backend.copilot.sdk.file_ref.resolve_file_ref",
         new=AsyncMock(side_effect=_resolve),
-    ):
-        with pytest.raises(FileRefExpansionError, match="too large"):
-            await expand_file_refs_in_args(
-                {"data": "@@agptfile:workspace:///huge.json"},
-                user_id="u1",
-                session=_make_session(),
-            )
+    ), pytest.raises(FileRefExpansionError, match="too large"):
+        await expand_file_refs_in_args(
+            {"data": "@@agptfile:workspace:///huge.json"},
+            user_id="u1",
+            session=_make_session(),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -499,7 +497,7 @@ async def test_bare_ref_csv_returns_raw_string_when_schema_expects_string():
     structured parsing is skipped and raw file content is returned."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     schema = {
@@ -528,7 +526,7 @@ async def test_bare_ref_json_parses_when_schema_expects_object():
     """When the input schema declares the parameter as type: object,
     structured parsing is applied as usual."""
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return '{"key": "value"}'
 
     schema = {
@@ -555,7 +553,7 @@ async def test_bare_ref_csv_parses_when_no_schema_provided():
     """Without input_schema, structured parsing proceeds as usual."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     with patch(
@@ -611,7 +609,7 @@ async def test_nested_schema_propagation():
     information is used for expand/skip decisions."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     schema = {
@@ -753,7 +751,7 @@ async def test_matrix_format_to_string_schema(fmt: str):
     every text format returns the raw file content as a plain string."""
     ext, raw_content, _ = _FORMAT_SAMPLES[fmt]
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return raw_content
 
     schema = {
@@ -784,7 +782,7 @@ async def test_matrix_format_to_nonstring_schema(fmt: str):
     a structured (parsed) value."""
     ext, raw_content, expected_parsed = _FORMAT_SAMPLES[fmt]
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return raw_content
 
     # No input_schema → structured parsing is the default
@@ -837,7 +835,7 @@ async def test_matrix_mixed_fields_string_and_array():
     CSV→string returns raw text, CSV→array returns parsed rows."""
     csv_content = "A,B\n1,2\n3,4"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     schema = {
@@ -872,7 +870,7 @@ async def test_matrix_second_phase_expansion_with_block_schema():
     second phase expands with the block's actual schema."""
     csv_content = "X,Y\n10,20"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     # Phase 1: tool-level schema (input_data is opaque)
@@ -947,7 +945,7 @@ async def test_e2e_csv_to_string_block_no_json_dumps():
     The block receives the raw CSV text, NOT json.dumps(parsed_rows)."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     block_schema = _StringBlock.model_json_schema()
@@ -979,7 +977,7 @@ async def test_e2e_csv_to_list_block_parses():
     The block receives parsed rows."""
     csv_content = "A,B\n1,2"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     block_schema = _ListBlock.model_json_schema()
@@ -1009,7 +1007,7 @@ async def test_e2e_json_to_string_block_returns_raw_json():
     not the parsed dict."""
     json_content = '{"key": "value", "num": 42}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return json_content
 
     block_schema = _StringBlock.model_json_schema()
@@ -1038,7 +1036,7 @@ async def test_e2e_binary_format_to_string_block_raises_error(fmt: str, ext: str
     """Binary formats (parquet/xlsx) passed to a string-typed block input
     should raise FileRefExpansionError, not silently pass garbled bytes."""
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+    async def _resolve_bytes(uri, user_id, session):
         return b"\x00\x01\x02binary data"
 
     block_schema = _StringBlock.model_json_schema()
@@ -1046,14 +1044,13 @@ async def test_e2e_binary_format_to_string_block_raises_error(fmt: str, ext: str
     with patch(
         "backend.copilot.sdk.file_ref.read_file_bytes",
         new=AsyncMock(side_effect=_resolve_bytes),
-    ):
-        with pytest.raises(FileRefExpansionError, match="Cannot use .* as text input"):
-            await expand_file_refs_in_args(
-                {"text": f"@@agptfile:workspace:///data{ext}"},
-                user_id="u1",
-                session=_make_session(),
-                input_schema=block_schema,
-            )
+    ), pytest.raises(FileRefExpansionError, match="Cannot use .* as text input"):
+        await expand_file_refs_in_args(
+            {"text": f"@@agptfile:workspace:///data{ext}"},
+            user_id="u1",
+            session=_make_session(),
+            input_schema=block_schema,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1071,7 +1068,7 @@ async def test_e2e_jsonl_tabular_to_list_block():
         '{"name":"cherry","color":"red"}'
     )
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return jsonl_content
 
     block_schema = _ListBlock.model_json_schema()
@@ -1105,7 +1102,7 @@ async def test_e2e_jsonl_tabular_to_string_block():
     """JSONL → string block: raw JSONL text, no parsing."""
     jsonl_content = '{"name":"apple"}\n{"name":"banana"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return jsonl_content
 
     block_schema = _StringBlock.model_json_schema()
@@ -1162,7 +1159,7 @@ async def test_e2e_jsonl_tabular_to_dict_block():
     a column-dict {"name": ["apple","banana"], "color": ["red","yellow"]}."""
     jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return jsonl_content
 
     block_schema = _DictBlock.model_json_schema()
@@ -1194,7 +1191,7 @@ async def test_e2e_jsonl_heterogeneous_to_list_block():
     """JSONL with different keys → list block: returns list of dicts (no table)."""
     jsonl_content = '{"name":"apple"}\n{"color":"red"}\n{"size":3}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return jsonl_content
 
     block_schema = _ListBlock.model_json_schema()
@@ -1247,7 +1244,7 @@ async def test_e2e_parquet_to_list_block():
     """Parquet → list block: table format (header + rows)."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+    async def _resolve_bytes(uri, user_id, session):
         return parquet_bytes
 
     block_schema = _ListBlock.model_json_schema()
@@ -1272,7 +1269,7 @@ async def test_e2e_parquet_to_dict_block():
     """Parquet → dict block: table format adapted to column-dict."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+    async def _resolve_bytes(uri, user_id, session):
         return parquet_bytes
 
     block_schema = _DictBlock.model_json_schema()
@@ -1303,7 +1300,7 @@ async def test_e2e_yaml_dict_to_list_block():
     pydantic flattening keys/values into a flat list."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return yaml_content
 
     block_schema = _ListBlock.model_json_schema()
@@ -1332,7 +1329,7 @@ async def test_e2e_toml_dict_to_list_block():
     """TOML dict → list block: dict is wrapped in [dict]."""
     toml_content = 'name = "test"\ncount = 42'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return toml_content
 
     block_schema = _ListBlock.model_json_schema()
@@ -1362,7 +1359,7 @@ async def test_e2e_yaml_dict_with_list_value_to_concat_block():
     values from the dict as inner lists, not wrapping the whole dict."""
     yaml_content = "fruits:\n  - name: apple\n  - name: banana\n  - name: cherry"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return yaml_content
 
     block_schema = _ListOfListsBlock.model_json_schema()
@@ -1397,7 +1394,7 @@ async def test_e2e_toml_dict_with_list_value_to_concat_block():
         'title = "Fruits"\n[[fruits]]\nname = "apple"\n[[fruits]]\nname = "banana"\n'
     )
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return toml_content
 
     block_schema = _ListOfListsBlock.model_json_schema()
@@ -1422,7 +1419,7 @@ async def test_e2e_yaml_flat_dict_to_concat_block():
     """YAML flat dict (no list values) → List[List[Any]]: fallback to [dict]."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return yaml_content
 
     block_schema = _ListOfListsBlock.model_json_schema()
@@ -1452,7 +1449,7 @@ async def test_e2e_csv_to_dict_block():
     """CSV tabular → dict block: adapted to column-dict format."""
     csv_content = "Name,Score\nAlice,90\nBob,85"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     block_schema = _DictBlock.model_json_schema()
@@ -1491,7 +1488,7 @@ async def test_e2e_csv_tabular_to_any_block():
     list of dicts so FindInDictionaryBlock can do key lookup."""
     csv_content = "name,color\napple,red\nbanana,yellow"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return csv_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1519,7 +1516,7 @@ async def test_e2e_jsonl_tabular_to_any_block():
     """JSONL tabular → Any-typed block: tabular converted to list of dicts."""
     jsonl_content = '{"name":"apple","color":"red"}\n{"name":"banana","color":"yellow"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return jsonl_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1546,7 +1543,7 @@ async def test_e2e_tsv_tabular_to_any_block():
     """TSV tabular → Any-typed block: same as CSV, converted to list of dicts."""
     tsv_content = "name\tcolor\napple\tred\nbanana\tyellow"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return tsv_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1574,7 +1571,7 @@ async def test_e2e_parquet_to_any_block():
     """Parquet tabular → Any-typed block: converted to list of dicts."""
     parquet_bytes = _make_parquet_bytes()
 
-    async def _resolve_bytes(uri, user_id, session):  # noqa: ARG001
+    async def _resolve_bytes(uri, user_id, session):
         return parquet_bytes
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1602,7 +1599,7 @@ async def test_e2e_yaml_dict_to_any_block():
     needed since FindInDict handles dicts natively)."""
     yaml_content = "name: Alice\nage: 30"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return yaml_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1627,7 +1624,7 @@ async def test_e2e_json_object_to_any_block():
     """JSON object → Any-typed block: dict passes through unchanged."""
     json_content = '{"name": "apple", "color": "red"}'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return json_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1652,7 +1649,7 @@ async def test_e2e_json_array_to_any_block():
     (FindInDict handles list-of-dicts natively)."""
     json_content = '[{"name": "apple"}, {"name": "banana"}]'
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return json_content
 
     block_schema = _AnyBlock.model_json_schema()
@@ -1783,7 +1780,7 @@ async def test_non_media_string_field_still_reads_content():
         },
     }
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return "file content here"
 
     with (
@@ -1846,7 +1843,7 @@ async def test_adapt_non_tabular_list_to_object_target():
     """
     json_content = "[1, 2, 3]"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return json_content
 
     schema = {
@@ -1881,7 +1878,7 @@ async def test_adapt_dict_to_list_str_target_not_wrapped():
     """Dict with List[str] target should not be wrapped in [dict]."""
     yaml_content = "key: value"
 
-    async def _resolve(ref, *a, **kw):  # noqa: ARG001
+    async def _resolve(ref, *a, **kw):
         return yaml_content
 
     schema = {

@@ -4,7 +4,7 @@ import asyncio
 import base64
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -25,7 +25,7 @@ from backend.util.exceptions import DatabaseError, NotFoundError
 
 
 def _application_user(user_id: str, email: str) -> user_module.User:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     return user_module.User(
         id=user_id,
         email=email,
@@ -258,7 +258,7 @@ class TestUpdateUserTimezone:
 
 TERMS_VERSION = "2026-10"
 EARLIER_TERMS_VERSION = "2025-01"
-CONSENTED_AT = datetime(2026, 1, 5, 9, 30, tzinfo=timezone.utc)
+CONSENTED_AT = datetime(2026, 1, 5, 9, 30, tzinfo=UTC)
 TERMS_FIELDS = {"termsAcceptedAt", "termsVersion"}
 OPT_OUT_FIELDS = {"marketingOptOutAt", "marketingOptOutSource"}
 
@@ -377,7 +377,7 @@ class TestRecordSignupConsent:
     async def test_first_call_stamps_the_terms_and_the_opt_out(self, db: MagicMock):
         fresh = _accepted(True)
         db.find_unique.side_effect = [_consent_row(), fresh]
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         result = await record_signup_consent("user-1", TERMS_VERSION, True)
 
@@ -391,7 +391,7 @@ class TestRecordSignupConsent:
         assert set(opt_out) == OPT_OUT_FIELDS
         assert terms["termsVersion"] == TERMS_VERSION
         assert opt_out["marketingOptOutSource"] == "signup"
-        assert before <= terms["termsAcceptedAt"] <= datetime.now(timezone.utc)
+        assert before <= terms["termsAcceptedAt"] <= datetime.now(UTC)
         assert opt_out["marketingOptOutAt"] == terms["termsAcceptedAt"]
         assert result is fresh
 
@@ -791,7 +791,7 @@ class TestRecordMarketingOptOutByEmail:
     async def test_records_the_refusal_with_its_source(
         self, db: MagicMock, caches: MagicMock
     ):
-        before = datetime.now(timezone.utc)
+        before = datetime.now(UTC)
 
         result = await record_marketing_opt_out_by_email(
             "user@example.com", "email_unsubscribe"
@@ -802,7 +802,7 @@ class TestRecordMarketingOptOutByEmail:
         db.find_many.assert_not_awaited()
         data = _opt_out_written(db)
         assert data["marketingOptOutSource"] == "email_unsubscribe"
-        assert before <= data["marketingOptOutAt"] <= datetime.now(timezone.utc)
+        assert before <= data["marketingOptOutAt"] <= datetime.now(UTC)
         caches.by_id_delete.assert_called_once_with("user-1")
         caches.by_email_delete.assert_called_once_with("user@example.com")
         caches.or_create_clear.assert_called_once_with()
@@ -1573,7 +1573,7 @@ class TestGetOrCreateUserPersonalOrg:
 class TestGetAuthUserFlagFields:
     @pytest.mark.asyncio
     async def test_returns_flag_fields_for_existing_auth_user(self):
-        created = datetime(2026, 5, 7, 12, 0, 0, tzinfo=timezone.utc)
+        created = datetime(2026, 5, 7, 12, 0, 0, tzinfo=UTC)
         auth_user = MagicMock(role="admin", email="a@b.com", createdAt=created)
 
         with patch.object(user_module, "AuthUser") as mock_auth_user:
@@ -1697,7 +1697,7 @@ class TestHealOrphanedAuthIdentities:
             id=user_id,
             email=email,
             name="Someone",
-            createdAt=datetime.now(timezone.utc),
+            createdAt=datetime.now(UTC),
             email_owner_id=email_owner_id,
         )
 
@@ -1732,7 +1732,7 @@ class TestHealOrphanedAuthIdentities:
         }
         # Grace window: identities younger than this are still signing up.
         older_than = find.await_args.args[0]
-        assert older_than < datetime.now(timezone.utc)
+        assert older_than < datetime.now(UTC)
         assert find.await_args.args[1] == 50
 
     @pytest.mark.asyncio
@@ -1807,7 +1807,7 @@ class TestHealOrphanedAuthIdentities:
 class TestFindOrphanedAuthIdentities:
     @pytest.mark.asyncio
     async def test_queries_identities_without_a_user_row(self):
-        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
         rows = [
             {
                 "id": "auth-1",
@@ -1849,7 +1849,7 @@ class TestFindOrphanedAuthIdentities:
     async def test_maps_a_foreign_email_owner_to_a_collision(self):
         # The SQL aliases the owning platform User's id as email_owner_id; the
         # model must read that back as a collision when it is someone else.
-        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=timezone.utc)
+        cutoff = datetime(2026, 9, 14, 12, 0, tzinfo=UTC)
         rows = [
             {
                 "id": "auth-new",

@@ -1,7 +1,7 @@
 """Late execution monitoring module."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.data.execution import ExecutionStatus
 from backend.util.clients import (
@@ -18,8 +18,6 @@ config = Config()
 class LateExecutionException(Exception):
     """Exception raised when late executions are detected."""
 
-    pass
-
 
 class LateExecutionMonitor:
     """Monitor late executions and send alerts when thresholds are exceeded."""
@@ -34,11 +32,11 @@ class LateExecutionMonitor:
         # Check for QUEUED executions
         queued_late_executions = get_database_manager_client().get_graph_executions(
             statuses=[ExecutionStatus.QUEUED],
-            created_time_gte=datetime.now(timezone.utc)
+            created_time_gte=datetime.now(UTC)
             - timedelta(
                 seconds=self.config.execution_late_notification_checkrange_secs
             ),
-            created_time_lte=datetime.now(timezone.utc)
+            created_time_lte=datetime.now(UTC)
             - timedelta(seconds=self.config.execution_late_notification_threshold_secs),
             limit=1000,
         )
@@ -46,12 +44,12 @@ class LateExecutionMonitor:
         # Check for RUNNING executions stuck for more than 24 hours
         running_late_executions = get_database_manager_client().get_graph_executions(
             statuses=[ExecutionStatus.RUNNING],
-            created_time_gte=datetime.now(timezone.utc)
+            created_time_gte=datetime.now(UTC)
             - timedelta(hours=24)
             - timedelta(
                 seconds=self.config.execution_late_notification_checkrange_secs
             ),
-            created_time_lte=datetime.now(timezone.utc) - timedelta(hours=24),
+            created_time_lte=datetime.now(UTC) - timedelta(hours=24),
             limit=1000,
         )
 
@@ -62,7 +60,7 @@ class LateExecutionMonitor:
 
         # Sort by started time (oldest first), with None values (unstarted) first
         all_late_executions.sort(
-            key=lambda x: x.started_at or datetime.min.replace(tzinfo=timezone.utc)
+            key=lambda x: x.started_at or datetime.min.replace(tzinfo=UTC)
         )
 
         num_total_late = len(all_late_executions)

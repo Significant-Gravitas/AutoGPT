@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ClaudeSDKClient
 from openai import AsyncOpenAI
@@ -207,7 +208,10 @@ def _codex_lease(provider: FakeProvider) -> CodexCredentialLease:
 
 def _codex_credentials() -> OAuth2Credentials:
     # An unsigned JWT: the platform reads its claims, never its signature.
-    token = "eyJhbGciOiJub25lIn0.eyJleHAiOjk5OTk5OTk5OTksImVtYWlsIjoiYUBiLmMifQ.sig"
+    token = (
+        jwt.encode({"exp": 9999999999, "email": "a@b.c"}, key="", algorithm="none")
+        + "sig"
+    )
     bundle = CodexAuthBundleV1(
         tokens=CodexAuthTokensV1(
             id_token=SecretStr(token),

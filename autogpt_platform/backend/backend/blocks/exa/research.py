@@ -8,7 +8,7 @@ synthesize findings, and return structured results with citations.
 import asyncio
 import time
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -70,7 +70,7 @@ class ResearchOutputModel(BaseModel):
     """Research output with content and optional structured data."""
 
     content: str
-    parsed: Optional[Dict[str, Any]] = None
+    parsed: dict[str, Any] | None = None
 
 
 class ResearchTaskModel(BaseModel):
@@ -81,11 +81,11 @@ class ResearchTaskModel(BaseModel):
     model: str
     instructions: str
     status: str
-    output_schema: Optional[Dict[str, Any]] = None
-    output: Optional[ResearchOutputModel] = None
-    cost_dollars: Optional[ResearchCostModel] = None
-    finished_at: Optional[int] = None
-    error: Optional[str] = None
+    output_schema: dict[str, Any] | None = None
+    output: ResearchOutputModel | None = None
+    cost_dollars: ResearchCostModel | None = None
+    finished_at: int | None = None
+    error: str | None = None
 
     @classmethod
     def from_api(cls, data: dict) -> "ResearchTaskModel":
@@ -132,7 +132,7 @@ class ExaCreateResearchBlock(Block):
             default=ResearchModel.STANDARD,
             description="Research model: 'fast' for quick results, 'standard' for balanced quality, 'pro' for thorough analysis",
         )
-        output_schema: Optional[dict] = SchemaField(
+        output_schema: dict | None = SchemaField(
             default=None,
             description="JSON Schema to enforce structured output. When provided, results are validated and returned as parsed JSON.",
             advanced=True,
@@ -161,16 +161,16 @@ class ExaCreateResearchBlock(Block):
         created_at: int = SchemaField(
             description="When the research was created (Unix timestamp in ms)"
         )
-        output_content: Optional[str] = SchemaField(
+        output_content: str | None = SchemaField(
             description="Research output as text (only if wait_for_completion was True and completed)"
         )
-        output_parsed: Optional[dict] = SchemaField(
+        output_parsed: dict | None = SchemaField(
             description="Structured JSON output (only if wait_for_completion and outputSchema were provided)"
         )
-        cost_total: Optional[float] = SchemaField(
+        cost_total: float | None = SchemaField(
             description="Total cost in USD (only if wait_for_completion was True and completed)"
         )
-        elapsed_time: Optional[float] = SchemaField(
+        elapsed_time: float | None = SchemaField(
             description="Time taken to complete in seconds (only if wait_for_completion was True)"
         )
 
@@ -192,7 +192,7 @@ class ExaCreateResearchBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": input_data.model.value,
             "instructions": input_data.instructions,
         }
@@ -279,31 +279,31 @@ class ExaGetResearchBlock(Block):
         created_at: int = SchemaField(
             description="When research was created (Unix timestamp in ms)"
         )
-        finished_at: Optional[int] = SchemaField(
+        finished_at: int | None = SchemaField(
             description="When research finished (Unix timestamp in ms, if completed/canceled/failed)"
         )
-        output_content: Optional[str] = SchemaField(
+        output_content: str | None = SchemaField(
             description="Research output as text (if completed)"
         )
-        output_parsed: Optional[dict] = SchemaField(
+        output_parsed: dict | None = SchemaField(
             description="Structured JSON output matching outputSchema (if provided and completed)"
         )
-        cost_total: Optional[float] = SchemaField(
+        cost_total: float | None = SchemaField(
             description="Total cost in USD (if completed)"
         )
-        cost_searches: Optional[int] = SchemaField(
+        cost_searches: int | None = SchemaField(
             description="Number of searches performed (if completed)"
         )
-        cost_pages: Optional[int] = SchemaField(
+        cost_pages: int | None = SchemaField(
             description="Number of pages crawled (if completed)"
         )
-        cost_reasoning_tokens: Optional[int] = SchemaField(
+        cost_reasoning_tokens: int | None = SchemaField(
             description="AI tokens used for reasoning (if completed)"
         )
-        error_message: Optional[str] = SchemaField(
+        error_message: str | None = SchemaField(
             description="Error message if research failed"
         )
-        events: Optional[List[dict]] = SchemaField(
+        events: list[dict] | None = SchemaField(
             description="Detailed event log (if include_events was True)"
         )
 
@@ -386,13 +386,13 @@ class ExaWaitForResearchBlock(Block):
     class Output(BlockSchemaOutput):
         research_id: str = SchemaField(description="The research task identifier")
         final_status: str = SchemaField(description="Final status when polling stopped")
-        output_content: Optional[str] = SchemaField(
+        output_content: str | None = SchemaField(
             description="Research output as text (if completed)"
         )
-        output_parsed: Optional[dict] = SchemaField(
+        output_parsed: dict | None = SchemaField(
             description="Structured JSON output (if outputSchema was provided and completed)"
         )
-        cost_total: Optional[float] = SchemaField(description="Total cost in USD")
+        cost_total: float | None = SchemaField(description="Total cost in USD")
         elapsed_time: float = SchemaField(description="Total time waited in seconds")
         timed_out: bool = SchemaField(
             description="Whether polling timed out before completion"
@@ -460,7 +460,7 @@ class ExaListResearchBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        cursor: Optional[str] = SchemaField(
+        cursor: str | None = SchemaField(
             default=None,
             description="Cursor for pagination through results",
             advanced=True,
@@ -474,7 +474,7 @@ class ExaListResearchBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        research_tasks: List[ResearchTaskModel] = SchemaField(
+        research_tasks: list[ResearchTaskModel] = SchemaField(
             description="List of research tasks ordered by creation time (newest first)"
         )
         research_task: ResearchTaskModel = SchemaField(
@@ -483,7 +483,7 @@ class ExaListResearchBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more tasks to paginate through"
         )
-        next_cursor: Optional[str] = SchemaField(
+        next_cursor: str | None = SchemaField(
             description="Cursor for the next page of results"
         )
 
@@ -505,7 +505,7 @@ class ExaListResearchBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "limit": input_data.limit,
         }
         if input_data.cursor:

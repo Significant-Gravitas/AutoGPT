@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
@@ -766,7 +766,7 @@ def _sheets_graph_row(owner_id: str) -> AgentGraph:
         description="",
         userId=owner_id,
         isActive=True,
-        createdAt=datetime.now(timezone.utc),
+        createdAt=datetime.now(UTC),
         visibility=ResourceVisibility.PRIVATE,
         organizationId="org-1",
         Nodes=[
@@ -1073,7 +1073,7 @@ def test_credentials_input_schema_excludes_auto_creds():
     (is_auto_credential=True) from the schema. Auto_credentials are
     transparently resolved at execution time via file picker data.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
     from unittest.mock import PropertyMock, patch
 
     from backend.data.graph import GraphModel, NodeModel
@@ -1094,7 +1094,7 @@ def test_credentials_input_schema_excludes_auto_creds():
         name="Test",
         description="Test",
         user_id="test-user",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         nodes=[
             NodeModel(
                 id="node-1",
@@ -3114,7 +3114,7 @@ AI_STRUCTURED_RESPONSE_BLOCK_ID = "ed55ac19-356e-4243-a6cb-bc599e9b716f"
 
 
 def _graph_with(nodes: list[NodeModel]) -> GraphModel:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     return GraphModel(
         id="agg-graph",
@@ -3122,7 +3122,7 @@ def _graph_with(nodes: list[NodeModel]) -> GraphModel:
         name="Aggregation",
         description="",
         user_id="u-1",
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
         nodes=nodes,
         links=[],
     )

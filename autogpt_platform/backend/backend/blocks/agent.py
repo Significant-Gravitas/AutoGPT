@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from backend.blocks._base import (
     Block,
@@ -36,7 +36,7 @@ class AgentExecutorBlock(Block):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
-        agent_name: Optional[str] = SchemaField(
+        agent_name: str | None = SchemaField(
             default=None, description="Name to display in the Builder UI"
         )
 
@@ -44,7 +44,7 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        nodes_input_masks: Optional[NodesInputMasks] = SchemaField(
+        nodes_input_masks: NodesInputMasks | None = SchemaField(
             default=None, hidden=True
         )
 
@@ -137,7 +137,7 @@ class AgentExecutorBlock(Block):
                 logger=logger,
             )
             logger.warning(
-                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e.__class__.__name__} {str(e)}; execution is stopped."
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e.__class__.__name__} {e!s}; execution is stopped."
             )
             raise
 

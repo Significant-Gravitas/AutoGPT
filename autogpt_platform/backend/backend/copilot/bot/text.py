@@ -2,7 +2,7 @@
 
 import re
 from collections import defaultdict
-from typing import Callable, Iterator
+from collections.abc import Callable, Iterator
 
 from backend.data.sharing.workspace_refs import cut_lands_inside_artifact_link
 

@@ -1,5 +1,5 @@
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from typing import Any
 
@@ -223,7 +223,7 @@ class HackerNewsSearchBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        params = self.search_params(input_data, datetime.now(timezone.utc))
+        params = self.search_params(input_data, datetime.now(UTC))
         endpoint = "search_by_date" if input_data.sort_by == SortBy.NEWEST else "search"
         try:
             response = await self._search(endpoint, params)
@@ -323,5 +323,5 @@ def parse_time(text: str, now: datetime) -> int | None:
         return int((now - timedelta(hours=hours)).timestamp())
     moment = datetime.fromisoformat(text)
     if moment.tzinfo is None:
-        moment = moment.replace(tzinfo=timezone.utc)
+        moment = moment.replace(tzinfo=UTC)
     return int(moment.timestamp())

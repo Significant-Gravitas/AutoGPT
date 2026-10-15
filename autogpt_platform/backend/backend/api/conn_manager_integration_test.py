@@ -4,14 +4,13 @@ when the cluster is unreachable."""
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
 from fastapi import WebSocket
 
-import backend.data.redis_client as redis_client
 from backend.api.conn_manager import (
     ConnectionManager,
     _graph_execs_channel_key,
@@ -19,6 +18,7 @@ from backend.api.conn_manager import (
     graph_exec_channel_key,
 )
 from backend.api.model import WSMethod
+from backend.data import redis_client
 from backend.data.execution import (
     ExecutionStatus,
     GraphExecutionEvent,
@@ -52,7 +52,7 @@ def _meta(user_id: str, graph_id: str, graph_exec_id: str) -> GraphExecutionMeta
         nodes_input_masks=None,
         preset_id=None,
         status=ExecutionStatus.RUNNING,
-        started_at=datetime.now(tz=timezone.utc),
+        started_at=datetime.now(tz=UTC),
         ended_at=None,
         stats=GraphExecutionMeta.Stats(),
     )
@@ -73,10 +73,10 @@ def _node_event_payload(
         status=ExecutionStatus.COMPLETED,
         input_data={"in": marker},
         output_data={"out": [marker]},
-        add_time=datetime.now(tz=timezone.utc),
+        add_time=datetime.now(tz=UTC),
         queue_time=None,
-        start_time=datetime.now(tz=timezone.utc),
-        end_time=datetime.now(tz=timezone.utc),
+        start_time=datetime.now(tz=UTC),
+        end_time=datetime.now(tz=UTC),
     ).model_dump(mode="json")
     return json.dumps({"payload": inner}).encode()
 
@@ -91,8 +91,8 @@ def _graph_event_payload(
         graph_version=1,
         preset_id=None,
         status=ExecutionStatus.COMPLETED,
-        started_at=datetime.now(tz=timezone.utc),
-        ended_at=datetime.now(tz=timezone.utc),
+        started_at=datetime.now(tz=UTC),
+        ended_at=datetime.now(tz=UTC),
         stats=GraphExecutionEvent.Stats(
             cost=0,
             duration=1.0,

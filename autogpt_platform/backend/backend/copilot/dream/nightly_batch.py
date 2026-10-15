@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -110,7 +110,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     without retry-storming the cron.
     """
     nightly_id = str(uuidlib.uuid4())
-    started_at = datetime.now(timezone.utc)
+    started_at = datetime.now(UTC)
 
     # One pre-flight billing check for the whole pass. Per-submitter
     # cost logs (written by each submitter's own `record_phase_cost`
@@ -120,7 +120,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
     # Redis read for the night, not one per submitter.
     budget_ok, budget_skip = await check_dream_budget(user_id)
     if not budget_ok:
-        completed_at = datetime.now(timezone.utc)
+        completed_at = datetime.now(UTC)
         elapsed = (completed_at - started_at).total_seconds()
         if budget_skip == "rate_limit_unavailable":
             return NightlyBatchResult(
@@ -199,7 +199,7 @@ async def run_nightly_batch_submit(user_id: str) -> NightlyBatchResult:
         prev = result.error or ""
         result.error = (prev + " | " if prev else "") + f"ratification: {exc}"
 
-    completed_at = datetime.now(timezone.utc)
+    completed_at = datetime.now(UTC)
     result.completed_at = completed_at
     result.elapsed_seconds = (completed_at - started_at).total_seconds()
     logger.info(

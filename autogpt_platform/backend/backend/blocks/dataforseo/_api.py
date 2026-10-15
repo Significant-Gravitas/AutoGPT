@@ -3,7 +3,7 @@ DataForSEO API client with async support using the SDK patterns.
 """
 
 import base64
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from backend.sdk import Requests, UserPasswordCredentials
 
@@ -24,7 +24,7 @@ class DataForSeoClient:
         # can surface it via NodeExecutionStats.provider_cost for billing.
         self.last_cost_usd: float = 0.0
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """Generate the authorization header using Basic Auth."""
         username = self.credentials.username.get_secret_value()
         password = self.credentials.password.get_secret_value()
@@ -38,13 +38,13 @@ class DataForSeoClient:
     async def keyword_suggestions(
         self,
         keyword: str,
-        location_code: Optional[int] = None,
-        language_code: Optional[str] = None,
+        location_code: int | None = None,
+        language_code: str | None = None,
         include_seed_keyword: bool = True,
         include_serp_info: bool = False,
         include_clickstream_data: bool = False,
         limit: int = 100,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get keyword suggestions from DataForSEO Labs.
 
@@ -114,14 +114,14 @@ class DataForSeoClient:
     async def related_keywords(
         self,
         keyword: str,
-        location_code: Optional[int] = None,
-        language_code: Optional[str] = None,
+        location_code: int | None = None,
+        language_code: str | None = None,
         include_seed_keyword: bool = True,
         include_serp_info: bool = False,
         include_clickstream_data: bool = False,
         limit: int = 100,
-        depth: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        depth: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Get related keywords from DataForSEO Labs.
 

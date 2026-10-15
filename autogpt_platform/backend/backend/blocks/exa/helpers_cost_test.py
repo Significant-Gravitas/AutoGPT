@@ -138,7 +138,7 @@ def test_process_contents_settings_without_summary():
 def test_summary_settings_backward_compatibility_with_schema_alias():
     """Test that SummarySettings accepts 'schema' as an alias for 'output_schema'."""
     # Test that we can create SummarySettings with the old 'schema' key
-    summary = SummarySettings(**{"schema": {"type": "object"}})
+    summary = SummarySettings(schema={"type": "object"})
     assert summary.output_schema == {"type": "object"}
 
     # Test that we can also create with the new 'output_schema' key

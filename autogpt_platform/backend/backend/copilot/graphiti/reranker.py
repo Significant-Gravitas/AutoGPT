@@ -125,4 +125,4 @@ class CompatOpenAIRerankerClient(OpenAIRerankerClient):
             raise
 
 
-__all__ = ["CompatOpenAIRerankerClient", "LLMConfig", "MIN_COMPLETION_TOKENS"]
+__all__ = ["MIN_COMPLETION_TOKENS", "CompatOpenAIRerankerClient", "LLMConfig"]

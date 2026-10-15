@@ -12,7 +12,7 @@ Covers:
 """
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -656,7 +656,7 @@ class TestBuildExpertContextPlainSession:
         with_metrics = [
             e.model_copy(
                 update={
-                    "last_run_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+                    "last_run_at": datetime(2026, 1, 1, tzinfo=UTC),
                     "last_run_status": "COMPLETED",
                     "weekly_budget": 500,
                     "weekly_spend": 250,
@@ -856,8 +856,8 @@ class TestInjectUserContextExpertWiring:
         understanding = BusinessUnderstanding(
             id="u-1",
             user_id="user-1",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             pain_points=["Finding leads"],
         )
         kickoff = ChatMessage(
@@ -900,8 +900,8 @@ class TestInjectUserContextExpertWiring:
         understanding = BusinessUnderstanding(
             id="u-1",
             user_id="user-1",
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
             pain_points=["Finding leads"],
         )
         msg = ChatMessage(role="user", content="hello", sequence=None)
@@ -1457,7 +1457,7 @@ class TestRoutinesBlock:
                 self._routine(
                     title="Check the deploy",
                     crons=[],
-                    run_at=datetime(2026, 9, 20, 14, 30, tzinfo=timezone.utc),
+                    run_at=datetime(2026, 9, 20, 14, 30, tzinfo=UTC),
                 )
             ]
         )

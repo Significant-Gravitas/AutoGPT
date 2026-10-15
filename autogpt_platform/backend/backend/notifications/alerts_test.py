@@ -5,7 +5,7 @@ anything that solved itself — with everything that can't be sent folded into
 the Briefing rather than dropped.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -37,7 +37,7 @@ def _condition(cause: AlertCause, payload) -> AlertConditionDTO:
         cause_key=f"{cause.value.lower()}:x",
         data=payload.model_dump(mode="json"),
         status=AlertConditionStatus.PENDING,
-        created_at=datetime.now(tz=timezone.utc) - ALERT_DEBOUNCE,
+        created_at=datetime.now(tz=UTC) - ALERT_DEBOUNCE,
         sent_at=None,
         briefed_at=None,
     )

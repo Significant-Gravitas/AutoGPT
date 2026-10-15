@@ -14,7 +14,7 @@ import pytest_asyncio
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def server():  # type: ignore[override]
     """No-op server stub — tools tests don't need the full backend."""
-    return None
+    return
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session", autouse=True)

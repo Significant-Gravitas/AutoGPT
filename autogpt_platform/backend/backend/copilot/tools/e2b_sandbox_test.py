@@ -13,7 +13,7 @@ session-scoped event loop in conftest.py.
 
 import asyncio
 import contextlib
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -451,7 +451,7 @@ class TestGetOrCreateSandbox:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise asyncio.TimeoutError
+                raise TimeoutError
             return new_sb
 
         with (
@@ -1143,7 +1143,7 @@ def _info(
     return SimpleNamespace(
         sandbox_id=sandbox_id,
         state=state,
-        started_at=datetime.now(timezone.utc) - timedelta(seconds=age_seconds),
+        started_at=datetime.now(UTC) - timedelta(seconds=age_seconds),
         metadata={"autogpt_kind": kind},
     )
 
@@ -1941,7 +1941,7 @@ class TestExpertBoxRecovery:
         ):
             mock_cls.list = _mock_list([])
             mock_cls.create = AsyncMock(
-                side_effect=[asyncio.TimeoutError(), RuntimeError("busy"), sb]
+                side_effect=[TimeoutError(), RuntimeError("busy"), sb]
             )
             result = asyncio.run(
                 get_or_create_sandbox(

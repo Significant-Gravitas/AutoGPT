@@ -1,5 +1,4 @@
 from enum import Enum
-from typing import Optional
 
 from exa_py import AsyncExa
 from pydantic import BaseModel
@@ -37,10 +36,10 @@ class ContentStatusTag(str, Enum):
 
 
 class ContentError(BaseModel):
-    tag: Optional[ContentStatusTag] = SchemaField(
+    tag: ContentStatusTag | None = SchemaField(
         default=None, description="Specific error type"
     )
-    httpStatusCode: Optional[int] = SchemaField(
+    httpStatusCode: int | None = SchemaField(
         default=None, description="The corresponding HTTP status code"
     )
 
@@ -50,7 +49,7 @@ class ContentStatus(BaseModel):
     status: str = SchemaField(
         description="Status of the content fetch operation (success or error)"
     )
-    error: Optional[ContentError] = SchemaField(
+    error: ContentError | None = SchemaField(
         default=None, description="Error details, only present when status is 'error'"
     )
 
@@ -82,20 +81,20 @@ class ExaContentsBlock(Block):
             description="LLM-generated summary of the webpage",
             default=SummarySettings(),
         )
-        livecrawl: Optional[LivecrawlTypes] = SchemaField(
+        livecrawl: LivecrawlTypes | None = SchemaField(
             description="Livecrawling options: never, fallback (default), always, preferred",
             default=LivecrawlTypes.FALLBACK,
             advanced=True,
         )
-        livecrawl_timeout: Optional[int] = SchemaField(
+        livecrawl_timeout: int | None = SchemaField(
             description="Timeout for livecrawling in milliseconds",
             default=10000,
             advanced=True,
         )
-        subpages: Optional[int] = SchemaField(
+        subpages: int | None = SchemaField(
             description="Number of subpages to crawl", default=0, ge=0, advanced=True
         )
-        subpage_target: Optional[str | list[str]] = SchemaField(
+        subpage_target: str | list[str] | None = SchemaField(
             description="Keyword(s) to find specific subpages of search results",
             default=None,
             advanced=True,
@@ -120,7 +119,7 @@ class ExaContentsBlock(Block):
         statuses: list[ContentStatus] = SchemaField(
             description="Status information for each requested URL"
         )
-        cost_dollars: Optional[CostDollars] = SchemaField(
+        cost_dollars: CostDollars | None = SchemaField(
             description="Cost breakdown for the request"
         )
         error: str = SchemaField(description="Error message if the request failed")

@@ -3,7 +3,6 @@
 import logging
 import random
 import uuid
-from typing import Optional
 
 from prisma.errors import UniqueViolationError
 from prisma.types import ProfileCreateInput
@@ -57,7 +56,7 @@ async def ensure_user_profile(user_id: str) -> None:
     await ensure_profile(user.id, user.email)
 
 
-async def ensure_profile(user_id: str, email: Optional[str]) -> None:
+async def ensure_profile(user_id: str, email: str | None) -> None:
     """Create a default marketplace Profile for *user_id* if none exists.
 
     Idempotent and race-safe. A UniqueViolationError has two possible sources:

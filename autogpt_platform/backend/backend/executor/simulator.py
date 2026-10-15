@@ -88,7 +88,7 @@ def _simulator_model() -> str:
         # rather than constructing a fresh one — the validator chain runs
         # at import time, so a per-call ``ChatConfig()`` re-reads ``.env``
         # and re-runs every model_validator on every dry-run turn.
-        from backend.copilot.sdk.env import config as chat_cfg  # noqa: PLC0415
+        from backend.copilot.sdk.env import config as chat_cfg
 
         return chat_cfg.simulation_model or _DEFAULT_SIMULATOR_MODEL
     except Exception:
@@ -475,7 +475,7 @@ Available output pins: {json.dumps(required_output_properties)}
 def _get_platform_openrouter_key() -> str | None:
     """Return the platform's OpenRouter API key, or None if unavailable."""
     try:
-        from backend.util.settings import Settings  # noqa: PLC0415
+        from backend.util.settings import Settings
 
         key = Settings().secrets.open_router_api_key
         return key if key else None
@@ -604,8 +604,8 @@ def get_dry_run_credentials(
         return None
 
     try:
-        from backend.blocks.llm import APIKeyCredentials  # noqa: PLC0415
-        from backend.integrations.providers import ProviderName  # noqa: PLC0415
+        from backend.blocks.llm import APIKeyCredentials
+        from backend.integrations.providers import ProviderName
 
         return APIKeyCredentials(
             id="dry-run-platform",
@@ -641,7 +641,7 @@ def _default_for_input_result(result_schema: dict[str, Any], name: str | None) -
     if pin_type == "object":
         return {}
     if fmt == "date":
-        from datetime import date as _date  # noqa: PLC0415
+        from datetime import date as _date
 
         return _date.today().isoformat()
     if fmt == "time":
@@ -707,7 +707,7 @@ async def simulate_block(
         name = input_data.get("name", "")
         if fmt:
             try:
-                from backend.util.text import TextFormatter  # noqa: PLC0415
+                from backend.util.text import TextFormatter
 
                 escape_html = input_data.get("escape_html", False)
                 formatter = TextFormatter(autoescape=escape_html)

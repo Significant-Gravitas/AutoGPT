@@ -3,8 +3,9 @@ linked to its page, resolved once when the call is held and frozen into the card
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from datetime import datetime
-from typing import Any, Awaitable, Callable, Literal
+from typing import Any, Literal
 from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, field_serializer
@@ -97,7 +98,7 @@ async def resolve_references(
                 CARD_SECONDS,
             )
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"Gate card references for {tool_name} timed out")
         return wanted
 
@@ -152,7 +153,7 @@ async def _resolve(ref: Reference, call: _Call) -> Reference:
         found = await asyncio.wait_for(
             _RESOLVERS[ref.entity](ref.id, call), LOOKUP_SECONDS
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.warning(f"Gate reference {ref.entity} lookup timed out")
         return ref
     except Exception as e:

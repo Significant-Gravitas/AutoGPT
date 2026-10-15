@@ -189,8 +189,8 @@ async def generate_agent_image_v1(agent: GraphBaseMeta | AgentGraph) -> io.Bytes
         except ReplicateError as e:
             if e.status == 401:
                 raise RuntimeError("Invalid Replicate API token") from e
-            raise RuntimeError(f"Replicate API error: {str(e)}") from e
+            raise RuntimeError(f"Replicate API error: {e!s}") from e
 
     except Exception as e:
         logger.exception("Failed to generate agent image")
-        raise RuntimeError(f"Image generation failed: {str(e)}")
+        raise RuntimeError(f"Image generation failed: {e!s}")

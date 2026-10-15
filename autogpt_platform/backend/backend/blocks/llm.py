@@ -1,5 +1,4 @@
 # This file contains a lot of prompt block strings that would trigger "line too long"
-# flake8: noqa: E501
 import asyncio
 import logging
 import math
@@ -10,7 +9,7 @@ from abc import ABC
 from collections.abc import Iterable
 from enum import Enum
 from json import JSONDecodeError
-from typing import TYPE_CHECKING, Any, Literal, Optional, cast, get_args
+from typing import TYPE_CHECKING, Any, Literal, cast, get_args
 
 import anthropic
 import openai
@@ -149,7 +148,7 @@ class LLMResponse(BaseModel):
     completion_tokens: int
     cache_read_tokens: int = 0
     cache_creation_tokens: int = 0
-    reasoning: Optional[str] = None
+    reasoning: str | None = None
     provider_cost: float | None = None
 
 
@@ -220,13 +219,13 @@ def extract_openai_reasoning(response) -> str | None:
     reasoning = None
     choice = response.choices[0]
     if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
-        reasoning = str(getattr(choice, "reasoning"))
+        reasoning = str(choice.reasoning)
     elif hasattr(response, "reasoning") and getattr(response, "reasoning", None):
-        reasoning = str(getattr(response, "reasoning"))
+        reasoning = str(response.reasoning)
     elif hasattr(choice.message, "reasoning") and getattr(
         choice.message, "reasoning", None
     ):
-        reasoning = str(getattr(choice.message, "reasoning"))
+        reasoning = str(choice.message.reasoning)
     return reasoning
 
 
@@ -305,11 +304,7 @@ async def llm_call(
             )
         # SDK-native timeouts never reach the wait_for, so both are caught here
         # to keep this the single place that reports burned spend.
-        except (
-            asyncio.TimeoutError,
-            openai.APITimeoutError,
-            anthropic.APITimeoutError,
-        ) as e:
+        except (TimeoutError, openai.APITimeoutError, anthropic.APITimeoutError) as e:
             _log_timeout_outcome(
                 elapsed=time.monotonic() - started,
                 llm_model=llm_model,
@@ -416,7 +411,7 @@ async def _llm_call(
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt, model=llm_model.value)
-    model_max_output = llm_model.max_output_tokens or int(2**15)
+    model_max_output = llm_model.max_output_tokens or (2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
     max_tokens = max(min(available_tokens, model_max_output, user_max), 1)

@@ -3,7 +3,7 @@ from .filters import BelowLevelFilter
 from .formatters import FancyConsoleFormatter
 
 __all__ = [
-    "configure_logging",
     "BelowLevelFilter",
     "FancyConsoleFormatter",
+    "configure_logging",
 ]

@@ -2,7 +2,7 @@ import posixpath
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from prisma import Prisma
@@ -175,6 +175,6 @@ async def _replace_root(
     # transaction and the retired row keeps the path it was retired at.
     await tx.userworkspacefile.update(
         where={"id": file_id},
-        data={"isDeleted": True, "deletedAt": datetime.now(timezone.utc)},
+        data={"isDeleted": True, "deletedAt": datetime.now(UTC)},
     )
     return await _create_root(tx, write)

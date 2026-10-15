@@ -220,3 +220,6 @@ extend-exclude = ["test/fixtures"]
 # `poetry run format` runs `ruff check --fix .`, which would otherwise rewrite
 # the vendored fixture it walks into.
 force-exclude = true
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

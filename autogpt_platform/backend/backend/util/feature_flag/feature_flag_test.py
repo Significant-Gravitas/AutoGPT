@@ -556,7 +556,7 @@ class TestUserContext:
 
     @pytest.mark.asyncio
     async def test_context_includes_created_at_iso_string(self, mocker):
-        created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        created = datetime.datetime(2026, 5, 7, 12, 0, 0, tzinfo=datetime.UTC)
         accessor = self._stub_flag_fields(mocker, created_at=created)
         user_id = str(uuid.uuid4())
 

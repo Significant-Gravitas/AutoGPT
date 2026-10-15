@@ -241,9 +241,10 @@ async def test_execute_query_raises_after_exhausting_retries(
     ) as upstream_logger, patch(
         "backend.copilot.graphiti.config.graphiti_config.falkordb_query_max_attempts",
         4,
+    ), pytest.raises(
+        Exception, match="Max pending queries exceeded"
     ):
-        with pytest.raises(Exception, match="Max pending queries exceeded"):
-            await driver.execute_query("MATCH (n) RETURN 1")
+        await driver.execute_query("MATCH (n) RETURN 1")
 
     assert query.await_count == 4
     assert sleep.await_count == 3
@@ -277,9 +278,8 @@ async def test_execute_query_non_overflow_error_fails_fast(
 
     with patch.object(fdb.asyncio, "sleep", new=AsyncMock()) as sleep, patch.object(
         fdb, "_UPSTREAM_QUERY_LOGGER"
-    ) as upstream_logger:
-        with pytest.raises(ValueError):
-            await driver.execute_query("MATCH (n) RETRN 1")
+    ) as upstream_logger, pytest.raises(ValueError):
+        await driver.execute_query("MATCH (n) RETRN 1")
 
     assert query.await_count == 1
     sleep.assert_not_awaited()

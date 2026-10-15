@@ -29,8 +29,8 @@ the dispatcher works from both the HTTP server (Prisma directly) and
 the copilot_executor process (RPC via DatabaseManager).
 """
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from backend.copilot.model import (
     CHAT_STATUS_IDLE,
@@ -149,7 +149,7 @@ class TurnSlot:
     *this* caller admitted the slot.
     """
 
-    __slots__ = ("user_id", "session_id", "admitted", "_kept")
+    __slots__ = ("_kept", "admitted", "session_id", "user_id")
 
     def __init__(self, user_id: str, session_id: str) -> None:
         self.user_id = user_id

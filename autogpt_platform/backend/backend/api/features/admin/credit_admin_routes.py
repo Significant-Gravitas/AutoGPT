@@ -1,6 +1,6 @@
 import logging
 import typing
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Query, Security
@@ -65,10 +65,10 @@ async def add_user_credits(
 )
 async def admin_get_all_user_history(
     admin_user_id: str = Security(get_user_id),
-    search: typing.Optional[str] = None,
+    search: str | None = None,
     page: int = 1,
     page_size: int = 20,
-    transaction_filter: typing.Optional[CreditTransactionType] = None,
+    transaction_filter: CreditTransactionType | None = None,
     include_inactive: bool = False,
 ):
     """ """
@@ -104,14 +104,10 @@ class CreditTransactionsExportResponse(BaseModel):
 async def export_credit_transactions(
     # Typed Optional so orval generates `Date | null` and the URL builder
     # handles the union correctly.  Both are validated as required below.
-    start: typing.Optional[datetime] = Query(
-        None, description="ISO timestamp (inclusive)"
-    ),
-    end: typing.Optional[datetime] = Query(
-        None, description="ISO timestamp (inclusive)"
-    ),
-    transaction_type: typing.Optional[CreditTransactionType] = Query(None),
-    user_id: typing.Optional[str] = Query(None),
+    start: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
+    end: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
+    transaction_type: CreditTransactionType | None = Query(None),
+    user_id: str | None = Query(None),
     include_inactive: bool = Query(
         False,
         description=(
@@ -135,9 +131,9 @@ async def export_credit_transactions(
     # nor the response builder hits a TypeError on (end - start) when callers
     # send mixed naive/aware shapes.
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
     logger.info(
         "Admin %s exporting credit transactions [%s..%s] type=%s user=%s incl_inactive=%s",
         admin_user_id,
@@ -180,12 +176,8 @@ class CopilotUsageExportResponse(BaseModel):
 async def export_copilot_weekly_usage(
     # Typed Optional so orval generates `Date | null` and the URL builder
     # handles the union correctly.  Both are validated as required below.
-    start: typing.Optional[datetime] = Query(
-        None, description="ISO timestamp (inclusive)"
-    ),
-    end: typing.Optional[datetime] = Query(
-        None, description="ISO timestamp (inclusive)"
-    ),
+    start: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
+    end: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
     admin_user_id: str = Security(get_user_id),
 ) -> CopilotUsageExportResponse:
     """Export per-(user, ISO week) copilot spend with the user's tier limit.
@@ -200,9 +192,9 @@ async def export_copilot_weekly_usage(
     # nor the response builder hits a TypeError on (end - start) when callers
     # send mixed naive/aware shapes.
     if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
+        start = start.replace(tzinfo=UTC)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
+        end = end.replace(tzinfo=UTC)
     logger.info(
         "Admin %s exporting copilot weekly usage [%s..%s]",
         admin_user_id,

@@ -14,7 +14,7 @@ import difflib
 import itertools
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -51,7 +51,7 @@ _EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
 # An address inside a regex has escaped dots the pattern above misses.
 _LOCAL_PART = re.compile(r"[A-Za-z0-9._%+-]+@(?=[A-Za-z0-9-])")
 _UUID = re.compile(
-    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
 )
 
 
@@ -524,7 +524,7 @@ def _person(key: str, operator: str, value: Any) -> dict[str, Any]:
 
 def _iso_date(value: Any) -> datetime:
     if isinstance(value, (int, float)):
-        return datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        return datetime.fromtimestamp(value / 1000, tz=UTC)
     return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 

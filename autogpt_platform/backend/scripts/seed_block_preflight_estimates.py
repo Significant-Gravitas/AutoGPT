@@ -20,7 +20,7 @@ import argparse
 import asyncio
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 REPO_BACKEND = Path(__file__).resolve().parent.parent
@@ -37,7 +37,7 @@ async def main(days: int, min_samples: int, write: bool) -> None:
     from backend.data.block_cost_analytics import compute_block_cost_estimates
     from backend.data.db import connect, disconnect
 
-    end = datetime.now(timezone.utc)
+    end = datetime.now(UTC)
     start = end - timedelta(days=days)
 
     await connect()

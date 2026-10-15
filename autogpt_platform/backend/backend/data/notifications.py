@@ -11,9 +11,9 @@ for the Briefing's highlights, not a message of its own.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Generic, Literal, Optional, TypeVar, Union
+from typing import Generic, Literal, TypeVar, Union
 
 from prisma.enums import BriefingFrequency, NotificationType
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -392,11 +392,11 @@ class PassWorkEvent(BaseModel):
 class BaseEventModel(BaseModel):
     type: NotificationType
     user_id: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
 
 
 class NotificationEventModel(BaseEventModel, Generic[NotificationDataType_co]):
-    id: Optional[str] = None
+    id: str | None = None
     data: NotificationDataType_co
 
     @field_validator("type", mode="before")
@@ -407,7 +407,7 @@ class NotificationEventModel(BaseEventModel, Generic[NotificationDataType_co]):
 
 class NotificationResult(BaseModel):
     success: bool
-    message: Optional[str] = None
+    message: str | None = None
 
 
 class AudienceAction(Enum):

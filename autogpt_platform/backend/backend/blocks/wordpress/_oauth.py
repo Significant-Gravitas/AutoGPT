@@ -1,7 +1,6 @@
 import time
 from enum import Enum
 from logging import getLogger
-from typing import Optional
 from urllib.parse import quote
 
 from backend.sdk import (
@@ -60,14 +59,14 @@ class WordPressOAuthHandler(BaseOAuthHandler):
     # Default to no scopes for single blog access
     DEFAULT_SCOPES = []
 
-    def __init__(self, client_id: str, client_secret: Optional[str], redirect_uri: str):
+    def __init__(self, client_id: str, client_secret: str | None, redirect_uri: str):
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.scopes = self.DEFAULT_SCOPES
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: Optional[str] = None
+        self, scopes: list[str], state: str, code_challenge: str | None = None
     ) -> str:
         logger.debug("Generating WordPress OAuth login URL")
         # WordPress doesn't require PKCE, so code_challenge is not used
@@ -88,11 +87,11 @@ class WordPressOAuthHandler(BaseOAuthHandler):
             logger.debug(f"Generated OAuth URL: {url}")
             return url
         except Exception as e:
-            logger.error(f"Failed to generate OAuth URL: {str(e)}")
+            logger.error(f"Failed to generate OAuth URL: {e!s}")
             raise
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: Optional[str] = None
+        self, code: str, scopes: list[str], code_verifier: str | None = None
     ) -> OAuth2Credentials:
         logger.debug("Exchanging authorization code for tokens")
         logger.debug(f"Code: {code[:4]}...")
@@ -143,7 +142,7 @@ class WordPressOAuthHandler(BaseOAuthHandler):
             return credentials
 
         except Exception as e:
-            logger.error(f"Failed to exchange code for tokens: {str(e)}")
+            logger.error(f"Failed to exchange code for tokens: {e!s}")
             raise
 
     async def _refresh_tokens(
@@ -207,7 +206,7 @@ class WordPressOAuthHandler(BaseOAuthHandler):
             return new_credentials
 
         except Exception as e:
-            logger.error(f"Failed to refresh tokens: {str(e)}")
+            logger.error(f"Failed to refresh tokens: {e!s}")
             raise
 
     async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:

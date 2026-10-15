@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
-from typing import Literal, Optional
+from datetime import UTC, datetime
+from typing import Literal
 
 from typing_extensions import TypedDict
 
@@ -946,10 +946,10 @@ class GithubStarRepositoryBlock(Block):
             yield "error", str(e)
 
 
-def _parse_timestamp(timestamp: str) -> Optional[datetime]:
+def _parse_timestamp(timestamp: str) -> datetime | None:
     if not timestamp:
         return None
     parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
+        parsed = parsed.replace(tzinfo=UTC)
     return parsed

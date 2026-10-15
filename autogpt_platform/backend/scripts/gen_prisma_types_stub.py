@@ -16,8 +16,8 @@ from __future__ import annotations
 import ast
 import importlib.util
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, Set
 
 
 def _iter_assigned_names(target: ast.expr) -> Iterable[str]:
@@ -79,17 +79,17 @@ def _is_safe_type_alias(node: ast.Assign) -> bool:
 
 def collect_top_level_symbols(
     tree: ast.Module, source_lines: list[str]
-) -> tuple[Set[str], Set[str], list[str], Set[str]]:
+) -> tuple[set[str], set[str], list[str], set[str]]:
     """Collect all top-level symbols from an AST module.
 
     Returns:
         Tuple of (class_names, function_names, safe_variable_sources, unsafe_variable_names)
         safe_variable_sources contains the actual source code lines for safe variables
     """
-    classes: Set[str] = set()
-    functions: Set[str] = set()
+    classes: set[str] = set()
+    functions: set[str] = set()
     safe_variable_sources: list[str] = []
-    unsafe_variables: Set[str] = set()
+    unsafe_variables: set[str] = set()
 
     for node in tree.body:
         if isinstance(node, ast.ClassDef):

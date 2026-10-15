@@ -10,8 +10,6 @@ logger = logging.getLogger(__name__)
 class AuthConfigError(ValueError):
     """Raised when authentication configuration is invalid."""
 
-    pass
-
 
 class Settings:
     def __init__(self):

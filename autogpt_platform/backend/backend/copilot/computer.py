@@ -26,8 +26,9 @@ would wake it.
 import asyncio
 import logging
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Literal, Mapping, Optional
+from typing import Literal
 
 from e2b import SandboxState
 from pydantic import BaseModel
@@ -86,7 +87,7 @@ class ComputerInfo(BaseModel):
     owner_kind: Literal["session", "expert"]
     owner_id: str
     e2b_active: bool
-    box: Optional[SandboxSummary] = None
+    box: SandboxSummary | None = None
     screen_on: bool = False
     # path -> volume name; empty when the owner has no volumes (no user).
     mounts: dict[str, str] = {}
@@ -94,7 +95,7 @@ class ComputerInfo(BaseModel):
     shared_path: str = SHARED_PATH
 
 
-def computer_owner(session_id: str, expert_id: Optional[str]) -> SandboxOwner:
+def computer_owner(session_id: str, expert_id: str | None) -> SandboxOwner:
     return SandboxOwner.for_session(session_id, expert_id)
 
 
@@ -138,8 +139,8 @@ async def open_desktop(
     mounts: Mapping[str, str],
     api_key: str,
     *,
-    user_id: Optional[str],
-    session_id: Optional[str] = None,
+    user_id: str | None,
+    session_id: str | None = None,
 ) -> tuple[DesktopStream, bool, bool]:
     """Turn the screen on in the owner's box; return ``(stream, first_time, shared)``.
 
@@ -183,7 +184,7 @@ async def _open_desktop_locked(
     api_key: str,
     *,
     user_id: str,
-    session_id: Optional[str],
+    session_id: str | None,
 ) -> tuple[DesktopStream, bool, bool]:
     sandbox = await get_or_create_owner_sandbox(
         owner,
@@ -220,7 +221,7 @@ async def screen_is_on(owner: SandboxOwner, sandbox_id: str) -> bool:
     return value == sandbox_id
 
 
-async def _stream_password(owner: SandboxOwner) -> Optional[str]:
+async def _stream_password(owner: SandboxOwner) -> str | None:
     redis = await get_redis_async()
     raw = await redis.get(owner.stream_key())
     value = raw.decode() if isinstance(raw, bytes) else raw
@@ -253,7 +254,7 @@ def _owner_bound(stream: DesktopStream, user_id: str) -> DesktopStream:
     )
 
 
-def mounts_for(user_id: Optional[str], expert_id: Optional[str]) -> dict[str, str]:
+def mounts_for(user_id: str | None, expert_id: str | None) -> dict[str, str]:
     """The screen is on the same box as the shell, so it mounts what the shell mounts.
 
     Same rule as ``workspace_volume_mounts``: an expert always gets its own

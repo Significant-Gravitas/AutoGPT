@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from exa_py import AsyncExa
 
@@ -46,16 +45,16 @@ class ExaFindSimilarBlock(Block):
             default_factory=list,
             advanced=True,
         )
-        start_crawl_date: Optional[datetime] = SchemaField(
+        start_crawl_date: datetime | None = SchemaField(
             description="Start date for crawled content", advanced=True, default=None
         )
-        end_crawl_date: Optional[datetime] = SchemaField(
+        end_crawl_date: datetime | None = SchemaField(
             description="End date for crawled content", advanced=True, default=None
         )
-        start_published_date: Optional[datetime] = SchemaField(
+        start_published_date: datetime | None = SchemaField(
             description="Start date for published content", advanced=True, default=None
         )
-        end_published_date: Optional[datetime] = SchemaField(
+        end_published_date: datetime | None = SchemaField(
             description="End date for published content", advanced=True, default=None
         )
         include_text: list[str] = SchemaField(
@@ -90,7 +89,7 @@ class ExaFindSimilarBlock(Block):
             description="A formatted string of the results ready for LLMs."
         )
         request_id: str = SchemaField(description="Unique identifier for the request")
-        cost_dollars: Optional[CostDollars] = SchemaField(
+        cost_dollars: CostDollars | None = SchemaField(
             description="Cost breakdown for the request"
         )
         error: str = SchemaField(description="Error message if the request failed")

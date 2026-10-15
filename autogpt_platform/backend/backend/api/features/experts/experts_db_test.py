@@ -4,7 +4,7 @@ import itertools
 import re
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from test import load_store_agents as store_assets
 from types import SimpleNamespace
@@ -1015,7 +1015,7 @@ async def test_a_setup_whose_lease_ran_out_reads_failed_and_can_be_reclaimed(
 ):
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    fresh = datetime.now(timezone.utc)
+    fresh = datetime.now(UTC)
     await prisma.models.Expert.prisma().update(
         where={"id": hired.expert.id},
         data={
@@ -2028,9 +2028,9 @@ def test_expert_identity_projection_columns_exist_in_schema():
     would otherwise only surface as a runtime query error.
     """
     schema = (Path(__file__).parents[4] / "schema.prisma").read_text()
-    model = re.search(r"^model Expert \{(.*?)^\}", schema, re.S | re.M)
+    model = re.search(r"^model Expert \{(.*?)^\}", schema, re.DOTALL | re.MULTILINE)
     assert model is not None, "Expert model not found in schema.prisma"
-    fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.M))
+    fields = set(re.findall(r"^\s{2}(\w+)", model.group(1), re.MULTILINE))
     assert {
         "id",
         "name",
@@ -4408,7 +4408,7 @@ async def test_hired_workflows_order_by_created_at_then_id(
     later_listing = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[])
     hired = await experts_db.hire_expert(test_user.id, template.id, None)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     later_workflow = await prisma.models.ExpertWorkflow.prisma().create(
         data={
@@ -4945,7 +4945,7 @@ async def test_list_pods_is_user_scoped(server: SpinTestServer, test_user, other
 
 @pytest.mark.asyncio(loop_scope="session")
 async def test_list_pods_uses_creation_order(server: SpinTestServer, test_user):
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     later = await prisma.models.ExpertPod.prisma().create(
         data={
             "userId": test_user.id,
@@ -5212,7 +5212,7 @@ def _output_node_exec(
     queued_minutes: int | None = None,
     stats: dict | None = None,
 ) -> SimpleNamespace:
-    base = datetime(2026, 8, 14, 9, 0, tzinfo=timezone.utc)
+    base = datetime(2026, 8, 14, 9, 0, tzinfo=UTC)
     return SimpleNamespace(
         stats=stats,
         executionData=execution_data,
@@ -5374,7 +5374,7 @@ async def test_list_expert_runs_scopes_queries_and_matches_pending_review():
 @pytest.mark.asyncio
 async def test_get_expert_activity_zero_fills_the_window_on_the_owners_calendar():
     tz = "Pacific/Auckland"
-    instant = datetime(2026, 1, 1, 11, 30, tzinfo=timezone.utc)
+    instant = datetime(2026, 1, 1, 11, 30, tzinfo=UTC)
     today = instant.astimezone(ZoneInfo(tz)).date()
     yesterday = today - timedelta(days=1)
     seen: list[tuple] = []
@@ -5444,7 +5444,7 @@ async def test_get_expert_activity_counts_sessions_by_day(server: SpinTestServer
         await create_chat_session(owner.id, dry_run=False, expert_id=raised.expert.id)
     await create_chat_session(owner.id, dry_run=False)
 
-    instant = datetime(2026, 1, 1, 23, 59, tzinfo=timezone.utc)
+    instant = datetime(2026, 1, 1, 23, 59, tzinfo=UTC)
     await prisma.models.ChatSession.prisma().update_many(
         where={"userId": owner.id}, data={"createdAt": instant}
     )
@@ -6189,14 +6189,16 @@ async def test_expert_hired_reports_failed_preloads_count(
 ):
     slv_id = await _seed_store_listing(server)
     template = await _seed_template(name="Maria", preload_listings=[slv_id])
-    with patch.object(
-        experts_db.library_db,
-        "add_store_agent_to_library",
-        new_callable=AsyncMock,
-        side_effect=RuntimeError("install exploded"),
+    with (
+        patch.object(
+            experts_db.library_db,
+            "add_store_agent_to_library",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("install exploded"),
+        ),
+        patch.object(experts_db, "emit_funnel_event") as emit,
     ):
-        with patch.object(experts_db, "emit_funnel_event") as emit:
-            result = await experts_db.hire_expert(test_user.id, template.id, None)
+        result = await experts_db.hire_expert(test_user.id, template.id, None)
     emit.assert_called_once_with(
         test_user.id,
         "expert_hired",
@@ -6999,7 +7001,7 @@ async def test_a_one_shot_gets_a_row_and_exactly_one_job(
 ):
     """ "Check the deploy at six" is a row like anything else, so it can be
     listed, reworded and cancelled — and later counted."""
-    run_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    run_at = datetime.now(UTC) + timedelta(hours=2)
     created = await experts_db.create_routine(
         test_user.id,
         None,
@@ -7033,7 +7035,7 @@ async def test_a_spent_one_shot_stops_reading_as_scheduled(
         None,
         title="Check the deploy",
         prompt="Check it.",
-        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        run_at=datetime.now(UTC) + timedelta(hours=2),
     )
     with patch.object(
         routine_jobs, "get_scheduler_client", return_value=_fake_scheduler()
@@ -7076,7 +7078,7 @@ async def test_re_arming_a_one_shot_at_a_time_that_has_passed_is_refused(
         None,
         title="Check the deploy",
         prompt="Check it.",
-        run_at=datetime.now(timezone.utc) + timedelta(hours=2),
+        run_at=datetime.now(UTC) + timedelta(hours=2),
     )
     with (
         patch.object(
@@ -7088,7 +7090,7 @@ async def test_re_arming_a_one_shot_at_a_time_that_has_passed_is_refused(
             test_user.id,
             None,
             created.id,
-            run_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            run_at=datetime.now(UTC) - timedelta(minutes=1),
         )
 
 
@@ -7103,7 +7105,7 @@ async def test_a_routine_runs_on_a_cadence_or_at_a_time_but_not_both(
             title="Both",
             prompt="Both.",
             crons=["H 8 * * 1"],
-            run_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            run_at=datetime.now(UTC) + timedelta(hours=1),
         )
     with pytest.raises(ValueError):
         await experts_db.create_routine(

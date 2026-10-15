@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from datetime import UTC
 from typing import cast
 
 import pytest
@@ -1834,11 +1835,11 @@ def test_chat_message_from_db_round_trips_created_at() -> None:
     """ChatMessage.from_db surfaces the DB row's createdAt on the pydantic
     model so the API response carries it through to the frontend's TurnStats
     map (powering the hover-reveal date on the copilot UI)."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from prisma.models import ChatMessage as PrismaChatMessage
 
-    created_at = datetime(2026, 4, 23, 10, 15, 30, tzinfo=timezone.utc)
+    created_at = datetime(2026, 4, 23, 10, 15, 30, tzinfo=UTC)
     row = PrismaChatMessage.model_construct(
         id="m1",
         sessionId="sess-1",

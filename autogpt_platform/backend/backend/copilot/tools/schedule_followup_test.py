@@ -1,6 +1,6 @@
 """Tests for ScheduleFollowupTool."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -104,7 +104,7 @@ async def test_one_shot_delay_omitted_session_id_passes_new_chat_sentinel(
 
     mock_client = AsyncMock()
     mock_client.add_copilot_turn_schedule = AsyncMock(
-        return_value=_info(run_at=datetime(2026, 5, 22, 19, 0, tzinfo=timezone.utc))
+        return_value=_info(run_at=datetime(2026, 5, 22, 19, 0, tzinfo=UTC))
     )
 
     with (

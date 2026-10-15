@@ -1,7 +1,7 @@
 """Tests for backend.copilot.computer: describe without waking, screen on in place."""
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -28,7 +28,7 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
     return SimpleNamespace(
         sandbox_id=sandbox_id,
         state=state,
-        started_at=datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc),
+        started_at=datetime(2026, 9, 5, 12, 0, tzinfo=UTC),
         cpu_count=1,
         memory_mb=2048,
         template_id="agpt-desktop-1x2-004d6e73",

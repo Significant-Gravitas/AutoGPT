@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import feedparser
@@ -71,7 +71,7 @@ class ReadRSSFeedBlock(Block):
                         title="Example RSS Item",
                         link="https://example.com/article",
                         description="This is an example RSS item description.",
-                        pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc),
+                        pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=UTC),
                         author="John Doe",
                         categories=["Technology", "News"],
                     ),
@@ -83,9 +83,7 @@ class ReadRSSFeedBlock(Block):
                             title="Example RSS Item",
                             link="https://example.com/article",
                             description="This is an example RSS item description.",
-                            pub_date=datetime(
-                                2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc
-                            ),
+                            pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=UTC),
                             author="John Doe",
                             categories=["Technology", "News"],
                         ),
@@ -140,9 +138,7 @@ class ReadRSSFeedBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
-        start_time = datetime.now(timezone.utc) - timedelta(
-            minutes=input_data.time_period
-        )
+        start_time = datetime.now(UTC) - timedelta(minutes=input_data.time_period)
         while keep_going:
             keep_going = input_data.run_continuously
 
@@ -150,7 +146,7 @@ class ReadRSSFeedBlock(Block):
             all_entries = []
 
             for entry in feed["entries"]:
-                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
+                pub_date = datetime(*entry["published_parsed"][:6], tzinfo=UTC)
 
                 if pub_date > start_time:
                     rss_entry = RSSEntry(

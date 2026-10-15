@@ -1,5 +1,4 @@
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,7 +35,7 @@ class BaseAyrshareInput(BlockSchemaInput):
         default=False,
         advanced=True,
     )
-    schedule_date: Optional[datetime] = SchemaField(
+    schedule_date: datetime | None = SchemaField(
         description="UTC datetime for scheduling (YYYY-MM-DDThh:mm:ssZ)",
         default=None,
         advanced=True,
@@ -47,7 +46,7 @@ class BaseAyrshareInput(BlockSchemaInput):
     shorten_links: bool = SchemaField(
         description="Whether to shorten links", default=False, advanced=True
     )
-    unsplash: Optional[str] = SchemaField(
+    unsplash: str | None = SchemaField(
         description="Unsplash image configuration", default=None, advanced=True
     )
     requires_approval: bool = SchemaField(
@@ -63,7 +62,7 @@ class BaseAyrshareInput(BlockSchemaInput):
     random_media_url: bool = SchemaField(
         description="Whether to generate random media", default=False, advanced=True
     )
-    notes: Optional[str] = SchemaField(
+    notes: str | None = SchemaField(
         description="Additional notes for the post", default=None, advanced=True
     )
 
@@ -82,7 +81,7 @@ class CallToAction(BaseModel):
     action_type: str = Field(
         ..., description="Type of action (book, order, shop, learn_more, sign_up, call)"
     )
-    url: Optional[str] = Field(
+    url: str | None = Field(
         description="URL for the action (not required for 'call' action)"
     )
 
@@ -110,41 +109,41 @@ class InstagramUserTag(BaseModel):
     """Model for Instagram user tags."""
 
     username: str = Field(..., description="Instagram username (without @)")
-    x: Optional[float] = Field(description="X coordinate (0.0-1.0) for image posts")
-    y: Optional[float] = Field(description="Y coordinate (0.0-1.0) for image posts")
+    x: float | None = Field(description="X coordinate (0.0-1.0) for image posts")
+    y: float | None = Field(description="Y coordinate (0.0-1.0) for image posts")
 
 
 class LinkedInTargeting(BaseModel):
     """Model for LinkedIn audience targeting."""
 
-    countries: Optional[list[str]] = Field(
+    countries: list[str] | None = Field(
         description="Country codes (e.g., ['US', 'IN', 'DE', 'GB'])"
     )
-    seniorities: Optional[list[str]] = Field(
+    seniorities: list[str] | None = Field(
         description="Seniority levels (e.g., ['Senior', 'VP'])"
     )
-    degrees: Optional[list[str]] = Field(description="Education degrees")
-    fields_of_study: Optional[list[str]] = Field(description="Fields of study")
-    industries: Optional[list[str]] = Field(description="Industry categories")
-    job_functions: Optional[list[str]] = Field(description="Job function categories")
-    staff_count_ranges: Optional[list[str]] = Field(description="Company size ranges")
+    degrees: list[str] | None = Field(description="Education degrees")
+    fields_of_study: list[str] | None = Field(description="Fields of study")
+    industries: list[str] | None = Field(description="Industry categories")
+    job_functions: list[str] | None = Field(description="Job function categories")
+    staff_count_ranges: list[str] | None = Field(description="Company size ranges")
 
 
 class PinterestCarouselOption(BaseModel):
     """Model for Pinterest carousel image options."""
 
-    title: Optional[str] = Field(description="Image title")
-    link: Optional[str] = Field(description="External destination link for the image")
-    description: Optional[str] = Field(description="Image description")
+    title: str | None = Field(description="Image title")
+    link: str | None = Field(description="External destination link for the image")
+    description: str | None = Field(description="Image description")
 
 
 class YouTubeTargeting(BaseModel):
     """Model for YouTube country targeting."""
 
-    block: Optional[list[str]] = Field(
+    block: list[str] | None = Field(
         description="Country codes to block (e.g., ['US', 'CA'])"
     )
-    allow: Optional[list[str]] = Field(
+    allow: list[str] | None = Field(
         description="Country codes to allow (e.g., ['GB', 'AU'])"
     )
 

@@ -11,7 +11,7 @@ Tests cover:
 """
 
 import uuid
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import pytest
 from prisma.enums import ContentType

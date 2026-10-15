@@ -19,7 +19,7 @@ import logging
 import re
 import time
 from collections.abc import Iterator
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -94,7 +94,7 @@ _USER_NAME_CACHE_MAX = 10_000
 class SlackAdapter(WebhookAdapter):
     def __init__(self, api: BotBackend):
         self._api = api
-        self._on_message_callback: Optional[MessageCallback] = None
+        self._on_message_callback: MessageCallback | None = None
         # Per-workspace caches, keyed by team_id. A workspace's client + bot user
         # id are resolved once from its stored install token and reused.
         self._clients: dict[str, AsyncWebClient] = {}
@@ -151,7 +151,7 @@ class SlackAdapter(WebhookAdapter):
 
     # -- Per-workspace client resolution --
 
-    async def _client_for(self, team_id: str) -> Optional[AsyncWebClient]:
+    async def _client_for(self, team_id: str) -> AsyncWebClient | None:
         """Return a cached Slack client for ``team_id``, building it from the
         workspace's stored install token (or the static back-compat token).
 
@@ -309,7 +309,7 @@ class SlackAdapter(WebhookAdapter):
 
     async def _context_from_block_action(
         self, payload: dict[str, Any], option: str
-    ) -> Optional[MessageContext]:
+    ) -> MessageContext | None:
         channel = (payload.get("channel") or {}).get("id")
         team = (payload.get("team") or {}).get("id")
         user = (payload.get("user") or {}).get("id")
@@ -330,7 +330,7 @@ class SlackAdapter(WebhookAdapter):
         )
 
     async def _dispatch_event(
-        self, event: dict[str, Any], team_id: Optional[str] = None
+        self, event: dict[str, Any], team_id: str | None = None
     ) -> None:
         # Workspace removed the app / revoked its token → drop its stored install
         # and cached client so we stop trying to use a dead token.
@@ -346,7 +346,7 @@ class SlackAdapter(WebhookAdapter):
             return
         event_type = event.get("type")
         channel_type = event.get("channel_type")
-        ctx: Optional[MessageContext] = None
+        ctx: MessageContext | None = None
         if event_type == "app_mention":
             ctx = await self._build_context(event, team_id, bot_mentioned=True)
         elif event_type == "message" and channel_type == "im":
@@ -372,7 +372,7 @@ class SlackAdapter(WebhookAdapter):
             logger.exception("Slack event handler failed")
 
     async def _also_arrives_as_mention(
-        self, event: dict[str, Any], team_id: Optional[str]
+        self, event: dict[str, Any], team_id: str | None
     ) -> bool:
         """True when this ``message`` event is a copy of an ``app_mention``.
 
@@ -400,11 +400,11 @@ class SlackAdapter(WebhookAdapter):
     async def _build_context(
         self,
         event: dict[str, Any],
-        team_id: Optional[str] = None,
+        team_id: str | None = None,
         *,
         bot_mentioned: bool,
         is_dm: bool = False,
-    ) -> Optional[MessageContext]:
+    ) -> MessageContext | None:
         channel = event.get("channel")
         ts = event.get("ts")
         user = event.get("user")
@@ -555,7 +555,7 @@ class SlackAdapter(WebhookAdapter):
         self,
         client: AsyncWebClient,
         channel: str,
-        thread_ts: Optional[str],
+        thread_ts: str | None,
         text: str,
         mentionable_users: tuple[tuple[str, str], ...],
         flush_at: int = config.CHUNK_FLUSH_AT,
@@ -669,7 +669,7 @@ class SlackAdapter(WebhookAdapter):
 
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
-    ) -> Optional[str]:
+    ) -> str | None:
         # Slack threads are implicit — re-pack (team, channel, parent_ts) into a
         # single target_id the handler passes back to the outbound send_* calls.
         team, channel, _ = _decode_target(channel_id)
@@ -685,7 +685,7 @@ class SlackAdapter(WebhookAdapter):
             client = await self._client_for(team_id)
             if client is None:
                 continue
-            cursor: Optional[str] = None
+            cursor: str | None = None
             while True:
                 resp = await client.conversations_list(
                     types="public_channel",
@@ -708,7 +708,7 @@ class SlackAdapter(WebhookAdapter):
                     break
         return channels
 
-    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
+    async def get_channel_server_id(self, channel_id: str) -> str | None:
         team, channel, _ = _decode_target(channel_id)
         client = await self._client_for(team)
         if client is None:
@@ -727,7 +727,7 @@ class SlackAdapter(WebhookAdapter):
         except Exception:
             return None
 
-    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
+    async def open_dm_channel(self, platform_user_id: str) -> str | None:
         # A DM link carries no workspace, so this resolves via the static
         # single-workspace token — multi-workspace installs can't be picked
         # without a team id on the user link.
@@ -743,7 +743,7 @@ class SlackAdapter(WebhookAdapter):
 
     async def post_channel_message(
         self, channel_id: str, text: str
-    ) -> Optional[PostedRef]:
+    ) -> PostedRef | None:
         team, channel, thread_ts = _decode_target(channel_id)
         first_ts, sent = await self._post_chunked(
             team, channel, text, thread_ts=thread_ts
@@ -758,7 +758,7 @@ class SlackAdapter(WebhookAdapter):
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
-    ) -> Optional[PostedRef]:
+    ) -> PostedRef | None:
         # Slack threads are implicit + unnamed: post text as the root message;
         # the returned ref threads subsequent sends off it.
         team, channel, _ = _decode_target(channel_id)
@@ -806,8 +806,8 @@ class SlackAdapter(WebhookAdapter):
         return EditOutcome.OK
 
     async def _post_chunked(
-        self, team_id: str, channel: str, text: str, thread_ts: Optional[str] = None
-    ) -> tuple[Optional[str], int]:
+        self, team_id: str, channel: str, text: str, thread_ts: str | None = None
+    ) -> tuple[str | None, int]:
         """Post ``text`` chunked under the message cap; return the first ts
         and how many chunks landed.
 
@@ -856,7 +856,7 @@ class SlackAdapter(WebhookAdapter):
             else:
                 yield from self._localized_chunks(chunk, flush_at // 2)
 
-    async def _permalink(self, team_id: str, channel: str, ts: str) -> Optional[str]:
+    async def _permalink(self, team_id: str, channel: str, ts: str) -> str | None:
         client = await self._client_for(team_id)
         if client is None:
             return None
@@ -959,13 +959,11 @@ def _verify_signature(request: Request, body: bytes) -> bool:
     )
 
 
-def _encode_target(
-    team_id: str, channel_id: str, thread_ts: Optional[str] = None
-) -> str:
+def _encode_target(team_id: str, channel_id: str, thread_ts: str | None = None) -> str:
     return f"{team_id}|{channel_id}|{thread_ts or ''}"
 
 
-def _decode_target(target_id: str) -> tuple[str, str, Optional[str]]:
+def _decode_target(target_id: str) -> tuple[str, str, str | None]:
     parts = target_id.split("|")
     if len(parts) == 3:
         team, channel, thread_ts = parts

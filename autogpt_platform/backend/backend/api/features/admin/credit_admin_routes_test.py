@@ -1,4 +1,5 @@
 import json
+from datetime import UTC
 from unittest.mock import AsyncMock, Mock
 
 import fastapi
@@ -405,7 +406,7 @@ def test_export_credit_transactions_missing_window_is_400() -> None:
 def test_export_copilot_weekly_usage_success(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     from backend.data.platform_cost import CopilotWeeklyUsageRow
 
@@ -413,8 +414,8 @@ def test_export_copilot_weekly_usage_success(
         CopilotWeeklyUsageRow(
             user_id="user-1",
             user_email="user1@example.com",
-            week_start=datetime(2026, 1, 5, tzinfo=timezone.utc),
-            week_end=datetime(2026, 1, 12, tzinfo=timezone.utc),
+            week_start=datetime(2026, 1, 5, tzinfo=UTC),
+            week_end=datetime(2026, 1, 12, tzinfo=UTC),
             copilot_cost_microdollars=2_500_000,
             tier="PRO",
             weekly_limit_microdollars=25_000_000,

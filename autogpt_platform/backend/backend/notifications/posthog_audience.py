@@ -107,7 +107,7 @@ def set_account_properties(user_id: str, email: str, signup_method: str | None) 
 
 
 def set_checkout_properties(
-    user_id: str, fields: Fields, opened_at: datetime | int | float | None
+    user_id: str, fields: Fields, opened_at: datetime | float | None
 ) -> None:
     """A checkout opener's properties (`checkout_update`). Never raises:
     analytics must not cost the opener their MailerLite change."""
@@ -126,7 +126,7 @@ def account_update(email: str, signin_providers: Iterable[str]) -> PersonUpdate:
 
 def checkout_update(
     fields: Fields,
-    opened_at: datetime | int | float | None,
+    opened_at: datetime | float | None,
     *,
     first_open: bool = False,
 ) -> PersonUpdate:

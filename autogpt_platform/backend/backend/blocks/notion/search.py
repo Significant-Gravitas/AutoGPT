@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import List, Optional
-
 from pydantic import BaseModel
 
 from backend.blocks._base import (
@@ -30,12 +28,12 @@ class NotionSearchResult(BaseModel):
     type: str  # 'page' or 'database'
     title: str
     url: str
-    created_time: Optional[str] = None
-    last_edited_time: Optional[str] = None
-    parent_type: Optional[str] = None  # 'page', 'database', or 'workspace'
-    parent_id: Optional[str] = None
-    icon: Optional[str] = None  # emoji icon if present
-    is_inline: Optional[bool] = None  # for databases only
+    created_time: str | None = None
+    last_edited_time: str | None = None
+    parent_type: str | None = None  # 'page', 'database', or 'workspace'
+    parent_id: str | None = None
+    icon: str | None = None  # emoji icon if present
+    is_inline: bool | None = None  # for databases only
 
 
 class NotionSearchBlock(Block):
@@ -47,7 +45,7 @@ class NotionSearchBlock(Block):
             description="Search query text. Leave empty to get all accessible pages/databases.",
             default="",
         )
-        filter_type: Optional[str] = SchemaField(
+        filter_type: str | None = SchemaField(
             description="Filter results by type: 'page' or 'database'. Leave empty for both.",
             default=None,
         )
@@ -56,13 +54,13 @@ class NotionSearchBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        results: List[NotionSearchResult] = SchemaField(
+        results: list[NotionSearchResult] = SchemaField(
             description="List of search results with title, type, URL, and metadata."
         )
         result: NotionSearchResult = SchemaField(
             description="Individual search result (yields one per result found)."
         )
-        result_ids: List[str] = SchemaField(
+        result_ids: list[str] = SchemaField(
             description="List of IDs from search results for batch operations."
         )
         count: int = SchemaField(description="Number of results found.")
@@ -124,9 +122,9 @@ class NotionSearchBlock(Block):
     async def search_workspace(
         credentials: OAuth2Credentials,
         query: str = "",
-        filter_type: Optional[str] = None,
+        filter_type: str | None = None,
         limit: int = 20,
-    ) -> tuple[List[NotionSearchResult], int]:
+    ) -> tuple[list[NotionSearchResult], int]:
         """
         Search the Notion workspace.
 

@@ -1,4 +1,4 @@
-from typing import Literal, Union, cast
+from typing import Literal, cast
 
 import tweepy
 from pydantic import BaseModel
@@ -70,7 +70,7 @@ class TwitterGetSpacesBlock(Block):
             ["spaces.read", "users.read", "offline.access"]
         )
 
-        identifier: Union[SpaceList, UserList] = SchemaField(
+        identifier: SpaceList | UserList = SchemaField(
             discriminator="discriminator",
             description="Choose whether to lookup spaces by their IDs or by creator user IDs",
             advanced=False,
@@ -139,7 +139,7 @@ class TwitterGetSpacesBlock(Block):
     @staticmethod
     def get_spaces(
         credentials: TwitterCredentials,
-        identifier: Union[SpaceList, UserList],
+        identifier: SpaceList | UserList,
         expansions: SpaceExpansionsFilter | None,
         space_fields: SpaceFieldsFilter | None,
         user_fields: TweetUserFieldsFilter | None,

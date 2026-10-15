@@ -2,7 +2,6 @@ from datetime import datetime
 
 from todoist_api_python.api import TodoistAPI
 from todoist_api_python.models import Task
-from typing_extensions import Optional
 
 from backend.blocks._base import (
     Block,
@@ -29,50 +28,50 @@ class TodoistCreateTaskBlock(Block):
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         content: str = SchemaField(description="Task content", advanced=False)
-        description: Optional[str] = SchemaField(
+        description: str | None = SchemaField(
             description="Task description", default=None, advanced=False
         )
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Project ID this task should belong to",
             default=None,
             advanced=False,
         )
-        section_id: Optional[str] = SchemaField(
+        section_id: str | None = SchemaField(
             description="Section ID this task should belong to",
             default=None,
             advanced=False,
         )
-        parent_id: Optional[str] = SchemaField(
+        parent_id: str | None = SchemaField(
             description="Parent task ID", default=None, advanced=True
         )
-        order: Optional[int] = SchemaField(
+        order: int | None = SchemaField(
             description="Optional order among other tasks,[Non-zero integer value used by clients to sort tasks under the same parent]",
             default=None,
             advanced=True,
         )
-        labels: Optional[list[str]] = SchemaField(
+        labels: list[str] | None = SchemaField(
             description="Task labels", default=None, advanced=True
         )
-        priority: Optional[int] = SchemaField(
+        priority: int | None = SchemaField(
             description="Task priority from 1 (normal) to 4 (urgent)",
             default=None,
             advanced=True,
         )
-        due_date: Optional[datetime] = SchemaField(
+        due_date: datetime | None = SchemaField(
             description="Due date in YYYY-MM-DD format", advanced=True, default=None
         )
-        deadline_date: Optional[datetime] = SchemaField(
+        deadline_date: datetime | None = SchemaField(
             description="Specific date in YYYY-MM-DD format relative to user's timezone",
             default=None,
             advanced=True,
         )
-        assignee_id: Optional[str] = SchemaField(
+        assignee_id: str | None = SchemaField(
             description="Responsible user ID", default=None, advanced=True
         )
-        duration_unit: Optional[str] = SchemaField(
+        duration_unit: str | None = SchemaField(
             description="Task duration unit (minute/day)", default=None, advanced=True
         )
-        duration: Optional[int] = SchemaField(
+        duration: int | None = SchemaField(
             description="Task duration amount, You need to selecct the duration unit first",
             depends_on=["duration_unit"],
             default=None,
@@ -189,24 +188,24 @@ class TodoistGetTasksBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Filter tasks by project ID", default=None, advanced=False
         )
-        section_id: Optional[str] = SchemaField(
+        section_id: str | None = SchemaField(
             description="Filter tasks by section ID", default=None, advanced=True
         )
-        label: Optional[str] = SchemaField(
+        label: str | None = SchemaField(
             description="Filter tasks by label name", default=None, advanced=True
         )
-        filter: Optional[str] = SchemaField(
+        filter: str | None = SchemaField(
             description="Filter by any supported filter, You can see How to use filters or create one of your one here - https://todoist.com/help/articles/introduction-to-filters-V98wIH",
             default=None,
             advanced=True,
         )
-        lang: Optional[str] = SchemaField(
+        lang: str | None = SchemaField(
             description="IETF language tag for filter language", default=None
         )
-        ids: Optional[list[str]] = SchemaField(
+        ids: list[str] | None = SchemaField(
             description="List of task IDs to retrieve", default=None, advanced=False
         )
 
@@ -375,50 +374,50 @@ class TodoistUpdateTaskBlock(Block):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         task_id: str = SchemaField(description="Task ID to update")
         content: str = SchemaField(description="Task content", advanced=False)
-        description: Optional[str] = SchemaField(
+        description: str | None = SchemaField(
             description="Task description", default=None, advanced=False
         )
-        project_id: Optional[str] = SchemaField(
+        project_id: str | None = SchemaField(
             description="Project ID this task should belong to",
             default=None,
             advanced=False,
         )
-        section_id: Optional[str] = SchemaField(
+        section_id: str | None = SchemaField(
             description="Section ID this task should belong to",
             default=None,
             advanced=False,
         )
-        parent_id: Optional[str] = SchemaField(
+        parent_id: str | None = SchemaField(
             description="Parent task ID", default=None, advanced=True
         )
-        order: Optional[int] = SchemaField(
+        order: int | None = SchemaField(
             description="Optional order among other tasks,[Non-zero integer value used by clients to sort tasks under the same parent]",
             default=None,
             advanced=True,
         )
-        labels: Optional[list[str]] = SchemaField(
+        labels: list[str] | None = SchemaField(
             description="Task labels", default=None, advanced=True
         )
-        priority: Optional[int] = SchemaField(
+        priority: int | None = SchemaField(
             description="Task priority from 1 (normal) to 4 (urgent)",
             default=None,
             advanced=True,
         )
-        due_date: Optional[datetime] = SchemaField(
+        due_date: datetime | None = SchemaField(
             description="Due date in YYYY-MM-DD format", advanced=True, default=None
         )
-        deadline_date: Optional[datetime] = SchemaField(
+        deadline_date: datetime | None = SchemaField(
             description="Specific date in YYYY-MM-DD format relative to user's timezone",
             default=None,
             advanced=True,
         )
-        assignee_id: Optional[str] = SchemaField(
+        assignee_id: str | None = SchemaField(
             description="Responsible user ID", default=None, advanced=True
         )
-        duration_unit: Optional[str] = SchemaField(
+        duration_unit: str | None = SchemaField(
             description="Task duration unit (minute/day)", default=None, advanced=True
         )
-        duration: Optional[int] = SchemaField(
+        duration: int | None = SchemaField(
             description="Task duration amount, You need to selecct the duration unit first",
             depends_on=["duration_unit"],
             default=None,

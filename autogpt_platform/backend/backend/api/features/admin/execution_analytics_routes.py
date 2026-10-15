@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Security
@@ -31,19 +30,19 @@ logger = logging.getLogger(__name__)
 
 class ExecutionAnalyticsRequest(BaseModel):
     graph_id: str = Field(..., description="Graph ID to analyze")
-    graph_version: Optional[int] = Field(None, description="Optional graph version")
-    user_id: Optional[str] = Field(None, description="Optional user ID filter")
-    created_after: Optional[datetime] = Field(
+    graph_version: int | None = Field(None, description="Optional graph version")
+    user_id: str | None = Field(None, description="Optional user ID filter")
+    created_after: datetime | None = Field(
         None, description="Optional created date lower bound"
     )
     model_name: str = Field("gpt-4o-mini", description="Model to use for generation")
     batch_size: int = Field(
         10, description="Batch size for concurrent processing", le=25, ge=1
     )
-    system_prompt: Optional[str] = Field(
+    system_prompt: str | None = Field(
         None, description="Custom system prompt (default: built-in prompt)"
     )
-    user_prompt: Optional[str] = Field(
+    user_prompt: str | None = Field(
         None,
         description="Custom user prompt with {{GRAPH_NAME}} and {{EXECUTION_DATA}} placeholders (default: built-in prompt)",
     )
@@ -58,12 +57,12 @@ class ExecutionAnalyticsResult(BaseModel):
     version_id: int
     user_id: str
     exec_id: str
-    summary_text: Optional[str]
-    score: Optional[float]
+    summary_text: str | None
+    score: float | None
     status: str  # "success", "failed", "skipped"
-    error_message: Optional[str] = None
-    started_at: Optional[datetime] = None
-    ended_at: Optional[datetime] = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
 
 
 class ExecutionAnalyticsResponse(BaseModel):
@@ -90,7 +89,7 @@ class ExecutionAnalyticsConfig(BaseModel):
 
 class AccuracyTrendsRequest(BaseModel):
     graph_id: str = Field(..., description="Graph ID to analyze", min_length=1)
-    user_id: Optional[str] = Field(None, description="Optional user ID filter")
+    user_id: str | None = Field(None, description="Optional user ID filter")
     days_back: int = Field(30, description="Number of days to look back", ge=7, le=90)
     drop_threshold: float = Field(
         10.0, description="Alert threshold percentage", ge=1.0, le=50.0
@@ -148,9 +147,9 @@ async def get_execution_analytics_config(
             # - Year components like "2024", "2025" (4 digit years >= 2020)
             # - Month/day components like "04", "16" when they appear to be dates
             if part.isdigit():
-                if len(part) >= 8:  # Long date format like "20240307"
-                    continue
-                elif len(part) == 4 and int(part) >= 2020:  # Year like "2024", "2025"
+                if (
+                    len(part) >= 8 or len(part) == 4 and int(part) >= 2020
+                ):  # Long date format like "20240307"
                     continue
                 elif len(part) <= 2 and int(part) <= 31:  # Month/day like "04", "16"
                     # Skip if this looks like a date component (basic heuristic)
@@ -452,7 +451,7 @@ async def _process_batch(
 )
 async def get_execution_accuracy_trends(
     graph_id: str,
-    user_id: Optional[str] = None,
+    user_id: str | None = None,
     days_back: int = 30,
     drop_threshold: float = 10.0,
     include_historical: bool = False,

@@ -17,7 +17,7 @@ state allows correct content accumulation by _dispatch_response.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
@@ -42,7 +42,7 @@ from backend.copilot.sdk.service import (
 )
 from backend.copilot.session_cleanup import prune_orphan_tool_calls
 
-_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
+_NOW = datetime(2024, 1, 1, tzinfo=UTC)
 
 
 def _make_session() -> ChatSession:
