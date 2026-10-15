@@ -84,6 +84,7 @@ from backend.api.features.experts.routines import enable_routine as enable_routi
 from backend.api.features.experts.routines import get_routine as get_routine
 from backend.api.features.experts.routines import install_routines
 from backend.api.features.experts.routines import list_routines as list_routines
+from backend.api.features.experts.routines import template_routine_rows
 from backend.api.features.experts.workflow_chain import (
     build_workflow_chain,
     integration_providers,
@@ -324,6 +325,15 @@ async def _latest_runs(
         distinct=["expertId"],
     )
     return {row.expertId: row for row in rows if row.expertId is not None}
+
+
+async def get_template(template_id: str) -> Expert | None:
+    """One live roster template, as ``list_templates`` shows it."""
+    row = await prisma.models.Expert.prisma().find_first(
+        where={"id": template_id, "isTemplate": True, "isArchived": False},
+        include=_TEMPLATE_WORKFLOW_INCLUDE,
+    )
+    return _to_model(row) if row else None
 
 
 async def list_templates(
@@ -1165,7 +1175,7 @@ async def _install_hire_contents(
         expert_id,
         [
             r
-            for r in await _template_routines(template_id)
+            for r in await template_routine_rows(template_id)
             if r.key not in installed_routines
         ],
     )
@@ -1993,16 +2003,6 @@ async def _install_preloads(
             user_timezone=user_timezone or "UTC",
         )
     return failed
-
-
-async def _template_routines(
-    template_id: str,
-) -> list[prisma.models.ExpertRoutine]:
-    """The proposals a template ships, in the order the roster declares them."""
-    return await prisma.models.ExpertRoutine.prisma().find_many(
-        where={"expertId": template_id},
-        order=[{"createdAt": "asc"}, {"id": "asc"}],
-    )
 
 
 async def _install_bundled_skills(

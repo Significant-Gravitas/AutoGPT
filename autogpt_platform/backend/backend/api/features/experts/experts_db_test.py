@@ -1,8 +1,11 @@
 import asyncio
 import functools
+import io
 import itertools
+import json
 import re
 import uuid
+import zipfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -23,6 +26,7 @@ import pytest_asyncio
 import backend.api.features.store.model as store_model
 from backend.api.features.experts import (
     experts_db,
+    package_export,
     raise_attachments,
     routine_jobs,
     routines,
@@ -40,9 +44,12 @@ from backend.api.features.experts.models import (
     VoiceSample,
     encode_voice_preferences,
 )
+from backend.api.features.experts.package_model import workflow_path
 from backend.api.features.experts.roster import RosterError, load_roster
 from backend.api.features.library import db as library_db
 from backend.api.features.library import model as library_model
+from backend.api.features.store import db as store_db
+from backend.api.features.store import skill_db
 from backend.api.features.store.categories import StoreCategory
 from backend.api.features.store.skill_catalog_checkout import catalog_checkout
 from backend.api.features.store.skill_catalog_release import CatalogError, load_catalog
@@ -57,7 +64,7 @@ from backend.data.graph import Graph, GraphSettings, Node
 from backend.data.user import get_or_create_user
 from backend.executor import utils as execution_utils
 from backend.util.exceptions import ConflictError, ExpertRunPausedError, NotFoundError
-from backend.util.json import SafeJson
+from backend.util.json import SafeJson, dumps
 from backend.util.test import SpinTestServer
 
 EXPECTED_ROSTER_PRELOAD_SLUGS = {
@@ -6032,6 +6039,55 @@ async def test_list_templates_without_a_category_keeps_uncategorised_experts(
 
     assert plain.categories == []
     assert plain.id in {t.id for t in await experts_db.list_templates()}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_get_template_finds_only_a_live_template(
+    server: SpinTestServer, test_user
+):
+    live = await _seed_template(name="Maria", preload_listings=[])
+    archived = await _template(f"Gone {uuid.uuid4().hex[:8]}", isArchived=True)
+    hired = await experts_db.hire_expert(test_user.id, live.id, None)
+
+    found = await experts_db.get_template(live.id)
+    assert found is not None and found.id == live.id and found.is_template
+    assert await experts_db.get_template(archived.id) is None
+    assert await experts_db.get_template(hired.expert.id) is None
+    assert await experts_db.get_template(str(uuid.uuid4())) is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_template_package_holds_what_the_marketplace_shows(
+    server: SpinTestServer, hub_listing, skills_hub_on
+):
+    """End to end over the database: the skill a hire would install, the
+    workflow's agent file and the routine, and nothing else."""
+    await skill_db.invalidate_active_versions_cache()
+    template = await _template_with_setup(server, hub_listing)
+    found = await experts_db.get_template(template.id)
+    assert found is not None
+    [shown] = await experts_db.with_bundled_skills([found], None)
+
+    package = await package_export.build_template_package(template.id, "user-1")
+    archive = zipfile.ZipFile(
+        io.BytesIO(package_export.zip_from_expert_package(package))
+    )
+
+    [workflow] = shown.workflows
+    assert sorted(archive.namelist()) == sorted(
+        [
+            "expert.json",
+            f"skills/{hub_listing.slug}/SKILL.md",
+            workflow_path(0, workflow.name),
+        ]
+    )
+    manifest = json.loads(archive.read("expert.json"))
+    assert [s["slug"] for s in manifest["skills"]] == [
+        s.slug for s in shown.bundled_skills
+    ]
+    agent_file = await store_db.get_agent(workflow.store_listing_version_id or "")
+    assert archive.read(workflow_path(0, workflow.name)).decode() == dumps(agent_file)
+    assert [r["key"] for r in manifest["routines"]] == ["queue-sweep"]
 
 
 @pytest.mark.asyncio(loop_scope="session")

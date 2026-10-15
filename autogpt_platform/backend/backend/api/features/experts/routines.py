@@ -183,6 +183,23 @@ async def list_routines(
     return [to_model(row) for row in rows]
 
 
+async def template_routine_rows(
+    template_id: str,
+) -> list[prisma.models.ExpertRoutine]:
+    """The proposals a template ships, in the order the roster declares them.
+
+    Unscoped by owner: a template has none, and what it proposes is
+    marketplace content."""
+    return await prisma.models.ExpertRoutine.prisma().find_many(
+        where={"expertId": template_id},
+        order=[{"createdAt": "asc"}, {"id": "asc"}],
+    )
+
+
+async def list_template_routines(template_id: str) -> list[ExpertRoutine]:
+    return [to_model(row) for row in await template_routine_rows(template_id)]
+
+
 async def enable_routine(
     user_id: str,
     expert_id: str | None,

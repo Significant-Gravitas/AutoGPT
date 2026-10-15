@@ -7039,6 +7039,51 @@
         }
       }
     },
+    "/api/experts/templates/{template_id}/package": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Download an expert template as a .expert.zip file",
+        "description": "Return the template as ``<name>.expert.zip``: ``expert.json``, each\nbundled skill under ``skills/<slug>/`` and each workflow under\n``workflows/``. Never memory, conversations or files; a template has\nnone, and the format has nowhere to put them.",
+        "operationId": "download_expert_template_package",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "template_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the marketplace template",
+              "title": "Template Id"
+            },
+            "description": "ID of the marketplace template"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The template's manifest, skills and workflows as a zip",
+            "content": {
+              "application/zip": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Expert template not found" },
+          "413": { "description": "The package is over the size limit" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}": {
       "delete": {
         "tags": ["v2", "experts", "experts", "private"],
