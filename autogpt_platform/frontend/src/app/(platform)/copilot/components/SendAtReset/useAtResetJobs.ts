@@ -14,8 +14,9 @@ export function useAtResetJobs(sessionId: string | null) {
     query: {
       enabled: !!sessionId,
       select: (response) => (response.status === 200 ? response.data.jobs : []),
-      // A set turn disappears once it fires; look again now and then, and
-      // often while one is due, to show it went (or was moved on).
+      // A set turn disappears once it fires; look again now and then, as
+      // one comes due, and often while it is, to show it went (or was moved
+      // on).
       refetchInterval: (query) =>
         query.state.data?.status === 200
           ? refetchEvery(query.state.data.data.jobs)
@@ -43,8 +44,8 @@ export function useAtResetJobs(sessionId: string | null) {
 
 function refetchEvery(jobs: AtResetTurn[]) {
   if (!jobs.length) return false;
-  const now = Date.now();
-  return jobs.some((job) => new Date(job.run_at).getTime() <= now)
-    ? 10_000
-    : 60_000;
+  const untilDue =
+    Math.min(...jobs.map((job) => new Date(job.run_at).getTime())) - Date.now();
+  if (untilDue <= 0) return 10_000;
+  return Math.min(Math.max(untilDue, 1_000), 60_000);
 }

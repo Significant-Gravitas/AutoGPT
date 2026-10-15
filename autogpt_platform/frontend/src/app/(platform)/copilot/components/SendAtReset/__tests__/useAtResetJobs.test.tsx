@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { delay, http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useAtResetJobs } from "../useAtResetJobs";
 
 const JOB = {
@@ -43,5 +43,31 @@ describe("useAtResetJobs", () => {
     expect(result.current.jobs?.map((job) => job.message)).toEqual([
       "Draft the launch post",
     ]);
+  });
+
+  it("looks again as a set turn comes due, then often until it has gone", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(JOB.run_at.getTime() - 20_000);
+    let reads = 0;
+    server.use(
+      http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+        reads += 1;
+        return HttpResponse.json({ jobs: [JOB] });
+      }),
+    );
+    try {
+      renderHook(() => useAtResetJobs("session-1"), {
+        wrapper: withQueryClient(),
+      });
+      await vi.waitFor(() => expect(reads).toBe(1));
+
+      await act(() => vi.advanceTimersByTimeAsync(21_000));
+      expect(reads).toBe(2);
+
+      await act(() => vi.advanceTimersByTimeAsync(10_000));
+      expect(reads).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

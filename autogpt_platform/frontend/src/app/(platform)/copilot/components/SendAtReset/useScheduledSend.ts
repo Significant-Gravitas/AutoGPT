@@ -9,7 +9,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { describeSendFailure } from "../ChatInput/helpers";
-import { useChatDraft } from "../ChatInput/useChatDraft";
+import { useChatDraftAccess } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
   isJoinedSendTooLong,
@@ -31,7 +31,7 @@ interface Args {
 export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   const queryClient = useQueryClient();
   const { jobs, writeJobs } = useAtResetJobs(sessionId);
-  const [, setDraft] = useChatDraft(
+  const draft = useChatDraftAccess(
     sessionId ? sessionDraftKey(sessionId) : undefined,
   );
   const scheduleSend = usePostV2ScheduleTurnAtBudgetReset();
@@ -80,7 +80,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     try {
       await schedule(message);
     } catch (error) {
-      setDraft((current) => returnToDraft(current, message));
+      draft.write((current) => returnToDraft(current, message));
       toastSendFailure({
         title: sendAtResetFailureTitle(error),
         error,
@@ -108,7 +108,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   async function edit() {
     const message = pending?.message ?? "";
     if (!(await unschedule())) return;
-    setDraft((current) => returnToDraft(current, message));
+    draft.write((current) => returnToDraft(current, message));
     if (inputId) document.getElementById(inputId)?.focus();
   }
 

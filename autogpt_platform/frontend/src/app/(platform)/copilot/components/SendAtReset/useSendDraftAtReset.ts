@@ -1,4 +1,4 @@
-import { useChatDraft } from "../ChatInput/useChatDraft";
+import { useChatDraftAccess } from "../ChatInput/useChatDraft";
 import { SESSION_COMPOSER_ID, sessionDraftKey } from "./helpers";
 import { useScheduledSend } from "./useScheduledSend";
 
@@ -12,18 +12,18 @@ interface Args {
  *  send at the reset, or with nothing written yet, opens the composer. */
 export function useSendDraftAtReset({ sessionId, onSendNow, onClose }: Args) {
   const scheduled = useScheduledSend({ sessionId, onSendNow });
-  const [draft, setDraft] = useChatDraft(
+  const draft = useChatDraftAccess(
     sessionId ? sessionDraftKey(sessionId) : undefined,
   );
 
   async function sendDraftAtReset() {
-    const message = draft.trim();
+    const message = draft.read().trim();
     onClose();
     if (!message) {
       document.getElementById(SESSION_COMPOSER_ID)?.focus();
       return;
     }
-    setDraft("");
+    draft.write("");
     await scheduled.scheduleQuietly(message);
   }
 
