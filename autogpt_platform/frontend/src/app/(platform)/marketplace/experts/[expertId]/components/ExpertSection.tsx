@@ -14,7 +14,7 @@ export function ExpertSection({ title, count, description, children }: Props) {
     <section aria-labelledby={headingId}>
       <h2
         id={headingId}
-        className="flex items-baseline gap-2 text-xl font-semibold tracking-[-0.02em] text-zinc-900"
+        className="flex items-baseline gap-2 text-2xl font-semibold tracking-[-0.02em] text-zinc-900"
       >
         {title}
         {count !== undefined ? (
