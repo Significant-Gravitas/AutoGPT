@@ -422,7 +422,7 @@ export const ChatContainer = ({
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
                   className={cn(
-                    "relative mx-auto w-full max-w-3xl px-3 pb-6 pt-2",
+                    "relative mx-auto w-full max-w-3xl px-3 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2",
                     hasComposerTab && "max-lg:pt-0",
                   )}
                 >
