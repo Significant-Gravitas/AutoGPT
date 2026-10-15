@@ -30,9 +30,11 @@ statement against the row as it stands when the statement runs:
 Nothing is written to a row that has reached a terminal status, nor to one
 that fails the update's own conditions: another user's row when it names the
 owner, a row written since the instant it names. The one exception is the
-update marked ``closed_row`` (the cleanup after the pass saying it has
-finished), which applies to a closed row only and only clears. The statement
-text is constant; every value is a bound parameter.
+update marked ``closed_row``, which applies to a closed row only: the cleanup
+after the pass saying it has finished, which only clears, or a take-back
+leaving the row the batch its stop the provider did not confirm, which only
+sets the batch and the cleanup mark. The statement text is constant; every
+value is a bound parameter.
 """
 
 from typing import Any
