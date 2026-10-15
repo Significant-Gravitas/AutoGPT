@@ -87,6 +87,79 @@ describe("server backend", () => {
     expect(result.current.enabled).toBe(false);
   });
 
+  describe("while the server has no answer for a flag", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("asks again until the vendor answers it, then stops", async () => {
+      const answers = [{}, {}, { [HIRE_EXPERTS]: true }];
+      let requests = 0;
+      serveFlags(() => ({
+        flags: answers[Math.min(requests++, answers.length - 1)],
+        configured: true,
+      }));
+
+      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() => expect(requests).toBe(1));
+      await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+      expect(result.current).toMatchObject({ enabled: true, answered: true });
+      const answeredAfter = requests;
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+      expect(requests).toBe(answeredAfter);
+    });
+
+    it("backs off to about once a minute when it never answers", async () => {
+      let requests = 0;
+      serveFlags(() => {
+        requests++;
+        return { flags: {}, configured: true };
+      });
+
+      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() => expect(requests).toBe(1));
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+
+      // Every 5 s would be 120; backing off to a minute is a dozen or so.
+      expect(requests).toBeGreaterThan(4);
+      expect(requests).toBeLessThan(20);
+    });
+
+    it.each([
+      [
+        "a flag only another component reads",
+        { flags: { [HIRE_EXPERTS]: true }, configured: true },
+      ],
+      [
+        "any flag, with no vendor to wait for",
+        { flags: {}, configured: false },
+      ],
+    ])("never asks again over %s", async (_, response) => {
+      let requests = 0;
+      serveFlags(() => {
+        requests++;
+        return response;
+      });
+
+      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() => expect(requests).toBe(1));
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+
+      expect(requests).toBe(1);
+    });
+  });
+
   it("waits for the session, then reads each signed-in user's own flags", async () => {
     const answers = [true, false];
     let requests = 0;
