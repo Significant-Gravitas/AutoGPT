@@ -70,10 +70,13 @@ export function TaskCard({
               avatarUrl={expert.avatarUrl}
               color={expert.color}
               size={20}
-              className="rounded-full"
+              className="rounded-full border border-zinc-200"
             />
           ) : (
-            <AutopilotAvatar size={20} className="rounded-full" />
+            <AutopilotAvatar
+              size={20}
+              className="rounded-full border border-zinc-200"
+            />
           )}
         </div>
         <div className="mt-1 flex items-start gap-2">
