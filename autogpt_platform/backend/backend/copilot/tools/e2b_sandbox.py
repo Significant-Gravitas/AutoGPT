@@ -750,7 +750,9 @@ def _active_turns_key(owner: SandboxOwner) -> str:
 
 
 def _pin_ceilings_key(owner: SandboxOwner) -> str:
-    return f"{owner.key()}:ceilings"
+    # Tagged with the whole turn-counter key, so on Redis Cluster both hash to
+    # one slot: the release script touches the two together.
+    return f"{{{_active_turns_key(owner)}}}:ceilings"
 
 
 async def _acquire_turn(owner: SandboxOwner) -> None:
