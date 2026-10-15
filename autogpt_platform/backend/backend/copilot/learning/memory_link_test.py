@@ -44,15 +44,11 @@ def _version(expert_id: str | None) -> SkillVersionRecord:
 @pytest.mark.parametrize("expert_id", [None, "expert-1"], ids=["account", "expert"])
 async def test_a_learned_version_is_linked_in_its_own_scope(expert_id):
     with (
-        patch.object(
-            memory_link, "is_enabled_for_user", AsyncMock(return_value=True)
-        ),
+        patch.object(memory_link, "is_enabled_for_user", AsyncMock(return_value=True)),
         patch.object(memory_link, "enqueue_episode", autospec=True) as enqueue,
     ):
         enqueue.return_value = True
-        linked = await memory_link.link_version_to_memory(
-            "user-1", _version(expert_id)
-        )
+        linked = await memory_link.link_version_to_memory("user-1", _version(expert_id))
 
     assert linked is True
     assert enqueue.await_args.args[0] == MemoryScope.build("user-1", expert_id)
