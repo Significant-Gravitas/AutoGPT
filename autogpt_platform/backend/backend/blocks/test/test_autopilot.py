@@ -445,7 +445,8 @@ async def test_a_recovered_turn_spends_against_its_own_chat():
 @pytest.mark.asyncio
 async def test_a_recovered_graph_nested_turn_stays_in_its_spawners_tree_and_chat():
     """Kills: recovery re-rooting a graph-nested turn, which would drop its
-    depth and tools and charge its own chat instead of the one that started it."""
+    depth and tools and charge its own chat instead of the one that started it,
+    and a recovered turn that is no longer the block's, so cannot run on credits."""
     spawner = TurnEnvelope(
         tree_id="tree-1",
         depth=1,
@@ -466,3 +467,4 @@ async def test_a_recovered_graph_nested_turn_stays_in_its_spawners_tree_and_chat
     envelope = call.kwargs["envelope"]
     assert (envelope.tree_id, envelope.depth) == ("tree-1", 2)
     assert envelope.spend_session_id == "chat-origin"
+    assert call.kwargs["tool_name"] == "autopilot_block"
