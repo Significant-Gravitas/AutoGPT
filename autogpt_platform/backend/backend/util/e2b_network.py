@@ -301,10 +301,10 @@ async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
     has no ceiling of its own to give keeps, so that it never widens one.
 
     Read from its own key, not the credential record, because a pause revokes
-    the credential and the box's ceiling must survive that.  ``None`` (every
-    provider) only for a box never pinned with one, which has no ceiling to
-    keep.  If it cannot be read, no provider: the safe side, until the next
-    turn pins the box with its own.
+    the credential and the box's ceiling must survive that.  With the proxy on,
+    every box is pinned when it is created, so a missing record has expired (a
+    box paused longer than its TTL) or cannot be read: either way no provider,
+    the safe side, until the next turn pins the box with its own.
     """
     try:
         redis = await get_redis_async()
@@ -317,7 +317,7 @@ async def recorded_providers(sandbox_id: str) -> Optional[tuple[str, ...]]:
         )
         return ()
     if not raw:
-        return None
+        return ()
     providers = json.loads(raw.decode() if isinstance(raw, bytes) else raw)
     return None if providers is None else tuple(providers)
 

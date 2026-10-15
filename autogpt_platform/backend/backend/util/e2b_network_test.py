@@ -607,9 +607,11 @@ class TestRecordedProviders:
             assert await e2b_network.recorded_providers("sb-1") == ("github",)
 
     @pytest.mark.asyncio
-    async def test_a_box_never_pinned_has_no_ceiling_to_keep(self):
+    async def test_a_box_with_no_record_keeps_no_provider(self):
+        """Every box is pinned at create, so no record means it expired (a box
+        paused past its TTL): keeping every provider would fail open."""
         with patch(f"{_M}.get_redis_async", AsyncMock(return_value=_redis())):
-            assert await e2b_network.recorded_providers("sb-new") is None
+            assert await e2b_network.recorded_providers("sb-paused-for-days") == ()
 
     @pytest.mark.asyncio
     async def test_an_unreadable_record_keeps_no_provider(self):
