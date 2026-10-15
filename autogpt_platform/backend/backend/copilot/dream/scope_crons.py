@@ -39,9 +39,10 @@ async def memory_scope_may_fire(
     """Whether a dream-system cron of ``scope`` may run now.
 
     The registry must let it: an ACTIVE row, or an account with no row
-    (crons from before the registry). Any other row's crons are stragglers
-    (a pause or archive whose removal failed), and an expert with no row was
-    deleted: either way the run is skipped, and the reconcile pass
+    (crons from before the registry) whose user still exists. Any other
+    row's crons are stragglers (a pause or archive whose removal failed),
+    and an expert with no row, or an account with no row whose user is
+    gone, was deleted: either way the run is skipped, and the reconcile pass
     (``scope_reconcile.py``) removes the crons. An expert scope's expert must
     also be active; archived, paused or unavailable only skips the run, since
     its crons are the lifecycle hooks' to manage. The whole check runs under
@@ -200,15 +201,19 @@ async def _may_fire(scope: MemoryScope, expert_status: ExpertStatusLookup) -> bo
 
 
 async def _schedule_active(scope: MemoryScope) -> bool:
-    """Whether the scope's row lets its crons run. A cron that fires under a
-    row that says otherwise is a straggler, for the reconcile pass to remove."""
-    row = await memory_schedule_db().get_scope_schedule(
-        scope.owner_user_id, scope.scope_key
-    )
+    """Whether the scope's row lets its crons run; an account with no row
+    runs while its user exists. A cron that fires under a row that says
+    otherwise is a straggler, for the reconcile pass to remove."""
+    db = memory_schedule_db()
+    row = await db.get_scope_schedule(scope.owner_user_id, scope.scope_key)
     if row is not None and row.state == MemoryScopeScheduleState.ACTIVE:
         return True
     if row is None and not scope.is_expert:
-        return True
+        owner = scope.owner_user_id
+        if owner in await db.existing_user_ids([owner]):
+            return True
+        logger.info(f"Memory cron of {scope_label(scope)} skipped: its user is gone")
+        return False
     state = row.state.value.lower() if row is not None else "without a registry row"
     logger.info(f"Memory cron of {scope_label(scope)} skipped: fired {state}")
     return False

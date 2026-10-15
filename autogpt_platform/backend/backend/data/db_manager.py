@@ -594,6 +594,7 @@ class DatabaseManager(AppService):
     record_scope_run = _(memory_schedule_db.record_scope_run)
     list_user_scope_schedules = _(memory_schedule_db.list_user_scope_schedules)
     list_scope_schedules = _(memory_schedule_db.list_scope_schedules)
+    existing_user_ids = _(memory_schedule_db.existing_user_ids)
 
     # ============ Bot Analytics ============ #
     record_bot_event = _(bot_analytics_db.record_bot_event)
@@ -1106,6 +1107,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     record_scope_run = d.record_scope_run
     list_user_scope_schedules = d.list_user_scope_schedules
     list_scope_schedules = d.list_scope_schedules
+    existing_user_ids = d.existing_user_ids
 
     # ============ Bot Analytics ============ #
     record_bot_event = d.record_bot_event

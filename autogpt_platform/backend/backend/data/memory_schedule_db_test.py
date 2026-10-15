@@ -1,6 +1,8 @@
 """The memory-scope schedule registry against a real Postgres: concurrent
-first claims of one scope, a pause racing them, and a wiped expert's scope
-going through the real pause, resume, archive and revive functions.
+first claims of one scope, a pause racing them, a wiped expert's scope
+going through the real pause, resume, archive and revive functions, a
+deleted user's legacy cron (with a real scheduler and jobstore), and the
+backfill's listing of the accounts that learn.
 
 Needs the database (``server`` starts the test stack). The unit tests in
 ``memory_schedule_test.py`` cover the same code with Prisma mocked.
@@ -18,11 +20,18 @@ from prisma.enums import MemoryScopeScheduleState
 
 from backend.api.features.experts import experts_db
 from backend.api.features.experts import scheduling as expert_scheduling
-from backend.copilot.dream import registry, scope_jobs
+from backend.copilot.dream import registry, scope_crons, scope_jobs, scope_reconcile
 from backend.copilot.dream.registry_fakes_test import FakeScheduler
+from backend.copilot.dream.scheduling import SKILL_LEARNING_JOB_PREFIX, dream_system_job
+from backend.copilot.dream.scope_reconcile_jobstore_test import (
+    _job,
+    _scheduler,
+    _sqlite,
+)
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data import memory_schedule
 from backend.data.memory_schedule import MemoryScopeSchedule
+from backend.executor import scheduler as scheduler_module
 from backend.util.test import SpinTestServer
 
 SCOPES = 10
@@ -179,7 +188,9 @@ def _lifecycle_boundaries(monkeypatch: pytest.MonkeyPatch) -> FakeScheduler:
     """Everything but Postgres: the scheduler, flags, the timezone lookup
     and the triggers the lifecycle functions touch."""
     scheduler = FakeScheduler()
-    monkeypatch.setattr(scope_jobs, "is_feature_enabled", AsyncMock(return_value=True))
+    monkeypatch.setattr(
+        scope_jobs, "evaluate_feature_flag", AsyncMock(return_value=(True, True))
+    )
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: scheduler)
     monkeypatch.setattr(
         registry, "resolve_user_timezone", AsyncMock(return_value="UTC")
@@ -221,3 +232,77 @@ async def _stopped(
     assert scheduler.jobs == {}
     row = await memory_schedule.get_scope_schedule(scope.owner_user_id, scope.scope_key)
     return row.state if row is not None else None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_deleted_accounts_legacy_cron_goes_and_a_live_ones_stays(
+    server: SpinTestServer, tmp_path
+):
+    """The learning fit review's probe: an untagged learning cron from
+    before the registry, of an account with no row, in a real scheduler and
+    jobstore. Once the user is deleted, the reconcile removes it and its
+    gate skips it; a live account's cron stays and its gate lets it run."""
+    user_ids = [f"legacy-cron-{uuid.uuid4().hex[:16]}" for _ in range(2)]
+    await prisma.models.User.prisma().create_many(
+        data=[{"id": uid, "email": f"{uid}@example.invalid"} for uid in user_ids]
+    )
+    live, gone = (MemoryScope.for_user(uid) for uid in user_ids)
+    job = dream_system_job(SKILL_LEARNING_JOB_PREFIX)
+    body = scheduler_module._MEMORY_CRONS[SKILL_LEARNING_JOB_PREFIX]
+    try:
+        with _scheduler(_sqlite(tmp_path)) as service:
+            for scope in (live, gone):
+                service._add_memory_job(*body, job, scope, "UTC")
+            await prisma.models.User.prisma().delete(where={"id": gone.owner_user_id})
+
+            crons = scheduler_module._SchedulerCrons(service)
+            report = await asyncio.wait_for(scope_reconcile.reconcile(crons), 30)
+
+            assert gone.scope_key in report.removed
+            assert live.scope_key not in report.removed
+            assert _job(service, job.job_id(gone)) is None
+            assert _job(service, job.job_id(live)) is not None
+            assert not await scope_crons._schedule_active(gone)
+            assert await scope_crons._schedule_active(live)
+    finally:
+        await _drop_users(user_ids)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_the_accounts_that_learn_are_listed_once_each_page_by_page(
+    server: SpinTestServer,
+):
+    """One entry per user with learning sources, however many it has, in
+    id order; a user without any is not listed."""
+    stem = f"learning-list-{uuid.uuid4().hex[:16]}"
+    user_ids = [f"{stem}-a", f"{stem}-b", f"{stem}-c"]
+    await prisma.models.User.prisma().create_many(
+        data=[{"id": uid, "email": f"{uid}@example.invalid"} for uid in user_ids]
+    )
+    try:
+        for user_id, sources in zip(user_ids, (2, 1, 0)):
+            for n in range(sources):
+                await prisma.models.SkillLearningSource.prisma().create(
+                    data={
+                        "userId": user_id,
+                        "ownerKey": "personal",
+                        "sourceKind": "chat_session",
+                        "sourceId": f"session-{n}",
+                        "revision": "1",
+                    }
+                )
+
+        first = await memory_schedule.list_learning_account_ids(after=stem, limit=1)
+        second = await memory_schedule.list_learning_account_ids(
+            after=first[-1], limit=1
+        )
+        third = await memory_schedule.list_learning_account_ids(
+            after=second[-1], limit=1
+        )
+        together = await memory_schedule.list_learning_account_ids(after=stem, limit=10)
+
+        assert (first, second) == ([user_ids[0]], [user_ids[1]])
+        assert user_ids[2] not in third
+        assert together[:2] == user_ids[:2] and user_ids[2] not in together
+    finally:
+        await _drop_users(user_ids)

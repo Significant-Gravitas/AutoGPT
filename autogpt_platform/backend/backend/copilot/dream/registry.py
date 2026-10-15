@@ -35,7 +35,11 @@ or a registration that lands after a timezone change. The scheduler's
 reconcile pass (``scope_reconcile.py``) puts that right when its walk next
 reaches the scope: every cron an ACTIVE row records that the scheduler lacks,
 or runs in another timezone, is registered again in the row's timezone. What
-a row records is decided here, on the owner's flags.
+a row records is decided here, on the owner's flags, which only an ensure
+reads: a cron whose flag is on is registered and recorded, one whose flag is
+authoritatively off loses its record and then its job, and one whose flag
+could not be read keeps both. A flag turned off is therefore noticed at the
+scope's next ensure, whatever its mode.
 """
 
 import logging
@@ -68,23 +72,30 @@ _PAUSABLE = (MemoryScopeScheduleState.ACTIVE, MemoryScopeScheduleState.PAUSED)
 async def ensure_scope_scheduled(
     scope: MemoryScope, *, force_refresh: bool = False
 ) -> dict[str, Any]:
-    """Idempotently register every flag-enabled dream-system cron of ``scope``.
+    """Idempotently register every flag-enabled dream-system cron of ``scope``,
+    and remove each recorded one whose flag is off.
 
     Decides from the scope's registry row, never from Redis: a PAUSED or
     WIPED scope is left alone, and in an ACTIVE one a cron is (re-)registered
     only when it has no recorded job or the owner's timezone moved.
-    ``force_refresh`` re-registers every enabled cron regardless.
+    ``force_refresh`` re-registers every enabled cron regardless. A recorded
+    cron whose flag is authoritatively off loses its record, then its job, in
+    any mode; one whose flag could not be read keeps both. An owner whose
+    flags could not be read at all costs no database call, and one whose
+    flags are all off costs one row read, plus the removals its row calls
+    for; a row is never created for nothing to register.
 
     Returns one entry per cron, keyed by ``job_id_prefix``: ``None`` when it
     was already registered (no RPC made), ``{"skipped": True, "reason": ...}``
-    when it was not registered (flag off, ``scope_paused``, ``scope_wiped``,
-    ``scope_changed``, ``timezone_lookup_failed``, ``registry_unavailable``,
+    when it was not registered (flag off, ``flag_unavailable``,
+    ``removal_failed``, ``scope_paused``, ``scope_wiped``, ``scope_changed``,
+    ``timezone_lookup_failed``, ``registry_unavailable``,
     ``registration_failed``, ``record_failed``), otherwise the scheduler's
     own result.
     """
-    results, enabled = await flag_gate(scope)
-    if not enabled:
-        return results
+    gate = await flag_gate(scope)
+    if not gate.enabled and not gate.disabled:
+        return gate.skips
     try:
         row = await within_deadline(
             memory_schedule_db().get_scope_schedule(
@@ -93,16 +104,18 @@ async def ensure_scope_scheduled(
         )
     except Exception:
         logger.warning(f"Registry read failed for {scope_label(scope)}", exc_info=True)
-        return results | skip_all(enabled, "registry_unavailable")
+        return gate.skips | skip_all(gate.enabled, "registry_unavailable")
+    if row is None and not gate.enabled:
+        return gate.skips
     if row is not None and row.state != MemoryScopeScheduleState.ACTIVE:
-        return results | skip_all(enabled, state_reason(row))
+        return gate.skips | skip_all(gate.enabled, state_reason(row))
     user_timezone = await resolve_user_timezone(scope.owner_user_id)
     if user_timezone is None:
         # "Unknown" is not "UTC": keep the existing crons until a later call
         # can read the real timezone.
-        return results | skip_all(enabled, "timezone_lookup_failed")
-    return results | await register_scope_jobs(
-        scope, enabled, row, user_timezone, force_refresh
+        return gate.skips | skip_all(gate.enabled, "timezone_lookup_failed")
+    return gate.skips | await register_scope_jobs(
+        scope, gate, row, user_timezone, force_refresh
     )
 
 
@@ -193,8 +206,8 @@ async def resume_scope(
         )
     except Exception:
         logger.warning(f"Could not resume {scope_label(scope)}", exc_info=True)
-        results, enabled = await flag_gate(scope)
-        return results | skip_all(enabled, "registry_unavailable")
+        gate = await flag_gate(scope)
+        return gate.skips | skip_all(gate.enabled, "registry_unavailable")
     return await ensure_scope_scheduled(scope, force_refresh=force_refresh)
 
 
@@ -204,17 +217,18 @@ async def reregister_user(user_id: str) -> dict[str, dict[str, Any]]:
     The account always goes through, row or not: its crons may predate the
     registry and still run in the old timezone. Each expert with a row
     follows: paused ones are skipped and take the new timezone when they
-    resume, wiped ones are skipped for good. An owner with every dream flag
-    off costs no database call, as with :func:`ensure_scope_scheduled`.
-    Keyed by scope key.
+    resume, wiped ones are skipped for good. An owner whose dream flags could
+    not be read at all costs no database call, as with
+    :func:`ensure_scope_scheduled`; one whose flags are all off still has the
+    crons its rows record removed. Keyed by scope key.
     """
     try:
         account = MemoryScope.for_user(user_id)
     except ValueError:
         return {}
-    skipped, enabled = await flag_gate(account)
-    if not enabled:
-        return {account.scope_key: skipped}
+    gate = await flag_gate(account)
+    if not gate.enabled and not gate.disabled:
+        return {account.scope_key: gate.skips}
     scopes = [account, *await _expert_scopes(user_id)]
     return {
         scope.scope_key: await ensure_scope_scheduled(scope, force_refresh=True)

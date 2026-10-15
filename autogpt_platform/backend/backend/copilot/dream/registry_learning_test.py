@@ -7,11 +7,13 @@ Fakes come from ``registry_fakes_test.py``.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from backend.util.feature_flag import Flag
 
-from . import registry
+from . import registry, registry_backfill
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -143,18 +145,25 @@ async def test_the_reconcile_removes_a_learning_cron_straggling_past_a_pause(env
 
 
 @pytest.mark.asyncio
-async def test_the_reconcile_takes_back_a_tagged_learning_cron_no_row_records(env):
-    """The learning flag turned off and an ensure recorded no learning job,
-    while a restore the reconcile made still runs: the next pass takes back
-    its own tagged cron."""
+async def test_the_reconcile_takes_back_a_restore_that_raced_the_flag_going_off(env):
+    """A restore that read the row before learning went off, and lands after
+    the ensure removed the cron and its record, puts the cron back tagged
+    as the reconcile's: the next pass takes it back."""
     await registry.ensure_scope_scheduled(ACCOUNT)
     del env.scheduler.jobs[LEARNING]
     del env.scheduler.scopes[LEARNING]
+    restore = env.crons.add
+
+    async def after_the_flag_went_off(job, scope, user_timezone):
+        env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = False
+        await registry.ensure_scope_scheduled(scope)
+        await restore(job, scope, user_timezone)
+
+    env.crons.add = after_the_flag_went_off
     await env.reconcile()
-    assert LEARNING in env.scheduler.tagged
-    env.flags[Flag.DREAM_SKILL_LEARNING_ENABLED] = False
-    await registry.ensure_scope_scheduled(ACCOUNT, force_refresh=True)
+    env.crons.add = restore
     assert env.db.rows[USER].learning_job_id is None
+    assert LEARNING in env.scheduler.tagged
 
     report = await env.reconcile()
 
@@ -185,3 +194,64 @@ async def test_a_timezone_change_reaches_an_owner_with_only_learning_on(env):
 
     assert results[USER]["skill_learning_nightly"]["id"] == LEARNING
     assert env.scheduler.jobs == {LEARNING: TOKYO}
+
+
+def _backfill_finds(monkeypatch: pytest.MonkeyPatch, learning_owners: list[str]):
+    """The backfill's listings: no graph, no expert, no ACTIVE row; only the
+    learning sources' owners, every one of them a live user."""
+    module = registry_backfill.memory_schedule
+
+    async def learners(*, after: str | None, limit: int) -> list[str]:
+        return [] if after else learning_owners
+
+    async def existing(user_ids: list[str]) -> set[str]:
+        return set(user_ids)
+
+    monkeypatch.setattr(
+        registry_backfill, "list_account_graph_owners", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(module, "list_learning_account_ids", learners)
+    monkeypatch.setattr(module, "existing_user_ids", existing)
+    monkeypatch.setattr(
+        module, "list_active_scope_schedules", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(module, "list_live_expert_scopes", AsyncMock(return_value=[]))
+
+
+@pytest.mark.asyncio
+async def test_the_backfill_adopts_a_graphless_accounts_legacy_learning_cron(
+    env, monkeypatch
+):
+    """The review's probe: a legacy learning cron (registered by #14551's
+    capture hook, before the registry) of an account with no graph. The
+    backfill finds it through the account's learning sources and records it,
+    keeping the same job."""
+    env.flags = {Flag.DREAM_SKILL_LEARNING_ENABLED: True}
+    await env.scheduler.add_scope_skill_learning_schedule(
+        scope=ACCOUNT, user_timezone=PARIS
+    )
+    _backfill_finds(monkeypatch, [USER])
+
+    report = await registry_backfill.backfill_schedules()
+
+    assert (report.accounts, report.learning_accounts) == (1, 1)
+    assert env.db.rows[USER].learning_job_id == LEARNING
+    assert env.scheduler.jobs == {LEARNING: PARIS}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("state", [PAUSED, WIPED])
+async def test_the_backfill_leaves_a_stopped_learning_account_stopped(
+    env, monkeypatch, state
+):
+    await registry.ensure_scope_scheduled(ACCOUNT)
+    stop = registry.pause_scope if state == PAUSED else registry.mark_wiped
+    assert await stop(ACCOUNT)
+    _backfill_finds(monkeypatch, [USER])
+
+    report = await registry_backfill.backfill_schedules()
+
+    assert report.skipped == 1
+    row = env.db.rows[USER]
+    assert (row.state, row.learning_job_id) == (state, None)
+    assert env.scheduler.jobs == {}

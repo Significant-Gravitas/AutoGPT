@@ -828,6 +828,48 @@ class TestRemoveScopeMemoryJobsWithSkillLearning:
         ]
 
 
+class TestRemoveScopeMemoryJob:
+    """The one-cron removal the registry calls for a cron whose flag is
+    off, after its row stopped recording it."""
+
+    @pytest.mark.parametrize(
+        "scope, prefix",
+        [
+            (MemoryScope.for_user("abc"), "skill_learning_nightly"),
+            (MemoryScope.for_expert("abc", "expert-1"), "dream_nightly_batch"),
+        ],
+    )
+    def test_removes_only_that_cron(self, scope: MemoryScope, prefix: str) -> None:
+        s = _stub_scheduler()
+        job = MagicMock(id=f"{prefix}_{scope.scope_key}")
+        s.scheduler.get_job.side_effect = lambda job_id, jobstore: (
+            job if job_id == job.id else None
+        )
+
+        assert s.remove_scope_memory_job(scope=scope, job_id_prefix=prefix) is True
+
+        job.remove.assert_called_once()
+        s.scheduler.get_job.assert_called_once_with(
+            job.id, jobstore=Jobstores.EXECUTION.value
+        )
+
+    def test_a_cron_that_is_not_there_is_not_an_error(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = None
+
+        assert (
+            s.remove_scope_memory_job(
+                scope=MemoryScope.for_user("abc"),
+                job_id_prefix="skill_learning_nightly",
+            )
+            is False
+        )
+
+    def test_reachable_over_rpc(self) -> None:
+        s = _stub_scheduler()
+        s._create_fastapi_endpoint(s.remove_scope_memory_job)
+
+
 class TestDeleteSkillLearningSchedule:
     def test_the_registry_forgets_the_cron_before_it_is_removed(self) -> None:
         s = _stub_scheduler()

@@ -3572,6 +3572,21 @@ class Scheduler(AppService):
             logger.info("Removed the memory crons of %s", scope_label(scope))
         return removed
 
+    @expose
+    def remove_scope_memory_job(self, scope: MemoryScope, job_id_prefix: str) -> bool:
+        """Remove one dream-system cron of ``scope``; whether it was there.
+        The registry calls this for a cron whose flag is off, once the row no
+        longer records it (``scope_jobs._remove_disabled``): the reconcile
+        restores a cron a row records, so the record goes first."""
+        job = dream_system_job(job_id_prefix)
+        existing = self.scheduler.get_job(
+            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
+        )
+        if existing is None or not _removed(existing):
+            return False
+        logger.info("Removed %s job of %s", job.name, scope_label(scope))
+        return True
+
     def _reconcile_memory_crons(self) -> None:
         """One reconcile pass (``reconcile_memory_scope_crons``), its listing
         of the dream-system crons included, under
@@ -4138,6 +4153,7 @@ class SchedulerClient(AppServiceClient):
         Scheduler.delete_community_rebuild_schedule
     )
     remove_scope_memory_jobs = endpoint_to_async(Scheduler.remove_scope_memory_jobs)
+    remove_scope_memory_job = endpoint_to_async(Scheduler.remove_scope_memory_job)
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
     )
