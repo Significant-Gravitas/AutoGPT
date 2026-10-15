@@ -10,6 +10,7 @@ from prisma.enums import (
 from pydantic import TypeAdapter
 
 from backend.copilot.dream.fetch import DreamInput
+from backend.copilot.dream.pass_record import cancelled, expired
 from backend.copilot.dream.schemas import (
     ConsolidatedFact,
     ConsolidationOutput,
@@ -107,6 +108,12 @@ def test_dream_pass_models_survive_the_rpc_round_trip() -> None:
     body = inspect.signature(endpoint).parameters["body"].annotation
     sent = body.model_validate(to_dict({"pass_id": "p1", "update": update}))
     assert sent.update == update
+    for stop in (
+        expired("stale", not_updated_since=now.replace(microsecond=123000)),
+        cancelled("testing", owner_user_id="u1"),
+    ):
+        sent = body.model_validate(to_dict({"pass_id": "p1", "update": stop}))
+        assert sent.update == stop
 
     record = DreamPassRecord(
         id="p1",

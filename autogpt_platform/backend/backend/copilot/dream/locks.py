@@ -19,10 +19,15 @@ transactions.
 
 The sync-path TTL is 1800 s (30 min), sized to the scheduler's job
 timeout; the batch path extends it (see ``BATCH_LOCK_TTL_SECONDS``).
+
+Right before it applies, a pass reads the key once more (``held``,
+``dream_lock_held_by``): a lock that lapsed may already be a newer pass's,
+and only the holder may write the scope's graph.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -42,6 +47,9 @@ DEFAULT_LOCK_TTL_SECONDS = 1800
 # terminal/failure; this TTL is only the crash backstop, kept > 24h so the
 # lock can't expire before the executor times the batch out.
 BATCH_LOCK_TTL_SECONDS = 24 * 60 * 60 + 600
+
+# How long the ownership read right before apply may take.
+LOCK_CHECK_TIMEOUT_SECONDS = 2.0
 
 # Compare-and-delete: only the holder whose token still matches the stored
 # value may delete the key. Single-key Lua routes on Redis Cluster.
@@ -93,7 +101,7 @@ class DreamLockHandle:
     its per-pass state (the input bundle) for the callback to read back hours
     later."""
 
-    def __init__(self, redis, key: str, user_id: str, token: str) -> None:
+    def __init__(self, redis: Any, key: str, user_id: str, token: str) -> None:
         self._redis = redis
         self._key = key
         self.user_id = user_id
@@ -133,6 +141,14 @@ class DreamLockHandle:
                 self.user_id[:12],
             )
         return bool(extended)
+
+    async def held(self) -> bool:
+        """Whether the key still holds this handle's token: one GET, raising
+        when Redis does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``."""
+        current = await asyncio.wait_for(
+            self._redis.get(self._key), timeout=LOCK_CHECK_TIMEOUT_SECONDS
+        )
+        return _as_text(current) == self.token
 
 
 @asynccontextmanager
@@ -204,12 +220,25 @@ async def read_dream_lock_token(scope: MemoryScope) -> str | None:
     from backend.data.redis_client import get_redis_async
 
     redis = await get_redis_async()
-    raw = await redis.get(scope.redis_key("dream_lock"))
+    return _as_text(await redis.get(scope.redis_key("dream_lock")))
+
+
+async def dream_lock_held_by(scope: MemoryScope, token: str | None) -> bool:
+    """Whether the scope's lock still holds *token* (``False`` for no token):
+    the batch callback's check right before apply. One GET, raising when
+    Redis does not answer within ``LOCK_CHECK_TIMEOUT_SECONDS``."""
+    if token is None:
+        return False
+    current = await asyncio.wait_for(
+        read_dream_lock_token(scope), timeout=LOCK_CHECK_TIMEOUT_SECONDS
+    )
+    return current == token
+
+
+def _as_text(raw: Any) -> str | None:
     if raw is None:
         return None
-    if isinstance(raw, bytes):
-        return raw.decode("utf-8")
-    return str(raw)
+    return raw.decode("utf-8") if isinstance(raw, bytes) else str(raw)
 
 
 async def release_dream_lock(scope: MemoryScope, token: str | None) -> None:
