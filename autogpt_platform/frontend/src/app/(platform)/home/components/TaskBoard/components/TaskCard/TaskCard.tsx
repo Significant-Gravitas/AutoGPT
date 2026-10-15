@@ -23,6 +23,7 @@ import {
   isSessionRunning,
   TASK_CARD_MIME,
 } from "../../helpers";
+import { StatusIcon } from "../StatusIcon/StatusIcon";
 
 interface Props {
   session: SessionSummaryResponse;
@@ -52,56 +53,67 @@ export function TaskCard({
     <article
       draggable
       onDragStart={handleDragStart}
-      className="group relative cursor-grab rounded-xl bg-white transition-shadow smooth-shadow-ring-sm hover:shadow-md active:cursor-grabbing"
+      className="group relative cursor-grab rounded-lg border border-zinc-200/80 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-colors hover:border-zinc-300 active:cursor-grabbing"
     >
       <Link
         href={`/home?sessionId=${session.id}`}
         draggable={false}
-        className="block rounded-xl p-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
+        className="block rounded-lg px-3.5 pb-3 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
-        <div className="flex items-center gap-1.5 pr-7">
+        <div className="flex items-center justify-between gap-2">
+          <Text variant="small" tone="muted" className="truncate">
+            {name}
+          </Text>
           {expert ? (
             <ExpertAvatar
               name={expert.name}
               avatarUrl={expert.avatarUrl}
               color={expert.color}
-              size={18}
+              size={20}
               className="rounded-full"
             />
           ) : (
-            <AutopilotAvatar size={18} className="rounded-full" />
-          )}
-          <Text variant="small-medium" tone="secondary" className="truncate">
-            {name}
-          </Text>
-          <Text variant="small" tone="muted" className="shrink-0">
-            · {isRunning ? "working" : formatTimeAgo(session.updated_at)}
-          </Text>
-          {isRunning && (
-            <span
-              aria-hidden
-              className="size-1.5 shrink-0 animate-pulse rounded-full bg-violet-500"
-            />
+            <AutopilotAvatar size={20} className="rounded-full" />
           )}
         </div>
-        <Text
-          variant="body-medium"
-          tone="primary"
-          className="mt-1.5 line-clamp-2"
-        >
-          {title}
-        </Text>
-        <Text variant="small" tone="muted" className="mt-0.5 truncate">
+        <div className="mt-1 flex items-start gap-2">
+          <StatusIcon columnId={columnId} className="mt-[0.2rem]" />
+          <Text variant="body-medium" tone="primary" className="line-clamp-2">
+            {title}
+          </Text>
+        </div>
+        <Text variant="small" tone="secondary" className="mt-1 truncate pl-5">
           {session.last_message
             ? getPreviewLine(session.last_message)
             : "Not started yet"}
         </Text>
+        {isRunning && (
+          <div className="mt-2.5 flex">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 px-2 py-0.5">
+              <span
+                aria-hidden
+                className="size-1.5 animate-pulse rounded-full bg-amber-500"
+              />
+              <Text variant="small" tone="secondary">
+                Working
+              </Text>
+            </span>
+          </div>
+        )}
+        <Text variant="small" tone="muted" className="mt-2.5">
+          Updated {formatTimeAgo(session.updated_at)}
+        </Text>
       </Link>
-      <div className="absolute right-1.5 top-1.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
+      <div className="absolute bottom-2 right-2 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-md:opacity-100">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon-xs" aria-label={`Move ${title}`}>
-              <Icon icon={MoreHorizontalIcon} size={14} />
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="text-zinc-500"
+              aria-label={`Move ${title}`}
+            >
+              <Icon icon={MoreHorizontalIcon} size={16} />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -112,7 +124,9 @@ export function TaskCard({
                 <DropdownMenuItem
                   key={column.id}
                   onSelect={() => onMove(column.id)}
+                  className="gap-2"
                 >
+                  <StatusIcon columnId={column.id} />
                   {column.name}
                 </DropdownMenuItem>
               ))}

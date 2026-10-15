@@ -3,9 +3,16 @@ import type { SessionSummaryResponse } from "@/app/api/__generated__/models/sess
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/molecules/DropdownMenu/DropdownMenu";
 import { cn } from "@/lib/utils";
-import { Cancel01Icon } from "@hugeicons/core-free-icons";
+import { MoreHorizontalIcon } from "@hugeicons/core-free-icons";
 import type { BoardColumnDef } from "../../helpers";
+import { StatusIcon } from "../StatusIcon/StatusIcon";
 import { TaskCard } from "../TaskCard/TaskCard";
 import { useBoardColumn } from "./useBoardColumn";
 
@@ -34,30 +41,39 @@ export function BoardColumn({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={cn(
-        "flex w-[17rem] shrink-0 flex-col rounded-2xl bg-zinc-100/70 p-2 transition-colors",
-        isOver && "bg-violet-50 ring-1 ring-violet-200",
+        "flex w-[20rem] shrink-0 flex-col rounded-xl bg-zinc-100/80 transition-colors",
+        isOver && "bg-zinc-200/70",
       )}
     >
-      <header className="flex h-8 items-center gap-2 px-2">
+      <header className="flex h-11 items-center gap-2 pl-3.5 pr-2">
+        <StatusIcon columnId={column.id} />
         <Text variant="body-medium" tone="primary" className="truncate">
           {column.name}
         </Text>
-        <Text variant="small" tone="muted" className="tabular-nums">
+        <Text variant="body" tone="muted" className="tabular-nums">
           {column.sessions.length}
         </Text>
         {onRemove && (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            className="ml-auto"
-            aria-label={`Remove ${column.name} column`}
-            onClick={onRemove}
-          >
-            <Icon icon={Cancel01Icon} size={14} />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                className="ml-auto text-zinc-500"
+                aria-label={`${column.name} column options`}
+              >
+                <Icon icon={MoreHorizontalIcon} size={16} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onRemove}>
+                Remove column
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
       </header>
-      <div className="flex max-h-[32rem] min-h-24 flex-col gap-2 overflow-y-auto p-0.5">
+      <div className="flex max-h-[36rem] min-h-28 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
         {column.sessions.map((session) => (
           <TaskCard
             key={session.id}
@@ -71,9 +87,11 @@ export function BoardColumn({
           />
         ))}
         {column.sessions.length === 0 && (
-          <Text variant="small" tone="muted" className="px-2 py-6 text-center">
-            Drop a card here
-          </Text>
+          <div className="flex flex-1 items-center justify-center rounded-lg border border-dashed border-zinc-300 py-8">
+            <Text variant="small" tone="muted">
+              Drop a card here
+            </Text>
+          </div>
         )}
       </div>
     </section>

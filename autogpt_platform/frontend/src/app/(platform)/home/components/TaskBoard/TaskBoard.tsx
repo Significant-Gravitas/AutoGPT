@@ -65,7 +65,7 @@ function BoardSkeleton() {
   return (
     <div className="flex gap-3" aria-label="Loading task board…">
       {[0, 1, 2].map((index) => (
-        <Skeleton key={index} className="h-64 w-[17rem] shrink-0 rounded-2xl" />
+        <Skeleton key={index} className="h-64 w-[20rem] shrink-0 rounded-xl" />
       ))}
     </div>
   );
