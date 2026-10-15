@@ -15,6 +15,7 @@ import {
   CHIP_SHAPE,
   CHIP_SIZE,
 } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryChip";
+import { categoryTagStyle } from "@/app/(platform)/marketplace/components/CategoryChip/CategoryTag";
 import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { AUTOPILOT_HEX } from "@/components/molecules/ExpertAvatar/colors";
 import { CardStat, CardStats } from "./CardStats";
@@ -67,7 +68,7 @@ export function AutopilotCard({
               topic tags and should not read as a different kind of thing. */}
           <span
             className={cn(CHIP_SHAPE, CHIP_SIZE.small, "max-w-full")}
-            style={{ color: AUTOPILOT_COVER_COLOR }}
+            style={categoryTagStyle(AUTOPILOT_COVER_COLOR)}
           >
             <Icon icon={SparklesIcon} size={12} className="shrink-0" />
             <span className="truncate">{AUTOPILOT_ROLE}</span>
