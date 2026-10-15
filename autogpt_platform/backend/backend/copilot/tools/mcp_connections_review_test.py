@@ -152,20 +152,28 @@ async def test_multiple_catalog_options_remain_distinct_and_prefer_granted_url(
 
 
 @pytest.mark.parametrize("host", ["mcp.linear.app", "mcp.airtable.com"])
+@pytest.mark.parametrize("suffix", ["", "/"])
+@pytest.mark.parametrize("connected", [False, True])
 async def test_bare_catalog_urls_keep_the_default_endpoint(
     host: str,
+    suffix: str,
+    connected: bool,
     catalog: CapabilityIndex,
     connections: AsyncMock,
 ):
     """Existing bare-host shortcuts retain their catalog URL and stored credentials."""
+    if connected:
+        connections.return_value = ConnectionState(
+            server_urls=frozenset({f"https://{host}/mcp"})
+        )
     entry = await session_registry_module.resolve_session_entry(
-        USER, make_session(USER), f"https://{host}"
+        USER, make_session(USER), f"https://{host}{suffix}"
     )
     assert entry is not None and entry.id == f"mcp:{host}"
     assert entry.implementations[0].ref == f"https://{host}/mcp"
 
 
-@pytest.mark.parametrize("suffix", ["", "/TenantMCP", "/MCP"])
+@pytest.mark.parametrize("suffix", ["", "/", "/TenantMCP", "/MCP"])
 @pytest.mark.parametrize("granted", [False, True])
 async def test_connected_custom_url_on_catalog_host_keeps_its_endpoint(
     suffix: str,
@@ -188,14 +196,37 @@ async def test_connected_custom_url_on_catalog_host_keeps_its_endpoint(
     assert validated.capability["id"] == url
 
 
-async def test_connected_custom_url_keeps_the_write_review_gate(
+@pytest.mark.parametrize("host", ["mcp.linear.app", "mcp.airtable.com"])
+@pytest.mark.parametrize("suffix", ["/TenantMCP", "/MCP", ":8443"])
+async def test_unconnected_custom_url_on_catalog_host_keeps_its_endpoint(
+    host: str,
+    suffix: str,
+    catalog: CapabilityIndex,
+    connections: AsyncMock,
+):
+    url = f"https://{host}{suffix}"
+    resolved = await session_registry_module.resolve_session_entry(
+        USER, make_session(USER), url
+    )
+    assert resolved is None
+    validated = await RunCapabilityTool()._execute(
+        USER, make_session(USER), id=url, input={}, validate_only=True
+    )
+    assert isinstance(validated, CapabilityDetailsResponse)
+    assert validated.capability["id"] == url
+
+
+@pytest.mark.parametrize("connected", [False, True])
+async def test_custom_url_keeps_the_write_review_gate(
+    connected: bool,
     catalog: CapabilityIndex,
     connections: AsyncMock,
     monkeypatch: pytest.MonkeyPatch,
 ):
     """A stored custom endpoint on a catalog host still requires write approval."""
     url = "https://mcp.linear.app/TenantMCP"
-    connections.return_value = ConnectionState(server_urls=frozenset({url}))
+    if connected:
+        connections.return_value = ConnectionState(server_urls=frozenset({url}))
     review = AsyncMock(return_value="custom-review")
     runner = AsyncMock()
     monkeypatch.setattr("backend.copilot.tools.run_capability.open_mcp_review", review)

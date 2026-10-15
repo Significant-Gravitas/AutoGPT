@@ -13,12 +13,14 @@ import asyncio
 import logging
 import time
 from collections import OrderedDict
+from urllib.parse import urlsplit
 
 from backend.api.features.experts.models import ExpertTemplate
 from backend.copilot.capabilities.index import CapabilityIndex
 from backend.copilot.capabilities.mcp_connections import (
     catalog_mcp_entry,
     connected_mcp_entries,
+    stored_mcp_urls,
 )
 from backend.copilot.capabilities.models import CapabilityEntry
 from backend.copilot.capabilities.ranking import normalize_server_url
@@ -137,7 +139,7 @@ async def _resolve_platform_entry(
     ):
         return entry
     if entry.connection.key:
-        return None
+        return await _resolve_mcp_host_alias(user_id, session, key, entry)
     connections = await load_connection_state(user_id, session.expert_id)
     return next(
         (
@@ -146,6 +148,21 @@ async def _resolve_platform_entry(
             if bound.id == entry.id
         ),
         entry,
+    )
+
+
+async def _resolve_mcp_host_alias(
+    user_id: str, session: ChatSession, key: str, entry: CapabilityEntry
+) -> CapabilityEntry | None:
+    origin = urlsplit(entry.implementations[0].ref)._replace(path="").geturl()
+    if normalize_server_url(key) != normalize_server_url(origin):
+        return None
+    connections = await load_connection_state(user_id, session.expert_id)
+    return (
+        None
+        if normalize_server_url(key)
+        in {normalize_server_url(url) for url in stored_mcp_urls(connections)}
+        else entry
     )
 
 
