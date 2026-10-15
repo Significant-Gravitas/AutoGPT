@@ -67,10 +67,24 @@ def zip_from_package(package: SkillPackage) -> bytes:
     was runnable still is after a round trip."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        _add(archive, ROOT_SKILL_MD, package.skill_md.encode("utf-8"), False)
-        for entry in package.files:
-            _add(archive, entry.relative_path, entry.content, entry.is_executable)
+        write_skill_package(archive, package)
     return buffer.getvalue()
+
+
+def write_skill_package(
+    archive: zipfile.ZipFile, package: SkillPackage, prefix: str = ""
+) -> None:
+    """Write *package* into an open archive under *prefix*, so a bundle of
+    skills (an expert file's ``skills/<slug>/``) lays each one out exactly as
+    its own download would."""
+    add_entry(archive, f"{prefix}{ROOT_SKILL_MD}", package.skill_md.encode("utf-8"))
+    for entry in package.files:
+        add_entry(
+            archive,
+            f"{prefix}{entry.relative_path}",
+            entry.content,
+            entry.is_executable,
+        )
 
 
 _ENCRYPTED_FLAG = 0x1
@@ -155,8 +169,8 @@ def _mode(info: zipfile.ZipInfo) -> int:
 _ZIP_EPOCH = (1980, 1, 1, 0, 0, 0)
 
 
-def _add(
-    archive: zipfile.ZipFile, path: str, content: bytes, is_executable: bool
+def add_entry(
+    archive: zipfile.ZipFile, path: str, content: bytes, is_executable: bool = False
 ) -> None:
     info = zipfile.ZipInfo(path, date_time=_ZIP_EPOCH)
     info.compress_type = zipfile.ZIP_DEFLATED
