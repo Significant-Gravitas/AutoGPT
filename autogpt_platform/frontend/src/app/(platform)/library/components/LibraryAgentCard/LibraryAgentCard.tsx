@@ -169,7 +169,7 @@ export function LibraryAgentCard({
     return (
       <Tooltip>
         <TooltipTrigger asChild>{card}</TooltipTrigger>
-        <TooltipContent className="max-w-xs text-red-600">
+        <TooltipContent className="max-w-xs text-red-300">
           {statusInfo.lastError}
         </TooltipContent>
       </Tooltip>
