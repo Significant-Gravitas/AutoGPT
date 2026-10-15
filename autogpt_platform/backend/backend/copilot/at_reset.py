@@ -168,7 +168,8 @@ def cancel_resume_at_reset_in_background(session_id: str, user_id: str) -> async
 
 async def _cancel_resume(session_id: str, user_id: str) -> None:
     try:
-        await get_scheduler_client().cancel_at_reset_turn(
+        # A cancel is safe to repeat if a closed connection loses it.
+        await get_scheduler_client(should_retry=True).cancel_at_reset_turn(
             user_id=user_id, session_id=session_id, kind="resume"
         )
     except Exception:
