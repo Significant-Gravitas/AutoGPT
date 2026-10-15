@@ -101,11 +101,7 @@ export function CategoryChip({
           <Icon
             icon={icon}
             size={CHIP_ICON_SIZE[size]}
-            style={
-              color
-                ? { color: `color-mix(in srgb, ${color} 75%, #18181b)` }
-                : undefined
-            }
+            style={color ? { color } : undefined}
             className={isSelected ? undefined : accent.icon}
             aria-hidden
           />
