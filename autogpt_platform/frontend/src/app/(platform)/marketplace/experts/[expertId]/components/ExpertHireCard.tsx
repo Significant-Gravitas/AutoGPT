@@ -1,13 +1,7 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { creditsToUsdLabel } from "@/lib/credits";
-import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
-import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import {
-  CheckmarkCircle02Icon,
-  Coins01Icon,
-  FlashIcon,
-} from "@hugeicons/core-free-icons";
+import { CheckmarkCircle02Icon, Coins01Icon } from "@hugeicons/core-free-icons";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -25,32 +19,13 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
 
   return (
     <aside className="rounded-2xl bg-white p-5 smooth-shadow-ring-sm">
-      <div className="flex items-center gap-3">
-        <ExpertAvatar
-          name={expert.name}
-          avatarUrl={expert.avatar_url}
-          color={expert.color}
-          backgroundColor={getExpertTopicHex({
-            avatarUrl: expert.avatar_url,
-            categories: expert.categories,
-            role: expert.role,
-          })}
-          size={44}
-          className="rounded-full border border-[#e3e3e3]"
-        />
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-zinc-900">
-            Hire {firstName}
-          </p>
-          <p className="text-sm text-zinc-500">Joins your team in seconds</p>
-        </div>
-      </div>
-
-      <div className="mt-4 [&_a]:w-full [&_button]:w-full">{actions}</div>
+      <div className="[&_a]:w-full [&_button]:w-full">{actions}</div>
 
       <ul className="mt-5 flex flex-col gap-2.5">
+        <Perk icon={CheckmarkCircle02Icon}>No extra cost</Perk>
+        <Perk icon={CheckmarkCircle02Icon}>Joins your team instantly</Perk>
         {workflowCount > 0 ? (
-          <Perk icon={FlashIcon}>
+          <Perk icon={CheckmarkCircle02Icon}>
             {`${workflowCount} ${workflowCount === 1 ? "workflow" : "workflows"} installed and ready to run`}
           </Perk>
         ) : null}
@@ -84,7 +59,7 @@ function Perk({
   icon,
   children,
 }: {
-  icon: typeof FlashIcon;
+  icon: typeof CheckmarkCircle02Icon;
   children: ReactNode;
 }) {
   return (
