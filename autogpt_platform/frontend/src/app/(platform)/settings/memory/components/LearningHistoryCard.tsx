@@ -30,7 +30,7 @@ export function LearningHistoryCard({
   onOpen,
 }: Props) {
   function expertName(expertId: string | null | undefined) {
-    if (!expertId) return "AutoPilot";
+    if (!expertId) return "Otto";
     return experts.find((expert) => expert.id === expertId)?.name ?? "Expert";
   }
   return (

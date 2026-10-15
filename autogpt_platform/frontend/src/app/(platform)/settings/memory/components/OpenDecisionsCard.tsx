@@ -56,7 +56,7 @@ export function OpenDecisionsCard({
                 </Link>
                 {" · "}
                 {experts.find((expert) => expert.id === proposal.expert_id)
-                  ?.name ?? "AutoPilot"}
+                  ?.name ?? "Otto"}
               </Text>
               <Text
                 variant="small"

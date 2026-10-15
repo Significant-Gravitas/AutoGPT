@@ -38,7 +38,7 @@ export function learningSheetScope(
     : undefined;
   return {
     expertId: expert ? expert.id : null,
-    name: expert ? expert.name : "AutoPilot",
+    name: expert ? expert.name : "Otto",
     avatarUrl: expert ? expert.avatar_url : null,
     color: expert ? expert.color : null,
   };
