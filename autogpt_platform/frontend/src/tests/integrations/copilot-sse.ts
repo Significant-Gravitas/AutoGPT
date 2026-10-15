@@ -18,6 +18,12 @@ interface StreamChunksOptions {
    */
   perChunkDelaysMs?: number[];
   /**
+   * Parks the stream before a chunk until the test releases it, so a state
+   * the turn only passes through stays on screen for as long as the test
+   * needs to look at it, however slow the machine. See `createStreamHold`.
+   */
+  hold?: StreamHold;
+  /**
    * Aborts in-progress chunk production. Wire this from the MSW handler's
    * `request.signal` so a consumer-side fetch abort can stop the stream and
    * unblock any pending inter-chunk delay (cancel() on the underlying
@@ -31,6 +37,21 @@ interface StreamChunksOptions {
   after?: string | null;
 }
 
+export interface StreamHold {
+  /** Index of the chunk the stream stops in front of. */
+  beforeChunk: number;
+  released: Promise<void>;
+}
+
+/** A hold for `beforeChunk`, plus the `release` that lets the stream go on. */
+export function createStreamHold(beforeChunk: number) {
+  let release = () => {};
+  const released = new Promise<void>((resolve) => {
+    release = () => resolve();
+  });
+  return { hold: { beforeChunk, released } satisfies StreamHold, release };
+}
+
 let turnCounter = 0;
 
 export function streamSseResponse(
@@ -38,6 +59,7 @@ export function streamSseResponse(
   options: StreamChunksOptions = {},
 ) {
   const { delayMsBetweenChunks = 0, perChunkDelaysMs, abortSignal } = options;
+  let hold = options.hold;
   const turnId = options.turnId ?? `sse-turn-${++turnCounter}`;
   const encoder = new TextEncoder();
   let nextIndex = options.after ? Number(options.after.split("-")[0]) : 0;
@@ -76,6 +98,23 @@ export function streamSseResponse(
           // already closed
         }
         return;
+      }
+      if (hold && nextIndex === hold.beforeChunk) {
+        const { released } = hold;
+        hold = undefined;
+        await new Promise<void>((resolve) => {
+          pendingResolve = resolve;
+          void released.then(resolve);
+        });
+        pendingResolve = undefined;
+        if (cancelled) {
+          try {
+            controller.close();
+          } catch {
+            // already closed
+          }
+          return;
+        }
       }
       const delayMs = delayForIndex(nextIndex);
       if (delayMs > 0) {

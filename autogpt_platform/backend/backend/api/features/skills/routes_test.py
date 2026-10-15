@@ -43,10 +43,13 @@ client = fastapi.testclient.TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def setup_app_auth(mock_jwt_user):
+def setup_app_auth(mock_jwt_user, monkeypatch):
     from autogpt_libs.auth.jwt_utils import get_jwt_payload
 
     app.dependency_overrides[get_jwt_payload] = mock_jwt_user["get_jwt_payload"]
+    monkeypatch.setattr(
+        "backend.copilot.tools.skills.record_registry_write", AsyncMock()
+    )
     yield
     app.dependency_overrides.clear()
 
@@ -183,6 +186,13 @@ def test_read_copilot_skill_returns_user_body(
                 version="1",
             )
         ),
+    )
+    # Unstubbed, listing the files upserts the user's workspace through the
+    # session's database client from TestClient's own event loop, and that
+    # write left its connection inside an open transaction for later tests.
+    mocker.patch(
+        "backend.api.features.skills.routes.list_user_skill_files",
+        AsyncMock(return_value=[]),
     )
 
     response = client.get("/skills/oauth_flow")

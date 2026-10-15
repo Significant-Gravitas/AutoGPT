@@ -277,6 +277,29 @@ async def test_graph_job_is_filtered_out():
     assert "some agent" not in ctx
 
 
+@pytest.mark.asyncio
+async def test_turns_at_the_budget_reset_are_not_followups():
+    """A resume or send the user set for the budget reset is theirs to cancel
+    from the chat, so the model isn't told about it."""
+    at_reset = [
+        _one_shot(
+            schedule_id=f"at-reset-{kind}-{_SESSION}",
+            name=f"{kind} when the budget resets",
+            fires_at="2026-05-23T00:07:00+00:00",
+        ).model_copy(update={"purpose": kind})
+        for kind in ("resume", "send")
+    ]
+    followup = _one_shot(
+        schedule_id="cop-1", name="Check CI", fires_at="2026-05-22T13:50:00+00:00"
+    )
+    with _patch_scheduler([*at_reset, followup]):
+        ctx = await build_session_context(_SESSION, _USER)
+
+    assert "pending_followups: 1" in ctx
+    assert '"Check CI"' in ctx
+    assert "budget resets" not in ctx
+
+
 # ---------------------------------------------------------------------------
 # sanitize_user_supplied_context — anti-spoofing contract
 # ---------------------------------------------------------------------------

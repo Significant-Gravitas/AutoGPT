@@ -165,20 +165,23 @@ export function useCopilotRuntimeStream({
         lastSubmittedKickoffExpertId: null,
         lastSubmittedKickoffAttemptToken: null,
       });
+    // The backend refuses a turn over our cap (429) or without a plan (402)
+    // before persisting its prompt: put the text back in an empty composer
+    // and drop the bubble.
+    function restoreUnsentSend() {
+      if (!coord.lastSubmittedMessageText) return;
+      if (kickoffExpertId) clearRecovery();
+      else if (isComposerEmpty()) {
+        setInitialPrompt(coord.lastSubmittedMessageText);
+        clearRecovery();
+      }
+      runtime?.dropUnsentUserRow();
+    }
     handleStreamError({
       error,
       providerFailure: parseProviderFailure(rawFailure),
       onRateLimit: (message, limitFailure, origin) => {
-        // The backend refuses a turn over our cap before persisting its
-        // prompt: put the text back in an empty composer and drop the bubble.
-        if (coord.lastSubmittedMessageText) {
-          if (kickoffExpertId) clearRecovery();
-          else if (isComposerEmpty()) {
-            setInitialPrompt(coord.lastSubmittedMessageText);
-            clearRecovery();
-          }
-          runtime?.dropUnsentUserRow();
-        }
+        restoreUnsentSend();
         if (limitFailure && origin === "provider") {
           dismissedProviderFailureRef.current = null;
           setProviderLimit(limitFailure);
@@ -188,6 +191,7 @@ export function useCopilotRuntimeStream({
         }
       },
       onReconnect: () => runtime?.ensureConnected(),
+      onPaywall: restoreUnsentSend,
       isUserStoppingRef,
     });
     if (!kickoffExpertId) return;

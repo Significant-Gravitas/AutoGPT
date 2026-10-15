@@ -159,6 +159,13 @@ class Flag(str, Enum):
     # dark and is enabled per-cohort.
     DREAM_PASS_BATCH_ENABLED = "dream-pass-batch-enabled"
 
+    # Nightly skill learning stage: turns eligible ordinary conversations
+    # into versioned, evidence-linked skill updates for the owning scope.
+    # Independent of ``DREAM_PASS_ENABLED`` — it registers its own cron
+    # row and enabling it does not switch on any other experimental
+    # memory stage. Defaults False; opt-in per cohort.
+    DREAM_SKILL_LEARNING_ENABLED = "dream-skill-learning-enabled"
+
     # Note: there is intentionally no DREAM_PASS_LOCAL_TRANSPORT
     # flag. Whether to run on local-LLM transport is a CODE decision
     # — ``resolve_dream_execution_path()`` in
@@ -238,7 +245,10 @@ def _stop_shadow_evaluations() -> None:
     global _shadow_evaluations_stopped
     _shadow_evaluations_stopped = True
     for task in list(_shadow_evaluations):
-        task.cancel()
+        # A service's cleanup can close the task's loop first, and cancelling
+        # a task on a closed loop raises.
+        if not task.get_loop().is_closed():
+            task.cancel()
     _shadow_evaluations.clear()
 
 
@@ -298,9 +308,8 @@ def shutdown_launchdarkly() -> None:
     if not _is_initialized:
         # `initialize_launchdarkly` returns early when no SDK key is configured,
         # so `ldclient.set_config` was never called and `ldclient.get()` would
-        # raise "set_config was not called". Callers pair init/shutdown on
-        # app_env alone (see `rest_api.feature_flag_context` and
-        # `scheduler._shutdown_feature_flags_for_scheduler`), so an unconfigured
+        # raise "set_config was not called". `AppProcess.execute_run_command`
+        # pairs init/shutdown on app_env alone, so an unconfigured
         # non-LOCAL deployment would otherwise raise out of service teardown and
         # leave the process alive instead of exiting.
         return
@@ -677,6 +686,19 @@ async def _evaluate_launchdarkly(
 
 
 def _person_properties(context: Context) -> dict[str, Any]:
+    """PostHog person properties for one read: the user's, plus ``environment``.
+
+    ``environment`` rides on every read, anonymous ones included: dev reads
+    prod's flag definitions, so a rollout to dev alone is a release condition
+    on it. It is the app env the analytics events also carry.
+    """
+    return {
+        **_context_properties(context),
+        "environment": settings.config.app_env.value,
+    }
+
+
+def _context_properties(context: Context) -> dict[str, Any]:
     """PostHog person properties from the shared user context.
 
     Reads the LaunchDarkly context rather than the auth row so both vendors
