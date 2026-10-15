@@ -605,8 +605,8 @@ class TestBashExecUnderAProviderCeiling:
             patch("backend.copilot.tools.bash_exec.grant_to_box", new=AsyncMock()),
             patch(
                 "backend.copilot.tools.bash_exec.get_github_user_git_identity",
-                new=AsyncMock(return_value=None),
-            ),
+                new=AsyncMock(return_value={"GIT_AUTHOR_NAME": "Ada"}),
+            ) as identity,
         ):
             await _make_tool()._execute_on_e2b(
                 sandbox=sandbox,
@@ -617,6 +617,9 @@ class TestBashExecUnderAProviderCeiling:
             )
         called = placeholders if proxy else real
         assert called.await_args.args[3] == ()
+        # Nor is the GitHub account read for the commit identity.
+        identity.assert_not_awaited()
+        assert "GIT_AUTHOR_NAME" not in sandbox.commands.run.call_args[1]["envs"]
 
 
 # ---------------------------------------------------------------------------
