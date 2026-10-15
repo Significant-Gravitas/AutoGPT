@@ -9,7 +9,7 @@ from prisma.enums import ReviewStatus
 
 from backend.blocks.google.gmail import GmailSendBlock
 from backend.copilot.gate.headline import gated_tools, headline_for
-from backend.copilot.gate.policy import Effect, classified_tools, effect_for
+from backend.copilot.gate.policy import PARKABLE, classified_tools, effect_for
 from backend.copilot.gate.review import (
     find_decision,
     node_id_for,
@@ -112,11 +112,7 @@ def test_the_headline_names_the_action_and_its_object():
 
 
 def test_every_tool_the_gate_can_hold_has_its_own_words():
-    held = {
-        tool
-        for tool in classified_tools()
-        if effect_for(tool) in (Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL)
-    }
+    held = {tool for tool in classified_tools() if effect_for(tool) in PARKABLE}
     assert gated_tools() == held
 
 
