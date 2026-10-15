@@ -25,7 +25,6 @@ class TestFailureReply:
     """It used to be one fixed sentence for every cause, with nothing to act on
     or search for (Discord, 2026-09-15 and 2026-09-16)."""
 
-    @pytest.mark.xfail(strict=True, reason="the circuit breaker is called a step limit")
     @pytest.mark.asyncio
     async def test_backend_error_names_the_cause_with_a_reference(self):
         adapter = _adapter()

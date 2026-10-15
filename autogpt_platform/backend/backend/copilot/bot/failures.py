@@ -66,10 +66,10 @@ TOO_LONG = FailureCategory(
     reason="the request took too long",
     advice="Try again, or break it into smaller steps.",
 )
-STEP_LIMIT = FailureCategory(
-    key="step_limit",
-    reason="the task hit its step limit",
-    advice="Break it into smaller steps and try again.",
+TOO_LARGE = FailureCategory(
+    key="too_large",
+    reason="a step was too large to complete",
+    advice="Break your request into smaller parts and try again.",
 )
 EMPTY_REPLY = FailureCategory(
     key="empty_reply", reason="the model returned an empty reply", advice=AGAIN_SOON
@@ -109,7 +109,7 @@ _BY_CODE: dict[str, FailureCategory] = {
     PROVIDER_UNAVAILABLE_CODE: MODEL_UNAVAILABLE,
     "entitlement_required": NOT_IN_PLAN,
     "idle_timeout": TOO_LONG,
-    "circuit_breaker_empty_tool_calls": STEP_LIMIT,
+    "circuit_breaker_empty_tool_calls": TOO_LARGE,
     "empty_completion": EMPTY_REPLY,
 }
 

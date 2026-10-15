@@ -23,7 +23,7 @@ from .bot_backend import BotStreamError
             BotStreamError(
                 "backend_stream_error", "x", code="circuit_breaker_empty_tool_calls"
             ),
-            failures.STEP_LIMIT,
+            failures.TOO_LARGE,
         ),
         (
             BotStreamError("backend_stream_error", "x", code="transient_api_error"),
