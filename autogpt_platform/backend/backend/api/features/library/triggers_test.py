@@ -22,6 +22,7 @@ from backend.blocks.allquiet._webhook import AllQuietWebhooksManager
 from backend.blocks.generic_webhook._webhook import GenericWebhooksManager
 from backend.blocks.github.triggers import GithubPullRequestTriggerBlock
 from backend.blocks.io import AgentNumberInputBlock
+from backend.blocks.mcp.block import MCPToolBlock
 from backend.data.graph import Graph, GraphModel, Node, make_graph_model
 from backend.data.integrations import WebhookWithRelations
 from backend.executor import utils as executor_utils
@@ -432,6 +433,47 @@ async def test_setup_accepts_every_trigger_block_before_its_first_event(
         checked.append(block.name)
     assert "CompassAITriggerBlock" in checked
     assert refused == {}
+
+
+@pytest.mark.asyncio
+async def test_setup_keeps_a_blocks_own_input_check(trigger_blocks_enabled):
+    """An MCP tool beside the trigger, without credentials yet: delivery checks
+    it with the block's own get_mismatch_error, so setup must as well."""
+    mcp_node = Node(
+        id="mcp",
+        block_id=MCPToolBlock().id,
+        input_default={
+            "server_url": "https://mcp.example.com/mcp",
+            "selected_tool": "search",
+            "tool_input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+            "tool_arguments": {"query": "triggers"},
+        },
+    )
+    graph = _trigger_graph(GithubPullRequestTriggerBlock().id, mcp_node)
+    p_graph, p_creds, p_webhook, p_create, p_expert = _patches(graph=graph)
+    with (
+        p_graph,
+        p_creds,
+        p_expert,
+        p_create,
+        p_webhook as webhook_mock,
+        _real_execution_input_validator(graph),
+    ):
+        await setup_triggered_preset(
+            user_id=_USER,
+            graph_id=graph.id,
+            graph_version=graph.version,
+            name="PR agent",
+            description="",
+            trigger_config={"repo": "owner/repo", "events": {"opened": True}},
+            agent_credentials={},
+            constant_inputs={"count": 3},
+        )
+    webhook_mock.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -874,7 +916,7 @@ def trigger_blocks_enabled(monkeypatch):
     )
 
 
-def _trigger_graph(trigger_block_id: str) -> GraphModel:
+def _trigger_graph(trigger_block_id: str, *other_nodes: Node) -> GraphModel:
     """A trigger beside a number input, as the executor sees it."""
     return make_graph_model(
         Graph(
@@ -889,6 +931,7 @@ def _trigger_graph(trigger_block_id: str) -> GraphModel:
                     block_id=AgentNumberInputBlock().id,
                     input_default={"name": "count"},
                 ),
+                *other_nodes,
             ],
             links=[],
         ),

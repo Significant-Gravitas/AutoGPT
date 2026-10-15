@@ -393,11 +393,7 @@ def validate_exec(
     # Skip for dry runs — simulate_block doesn't use real inputs, and sentinel
     # credential values (None) would fail JSON-schema type/required checks.
     if not dry_run:
-        if error := (
-            schema.validate_data(data, exclude_fields=unchecked_fields)
-            if unchecked_fields
-            else schema.get_mismatch_error(data)
-        ):
+        if error := schema.get_mismatch_error(data, exclude_fields=unchecked_fields):
             error_message = f"{error_prefix} {error}"
             logger.warning(error_message)
             return None, error_message
