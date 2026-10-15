@@ -388,3 +388,27 @@ def dream_db():
         dream_db = get_database_manager_async_client(should_retry=False)
 
     return dream_db
+
+
+def pro_activation_db():
+    if db.is_connected():
+        from backend.data import pro_activation
+
+        return pro_activation
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
+
+
+def posthog_lifecycle_db():
+    if db.is_connected():
+        from backend.data import posthog_lifecycle_sync as _posthog_lifecycle_db
+
+        posthog_lifecycle_db = _posthog_lifecycle_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        # Best-effort and asked for after the work is queued: fail fast.
+        posthog_lifecycle_db = get_database_manager_async_client(should_retry=False)
+
+    return posthog_lifecycle_db

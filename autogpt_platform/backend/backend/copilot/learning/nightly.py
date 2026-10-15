@@ -333,7 +333,9 @@ async def _process_source(
             advance=False,
         )
     try:
-        completion = await review_evidence(config, bundle, existing, packages)
+        completion = await review_evidence(
+            config, bundle, existing, packages, user_id, result.run_id
+        )
     except DreamLLMError as exc:
         return await record_provider_error(user_id, source, result, exc, config)
     result.model_calls += 1

@@ -37,6 +37,7 @@ from backend.copilot.tree import (
     release_turn,
     root_envelope,
 )
+from backend.copilot.trial_cost_context import TrialCostContext, capture_cost_context
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.util import tracing
 from backend.util.logging import TruncatedLogger, is_structured_logging_enabled
@@ -356,6 +357,8 @@ class CoPilotExecutionEntry(BaseModel):
     queue messages written before this field existed (they sort as "all
     pending before current" — the pre-fix behaviour)."""
 
+    cost_context: TrialCostContext | None = None
+
     scheduled: ScheduledTurnOrigin | None = None
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
@@ -458,6 +461,7 @@ async def enqueue_copilot_turn(
             else tracing.trace_propagation_headers()
         ),
         enqueued_at=time.time(),
+        cost_context=await capture_cost_context(user_id),
     )
 
     queue_client = await get_async_copilot_queue()

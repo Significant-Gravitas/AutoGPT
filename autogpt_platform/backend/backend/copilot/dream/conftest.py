@@ -28,6 +28,7 @@ from unittest.mock import AsyncMock
 import pytest
 import pytest_asyncio
 
+from backend.copilot import usage_activation_fixtures
 from backend.data.dream_pass_models import (
     OPEN_STATUSES,
     DreamPassDraft,
@@ -326,6 +327,12 @@ def _order(value: Enum | None) -> int:
     enums."""
     assert value is not None
     return list(type(value)).index(value)
+
+
+# A pass captures its usage attribution before its first provider call
+# (#15208's ``attributed_usage``); every dream test gets the ready, untrialed
+# usage state unless it sets its own.
+usage_snapshot = usage_activation_fixtures.usage_snapshot
 
 
 @pytest.fixture(autouse=True)

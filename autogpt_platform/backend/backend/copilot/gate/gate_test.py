@@ -31,6 +31,7 @@ from backend.copilot.model import (
     ChatSessionMetadata,
     ChatSessionOrigin,
 )
+from backend.copilot.trial_cost_context import TrialCostContext
 
 _GATE = "backend.copilot.gate"
 # The fixtures stub the rule lookup; the outage tests need the real one.
@@ -71,6 +72,14 @@ def gate_on():
 def clean_session_state():
     """No prior approval and nothing rejected in this chat."""
     with (
+        patch(
+            f"{_GATE}.capture_cost_context",
+            AsyncMock(
+                side_effect=lambda user_id: TrialCostContext(
+                    user_id=user_id, trial_id=None
+                )
+            ),
+        ),
         patch(f"{_GATE}.review_store.find_review", AsyncMock(return_value=None)),
         patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
         patch(f"{_GATE}.held._held", AsyncMock(return_value={})),

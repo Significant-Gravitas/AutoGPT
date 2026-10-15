@@ -20,10 +20,12 @@ from prisma.enums import (
     DreamPassRoute,
     DreamPassStatus,
     DreamPassTrigger,
+    SubscriptionTier,
 )
 
 from backend.copilot import rate_limit as rate_limit_mod
 from backend.copilot import token_tracking as token_tracking_mod
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.complete import StructuredCompletion
 from backend.copilot.inference.context import (
@@ -32,8 +34,9 @@ from backend.copilot.inference.context import (
     RouteDecision,
 )
 from backend.copilot.inference.trace import TracedCall
-from backend.copilot.rate_limit import SubscriptionTier
+from backend.copilot.trial_cost_context import get_trial_cost_context
 from backend.data.dream_pass_models import DreamPassDraft
+from backend.data.pro_activation import UsageActivationState
 from backend.executor.batch_executor import PendingEntry
 from backend.executor.scheduler import SCHEDULER_DREAM_OPERATION_TIMEOUT_SECONDS
 from backend.util.llm.providers import BatchResultRow
@@ -2469,13 +2472,16 @@ def _fail_the_charge(mocker, phase: str, failure: str) -> AsyncMock:
         + [ConnectionError("trial cost database unavailable")]
     )
     mocker.patch.object(token_tracking_mod, "_schedule_cost_log")
-    mocker.patch.object(
-        rate_limit_mod, "record_attributed_trial_cost", AsyncMock(return_value=False)
-    )
-    mocker.patch.object(
-        rate_limit_mod,
-        "_fetch_user_tier",
-        AsyncMock(return_value=SubscriptionTier.TRIAL),
+    mocker.patch(
+        "backend.copilot.trial_cost_context.get_ready_usage_state",
+        AsyncMock(
+            side_effect=lambda user_id: UsageActivationState(
+                user_id=user_id,
+                tier=SubscriptionTier.TRIAL,
+                ready=True,
+                trial_id="trial-1",
+            )
+        ),
     )
     mocker.patch.object(
         rate_limit_mod,
@@ -2606,6 +2612,7 @@ def _consolidate_delivery(pass_id: str) -> tuple[PendingEntry, list[BatchResultR
         next_poll_at=now,
         payload={
             "user_id": "u",
+            "cost_context": {"user_id": "u", "trial_id": None, "generation": None},
             "pass_id": pass_id,
             "job_id": "",
             "phase": "consolidate",
@@ -2724,3 +2731,69 @@ async def test_the_nightly_fan_out_reaches_ratification_past_a_stalled_store(
 
     ratification.assert_awaited_once_with("u")
     assert result.dream is not None and result.dream.error is None
+
+
+@pytest.mark.asyncio
+async def test_each_phase_cost_is_charged_under_the_passs_trial_attribution(
+    mocker, usage_snapshot
+):
+    """The pass captures the trial or paid attribution before its first
+    provider call (#15208's ``attributed_usage``), and every phase's cost
+    record (``record_phase_cost``, the inference layer's ``record``) charges
+    under it: a trial user's dream lands in the trial ledger, the trial
+    converting mid-pass or not."""
+    usage_snapshot.side_effect = lambda user_id: UsageActivationState(
+        user_id=user_id,
+        tier=SubscriptionTier.TRIAL,
+        ready=True,
+        trial_id="trial-1",
+        generation="generation-1",
+    )
+    mocker.patch.object(
+        orchestrator_mod, "gather_dream_input", AsyncMock(return_value=_build_input())
+    )
+    usage = InferenceUsage(
+        model="test-model",
+        input_tokens=100,
+        output_tokens=10,
+        cost_usd=0.001,
+        cost_source="provider",
+        payer="platform_allowance",
+    )
+    outputs = [
+        ConsolidationOutput(
+            facts=[ConsolidatedFact(content="A likes B", confidence=0.8)]
+        ),
+        RecombinationOutput(proposals=[]),
+        DreamOperations(summary_for_user="quiet night"),
+    ]
+    mocker.patch.object(
+        orchestrator_mod,
+        "structured_complete",
+        AsyncMock(
+            side_effect=[StructuredCompletion(value=o, usage=usage) for o in outputs]
+        ),
+    )
+    mocker.patch.object(
+        orchestrator_mod,
+        "apply_operations",
+        AsyncMock(return_value={"session_id": "s1"}),
+    )
+    charged_under: list[str | None] = []
+
+    async def charge(ctx, usage):
+        context = get_trial_cost_context(ctx.scope.user_id)
+        charged_under.append(context.trial_id if context else None)
+        return usage
+
+    mocker.patch.object(
+        orchestrator_mod, "record_phase_cost", AsyncMock(side_effect=charge)
+    )
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error is None
+    assert charged_under == ["trial-1", "trial-1", "trial-1"]
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot
