@@ -215,9 +215,19 @@ class DataSamplingBlock(Block):
                     f"No valid weights found using key '{input_data.weight_key}'"
                 )
 
-            indices = random.choices(
-                range(data_size), weights=weights, k=input_data.sample_size
-            )
+            eligible = [i for i, w in enumerate(weights) if w > 0]
+            if len(eligible) < input_data.sample_size:
+                raise ValueError(
+                    f"Sample size ({input_data.sample_size}) cannot be larger "
+                    f"than the number of items with positive weight ({len(eligible)})."
+                )
+            # Weighted sampling without replacement (Efraimidis-Spirides):
+            # random.choices samples with replacement, which could return the
+            # same item several times unlike every other method here.
+            keys = [(random.random() ** (1.0 / weights[i]), i) for i in eligible]
+            indices = [
+                i for _, i in sorted(keys, reverse=True)[: input_data.sample_size]
+            ]
         elif input_data.sampling_method == SamplingMethod.RESERVOIR:
             indices = list(range(input_data.sample_size))
             for i in range(input_data.sample_size, data_size):
