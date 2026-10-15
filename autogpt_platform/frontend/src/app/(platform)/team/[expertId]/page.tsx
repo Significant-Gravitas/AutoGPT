@@ -15,7 +15,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Flag, useFlagStatus } from "@/services/feature-flags/use-get-flag";
 import {
-  Briefcase01Icon,
   Calendar03Icon,
   ComputerIcon,
   PlugSocketIcon,
@@ -47,7 +46,6 @@ import { ExpertNeedsYouSection } from "./components/ExpertNeedsYouSection/Expert
 import { ExpertSchedulesSection } from "./components/ExpertSchedulesSection";
 import { ExpertSettingsSection } from "./components/ExpertSettingsSection";
 import { ExpertSkillsSection } from "./components/ExpertSkillsSection";
-import { ExpertWorkSection } from "./components/ExpertWorkSection/ExpertWorkSection";
 import { ExpertWorkflowsSection } from "./components/ExpertWorkflowsSection";
 import { useExpertDetailPage } from "./useExpertDetailPage";
 
@@ -57,7 +55,6 @@ const MAIN_CLASS =
 const TABS = [
   { value: "basics", label: "Overview", icon: DashboardSquare01Icon },
   { value: "soul", label: "Soul", icon: AiBrain01Icon },
-  { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
   { value: "computer", label: "Computer", icon: ComputerIcon },
@@ -196,14 +193,6 @@ export default function ExpertDetailPage() {
               voicePreferences={expert.voice_preferences}
               boundaries={expert.boundaries}
               onEdit={toggleSoul}
-            />
-          </TabsLineContent>
-
-          <TabsLineContent value="work">
-            <ExpertWorkSection
-              expertId={expert.id}
-              expertName={expert.name}
-              enabled={Boolean(enabled) && ready}
             />
           </TabsLineContent>
 

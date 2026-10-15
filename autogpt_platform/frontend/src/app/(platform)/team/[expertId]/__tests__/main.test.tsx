@@ -21,7 +21,6 @@ import {
 import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import { ExpertActivityDay } from "@/app/api/__generated__/models/expertActivityDay";
-import { ExpertRun } from "@/app/api/__generated__/models/expertRun";
 import {
   getDeleteV1DeleteExecutionScheduleMockHandler,
   getGetV1ListExecutionSchedulesForAUserMockHandler,
@@ -194,36 +193,6 @@ const mariaSchedule: GraphExecutionJobInfo = {
   expert_id: "expert-maria",
 };
 
-const mariaRuns: ExpertRun[] = [
-  {
-    execution_id: "run-1",
-    graph_id: "graph-1",
-    agent_name: "Weekly Report",
-    library_agent_id: "lib-1",
-    status: "completed",
-    output_type: "table",
-    output_key: "result",
-    needs_review: false,
-    source: "scheduled",
-    started_at: "2026-09-06T10:00:00Z" as unknown as Date,
-    ended_at: "2026-09-06T10:01:12Z" as unknown as Date,
-    link: "/library/agents/lib-1?activeTab=runs&activeItem=run-1",
-  },
-  {
-    execution_id: "run-2",
-    graph_id: "graph-2",
-    agent_name: "SEO Audit",
-    library_agent_id: "lib-2",
-    status: "review",
-    output_type: "doc",
-    output_key: "report",
-    needs_review: true,
-    started_at: null,
-    ended_at: null,
-    link: "/library/agents/lib-2?activeTab=runs&activeItem=run-2",
-  },
-];
-
 const ACTIVITY_WINDOW_DAYS = 365;
 
 /** The backend sends `day` as a bare `YYYY-MM-DD`, which the client keeps as
@@ -379,7 +348,7 @@ describe("ExpertDetailPage", () => {
     expect(integrations.parentElement?.contains(chip)).toBe(true);
   });
 
-  test("keeps the budget above the tabs and the summary in Basics", async () => {
+  test("keeps the budget above the tabs and the summary in Overview", async () => {
     render(<ExpertDetailPage />);
 
     const budget = await screen.findByRole("region", {
@@ -403,7 +372,7 @@ describe("ExpertDetailPage", () => {
     expect(within(summary).queryByText("Skills")).toBeNull();
     expect(within(summary).queryByText("Workflows")).toBeNull();
 
-    await openTab("Work");
+    await openTab("Soul");
     expect(screen.getByRole("region", { name: "Maria budget" })).toBe(budget);
     expect(
       screen.queryByRole("complementary", { name: "Maria at a glance" }),
@@ -1001,70 +970,6 @@ describe("ExpertDetailPage", () => {
     expect(await screen.findByText(/No schedules yet/)).toBeDefined();
   });
 
-  test("shows the expert's recent work with honest status chips", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    const workList = await screen.findByRole("list", { name: "Expert work" });
-    expect(within(workList).getByText("Weekly Report")).toBeDefined();
-    expect(within(workList).getByText("Completed")).toBeDefined();
-    // A run paused for review reads "Waiting for review" — never "Completed"
-    // with a contradictory badge next to it.
-    expect(within(workList).getByText("Waiting for review")).toBeDefined();
-    expect(within(workList).queryByText("Needs review")).toBeNull();
-  });
-
-  test("filters work to runs that need review", async () => {
-    const user = userEvent.setup();
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    await screen.findByRole("list", { name: "Expert work" });
-
-    await user.click(screen.getByRole("button", { name: "Filter work" }));
-    await user.click(
-      await screen.findByRole("menuitemradio", { name: "Needs review" }),
-    );
-
-    const workList = screen.getByRole("list", { name: "Expert work" });
-    expect(within(workList).queryByText("Weekly Report")).toBeNull();
-    expect(within(workList).getByText("SEO Audit")).toBeDefined();
-  });
-
-  test("shows an empty work message when there is no completed work", async () => {
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    expect(await screen.findByText(/No completed work yet/)).toBeDefined();
-  });
-
-  test("shows a retryable error when recent work fails to load", async () => {
-    let attempts = 0;
-    server.use(
-      http.get("/api/proxy/api/experts/:expertId/runs", () => {
-        attempts += 1;
-        return attempts === 1
-          ? HttpResponse.json({ detail: "boom" }, { status: 500 })
-          : HttpResponse.json(mariaRuns);
-      }),
-    );
-
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    expect(
-      await screen.findByText("We could not load this expert's recent work."),
-    ).toBeDefined();
-    await userEvent.click(screen.getByRole("button", { name: /try again/i }));
-
-    expect(await screen.findByText("Weekly Report")).toBeDefined();
-    expect(attempts).toBe(2);
-  });
-
   test("previews an uploaded avatar and saves it after confirmation", async () => {
     const updateSpy = vi.fn((info: { request: Request }) => info.request);
     server.use(
@@ -1479,18 +1384,6 @@ describe("ExpertDetailPage", () => {
         screen.queryByRole("dialog", { name: "Weekly budget" }),
       ).toBeNull(),
     );
-  });
-
-  test("shows how and when a run happened on the Work tab", async () => {
-    server.use(getListExpertRunsMockHandler(mariaRuns));
-    render(<ExpertDetailPage />);
-
-    await openTab("Work");
-    const [scheduledMeta] = await screen.findAllByTestId("expert-run-meta");
-    expect(scheduledMeta.textContent).toContain("Scheduled");
-    expect(scheduledMeta.textContent).toContain("ago");
-    expect(scheduledMeta.textContent).toContain("1m 12s");
-    expect(screen.getAllByTestId("expert-run-meta")).toHaveLength(1);
   });
 
   test("opening the chat closes the Soul panel and vice versa", async () => {
