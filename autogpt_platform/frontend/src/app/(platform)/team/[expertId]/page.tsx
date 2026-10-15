@@ -22,6 +22,7 @@ import {
   SparklesIcon,
   AiBrain01Icon,
   DashboardSquare01Icon,
+  Folder01Icon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
 import { notFound, useParams, useRouter } from "next/navigation";
@@ -37,6 +38,7 @@ import {
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
+import { ExpertFilesSection } from "./components/ExpertFilesSection/ExpertFilesSection";
 import { ExpertOverview } from "./components/ExpertOverview/ExpertOverview";
 import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
@@ -57,6 +59,7 @@ const TABS = [
   { value: "soul", label: "Soul", icon: AiBrain01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
+  { value: "files", label: "Files", icon: Folder01Icon },
   { value: "computer", label: "Computer", icon: ComputerIcon },
   { value: "integrations", label: "Integrations", icon: PlugSocketIcon },
   { value: "skills", label: "Skills", icon: SparklesIcon },
@@ -221,6 +224,10 @@ export default function ExpertDetailPage() {
               onInstallWorkflow={openPicker}
               onAskWorkflow={openChatWithPrompt}
             />
+          </TabsLineContent>
+
+          <TabsLineContent value="files">
+            <ExpertFilesSection expertId={expert.id} expertName={expert.name} />
           </TabsLineContent>
 
           <TabsLineContent value="computer">
