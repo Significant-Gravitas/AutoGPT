@@ -437,7 +437,7 @@ def handle_insufficient_funds_notif(
         data=ZeroBalanceCause(
             cta_path="/settings/billing",
             agent=agent_name,
-            shortfall_display=f"{shortfall / 100:,.2f}",
+            shortfall_display=f"${shortfall / 100:,.2f}",
         ).model_dump(mode="json"),
     )
 
@@ -524,7 +524,7 @@ def _low_balance_cause(
     the alert says the balance is low without naming a date.
     """
     daily_rate = db_client.get_recent_daily_spend(user_id)
-    balance_display = f"{current_balance / 100:,.2f} credits"
+    balance_display = f"${current_balance / 100:,.2f}"
     scheduled_agents = db_client.count_scheduled_agents(user_id)
 
     if daily_rate <= 0:
@@ -539,7 +539,7 @@ def _low_balance_cause(
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,
-        daily_rate_display=f"{daily_rate / 100:,.2f} credits",
+        daily_rate_display=f"${daily_rate / 100:,.2f}",
         balance_display=balance_display,
         runs_out_label=f"{runs_out.day} {runs_out.strftime('%b')}",
         scheduled_agents=scheduled_agents,

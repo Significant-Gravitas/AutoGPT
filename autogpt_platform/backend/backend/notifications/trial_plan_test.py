@@ -181,3 +181,18 @@ async def test_the_conversion_event_reports_the_chosen_plan(converted):
     properties = track.call_args.args[2]
     assert properties["subscription_tier"] == "MAX"
     assert properties["billing_cycle"] == "monthly"
+
+
+def test_converted_plan_start_is_the_payment_date_not_the_trial_end(converted):
+    current = _switched()
+    data = notices.trial_notice_data(converted, "converted", "Sam", current)
+    assert data.started_label == converted.converted_at.astimezone(UTC).strftime(
+        "%d %b %Y at %H:%M UTC"
+    )
+    assert data.started_label != data.ends_label
+    legacy = data.model_copy(update={"started_label": None})
+    assert notices._notice_matches_current_terms(legacy, data, converted, current)
+    wrong_date = data.model_copy(update={"started_label": "01 Jan 2000"})
+    assert not notices._notice_matches_current_terms(
+        wrong_date, data, converted, current
+    )

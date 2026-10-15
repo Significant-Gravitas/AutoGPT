@@ -17,6 +17,7 @@ cancel the newer one as a duplicate.
 """
 
 import logging
+from enum import StrEnum
 from typing import Any
 
 import stripe
@@ -98,7 +99,13 @@ class FailedInvoice(BaseModel):
         )
 
 
-async def handle_subscription_payment_failure(invoice: dict) -> None:
+class PaymentFailureOutcome(StrEnum):
+    NEEDS_ACTION = "needs_action"
+    SETTLED = "settled"
+    IGNORED = "ignored"
+
+
+async def handle_subscription_payment_failure(invoice: dict) -> PaymentFailureOutcome:
     """Pay the failed invoice from the wallet, or cut access until it is paid.
 
     - A payment still processing (e.g. a bank debit) is left to settle before
@@ -118,10 +125,10 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
     """
     failed = await _load_failed_invoice(invoice)
     if failed is None:
-        return
+        return PaymentFailureOutcome.IGNORED
     payment = await find_wallet_payment(failed.user_id, failed.invoice_id)
     if await _left_to_settle(failed, payment):
-        return
+        return PaymentFailureOutcome.IGNORED
     replaced = failed.is_unpaid and await _replaced_by_another_plan(failed)
     if payment is not None:
         await settle_wallet_payment(
@@ -129,14 +136,14 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
         )
     if replaced:
         await _end_replaced_subscription(failed)
-        return
+        return PaymentFailureOutcome.IGNORED
     if failed.was_replaced:
         # An earlier delivery cancelled it but did not finish voiding. Any of
         # its invoices' events may finish it, not only the latest one's.
         await _void_unpaid_invoices(failed.sub_id)
-        return
+        return PaymentFailureOutcome.IGNORED
     if payment is not None:
-        return
+        return PaymentFailureOutcome.IGNORED
     if not failed.is_unpaid:
         logger.info(
             f"Payment failure for invoice {failed.invoice_id} is stale: invoice"
@@ -144,19 +151,21 @@ async def handle_subscription_payment_failure(invoice: dict) -> None:
             f" {failed.subscription.get('status')}, latest={failed.is_latest},"
             f" pending update={failed.waits_on_pending_update}"
         )
-        return
+        return PaymentFailureOutcome.IGNORED
     if failed.invoice.get("amount_due", 0) <= 0:
-        return
+        return PaymentFailureOutcome.IGNORED
     if await pay_invoice_from_wallet(
         failed.user_id, failed.customer_id, failed.sub_id, failed.invoice
     ):
-        return
+        return PaymentFailureOutcome.SETTLED
     logger.info(
         f"Balance cannot cover invoice {failed.invoice_id} of user"
         f" {failed.user_id}; cutting access while Stripe retries subscription"
         f" {failed.sub_id}"
     )
     await sync_subscription_from_stripe(failed.subscription)
+
+    return PaymentFailureOutcome.NEEDS_ACTION
 
 
 async def _left_to_settle(failed: FailedInvoice, payment: WalletPayment | None) -> bool:
