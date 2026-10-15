@@ -28,7 +28,7 @@ from backend.copilot.model import (
 from backend.data.db_accessors import graph_db, review_db
 from backend.data.execution import ExecutionContext
 
-from . import Ruling, _last_user_message, chat_rules, gate_active
+from . import Ruling, _typed_messages, chat_rules, gate_active
 from . import review as review_store
 from . import rule_on, unified_approvals
 from .classifier import Judgement, supervise
@@ -79,7 +79,7 @@ async def judge_step(
         return await supervise(
             tool_name=STEP_TOOL,
             args={"workflow": step.name, "step": subject.name, "input": inputs},
-            user_message=request_that_started(
+            user_messages=request_that_started(
                 session, ctx.root_execution_id or step.graph_exec_id
             ),
         )
@@ -288,8 +288,8 @@ def step_rule_keys(cards: Iterable[PendingHumanReviewModel]) -> dict[str, str]:
     return keys
 
 
-def request_that_started(session: ChatSession, run_id: str | None) -> str:
-    """The user's message before the call that started the run: a run parked
+def request_that_started(session: ChatSession, run_id: str | None) -> list[str]:
+    """What the user typed up to the call that started the run: a run parked
     for days must not be judged against whatever they said since."""
     started = next(
         (
@@ -303,8 +303,8 @@ def request_that_started(session: ChatSession, run_id: str | None) -> str:
         None,
     )
     if started is None:
-        return ""
-    return _last_user_message(session, upto=started)
+        return []
+    return _typed_messages(session, upto=started)
 
 
 async def _ask_from_now_on(user_id: str, card: PendingHumanReviewModel) -> None:

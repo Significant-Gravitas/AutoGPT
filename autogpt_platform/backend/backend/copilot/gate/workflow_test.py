@@ -238,7 +238,9 @@ async def test_the_supervisor_reads_the_request_that_started_the_run(redis):
     supervise = AsyncMock(return_value=Judgement(allowed=True, reason="ok"))
     with patch(f"{_WORKFLOW}.supervise", supervise):
         await workflow.judge_step(session, _BLOCK, _INPUTS, _ctx(), _STEP)
-    assert supervise.await_args.kwargs["user_message"] == "Post the digest to #general"
+    assert supervise.await_args.kwargs["user_messages"] == [
+        "Post the digest to #general"
+    ]
 
 
 # ---- the card and its answer ---------------------------------------------

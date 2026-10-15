@@ -238,7 +238,7 @@ async def check_action(
         return await supervise(
             tool_name=tool_name,
             args=_judged_args(args, files),
-            user_message=_last_user_message(session),
+            user_messages=_typed_messages(session),
         )
 
     ruling = await rule_on(
@@ -403,18 +403,21 @@ def _judged_args(
     return judged
 
 
-def _last_user_message(session: ChatSession, upto: int | None = None) -> str:
-    """The latest typed message, among the first ``upto`` when given."""
+def _typed_messages(session: ChatSession, upto: int | None = None) -> list[str]:
+    """What the user typed, oldest first, among the first ``upto`` messages when
+    given; an answered card's rows and a row of nothing but the server's context
+    are not the user's words."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
-    for message in reversed(session.messages[:upto]):
-        if message.role == "user" and message.content:
-            if held.is_answer_row(message):
-                continue
-            # A first turn's row starts with the server's context blocks.
-            return strip_injected_context_for_display(message.content)
-    return ""
+    typed = [
+        strip_injected_context_for_display(message.content)
+        for message in session.messages[:upto]
+        if message.role == "user"
+        and message.content
+        and not held.is_answer_row(message)
+    ]
+    return [message for message in typed if message.strip()]
 
 
 __all__ = [

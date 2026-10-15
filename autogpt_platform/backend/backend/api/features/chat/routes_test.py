@@ -19,7 +19,9 @@ from backend.api.features.chat import routes as chat_routes
 from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
+from backend.copilot.at_reset import cancel_resume_at_reset_in_background
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
@@ -367,12 +369,18 @@ def _mock_stream_internals(
         new_callable=AsyncMock,
         return_value=None,
     )
+    # A sent message cancels the chat's pending resume at the budget reset;
+    # keep that off the scheduler.
+    mock_cancel_resume = mocker.patch(
+        "backend.api.features.chat.routes.cancel_resume_at_reset_in_background"
+    )
     claims = _mock_client_message_claims(mocker)
     return types.SimpleNamespace(
         enqueue=mock_schedule,
         paywall=mock_paywall,
         session=mock_session,
         owns_active_expert=mock_owns_active_expert,
+        cancel_resume=mock_cancel_resume,
         claims=claims,
     )
 
@@ -570,6 +578,62 @@ def test_stream_chat_skips_the_expert_gate_for_a_non_expert_session(
 
     assert response.status_code == 200
     mocks.owns_active_expert.assert_not_awaited()
+    mocks.enqueue.assert_awaited_once()
+
+
+# ─── A sent message cancels the pending resume at the budget reset ────
+
+
+def test_a_user_message_cancels_the_pending_resume(
+    mocker: pytest_mock.MockerFixture, test_user_id: str
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_called_once_with("sess-1", test_user_id)
+
+
+@pytest.mark.parametrize(
+    "payload, turn_id",
+    [
+        ({"message": KEEP_GOING_NOTE, "is_user_message": False}, "turn-id-mock"),
+        ({"message": "carry on"}, None),
+    ],
+    ids=["not-a-user-message", "duplicate-not-scheduled"],
+)
+def test_the_resume_stays_unless_a_user_turn_was_scheduled(
+    mocker: pytest_mock.MockerFixture, payload: dict, turn_id: str | None
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocks.enqueue.return_value = turn_id
+
+    response = client.post("/sessions/sess-1/stream", json=payload)
+
+    assert response.status_code == 200
+    mocks.cancel_resume.assert_not_called()
+
+
+def test_a_failing_resume_cancel_never_fails_the_send(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocks = _mock_stream_internals(mocker)
+    mocker.patch.object(
+        chat_routes,
+        "cancel_resume_at_reset_in_background",
+        cancel_resume_at_reset_in_background,
+    )
+    scheduler_down = MagicMock(
+        cancel_at_reset_turn=AsyncMock(side_effect=RuntimeError("scheduler down"))
+    )
+    mocker.patch(
+        "backend.copilot.at_reset.get_scheduler_client", return_value=scheduler_down
+    )
+
+    response = client.post("/sessions/sess-1/stream", json={"message": "carry on"})
+
+    assert response.status_code == 200
     mocks.enqueue.assert_awaited_once()
 
 
@@ -1577,6 +1641,34 @@ def test_usage_uses_config_limits(
         weekly_cost_limit=77777,
         rate_limit_reset_cost=500,
         tier=SubscriptionTier.BASIC,
+    )
+
+
+def test_usage_reports_the_limit_that_blocks_the_next_turn(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """Both windows used up: the client is told which one it waits for and
+    when that refills, computed server-side from the meters' own status."""
+    _mock_usage(mocker, daily_used=10000, weekly_used=50000)
+
+    response = client.get("/usage")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["state"] == "exhausted"
+    assert data["limiting_window"] == "weekly"
+    assert data["resets_at"] == data["weekly"]["resets_at"]
+
+
+def test_usage_state_is_ok_with_room_left(mocker: pytest_mock.MockerFixture) -> None:
+    _mock_usage(mocker, daily_used=500, weekly_used=2000)
+
+    data = client.get("/usage").json()
+
+    assert (data["state"], data["limiting_window"], data["resets_at"]) == (
+        "ok",
+        None,
+        None,
     )
 
 
