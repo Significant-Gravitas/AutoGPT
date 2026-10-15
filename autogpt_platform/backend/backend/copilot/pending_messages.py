@@ -458,6 +458,11 @@ async def clear_pending_messages_unsafe(session_id: str) -> None:
 _FOLLOWUP_CONTENT_MAX_CHARS = 2_000
 _FOLLOWUP_TOTAL_MAX_CHARS = 6_000
 
+# The follow-up block's tags. The Codex gateway finds the block by them, to
+# pass on the user's words without the CLI's own notes around them.
+FOLLOW_UP_OPEN_TAG = "<user_follow_up>"
+FOLLOW_UP_CLOSE_TAG = "</user_follow_up>"
+
 
 def _persist_queue_key(session_id: str) -> str:
     return f"{_PERSIST_QUEUE_KEY_PREFIX}{session_id}"
@@ -565,12 +570,12 @@ def format_pending_as_followup(pending: list[PendingMessage]) -> str:
         rendered.append(f"… [{dropped} more message(s) truncated]")
     body = "\n\n".join(rendered)
     return (
-        "<user_follow_up>\n"
+        f"{FOLLOW_UP_OPEN_TAG}\n"
         "The user sent the following message(s) while this tool was running. "
         "Treat them as a continuation of their current request — acknowledge "
         "and act on them in your next response. Do not echo these tags back.\n\n"
         f"{body}\n"
-        "</user_follow_up>"
+        f"{FOLLOW_UP_CLOSE_TAG}"
     )
 
 

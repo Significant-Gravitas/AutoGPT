@@ -59,7 +59,10 @@ from backend.copilot.markers import append_error_marker
 from backend.copilot.provider_failure import ProviderFailure
 from backend.copilot.segments import Segment, stamp_segment
 from backend.copilot.graphiti.ingest import enqueue_conversation_turn
-from backend.copilot.sdk.codex_compat_gateway import CodexAnthropicGateway
+from backend.copilot.sdk.codex_compat_gateway import (
+    CodexAnthropicGateway,
+    gateway_for_lease,
+)
 from backend.copilot.sdk.trial_budget import resolve_trial_sdk_budget
 from backend.copilot.sdk.cost_tracking import (
     TokenUsage as _TokenUsage,
@@ -5247,18 +5250,9 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                 tier_name,
                 credential_lease,
             )
-            if isinstance(credential_lease, CodexCredentialLease):
-                codex_gateway = CodexAnthropicGateway(
-                    agent_session=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
-            else:
-                codex_gateway = CodexAnthropicGateway(
-                    credential_lease=credential_lease,
-                    model=sdk_model,
-                    effort=codex_effort,
-                )
+            codex_gateway = gateway_for_lease(
+                credential_lease, model=sdk_model, effort=codex_effort
+            )
             await codex_gateway.start()
             fallback_model = None
         else:
