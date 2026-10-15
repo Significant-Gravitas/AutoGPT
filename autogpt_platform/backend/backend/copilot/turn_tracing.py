@@ -36,12 +36,22 @@ MODEL_OUTPUT_CHUNKS = (StreamTextDelta, StreamReasoningDelta, StreamToolInputSta
 class TurnTrace:
     """One turn's timings and outcome, recorded on its transaction."""
 
-    def __init__(self, span: Span) -> None:
+    def __init__(self, span: Span, requested_at: float = 0.0) -> None:
         self.span = span
         self._started_at = time.monotonic()
+        self._requested_at = requested_at
         self._first_token_seen = False
+        self._first_text_seen = False
+        self._shape: str | None = None
         self._chunks = 0
         self._tool_calls = 0
+
+    def describe_chat(self, *, first_turn: bool, expert: bool) -> None:
+        """Tag the kind of chat the turn is in, so its timings split by it: a
+        chat's first turn sets up its sandbox and context, and an expert's
+        turn loads the expert as well."""
+        self.span.set_tag("copilot.turn.first", "true" if first_turn else "false")
+        self.span.set_tag("copilot.expert", "true" if expert else "false")
 
     def engine_started(self, engine: str) -> None:
         """Setup is done and the turn is handed to ``engine``."""
@@ -58,6 +68,16 @@ class TurnTrace:
             tracing.set_timing(
                 "copilot.turn.ttft_ms", self._elapsed_ms(), span=self.span
             )
+            self._time_since_request("copilot.turn.request_to_ttft_ms")
+        if self._shape is None and isinstance(chunk, StreamToolInputStart):
+            self._shape = "tool_first"
+        if not self._first_text_seen and isinstance(chunk, StreamTextDelta):
+            self._first_text_seen = True
+            self._shape = self._shape or "text_first"
+            tracing.set_timing(
+                "copilot.turn.first_text_ms", self._elapsed_ms(), span=self.span
+            )
+            self._time_since_request("copilot.turn.request_to_first_text_ms")
 
     def set_outcome(self, error_message: str | None, cancelled_message: str) -> None:
         """Tag how the turn ended, given the error it reports to the user."""
@@ -71,6 +91,9 @@ class TurnTrace:
         tracing.set_status(status, span=self.span)
 
     def close(self) -> None:
+        # Whether the answer's text or a tool call came first: a turn that
+        # runs tools before it answers can't show its answer as early.
+        self.span.set_tag("copilot.turn.shape", self._shape or "none")
         tracing.set_timing(
             "copilot.turn.duration_ms", self._elapsed_ms(), span=self.span
         )
@@ -81,6 +104,14 @@ class TurnTrace:
 
     def _elapsed_ms(self) -> float:
         return (time.monotonic() - self._started_at) * 1000
+
+    def _time_since_request(self, name: str) -> None:
+        """Time *name* from when the chat route received the message, which a
+        turn started without one (a schedule, a parent turn) doesn't have."""
+        if self._requested_at:
+            tracing.set_timing(
+                name, (time.time() - self._requested_at) * 1000, span=self.span
+            )
 
 
 @contextmanager
@@ -112,7 +143,7 @@ def turn_transaction(entry: "CoPilotExecutionEntry") -> Iterator[TurnTrace]:
                 (time.time() - entry.enqueued_at) * 1000,
                 span=span,
             )
-        turn = TurnTrace(span)
+        turn = TurnTrace(span, requested_at=entry.request_arrival_at)
         try:
             yield turn
         finally:
