@@ -192,7 +192,6 @@ export default function ExpertDetailPage() {
               identity={expert.identity}
               voicePreferences={expert.voice_preferences}
               boundaries={expert.boundaries}
-              onEdit={toggleSoul}
             />
           </TabsLineContent>
 
