@@ -35,6 +35,7 @@ from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
     get_last_message_texts,
+    set_chat_sessions_archived,
 )
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.expert_kickoff import (
@@ -512,6 +513,19 @@ class UpdateSessionTitleRequest(BaseModel):
         if not stripped:
             raise ValueError("Title must not be blank")
         return stripped
+
+
+class ArchiveSessionsRequest(BaseModel):
+    """Request model for archiving or restoring chat sessions."""
+
+    session_ids: list[str] = Field(min_length=1, max_length=100)
+    archived: bool = True
+
+
+class ArchiveSessionsResponse(BaseModel):
+    """Response model for the archive sessions endpoint."""
+
+    updated: int
 
 
 class UpdateSessionPinnedRequest(BaseModel):
@@ -1236,6 +1250,35 @@ async def update_session_title_route(
             detail=f"Session {session_id} not found or access denied",
         )
     return {"status": "ok"}
+
+
+@router.post(
+    "/sessions/archive",
+    summary="Archive sessions",
+    dependencies=[Security(auth.requires_user)],
+)
+async def archive_sessions(
+    request: ArchiveSessionsRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ArchiveSessionsResponse:
+    """
+    Archive or restore chat sessions.
+
+    Archived sessions drop out of the session list and search until the
+    user restores them or a new turn starts in them. Ids the user does not
+    own, or already in the requested state, are skipped.
+
+    Args:
+        request: The session ids and whether to archive or restore them.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        ArchiveSessionsResponse: How many sessions changed.
+    """
+    updated = await set_chat_sessions_archived(
+        list(dict.fromkeys(request.session_ids)), user_id, request.archived
+    )
+    return ArchiveSessionsResponse(updated=updated)
 
 
 @router.patch(

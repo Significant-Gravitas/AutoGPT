@@ -120,6 +120,7 @@ class ListExpertChatsTool(BaseTool):
                 expert_id=one_expert,
                 # Mutually exclusive with expert_id, which already implies it.
                 experts_only=one_expert is None,
+                include_archived=True,
             )
         except Exception as e:
             logger.warning(f"list_expert_chats lookup failed: {e}")

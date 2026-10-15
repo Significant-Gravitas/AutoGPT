@@ -3328,6 +3328,51 @@ def test_list_sessions_returns_last_message_first_line(
     assert sessions[1]["last_message"] is None
 
 
+def test_archive_sessions_scopes_to_user_and_dedupes(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    archive = mocker.patch(
+        "backend.api.features.chat.routes.set_chat_sessions_archived",
+        new_callable=AsyncMock,
+        return_value=2,
+    )
+
+    response = client.post(
+        "/sessions/archive",
+        json={"session_ids": ["sess-a", "sess-b", "sess-a"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"updated": 2}
+    archive.assert_awaited_once_with(["sess-a", "sess-b"], test_user_id, True)
+
+
+def test_archive_sessions_restores(
+    mocker: pytest_mock.MockerFixture,
+    test_user_id: str,
+) -> None:
+    archive = mocker.patch(
+        "backend.api.features.chat.routes.set_chat_sessions_archived",
+        new_callable=AsyncMock,
+        return_value=1,
+    )
+
+    response = client.post(
+        "/sessions/archive",
+        json={"session_ids": ["sess-a"], "archived": False},
+    )
+
+    assert response.status_code == 200
+    archive.assert_awaited_once_with(["sess-a"], test_user_id, False)
+
+
+def test_archive_sessions_rejects_empty_list() -> None:
+    response = client.post("/sessions/archive", json={"session_ids": []})
+
+    assert response.status_code == 422
+
+
 def test_list_sessions_returns_is_pinned(
     mocker: pytest_mock.MockerFixture,
 ) -> None:

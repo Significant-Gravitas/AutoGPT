@@ -1486,6 +1486,7 @@ async def get_or_create_expert_kickoff_session(
         organization_id=organization_id,
         expert_id=expert_id,
         pinned_first=False,
+        include_archived=True,
     )
     if sessions:
         existing = await get_chat_session(sessions[0].session_id, user_id)
@@ -1579,6 +1580,7 @@ async def get_user_sessions(
     title_contains: str | None = None,
     expert_id: str | None = None,
     pinned_first: bool = True,
+    include_archived: bool = False,
 ) -> tuple[list[ChatSessionInfo], int]:
     """Get chat sessions for a user from the database with total count.
 
@@ -1601,9 +1603,13 @@ async def get_user_sessions(
         title_contains=title_contains,
         expert_id=expert_id,
         pinned_first=pinned_first,
+        include_archived=include_archived,
     )
     total_count = await db.get_user_session_count(
-        user_id, organization_id=organization_id, expert_id=expert_id
+        user_id,
+        organization_id=organization_id,
+        expert_id=expert_id,
+        include_archived=include_archived,
     )
 
     return sessions, total_count

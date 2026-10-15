@@ -22,6 +22,8 @@ interface Props {
   expertsById: ExpertIdentityMap;
   onMoveCard: (sessionId: string, columnId: string) => void;
   onRemove?: () => void;
+  onClear?: () => void;
+  isClearing?: boolean;
 }
 
 export function BoardColumn({
@@ -30,6 +32,8 @@ export function BoardColumn({
   expertsById,
   onMoveCard,
   onRemove,
+  onClear,
+  isClearing,
 }: Props) {
   const { isOver, handleDragOver, handleDragLeave, handleDrop } =
     useBoardColumn({ columnId: column.id, onMoveCard });
@@ -53,25 +57,39 @@ export function BoardColumn({
         <Text variant="body" tone="muted" className="tabular-nums">
           {column.sessions.length}
         </Text>
-        {onRemove && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="ml-auto text-zinc-500"
-                aria-label={`${column.name} column options`}
-              >
-                <Icon icon={MoreHorizontalIcon} size={16} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onRemove}>
-                Remove column
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+        <div className="ml-auto flex items-center gap-1">
+          {onClear && (
+            <Button
+              variant="ghost"
+              size="xs"
+              className="text-zinc-500"
+              aria-label={`Archive every chat in ${column.name}`}
+              disabled={isClearing}
+              onClick={onClear}
+            >
+              Clear
+            </Button>
+          )}
+          {onRemove && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="text-zinc-500"
+                  aria-label={`${column.name} column options`}
+                >
+                  <Icon icon={MoreHorizontalIcon} size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={onRemove}>
+                  Remove column
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
       </header>
       <div className="flex max-h-[36rem] min-h-28 flex-col gap-2 overflow-y-auto px-2 pb-2 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-300">
         {column.sessions.map((session) => (

@@ -817,6 +817,7 @@ async def get_user_chat_sessions(
     autopilot_only: bool = False,
     experts_only: bool = False,
     pinned_first: bool = True,
+    include_archived: bool = False,
 ) -> list[ChatSessionInfo]:
     """Get chat sessions for a user, ordered by most recent.
 
@@ -838,6 +839,9 @@ async def get_user_chat_sessions(
 
     ``pinned_first=False`` provides strict recency ordering for internal
     adoption flows; the user-facing sidebar keeps pinned sessions first.
+
+    Archived sessions are left out unless ``include_archived`` is set, for
+    callers that read history rather than show the user a list.
     """
     if expert_id == "":
         raise ValueError("expert_id must be non-empty")
@@ -848,6 +852,8 @@ async def get_user_chat_sessions(
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if not include_archived:
+        conditions.append('"archivedAt" IS NULL')
     if organization_id is not None:
         params.append(organization_id)
         # Same carve-out as _own_org_scope: the owner's expert sessions are
@@ -889,6 +895,7 @@ async def get_user_session_count(
     organization_id: str | None = None,
     expert_id: str | None = None,
     autopilot_only: bool = False,
+    include_archived: bool = False,
 ) -> int:
     """Get the total number of chat sessions for a user.
 
@@ -903,6 +910,8 @@ async def get_user_session_count(
 
     params: list[Any] = [user_id]
     conditions = ['"userId" = $1', _EXCLUDE_DREAM_SESSIONS_SQL]
+    if not include_archived:
+        conditions.append('"archivedAt" IS NULL')
     if organization_id is not None:
         params.append(organization_id)
         # Keep in lockstep with get_user_chat_sessions so pagination totals
@@ -922,6 +931,27 @@ async def get_user_session_count(
         *params,
     )
     return rows[0]["count"] if rows else 0
+
+
+async def set_chat_sessions_archived(
+    session_ids: list[str], user_id: str, archived: bool
+) -> int:
+    """Archive or restore the user's sessions among *session_ids*.
+
+    Ids the user does not own are skipped. ``updatedAt`` is left alone so a
+    restored chat keeps its place in recency order. Returns the number of
+    sessions changed.
+    """
+    if not session_ids:
+        return 0
+    return await db.execute_raw_with_schema(
+        'UPDATE {schema_prefix}"ChatSession" SET "archivedAt" = '
+        + ("now()" if archived else "NULL")
+        + ' WHERE "id" = ANY($1::text[]) AND "userId" = $2 AND "archivedAt" IS '
+        + ("NULL" if archived else "NOT NULL"),
+        session_ids,
+        user_id,
+    )
 
 
 async def get_last_message_texts(session_ids: list[str]) -> dict[str, str]:
@@ -1505,9 +1535,10 @@ async def admit_chat_session_turn(
             return "full"
         # Conditional: a transition outside this lock (a cancel) may have
         # moved the row since it was read.
+        # A new turn brings an archived chat back into the user's lists.
         updated = await sessions.update_many(
             where={"id": session_id, "userId": user_id, "chatStatus": expect_status},
-            data={"chatStatus": CHAT_STATUS_RUNNING},
+            data={"chatStatus": CHAT_STATUS_RUNNING, "archivedAt": None},
         )
     return "admitted" if updated else "busy"
 

@@ -1,6 +1,13 @@
 import { useExpertMap } from "@/app/(platform)/copilot/useExpertMap";
-import { useSessionList } from "@/app/(platform)/copilot/useSessionList";
+import {
+  SESSION_LIST_QUERY_KEY,
+  useSessionList,
+} from "@/app/(platform)/copilot/useSessionList";
+import { usePostV2ArchiveSessions } from "@/app/api/__generated__/endpoints/chat/chat";
+import { Button } from "@/components/atoms/Button/Button";
+import { toast } from "@/components/molecules/Toast/use-toast";
 import { Key, storage } from "@/services/storage/local-storage";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
   type BoardState,
@@ -13,6 +20,9 @@ import {
 export function useTaskBoard() {
   const { sessions, isLoading } = useSessionList();
   const { expertsById } = useExpertMap();
+  const queryClient = useQueryClient();
+  const { mutateAsync: setArchived, isPending: isClearing } =
+    usePostV2ArchiveSessions();
   const [board, setBoard] = useState(() =>
     parseBoardState(storage.get(Key.EXPERT_TASK_BOARD)),
   );
@@ -54,8 +64,51 @@ export function useTaskBoard() {
     }));
   }
 
+  async function archiveSessions(sessionIds: string[], archived: boolean) {
+    try {
+      await setArchived({ data: { session_ids: sessionIds, archived } });
+      return true;
+    } catch {
+      toast({
+        title: archived
+          ? "Could not archive these chats"
+          : "Could not restore these chats",
+        variant: "destructive",
+      });
+      return false;
+    } finally {
+      queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
+    }
+  }
+
+  async function clearColumn(sessionIds: string[]) {
+    if (!sessionIds.length || !(await archiveSessions(sessionIds, true))) {
+      return;
+    }
+    const count = sessionIds.length;
+    const shown = toast({
+      title: `${count} ${count === 1 ? "chat" : "chats"} archived`,
+      duration: 8000,
+      action: (
+        <Button
+          variant="secondary"
+          size="xs"
+          className="ml-auto"
+          onClick={() => {
+            shown.dismiss();
+            void archiveSessions(sessionIds, false);
+          }}
+        >
+          Undo
+        </Button>
+      ),
+    });
+  }
+
   return {
     isLoading,
+    isClearing,
+    clearColumn,
     columns: groupSessionsIntoColumns(sessions, board),
     allColumns: board.columns,
     expertsById,

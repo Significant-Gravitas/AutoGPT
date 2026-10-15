@@ -4,12 +4,14 @@ import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
 import { AddColumn } from "./components/AddColumn/AddColumn";
 import { BoardColumn } from "./components/BoardColumn/BoardColumn";
-import { isDefaultColumn } from "./helpers";
+import { DONE, isDefaultColumn } from "./helpers";
 import { useTaskBoard } from "./useTaskBoard";
 
 export function TaskBoard() {
   const {
     isLoading,
+    isClearing,
+    clearColumn,
     columns,
     allColumns,
     expertsById,
@@ -51,6 +53,15 @@ export function TaskBoard() {
                     ? undefined
                     : () => removeColumn(column.id)
                 }
+                onClear={
+                  column.id === DONE && column.sessions.length > 0
+                    ? () =>
+                        clearColumn(
+                          column.sessions.map((session) => session.id),
+                        )
+                    : undefined
+                }
+                isClearing={isClearing}
               />
             ))}
             <AddColumn onAdd={addColumn} />
