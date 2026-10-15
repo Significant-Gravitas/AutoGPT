@@ -559,7 +559,9 @@ def fields_on(monkeypatch):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("welcomed", [False, True])
-async def test_a_checkout_joins_its_group_without_a_status(fields_on, welcomed):
+async def test_a_checkout_joins_its_group_without_a_status(
+    fields_on, lifecycle_resync, welcomed
+):
     user = _User(welcome_sent_at=datetime(2026, 1, 1) if welcomed else None)
     with patch(
         "backend.notifications.lifecycle._claim_welcome",
@@ -574,6 +576,8 @@ async def test_a_checkout_joins_its_group_without_a_status(fields_on, welcomed):
     event = calls["audience"].await_args.args[0]
     assert event.action in (AudienceAction.ENROLL_TOUR, AudienceAction.ADD_CHANGELOG)
     assert event.fields == {}
+    # The join may create the subscriber, so the status follows it.
+    lifecycle_resync.assert_awaited_once_with(user.id)
 
 
 @pytest.mark.asyncio
@@ -603,7 +607,7 @@ async def test_a_cancel_or_resume_writes_no_fields(fields_on, subscription, prev
 
 @pytest.mark.asyncio
 async def test_an_ended_subscription_leaves_the_changelog_without_a_status(
-    fields_on,
+    fields_on, lifecycle_resync
 ):
     calls = await _run(
         lambda: lifecycle.on_subscription_deleted(_subscription(ended_at=1789200000)),
@@ -612,6 +616,8 @@ async def test_an_ended_subscription_leaves_the_changelog_without_a_status(
     event = calls["audience"].await_args.args[0]
     assert event.action is AudienceAction.REMOVE_CHANGELOG
     assert event.fields == {}
+    # A removal never creates a subscriber: no extra sync.
+    lifecycle_resync.assert_not_awaited()
 
 
 @pytest.mark.parametrize(

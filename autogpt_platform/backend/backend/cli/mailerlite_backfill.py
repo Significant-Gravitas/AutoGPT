@@ -294,13 +294,31 @@ def _subscription(
     )
 
 
-async def _refresh(customer_id: str) -> "list[StripeSubscriptionFacts]":
-    """One customer's subscriptions as Stripe has them now, so the checkout
-    backfill writes the current status rather than its snapshot's: a trial
-    that converts during the run is not written back as a trial."""
-    from backend.data.posthog_lifecycle_sync import list_customer_subscriptions
+async def _refresh(person: "Person") -> "Person":
+    """The person with their subscriptions as Stripe has them now and their
+    trial row as it is now, so the checkout backfill writes the current
+    status rather than its snapshot's: a trial that converts during the run
+    is not written back as a trial. An unreadable trial row raises, and the
+    person is left for the next run."""
+    import prisma.models
 
-    return await list_customer_subscriptions(customer_id)
+    from backend.data.posthog_lifecycle_sync import list_customer_subscriptions
+    from backend.data.subscription_trial import TrialState
+
+    subscriptions = (
+        await list_customer_subscriptions(person.stripe_customer_id)
+        if person.stripe_customer_id
+        else []
+    )
+    row = await prisma.models.SubscriptionTrial.prisma().find_unique(
+        where={"userId": person.user_id}
+    )
+    return person.model_copy(
+        update={
+            "subscriptions": subscriptions,
+            "trial": TrialState.from_db(row) if row else None,
+        }
+    )
 
 
 async def _people(
@@ -412,6 +430,7 @@ def _report_fields(plan: "FieldPlan", accounts: int) -> None:
     click.echo(f"  invalid email (skipped): {plan.invalid}")
     click.echo(f"  opted out of marketing (skipped): {plan.opted_out}")
     click.echo(f"  placed in Iran or Russia (skipped): {plan.excluded_country}")
+    click.echo(f"  not in MailerLite (skipped): {plan.not_held}")
     click.echo(
         f"{len(plan.changes)} existing MailerLite subscribers to update "
         "(nobody is created here; see mailerlite-checkout-backfill)"

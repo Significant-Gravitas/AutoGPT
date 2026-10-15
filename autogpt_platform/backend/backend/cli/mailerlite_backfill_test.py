@@ -104,6 +104,37 @@ async def test_each_account_carries_its_consent_and_countries_into_the_backfills
     assert cli._customer(kept).marketing_opt_out_at is None
 
 
+@pytest.mark.asyncio
+async def test_the_checkout_refresh_reads_the_trial_row_with_stripe():
+    """A trial that converts mid-run must not be read with the planned,
+    unconverted row: both come back fresh."""
+    person = Person(
+        user_id="u1",
+        email="u1@example.com",
+        created_at=CREATED,
+        stripe_customer_id="cus_1",
+    )
+    row = MagicMock()
+    trials = MagicMock(find_unique=AsyncMock(return_value=row))
+    fresh = object()
+    with (
+        patch(
+            "backend.data.posthog_lifecycle_sync.list_customer_subscriptions",
+            AsyncMock(return_value=[ACTIVE]),
+        ) as listed,
+        patch("prisma.models.SubscriptionTrial.prisma", return_value=trials),
+        patch(
+            "backend.data.subscription_trial.TrialState.from_db",
+            return_value=fresh,
+        ),
+        patch.object(Person, "model_copy", lambda self, update: update),
+    ):
+        refreshed = await cli._refresh(person)
+    listed.assert_awaited_once_with("cus_1")
+    trials.find_unique.assert_awaited_once_with(where={"userId": "u1"})
+    assert refreshed == {"subscriptions": [ACTIVE], "trial": fresh}
+
+
 def test_every_report_counts_the_opted_out(capsys):
     person = Person(
         user_id="out",

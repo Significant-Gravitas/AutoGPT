@@ -181,13 +181,18 @@ async def _notify(
         ("ending", []),
     ],
 )
-async def test_each_trial_transition_moves_the_trial_group(trial, kind, actions):
+async def test_each_trial_transition_moves_the_trial_group(
+    trial, lifecycle_resync, kind, actions
+):
     trial, raw = _state(trial, kind)
     if kind == "ending":
         raw["trial_end"] = int((datetime.now(UTC) + timedelta(days=1)).timestamp())
     got, notice, _ = await _notify(trial, raw, kind)
     assert got == actions
     notice.assert_awaited_once()
+    # Joining may create the subscriber, so the status follows a join.
+    joined = AudienceAction.ADD_TRIAL in actions
+    assert lifecycle_resync.await_count == (1 if joined else 0)
 
 
 @pytest.mark.asyncio
@@ -196,12 +201,13 @@ async def test_each_trial_transition_moves_the_trial_group(trial, kind, actions)
     [(False, AudienceAction.ENROLL_TOUR), (True, AudienceAction.ADD_CHANGELOG)],
 )
 async def test_conversion_leaves_the_trial_and_joins_the_paying_audience(
-    trial, welcomed, paying
+    trial, lifecycle_resync, welcomed, paying
 ):
     trial, raw = _state(trial, "converted")
     got, notice, _ = await _notify(trial, raw, "converted", welcomed=welcomed)
     assert got == [AudienceAction.REMOVE_TRIAL, paying]
     notice.assert_awaited_once()
+    lifecycle_resync.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -257,13 +263,16 @@ async def test_an_email_mailerlite_cannot_take_never_blocks_the_notice(trial, ki
 
 
 @pytest.mark.asyncio
-async def test_joining_the_paying_audience_never_fails_the_sent_conversion(trial):
+async def test_joining_the_paying_audience_never_fails_the_sent_conversion(
+    trial, lifecycle_resync
+):
     trial, raw = _state(trial, "converted")
     broken = AsyncMock(side_effect=RuntimeError("database unavailable"))
     got, notice, release = await _notify(trial, raw, "converted", claim_welcome=broken)
     assert got == [AudienceAction.REMOVE_TRIAL]
     notice.assert_awaited_once()
     release.assert_not_awaited()
+    lifecycle_resync.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -104,6 +104,8 @@ class FieldPlan(BaseModel):
     opted_out: int
     # People a signal places in Iran or Russia, left out the same way.
     excluded_country: int
+    # Without create, people MailerLite doesn't hold: left out the same way.
+    not_held: int = 0
 
 
 def desired(
@@ -146,11 +148,12 @@ def plan(people: list[Person], current: Current, *, create: bool = True) -> Fiel
         if not _valid(person.email):
             result.invalid += 1
             continue
-        status, fields = desired(person)
-        result.statuses[status] += 1
         held = current.get(person.email.strip().lower())
         if held is None and not create:
+            result.not_held += 1
             continue
+        status, fields = desired(person)
+        result.statuses[status] += 1
         differ = {
             key: value
             for key, value in fields.items()

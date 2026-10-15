@@ -22,6 +22,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from backend.data.db_accessors import posthog_lifecycle_db
 from backend.data.notifications import AudienceAction, SubscriberField
 from backend.data.posthog_lifecycle import LifecycleSnapshot
 from backend.notifications.consent import audience_change_allowed
@@ -63,8 +64,11 @@ def lifecycle_fields(snapshot: LifecycleSnapshot) -> Fields:
 
 
 def mailerlite_lifecycle_enabled() -> bool:
-    """MailerLite takes checkout openers only while their group is set."""
-    return bool(settings.config.mailerlite_checkout_group_id)
+    """MailerLite's half of a sync can have someone to write: it holds
+    checkout openers, and only a stack with Stripe has any. Whether MailerLite
+    itself is on is not asked here: only the notification service holds its
+    settings, and it drops the change when MailerLite is off."""
+    return bool(settings.secrets.stripe_api_key)
 
 
 async def queue_lifecycle_fields(
@@ -84,6 +88,21 @@ async def queue_lifecycle_fields(
         lifecycle_fields(snapshot),
         AudienceAction.LIFECYCLE_FIELDS,
     )
+
+
+async def resync_after_group_change(user_id: str) -> None:
+    """Ask for one more lifecycle sync after a group change that can create
+    the subscriber (joining the tour, the changelog or the trial group). The
+    sync for the same transition can reach MailerLite first and find nobody
+    to write, as when the checkout openers group is off; this one queues its
+    fields behind the group change, on the same one-at-a-time queue. Never
+    raises: the group change is already queued."""
+    try:
+        await posthog_lifecycle_db().request_posthog_lifecycle_sync(user_id)
+    except Exception:
+        logger.warning(
+            f"Could not request a lifecycle sync for user {user_id}", exc_info=True
+        )
 
 
 def _day(moment: datetime | None) -> str | None:

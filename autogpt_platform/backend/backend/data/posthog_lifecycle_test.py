@@ -3,6 +3,7 @@ from itertools import permutations
 
 import pytest
 
+from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.posthog_lifecycle import (
     LifecycleSnapshot,
     LifecycleUser,
@@ -232,6 +233,39 @@ def test_a_trial_whose_first_charge_never_cleared_has_expired(details: dict):
     )
     assert result.subscription_status == "trial_expired"
     assert result.subscription_started_at is None
+
+
+@pytest.mark.parametrize(
+    "comment, expected",
+    [
+        # Written by the customer in the billing portal's cancel flow.
+        ("Too expensive for me right now", "trial_canceled"),
+        ("autogpt_trial:intro_offer_already_used", "trial_expired"),
+        ("autogpt:replaced_by_another_plan", "trial_expired"),
+    ],
+)
+def test_only_our_own_cancel_comments_mean_we_canceled(comment, expected):
+    result = snapshot(
+        t=trial(status="canceled", ends_at=NOW - timedelta(days=1)),
+        subs=[
+            sub(
+                "sub_trial",
+                "canceled",
+                enrollment="trial-1",
+                **by_request(comment=comment),
+            )
+        ],
+    )
+    assert result.subscription_status == expected
+
+
+def test_every_comment_we_cancel_with_is_recognised_as_ours():
+    ours = [PAYMENT_FAILURE_CANCELLATION_COMMENT] + [
+        reason.stripe_comment for reason in TrialRejectionReason
+    ]
+    for comment in ours:
+        facts = sub(status="canceled", **by_request(comment=comment))
+        assert not facts.cancel_requested, comment
 
 
 def test_trial_awaiting_its_first_charge_is_still_in_trial():
@@ -673,6 +707,82 @@ def test_a_full_discount_that_has_ended_is_paid_again():
     assert snapshot(subs=[sub(discounts=[running])]).subscription_status == "signed"
 
 
+def test_stacked_discounts_apply_in_their_listed_order():
+    # $25 off then 50% off a $50 price leaves $12.50, as Stripe charges it;
+    # 50% off then $25 off leaves nothing.
+    amount_first = [coupon(amount_off=2500), coupon(percent_off=50)]
+    percent_first = [coupon(percent_off=50), coupon(amount_off=2500)]
+    assert snapshot(subs=[sub(discounts=amount_first)]).subscription_status == (
+        "subscribed"
+    )
+    assert snapshot(subs=[sub(discounts=percent_first)]).subscription_status == (
+        "signed"
+    )
+
+
+def test_a_customer_coupon_given_later_keeps_an_old_paid_subscription():
+    # Paid, ended, and only then a 100% coupon on the customer: the old
+    # subscription was paid, so the person has ended, not merely signed up.
+    start = NOW - timedelta(days=100)
+    ended_at = NOW - timedelta(days=50)
+    later = coupon(percent_off=100, start=int((NOW - timedelta(days=5)).timestamp()))
+    old = sub(
+        status="canceled",
+        start=start,
+        canceled_at=ended_at,
+        ended_at=ended_at,
+        customer={"id": "cus_1", "discount": later},
+    )
+    result = snapshot(subs=[old])
+    assert result.subscription_status == "subscription_ended"
+    assert result.subscription_started_at == start
+
+
+def first_invoice(total: int, discounted: int = 0, reason="subscription_create"):
+    """A subscription's ``latest_invoice``, as ``data.latest_invoice``
+    expands it."""
+    return {
+        "billing_reason": reason,
+        "total": total,
+        "total_discount_amounts": (
+            [{"amount": discounted, "discount": "di_1"}] if discounted else []
+        ),
+    }
+
+
+@pytest.mark.parametrize(
+    "invoice, expected",
+    [
+        # A 100% coupon for the first period: Stripe removed it from the
+        # subscription after the first invoice, which it brought to zero.
+        (first_invoice(0, discounted=5000), "signed"),
+        (first_invoice(2500, discounted=2500), "subscribed"),
+        # $0 without a discount (a metered price with no usage yet, a later
+        # billing anchor): still paid.
+        (first_invoice(0), "subscribed"),
+        # A renewal that a coupon made free is read from the coupon instead.
+        (first_invoice(0, discounted=5000, reason="subscription_cycle"), "subscribed"),
+        # Unexpanded: only the invoice ID.
+        ("in_1", "subscribed"),
+    ],
+)
+def test_a_first_invoice_a_discount_took_all_of_is_not_paid(invoice, expected):
+    result = snapshot(subs=[sub(latest_invoice=invoice)])
+    assert result.subscription_status == expected
+
+
+def test_a_first_free_period_canceled_before_any_charge_never_paid():
+    gone = sub(
+        status="canceled",
+        canceled_at=NOW - timedelta(days=3),
+        ended_at=NOW - timedelta(days=1),
+        latest_invoice=first_invoice(0, discounted=5000),
+    )
+    assert snapshot(subs=[gone]) == LifecycleSnapshot(
+        subscription_status="signed", signup_at=SIGNUP
+    )
+
+
 def test_an_unexpanded_discount_is_not_read_as_a_coupon():
     # A list call without the expansion returns discount IDs only.
     result = snapshot(subs=[sub(discounts=["di_1"])])
@@ -692,6 +802,30 @@ def test_a_fully_discounted_subscription_neither_cancels_nor_ends():
     )
     assert snapshot(subs=[canceling]).subscription_status == "signed"
     assert snapshot(subs=[gone]).subscription_status == "signed"
+
+
+@pytest.mark.parametrize("old_status", ["canceled", "past_due"])
+def test_a_former_payer_on_a_free_subscription_is_signed_not_churned(old_status):
+    """Comped after paying: not paying now, so not subscribed, but not
+    churned or failing either. The first paid start stays."""
+    start = NOW - timedelta(days=100)
+    old = sub(
+        "sub_old",
+        old_status,
+        start=start,
+        canceled_at=NOW - timedelta(days=30) if old_status == "canceled" else None,
+        ended_at=NOW - timedelta(days=30) if old_status == "canceled" else None,
+    )
+    comped = sub(
+        "sub_comped",
+        start=NOW - timedelta(days=20),
+        discounts=[coupon(percent_off=100)],
+    )
+    assert snapshot(subs=[old, comped]) == LifecycleSnapshot(
+        subscription_status="signed",
+        signup_at=SIGNUP,
+        subscription_started_at=start,
+    )
 
 
 def test_a_free_subscription_does_not_supply_the_first_paid_start():

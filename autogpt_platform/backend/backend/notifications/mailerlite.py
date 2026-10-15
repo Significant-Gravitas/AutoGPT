@@ -238,8 +238,8 @@ async def record_lifecycle(email: str, fields: Fields | None = None) -> None:
     subscriber = await _find_subscriber(email)
     if subscriber is None:
         logger.info(
-            "No MailerLite subscriber for %s; subscription status not written",
-            pseudonym(email),
+            f"No MailerLite subscriber for {pseudonym(email)}; "
+            "subscription status not written"
         )
         return
     held = subscriber.get("fields") or {}

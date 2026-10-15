@@ -28,7 +28,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from pydantic import BaseModel
 
 from backend.data.notifications import SubscriberField
-from backend.data.stripe_subscription_facts import StripeSubscriptionFacts
 from backend.notifications.audience_enrichment import checkout_fields, merge_with_held
 from backend.notifications.consent import KeptOut, marketing_allowed
 from backend.notifications.mailerlite import (
@@ -182,13 +181,15 @@ async def apply(
     group_id: str,
     on_progress: Callable[[int, int], None] | None = None,
     *,
-    refresh: Callable[[str], Awaitable[list[StripeSubscriptionFacts]]] | None = None,
+    refresh: Callable[[Person], Awaitable[Person]] | None = None,
     kept_out: KeptOut | None = None,
 ) -> tuple[int, int, int]:
     """Visit each planned opener: with `kept_out`, check they may still enter
     MailerLite, since they may have opted out or been seen in Iran or Russia
     since the plan; read them again from MailerLite and, with `refresh`,
-    their subscriptions again from Stripe; and write what they still need as
+    their subscriptions from Stripe and their trial row again, since the
+    status reads both (a trial that converted since the plan needs both
+    fresh, or it reads as still in trial); and write what they still need as
     one subscriber upsert into the group. The status the plan took from
     Stripe hours earlier is never written over a newer one.
 
@@ -208,12 +209,9 @@ async def apply(
                 skipped += 1
                 continue
             if refresh and opener.person.stripe_customer_id:
-                person = opener.person.model_copy(
-                    update={
-                        "subscriptions": await refresh(opener.person.stripe_customer_id)
-                    }
+                opener = opener.model_copy(
+                    update={"person": await refresh(opener.person)}
                 )
-                opener = opener.model_copy(update={"person": person})
             subscriber = await _find_subscriber(email)
         except Exception:
             failed += 1

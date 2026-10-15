@@ -12,7 +12,8 @@ paying audience the way a first checkout does.
 
 The subscriber's status and dates are not written here: they come from the
 lifecycle sync every trial transition triggers (`lifecycle_audience.py`), by
-the same rules as PostHog's.
+the same rules as PostHog's. Joining a group can create the subscriber after
+that sync found nobody to write, so a join asks for one more sync.
 
 Nothing is queued for a customer who opted out of marketing, or whom a signal
 places in Iran or Russia (`consent.py`); their trial notices and claims are
@@ -25,6 +26,7 @@ from collections.abc import Mapping
 from backend.data.db_accessors import user_db
 from backend.data.notifications import AudienceAction
 from backend.notifications.consent import MarketingContact, audience_change_allowed
+from backend.notifications.lifecycle_audience import resync_after_group_change
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 
@@ -71,6 +73,9 @@ async def _queue_group_change(action: AudienceAction, user: MarketingContact) ->
     result = await queue_audience_change(event)
     if not result.success:
         raise RuntimeError(f"Could not queue {action.value}: {result.message}")
+    if action == AudienceAction.ADD_TRIAL:
+        # A join can create the subscriber; a removal never does.
+        await resync_after_group_change(user.id)
 
 
 async def join_paying_audience(user: MarketingContact) -> None:
@@ -102,3 +107,5 @@ async def join_paying_audience(user: MarketingContact) -> None:
             f"Trial for user {user.id} converted but {action.value} could not be "
             f"queued: {result.message}"
         )
+        return
+    await resync_after_group_change(user.id)

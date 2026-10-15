@@ -382,29 +382,41 @@ null.
 | `payment_failed` | The latest paid subscription is `past_due` or `unpaid`, or a trial's first charge failed and Stripe is still retrying it. Access is lost meanwhile. |
 | `subscription_ended` | Has paid before, and no paid subscription is live. |
 | `trial_expired` | A trial that ended without a payment and without the user canceling it: it ran out, or its first charge never cleared and Stripe gave up. |
-| `signed` | Anything else, including a signup that never started a trial. |
+| `signed` | Anything else, including a signup that never started a trial, and a former payer now on a free (fully discounted) subscription, who keeps `subscription_started_at`. |
 
 - **Paid** means the subscription charges something. A subscription whose
   discounts take the whole price (a 100% coupon, or an amount off at least the
   price, on the subscription or on the customer) is not paid: it never makes
   anyone `subscribed`, `subscription_canceled` or `subscription_ended`, and
-  its start is not a paid start. A partial discount is paid. A full discount
-  that ends (a repeating coupon) makes the subscription paid from then on.
+  its start is not a paid start. Neither is one whose only invoice so far
+  charged nothing (a 100% coupon for the first period, which Stripe takes off
+  the subscription once that invoice is made). A partial discount is paid. A
+  full discount that ends (a repeating coupon) makes the subscription paid
+  from then on. Stacked discounts apply one after another, in Stripe's
+  order. A customer's discount counts only from its start, so a coupon given
+  later doesn't make an older subscription free. Someone who paid before and
+  now has a live free subscription is `signed` (not `payment_failed` or
+  `subscription_ended`), keeping their first paid start.
 - **The plan tier is not read.** An admin-granted plan (ENTERPRISE, BUSINESS
   or any other) with no paid Stripe subscription is `signed`; one who pays
   through Stripe is `subscribed` by the usual rule.
-- **The user canceled** a trial when it was set to cancel, or canceled through
-  the API with no comment of ours. Our own cancels (after a failed payment, of
-  a rejected trial, of a replaced plan) carry a comment, and Stripe giving up
-  on the first charge says `payment_failed`: both are `trial_expired`.
+- **The user canceled** a trial when it was set to cancel, or canceled on
+  request without a comment of ours (a comment the customer typed in the
+  billing portal still counts as theirs). Our own cancels (after a failed
+  payment, of a rejected trial, of a replaced plan) carry a comment starting
+  `autogpt:` or `autogpt_trial:`, and Stripe giving up on the first charge
+  says `payment_failed`: both are `trial_expired`.
 
 MailerLite's `subscription_status` and its `*_date` fields hold the same
 values by the same rules: both come from one mapping
 (`backend/data/posthog_lifecycle.py`). Each lifecycle sync queues them for
 MailerLite as well (`backend/notifications/lifecycle_audience.py`), written
-only into a subscriber MailerLite already has and only when they differ; the
-daily sweep is PostHog only, and `poetry run cli mailerlite-backfill
---fields-only` catches MailerLite up. MailerLite holds days, not moments.
+only into a subscriber MailerLite already has and only when they differ. The
+daily sweep is PostHog only, so nothing corrects MailerLite on a schedule: a
+sync that failed before it was queued, or two syncs from different pods queued
+out of order, leave it stale until the user's next sync. `poetry run cli
+mailerlite-backfill --fields-only --apply --yes` (after its dry run) catches
+MailerLite up. MailerLite holds days, not moments.
 
 The role picked in the onboarding wizard is set with a `$set` of its own when
 the profile is submitted at the Preparing step (`POST /api/onboarding/profile`,

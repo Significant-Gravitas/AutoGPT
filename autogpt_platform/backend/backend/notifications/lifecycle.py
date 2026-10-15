@@ -15,7 +15,8 @@ billing address included.
 The group changes carry no status or dates: those come from the lifecycle
 sync that every subscription webhook triggers (`lifecycle_audience.py`), by
 the same rules as PostHog's, so a free (100% coupon) subscription is not
-written as `subscribed` here.
+written as `subscribed` here. Joining a group can create the subscriber after
+that sync found nobody to write, so a join asks for one more sync.
 """
 
 import logging
@@ -40,6 +41,7 @@ from backend.data.user import BillingEmailRecipient
 from backend.notifications.audience_enrichment import billing_country
 from backend.notifications.consent import audience_change_allowed
 from backend.notifications.dedupe import claim_once, release_claim
+from backend.notifications.lifecycle_audience import resync_after_group_change
 from backend.notifications.lifecycle_plan import (
     card_from_invoice,
     format_amount,
@@ -127,8 +129,8 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
         if not audience_change_allowed(user, AudienceAction.ADD_CHANGELOG, countries):
             return
         event = audience_event(AudienceAction.ADD_CHANGELOG, user.email, user.id)
-        if event is not None:
-            await queue_audience_change(event)
+        if event is not None and (await queue_audience_change(event)).success:
+            await resync_after_group_change(user.id)
         return
 
     # Claim before queueing: Stripe retries webhooks, and two welcomes is worse
@@ -176,6 +178,8 @@ async def on_checkout_completed(session: dict, subscription: dict) -> None:
             f"Welcomed user {user.id} but could not queue the onboarding tour: "
             f"{enrolled.message}"
         )
+        return
+    await resync_after_group_change(user.id)
 
 
 async def on_payment_failed(invoice: dict) -> None:

@@ -399,6 +399,9 @@ def test_without_create_only_existing_subscribers_are_planned():
     )
     assert [c.person.email for c in plan.changes] == ["held@x.io"]
     assert not any(c.new for c in plan.changes)
+    # The dry run's counts are of the people it would write.
+    assert sum(plan.statuses.values()) == 1
+    assert plan.not_held == 1
 
 
 @pytest.mark.parametrize("create", [True, False])

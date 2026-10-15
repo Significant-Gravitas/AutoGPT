@@ -234,6 +234,12 @@ async def test_an_enterprise_user_is_subscribed_only_while_paying(
     assert snapshot is not None and snapshot.subscription_status == expected
 
 
+async def test_a_sync_requested_over_rpc_is_scheduled_like_a_local_one():
+    with patch(f"{MODULE}.schedule_posthog_lifecycle_sync") as schedule:
+        await lifecycle.request_posthog_lifecycle_sync("user-1")
+    schedule.assert_called_once_with("user-1")
+
+
 async def test_the_daily_sweep_leaves_mailerlite_to_its_backfill(
     sweep_sources, posthog, mailerlite_sink
 ):

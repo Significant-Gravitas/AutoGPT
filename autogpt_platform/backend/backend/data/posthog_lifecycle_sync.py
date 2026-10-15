@@ -10,7 +10,9 @@ so both agree on who is a paying subscriber.
 Three ways in, all best-effort (a failure is logged, never raised):
 
 - ``schedule_posthog_lifecycle_sync`` after a write that can change the
-  snapshot (signup, tier changes, ``sync_subscription_from_stripe``). It runs
+  snapshot (signup, ``sync_subscription_from_stripe``), and after a group
+  join that can create the MailerLite subscriber
+  (``lifecycle_audience.resync_after_group_change``). It runs
   in the background, so a webhook or a signup never waits on Stripe, PostHog
   or MailerLite. It sends to PostHog and queues MailerLite's fields.
 - ``sync_all_posthog_lifecycles``, daily from the scheduler: the safety net
@@ -37,7 +39,11 @@ from backend.data.posthog_lifecycle import (
     LifecycleUser,
     compute_lifecycle_snapshot,
 )
-from backend.data.stripe_client import stripe_call, stripe_list_items
+from backend.data.stripe_client import (
+    stripe_call,
+    stripe_call_timeout,
+    stripe_list_items,
+)
 from backend.data.stripe_subscription_facts import LIST_EXPAND, StripeSubscriptionFacts
 from backend.data.subscription_trial import TrialState
 from backend.notifications.lifecycle_audience import (
@@ -51,6 +57,10 @@ from backend.util.posthog_events import PostHogEvent
 logger = logging.getLogger(__name__)
 
 _SYNC_TIMEOUT_SECONDS = 60
+# Per page of the full listing: 100 subscriptions, each with its customer and
+# latest invoice expanded, can take longer than a plain call's 30s, and one
+# failed page aborts the whole sweep.
+_LIST_ALL_TIMEOUT_SECONDS = 90
 _MAX_CONCURRENT_SYNCS = 4
 
 
@@ -70,7 +80,9 @@ def schedule_posthog_lifecycle_sync(
     - two syncs for one user never run at the same time in this process, so
       an older read can't be sent after a newer one here. Another pod, or the
       daily sweep (which reads Stripe once at its start), can still send an
-      older read; the next sync or sweep corrects it.
+      older read. The next sync or sweep corrects PostHog. MailerLite has no
+      sweep: its fields stay stale until the user's next sync, or until
+      ``cli mailerlite-backfill --fields-only --apply --yes`` catches it up.
     """
     try:
         if not _sync_enabled():
@@ -81,6 +93,13 @@ def schedule_posthog_lifecycle_sync(
             _spawn(_resolve_customer(stripe_customer_id))
     except Exception:
         logger.warning("Failed to schedule a lifecycle sync", exc_info=True)
+
+
+async def request_posthog_lifecycle_sync(user_id: str) -> None:
+    """``schedule_posthog_lifecycle_sync`` for a process without Prisma, such
+    as the notification service, through the database manager
+    (``db_accessors.posthog_lifecycle_db``)."""
+    schedule_posthog_lifecycle_sync(user_id)
 
 
 # Per user id: "queued", "running", or "rerun" (running, then run once more).
@@ -173,7 +192,7 @@ def _sync_slot() -> asyncio.Semaphore:
 
 def _sync_enabled() -> bool:
     """A sync has somewhere to go: PostHog, or MailerLite's checkout
-    openers."""
+    openers, whose settings this process may not hold."""
     return get_posthog_client() is not None or mailerlite_lifecycle_enabled()
 
 
@@ -404,11 +423,15 @@ async def all_subscriptions_by_customer() -> dict[str, list[StripeSubscriptionFa
     """Every Stripe subscription, by customer ID, with the discounts the
     mapping reads. A failed page raises: a partial list would mark people
     whose subscriptions sit on the missing pages as ``signed``."""
-    page = await stripe_call(
-        stripe.Subscription.list_async, status="all", limit=100, expand=LIST_EXPAND
+    page = await stripe_call_timeout(
+        _LIST_ALL_TIMEOUT_SECONDS,
+        stripe.Subscription.list_async,
+        status="all",
+        limit=100,
+        expand=LIST_EXPAND,
     )
     by_customer: dict[str, list[StripeSubscriptionFacts]] = {}
-    async for sub in stripe_list_items(page):
+    async for sub in stripe_list_items(page, _LIST_ALL_TIMEOUT_SECONDS):
         facts = StripeSubscriptionFacts.model_validate(sub)
         if facts.customer:
             by_customer.setdefault(facts.customer, []).append(facts)

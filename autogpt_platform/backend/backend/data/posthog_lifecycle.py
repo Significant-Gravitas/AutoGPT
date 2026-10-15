@@ -32,7 +32,8 @@ doesn't apply is ``$unset``, never sent as null):
   subscriber: the earliest start of any paid subscription (Stripe
   ``start_date``), kept across a resubscribe after a gap. For a converted
   trial, the conversion (``SubscriptionTrial.convertedAt``), not the trial
-  start.
+  start. Kept too for a former payer now on a free subscription, who is
+  ``signed``.
 - ``subscription_canceled_at``: Stripe ``canceled_at`` of the current or most
   recent paid subscription, while ``subscription_canceled`` or
   ``subscription_ended``.
@@ -43,7 +44,9 @@ A paid subscription is one that charges something: a subscription whose
 discounts take the whole price (a 100% coupon, or an amount off at least the
 price, on the subscription or the customer) is treated like a trial that never
 converted, and never makes anyone ``subscribed``, ``subscription_canceled`` or
-``subscription_ended``. A partial discount is still paid, and so is a
+``subscription_ended``. So is one whose only invoice so far charged nothing
+(a 100% coupon for the first period, which Stripe takes off the subscription
+once that invoice is made). A partial discount is still paid, and so is a
 subscription whose full discount has ended.
 """
 
@@ -125,20 +128,23 @@ def compute_lifecycle_snapshot(
        between the trial ending and its first invoice being charged, when
        Stripe already says ``active`` but the trial hasn't converted), else a
        Stripe-native ``trialing`` subscription with no trial enrollment.
-    5. The most recent paid subscription is ``past_due`` or ``unpaid``, or a
-       trial's first charge failed and Stripe is still retrying it
+    5. A trial's first charge failed and Stripe is still retrying it
        -> ``payment_failed``
-    6. A paid subscription that has ended -> ``subscription_ended``
-    7. A trial that ended without converting -> ``trial_canceled`` if the
+    6. Has paid before and now has a live free subscription (a customer
+       given a 100% coupon) -> ``signed``, keeping the first paid start
+    7. The most recent paid subscription is ``past_due`` or ``unpaid``
+       -> ``payment_failed``
+    8. A paid subscription that has ended -> ``subscription_ended``
+    9. A trial that ended without converting -> ``trial_canceled`` if the
        user canceled it (set it to cancel, or asked for the cancel), else
        ``trial_expired`` (it ran out, or its first charge never cleared)
-    8. Otherwise -> ``signed``
+    10. Otherwise -> ``signed``
 
     Paid means charging something (see the module docstring). A trial's own
     Stripe subscription counts as paid only once the trial has converted, and
     its paid start is then the conversion, not the trial start. The
     subscription dates belong to the subscription statuses; they are unset in
-    every other status.
+    every other status, except the first paid start of rule 6.
     """
     started = _trial_started(trial)
     all_subs = list(subscriptions)
@@ -173,11 +179,25 @@ def compute_lifecycle_snapshot(
     if native is not None:
         status = "trial_canceled" if native.cancel_at_period_end else "in_trial"
         return LifecycleSnapshot(subscription_status=status, **common)
+    if first_paid is not None and _has_live_free(all_subs, now):
+        # Comped: not paying now, but not churned either.
+        return LifecycleSnapshot(
+            subscription_status="signed", subscription_started_at=first_paid, **common
+        )
     ended = _after_access_ended(paid, first_paid, common)
     if ended is not None:
         return ended
     trial_end = _ended_trial_status(trial, started, all_subs, now)
     return LifecycleSnapshot(subscription_status=trial_end or "signed", **common)
+
+
+def _has_live_free(
+    subscriptions: Sequence[StripeSubscriptionFacts], now: datetime
+) -> bool:
+    """A live subscription that charges nothing (see the module docstring)."""
+    return any(
+        sub.status in _LIVE_STATUSES and sub.free_at(now) for sub in subscriptions
+    )
 
 
 def _after_access_ended(

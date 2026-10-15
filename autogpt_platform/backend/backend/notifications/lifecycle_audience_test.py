@@ -23,11 +23,13 @@ from backend.data.posthog_lifecycle_test import (
     trial,
     user,
 )
-from backend.notifications import mailerlite, subscriber_fields
+from backend.notifications import lifecycle_audience, mailerlite, subscriber_fields
 from backend.notifications.lifecycle_audience import (
     LifecycleContact,
     lifecycle_fields,
+    mailerlite_lifecycle_enabled,
     queue_lifecycle_fields,
+    resync_after_group_change,
 )
 from backend.notifications.notifications import NotificationManager
 
@@ -142,6 +144,42 @@ async def test_a_queue_failure_is_reported_not_raised():
 
 
 # ---- the consumer -----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "stripe_key, group_id, expected",
+    [
+        # The API process: Stripe, but no MailerLite settings at all.
+        ("sk_test", "", True),
+        ("", "grp_checkout", False),
+        ("", "", False),
+    ],
+)
+def test_mailerlite_s_half_runs_wherever_stripe_does(
+    monkeypatch, stripe_key, group_id, expected
+):
+    """Only the notification service holds the MailerLite settings, so the
+    process that queues the fields can't ask for them; a stack without
+    Stripe has no checkout openers to write."""
+    settings = SimpleNamespace(
+        secrets=SimpleNamespace(stripe_api_key=stripe_key),
+        config=SimpleNamespace(mailerlite_checkout_group_id=group_id),
+    )
+    monkeypatch.setattr(lifecycle_audience, "settings", settings)
+    assert mailerlite_lifecycle_enabled() is expected
+
+
+@pytest.mark.asyncio
+async def test_a_group_join_asks_for_one_more_sync(lifecycle_resync):
+    await resync_after_group_change("user-1")
+    lifecycle_resync.assert_awaited_once_with("user-1")
+
+
+@pytest.mark.asyncio
+async def test_a_failed_resync_request_is_reported_not_raised(lifecycle_resync, caplog):
+    lifecycle_resync.side_effect = RuntimeError("database manager down")
+    await resync_after_group_change("user-1")
+    assert "Could not request a lifecycle sync for user user-1" in caplog.text
 
 
 @pytest.fixture
