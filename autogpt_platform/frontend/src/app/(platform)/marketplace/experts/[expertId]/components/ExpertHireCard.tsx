@@ -24,7 +24,7 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
   const workflowCount = expert.workflows.length;
 
   return (
-    <aside className="self-start rounded-2xl bg-white p-5 smooth-shadow-ring-sm lg:sticky lg:top-6">
+    <aside className="rounded-2xl bg-white p-5 smooth-shadow-ring-sm">
       <div className="flex items-center gap-3">
         <ExpertAvatar
           name={expert.name}

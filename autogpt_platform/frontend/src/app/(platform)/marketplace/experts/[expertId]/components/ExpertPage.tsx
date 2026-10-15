@@ -19,7 +19,7 @@ import { ExpertAccess } from "./ExpertAccess";
 import { ExpertComingSoonLabel } from "./ExpertComingSoonLabel";
 import { ExpertDayOne } from "./ExpertDayOne";
 import { ExpertHireActions } from "./ExpertHireActions";
-import { ExpertPageHeader } from "./ExpertPageHeader";
+import { ExpertHeroBand, ExpertHeroIdentity } from "./ExpertPageHeader";
 import { ExpertHireCard } from "./ExpertHireCard";
 import { ExpertProtectedRules } from "./ExpertProtectedRules";
 import { ExpertSkills } from "./ExpertSkills";
@@ -133,19 +133,25 @@ export function ExpertPage() {
   return (
     <main className={MAIN_CLASS}>
       <BackToMarketplaceLink />
-      <ExpertPageHeader expert={expert} stats={stats} />
-      {/* The hire card comes first in the DOM so phones get the call to
-          action right under the hero; wide screens move it to the right
-          column, where it sticks while the story scrolls. */}
-      <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="lg:col-start-2 lg:row-start-1">
-          <ExpertHireCard
-            expert={expert}
-            firstName={firstName}
-            actions={actions}
-          />
+      <ExpertHeroBand expert={expert} />
+      {/* One grid for the hero's text, the hire card and the story. On wide
+          screens the card spans the right column, pulled up over the band's
+          end and sticky while the story scrolls; on phones it sits between
+          the hero text and the story. */}
+      <div className="grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="order-1 min-w-0 lg:col-start-1 lg:row-start-1">
+          <ExpertHeroIdentity expert={expert} stats={stats} />
         </div>
-        <div className="flex min-w-0 flex-col gap-12 lg:col-start-1 lg:row-start-1">
+        <div className="relative z-10 order-2 mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:-mt-24">
+          <div className="lg:sticky lg:top-6">
+            <ExpertHireCard
+              expert={expert}
+              firstName={firstName}
+              actions={actions}
+            />
+          </div>
+        </div>
+        <div className="order-3 mt-12 flex min-w-0 flex-col gap-12 lg:col-start-1 lg:row-start-2">
           <ExpertDayOne
             name={firstName}
             items={expert.day_one ?? []}
