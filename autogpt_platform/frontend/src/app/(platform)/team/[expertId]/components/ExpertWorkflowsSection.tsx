@@ -35,7 +35,6 @@ const VIEW_OPTIONS = [
 interface Props {
   expertName: string;
   workflows: ExpertWorkflowRef[];
-  accentClassName: string;
   expertId?: string;
   coverColor?: string;
   emptyMessage?: string;
@@ -46,7 +45,6 @@ interface Props {
 export function ExpertWorkflowsSection({
   expertName,
   workflows,
-  accentClassName,
   expertId,
   coverColor,
   emptyMessage,

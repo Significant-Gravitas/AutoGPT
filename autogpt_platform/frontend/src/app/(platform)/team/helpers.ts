@@ -427,7 +427,7 @@ export function chunkLibraryAgentIDs(workflows: ExpertWorkflowRef[]) {
 // sets no z-index, so its grey track paints first, the pill (z-10) over it
 // and the labels (z-20) on top.
 export const PROFILE_TABS_LIST_CLASS =
-  "relative w-auto max-w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-zinc-100/80 p-1";
+  "relative w-full gap-0.5 overflow-x-auto rounded-full border-b-0 bg-zinc-100/80 p-1 [&>button]:flex-1";
 export const PROFILE_TABS_INDICATOR_CLASS =
   "pointer-events-none z-10 bottom-1 top-1 h-auto rounded-full bg-white shadow-sm ring-1 ring-zinc-200/70";
 export const PROFILE_TABS_TRIGGER_CLASS =

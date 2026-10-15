@@ -21,7 +21,6 @@ import { ExpertSchedulesSection } from "../[expertId]/components/ExpertSchedules
 import { ExpertWorkflowsSection } from "../[expertId]/components/ExpertWorkflowsSection";
 import { BackToTeamLink } from "../components/BackToTeamLink";
 import {
-  AUTOPILOT_PILL_CLASS,
   PROFILE_TABS_INDICATOR_CLASS,
   PROFILE_TABS_LIST_CLASS,
   PROFILE_TABS_TRIGGER_CLASS,
@@ -126,7 +125,6 @@ export default function AutopilotPage() {
           <ExpertWorkflowsSection
             expertName={AUTOPILOT_NAME}
             workflows={workflows}
-            accentClassName={AUTOPILOT_PILL_CLASS}
             coverColor={AUTOPILOT_HEX}
             emptyMessage="Workflows in your library that no expert owns show up here."
           />

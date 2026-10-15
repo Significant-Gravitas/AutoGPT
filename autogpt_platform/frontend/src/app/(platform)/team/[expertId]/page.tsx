@@ -217,9 +217,6 @@ export default function ExpertDetailPage() {
               expertName={expert.name}
               expertId={expert.id}
               workflows={expert.workflows}
-              accentClassName={
-                getRaisedExpertAccent(expert.role, expert.color).pill
-              }
               coverColor={getExpertCover(expert).color}
               onInstallWorkflow={openPicker}
               onAskWorkflow={openChatWithPrompt}
