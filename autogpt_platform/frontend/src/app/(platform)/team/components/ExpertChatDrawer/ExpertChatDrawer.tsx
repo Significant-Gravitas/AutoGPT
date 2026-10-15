@@ -4,7 +4,6 @@ import { getExpertRoleLabel } from "@/services/experts/expert-role-label";
 
 import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInput";
 import { NewChatOnboarding } from "@/app/(platform)/copilot/components/ExpertOnboardingCard/NewChatOnboarding";
-import { PendingAnswerContexts } from "@/app/(platform)/copilot/components/ChatContainer/components/PendingAnswerContexts";
 import { ChatMessagesContainer } from "@/app/(platform)/copilot/components/ChatMessagesContainer/ChatMessagesContainer";
 import { CopilotChatActionsProvider } from "@/app/(platform)/copilot/components/CopilotChatActionsProvider/CopilotChatActionsProvider";
 import { Button } from "@/components/atoms/Button/Button";
@@ -136,28 +135,26 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
           </div>
         ) : sessionId ? (
           <div className="flex min-h-0 flex-1 flex-col">
-            <PendingAnswerContexts messages={messages}>
-              <NewChatOnboarding
-                expertId={target.expertId}
-                enabled={
-                  messages.length === 0 &&
-                  !isLoadingSession &&
-                  !suppressOnboarding &&
-                  !isStreaming
-                }
-              >
-                <ChatMessagesContainer
-                  messages={messages}
-                  status={status}
-                  error={error}
-                  isLoading={false}
-                  sessionID={sessionId}
-                  queuedMessages={queuedMessages}
-                  variant="compact"
-                  showThreadHeader={false}
-                />
-              </NewChatOnboarding>
-            </PendingAnswerContexts>
+            <NewChatOnboarding
+              expertId={target.expertId}
+              enabled={
+                messages.length === 0 &&
+                !isLoadingSession &&
+                !suppressOnboarding &&
+                !isStreaming
+              }
+            >
+              <ChatMessagesContainer
+                messages={messages}
+                status={status}
+                error={error}
+                isLoading={false}
+                sessionID={sessionId}
+                queuedMessages={queuedMessages}
+                variant="compact"
+                showThreadHeader={false}
+              />
+            </NewChatOnboarding>
           </div>
         ) : (
           <NewChatOnboarding

@@ -51,7 +51,7 @@ export function BuilderChatPanel({ className }: Props) {
   const activeErrorTitle = bindError
     ? "Could not start the builder chat"
     : bootstrapError
-      ? "Could not create a blank agent"
+      ? "Could not create a blank workflow"
       : "Could not check the AI connection";
 
   return (
@@ -119,14 +119,14 @@ export function BuilderChatPanel({ className }: Props) {
                       isStreaming={isStreaming}
                       onStop={stop}
                       onEnqueue={onSend}
-                      placeholder="Ask the builder to edit or run this agent…"
+                      placeholder="Ask the builder to edit or run this workflow…"
                       hasSession={true}
                     />
                   </div>
                 </>
               ) : (
                 <div className="flex flex-1 items-center justify-center px-4 py-6 text-sm text-slate-500">
-                  Open an agent to start chatting with the builder.
+                  Open a workflow to start chatting with the builder.
                 </div>
               )}
             </div>

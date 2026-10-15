@@ -6,7 +6,7 @@ import { CopilotChatActionsProvider } from "../../../CopilotChatActionsProvider/
 import heldConfirm from "../../../ToolChain/__tests__/heldConfirm.json";
 import soulProposal from "../../../ToolChain/__tests__/soulProposal.json";
 import { HeldOutcomesContext } from "../../HeldOutcomesContext";
-import { getHeldOutcomes } from "../../heldCallRows";
+import { answeredLabel, getHeldOutcomes } from "../../heldCallRows";
 import { ChainMessageParts } from "../ChainMessageParts";
 
 // Both payloads are what the backend builds: expert_change_gate_test.py.
@@ -60,6 +60,41 @@ test("a held call drawn outside the chain renders its real card once answered", 
   expect(screen.getByText("Otto")).toBeDefined();
 });
 
+// The card and the wake's label read the same result row; each says what the
+// answer did. Bodies are what held._outcome writes for a held action.
+test.each([
+  ["approved", heldConfirm.result.content, true, "Result sent to Otto."],
+  [
+    "rejected",
+    "Nothing ran: the user declined this action. Do not retry it or reach the same effect another way.",
+    false,
+    "Declined; nothing was sent to Otto.",
+  ],
+  [
+    "expired",
+    "Nothing ran: the approval expired an hour after it was given. Propose the call again if it is still needed.",
+    false,
+    "Expired; nothing was sent to Otto.",
+  ],
+  [
+    "closed",
+    "Nothing ran: this card is no longer open.",
+    false,
+    "Closed; nothing ran.",
+  ],
+])(
+  "an out-of-chain hire answered %s shows its card only if it ran, and a true label",
+  (outcome, body, created, clause) => {
+    const messages = answeredHire(outcome, body);
+    renderTurn(heldTurn.parts, messages);
+
+    expect(screen.queryByText("Expert created") !== null).toBe(created);
+    expect(answeredLabel(messages, 1)).toBe(
+      `Approval answered: Confirm the team change. ${clause}`,
+    );
+  },
+);
+
 test("a Soul edit is put to the user on its own card, whose Approve the gate takes", async () => {
   const user = userEvent.setup();
   const { onSend } = renderTurn([
@@ -85,3 +120,34 @@ test("a Soul edit is put to the user on its own card, whose Approve the gate tak
     "Approved: update your Soul (confirmation_id: 5f0c2a3e-7b1d-4c9e-8a6f-0d2b4e6c8a10).",
   );
 });
+
+function answeredHire(outcome: string, body: string): Message[] {
+  const wake: Message = {
+    id: "w1",
+    role: "user",
+    metadata: { held_calls_answered: true },
+    parts: [
+      {
+        type: "text",
+        text: "I answered an action that was waiting for my approval.",
+      },
+    ],
+  };
+  const header = heldConfirm.result.content.split("\n", 1)[0];
+  const result: Message = {
+    id: "u1",
+    role: "user",
+    metadata: {
+      held_call: { ...heldConfirm.result.metadata.held_call, outcome },
+    },
+    parts: [
+      {
+        type: "text",
+        text: body.startsWith("<held_call_result")
+          ? body
+          : `${header}\n${body}\n</held_call_result>`,
+      },
+    ],
+  };
+  return [heldTurn, wake, result];
+}
