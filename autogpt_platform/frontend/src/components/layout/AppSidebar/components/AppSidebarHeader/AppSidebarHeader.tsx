@@ -25,7 +25,7 @@ export function AppSidebarHeader() {
           aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
           className={cn(
-            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200",
+            "size-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-zinc-200 max-md:size-10",
             isCollapsed
               ? "absolute inset-0 hidden group-focus-within:flex group-hover:flex"
               : "flex",
@@ -33,7 +33,7 @@ export function AppSidebarHeader() {
         >
           <Icon
             icon={SidebarLeftIcon}
-            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
+            className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5 max-md:size-5"
           />
         </button>
       </TooltipTrigger>
@@ -63,7 +63,7 @@ export function AppSidebarHeader() {
           {isCollapsed ? (
             <AutoGPTLogo hideText viewBox="47 -1 42 42" className="size-7" />
           ) : (
-            <AutoGPTLogo className="-mt-1 ml-2.5 h-7 w-auto" />
+            <AutoGPTLogo className="-mt-1 ml-2.5 h-7 w-auto max-md:mt-2 max-md:h-9" />
           )}
         </Link>
         {isCollapsed ? toggleButton : null}
