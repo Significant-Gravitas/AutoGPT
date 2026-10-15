@@ -133,6 +133,15 @@ async def fire_verdict(
     session = chat.session
     if kind == "resume" and await _picked_up_since(chat, created_at):
         return FireVerdict(action="drop", why="the chat was picked up after it")
+    if kind == "resume" and session.metadata.llm_auth_provider == (
+        "microsoft_365_copilot"
+    ):
+        # Switched since it was set. Microsoft 365 Copilot has none of the
+        # task or AutoPilot's tools, and the resume note would reach it as
+        # the user's message. A send is the user's own words, so it goes.
+        return FireVerdict(
+            action="drop", why="the chat now runs on Microsoft 365 Copilot"
+        )
     try:
         busy = await is_turn_in_flight(session.session_id)
     except StreamRegistryUnavailable:
