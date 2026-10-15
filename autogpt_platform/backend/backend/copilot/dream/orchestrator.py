@@ -83,9 +83,13 @@ logger = logging.getLogger(__name__)
 CONSOLIDATE_TEMP = 0.2
 RECOMBINE_TEMP = 0.9
 SANITIZE_TEMP = 0.0
-# The budget covers thinking as well as the JSON: 4096 is too small if the
-# standard slot ever runs a model that always thinks, like Opus 5.5.
-CONSOLIDATE_MAX_TOKENS = 4096
+# The budget covers thinking as well as the JSON, and the standard slot can
+# run a model that thinks unasked. Sonnet 5 through OpenRouter spent all of
+# 4096 on reasoning over a 31-fact, 31-episode window (a 22.5K-token prompt)
+# and answered nothing, failing every pass of that account at this phase;
+# given 16384, the same call answered in 5,912 tokens, 5,068 of them
+# reasoning. Budget a model does not spend costs nothing.
+CONSOLIDATE_MAX_TOKENS = 16384
 # Recombine + sanitize emit list-heavy JSON (up to 30 writes + 20
 # proposals + 10 demotions, each with uuid arrays). At 8192 the
 # response truncates mid-array and the JSON-balanced-brace extractor
@@ -127,7 +131,8 @@ SANITIZE_MAX_TOKENS = 16384
 # Recombine (fast_advanced_model, Opus-class — the slowest decoder) gets
 # the largest share: 600s covers 16384 tokens at ~27 tok/s. Sanitize runs
 # on the faster fast_standard_model: 480s covers 16384 at ~34 tok/s.
-# Consolidate's 4096-token budget fits 240s at ~17 tok/s.
+# Consolidate's 240s covers its whole 16384 at ~68 tok/s, and a thinking
+# answer the size measured above (5,912 tokens) at ~25 tok/s.
 CONSOLIDATE_TIMEOUT_SECONDS = 240
 RECOMBINE_TIMEOUT_SECONDS = 600
 SANITIZE_TIMEOUT_SECONDS = 480
