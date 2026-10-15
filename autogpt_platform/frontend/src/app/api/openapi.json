@@ -23107,6 +23107,13 @@
             ],
             "title": "Cleanup Pending At"
           },
+          "cost_context": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Cost Context"
+          },
           "input_bundle": {
             "anyOf": [
               { "$ref": "#/components/schemas/DreamInput" },
