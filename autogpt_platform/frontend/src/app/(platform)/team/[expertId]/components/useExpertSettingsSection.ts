@@ -3,6 +3,7 @@
 import { useGetExpertDetachPreview } from "@/app/api/__generated__/endpoints/experts/experts";
 import { useListWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import { okData } from "@/app/api/helpers";
+import { isInternalToolOutput } from "@/app/(platform)/copilot/components/ContextPanel/components/FilesTab/helpers";
 import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 import { getPauseItems } from "../../components/FireExpertDialog/helpers";
 
@@ -19,12 +20,14 @@ export function useExpertSettingsSection(expertId: string) {
   );
 
   const files = (filesQuery.data?.files ?? []).filter(
-    (file) => !isHiddenWorkspaceFile(file),
+    (file) => !isInternalToolOutput(file) && !isHiddenWorkspaceFile(file),
   );
 
   return {
     pauseItems: getPauseItems(previewQuery.data ?? null),
     isPreviewLoading: previewQuery.isLoading,
+    isPreviewError: previewQuery.isError,
+    retryPreview: () => previewQuery.refetch(),
     fileCount: files.length,
     hasMoreFiles: Boolean(filesQuery.data?.has_more),
   };

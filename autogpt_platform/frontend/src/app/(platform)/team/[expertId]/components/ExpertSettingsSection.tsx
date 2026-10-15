@@ -31,8 +31,14 @@ function plural(count: number, word: string) {
 /** Firing, spelled out before anyone reaches for the button: what pauses,
  *  what stays, and that the expert can come back. */
 export function ExpertSettingsSection({ expert, onFire }: Props) {
-  const { pauseItems, isPreviewLoading, fileCount, hasMoreFiles } =
-    useExpertSettingsSection(expert.id);
+  const {
+    pauseItems,
+    isPreviewLoading,
+    isPreviewError,
+    retryPreview,
+    fileCount,
+    hasMoreFiles,
+  } = useExpertSettingsSection(expert.id);
   const workflowCount = expert.workflows.length;
   const pauseNames = pauseItems.slice(0, VISIBLE_PAUSE_NAMES);
   const hiddenPauseCount = pauseItems.length - pauseNames.length;
@@ -60,16 +66,27 @@ export function ExpertSettingsSection({ expert, onFire }: Props) {
       <ul className="divide-y divide-zinc-100 px-5">
         <Consequence
           icon={Calendar03Icon}
-          tone={pauseItems.length > 0 ? "warn" : "neutral"}
+          tone={pauseItems.length > 0 || isPreviewError ? "warn" : "neutral"}
           tag={pauseItems.length > 0 ? "Pauses" : undefined}
           title={
             isPreviewLoading
               ? "Checking schedules and triggers…"
-              : pauseItems.length > 0
-                ? `${plural(pauseItems.length, "automation")} will pause`
-                : "No schedules or triggers to pause"
+              : isPreviewError
+                ? "Couldn't check which schedules and triggers would pause"
+                : pauseItems.length > 0
+                  ? `${plural(pauseItems.length, "automation")} will pause`
+                  : "No schedules or triggers to pause"
           }
         >
+          {isPreviewError ? (
+            <button
+              type="button"
+              onClick={() => void retryPreview()}
+              className="mt-1 text-sm font-medium text-zinc-700 underline underline-offset-2 hover:text-zinc-950"
+            >
+              Retry
+            </button>
+          ) : null}
           {pauseNames.length > 0 ? (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {pauseNames.map((item) => (

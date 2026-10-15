@@ -148,6 +148,7 @@ export function ExpertPage() {
               expert={expert}
               firstName={firstName}
               actions={actions}
+              isHiringOpen={isHiringOpen}
             />
           </div>
         </div>

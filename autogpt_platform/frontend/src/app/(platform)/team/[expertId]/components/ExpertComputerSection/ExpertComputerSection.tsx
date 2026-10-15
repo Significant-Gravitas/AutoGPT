@@ -93,11 +93,26 @@ export function ExpertComputerSection({
           dark monitor showing the machine's state and the way in. */}
       <div className="overflow-hidden rounded-2xl bg-white p-2 smooth-shadow-ring-sm">
         {stream ? (
-          <div
-            data-testid="expert-desktop-stream"
-            className="overflow-hidden rounded-xl"
-          >
-            {desktopStreamRenderer.render(stream)}
+          <div className="flex flex-col gap-2">
+            <div
+              data-testid="expert-desktop-stream"
+              className="overflow-hidden rounded-xl"
+            >
+              {desktopStreamRenderer.render(stream)}
+            </div>
+            {/* A finished turn suspends the machine and ends this stream, so
+                the way back in stays next to it. */}
+            <div className="flex justify-end px-1 pb-1">
+              <Button
+                variant="secondary"
+                size="small"
+                loading={isOpening}
+                disabled={!computer.e2b_active}
+                onClick={openDesktop}
+              >
+                Reconnect desktop
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="relative flex min-h-[240px] flex-col items-center justify-center gap-4 overflow-hidden rounded-xl bg-gradient-to-br from-zinc-800 via-zinc-900 to-black px-6 py-8 text-center sm:aspect-[16/7] sm:min-h-0 sm:py-0">

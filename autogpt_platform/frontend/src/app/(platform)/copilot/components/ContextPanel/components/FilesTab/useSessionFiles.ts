@@ -29,7 +29,12 @@ export function useSessionFiles(sessionId: string | null) {
         if (!fileIdToMessageId.has(artifact.id)) {
           fileIdToMessageId.set(artifact.id, message.id);
         }
-        if (message.role === "assistant") documentIds.add(artifact.id);
+        if (
+          message.role === "assistant" &&
+          !isHiddenWorkspaceFile({ name: artifact.title })
+        ) {
+          documentIds.add(artifact.id);
+        }
       }
     }
     return { documentCount: documentIds.size, fileIdToMessageId };

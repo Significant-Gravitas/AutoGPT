@@ -47,7 +47,7 @@ export function PillFilterMenu<T extends string>({
           type="button"
           variant="secondary"
           size="small"
-          aria-label={label}
+          aria-label={`${label}: ${current.label}`}
           leadingIcon={current.icon}
           rightIcon={
             <Icon

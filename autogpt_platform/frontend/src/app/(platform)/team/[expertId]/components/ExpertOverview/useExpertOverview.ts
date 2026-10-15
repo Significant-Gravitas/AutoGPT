@@ -8,7 +8,7 @@ import { isInternalToolOutput } from "@/app/(platform)/copilot/components/Contex
 import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 import { getChartDays, getWindowStat } from "./helpers";
 
-const RECENT_LIMIT = 5;
+export const RECENT_CONVERSATIONS_LIMIT = 5;
 const OUTPUTS_LIMIT = 200;
 
 export function useExpertOverview(
@@ -16,7 +16,7 @@ export function useExpertOverview(
   activity: ExpertActivity | null,
 ) {
   const sessionsQuery = useGetV2ListSessions(
-    { expert_id: expertId, limit: RECENT_LIMIT },
+    { expert_id: expertId, limit: RECENT_CONVERSATIONS_LIMIT },
     { query: { select: okData } },
   );
   const filesQuery = useListWorkspaceFiles(
@@ -36,9 +36,13 @@ export function useExpertOverview(
     runs: getWindowStat(days, "runs"),
     sessions: sessionsQuery.data?.sessions ?? [],
     isSessionsLoading: sessionsQuery.isLoading,
+    isSessionsError: sessionsQuery.isError,
+    retrySessions: () => sessionsQuery.refetch(),
     outputs,
     outputCount: outputs.length,
     hasMoreOutputs: Boolean(filesQuery.data?.has_more),
     isOutputsLoading: filesQuery.isLoading,
+    isOutputsError: filesQuery.isError,
+    retryOutputs: () => filesQuery.refetch(),
   };
 }

@@ -160,7 +160,7 @@ describe("TeamRoster toolbar", () => {
     render(<TeamPage />);
     expect(await screen.findByText("Maria")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Filter experts" }));
+    await user.click(screen.getByRole("button", { name: /^Filter experts/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Paused" }),
     );

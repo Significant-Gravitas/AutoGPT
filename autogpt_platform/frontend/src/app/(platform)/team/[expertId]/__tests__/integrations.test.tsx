@@ -279,7 +279,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
 
     expect(await screen.findByLabelText("Search services")).toBeDefined();
@@ -409,7 +409,7 @@ describe("managing an expert's integrations", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Add integration/ }),
+      screen.getAllByRole("button", { name: /Add integration/ })[0],
     );
     dialog = await screen.findByRole("dialog");
     expect(
@@ -452,7 +452,7 @@ describe("managing an expert's integrations", () => {
 
     await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     const dialog = await screen.findByRole("dialog");
     const list = await within(dialog).findByRole("list", { name: "Services" });
@@ -525,7 +525,7 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
     await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     const dialog = await screen.findByRole("dialog");
     const list = await within(dialog).findByRole("list", { name: "Services" });
@@ -619,7 +619,7 @@ describe("managing an expert's integrations", () => {
     render(<ExpertDetailPage />);
     await openIntegrationsTab();
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     const dialog = await screen.findByRole("dialog");
     await userEvent.click(
@@ -694,7 +694,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     await userEvent.click(await screen.findByText("Notion"));
 
@@ -774,7 +774,7 @@ describe("managing an expert's integrations", () => {
     await within(section).findByText("Work LinkedIn");
 
     await userEvent.click(
-      screen.getByRole("button", { name: /Add integration/ }),
+      screen.getAllByRole("button", { name: /Add integration/ })[0],
     );
     await userEvent.click(await screen.findByText("Notion"));
     expect(await screen.findByText("Connect AutoGPT to Notion")).toBeDefined();
@@ -817,8 +817,9 @@ describe("managing an expert's integrations", () => {
     );
     render(<ExpertDetailPage />);
     await openIntegrationsTab();
+    // The empty state offers its own "Add integration" beside the header's.
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
     await userEvent.click(await screen.findByText("OpenAI"));
     await userEvent.click(
@@ -847,7 +848,7 @@ describe("managing an expert's integrations", () => {
     await openIntegrationsTab();
 
     await userEvent.click(
-      await screen.findByRole("button", { name: /Add integration/ }),
+      (await screen.findAllByRole("button", { name: /Add integration/ }))[0],
     );
 
     const dialog = await screen.findByRole("dialog");

@@ -204,14 +204,28 @@ vi.mock("@/components/ai-elements/prompt-input", () => ({
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: ({
     onClearGuidedPrompt,
+    extraItems = [],
   }: {
     onClearGuidedPrompt?: () => void;
+    extraItems?: { key: string; label: string; onSelect: () => void }[];
   }) => (
-    <button
-      type="button"
-      data-testid="attachment-menu"
-      onClick={() => onClearGuidedPrompt?.()}
-    />
+    <>
+      <button
+        type="button"
+        data-testid="attachment-menu"
+        onClick={() => onClearGuidedPrompt?.()}
+      />
+      {extraItems.map((item) => (
+        <button
+          key={item.key}
+          type="button"
+          role="menuitem"
+          onClick={item.onSelect}
+        >
+          {item.label}
+        </button>
+      ))}
+    </>
   ),
 }));
 vi.mock("../components/FileChips", () => ({
@@ -282,50 +296,34 @@ describe("ChatInput composer row", () => {
 });
 
 describe("ChatInput token devtool entry", () => {
-  function openPlusMenu() {
-    fireEvent.pointerDown(screen.getByTestId("composer-plus-button"), {
-      button: 0,
-    });
-  }
-
-  it("lists Token usage in the + menu while the brain-dump tray is disabled", async () => {
+  it("lists Token usage in the + menu while the brain-dump tray is disabled", () => {
     // The tray is brain-dump-only; the entry must not depend on that flag.
     mockFlagValue = false;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    openPlusMenu();
-    expect(
-      await screen.findByRole("menuitem", { name: "Token usage" }),
-    ).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("lists Token usage in the + menu when brain dump is enabled", async () => {
+  it("lists Token usage in the + menu when brain dump is enabled", () => {
     mockFlagValue = true;
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    openPlusMenu();
-    expect(
-      await screen.findByRole("menuitem", { name: "Token usage" }),
-    ).toBeDefined();
+    expect(screen.getByRole("menuitem", { name: "Token usage" })).toBeDefined();
   });
 
-  it("stays out of the menu when the devtool gate is off", async () => {
+  it("stays out of the menu when the devtool gate is off", () => {
     mockTokenDevtoolEnabled = false;
     render(<ChatInput onSend={mockOnSend} sessionId="session-1" />);
 
-    openPlusMenu();
-    await screen.findByRole("menuitem", { name: /attach file/i });
     expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 
-  it("stays out of the menu before a session exists", async () => {
+  it("stays out of the menu before a session exists", () => {
     mockTokenDevtoolEnabled = true;
     render(<ChatInput onSend={mockOnSend} sessionId={null} />);
 
-    openPlusMenu();
-    await screen.findByRole("menuitem", { name: /attach file/i });
     expect(screen.queryByRole("menuitem", { name: "Token usage" })).toBeNull();
   });
 });

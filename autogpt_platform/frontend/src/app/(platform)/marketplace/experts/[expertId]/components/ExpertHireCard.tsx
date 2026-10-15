@@ -8,12 +8,20 @@ interface Props {
   expert: Expert;
   firstName: string;
   actions: ReactNode;
+  /** Hiring is open to this viewer; when it is not, the card makes no
+   *  promise about joining. */
+  isHiringOpen: boolean;
 }
 
 /** The page's call to action, kept in view: sticky beside the content on
  *  wide screens, straight under the hero on phones. It carries the price
  *  terms so the decision and its cost sit together. */
-export function ExpertHireCard({ expert, firstName, actions }: Props) {
+export function ExpertHireCard({
+  expert,
+  firstName,
+  actions,
+  isHiringOpen,
+}: Props) {
   const weeklyBudget = expert.weekly_budget ?? null;
   const workflowCount = expert.workflows.length;
 
@@ -23,7 +31,9 @@ export function ExpertHireCard({ expert, firstName, actions }: Props) {
 
       <ul className="mt-5 flex flex-col gap-2.5">
         <Perk icon={CheckmarkCircle02Icon}>No extra cost</Perk>
-        <Perk icon={CheckmarkCircle02Icon}>Joins your team instantly</Perk>
+        {isHiringOpen ? (
+          <Perk icon={CheckmarkCircle02Icon}>Joins your team instantly</Perk>
+        ) : null}
         {workflowCount > 0 ? (
           <Perk icon={CheckmarkCircle02Icon}>
             {`${workflowCount} ${workflowCount === 1 ? "workflow" : "workflows"} installed and ready to run`}

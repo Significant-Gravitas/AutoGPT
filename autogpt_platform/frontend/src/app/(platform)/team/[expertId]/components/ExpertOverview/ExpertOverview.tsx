@@ -72,9 +72,13 @@ export function ExpertOverview({
         <StatTile
           label="Outputs"
           icon={File02Icon}
-          value={overview.outputCount}
+          value={overview.isOutputsError ? null : overview.outputCount}
           detail={
-            overview.hasMoreOutputs ? "Showing the latest 200" : "All time"
+            overview.isOutputsError
+              ? "Unavailable"
+              : overview.hasMoreOutputs
+                ? "Showing the latest 200"
+                : "All time"
           }
           isLoading={overview.isOutputsLoading}
         />
@@ -86,7 +90,7 @@ export function ExpertOverview({
             <Skeleton className="h-56 w-full rounded-lg" />
           ) : isActivityError ? (
             <Text variant="small" tone="muted">
-              Activity unavailable
+              Couldn&apos;t load the last 30 days.
             </Text>
           ) : overview.hasActivity ? (
             <ActivityChart days={overview.chartDays} />
@@ -130,12 +134,16 @@ export function ExpertOverview({
           expertName={expert.name}
           sessions={overview.sessions}
           isLoading={overview.isSessionsLoading}
+          isError={overview.isSessionsError}
+          onRetry={overview.retrySessions}
           onChat={onChat}
         />
         <LatestOutputs
           expertName={expert.name}
           outputs={overview.outputs}
           isLoading={overview.isOutputsLoading}
+          isError={overview.isOutputsError}
+          onRetry={overview.retryOutputs}
         />
       </div>
     </div>

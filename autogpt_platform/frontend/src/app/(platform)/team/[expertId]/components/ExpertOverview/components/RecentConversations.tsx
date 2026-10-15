@@ -13,12 +13,15 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { Text } from "@/components/atoms/Text/Text";
+import { CardError } from "./CardError";
 import { OverviewCard } from "./OverviewCard";
 
 interface Props {
   expertName: string;
   sessions: SessionSummaryResponse[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => unknown;
   onChat: () => void;
 }
 
@@ -26,6 +29,8 @@ export function RecentConversations({
   expertName,
   sessions,
   isLoading,
+  isError,
+  onRetry,
   onChat,
 }: Props) {
   return (
@@ -35,6 +40,8 @@ export function RecentConversations({
           <Skeleton className="h-10 w-full rounded-lg" />
           <Skeleton className="h-10 w-full rounded-lg" />
         </div>
+      ) : isError ? (
+        <CardError message="Couldn't load conversations." onRetry={onRetry} />
       ) : sessions.length === 0 ? (
         <PanelEmptyState
           tiles={[

@@ -64,6 +64,21 @@ function IntegrationsTabContent({ expert }: { expert: ContextPanelExpert }) {
 
   return (
     <div className="flex flex-col gap-6">
+      {isGrantableError && !isError ? (
+        <div className="flex items-center justify-between gap-3 rounded-xl bg-amber-50 px-3 py-2 ring-1 ring-inset ring-amber-200">
+          <Text variant="small" className="!text-amber-800">
+            Couldn&apos;t load your connected services, so &ldquo;Use
+            existing&rdquo; is unavailable.
+          </Text>
+          <Button
+            variant="secondary"
+            size="small"
+            onClick={() => void refetch()}
+          >
+            Retry
+          </Button>
+        </div>
+      ) : null}
       {isLoading ? (
         <Skeleton className="h-24 w-full rounded-lg" />
       ) : isError ? (

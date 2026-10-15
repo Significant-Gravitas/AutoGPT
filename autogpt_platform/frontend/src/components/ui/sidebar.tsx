@@ -217,6 +217,7 @@ const Sidebar = React.forwardRef<
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
+            tabIndex={-1}
             className="w-[--sidebar-width] bg-sidebar p-0 text-sidebar-foreground outline-none [&>button]:hidden"
             style={
               {

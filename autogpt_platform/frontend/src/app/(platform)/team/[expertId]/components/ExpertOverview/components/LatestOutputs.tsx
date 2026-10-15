@@ -10,6 +10,7 @@ import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspace
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertFileRow } from "../../ExpertFilesSection/ExpertFileRow";
+import { CardError } from "./CardError";
 import { OverviewCard } from "./OverviewCard";
 
 const VISIBLE_OUTPUTS = 5;
@@ -18,9 +19,17 @@ interface Props {
   expertName: string;
   outputs: WorkspaceFileItem[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => unknown;
 }
 
-export function LatestOutputs({ expertName, outputs, isLoading }: Props) {
+export function LatestOutputs({
+  expertName,
+  outputs,
+  isLoading,
+  isError,
+  onRetry,
+}: Props) {
   return (
     <OverviewCard title="Latest outputs">
       {isLoading ? (
@@ -28,6 +37,8 @@ export function LatestOutputs({ expertName, outputs, isLoading }: Props) {
           <Skeleton className="h-10 w-full rounded-lg" />
           <Skeleton className="h-10 w-full rounded-lg" />
         </div>
+      ) : isError ? (
+        <CardError message="Couldn't load outputs." onRetry={onRetry} />
       ) : outputs.length === 0 ? (
         <PanelEmptyState
           tiles={[

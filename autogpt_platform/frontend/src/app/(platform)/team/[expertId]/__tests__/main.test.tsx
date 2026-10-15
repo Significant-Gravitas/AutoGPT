@@ -63,6 +63,7 @@ import { format, subDays } from "date-fns";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { heldRead } from "@/app/(platform)/copilot/components/ApprovalQueue/__tests__/fixtures";
 import ExpertDetailPage from "../page";
+import { RECENT_CONVERSATIONS_LIMIT } from "../components/ExpertOverview/useExpertOverview";
 
 vi.mock("@/services/environment", async (importActual) => {
   const actual = await importActual<typeof import("@/services/environment")>();
@@ -344,8 +345,8 @@ describe("ExpertDetailPage", () => {
         .getAllByRole("img")
         .map((logo) => logo.getAttribute("alt")),
     ).toEqual(["GitHub", "OpenAI"]);
-    const chip = within(header).getByText("Marketing");
-    expect(integrations.parentElement?.contains(chip)).toBe(true);
+    // The category pill now sits on the cover, still inside the header.
+    expect(within(header).getByText("Marketing")).toBeDefined();
   });
 
   test("keeps the budget above the tabs and the summary in Overview", async () => {
@@ -697,7 +698,8 @@ describe("ExpertDetailPage", () => {
     ).toBeDefined();
     expect(within(list).getByText("plan content")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
     expect(within(dialog).queryByText("Content strategy")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Add" }));
@@ -756,7 +758,8 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     await openTab("Skills");
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
     await user.click(within(dialog).getByRole("tab", { name: "Marketplace" }));
 
@@ -780,7 +783,8 @@ describe("ExpertDetailPage", () => {
     render(<ExpertDetailPage />);
 
     await openTab("Skills");
-    await user.click(screen.getByRole("button", { name: "Add skill" }));
+    // The header and an empty list both offer "Add skill"; the header comes first.
+    await user.click(screen.getAllByRole("button", { name: "Add skill" })[0]);
     const dialog = await screen.findByRole("dialog", { name: "Add a skill" });
 
     expect(
@@ -836,14 +840,14 @@ describe("ExpertDetailPage", () => {
     expect(screen.getByText("SEO Audit")).toBeDefined();
 
     await user.clear(screen.getByRole("textbox", { name: "Search workflows" }));
-    await user.click(screen.getByRole("button", { name: "Filter workflows" }));
+    await user.click(screen.getByRole("button", { name: /^Filter workflows/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Scheduled" }),
     );
     expect(screen.getAllByTestId("expert-workflow-row")).toHaveLength(1);
     expect(screen.getByText("Content Calendar")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "Filter workflows" }));
+    await user.click(screen.getByRole("button", { name: /^Filter workflows/ }));
     await user.click(
       await screen.findByRole("menuitemradio", { name: "Manual" }),
     );
@@ -1218,9 +1222,12 @@ describe("ExpertDetailPage", () => {
   test("opens a fresh inline chat from the header Chat button", async () => {
     let listedSessions = 0;
     server.use(
-      getGetV2ListSessionsMockHandler200(() => {
-        listedSessions += 1;
-        return { sessions: [], total: 0 };
+      http.get("*/api/chat/sessions", ({ request }) => {
+        // The Overview's recent-conversations card lists a short preview;
+        // only a listing for the chat itself would mean it resumed one.
+        const limit = new URL(request.url).searchParams.get("limit");
+        if (limit !== String(RECENT_CONVERSATIONS_LIMIT)) listedSessions += 1;
+        return HttpResponse.json({ sessions: [], total: 0 });
       }),
     );
     const user = userEvent.setup();

@@ -405,10 +405,17 @@ export const ChatContainer = ({
                 />
               </NewChatOnboarding>
               {archivedExpertIdentity ? (
-                <ArchivedExpertNotice
-                  expertName={archivedExpertIdentity.name}
-                  reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
-                />
+                <>
+                  {hasComposerTab && (
+                    <div className="mx-auto w-full max-w-3xl px-3">
+                      <ComposerPanelTab expert={null} />
+                    </div>
+                  )}
+                  <ArchivedExpertNotice
+                    expertName={archivedExpertIdentity.name}
+                    reason={archivedExpertIdentity.readOnlyReason ?? "fired"}
+                  />
+                </>
               ) : (
                 <motion.div
                   initial={{ opacity: 0 }}
