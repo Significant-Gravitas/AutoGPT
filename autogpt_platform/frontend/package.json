@@ -158,7 +158,6 @@
     "@types/twemoji": "13.1.2",
     "@vitejs/plugin-react": "5.1.2",
     "@vitest/coverage-v8": "4.1.0",
-    "agentation": "3.0.2",
     "concurrently": "9.2.1",
     "cross-env": "10.1.0",
     "eslint": "8.57.1",
