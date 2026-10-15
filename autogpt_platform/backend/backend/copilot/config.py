@@ -238,6 +238,14 @@ class ChatConfig(BaseSettings):
         description="SDK (extended-thinking) path, 'advanced' tier.  LD "
         "override: ``copilot-model-routing[thinking][advanced]``.",
     )
+    learning_reviewer_model: str = Field(
+        default="",
+        description="Model for the nightly skill-learning review. Empty (the "
+        "default) routes to ``fast_standard_model`` through the normal chat "
+        "transport so the reviewer follows the same routing and accounting "
+        "as ordinary work; set ``CHAT_LEARNING_REVIEWER_MODEL`` to pin a "
+        "model chosen through evaluation.",
+    )
     title_model: str = Field(
         default=_DEFAULT_TITLE_MODEL,
         description="Model to use for generating session titles (should be "
@@ -630,18 +638,6 @@ class ChatConfig(BaseSettings):
         "Dynamic sections (working dir, git status, auto-memory) are excluded "
         "from the prefix. Set to True to opt in. When False, our system prompt "
         "is passed as a raw string and replaces the Claude Code default prompt.",
-    )
-    claude_agent_prompt_cache_ttl: Literal["5m", "1h"] = Field(
-        default="1h",
-        description="Prompt-cache TTL for the main conversation on the SDK "
-        "OpenRouter path, passed to the CLI as CLAUDE_CODE_PROMPT_CACHE_TTL. "
-        "The CLI's default is 5m, so a chat resumed more than five minutes "
-        "after its last request re-sends its whole prompt as a cache write: "
-        "slower to the first token (4-6 s instead of 1-1.5 s) and billed at "
-        "the write price. 1h keeps it readable for an hour, at 2x input price "
-        "per write instead of 1.25x. The CLI applies it to main-conversation "
-        "requests, including inline helpers it counts as such; sub-agents and "
-        "other requests keep 5m. Same trade-off as `baseline_prompt_cache_ttl`.",
     )
     baseline_prompt_cache_ttl: str = Field(
         default="1h",

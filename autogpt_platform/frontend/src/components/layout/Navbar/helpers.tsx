@@ -72,7 +72,7 @@ export const accountMenuItems: MenuItemGroup[] = [
       },
       {
         icon: IconType.UploadCloud,
-        text: "Publish an agent",
+        text: "Publish a workflow",
       },
     ],
   },

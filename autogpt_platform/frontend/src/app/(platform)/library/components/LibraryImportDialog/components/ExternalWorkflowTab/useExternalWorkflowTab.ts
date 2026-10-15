@@ -36,7 +36,7 @@ function storeAndRedirect(
 ) {
   sessionStorage.setItem(
     "importWorkflowPrompt",
-    "Import this workflow and recreate it as an AutoGPT agent",
+    "Import this workflow and recreate it as an AutoGPT workflow",
   );
   sessionStorage.setItem("importWorkflowFile", JSON.stringify(fileInfo));
   router.push("/copilot?source=import&autosubmit=true");

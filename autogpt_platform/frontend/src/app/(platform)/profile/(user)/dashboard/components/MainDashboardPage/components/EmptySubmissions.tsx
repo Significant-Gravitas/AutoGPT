@@ -17,15 +17,15 @@ export function EmptySubmissions() {
             variant="large-medium"
             className="text-neutral-900 dark:text-neutral-100"
           >
-            No agents submitted yet
+            No workflows submitted yet
           </Text>
           <Text
             variant="body"
             className="text-neutral-600 dark:text-neutral-400"
           >
-            You haven&apos;t submitted any agents to the store yet.
+            You haven&apos;t submitted any workflows to the store yet.
             <br />
-            Click &ldquo;Submit agent&rdquo; above to get started.
+            Click &ldquo;Submit workflow&rdquo; above to get started.
           </Text>
         </div>
       </div>
