@@ -5,7 +5,6 @@ import {
   ComputerIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   OutputRenderer,
   OutputMetadata,
@@ -74,10 +73,7 @@ export function DesktopStreamPreview({
     try {
       await frame.requestFullscreen();
     } catch {
-      toast({
-        title: "Couldn't change fullscreen mode",
-        variant: "destructive",
-      });
+      // A denied request leaves the frame inline; nothing else to do.
     }
   }
 
