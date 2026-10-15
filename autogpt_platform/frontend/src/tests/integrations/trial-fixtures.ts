@@ -26,6 +26,7 @@ export function trialResponse(overrides: Partial<TrialStatusResponse> = {}) {
     active: true,
     converted: false,
     onboarding_credits_previously_received: false,
+    payment_due: null,
     ...overrides,
   });
 }

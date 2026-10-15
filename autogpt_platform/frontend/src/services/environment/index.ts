@@ -35,7 +35,9 @@ function getAGPTServerApiUrl() {
 }
 
 function getAGPTServerBaseUrl() {
-  return getAGPTServerApiUrl().replace("/api", "");
+  // Only strip a trailing "/api"; a plain replace("/api", "") would hit the
+  // first "/api" anywhere, e.g. the host in https://api.example.com/api.
+  return getAGPTServerApiUrl().replace(/\/api\/?$/, "");
 }
 
 function getAGPTWsServerUrl() {
@@ -63,6 +65,11 @@ function getEnvironmentStr() {
   // alike, so without this previews report as the production environment.
   const appEnv = isVercelPreview() ? "preview" : getAppEnv().toLowerCase();
   return `app:${appEnv}-behave:${getBehaveAs().toLowerCase()}`;
+}
+
+function getSentryEnvironment() {
+  const override = process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT?.trim();
+  return override || getEnvironmentStr();
 }
 
 function getPreviewStealingDev() {
@@ -148,8 +155,25 @@ function isVercelPreview() {
   );
 }
 
+function isVercel() {
+  return Boolean(process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL);
+}
+
+// AutoGPT's own Sentry project. Only our hosted deployments (on Vercel) report
+// to it; a self-hosted build reports nowhere unless its operator sets their own
+// NEXT_PUBLIC_SENTRY_DSN, so no self-hoster sends us errors without opting in.
+const HOSTED_SENTRY_DSN =
+  "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288";
+
+function getSentryDSN() {
+  if (process.env.DISABLE_SENTRY === "true") return undefined;
+  const ownDSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
+  if (ownDSN) return ownDSN;
+  return isVercel() && (isProd() || isDev()) ? HOSTED_SENTRY_DSN : undefined;
+}
+
 function isSentryEnabled() {
-  return process.env.DISABLE_SENTRY !== "true" && (isProd() || isDev());
+  return Boolean(getSentryDSN());
 }
 
 function areFeatureFlagsEnabled() {
@@ -182,6 +206,8 @@ export const environment = {
   getGoogleAdsConversionLabels,
   getCookiebotCBID,
   getCookiebotGeoRegions,
+  getSentryDSN,
+  getSentryEnvironment,
   // Assertions
   isServerSide,
   isClientSide,
@@ -191,6 +217,7 @@ export const environment = {
   isProd,
   isCloud,
   isLocal,
+  isVercel,
   isVercelPreview,
   isSentryEnabled,
   isPostHogEnabled,

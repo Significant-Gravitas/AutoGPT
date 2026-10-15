@@ -14,10 +14,26 @@ interface Trial {
   status?: string | null;
   offer?: { tier?: string } | null;
   active?: boolean;
+  cancel_at_period_end?: boolean;
   converted?: boolean;
   allowance_used_percent?: number | null;
   ends_at?: string | Date | null;
   usage_policy?: string | null;
+  payment_due?: {
+    amount_due: number;
+    currency: string;
+    payment_url: string;
+  } | null;
+}
+
+function getTrialPayment(trial?: Trial | null) {
+  const due = trial?.payment_due;
+  if (!due) return null;
+  return {
+    ...due,
+    plan: trial.offer?.tier ?? null,
+    startsOn: trial.ends_at ?? null,
+  };
 }
 
 export function getUsageExperience(
@@ -76,9 +92,15 @@ export function getUsageExperience(
     tier,
     isActiveTrial,
     isLifetimeTrial,
-    freshProUsage: isActiveTrial && trial?.offer?.tier === "PRO",
+    freshProUsage:
+      isActiveTrial &&
+      !trial?.cancel_at_period_end &&
+      trial?.offer?.tier === "PRO",
+    isCancelPending: isActiveTrial && trial?.cancel_at_period_end === true,
     trialPercent,
     inactiveTrialStatus,
+    payment:
+      inactiveTrialStatus === "payment_failed" ? getTrialPayment(trial) : null,
     trialEndsAt: isActiveTrial ? (trial?.ends_at ?? null) : null,
     blocked: window !== null || !!inactiveTrialStatus,
     window,
@@ -97,6 +119,27 @@ export function getUsageExperience(
 }
 
 export type UsageExperience = ReturnType<typeof getUsageExperience>;
+
+export function getUsageStatus(percent: number) {
+  if (percent >= 100) return "reached" as const;
+  return percent >= 80 ? ("low" as const) : ("plenty" as const);
+}
+
+export function getFeaturedUsagePercent(
+  experience: UsageExperience,
+  usage?: Usage | null,
+) {
+  if (
+    experience.isLifetimeTrial ||
+    (experience.isActiveTrial && experience.window === "trial")
+  )
+    return experience.trialPercent ?? 0;
+  const featured =
+    experience.window === "weekly" || !usage?.daily
+      ? usage?.weekly
+      : usage.daily;
+  return featured?.percent_used ?? 0;
+}
 
 export function formatUsagePercent(value: number) {
   if (value > 0 && value < 1) return "<1%";
@@ -129,6 +172,11 @@ export function formatTrialDate(value: string | Date | null) {
 export function formatTrialStartDescription(value: string | Date | null) {
   const date = formatTrialDate(value);
   return `Pro starts on its own ${date ? `on ${date}` : "when your trial ends"}. Start it now to keep working today.`;
+}
+
+export function formatTrialStartTitle(value: string | Date | null) {
+  const date = formatTrialDate(value);
+  return date ? `Pro starts on ${date}` : "Pro starts when your trial ends";
 }
 
 export function formatResumeTime(value: string | Date | null) {
@@ -185,5 +233,6 @@ export function getUsageOfferAction(
     const amount = formatOfferPrice(offer.price, offer.currency);
     return `Start Pro now${amount ? ` · ${amount}` : ""}`;
   }
+  if (experience.isCancelPending) return "Subscribe now";
   return experience.tier === "BASIC" ? "Upgrade to Pro" : "Start Pro";
 }

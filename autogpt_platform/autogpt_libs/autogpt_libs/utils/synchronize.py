@@ -16,8 +16,15 @@ class AsyncRedisKeyedMutex:
     """
     This class provides a mutex that can be locked and unlocked by a specific key,
     using Redis as a distributed locking provider.
-    It uses an ExpiringDict to automatically clear the mutex after a specified timeout,
-    in case the key is not unlocked for a specified duration, to prevent memory leaks.
+
+    Every acquisition must get its own redis-py ``Lock``. A ``Lock`` keeps its
+    owner token on the object, and ``release()`` clears it only after the Redis
+    round-trip, so a ``Lock`` shared between coroutines lets a releasing holder
+    wipe the token of the waiter that just took the key. That waiter can then
+    never release it, and the key stays held until its TTL.
+
+    The latest lock per key is kept in an ExpiringDict, so ``release`` and
+    ``release_all_locks`` can find it without leaking memory.
     """
 
     def __init__(self, redis: "AsyncRedisLike", timeout: int | None = 60):
@@ -39,13 +46,12 @@ class AsyncRedisKeyedMutex:
 
     async def acquire(self, key: Any) -> "AsyncRedisLock":
         """Acquires and returns a lock with the given key"""
-        async with self.locks_lock:
-            if key not in self.locks:
-                self.locks[key] = self.redis.lock(
-                    str(key), self.timeout, thread_local=False
-                )
-            lock = self.locks[key]
+        lock = self.redis.lock(str(key), self.timeout, thread_local=False)
         await lock.acquire()
+        # No await between taking the key and registering it: a caller that
+        # wraps this in wait_for and cleans up with release(key) must always
+        # find a lock it was cancelled after taking.
+        self.locks[key] = lock
         return lock
 
     async def release(self, key: Any):
@@ -59,6 +65,6 @@ class AsyncRedisKeyedMutex:
     async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
         async with self.locks_lock:
-            for lock in self.locks.values():
+            for lock in list(self.locks.values()):
                 if (await lock.locked()) and (await lock.owned()):
                     await lock.release()

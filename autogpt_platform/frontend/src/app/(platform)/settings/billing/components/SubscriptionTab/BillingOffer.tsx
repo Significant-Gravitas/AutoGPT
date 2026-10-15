@@ -7,6 +7,9 @@ import { useUsageExperience } from "@/services/usageExperience/useUsageExperienc
 import {
   formatOfferPrice,
   formatTrialStartDescription,
+  formatTrialStartTitle,
+  getFeaturedUsagePercent,
+  getUsageStatus,
 } from "@/services/usageExperience/helpers";
 import { formatCents } from "../../helpers";
 import {
@@ -20,14 +23,9 @@ interface Props {
 }
 
 export function BillingOffer({ controller }: Props) {
-  const { experience, trial, subscription, isError } = useUsageExperience();
+  const { experience, trial, subscription, usage } = useUsageExperience();
   const activation = useProActivation();
   const isTrial = experience.isActiveTrial;
-  const paymentFailed =
-    experience.tier === "NO_TIER" &&
-    !trial?.active &&
-    !trial?.converted &&
-    ["past_due", "unpaid"].includes(trial?.status ?? "");
   const target = isTrial
     ? trial?.offer?.tier === "PRO"
       ? "Pro"
@@ -45,28 +43,6 @@ export function BillingOffer({ controller }: Props) {
         label="Back to your work"
         href="/copilot"
         ready
-      />
-    );
-  if (paymentFailed)
-    return (
-      <SupportOffer
-        eyebrow="Payment"
-        footer="Your conversations and agents stay saved."
-        title="Your payment didn’t go through"
-        description="Your trial payment needs attention. Review your payment details to continue with your saved work."
-        label="Update payment method"
-        onAction={controller?.onManage}
-        disabled={!controller?.canManagePortal}
-      />
-    );
-  if (isError && experience.tier !== "NO_TIER")
-    return (
-      <SupportOffer
-        eyebrow="Usage"
-        title="We couldn’t load your usage"
-        description="We’re having trouble loading your usage. If it keeps happening, our team can help."
-        label="Contact support"
-        href={ENTERPRISE_CONTACT_URL}
       />
     );
   if (!canUpgrade || !target)
@@ -116,22 +92,35 @@ export function BillingOffer({ controller }: Props) {
           "Experts for content, sales and research, with Otto coordinating",
           "Agents that keep working in the background on a schedule",
         ];
-  const title = isTrial
-    ? "Start Pro now"
-    : `${experience.tier === "NO_TIER" ? "Start" : "Upgrade to"} ${target}`;
+  const quiet =
+    isTrial &&
+    getUsageStatus(getFeaturedUsagePercent(experience, usage)) === "plenty";
+  const title = quiet
+    ? formatTrialStartTitle(experience.trialEndsAt)
+    : isTrial
+      ? "Start Pro now"
+      : `${experience.tier === "NO_TIER" ? "Start" : "Upgrade to"} ${target}`;
   return (
     <BillingPlanOffer
       target={target}
       title={title}
+      quiet={quiet}
       description={
         isTrial && experience.freshProUsage
-          ? formatTrialStartDescription(experience.trialEndsAt)
+          ? quiet
+            ? "Your trial keeps going until then. You can also start today."
+            : formatTrialStartDescription(experience.trialEndsAt)
           : undefined
       }
       price={price}
+      isTrialOffer={isTrial}
       benefits={benefits}
       actionLabel={
-        isTrial && price ? `${title} · ${price.split(" / ")[0]}` : title
+        quiet
+          ? "Start Pro now"
+          : isTrial && price
+            ? `${title} · ${price.split(" / ")[0]}`
+            : title
       }
       onAction={
         isTrial
@@ -143,7 +132,7 @@ export function BillingOffer({ controller }: Props) {
         isTrial
           ? "Starting now ends your trial early. You’ll review the charge first."
           : target === "Max"
-            ? "What you’ve used today counts toward Max’s higher limit."
+            ? "What you’ve already used counts toward Max’s higher limit."
             : "Review your options before paying."
       }
     />

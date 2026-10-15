@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import fastapi
 import pytest
+import stripe
 from autogpt_libs.auth.jwt_utils import get_jwt_payload
 from fastapi.testclient import TestClient
 from prisma.enums import SubscriptionTier
@@ -155,3 +156,50 @@ def test_partial_review_cannot_backdate_a_charge(client, monkeypatch, partial):
     response = client.post("/credits/subscription", json={"tier": "MAX", **partial})
     assert response.status_code == 422
     modify.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    "failure,status",
+    [
+        (stripe.CardError("Declined", "payment_method", "card_declined"), 402),
+        (
+            stripe.CardError(
+                "Authentication required",
+                "payment_method",
+                "subscription_payment_intent_requires_action",
+            ),
+            402,
+        ),
+        (
+            stripe.InvalidRequestError(
+                "No payment method",
+                "default_payment_method",
+                code="resource_missing",
+                http_status=400,
+            ),
+            402,
+        ),
+        (stripe.APIConnectionError("Connection lost"), 502),
+        (stripe.APIError("Internal server error", http_status=500), 502),
+        (stripe.RateLimitError("Rate limited", http_status=429), 502),
+        (stripe.IdempotencyError("Request in progress", http_status=409), 502),
+    ],
+)
+def test_only_definite_payment_failures_return_402(
+    client, monkeypatch, failure, status
+):
+    monkeypatch.setattr(
+        routes,
+        "validate_subscription_upgrade_preview",
+        AsyncMock(return_value=object()),
+    )
+    monkeypatch.setattr(
+        routes,
+        "modify_stripe_subscription_for_tier",
+        AsyncMock(side_effect=failure),
+    )
+    response = client.post(
+        "/credits/subscription",
+        json={"tier": "MAX", "preview_id": PREVIEW_ID, "proration_date": DATE},
+    )
+    assert response.status_code == status

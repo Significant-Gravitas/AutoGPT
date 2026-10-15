@@ -20,7 +20,7 @@ import { toast } from "@/components/molecules/Toast/use-toast";
 import {
   centsToUSD,
   getSubscriptionValue,
-  trackAdsConversion,
+  trackAdsConversionBeforeNavigation,
 } from "@/services/analytics/google-ads";
 import {
   trackBillingPortalOpened,
@@ -29,6 +29,7 @@ import {
 } from "@/services/analytics/monetization-analytics";
 
 import { formatCents, formatShortDate } from "../../../helpers";
+import { getCheckoutReturnURLs } from "../helpers";
 import { useTierUpgradePreview } from "./useTierUpgradePreview";
 
 const PLAN_LABEL: Record<string, string> = {
@@ -94,8 +95,12 @@ export function useYourPlanCard() {
     },
   });
 
-  const { mutateAsync: updateTier, isPending: isUpdatingTier } =
+  const { mutateAsync: updateTier, isPending: isUpdatePending } =
     useUpdateSubscriptionTier();
+  // The mutation settles before the Checkout redirect starts; this keeps the
+  // plan actions busy across the wait for the Ads conversion too.
+  const [isChangingTier, setIsChangingTier] = useState(false);
+  const isUpdatingTier = isUpdatePending || isChangingTier;
 
   const effectiveTier = subscription.data?.tier ?? null;
   const isPaid = effectiveTier !== null && effectiveTier !== "NO_TIER";
@@ -235,17 +240,28 @@ export function useYourPlanCard() {
     billingCycle?: SubscriptionTierRequestBillingCycle,
     preview?: SubscriptionUpgradePreview,
   ) {
+    if (isUpdatingTier) return false;
+    setIsChangingTier(true);
+    try {
+      return await requestTierChange(tier, billingCycle, preview);
+    } finally {
+      setIsChangingTier(false);
+    }
+  }
+
+  async function requestTierChange(
+    tier: SubscriptionTierRequestTier,
+    billingCycle?: SubscriptionTierRequestBillingCycle,
+    preview?: SubscriptionUpgradePreview,
+  ) {
     const cycle = billingCycle ?? "monthly";
-    // Stripe fills {CHECKOUT_SESSION_ID}; plan and cycle let the return page
-    // report the subscription to Google Ads.
-    const successUrl = `${window.location.origin}${window.location.pathname}?subscription=success&session_id={CHECKOUT_SESSION_ID}&plan=${tier}&cycle=${cycle}`;
-    const cancelUrl = `${window.location.origin}${window.location.pathname}?subscription=cancelled`;
+    const { successURL, cancelURL } = getCheckoutReturnURLs({ tier, cycle });
     try {
       const result = await updateTier({
         data: {
           tier,
-          success_url: successUrl,
-          cancel_url: cancelUrl,
+          success_url: successURL,
+          cancel_url: cancelURL,
           ...(billingCycle ? { billing_cycle: billingCycle } : {}),
           ...(preview
             ? {
@@ -265,7 +281,7 @@ export function useYourPlanCard() {
         // plan-card figure is only the fallback when the tier isn't priced there.
         const cents =
           cycle === "yearly" ? tierCostsYearly[tier] : tierCosts[tier];
-        trackAdsConversion("begin_checkout", {
+        await trackAdsConversionBeforeNavigation("begin_checkout", {
           value: centsToUSD(cents) ?? getSubscriptionValue(tier, cycle),
         });
         // Navigating away — don't refetch (would set state on an
@@ -281,8 +297,16 @@ export function useYourPlanCard() {
       ]);
       return true;
     } catch (error) {
-      if (preview && error instanceof ApiError && error.status === 409) {
-        upgradeReview.invalidate();
+      if (
+        preview &&
+        error instanceof ApiError &&
+        (error.status === 409 || error.status === 402)
+      ) {
+        upgradeReview.invalidate(
+          error.status === 402
+            ? "Payment wasn’t completed. Check your payment method, then review the charge again."
+            : undefined,
+        );
         return false;
       }
       // 422 fail-closed on a YEARLY request = LD missing the *_YEARLY price for

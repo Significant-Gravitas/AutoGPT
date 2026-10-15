@@ -3,6 +3,7 @@ each of the three checkout routes and the completed-checkout webhook, and none
 of it can cost the checkout or fail the webhook."""
 
 import inspect
+import logging
 import re
 from datetime import UTC, datetime
 from types import SimpleNamespace
@@ -21,8 +22,11 @@ from backend.data.notifications import (
     NotificationResult,
     SubscriberField,
 )
+from backend.data.onboarding_role import OnboardingRole
 from backend.data.subscription_trial_checkout import TrialUnavailable
-from backend.notifications import subscriber_fields
+from backend.notifications import consent, subscriber_fields
+from backend.notifications.consent_test import _cached_before_consent
+from backend.notifications.mailerlite import pseudonym
 
 EMAIL = "sam@example.com"
 CREATED = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
@@ -45,7 +49,15 @@ def graph_cleanup():
 
 
 @pytest.fixture
-def queued(monkeypatch):
+def recorded(monkeypatch):
+    """Where an Iranian or Russian country would be recorded on the account."""
+    record = AsyncMock()
+    monkeypatch.setattr(checkout_audience, "record_excluded_country", record)
+    return record
+
+
+@pytest.fixture
+def queued(monkeypatch, recorded):
     queue = AsyncMock(return_value=NotificationResult(success=True))
     monkeypatch.setattr(subscriber_fields, "queue_audience_change", queue)
     monkeypatch.setattr(
@@ -53,28 +65,115 @@ def queued(monkeypatch):
         "get_user_by_id",
         AsyncMock(
             return_value=SimpleNamespace(
-                email=EMAIL, created_at=CREATED, timezone="Europe/Vienna"
+                email=EMAIL,
+                created_at=CREATED,
+                timezone="Europe/Vienna",
+                marketing_opt_out_at=None,
             )
         ),
     )
     monkeypatch.setattr(
         checkout_audience, "signin_providers", AsyncMock(return_value=["credential"])
     )
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_onboarding_role",
+        AsyncMock(return_value=OnboardingRole(choice="Marketing")),
+    )
     return queue
 
 
 @pytest.mark.asyncio
-async def test_opening_checkout_queues_the_enriched_change(queued):
+async def test_opening_checkout_queues_the_enriched_change(queued, recorded):
     checkout_audience.schedule_checkout_opened("user-1", ip_country="US")
     for task in list(checkout_audience._tasks):
         await task
+    recorded.assert_not_awaited()
     event = queued.await_args.args[0]
     assert event.action is AudienceAction.CHECKOUT_OPENED
     assert event.fields[SubscriberField.COUNTRY_CODE] == "US"
     assert event.fields[SubscriberField.COUNTRY_SOURCE] == "ip"
     assert event.fields[SubscriberField.SIGNIN_METHOD] == "email"
+    assert event.fields[SubscriberField.ROLE] == "Marketing"
     # The IP says US, but the browser sits in Vienna.
     assert event.fields[SubscriberField.EXCLUDE_DE_AT] == "yes"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "role",
+    [
+        AsyncMock(return_value=None),
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ],
+    ids=["not-picked-yet", "unreadable"],
+)
+async def test_an_opener_without_a_readable_role_is_still_queued(
+    queued, monkeypatch, role
+):
+    monkeypatch.setattr(checkout_audience, "get_onboarding_role", role)
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    event = queued.await_args.args[0]
+    assert event.action is AudienceAction.CHECKOUT_OPENED
+    assert SubscriberField.ROLE not in event.fields
+    assert SubscriberField.ROLE_OTHER not in event.fields
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "countries, code",
+    [
+        (dict(ip_country="RU"), "RU"),
+        (dict(stripe_country="IR"), "IR"),
+        (dict(ip_country="ir"), "IR"),
+        (dict(ip_country="US", stripe_country="RU"), "RU"),
+    ],
+)
+async def test_an_opener_seen_in_iran_or_russia_is_recorded_and_never_queued(
+    queued, recorded, monkeypatch, caplog, countries, code
+):
+    """Recorded on the account, since the trial and billing events that
+    follow carry no IP or billing country."""
+    providers = AsyncMock(return_value=["credential"])
+    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
+    with caplog.at_level(logging.DEBUG, logger=consent.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", **countries)
+    recorded.assert_awaited_once_with("user-1", code)
+    queued.assert_not_awaited()
+    providers.assert_not_awaited()
+    assert pseudonym(EMAIL) in caplog.text
+    assert EMAIL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_a_failed_record_of_a_russian_ip_is_retried(queued, recorded):
+    """This runs in the background, so nothing else would retry it, and the
+    events after the checkout carry no IP country."""
+    recorded.side_effect = [RuntimeError("db blip"), None]
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="RU")
+    assert recorded.await_count == 2
+    recorded.assert_awaited_with("user-1", "RU")
+    queued.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_opener_whose_browser_sits_in_moscow_is_never_queued(
+    queued, monkeypatch
+):
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_user_by_id",
+        AsyncMock(
+            return_value=SimpleNamespace(
+                email=EMAIL,
+                created_at=CREATED,
+                timezone="Europe/Moscow",
+                marketing_opt_out_at=None,
+            )
+        ),
+    )
+    await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -86,8 +185,146 @@ async def test_a_failure_never_reaches_the_checkout(queued, monkeypatch):
     queued.assert_not_awaited()
 
 
+def _opt_out(monkeypatch) -> tuple[AsyncMock, AsyncMock]:
+    """The account refused marketing at signup."""
+    lookup = AsyncMock(
+        return_value=SimpleNamespace(
+            email=EMAIL,
+            created_at=CREATED,
+            timezone="Europe/Vienna",
+            marketing_opt_out_at=CREATED,
+        )
+    )
+    providers = AsyncMock(return_value=["credential"])
+    monkeypatch.setattr(checkout_audience, "get_user_by_id", lookup)
+    monkeypatch.setattr(checkout_audience, "signin_providers", providers)
+    return lookup, providers
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_opener_is_never_queued(queued, monkeypatch, caplog):
+    _, providers = _opt_out(monkeypatch)
+    with caplog.at_level(logging.DEBUG, logger=consent.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+    providers.assert_not_awaited()
+    assert pseudonym(EMAIL) in caplog.text
+    assert EMAIL not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_an_opener_cached_before_the_consent_fields_queues_nothing(
+    queued, monkeypatch, caplog
+):
+    """During a rolling deploy the shared cache can hand back a user pickled by
+    the previous release, with no opt-out to read. It is skipped, not reported
+    as a failed checkout."""
+    monkeypatch.setattr(
+        checkout_audience,
+        "get_user_by_id",
+        AsyncMock(return_value=_cached_before_consent()),
+    )
+    with caplog.at_level(logging.DEBUG, logger=checkout_audience.__name__):
+        await checkout_audience.queue_checkout_opened("user-1", ip_country="US")
+    queued.assert_not_awaited()
+    assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
+
+
+@pytest.mark.asyncio
+async def test_an_opted_out_customers_completed_checkout_queues_nothing(
+    queued, monkeypatch
+):
+    lookup, _ = _opt_out(monkeypatch)
+    with patch(
+        "prisma.models.User.prisma",
+        return_value=_user_prisma(SimpleNamespace(id="user-1")),
+    ):
+        await checkout_audience.record_checkout_completed(
+            {
+                "customer": "cus_1",
+                "created": 1788305400,
+                "customer_details": {"address": {"country": "DE"}},
+            }
+        )
+    for task in list(checkout_audience._tasks):
+        await task
+    lookup.assert_awaited_once_with("user-1")
+    queued.assert_not_awaited()
+
+
 def _user_prisma(user):
     return MagicMock(find_first=AsyncMock(return_value=user))
+
+
+@pytest.mark.asyncio
+async def test_a_checkout_billed_to_russia_is_recorded_before_it_returns(
+    monkeypatch,
+):
+    """The webhook then queues the trial notice, whose MailerLite change only
+    this record can stop, so it must not wait for the background task."""
+    order = []
+    monkeypatch.setattr(
+        checkout_audience,
+        "record_excluded_country",
+        AsyncMock(side_effect=lambda *args: order.append(("recorded", *args))),
+    )
+    monkeypatch.setattr(
+        checkout_audience,
+        "schedule_checkout_opened",
+        MagicMock(side_effect=lambda *_, **kw: order.append(("scheduled", kw))),
+    )
+    with patch(
+        "prisma.models.User.prisma",
+        return_value=_user_prisma(SimpleNamespace(id="user-1")),
+    ):
+        await checkout_audience.record_checkout_completed(
+            {
+                "customer": "cus_1",
+                "created": 1788305400,
+                "customer_details": {"address": {"country": "RU"}},
+            }
+        )
+    assert order == [
+        ("recorded", "user-1", "RU"),
+        ("scheduled", {"stripe_country": "RU", "opened_at": 1788305400}),
+    ]
+
+
+_BILLED_TO_RUSSIA = {
+    "customer": "cus_1",
+    "created": 1788305400,
+    "customer_details": {"address": {"country": "RU"}},
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "lookup, record",
+    [
+        (SimpleNamespace(id="user-1"), AsyncMock(side_effect=RuntimeError("db"))),
+        (RuntimeError("db down"), AsyncMock()),
+    ],
+    ids=["record-failed", "lookup-failed"],
+)
+async def test_a_russian_billing_country_that_cannot_be_recorded_fails_the_webhook(
+    monkeypatch, lookup, record
+):
+    """Stripe then retries the event, rather than the webhook queueing a
+    trial notice whose MailerLite change nothing would stop."""
+    schedule = MagicMock()
+    monkeypatch.setattr(checkout_audience, "record_excluded_country", record)
+    monkeypatch.setattr(checkout_audience, "schedule_checkout_opened", schedule)
+    users = (
+        MagicMock(find_first=AsyncMock(side_effect=lookup))
+        if isinstance(lookup, Exception)
+        else _user_prisma(lookup)
+    )
+    with (
+        patch("prisma.models.User.prisma", return_value=users),
+        pytest.raises(RuntimeError),
+    ):
+        await checkout_audience.record_checkout_completed(_BILLED_TO_RUSSIA)
+    schedule.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -224,3 +461,8 @@ def test_the_subscription_checkout_and_the_webhook_are_wired():
     )
     webhook = _source(subscription_routes.stripe_webhook)
     assert "awaitcheckout_audience.record_checkout_completed(data_object)" in webhook
+    # Before the trial notice is queued, so an Iranian or Russian billing
+    # country is on record by the time its MailerLite change is consumed.
+    assert webhook.index("record_checkout_completed(") < webhook.index(
+        "_notify_checkout_completed("
+    )

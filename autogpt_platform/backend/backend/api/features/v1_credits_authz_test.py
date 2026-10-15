@@ -370,6 +370,7 @@ TRIAL_CREDITS_ROUTES = {
     "cancel_trial",
     "confirm_trial",
     "get_trial_status",
+    "resume_trial",
     "start_trial_checkout",
 }
 PERSONAL_ACTIVATION_ROUTES = {

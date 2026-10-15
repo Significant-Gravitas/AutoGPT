@@ -3071,6 +3071,46 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/auth/user/email": {
       "post": {
         "tags": ["v1", "auth"],
@@ -6520,6 +6560,31 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
+    "/api/credits/trial/resume": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Resume Trial",
+        "operationId": "postTrialsResumeTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
+          },
+          "502": { "description": "Stripe update temporarily unavailable" }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
@@ -6657,6 +6722,19 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
       }
     },
     "/api/email/unsubscribe": {
@@ -10134,6 +10212,56 @@
         }
       }
     },
+    "/api/library/agents/batch": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agents By Ids",
+        "description": "Get several library agents at once, as `GET /agents/{id}` would return each.",
+        "operationId": "getV2Get library agents by ids",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Library agent IDs; unknown or inaccessible ones are omitted",
+              "title": "Ids"
+            },
+            "description": "Library agent IDs; unknown or inaccessible ones are omitted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2Get Library Agents By Ids"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/by-graph/{graph_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
@@ -12037,6 +12165,9 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "The wizard draft changed in another session"
           },
           "422": {
             "description": "Validation Error",
@@ -14529,6 +14660,57 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": ["v1", "schedules"],
+        "summary": "Update execution schedule",
+        "description": "Change an agent schedule's name, timing or inputs. Only the schedule's\nowner can edit it; anyone else gets the same 404 as a missing schedule.",
+        "operationId": "patchV1Update execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the schedule to update",
+              "title": "Schedule Id"
+            },
+            "description": "ID of the schedule to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScheduleUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphExecutionJobInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/search/global": {
@@ -15876,7 +16058,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user, creating their\ndefault profile if account setup hasn't yet.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -16664,6 +16846,7 @@
               }
             }
           },
+          "307": { "description": "Short-lived signed download URL" },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -16676,7 +16859,8 @@
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
               }
             }
-          }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
         }
       }
     },
@@ -18546,7 +18730,12 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["reset_password", "verify_email", "change_email"],
+            "enum": [
+              "reset_password",
+              "verify_email",
+              "change_email",
+              "set_password"
+            ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
@@ -19440,6 +19629,10 @@
           "add_bot_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
+          },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
           },
           "dm_link": {
             "anyOf": [
@@ -20563,6 +20756,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -20582,6 +20785,10 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
           },
           "credential_pins": {
             "additionalProperties": {
@@ -21294,6 +21501,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -22878,7 +23094,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -27523,7 +27748,7 @@
             "title": "User Role"
           },
           "pain_points": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2000 },
             "type": "array",
             "maxItems": 20,
             "title": "Pain Points"
@@ -27576,6 +27801,116 @@
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
+      },
+      "OnboardingWizardProgress": {
+        "properties": {
+          "version": { "type": "integer", "const": 1, "title": "Version" },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "team",
+              "autopilot",
+              "role",
+              "painPoints",
+              "hire",
+              "subscription",
+              "connect",
+              "preparing"
+            ],
+            "title": "Currentstep"
+          },
+          "completedSteps": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "team",
+                "autopilot",
+                "role",
+                "painPoints",
+                "hire",
+                "subscription",
+                "connect",
+                "preparing"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Completedsteps"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Role"
+          },
+          "otherRole": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherrole"
+          },
+          "painPoints": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Painpoints"
+          },
+          "otherPainPoint": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherpainpoint"
+          },
+          "selectedBilling": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Selectedbilling"
+          },
+          "hasUserSelectedBilling": {
+            "type": "boolean",
+            "title": "Hasuserselectedbilling"
+          },
+          "selectedCountryCode": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Z]{2}$",
+            "title": "Selectedcountrycode"
+          },
+          "hiredTemplateIds": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Hiredtemplateids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "currentStep",
+          "completedSteps",
+          "role",
+          "otherRole",
+          "painPoints",
+          "otherPainPoint",
+          "selectedBilling",
+          "hasUserSelectedBilling",
+          "selectedCountryCode",
+          "hiredTemplateIds"
+        ],
+        "title": "OnboardingWizardProgress",
+        "description": "Saved wizard answers and navigation, independent of completion or access."
       },
       "OrgAliasResponse": {
         "properties": {
@@ -28756,6 +29091,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -29241,6 +29590,24 @@
         "type": "object",
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
+      },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
       },
       "RefundRequest": {
         "properties": {
@@ -29977,6 +30344,48 @@
         "type": "object",
         "required": ["message", "schedule_id", "paused"],
         "title": "ScheduleToggledResponse"
+      },
+      "ScheduleUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "minLength": 1, "pattern": "\\S" },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credentials"
+          },
+          "timezone": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Timezone",
+            "description": "Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone."
+          }
+        },
+        "type": "object",
+        "title": "ScheduleUpdateRequest",
+        "description": "Fields to change on an existing schedule; omitted fields keep their value."
       },
       "SchedulesListResponse": {
         "properties": {
@@ -31556,7 +31965,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade), or when a trial ending early needs the customer's bank to confirm its payment, on Stripe's invoice page. Empty string in all other branches — the client sends the customer to this URL when non-empty.",
             "default": ""
           }
         },
@@ -32888,6 +33297,16 @@
         ],
         "title": "TrialOfferResponse"
       },
+      "TrialPaymentDue": {
+        "properties": {
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "currency": { "type": "string", "title": "Currency" },
+          "payment_url": { "type": "string", "title": "Payment Url" }
+        },
+        "type": "object",
+        "required": ["amount_due", "currency", "payment_url"],
+        "title": "TrialPaymentDue"
+      },
       "TrialRejectionReason": {
         "type": "string",
         "enum": ["intro_offer_already_used", "card_verification_failed"],
@@ -32949,6 +33368,12 @@
             "type": "boolean",
             "title": "Onboarding Credits Previously Received",
             "default": false
+          },
+          "payment_due": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialPaymentDue" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -34036,6 +34461,34 @@
         "type": "object",
         "title": "UserAttributionInput"
       },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -34207,6 +34660,17 @@
       "UserOnboarding": {
         "properties": {
           "userId": { "type": "string", "title": "Userid" },
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "type": "integer",
+            "title": "Wizardrevision",
+            "default": 0
+          },
           "completedSteps": {
             "items": { "$ref": "#/components/schemas/OnboardingStep" },
             "type": "array",
@@ -34285,6 +34749,26 @@
       },
       "UserOnboardingUpdate": {
         "properties": {
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "anyOf": [
+              { "type": "integer", "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Wizardrevision"
+          },
+          "wizardUserId": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Wizarduserid"
+          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"

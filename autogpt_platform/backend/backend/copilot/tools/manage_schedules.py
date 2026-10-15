@@ -258,6 +258,7 @@ class DeleteScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],
@@ -358,6 +359,7 @@ class _ToggleScheduleTool(BaseTool):
                 "schedule_id": {
                     "type": "string",
                     "description": "Schedule ID from list_schedules.",
+                    "entity": "schedule",
                 },
             },
             "required": ["schedule_id"],

@@ -43,6 +43,9 @@ describe("Usage limit dialog", () => {
       screen.getByText("One allowance for your trial. It doesn’t refresh."),
     ).toBeDefined();
     expect(screen.queryByText(/Wait for reset|Max/)).toBeNull();
+    for (const amount of screen.getAllByText(/\$50/)) {
+      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
+    }
     const wait = screen.getByRole("button", { name: "Wait until Oct 12" });
     expect(wait).toBeDefined();
     fireEvent.click(
@@ -208,6 +211,61 @@ describe("Usage limit dialog", () => {
     expect(
       screen.getByRole("button", { name: "Wait for reset" }),
     ).toBeDefined();
+  });
+
+  it("names the reset time once instead of repeating it in a box", () => {
+    render(
+      <RateLimitResetDialog
+        isOpen
+        onClose={vi.fn()}
+        experience={getUsageExperience({ ...usage, tier: "MAX" })}
+      />,
+    );
+    expect(screen.getByText(/^You can continue /)).toBeDefined();
+    expect(screen.queryByText("You can continue after")).toBeNull();
+  });
+
+  it("pays the open trial invoice straight from the dialog", () => {
+    const onUpgrade = vi.fn();
+    render(
+      <RateLimitResetDialog
+        isOpen
+        onClose={vi.fn()}
+        experience={getUsageExperience(
+          { ...usage, tier: "NO_TIER" },
+          {
+            active: false,
+            converted: false,
+            status: "past_due",
+            offer: { tier: "PRO" },
+            ends_at: new Date(2026, 9, 12, 12),
+            payment_due: {
+              amount_due: 5000,
+              currency: "usd",
+              payment_url: "https://invoice.stripe.com/i/acct_1/test_inv_1",
+            },
+          },
+        )}
+        onUpgrade={onUpgrade}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Pro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.",
+      ),
+    ).toBeDefined();
+    for (const amount of screen.getAllByText(/\$50/)) {
+      expect(amount.closest(".sentry-unmask, [data-sentry-unmask]")).toBeNull();
+    }
+    const pay = screen.getByRole("link", { name: "Pay $50 now" });
+    expect(pay.getAttribute("href")).toBe(
+      "https://invoice.stripe.com/i/acct_1/test_inv_1",
+    );
+    expect(pay.getAttribute("target")).toBe("_blank");
+    expect(
+      screen.queryByRole("button", { name: "Review billing details" }),
+    ).toBeNull();
+    expect(onUpgrade).not.toHaveBeenCalled();
   });
 
   it.each([true, false])(

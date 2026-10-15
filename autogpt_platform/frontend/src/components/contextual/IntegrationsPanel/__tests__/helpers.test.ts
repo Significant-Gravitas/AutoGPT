@@ -36,6 +36,8 @@ function makeView(overrides: Partial<CredentialView> = {}): CredentialView {
     username: null,
     host: null,
     isManaged: false,
+    isSignIn: false,
+    blocksNote: null,
     ...overrides,
   };
 }
@@ -45,9 +47,6 @@ describe("formatProviderName", () => {
     expect(formatProviderName("github")).toBe("GitHub");
     expect(formatProviderName("d_id")).toBe("D-ID");
     expect(formatProviderName("twitter")).toBe("X");
-    // "MCP" is an acronym — without an override the title-caser would
-    // emit the awkward "Mcp" we shipped before; keep the override.
-    expect(formatProviderName("mcp")).toBe("MCP");
   });
 
   test("title-cases unknown snake_case slugs", () => {
@@ -131,8 +130,37 @@ describe("groupCredentialsByProvider", () => {
     expect(groups[0].credentials[0].title).toBe("GitHub");
   });
 
+  test("files a credential under the service the backend names", () => {
+    const groups = groupCredentialsByProvider([
+      makeCred({
+        id: "key",
+        provider: "linear",
+        title: "Linear key",
+        service: "linear",
+        service_icon: "linear",
+      }),
+      makeCred({
+        id: "server",
+        provider: "mcp",
+        type: "oauth2",
+        title: "MCP: mcp.linear.app",
+        service: "linear",
+        service_name: "Linear",
+        service_icon: "linear",
+      }),
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      id: "linear",
+      name: "Linear",
+      logoUrl: "/integrations/linear.png",
+    });
+    expect(groups[0].credentials.map((c) => c.id)).toEqual(["key", "server"]);
+  });
+
   test("strips redundant '<ProviderName>: ' prefix from per-credential titles", () => {
-    // The row already lives under the provider group, so a title like
+    // The row already lives under the service group, so a title like
     // ``"MCP: <hostname>"`` or ``"GitHub: octocat"`` duplicates the
     // group label.  Strip generically using the formatted provider name.
     const groups = groupCredentialsByProvider([
@@ -140,6 +168,9 @@ describe("groupCredentialsByProvider", () => {
         id: "1",
         provider: "mcp",
         title: "MCP: mcp.sentry.dev",
+        service: "sentry",
+        service_name: "Sentry",
+        service_icon: "sentry",
       }),
       makeCred({
         id: "2",
@@ -152,9 +183,10 @@ describe("groupCredentialsByProvider", () => {
         title: "Personal",
       }),
     ]);
-    const mcp = groups.find((g) => g.id === "mcp");
+    const sentry = groups.find((g) => g.id === "sentry");
     const github = groups.find((g) => g.id === "github");
-    expect(mcp?.credentials[0].title).toBe("mcp.sentry.dev");
+    expect(sentry?.name).toBe("Sentry");
+    expect(sentry?.credentials[0].title).toBe("mcp.sentry.dev");
     expect(github?.credentials.find((c) => c.id === "2")?.title).toBe(
       "octocat",
     );

@@ -130,14 +130,22 @@ async def test_unrelated_trial_ledger_cannot_reset(policy_case, changed):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("plan", ["PRO", "MAX"])
+@pytest.mark.parametrize("chosen_plan", [False, True])
 async def test_consumed_initial_trial_conversion_creates_one_generation(
-    policy_case, plan
+    policy_case, plan, chosen_plan
 ):
     case = policy_case
     price_id = f"price_{plan.lower()}"
     case.trial.offer = case.trial.offer.model_copy(
-        update={"tier": plan, "price_id": price_id}
+        update={
+            "tier": "BASIC" if chosen_plan else plan,
+            "price_id": "price_basic" if chosen_plan else price_id,
+        }
     )
+    if chosen_plan:
+        case.subscription["metadata"].update(
+            trial_conversion_price_id=price_id, trial_conversion_tier=plan
+        )
     case.subscription["items"]["data"][0]["price"]["id"] = price_id
     case.invoice["lines"]["data"][0]["price"]["id"] = price_id
     assert await activation.publish_initial_pro_activation(

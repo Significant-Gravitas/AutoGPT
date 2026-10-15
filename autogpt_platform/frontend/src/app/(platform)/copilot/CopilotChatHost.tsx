@@ -1,31 +1,46 @@
 "use client";
 import { ChatContainer } from "./components/ChatContainer/ChatContainer";
+import type { FloatingControls } from "./components/ChatMessagesContainer/components/ThreadHeader";
 import { ProviderLimitDialog } from "./components/ProviderLimitDialog/ProviderLimitDialog";
 import { RateLimitGate } from "./components/RateLimitResetDialog/RateLimitGate";
 import { useCopilotPage } from "./useCopilotPage";
 import { FlaskConicalIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { useUsageExperience } from "@/services/usageExperience/useUsageExperience";
 import { useRateLimitRefresh } from "./components/RateLimitResetDialog/useRateLimitRefresh";
 
 interface Props {
   droppedFiles: File[];
   onDroppedFilesConsumed: () => void;
-  /** The new layout floats its sidebar/files controls over the chat's
-   *  top-left corner on small viewports. */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports. */
+  floatingControls?: FloatingControls;
 }
 
 /**
  * Session-scoped chat host. Parent mounts this with `key={sessionId}` so
- * session-local view state resets on switch, while the actual AI SDK Chat
- * instance is preserved in the per-session runtime registry.
+ * session-local view state resets on switch, while the stream itself is
+ * preserved in a per-session runtime registry. Keyed again by the stream
+ * flag, so flags resolving after mount swap the stream hook by remounting.
  */
-export function CopilotChatHost({
+export function CopilotChatHost(props: Props) {
+  const isStreamRuntime = useGetFlag(Flag.COPILOT_STREAM_RUNTIME) === true;
+  return (
+    <ChatHostBody
+      key={isStreamRuntime ? "stream-runtime" : "ai-sdk"}
+      {...props}
+      isStreamRuntime={isStreamRuntime}
+    />
+  );
+}
+
+function ChatHostBody({
   droppedFiles,
   onDroppedFilesConsumed,
-  hasFloatingControls,
-}: Props) {
+  floatingControls,
+  isStreamRuntime,
+}: Props & { isStreamRuntime: boolean }) {
   const {
     sessionId,
     messages,
@@ -67,7 +82,7 @@ export function CopilotChatHost({
     isAdoptingExpertSession,
     isKickoffStarting,
     followBackendTurn,
-  } = useCopilotPage();
+  } = useCopilotPage({ isStreamRuntime });
   const usage = useUsageExperience();
   const usageRefresh = useRateLimitRefresh(rateLimitMessage, usage.retry);
   function dismissAfterProviderChange() {
@@ -129,7 +144,7 @@ export function CopilotChatHost({
           isAdoptingExpertSession={isAdoptingExpertSession}
           isKickoffStarting={isKickoffStarting}
           onBackendTurn={followBackendTurn}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       </div>
       <RateLimitGate

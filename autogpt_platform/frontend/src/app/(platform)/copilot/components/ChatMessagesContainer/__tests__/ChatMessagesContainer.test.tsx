@@ -252,6 +252,32 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.queryByTestId("thinking-indicator")).toBeNull();
   });
 
+  it("keeps the backend's status lines out of the thinking indicator", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="submitted"
+        messages={[
+          {
+            id: "assistant-status",
+            role: "assistant",
+            parts: [
+              {
+                type: "data-status",
+                data: { message: "Restoring your session…" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "thinking",
+    );
+    expect(screen.queryByText("Restoring your session…")).toBeNull();
+  });
+
   it("keeps the thinking indicator out of a read-only transcript", () => {
     render(
       <ChatMessagesContainer
@@ -414,19 +440,19 @@ describe("ChatMessagesContainer — loading", () => {
     });
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
-    expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
+    expect(screen.getByText("Reconnecting…")).toBeDefined();
     expect(
       screen.getByText("Still syncing the latest progress."),
     ).toBeDefined();
   });
 
-  it("prefers the backend status message in the restore fallback", () => {
+  it("prefers the runtime's notice in the restore fallback", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
         isLoading={false}
         isRestoringActiveSession
-        restoreStatusMessage="Analyzing result..."
+        restoreStatusMessage="Catching up…"
         messages={[
           {
             id: "user-1",
@@ -441,7 +467,7 @@ describe("ChatMessagesContainer — loading", () => {
       vi.advanceTimersByTime(6_000);
     });
 
-    expect(screen.getByText("Analyzing result...")).toBeDefined();
+    expect(screen.getByText("Catching up…")).toBeDefined();
   });
 });
 
@@ -479,7 +505,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(
       screen.getByText("SDK stream error: Prompt is too long"),
     ).toBeDefined();
-    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
   });
 
   it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
@@ -507,7 +533,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 
   it("suppresses the trailing banner when the marker is retryable", () => {
@@ -535,7 +561,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 });
 
@@ -1063,7 +1089,7 @@ describe("ChatMessagesContainer — readOnly mode", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
     expect(screen.queryByText(/upstream blew up/i)).toBeNull();
   });
 

@@ -448,7 +448,12 @@ def test_total_schema_char_budget() -> None:
 # the plus-one ceiling above. Same headroom, for the same reason.
 #     merged tree                                 69,183
 #     + headroom                       +300       69,483
-_SESSION_WIRE_BUDGET = 69_483
+#
+# Re-measured on #15149 merged with dev f2c683cf2b, which itself measured
+# 69,461, 22 under the line above; find_capability's expert kind adds 27.
+#     merged tree                                 69,488
+#     + headroom                       +300       69,788
+_SESSION_WIRE_BUDGET = 69_788
 
 
 def test_largest_declared_session_wire_budget() -> None:

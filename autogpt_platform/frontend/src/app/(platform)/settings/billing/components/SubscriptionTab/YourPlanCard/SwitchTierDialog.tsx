@@ -102,8 +102,8 @@ export function SwitchTierDialog({
             tone="secondary"
             className="mt-4 rounded-xl bg-zinc-50 p-4 leading-6"
           >
-            You can keep going once payment goes through. What you’ve used today
-            counts toward Max’s limit
+            You can keep going once payment goes through. What you’ve already
+            used counts toward Max’s limit
             {usageMultiplier
               ? `, which is ${usageMultiplier} times as high as Pro’s.`
               : "."}
@@ -118,6 +118,7 @@ export function SwitchTierDialog({
             <>
               <ConfirmButton
                 label={action}
+                unmask={!preview}
                 disabled={cannotConfirm}
                 isSaving={isSaving}
                 onConfirm={onConfirm}
@@ -146,6 +147,7 @@ export function SwitchTierDialog({
               </Button>
               <ConfirmButton
                 label={action}
+                unmask={!preview}
                 disabled={cannotConfirm}
                 isSaving={isSaving}
                 onConfirm={onConfirm}
@@ -160,11 +162,13 @@ export function SwitchTierDialog({
 
 function ConfirmButton({
   label,
+  unmask,
   disabled,
   isSaving,
   onConfirm,
 }: {
   label: string;
+  unmask: boolean;
   disabled?: boolean;
   isSaving: boolean;
   onConfirm: () => void;
@@ -178,6 +182,7 @@ function ConfirmButton({
       onClick={onConfirm}
       disabled={disabled}
       loading={isSaving}
+      unmask={unmask}
       data-fast-goal="subscription_change_confirm"
       data-fast-goal-surface="settings_billing"
     >
