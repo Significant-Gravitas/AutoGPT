@@ -19,9 +19,9 @@ doesn't own:
 
 Why route through ``routing_kwargs_for_chat_transport()`` instead of
 pinning a provider:
-  * One control surface for every transport — local Ollama,
-    subscription Anthropic, direct Anthropic, and OpenRouter all
-    land at the same call site without per-transport branches here.
+  * One control surface for every route with an API — local Ollama,
+    direct Anthropic and OpenRouter all land at the same call site
+    without per-route branches here, each on its own key and URL.
   * ``response_format={"type":"json_object"}`` is supported across
     OpenAI, OpenRouter, and Ollama (forced JSON works on every
     transport this dispatcher accepts).
@@ -304,10 +304,9 @@ NO_PLATFORM_API = (
 def _missing_api_key_message(provider: ProviderLiteral) -> str:
     """Per-provider friendly error string for the no-API-key case.
 
-    Calls out the env var the operator needs to set + (for subscription)
-    the reason their OAuth token isn't sufficient. Surfaced to the user
-    via the JobStatus ``error`` field in the admin viz so they can
-    self-serve the fix without needing a logs dive.
+    Calls out the route's own key the operator needs to set. Surfaced to
+    the user via the JobStatus ``error`` field in the admin viz so they
+    can self-serve the fix without needing a logs dive.
     """
     if provider == "anthropic":
         return "The direct_anthropic route's key is not set: CHAT_ANTHROPIC_API_KEY."

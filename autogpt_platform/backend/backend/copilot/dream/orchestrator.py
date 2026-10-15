@@ -766,18 +766,16 @@ async def _execute_dream_pass_async(
     has_anthropic_key = bool(config.batch_anthropic_api_key)
     # Step 5: the async Anthropic batch path is gated by the
     # ``DREAM_PASS_BATCH_ENABLED`` LD flag AND a direct Anthropic key (the
-    # native Batch API can't be reached via OpenRouter/subscription, so the
-    # key is a hard requirement). When the flag is off, dreams run on the
+    # native Batch API can't be reached via OpenRouter, so the key is a hard
+    # requirement). When the flag is off, dreams run on the
     # synchronous baseline regardless of key presence — the flag lets the
     # batch path ship dark and roll out per-cohort. When on, phase 1 submits
     # via call_provider(execution_mode="batch"); the BatchExecutor polls and
     # dream's batch_callbacks chain phases 2 → 3 + apply when results land
     # (~50% off the rate card, see model_pricing.execution_path_discount).
     #
-    # ``transport_name`` short-circuits to sync_baseline for transports that
-    # can't honour a batch path (local backends have no batch API;
-    # subscription mode shouldn't dual-bill the user's Anthropic key when the
-    # chat layer is on Claude Code OAuth).
+    # ``transport_name`` short-circuits to sync_baseline for a local server,
+    # which has no batch API (a route without a platform API skipped above).
     batch_enabled = await is_feature_enabled(Flag.DREAM_PASS_BATCH_ENABLED, user_id)
     execution_path: ExecutionPath = resolve_dream_execution_path(
         has_anthropic_key=has_anthropic_key,

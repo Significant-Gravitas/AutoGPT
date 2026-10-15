@@ -106,7 +106,7 @@ def test_a_file_that_appears_mid_write_is_left_alone(
     real_lstat = os.lstat
 
     def lstat(path, *args, **kwargs):
-        if str(path) == str(_creds(home)):
+        if Path(path) == _creds(home):
             raise FileNotFoundError(path)
         return real_lstat(path, *args, **kwargs)
 

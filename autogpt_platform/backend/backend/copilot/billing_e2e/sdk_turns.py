@@ -61,12 +61,11 @@ class SdkTurns:
         # fresh one).
         self.resumed: list[tuple[int, str | None]] = []
         self._turn = -1
-        # The CLI inherits these, and the platform reads the CLI's session
-        # files from the same place.
+        self._cli_max_retries = cli_max_retries
+        # The CLI keeps these from the parent (``sdk/launch_env.py``), and the
+        # platform reads the CLI's session files from the same place.
         monkeypatch.setenv("HOME", str(tmp_path / "home"))
         monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(self._config_dir))
-        if cli_max_retries is not None:
-            monkeypatch.setenv("CLAUDE_CODE_MAX_RETRIES", str(cli_max_retries))
         monkeypatch.setattr(sdk_env, "config", config)
         monkeypatch.setattr(
             openrouter_cost,
@@ -141,6 +140,13 @@ class SdkTurns:
         options.hooks = None
         options.allowed_tools = []
         options.disallowed_tools = []
+        if self._cli_max_retries is not None:
+            # A launch keeps no CLI setting of the parent's, so the retry
+            # setting rides on the launch itself.
+            options.env = {
+                **options.env,
+                "CLAUDE_CODE_MAX_RETRIES": str(self._cli_max_retries),
+            }
         return ClaudeSDKClient(*args, options=options, **kwargs)
 
     async def _upload(

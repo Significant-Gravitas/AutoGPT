@@ -180,6 +180,8 @@ async def test_without_an_explicit_key_the_cli_sends_the_oauth_token(
             "ANTHROPIC_BASE_URL": stub_url,
             "ANTHROPIC_API_KEY": "",
             "ANTHROPIC_AUTH_TOKEN": "",
+            # The launch keeps none of the parent's own CLI flags.
+            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
         }
 
     requests = await _run_turn(cli_path, host_with_claude_login, no_key)

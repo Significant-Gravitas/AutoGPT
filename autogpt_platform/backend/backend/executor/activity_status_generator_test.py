@@ -1158,7 +1158,7 @@ class TestDeterministicFailureResponse:
         with patch(
             "backend.executor.activity_status_generator._platform_client",
             return_value=None,
-        ) as mock_get_openai_client:
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1171,7 +1171,7 @@ class TestDeterministicFailureResponse:
             )
 
         assert result is None
-        mock_get_openai_client.assert_called_once_with()
+        mock_platform_client.assert_called_once_with()
 
     @pytest.mark.asyncio
     async def test_generate_skips_llm_for_structured_credit_failure(self):
@@ -1184,7 +1184,7 @@ class TestDeterministicFailureResponse:
 
         with patch(
             "backend.executor.activity_status_generator._platform_client"
-        ) as mock_get_openai_client:
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1202,7 +1202,7 @@ class TestDeterministicFailureResponse:
         mock_db_client.get_node_executions.assert_not_called()
         mock_db_client.get_graph_metadata.assert_not_called()
         mock_db_client.get_graph.assert_not_called()
-        mock_get_openai_client.assert_not_called()
+        mock_platform_client.assert_not_called()
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -1224,7 +1224,7 @@ class TestDeterministicFailureResponse:
         with patch(
             "backend.executor.activity_status_generator._platform_client",
             return_value=None,
-        ) as mock_get_openai_client:
+        ) as mock_platform_client:
             result = await generate_activity_status_for_execution(
                 graph_exec_id="test_exec",
                 graph_id="test_graph",
@@ -1241,10 +1241,10 @@ class TestDeterministicFailureResponse:
                 "activity_status": "Existing summary",
                 "correctness_score": correctness_score,
             }
-            mock_get_openai_client.assert_not_called()
+            mock_platform_client.assert_not_called()
         else:
             assert result is None
-            mock_get_openai_client.assert_called_once()
+            mock_platform_client.assert_called_once()
 
 
 def test_paywall_is_a_known_graph_execution_error():
