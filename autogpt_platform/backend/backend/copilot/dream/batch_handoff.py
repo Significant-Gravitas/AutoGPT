@@ -8,9 +8,12 @@ The dream lock goes with the pass: extended to the batch window here and
 released by the callbacks when the pass ends.
 
 A pass whose row was cancelled (or expired) while it gathered submits
-nothing; one whose row refuses its submit (closed meanwhile, or gone) cancels
-that batch here and keeps its lock to release on the way out, rather than
-handing both to callbacks that would only stop.
+nothing; one whose row refuses its submit (closed meanwhile, or gone), or
+does not hold it (the write failed, and a read does not find the batch on
+the row), takes that batch back here and keeps its lock to release on the
+way out, rather than handing both to callbacks that would only stop, or
+to a reaper that would take the pass for dead while its batch ran: the
+batch's lease is the submit's to record.
 
 Any caller can take this route (it depends on the flag and the deployment's
 key, not the caller). ``status_id`` ties the callbacks' updates to the
@@ -33,15 +36,19 @@ from .batch_submit import (
 from .cancel import stopped_error
 from .fetch import DreamInput
 from .locks import BATCH_LOCK_TTL_SECONDS, DreamLockHandle
+from .pass_record import stop_error
 from .pass_run import DreamPassRun
 from .provider_batch import cancel_provider_batch
 from .schemas import DreamPassResult
-from .store import record_submitted
+from .store import read_pass, record_submitted
 
 logger = logging.getLogger(__name__)
 
 # How a pass ends whose row refused its submit and cannot say why.
 REFUSED_SUBMIT_ERROR = "stopped: row refused the submitted write"
+# How a pass ends whose submit write failed and whose row, read again, does
+# not hold its batch, or cannot be read.
+UNRECORDED_SUBMIT_ERROR = "anthropic_batch: batch not on the pass's record; taken back"
 
 
 async def submit_dream_pass_batch(
@@ -105,9 +112,10 @@ async def _hand_off(
     its results are discarded. The lock is NOT disowned, so the context
     manager's compare-and-delete release stays a safe no-op.
 
-    A row that refuses the submit (a stop closed it meanwhile, or it is gone)
-    gets the same revoke, the provider batch cancelled too, and keeps the lock
-    to release on the way out.
+    A row that refuses the submit (a stop closed it meanwhile, or it is gone),
+    or does not hold it (``_record_submit``), gets the same revoke, the
+    provider batch cancelled too by the id the pass holds, and keeps the lock
+    to release on the way out. Nothing has landed yet, so nothing is charged.
     """
     logger.info(
         "Dream pass %s submitted via Anthropic batch=%s (phase=consolidate)",
@@ -137,11 +145,13 @@ async def _record_submit(
     """Record the submit on the pass's row; why the pass must not be handed
     off, else ``None``.
 
-    A refused write is authoritative: the row has closed or is gone, so the
-    pass never hands off, its error the stop that closed the row or, when the
-    row cannot say, ``REFUSED_SUBMIT_ERROR``. A write that failed or ran out
-    of time says nothing about the row: the pass hands off, logged, unless its
-    row reads stopped."""
+    The pass hands off only once its row holds the batch: the submit records
+    the batch's day-long lease, without which the reaper would take the pass
+    for dead within the hour while its batch ran. A refused write is
+    authoritative: the row has closed or is gone, so the pass never hands
+    off, its error the stop that closed the row or, when the row cannot say,
+    ``REFUSED_SUBMIT_ERROR``. A write that failed or ran out of time says
+    nothing about the row, which is read again (``_submit_on_record``)."""
     recorded = await record_submitted(
         run.pass_id,
         input_bundle=input_bundle,
@@ -151,26 +161,54 @@ async def _record_submit(
     )
     if recorded:
         return None
+    if recorded is None:
+        return await _submit_on_record(run.pass_id, provider_batch_id)
     stopped = await stopped_error(run.pass_id)
     if stopped is not None:
         return stopped
-    if recorded is False:
-        logger.warning(
-            f"Dream pass {run.pass_id}: its row refused batch {provider_batch_id} "
-            "and does not say why; not handing it off"
-        )
-        return REFUSED_SUBMIT_ERROR
     logger.warning(
-        f"Dream pass {run.pass_id}: batch {provider_batch_id} is not on its "
-        "record; handing it to the callbacks anyway"
+        f"Dream pass {run.pass_id}: its row refused batch {provider_batch_id} "
+        "and does not say why; not handing it off"
     )
-    return None
+    return REFUSED_SUBMIT_ERROR
+
+
+async def _submit_on_record(pass_id: str, provider_batch_id: str) -> str | None:
+    """Whether a submit whose write failed landed after all: ``None`` when
+    the row, read again, holds *provider_batch_id*, else why the pass must
+    not hand off (the stop that closed the row, or
+    ``UNRECORDED_SUBMIT_ERROR`` when the row does not hold the batch or
+    cannot be read). A write that committed late while the read missed it
+    costs the pass, which the reaper would otherwise have closed mid-batch."""
+    try:
+        row = await read_pass(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: its submit write failed and its row cannot "
+            f"be read to find batch {provider_batch_id}; taking the batch back",
+            exc_info=True,
+        )
+        return UNRECORDED_SUBMIT_ERROR
+    stopped = stop_error(row) if row is not None else None
+    if stopped is not None:
+        return stopped
+    if row is not None and row.provider_batch_id == provider_batch_id:
+        logger.info(
+            f"Dream pass {pass_id}: its submit write landed after all; handing "
+            f"batch {provider_batch_id} off"
+        )
+        return None
+    logger.warning(
+        f"Dream pass {pass_id}: batch {provider_batch_id} is not on its record; "
+        "taking it back"
+    )
+    return UNRECORDED_SUBMIT_ERROR
 
 
 async def _revoke_stopped(pass_id: str, provider_batch_id: str) -> None:
     """Take back a stopped pass's just-submitted batch: off the executor's
     queue, cancelled at the provider (best-effort), its bundle dropped."""
-    logger.info(f"Dream pass {pass_id} stopped at its handoff; revoking batch")
+    logger.info(f"Dream pass {pass_id} not handed off; taking its batch back")
     try:
         await remove_pending(provider_batch_id)
     except Exception:

@@ -124,25 +124,83 @@ async def test_a_pass_nobody_stopped_records_its_batch_then_hands_off_its_lock(
     provider.cancel.assert_not_awaited()
 
 
-async def test_a_submit_write_that_fails_on_an_open_row_still_hands_off(
-    fake_dream_db, fake_dream_redis, gather, provider, mocker, caplog
-):
+def _submit_write_fails(mocker, fake_dream_db, *, lands: bool) -> None:
+    """The submit's write fails as the pass sees it; with *lands* it reached
+    the row all the same (a write that committed after the store gave up)."""
     record = fake_dream_db.update_dream_pass
 
     async def submit_write_fails(pass_id, update):
-        if update.status is DreamPassStatus.SUBMITTED:
-            raise ConnectionError("dream pass database unreachable")
-        return await record(pass_id, update)
+        if update.status is not DreamPassStatus.SUBMITTED:
+            return await record(pass_id, update)
+        if lands:
+            await record(pass_id, update)
+        raise ConnectionError("dream pass database unreachable")
 
     mocker.patch.object(fake_dream_db, "update_dream_pass", submit_write_fails)
 
-    with caplog.at_level(logging.WARNING, logger=batch_handoff_mod.logger.name):
+
+async def test_a_failed_submit_write_whose_batch_the_row_holds_hands_off(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker, caplog
+):
+    """The write landed after all: a read of the row finds the batch on it,
+    with its day-long lease, so the pass hands off as usual."""
+    _submit_write_fails(mocker, fake_dream_db, lands=True)
+
+    with caplog.at_level(logging.INFO, logger=batch_handoff_mod.logger.name):
         result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is None
-    assert "batch batch-1 is not on its record" in caplog.text
+    assert "its submit write landed after all" in caplog.text
+    row = fake_dream_db.rows[result.pass_id]
+    assert (row["status"], row["provider_batch_id"]) == (
+        DreamPassStatus.SUBMITTED,
+        "batch-1",
+    )
     assert fake_dream_redis.ttls[_LOCK_KEY] == BATCH_LOCK_TTL_SECONDS
+    provider.revoke.assert_not_awaited()
     provider.cancel.assert_not_awaited()
+
+
+async def test_a_failed_submit_write_whose_batch_the_row_lacks_takes_it_back(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker
+):
+    """The row does not hold the batch, so nothing would renew the pass's
+    half-hour lease while the batch ran, and the reaper would close the live
+    pass: the pass takes its batch back (off the executor's queue, cancelled
+    at the provider) and ends now, the lock released on the way out."""
+    _submit_write_fails(mocker, fake_dream_db, lands=False)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
+    assert fake_dream_db.rows[result.pass_id]["status"] is DreamPassStatus.ERRORED
+
+
+async def test_a_failed_submit_write_whose_row_cannot_be_read_takes_it_back(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker
+):
+    """The read that would find the batch fails too: the pass cannot know
+    its lease is held, so it takes its batch back, even though the write
+    landed here (the cost of not knowing)."""
+    _submit_write_fails(mocker, fake_dream_db, lands=True)
+    read = fake_dream_db.get_dream_pass
+    reads_after_the_submit = 0
+
+    async def read_fails_after_the_submit(pass_id):
+        nonlocal reads_after_the_submit
+        if fake_dream_db.rows[pass_id]["status"] is DreamPassStatus.SUBMITTED:
+            reads_after_the_submit += 1
+            raise ConnectionError("dream pass database unreachable")
+        return await read(pass_id)
+
+    mocker.patch.object(fake_dream_db, "get_dream_pass", read_fails_after_the_submit)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert reads_after_the_submit >= 1
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
 
 
 async def test_a_refused_submit_whose_row_cannot_be_read_is_not_handed_off(
