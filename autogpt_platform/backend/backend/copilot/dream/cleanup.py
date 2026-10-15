@@ -63,6 +63,12 @@ logger = logging.getLogger(__name__)
 
 CleanupStep = Literal["charge", "unlock", "delete", "provider"]
 
+# The error a batch pass closes with when its result carried no usage
+# attribution it can be charged under (#15208): its cleanup, the pass's own
+# or the reaper's, charges none of its phases, and the usage is the
+# platform's rather than another usage context's.
+UNATTRIBUTED_ERROR = "batch usage attribution unavailable"
+
 # How long reading or deleting a pass's Redis state may take, the client's
 # retries included: a stalled Redis costs a cleanup seconds, not its turn.
 STATE_STEP_TIMEOUT_SECONDS = 5.0
@@ -95,6 +101,7 @@ async def clean_up_pass(
     release: bool,
     attribute_tokenless: bool = False,
     landed: Sequence[DreamPhase] = (),
+    charge: bool = True,
 ) -> PassCleanup:
     """Every step of the cleanup after pass *pass_id* of *scope*, in order,
     each run whatever became of the others but the delete, which waits on
@@ -112,9 +119,14 @@ async def clean_up_pass(
     no token) and the lock is found not to be the pass's. *landed* are the
     phases the pass's row says landed: should their state be gone before
     they were charged, that usage is reported lost (an error), not taken for
-    nothing to charge."""
+    nothing to charge. Without *charge* (``UNATTRIBUTED_ERROR``) no phase is
+    charged, and the state goes all the same."""
     unfinished: list[CleanupStep] = []
-    charges = await _charge(pass_id, scope, phase_models, landed)
+    charges = (
+        await _charge(pass_id, scope, phase_models, landed)
+        if charge
+        else PhaseCharges(settled=True)
+    )
     if not charges.settled:
         unfinished.append("charge")
     if release and not await _unlock(

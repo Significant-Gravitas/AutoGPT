@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model_normalize import normalize_model_for_anthropic
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.executor.batch_executor import (
     INITIAL_POLL_DELAY_SECONDS,
     PendingEntry,
@@ -189,6 +190,7 @@ async def submit_phase(
     # multi-phase chain can legitimately outlive a TTL stamped once at the
     # first submit. Re-arm the bundle TTL at every submit so it stays alive
     # exactly as long as some phase batch may still call back.
+    cost_context = await capture_cost_context(user_id)
     await refresh_input_bundle_ttl(pass_id)
     model = phase_models[phase]
     messages = _build_phase_messages(
@@ -246,6 +248,7 @@ async def submit_phase(
         poll_delay_seconds=INITIAL_POLL_DELAY_SECONDS,
         payload={
             "user_id": user_id,
+            "cost_context": cost_context.model_dump(mode="json"),
             "expert_id": input_bundle.expert_id,
             "pass_id": pass_id,
             "job_id": job_id,

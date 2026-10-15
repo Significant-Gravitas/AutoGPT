@@ -9,6 +9,7 @@ submit phase 3 → phase 3 result → apply + mark JobStatus complete.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
@@ -32,6 +33,7 @@ from backend.copilot.dream.batch_state import (
 from backend.copilot.dream.batch_submit import input_bundle_key, persist_input_bundle
 from backend.copilot.dream.cancel import cancel_dream_pass
 from backend.copilot.dream.fetch import DreamInput
+from backend.copilot.dream.job_status import read_status, write_initial_status
 from backend.copilot.dream.pass_record import dream_pass_result_from_row, expired
 from backend.copilot.dream.schemas import (
     DreamOperations,
@@ -41,9 +43,12 @@ from backend.copilot.dream.schemas import (
 )
 from backend.copilot.dream.store import write_stop
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.trial_cost_context import get_trial_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 from backend.data.dream_pass_models import DreamPassDraft
 from backend.executor.batch_executor import (
     PendingEntry,
+    _dispatch,
     enqueue_pending,
     register_handler,
     walk_once,
@@ -123,6 +128,7 @@ def _entry(
     custom_id = f"{pass_id}:{phase}"
     payload = {
         "user_id": "u1",
+        "cost_context": {"user_id": "u1", "trial_id": None, "generation": None},
         "pass_id": pass_id,
         "job_id": job_id,
         "phase": phase,
@@ -1950,6 +1956,38 @@ class TestAStoppedPass:
         await self._assert_ended(fake_dream_db, fake_dream_redis, lock_key, error)
 
     @pytest.mark.asyncio
+    async def test_an_unattributed_callback_ends_it_charging_nothing(
+        self, fake_dream_db, fake_dream_redis, anthropic, charges
+    ):
+        """A cancelled pass whose next callback carries no usage attribution
+        (#15208) ends as any failed pass ends, through ``fail_pass``, but
+        charges nothing, not even the phase that landed: it has no usage
+        context of its own to charge it under. The row stays as the cancel
+        closed it."""
+        lock_key = await self._in_flight(
+            fake_dream_db, fake_dream_redis, landed=("consolidate",)
+        )
+        await _cancel_p1()
+        entry = _entry(phase="recombine")
+        del entry.payload["cost_context"]
+
+        with pytest.raises(UsageActivationUnavailable):
+            await handle_dream_batch_result(
+                entry, [_row(custom_id="p1:recombine", content=_RECOMBINE_CONTENT)]
+            )
+
+        charges.assert_not_awaited()
+        # The cancel stopped the batch it closed; the callback asks nothing more.
+        anthropic.messages.batches.cancel.assert_awaited_once_with("msgbatch_live")
+        await self._assert_ended(
+            fake_dream_db,
+            fake_dream_redis,
+            lock_key,
+            "batch usage attribution unavailable",
+        )
+        assert fake_dream_db.rows["p1"]["status"] is DreamPassStatus.CANCELLED
+
+    @pytest.mark.asyncio
     async def test_a_replayed_callback_keeps_the_job_it_ended(
         self, fake_dream_db, fake_dream_redis, anthropic, charges
     ):
@@ -2068,3 +2106,99 @@ class TestAStoppedPass:
         assert "did not cancel dream batch msgbatch_live" in caplog.text
         submit_phase.assert_not_awaited()
         await self._assert_ended(fake_dream_db, fake_dream_redis, lock_key, error)
+
+
+@pytest.mark.asyncio
+async def test_callback_restores_original_trial_generation_for_late_result():
+    entry = _entry()
+    entry.payload["cost_context"] = {
+        "user_id": "u1",
+        "trial_id": "trial-original",
+        "generation": None,
+    }
+    seen = []
+
+    async def handle(_entry, _rows):
+        seen.append(get_trial_cost_context("u1"))
+
+    with patch(
+        "backend.copilot.dream.batch_callbacks._handle_dream_batch_result", handle
+    ):
+        await handle_dream_batch_result(entry, [])
+    assert seen[0].trial_id == "trial-original"
+    assert seen[0].generation is None
+    assert get_trial_cost_context("u1") is None
+
+
+@pytest.mark.asyncio
+async def test_callback_refuses_missing_or_foreign_attribution(fake_redis):
+    entry = _entry()
+    del entry.payload["cost_context"]
+    with pytest.raises(UsageActivationUnavailable):
+        await handle_dream_batch_result(entry, [])
+    entry.payload["cost_context"] = {"user_id": "foreign", "trial_id": None}
+    with pytest.raises(ValueError, match="different user"):
+        await handle_dream_batch_result(entry, [])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("attribution", ["missing", "malformed", "foreign"])
+@pytest.mark.parametrize("newer_lock", [False, True])
+async def test_dispatch_invalid_attribution_closes_job_without_billing(
+    fake_redis, fake_dream_db, attribution, newer_lock
+):
+    _, state_store, string_store = fake_redis
+    now = datetime.now(timezone.utc)
+    await persist_input_bundle(
+        "p1",
+        DreamInput(
+            user_id="owner",
+            expert_id="expert-original",
+            group_id="expert_original",
+            window_start=now,
+            window_end=now,
+        ),
+        lock_token="original-token",
+    )
+    await write_initial_status(kind="dream_pass", job_id="j1", user_id="owner")
+    _seed_submitted_pass(fake_dream_db)
+    lock_key = MemoryScope.for_expert("owner", "expert-original").redis_key(
+        "dream_lock"
+    )
+    string_store[lock_key] = "newer-token" if newer_lock else "original-token"
+    string_store["dream:inflight:u1"] = "unrelated-token"
+    state_store["dream:batch:state:p1"] = {
+        "consolidate": json.dumps({"input_tokens": 10, "output_tokens": 20})
+    }
+    entry = _entry(phase="sanitize")
+    if attribution == "missing":
+        del entry.payload["cost_context"]
+    elif attribution == "malformed":
+        entry.payload["cost_context"] = {"generation": "paid-now"}
+    else:
+        entry.payload["cost_context"] = {"user_id": "foreign", "trial_id": None}
+
+    with (
+        patch("backend.copilot.dream.batch_costs.record_phase_cost") as bill,
+        patch("backend.copilot.dream.batch_callbacks.submit_phase") as submit,
+        patch("backend.copilot.dream.apply.apply_operations") as apply,
+        patch("backend.copilot.trial_cost_context.capture_cost_context") as capture,
+    ):
+        await _dispatch(
+            entry, [_row(custom_id="p1:sanitize", content=_SANITIZE_CONTENT)]
+        )
+
+    status = await read_status(kind="dream_pass", job_id="j1")
+    assert status is not None and status.state == "errored"
+    assert status.completed_at is not None
+    assert string_store.get(lock_key) == ("newer-token" if newer_lock else None)
+    assert string_store["dream:inflight:u1"] == "unrelated-token"
+    row = fake_dream_db.rows["p1"]
+    assert row["status"] is DreamPassStatus.ERRORED
+    assert row["error"] == "batch usage attribution unavailable"
+    assert input_bundle_key("p1") not in string_store
+    assert "dream:batch:state:p1" not in state_store
+    bill.assert_not_called()
+    submit.assert_not_called()
+    apply.assert_not_called()
+    capture.assert_not_called()

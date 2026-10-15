@@ -17,7 +17,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from backend.copilot.dream.routing import ExecutionPath
 from backend.util.llm.providers import ProviderLiteral
 
-InferenceKind = Literal["dream", "briefing_narrative", "consult", "eval_judge"]
+InferenceKind = Literal[
+    "dream", "briefing_narrative", "consult", "eval_judge", "skill_learning"
+]
 LatencyClass = Literal["deferred", "bounded"]
 # The deployment's fast standard or fast advanced model, or ``aux``: the cheap
 # auxiliary model (``title_model``) the one-shot jobs have always used.

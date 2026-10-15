@@ -32,12 +32,15 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import ExitStack
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 
 from .batch_costs import landed_usage
 from .batch_deliveries import (
@@ -59,6 +62,7 @@ from .batch_state import claim_apply_gate, content_for, read_state, write_phase_
 from .batch_submit import PHASE_RESPONSE_MODELS, read_input_bundle, submit_phase
 from .cancel import end_batch_pass_if_stopped, pass_closed
 from .clamp import clamp_operations
+from .cleanup import UNATTRIBUTED_ERROR
 from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
@@ -86,7 +90,61 @@ NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
 async def handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
-    """BatchExecutor entry, once per finished phase batch: validate and keep
+    """BatchExecutor entry, once per finished phase batch: the pass's usage
+    attribution (#15208), captured when the batch was submitted, restored
+    around the phase's handling (``_handle_dream_batch_result``); a result
+    without one it can be charged under ends its pass
+    (``_fail_unattributed_pass``)."""
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    with ExitStack() as attribution:
+        try:
+            raw_context = payload.get("cost_context")
+            if raw_context is None:
+                raise UsageActivationUnavailable("Dream batch has no usage attribution")
+            context = TrialCostContext.model_validate(raw_context)
+            attribution.enter_context(restore_cost_context(user_id, context))
+        except (UsageActivationUnavailable, ValueError):
+            await _fail_unattributed_pass(payload)
+            raise
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _fail_unattributed_pass(payload: dict[str, Any]) -> None:
+    """Close a pass whose batch result carries no usage attribution it can
+    be charged under (#15208): errored like any failed pass (its admin job,
+    its record with what the landed phases used, the disowned lock, its
+    state), but nothing is charged against another usage context. The lock
+    is the pass's own scope's, read off its input bundle as the phase
+    handlers read it; without the bundle there is no token to release it
+    with, and it is left to its TTL."""
+    bp = BatchPass.from_payload(payload)
+    try:
+        input_bundle = await read_input_bundle(bp.pass_id)
+    except Exception:
+        logger.exception("Unattributed dream batch pass=%s: no bundle", bp.pass_id)
+        input_bundle = None
+    if input_bundle is not None:
+        bp = bp.model_copy(
+            update={
+                "user_id": input_bundle.user_id,
+                "expert_id": input_bundle.expert_id,
+            }
+        )
+    await fail_pass(bp, UNATTRIBUTED_ERROR, charge=False)
+
+
+async def _handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    """One finished phase batch, under its pass's attribution: validate and keep
     the phase's result, then end the pass on an error, submit the next phase
     (the job left ``submitted`` at it), or after sanitize apply, charge the
     three phases and complete the job. A payload no phase can take is a dead

@@ -110,7 +110,7 @@ from backend.data import redis_client
 from backend.data.dream_pass_models import OPEN_STATUSES, DreamPassRecord
 
 from .batch_submit import phase_models_for_config
-from .cleanup import PassCleanup, clean_up_pass
+from .cleanup import UNATTRIBUTED_ERROR, PassCleanup, clean_up_pass
 from .locks import (
     DEFAULT_LOCK_TTL_SECONDS,
     LOCK_CHECK_TIMEOUT_SECONDS,
@@ -435,7 +435,9 @@ async def _clean_up(
     """Clean up after *row*'s pass, releasing its lock under the token the
     row kept when *release* (for a row that kept none, finding the lock not
     the pass's). Its mark is cleared after the attempt
-    (``_record_finished``)."""
+    (``_record_finished``). A pass that closed because its result carried
+    no usage attribution (``UNATTRIBUTED_ERROR``) is charged nothing here
+    either."""
     return await clean_up_pass(
         row.id,
         scope,
@@ -445,6 +447,7 @@ async def _clean_up(
         release=release,
         attribute_tokenless=True,
         landed=_landed(row),
+        charge=row.error != UNATTRIBUTED_ERROR,
     )
 
 

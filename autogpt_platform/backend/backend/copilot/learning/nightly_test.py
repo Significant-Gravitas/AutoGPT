@@ -12,11 +12,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from pydantic import BaseModel, ConfigDict, Field
 
-from backend.copilot.dream.llm import (
-    CompletionUsage,
-    DreamLLMError,
-    StructuredCompletion,
-)
+from backend.copilot.inference.complete import StructuredCompletion
+from backend.copilot.inference.context import InferenceUsage
 from backend.copilot.tools.skills import ParsedSkill
 from backend.data.skill_learning import canonical_revision
 
@@ -32,6 +29,7 @@ from .contract import (
     register_source_adapter,
 )
 from .prompts import LearningProposal
+from .reviewer import DreamLLMError
 
 USER = "user-1"
 EXPERT = "expert-1"
@@ -103,8 +101,13 @@ def _proposal(**overrides) -> LearningProposal:
 def _completion(proposal: LearningProposal) -> StructuredCompletion[LearningProposal]:
     return StructuredCompletion(
         value=proposal,
-        usage=CompletionUsage(
-            model="test-model", input_tokens=10, output_tokens=5, cost_usd=0.001
+        usage=InferenceUsage(
+            model="test-model",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.001,
+            cost_source="provider",
+            payer="platform_allowance",
         ),
     )
 
