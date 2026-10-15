@@ -2,6 +2,7 @@ import { Expert } from "@/app/api/__generated__/models/expert";
 import { Badge } from "@/components/atoms/Badge/Badge";
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { cn } from "@/lib/utils";
 import { trackFunnel } from "@/services/experts/experts-analytics";
 import { CheckmarkCircle02Icon } from "@hugeicons/core-free-icons";
 import { ExpertDownloadButton } from "./ExpertDownloadButton/ExpertDownloadButton";
@@ -58,9 +59,9 @@ export function ExpertHireActions({
           href={`/copilot?expertId=${hiredExpert.id}`}
           variant="secondary"
           size="small"
-          className={SECONDARY_CLASS}
+          className={cn(SECONDARY_CLASS, "max-w-full")}
         >
-          {`Chat with ${expert.name}`}
+          <span className="truncate">{`Chat with ${expert.name}`}</span>
         </Button>
         <ExpertDownloadButton templateId={expert.id} name={expert.name} />
       </div>
@@ -82,9 +83,9 @@ export function ExpertHireActions({
         size="small"
         onClick={handleHire}
         loading={isHiring}
-        className="flex-1 sm:flex-none"
+        className="flex-1 sm:flex-initial"
       >
-        {`Hire ${expert.name}`}
+        <span className="truncate">{`Hire ${expert.name}`}</span>
       </Button>
       <ExpertDownloadButton templateId={expert.id} name={expert.name} />
     </div>
