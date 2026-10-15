@@ -828,6 +828,49 @@ def test_a_former_payer_on_a_free_subscription_is_signed_not_churned(old_status)
     )
 
 
+def test_a_subscription_that_paid_before_its_coupon_keeps_its_paid_start():
+    """One subscription, paid for a month, then given a 100% coupon: they're
+    comped now, not a never-paid signup, and they first paid at its start."""
+    start = NOW - timedelta(days=60)
+    comp = coupon(percent_off=100, start=int((NOW - timedelta(days=30)).timestamp()))
+    result = snapshot(subs=[sub(start=start, discounts=[comp])])
+    assert result == LifecycleSnapshot(
+        subscription_status="signed", signup_at=SIGNUP, subscription_started_at=start
+    )
+
+
+def test_a_converted_trial_given_a_coupon_later_keeps_its_conversion():
+    converted = NOW - timedelta(days=40)
+    t = trial(status="active", ends_at=converted, converted_at=converted)
+    comp = coupon(percent_off=100, start=int((NOW - timedelta(days=10)).timestamp()))
+    later = sub("sub_trial", start=TRIAL_START, enrollment="trial-1", discounts=[comp])
+    result = snapshot(t=t, subs=[later])
+    assert result.subscription_status == "signed"
+    assert result.subscription_started_at == converted
+
+
+def test_a_subscription_ending_with_its_repeating_coupon_was_never_paid():
+    # Three free months, set to cancel: Stripe ends it the moment the coupon
+    # ends.
+    start = NOW - timedelta(days=90)
+    ended = NOW - timedelta(days=1)
+    free = coupon(
+        percent_off=100,
+        start=int(start.timestamp()),
+        end=int(ended.timestamp()),
+    )
+    gone = sub(
+        status="canceled",
+        start=start,
+        canceled_at=NOW - timedelta(days=20),
+        ended_at=ended,
+        discounts=[free],
+    )
+    assert snapshot(subs=[gone]) == LifecycleSnapshot(
+        subscription_status="signed", signup_at=SIGNUP
+    )
+
+
 def test_a_free_subscription_does_not_supply_the_first_paid_start():
     free = sub(
         "sub_free",

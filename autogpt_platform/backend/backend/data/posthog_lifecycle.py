@@ -51,7 +51,7 @@ subscription whose full discount has ended.
 """
 
 from collections.abc import Iterable, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -78,6 +78,9 @@ _PAYMENT_FAILED_STATUSES = frozenset({"past_due", "unpaid"})
 # A subscription in one of these was never paid for.
 _NEVER_PAID_STATUSES = frozenset({"trialing", "incomplete", "incomplete_expired"})
 _NEVER = datetime.max.replace(tzinfo=UTC)
+# A coupon applied at checkout can start a moment after the subscription;
+# one that started later than this left at least the first period charged.
+_FIRST_CHARGE_GRACE = timedelta(days=1)
 
 
 class LifecycleUser(BaseModel):
@@ -155,7 +158,8 @@ def compute_lifecycle_snapshot(
         ),
     }
     paid = [sub for sub in all_subs if _is_paid(sub, trial, now)]
-    first_paid = _first_paid_start(paid, trial, all_subs)
+    charged = [sub for sub in all_subs if _charged_before_free(sub, trial)]
+    first_paid = _first_paid_start([*paid, *charged], trial, all_subs)
     live = _current_live(paid)
 
     if live is not None:
@@ -320,6 +324,25 @@ def _is_paid(
 ) -> bool:
     if sub.free_at(utc(sub.ended_at) if sub.ended_at else now):
         return False
+    return _charges(sub, trial)
+
+
+def _charged_before_free(
+    sub: StripeSubscriptionFacts, trial: TrialState | None
+) -> bool:
+    """Free now (or when it ended), but it charged first: the full discount
+    started after its first paid period began. Its paid start still counts
+    as the first paid start."""
+    start = _paid_start(sub, trial)
+    return (
+        start is not None
+        and _charges(sub, trial)
+        and not sub.free_at(utc(start) + _FIRST_CHARGE_GRACE)
+    )
+
+
+def _charges(sub: StripeSubscriptionFacts, trial: TrialState | None) -> bool:
+    """Everything that makes a subscription paid except its discounts."""
     if sub.trial_enrollment_id:
         return (
             trial is not None

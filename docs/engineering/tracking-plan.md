@@ -395,7 +395,8 @@ null.
   from then on. Stacked discounts apply one after another, in Stripe's
   order. A customer's discount counts only from its start, so a coupon given
   later doesn't make an older subscription free. Someone who paid before and
-  now has a live free subscription is `signed` (not `payment_failed` or
+  now has a live free subscription (another one, or the same one given a
+  coupon after it first charged) is `signed` (not `payment_failed` or
   `subscription_ended`), keeping their first paid start.
 - **The plan tier is not read.** An admin-granted plan (ENTERPRISE, BUSINESS
   or any other) with no paid Stripe subscription is `signed`; one who pays

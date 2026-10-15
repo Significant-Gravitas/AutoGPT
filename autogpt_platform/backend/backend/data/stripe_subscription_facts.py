@@ -50,8 +50,10 @@ class DiscountFacts(BaseModel):
     def in_force_at(self, moment: datetime) -> bool:
         # A customer's discount is read as it is now, so one that started
         # after ``moment`` (say, after an old subscription ended) didn't apply.
+        # Its end counts as in force: a subscription that ends when its
+        # repeating coupon does was free to the last moment.
         started = self.start is None or utc(self.start) <= moment
-        return started and (self.end is None or utc(self.end) > moment)
+        return started and (self.end is None or utc(self.end) >= moment)
 
 
 class StripeSubscriptionFacts(BaseModel):

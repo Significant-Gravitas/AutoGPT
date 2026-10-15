@@ -77,7 +77,8 @@ async def stripe_list_items(
         if not page.data:
             raise ValueError("Stripe returned an empty page with more results")
         page = await _call(
-            timeout_seconds or DEFAULT_TIMEOUT_SECONDS, page.next_page_async
+            DEFAULT_TIMEOUT_SECONDS if timeout_seconds is None else timeout_seconds,
+            page.next_page_async,
         )
 
 
