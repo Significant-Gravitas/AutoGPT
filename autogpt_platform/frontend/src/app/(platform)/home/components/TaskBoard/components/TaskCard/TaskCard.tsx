@@ -85,7 +85,7 @@ export function TaskCard({
             </Text>
           )}
         </div>
-        <div className="mt-1 flex items-start gap-2">
+        <div className="mt-2.5 flex items-start gap-2">
           <StatusIcon columnId={columnId} className="mt-[0.2rem]" />
           <Text variant="body-medium" tone="primary" className="line-clamp-2">
             {title}
