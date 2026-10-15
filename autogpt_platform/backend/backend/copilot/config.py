@@ -684,6 +684,17 @@ class ChatConfig(BaseSettings):
         "also requires the credentials to be valid — use the ``openrouter_active`` "
         "property for the final answer.",
     )
+    openrouter_provider_order: list[str] = Field(
+        default_factory=lambda: ["google-vertex/global", "anthropic"],
+        description="OpenRouter providers the SDK path's model calls go to first, "
+        "in order (the provider tags in OpenRouter's endpoint list for a model). "
+        "The Claude providers on OpenRouter charge the same but differ in how "
+        "soon they start answering: on a cached prompt Google Vertex's first "
+        "token came about 0.7 s sooner than the default provider's (2026-10-15). "
+        "A call none of them can serve falls back to OpenRouter's other "
+        "providers. ``CHAT_OPENROUTER_PROVIDER_ORDER='[]'`` leaves the choice "
+        "to OpenRouter.",
+    )
     use_claude_code_subscription: bool = Field(
         default=False,
         description="For personal/dev use: use Claude Code CLI subscription auth instead of API keys. Requires `claude login` on the host. Only works with SDK mode.",

@@ -37,8 +37,8 @@ def _not_impersonated():
     set_turn_impersonated(False)
 
 
-def _extra_body(**kwargs) -> dict:
-    with patch("backend.copilot.sdk.env.config", _config()):
+def _extra_body(cfg: ChatConfig | None = None, **kwargs) -> dict:
+    with patch("backend.copilot.sdk.env.config", cfg or _config()):
         env = build_sdk_env(**kwargs)
     return json.loads(env["CLAUDE_CODE_EXTRA_BODY"])
 
@@ -55,7 +55,34 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
             "environment": attribution_settings.config.app_env.value,
             "impersonated": False,
         },
+        "provider": {
+            "order": ["google-vertex/global", "anthropic"],
+            "allow_fallbacks": True,
+        },
     }
+
+
+def test_openrouter_mode_asks_for_the_configured_providers_first():
+    cfg = _config(openrouter_provider_order=["provider-a/global", "provider-b"])
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1")
+
+    assert body["provider"] == {
+        "order": ["provider-a/global", "provider-b"],
+        "allow_fallbacks": True,
+    }
+
+
+def test_an_empty_provider_order_leaves_routing_to_openrouter(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("CHAT_OPENROUTER_PROVIDER_ORDER", "[]")
+    cfg = _config()
+
+    body = _extra_body(cfg, session_id="sess-1", user_id="user-1")
+
+    assert cfg.openrouter_provider_order == []
+    assert "provider" not in body
 
 
 def test_openrouter_mode_keeps_the_session_header_broadcast_needs():
