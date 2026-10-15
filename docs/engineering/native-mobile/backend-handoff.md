@@ -2,6 +2,8 @@
 
 The backend foundation in [#15384](https://github.com/Significant-Gravitas/AutoGPT/pull/15384) can be reviewed and landed before the native client in [#15392](https://github.com/Significant-Gravitas/AutoGPT/pull/15392). This boundary covers email session authentication and pending-message identity. The remaining server work and native acceptance gates below still apply to the full experiment.
 
+The hosted-web shell in [#15495](https://github.com/Significant-Gravitas/AutoGPT/pull/15495) has a narrower immediate server dependency. See its [separate backend audit](shell-backend-dependencies.md) for the existing login handoff, integration OAuth return gap and later push/purchase work. It reuses the web cards and does not require the native renderer contract before basic chat.
+
 ## Foundation landing boundary
 
 - Better Auth accepts signed session bearers and issues access JWTs containing `sid`.
@@ -11,7 +13,7 @@ The backend foundation in [#15384](https://github.com/Significant-Gravitas/AutoG
 
 Server-side Better Auth code lives under `autogpt_platform/frontend/`; it belongs to this foundation even when the native UI is handed off separately. No application-data migration or new production secret is required.
 
-Landing requires current-base checks, review of authentication and existing web-client compatibility, and review of the isolated Python cleanup prerequisite. Native simulator timing, complete native cards and provider certification belong to the client/product gates, not this foundation's merge checklist. Merging, deploying and enabling a native feature remain separate actions.
+Landing requires current-base checks, review of authentication and existing web-client compatibility, and review of the isolated Python cleanup prerequisite [#15537](https://github.com/Significant-Gravitas/AutoGPT/pull/15537). After that prerequisite lands, merge updated `dev` into the foundation branch and retarget #15384 to `dev`. Native simulator timing, complete native cards and provider certification belong to the client/product gates, not this foundation's merge checklist. Merging, deploying and enabling a native feature remain separate actions.
 
 ## Contract the client can use
 
