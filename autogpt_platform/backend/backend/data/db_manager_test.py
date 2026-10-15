@@ -89,6 +89,7 @@ def test_memory_schedule_methods_registered() -> None:
         "record_scope_run",
         "list_user_scope_schedules",
         "list_scope_schedules",
+        "existing_user_ids",
     ):
         assert hasattr(DatabaseManager, method)
         assert hasattr(DatabaseManagerAsyncClient, method)
@@ -209,6 +210,7 @@ def test_memory_schedule_rpc_request_schemas_are_constructible() -> None:
     manager = DatabaseManager()
     manager._create_fastapi_endpoint(manager.claim_scope_schedule)
     manager._create_fastapi_endpoint(manager.record_scope_run)
+    manager._create_fastapi_endpoint(manager.existing_user_ids)
 
 
 def test_the_audience_consumer_can_read_the_opt_out() -> None:

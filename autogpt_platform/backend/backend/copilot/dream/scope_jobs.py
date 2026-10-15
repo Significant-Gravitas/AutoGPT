@@ -6,18 +6,24 @@ them.
 the work, and ``scope_crons.py`` holds what the cron bodies ask of it. Every
 call to a dependency runs under the registry deadline (``deadline.py``).
 Everything fails soft: logged, never raised.
+
+Each cron's flag has one of three answers (``flag_gate``): on, and the cron
+is registered; authoritatively off, and the cron the row records is
+removed, its record first; unknown (the lookup failed, or answered only
+with its default), and the record and the job stay as they are.
 """
 
 import logging
 from typing import Any, Iterable
 
 from prisma.enums import MemoryScopeScheduleState
+from pydantic import BaseModel, Field
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.data.db_accessors import memory_schedule_db
 from backend.data.memory_schedule import MemoryScopeSchedule
 from backend.util.clients import get_scheduler_client
-from backend.util.feature_flag import is_feature_enabled
+from backend.util.feature_flag import evaluate_feature_flag
 
 from .deadline import within_deadline
 from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
@@ -25,51 +31,66 @@ from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
 logger = logging.getLogger(__name__)
 
 
-async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSystemJob]]:
-    """Split the scope's crons (``jobs_for``) on the owner's flags: skip
-    results for the disabled ones, and the enabled ones still to consider."""
-    results: dict[str, Any] = {}
-    enabled: list[DreamSystemJob] = []
+class FlagGate(BaseModel):
+    """The owner's flags over a scope's crons (``jobs_for``): ``enabled``
+    are to be registered, ``disabled`` are authoritatively off, so the cron
+    the row records goes, and ``skips`` holds a result for each cron not
+    enabled. A cron whose flag could not be read is in neither list."""
+
+    enabled: list[DreamSystemJob] = Field(default_factory=list)
+    disabled: list[DreamSystemJob] = Field(default_factory=list)
+    skips: dict[str, Any] = Field(default_factory=dict)
+
+
+async def flag_gate(scope: MemoryScope) -> FlagGate:
+    """Read the owner's flag of each of the scope's crons, each under the
+    registry deadline."""
+    gate = FlagGate()
     for job in jobs_for(scope):
         try:
-            on = await within_deadline(
-                is_feature_enabled(job.flag, scope.owner_user_id)
+            on, authoritative = await within_deadline(
+                evaluate_feature_flag(job.flag, scope.owner_user_id)
             )
         except Exception:
             logger.warning(f"Flag check failed for {job.name}", exc_info=True)
-            results[job.job_id_prefix] = skipped("registration_failed")
-            continue
+            on, authoritative = False, False
         if on:
-            enabled.append(job)
+            gate.enabled.append(job)
+        elif authoritative:
+            gate.disabled.append(job)
+            gate.skips[job.job_id_prefix] = skipped(job.skip_reason)
         else:
-            results[job.job_id_prefix] = skipped(job.skip_reason)
-    return results, enabled
+            gate.skips[job.job_id_prefix] = skipped("flag_unavailable")
+    return gate
 
 
 async def register_scope_jobs(
     scope: MemoryScope,
-    enabled: list[DreamSystemJob],
+    gate: FlagGate,
     row: MemoryScopeSchedule | None,
     user_timezone: str,
     force_refresh: bool,
 ) -> dict[str, Any]:
     """Claim the scope's row if it has none, register every enabled cron
-    that is missing or was registered in another timezone, and record the
-    job ids on the row. One result per enabled cron, keyed by prefix."""
+    that is missing or was registered in another timezone, remove every
+    recorded cron whose flag is off, and record the job ids on the row. One
+    result per enabled cron, and per off one whose removal failed, keyed by
+    prefix."""
     if row is None:
         row = await _claim(scope, user_timezone)
         if row is None:
-            return skip_all(enabled, "registry_unavailable")
+            return skip_all(gate.enabled, "registry_unavailable")
         if row.state != MemoryScopeScheduleState.ACTIVE:
-            return skip_all(enabled, state_reason(row))
+            return skip_all(gate.enabled, state_reason(row))
     stale = force_refresh or row.timezone != user_timezone
     outcomes: dict[str, Any] = {}
-    for job in enabled:
+    for job in gate.enabled:
         if not stale and recorded_job_id(row, job) is not None:
             outcomes[job.job_id_prefix] = None
             continue
         outcomes[job.job_id_prefix] = await _register_job(scope, job, user_timezone)
-    return await _record(scope, row, user_timezone, outcomes, stale)
+    removals = await _remove_disabled(scope, row, gate.disabled, outcomes)
+    return await _record(scope, row, user_timezone, outcomes, removals, stale)
 
 
 async def remove_scope_jobs(scope: MemoryScope) -> bool:
@@ -144,11 +165,65 @@ async def _register_job(
     return result
 
 
+class _Removals(BaseModel):
+    """The recorded crons whose flag is off that this pass tried to remove,
+    by prefix, and those of them now gone."""
+
+    tried: set[str] = Field(default_factory=set)
+    gone: set[str] = Field(default_factory=set)
+
+
+async def _remove_disabled(
+    scope: MemoryScope,
+    row: MemoryScopeSchedule,
+    disabled: list[DreamSystemJob],
+    outcomes: dict[str, Any],
+) -> _Removals:
+    """Remove each cron the row records whose flag is authoritatively off,
+    its record first: the reconcile restores a cron a row records and takes
+    back only one it registered itself, so the record goes before the job.
+    A cron whose removal is not confirmed keeps its record (``_record``
+    writes it back), so the next ensure tries again; it reports
+    ``removal_failed``."""
+    removals = _Removals()
+    for job in disabled:
+        if recorded_job_id(row, job) is None:
+            continue
+        removals.tried.add(job.job_id_prefix)
+        if await _remove_job(scope, job):
+            removals.gone.add(job.job_id_prefix)
+        else:
+            outcomes[job.job_id_prefix] = skipped("removal_failed")
+    return removals
+
+
+async def _remove_job(scope: MemoryScope, job: DreamSystemJob) -> bool:
+    try:
+        await within_deadline(
+            memory_schedule_db().forget_scope_job(
+                scope.owner_user_id, scope.scope_key, job.job_id(scope)
+            )
+        )
+        await within_deadline(
+            get_scheduler_client().remove_scope_memory_job(
+                scope=scope, job_id_prefix=job.job_id_prefix
+            )
+        )
+    except Exception:
+        logger.warning(
+            f"Could not remove {job.name} of {scope_label(scope)}", exc_info=True
+        )
+        return False
+    logger.info(f"Dream-system: removed {job.name} of {scope_label(scope)}: flag off")
+    return True
+
+
 async def _record(
     scope: MemoryScope,
     row: MemoryScopeSchedule,
     user_timezone: str,
     outcomes: dict[str, Any],
+    removals: _Removals,
     stale: bool,
 ) -> dict[str, Any]:
     """Write the job ids this pass settled on and return the outcomes as
@@ -156,13 +231,21 @@ async def _record(
     failure, and one the scope left ACTIVE under is ``scope_changed``. Its
     crons are left where they are: the fire gate holds a scope that is not
     ACTIVE, the reconcile removes them (``scope_reconcile.py``), and taking
-    them down here could take a concurrent resume's crons with them."""
+    them down here could take a concurrent resume's crons with them. A
+    removal that was not confirmed may have forgotten its cron already, so
+    its record is written back even when nothing else changed."""
+    enabled = {prefix for prefix in outcomes if prefix not in removals.tried}
     ids = {
-        job.row_field: _next_job_id(row, job, outcomes.get(job.job_id_prefix), stale)
+        job.row_field: _next_job_id(row, job, outcomes, enabled, removals, stale)
         for job in DREAM_SYSTEM_JOBS
     }
-    if not stale and all(
-        ids[job.row_field] == recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
+    unconfirmed = removals.tried - removals.gone
+    if (
+        not stale
+        and not unconfirmed
+        and all(
+            ids[job.row_field] == recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
+        )
     ):
         return outcomes
     try:
@@ -204,13 +287,26 @@ def _registered(outcome: Any) -> bool:
 
 
 def _next_job_id(
-    row: MemoryScopeSchedule, job: DreamSystemJob, outcome: Any, stale: bool
+    row: MemoryScopeSchedule,
+    job: DreamSystemJob,
+    outcomes: dict[str, Any],
+    enabled: set[str],
+    removals: _Removals,
+    stale: bool,
 ) -> str | None:
-    """A new registration's id; otherwise the recorded id, unless that job
-    was registered in a timezone that no longer holds."""
+    """A new registration's id; None for a cron removed because its flag is
+    off, and for an enabled one that was registered in a timezone that no
+    longer holds and could not be registered again (the next ensure does);
+    otherwise the recorded id: a cron whose flag could not be read, or whose
+    removal was not confirmed, keeps it."""
+    outcome: Any = outcomes.get(job.job_id_prefix)
     if _registered(outcome):
         return outcome["id"]
-    return None if stale else recorded_job_id(row, job)
+    if job.job_id_prefix in removals.gone:
+        return None
+    if stale and job.job_id_prefix in enabled:
+        return None
+    return recorded_job_id(row, job)
 
 
 def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:

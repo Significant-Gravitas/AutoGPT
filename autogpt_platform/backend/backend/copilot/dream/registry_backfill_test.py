@@ -57,6 +57,7 @@ class Backfill:
 
     def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self.graph_owners = ["u-graph", "u-gone"]
+        self.learning_owners: list[str] = []
         self.users = {"u-graph", "u-row"}
         self.rows = [_row("u-row"), _row("u-row", "e-archived")]
         self.experts = [
@@ -70,6 +71,12 @@ class Backfill:
         async def owners() -> list[str]:
             return self.graph_owners
 
+        async def learners(*, after: str | None, limit: int) -> list[str]:
+            later = [
+                user for user in self.learning_owners if after is None or user > after
+            ]
+            return later[:limit]
+
         async def existing(user_ids: list[str]) -> set[str]:
             return self.users & set(user_ids)
 
@@ -81,6 +88,7 @@ class Backfill:
 
         module = registry_backfill.memory_schedule
         monkeypatch.setattr(registry_backfill, "list_account_graph_owners", owners)
+        monkeypatch.setattr(module, "list_learning_account_ids", learners)
         monkeypatch.setattr(module, "existing_user_ids", existing)
         monkeypatch.setattr(module, "list_active_scope_schedules", rows)
         monkeypatch.setattr(module, "list_live_expert_scopes", experts)
@@ -122,6 +130,39 @@ async def test_backfill_schedules_accounts_and_reconciles_experts(backfill):
         MemoryScope.for_expert("u-graph", "e-paused"),
         MemoryScope.for_expert("u-row", "e-archived"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_account_that_learns_without_a_graph_is_scheduled(backfill):
+    """#14551 registers an account's learning cron when its first learning
+    source lands, graph or not: the sources find the account, and only one
+    whose user still exists goes through the ensure."""
+    backfill.learning_owners = ["u-graph", "u-learner", "u-learner-gone"]
+    backfill.users.add("u-learner")
+
+    report = await backfill_schedules()
+
+    assert (report.accounts, report.learning_accounts) == (3, 2)
+    assert report.graphs_without_user == 1
+    accounts = [call.args[0] for call in backfill.ensure.await_args_list]
+    assert accounts == [
+        MemoryScope.for_user("u-graph"),
+        MemoryScope.for_user("u-learner"),
+        MemoryScope.for_user("u-row"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_learning_owners_are_read_page_by_page(backfill, monkeypatch):
+    monkeypatch.setattr(registry_backfill, "_PAGE_SIZE", 2)
+    backfill.graph_owners = []
+    backfill.learning_owners = ["u-a", "u-b", "u-c", "u-d", "u-e"]
+    backfill.users = set(backfill.learning_owners)
+    backfill.rows = []
+
+    report = await backfill_schedules(dry_run=True)
+
+    assert (report.accounts, report.learning_accounts) == (5, 5)
 
 
 @pytest.mark.asyncio

@@ -196,14 +196,19 @@ class DreamPassUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _closed_row_only_clears(self) -> "DreamPassUpdate":
+        """A closed row only has columns cleared (its cleanup finished), or
+        is marked for a cleanup with the batch a take-back left running
+        (``pass_record.batch_left_running``): nothing that changes how it
+        closed."""
         if not self.closed_row:
             return self
-        written = self.model_dump(
-            exclude={"clear", "closed_row"}, exclude_defaults=True
+        written = set(
+            self.model_dump(exclude={"clear", "closed_row"}, exclude_defaults=True)
         )
-        if written:
+        if written - {"provider_batch_id", "phase", "cleanup_pending_at"}:
             raise ValueError(
-                f"a closed row only has columns cleared: {sorted(written)}"
+                "a closed row only has columns cleared, or takes a batch and a "
+                f"cleanup mark: {sorted(written)}"
             )
         return self
 
