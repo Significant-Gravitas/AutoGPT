@@ -116,6 +116,27 @@ describe("server backend", () => {
       expect(requests).toBe(answeredAfter);
     });
 
+    it("serves the default at once for a flag the vendor has no definition of", async () => {
+      let requests = 0;
+      serveFlags(() => {
+        requests++;
+        return { flags: { [HIRE_EXPERTS]: null }, configured: true };
+      });
+
+      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() =>
+        expect(result.current).toMatchObject({
+          enabled: false,
+          answered: true,
+        }),
+      );
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+
+      expect(requests).toBe(1);
+    });
+
     it("backs off to about once a minute when it never answers", async () => {
       let requests = 0;
       serveFlags(() => {

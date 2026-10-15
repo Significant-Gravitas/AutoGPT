@@ -141,6 +141,14 @@ def evaluate_flags_in_memory(
     }
 
 
+def defined_flag_keys() -> frozenset[str] | None:
+    """Every flag the loaded definitions hold, or None before any have loaded."""
+    client = get_flag_client()
+    if client is None or not client.feature_flags:
+        return None
+    return frozenset(flag["key"] for flag in client.feature_flags)
+
+
 def initialize_posthog_flags() -> None:
     """Build the flag client and load its definitions before any read needs them."""
     global _shut_down

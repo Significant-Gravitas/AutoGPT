@@ -23351,7 +23351,7 @@
             "propertyNames": { "$ref": "#/components/schemas/FrontendFlag" },
             "type": "object",
             "title": "Flags",
-            "description": "Each flag the vendor answered; one left out takes the frontend's default."
+            "description": "Each flag the vendor answered, or null for one it has no definition of, which takes the frontend's default; one left out has no answer yet."
           },
           "configured": {
             "type": "boolean",

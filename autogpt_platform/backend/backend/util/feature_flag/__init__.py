@@ -482,6 +482,16 @@ def evaluate_flags_in_memory(flag_keys: list[str], key: str) -> dict[str, Any]:
     }
 
 
+def defined_flag_keys() -> frozenset[str] | None:
+    """Every flag the serving vendor has a definition of, or None if it cannot tell yet.
+
+    A key outside the set will never be answered, so a reader can stop waiting on it.
+    """
+    if settings.config.feature_flag_backend is FeatureFlagBackend.POSTHOG:
+        return posthog.defined_flag_keys()
+    return _launchdarkly_flag_keys()
+
+
 async def _evaluate_flag_value(
     flag_key: str,
     user_id: str,
@@ -700,6 +710,17 @@ def _launchdarkly_flags_in_memory(context: Context) -> dict[str, Any]:
         logger.warning(f"LaunchDarkly in-memory flag evaluation failed: {e}")
         return {}
     return state.to_values_map() if state.valid else {}
+
+
+def _launchdarkly_flag_keys() -> frozenset[str] | None:
+    if not is_configured():
+        return None
+    try:
+        state = get_client().all_flags_state(_anonymous_context(ANONYMOUS_USER))
+    except Exception as e:
+        logger.warning(f"Listing LaunchDarkly flags failed: {e}")
+        return None
+    return frozenset(state.to_values_map()) if state.valid else None
 
 
 def _person_properties(context: Context) -> dict[str, Any]:

@@ -17,7 +17,11 @@ from posthog.types import FeatureFlag
 import backend.util.feature_flag as ff
 from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
 from backend.util.feature_flag import posthog as ph
-from backend.util.feature_flag.frontend import FrontendFlag, _anonymous_flags
+from backend.util.feature_flag.frontend import (
+    FrontendFlag,
+    _anonymous_flags,
+    _defined_flags,
+)
 from backend.util.settings import FeatureFlagBackend
 
 from .routes import router
@@ -28,6 +32,8 @@ VISITOR = "0b6c1f3e-visitor-0001"
 USER_ID = "3f2b8c1e-7a4d-4e9b-9c2a-5d6e7f8a9b0c"
 PINNING = FrontendFlag.CHAT_PINNING.value
 HIRE_EXPERTS = FrontendFlag.HIRE_EXPERTS.value
+CHAT_SEARCH = FrontendFlag.CHAT_SEARCH.value
+STREAM_SHADOW = FrontendFlag.COPILOT_STREAM_SHADOW.value
 
 app = fastapi.FastAPI()
 app.include_router(router, prefix="/api")
@@ -84,8 +90,10 @@ def launchdarkly(mocker, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(ff, "_init_attempted", True)
     mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     _anonymous_flags.cache_clear()
+    _defined_flags.cache_clear()
     yield _RecordedEvents.sent
     _anonymous_flags.cache_clear()
+    _defined_flags.cache_clear()
     app.dependency_overrides.clear()
     client.close()
 
@@ -106,13 +114,65 @@ async def test_each_flag_answers_what_the_backends_own_read_answers(caller):
     )
 
 
-async def test_a_flag_the_vendor_did_not_answer_is_left_out_not_defaulted():
+async def test_a_flag_the_vendor_has_no_definition_of_is_answered_null():
     flags = (await _get_flags("u-staff"))["flags"]
 
+    # Null serves the page's default now; left out, the page would wait for good.
+    assert (
+        flags.get(CHAT_SEARCH, "left out"),
+        flags.get(STREAM_SHADOW, "left out"),
+        flags[HIRE_EXPERTS],
+    ) == (None, None, True)
+
+
+async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
+    # A failed user lookup makes every answer a guess about someone else.
+    mocker.patch(
+        "backend.util.feature_flag._fetch_user_context_status",
+        AsyncMock(
+            return_value=(Context.builder(USER_ID).anonymous(True).build(), False)
+        ),
+    )
+
+    flags = (await _get_flags(USER_ID))["flags"]
+
     # A default here would read as an answer and 404 a gated route for a user who has it.
-    assert FrontendFlag.CHAT_SEARCH.value not in flags
-    assert FrontendFlag.COPILOT_STREAM_SHADOW.value not in flags
-    assert flags[FrontendFlag.HIRE_EXPERTS.value] is True
+    assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == (False, None)
+
+
+async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker):
+    # Offline, the client answers every read as CLIENT_NOT_READY, as while it starts.
+    client = LDClient(LDConfig("sdk-test", offline=True))
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    try:
+        flags = (await _get_flags("u-staff"))["flags"]
+    finally:
+        client.close()
+
+    assert flags == {}
+
+
+@pytest.mark.parametrize("loaded", [True, False])
+async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
+    mocker, loaded
+):
+    mocker.patch.object(
+        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
+    )
+    client = _posthog_splitting_pinning_and_gating_hire_on_email()
+    if not loaded:
+        client.feature_flags = None
+    mocker.patch.object(client, "load_feature_flags")
+    mocker.patch.object(client, "_get_flags_decision", side_effect=ConnectionError)
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
+    try:
+        flags = (await _get_flags("u-staff"))["flags"]
+    finally:
+        client.shutdown()
+
+    # hire-experts is defined but needs /flags, which is down: left out either way.
+    expected = (False, None) if loaded else (False, "left out")
+    assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == expected
 
 
 async def test_with_no_vendor_configured_every_flag_is_the_frontends_default(mocker):

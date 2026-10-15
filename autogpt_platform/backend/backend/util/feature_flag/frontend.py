@@ -18,6 +18,7 @@ from . import (
     _evaluate_boolean_flag,
     _evaluate_flag_value,
     _flag_backend_configured,
+    defined_flag_keys,
     evaluate_flags_in_memory,
 )
 
@@ -84,7 +85,8 @@ PAYLOAD_FLAGS = frozenset(
 
 class FrontendFlagValues(BaseModel):
     flags: dict[FrontendFlag, Any] = Field(
-        description="Each flag the vendor answered; one left out takes the frontend's default."
+        description="Each flag the vendor answered, or null for one it has no definition "
+        "of, which takes the frontend's default; one left out has no answer yet."
     )
     configured: bool = Field(
         description="False when no flag vendor is configured, so every flag is its default."
@@ -115,6 +117,12 @@ async def _anonymous_flags() -> dict[FrontendFlag, Any]:
     return await _evaluate(ANONYMOUS_USER)
 
 
+# Listing LaunchDarkly's flags evaluates all of them; "cannot tell yet" is retried.
+@cached(maxsize=1, ttl_seconds=30, cache_none=False)
+def _defined_flags() -> frozenset[str] | None:
+    return defined_flag_keys()
+
+
 async def _visitor_flags(visitor_id: str) -> dict[FrontendFlag, Any]:
     # The caller picks the id, so its own bucket is only what the vendor answers in
     # memory; everything else is the one shared signed-out read.
@@ -130,7 +138,14 @@ async def _visitor_flags(visitor_id: str) -> dict[FrontendFlag, Any]:
 
 async def _evaluate(user_id: str) -> dict[FrontendFlag, Any]:
     results = await asyncio.gather(*(_read(flag, user_id) for flag in FrontendFlag))
-    return {
+    defined = _defined_flags()
+    # None for a flag the vendor has no definition of, so the page stops waiting.
+    undefined = {
+        flag: None
+        for flag in FrontendFlag
+        if defined is not None and flag.value not in defined
+    }
+    return undefined | {
         flag: value
         for flag, (value, answered) in zip(FrontendFlag, results)
         if answered and value is not None

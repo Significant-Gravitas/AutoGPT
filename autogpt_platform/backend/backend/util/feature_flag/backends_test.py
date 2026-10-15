@@ -321,6 +321,7 @@ class TestPostHogBackend:
         posthog_client = _posthog_with_a_split_on_is_anonymous()
         mocker.patch.object(ph, "get_flag_client", return_value=posthog_client)
         frontend._anonymous_flags.cache_clear()
+        frontend._defined_flags.cache_clear()
         try:
             anonymous = await frontend.evaluate_frontend_flags(None)
             visitors = [
@@ -329,6 +330,7 @@ class TestPostHogBackend:
             ]
         finally:
             frontend._anonymous_flags.cache_clear()
+            frontend._defined_flags.cache_clear()
             posthog_client.shutdown()
 
         split = frontend.FrontendFlag.CHAT_SEARCH

@@ -40,8 +40,8 @@ export function useServerFlag(key: string): FlagSourceResult {
   });
 
   if (!data) return { value: undefined, resolved: false };
-  // A flag the server left out had no answer from the vendor; it only counts as
-  // resolved when there is no vendor to wait for.
+  // A flag left out has no answer yet, so it resolves only with no vendor to wait
+  // for; one answered null has no definition there, so its default stands.
   return {
     value: data.flags[key],
     resolved: key in data.flags || !data.configured,
