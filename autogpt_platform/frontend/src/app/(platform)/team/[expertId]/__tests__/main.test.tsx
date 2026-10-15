@@ -327,6 +327,9 @@ describe("ExpertDetailPage", () => {
     expect(
       screen.getByText("Maria is a senior marketing strategist."),
     ).toBeDefined();
+    expect(screen.queryByText("Identity")).toBeNull();
+
+    await openTab("Soul");
     expect(screen.getByText("Identity")).toBeDefined();
     expect(
       screen.getByText("You are Maria, a senior marketing strategist."),

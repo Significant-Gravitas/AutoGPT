@@ -21,6 +21,7 @@ import {
   PlugSocketIcon,
   Settings01Icon,
   SparklesIcon,
+  AiBrain01Icon,
   UserIcon,
   WorkflowSquare01Icon,
 } from "@hugeicons/core-free-icons";
@@ -38,6 +39,7 @@ import {
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
+import { ExpertSoulSection } from "./components/ExpertSoulSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
@@ -55,6 +57,7 @@ const MAIN_CLASS =
 
 const TABS = [
   { value: "basics", label: "Basics", icon: UserIcon },
+  { value: "soul", label: "Soul", icon: AiBrain01Icon },
   { value: "work", label: "Work", icon: Briefcase01Icon },
   { value: "schedules", label: "Schedules", icon: Calendar03Icon },
   { value: "workflows", label: "Workflows", icon: WorkflowSquare01Icon },
@@ -155,7 +158,6 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-
         <ExpertNeedsYouSection
           expert={expert}
           enabled={Boolean(enabled) && ready}
@@ -181,12 +183,7 @@ export default function ExpertDetailPage() {
 
           <TabsLineContent value="basics">
             <div className="grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(300px,1fr)]">
-              <ExpertAboutSection
-                bio={expert.bio}
-                identity={expert.identity}
-                voicePreferences={expert.voice_preferences}
-                boundaries={expert.boundaries}
-              />
+              <ExpertAboutSection bio={expert.bio} />
               <ExpertSummaryCard
                 expert={expert}
                 activity={activity}
@@ -194,6 +191,16 @@ export default function ExpertDetailPage() {
                 isActivityError={isActivityError}
               />
             </div>
+          </TabsLineContent>
+
+          <TabsLineContent value="soul">
+            <ExpertSoulSection
+              expertName={expert.name}
+              identity={expert.identity}
+              voicePreferences={expert.voice_preferences}
+              boundaries={expert.boundaries}
+              onEdit={toggleSoul}
+            />
           </TabsLineContent>
 
           <TabsLineContent value="work">
