@@ -485,6 +485,7 @@ async def get_usage_status(
     weekly_cost_limit: int,
     rate_limit_reset_cost: int = 0,
     tier: SubscriptionTier = DEFAULT_TIER,
+    fail_closed: bool = False,
 ) -> CoPilotUsageStatus:
     """Get current usage status for a user.
 
@@ -496,6 +497,9 @@ async def get_usage_status(
             spend allowed (over-cap immediately).
         rate_limit_reset_cost: Credit cost (cents) to reset daily limit (0 = disabled).
         tier: The user's rate-limit tier (included in the response).
+        fail_closed: Raise ``RateLimitUnavailable`` when the counters can't be
+            read, instead of reporting no usage. For callers that act on the
+            figures rather than show them.
 
     Returns:
         CoPilotUsageStatus with current usage and limits in microdollars.
@@ -522,7 +526,7 @@ async def get_usage_status(
         OSError,
         ValueError,
     ) as exc:
-        if state.generation is not None:
+        if state.generation is not None or fail_closed:
             raise RateLimitUnavailable("Paid usage state is unavailable") from exc
         logger.warning("Redis unavailable for usage status, returning zeros")
 

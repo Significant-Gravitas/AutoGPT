@@ -163,6 +163,22 @@ class TestGetUsageStatus:
         assert status.weekly.used == 0
 
     @pytest.mark.asyncio
+    async def test_fails_closed_when_asked_and_redis_unavailable(self):
+        # A caller that acts on the figures mustn't read "no usage" off an
+        # outage.
+        with patch(
+            "backend.copilot.rate_limit.get_redis_async",
+            side_effect=ConnectionError("Redis down"),
+        ):
+            with pytest.raises(RateLimitUnavailable):
+                await get_usage_status(
+                    _USER,
+                    daily_cost_limit=10000,
+                    weekly_cost_limit=50000,
+                    fail_closed=True,
+                )
+
+    @pytest.mark.asyncio
     async def test_partial_none_daily_counter(self):
         """Daily counter is None (new day), weekly has usage."""
         mock_redis = AsyncMock()
