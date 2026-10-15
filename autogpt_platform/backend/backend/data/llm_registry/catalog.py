@@ -116,9 +116,11 @@ def _build_catalog() -> CatalogPayload:
                 display_name="Claude Haiku 5.5",
                 provider="anthropic",
                 creator="anthropic",
-                # Same compaction-cap convention as the rest of the Claude
-                # 5 family: native window is 1M, capped at 200K here.
-                context_window=200000,
+                # Native window is 1M, but Anthropic bills prompts above
+                # 100K tokens at 5x ($0.50/$2.50) and token billing here is
+                # flat-rate. Capping at 100K keeps prompt compression and
+                # the max_tokens budget inside the base price tier.
+                context_window=100000,
                 max_output_tokens=128000,
                 price_tier=2,
                 supports_tools=True,
@@ -126,9 +128,8 @@ def _build_catalog() -> CatalogPayload:
                 supports_reasoning=True,
                 # OpenRouter live listing 2026-10-08 (anthropic/claude-haiku-5.5):
                 # $0.10/1M in, $0.50/1M out, cache read $0.01/1M, cache write
-                # (5m) $0.125/1M. Above 100K prompt tokens OpenRouter lists
-                # $0.50/$2.50; credits here use the base tier (standard 1.5x
-                # margin, i.e. USD x 150).
+                # (5m) $0.125/1M. Credits use that base tier (standard 1.5x
+                # margin, i.e. USD x 150); see context_window for >100K.
                 cost=CatalogModelCost(
                     run_credits=1,
                     input_credits_per_1m=15.0,

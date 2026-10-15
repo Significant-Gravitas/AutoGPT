@@ -226,7 +226,10 @@ def test_claude_haiku_5_5_bills_at_authored_rates():
     assert MODEL_METADATA[haiku].max_output_tokens == 128000
     haiku_entry = next(m for m in CATALOG.models if m.slug == "claude-haiku-5-5")
     assert haiku_entry.price_tier == 2
-    assert haiku_entry.context_window == 200000
+    # Capped at the 100K base price tier (flat-rate billing).
+    assert haiku_entry.context_window == 100000
+    # OpenRouter's dotted slug resolves to the enum member.
+    assert LLMModel("anthropic/claude-haiku-5.5") is haiku
 
 
 def test_claude_opus_5_bills_at_authored_rates():
