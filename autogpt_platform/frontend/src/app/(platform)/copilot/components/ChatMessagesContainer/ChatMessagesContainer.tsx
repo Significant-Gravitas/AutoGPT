@@ -24,7 +24,11 @@ import { CopilotPendingReviews } from "../CopilotPendingReviews/CopilotPendingRe
 import type { TurnStatsMap } from "../../helpers/convertChatSessionToUiMessages";
 import { hideKickoffMessages } from "../../expertKickoff";
 import { Text } from "@/components/atoms/Text/Text";
-import { countHeldCalls, getHeldCallRowKind } from "./heldCallRows";
+import {
+  answeredLabel,
+  countHeldCalls,
+  getHeldCallRowKind,
+} from "./heldCallRows";
 import {
   extractReviewTarget,
   getLastCompactionCallId,
@@ -52,8 +56,9 @@ import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
+import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { QueueBadge } from "./components/QueueBadge";
-import { ThreadHeader } from "./components/ThreadHeader";
+import { ThreadHeader, type FloatingControls } from "./components/ThreadHeader";
 import {
   PENDING_UPLOAD_MESSAGE_ID,
   PendingUploadMessage,
@@ -133,9 +138,9 @@ interface Props {
    *  metadata). Shown on the row that opened the thread (DB sequence 0) when
    *  that row carries no provenance of its own. */
   sessionSentFrom?: SentFrom | null;
-  /** The layout floats its sidebar/files controls over the chat's top-left
-   *  corner on small viewports (see ThreadHeader). */
-  hasFloatingControls?: boolean;
+  /** Which layout floats its controls over the chat's top-left corner on
+   *  small viewports (see ThreadHeader). */
+  floatingControls?: FloatingControls;
   /** Compact thread for side panels: smaller text, tighter bubbles and
    *  spacing. */
   variant?: "default" | "compact";
@@ -299,7 +304,7 @@ export function ChatMessagesContainer({
   expertIdentity,
   isResolvingExpertIdentity = false,
   sessionSentFrom = null,
-  hasFloatingControls = false,
+  floatingControls,
   variant = "default",
   showThreadHeader = true,
 }: Props) {
@@ -464,13 +469,13 @@ export function ChatMessagesContainer({
     wasStreamingRef.current = isActivelyStreaming;
   });
 
-  return (
+  const thread = (
     <>
       {showThreadHeader && (
         <ThreadHeader
           expertIdentity={expertIdentity}
           isResolvingExpertIdentity={isResolvingExpertIdentity}
-          hasFloatingControls={hasFloatingControls}
+          floatingControls={floatingControls}
         />
       )}
       {!isCompact && <ChatMinimap messages={messages} />}
@@ -488,6 +493,7 @@ export function ChatMessagesContainer({
           className={cn(
             "mx-auto flex min-h-full w-full max-w-3xl flex-1 flex-col gap-6 px-6 pb-4 pt-14",
             isCompact && "gap-4 px-4 pt-4",
+            showThreadHeader && floatingControls && "max-lg:pt-20",
             !showThreadHeader && "pt-4",
           )}
           style={
@@ -550,7 +556,7 @@ export function ChatMessagesContainer({
                   variant="small"
                   className="py-1 text-center text-zinc-500"
                 >
-                  Approval answered
+                  {answeredLabel(renderRows, rowIndex)}
                 </Text>
               );
             }
@@ -646,7 +652,10 @@ export function ChatMessagesContainer({
                     isCompact
                       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                       : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+                    // Streamdown's links (buttons, `text-primary`) and light
+                    // code chips would sink into the dark bubble.
+                    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.
@@ -858,5 +867,15 @@ export function ChatMessagesContainer({
         <ConversationScrollButton />
       </Conversation>
     </>
+  );
+
+  // Every chat surface renders through here, so the pending-answer state
+  // (clarifying questions, a hire's onboarding, held calls) lives here too
+  // instead of in each host. A read-only viewer answers nothing.
+  if (readOnly) return thread;
+  return (
+    <PendingAnswerContexts messages={allMessages}>
+      {thread}
+    </PendingAnswerContexts>
   );
 }

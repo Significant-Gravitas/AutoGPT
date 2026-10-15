@@ -24,6 +24,7 @@ from backend.api.features.mcp.oauth_registration import (
     check_preregistered_endpoints,
     preregistered_client,
     preregistered_revocation_endpoint,
+    requires_registered_client,
     select_client_auth_method,
 )
 from backend.blocks.mcp.client import (
@@ -444,6 +445,21 @@ async def mcp_oauth_login(
             raise fastapi.HTTPException(status_code=400, detail=str(e))
 
     if not client_id:
+        # A server with no DCR that only takes secret-holding clients rejects
+        # the placeholder with "invalid client id" on its own page, after the
+        # user has left the platform. Say so here instead.
+        if requires_registered_client(metadata):
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail={
+                    "code": NO_OAUTH_CODE,
+                    "message": f"Sign-in to {server_host(server_url)} is not "
+                    "available on this platform: the server only accepts an "
+                    "OAuth app registered with it in advance, and none is "
+                    "registered for it here. "
+                    "You may need to provide an auth credential manually.",
+                },
+            )
         client_id = "autogpt-platform"
 
     # Step 4: Store state token with OAuth metadata for the callback

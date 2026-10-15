@@ -85,11 +85,11 @@ PHASE_RESPONSE_MODELS: dict[DreamPhase, type[BaseModel]] = {
 }
 
 
-# Max output tokens per phase (mirrors the sync orchestrator's values).
-# The budget covers thinking as well as the JSON: 4096 is too small if the
-# standard slot ever runs a model that always thinks, like Opus 5.5.
+# Max output tokens per phase (mirrors the sync orchestrator's values). The
+# budget covers thinking as well as the JSON: orchestrator.py's
+# CONSOLIDATE_MAX_TOKENS says why consolidate's is not 4096.
 PHASE_MAX_TOKENS: dict[DreamPhase, int] = {
-    "consolidate": 4096,
+    "consolidate": 16384,
     "recombine": 16384,
     "sanitize": 16384,
 }

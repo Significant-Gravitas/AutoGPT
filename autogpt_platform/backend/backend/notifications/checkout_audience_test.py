@@ -75,7 +75,9 @@ class _FakeMailerLite:
         return _response(200)
 
 
-def _event(**kwargs):
+def _event(role: OnboardingRole | None = None, **kwargs):
+    """A checkout opener's change, with the role added as the checkout path
+    adds it once there is a pick."""
     defaults = dict(
         email=EMAIL,
         created_at=CREATED,
@@ -84,6 +86,8 @@ def _event(**kwargs):
         timezone="Asia/Kolkata",
     )
     fields = checkout_fields(**{**defaults, **kwargs})
+    if role:
+        fields.update(role_fields(role))
     return subscriber_fields.audience_event(
         AudienceAction.CHECKOUT_OPENED, EMAIL, "user-1", fields
     )
