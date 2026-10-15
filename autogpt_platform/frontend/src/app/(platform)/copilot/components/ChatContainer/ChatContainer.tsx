@@ -217,12 +217,16 @@ export const ChatContainer = ({
       ? { id: expertIdentity.id, name: expertIdentity.name }
       : null;
   useShareChatExpert(chatExpert);
-  const isSendLocked =
-    isExpertArchived || !!isResolvingExpertIdentity || isLimitReached;
+  const isTurnLocked = isExpertArchived || !!isResolvingExpertIdentity;
+  const isSendLocked = isTurnLocked || isLimitReached;
+  // The usage limit pauses the composer only. A card's answers, a review
+  // approval, a retry or a voice turn still go to the server, which refuses
+  // them with the limit dialog and keeps the text for the composer; a no-op
+  // here dropped what the user had entered.
   // NO_OP is module-level so a locked composer keeps a stable function identity
   // across renders — otherwise every consumer of `guardedOnSend` (the actions
   // provider, ChatInput, EmptySession, handleRetry) re-renders on each pass.
-  const guardedOnSend = isSendLocked ? NO_OP_SEND : onSend;
+  const guardedOnSend = isTurnLocked ? NO_OP_SEND : onSend;
 
   const isVoiceModeEnabled = useGetFlag(Flag.COPILOT_VOICE_MODE);
   const isAutoModeEnabled = useGetFlag(Flag.COPILOT_AUTO_MODE);
