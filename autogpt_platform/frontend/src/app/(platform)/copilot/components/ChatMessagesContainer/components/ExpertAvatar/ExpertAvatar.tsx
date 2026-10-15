@@ -22,6 +22,7 @@ export function ExpertAvatar({
 }: Props) {
   const isSmall = size === "sm";
   const sizeClass = isSmall ? "h-6 w-6" : "h-9 w-9";
+  const borderClass = "rounded-full border border-[#e3e3e3]";
 
   if (isLoading) {
     return (
@@ -33,7 +34,7 @@ export function ExpertAvatar({
   }
 
   if (isAutopilot && !avatarUrl) {
-    return <AutopilotAvatar size={isSmall ? 24 : 36} />;
+    return <AutopilotAvatar size={isSmall ? 24 : 36} className={borderClass} />;
   }
 
   return (
@@ -42,6 +43,7 @@ export function ExpertAvatar({
       avatarUrl={avatarUrl}
       color={color}
       size={isSmall ? 24 : 36}
+      className={borderClass}
     />
   );
 }

@@ -126,6 +126,19 @@ class E2ESeedCacheContractTests(unittest.TestCase):
                 )
 
 
+class E2EImageBuildContractTests(unittest.TestCase):
+    def test_backend_images_reinstall_os_packages_daily(self):
+        workflow = (
+            Path(__file__).resolve().parents[1] / "workflows/platform-fullstack-ci.yml"
+        ).read_text(encoding="utf-8")
+        build = workflow.split(
+            "- name: Set up Platform - Build backend Docker images\n", 1
+        )[1].split("\n      - name:", 1)[0]
+        # APT_REFRESH in backend/Dockerfile: the date re-runs the package
+        # installs once a day, so E2E tests the OS packages that ship.
+        self.assertIn('--set "*.args.APT_REFRESH=$(date -u +%F)"', build)
+
+
 class E2ECoverageContractTests(unittest.TestCase):
     def test_test_floor_includes_shared_file_security_suite(self):
         workflow = (
@@ -133,7 +146,7 @@ class E2ECoverageContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("--min-tests ${{ matrix.min_tests }}", workflow)
         self.assertEqual(_matrix_leg(workflow, "smoke")["min_tests"], "28")
-        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "9")
+        self.assertEqual(_matrix_leg(workflow, "journeys")["min_tests"], "11")
         # Smoke stays strict: no test.fail() known failures.
         self.assertEqual(_matrix_leg(workflow, "smoke")["known_failures"], "false")
 

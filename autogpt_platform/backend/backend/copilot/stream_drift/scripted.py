@@ -21,6 +21,10 @@ from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.stream_checkpoint import turn_checkpoint
 from backend.copilot.tree import root_envelope
 
+# Its presence alone picks the OpenRouter transport the fixtures were recorded
+# under; without a key (fork PRs have no secrets) the turns record differently.
+UNSENT_MODEL_KEY = "test-placeholder-not-a-key"
+
 
 def session_with_prompt(prompt: str) -> ChatSession:
     session = ChatSession.new("drift-user", dry_run=False)
@@ -145,11 +149,13 @@ async def sdk_service_turn(
     queries: list[list[Message]],
     *,
     queued_after_first: list[PendingMessage],
+    held_results: list[PendingMessage] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
-    its turn-end persist and auto-continue included. Only what reaches
-    beyond the process (CLI, sandbox, RPC services, billing) is stubbed."""
+    its turn-end persist and auto-continue included. ``held_results`` are the
+    answered cards' results the turn opens with. Only what reaches beyond the
+    process (CLI, sandbox, RPC services, billing) is stubbed."""
     scripted = iter(queries)
 
     def cli(*_: Any, **__: Any) -> AsyncMock:
@@ -191,7 +197,7 @@ async def sdk_service_turn(
         "drain_pending_safe": AsyncMock(
             side_effect=[[], queued_after_first] + [[]] * len(queries)
         ),
-        "resolve_answered": AsyncMock(return_value=[]),
+        "resolve_answered": AsyncMock(return_value=held_results or []),
         "build_session_context": AsyncMock(return_value=""),
         "build_skills_context": AsyncMock(return_value=""),
         "_maybe_prepend_skills_update": AsyncMock(side_effect=lambda *a: a[-1]),
@@ -200,6 +206,7 @@ async def sdk_service_turn(
         "clear_pending_question": AsyncMock(),
         "config": sdk.config.model_copy(
             update={
+                "api_key": UNSENT_MODEL_KEY,
                 "use_claude_code_subscription": False,
                 "use_e2b_sandbox": False,
                 "claude_agent_fallback_model": None,
