@@ -23,6 +23,7 @@ reported either. Billing still comes from the post-turn reconcile; this
 only decides when to land.
 """
 
+import re
 from functools import cache
 from typing import Any
 
@@ -39,6 +40,9 @@ from backend.data.llm_registry.catalog import get_catalog
 REFERENCE_MODEL = "claude-sonnet-4-5"
 
 _PER_MTOK = 1_000_000
+
+# A dated snapshot (``claude-sonnet-4-5-20250929``) costs what its alias does.
+_SNAPSHOT_DATE = re.compile(r"-\d{8}$")
 
 
 class CallUsage(BaseModel):
@@ -146,7 +150,7 @@ class UsageMeter:
 def price_call_usd(call: CallUsage) -> float:
     """USD for one call at the model's list price."""
     anthropic = compute_anthropic_cost_usd(
-        model=call.model or REFERENCE_MODEL,
+        model=_rate_card_model(call.model),
         prompt_tokens=call.prompt_tokens,
         completion_tokens=call.output_tokens,
         cache_read_tokens=call.cache_read_tokens,
@@ -191,10 +195,31 @@ def _is_anthropic(model: str | None) -> bool:
     # The rate card prices Anthropic slugs and returns None for anything else.
     return (
         compute_anthropic_cost_usd(
-            model=model or REFERENCE_MODEL, prompt_tokens=0, completion_tokens=0
+            model=_rate_card_model(model), prompt_tokens=0, completion_tokens=0
         )
         is not None
     )
+
+
+def _rate_card_model(model: str | None) -> str:
+    """The Anthropic rate card's name for *model*.
+
+    The CLI reports each call's model as its route names it: OpenRouter's
+    ``anthropic/claude-sonnet-5-5``, a dotted ``claude-sonnet-4.5`` or the
+    API's dated snapshot. The card keys the bare alias, and prices a model it
+    can't find as Opus 4.1, several times Sonnet. Other vendors' slugs pass
+    through to their own rates.
+    """
+    if not model:
+        return REFERENCE_MODEL
+    vendor, slash, name = model.partition("/")
+    if not slash:
+        name = model
+    elif vendor.lower() != "anthropic":
+        return model
+    if not name.lower().startswith("claude-"):
+        return model
+    return _SNAPSHOT_DATE.sub("", name.lower().replace(".", "-"))
 
 
 def _usd_per_mtok(model: str | None) -> tuple[float, float] | None:
