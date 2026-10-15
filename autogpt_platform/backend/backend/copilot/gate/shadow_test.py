@@ -182,6 +182,22 @@ async def test_policy_and_judge_allows_are_recorded_too(
     )
 
 
+async def test_shadow_never_reads_or_opens_the_spend_ledger(parking, events):
+    """Shadow does not meter, so a paid read must not open the chat's ledger."""
+    ceiling = AsyncMock(return_value=(2_000_000, 1_000_000))
+    with (
+        _flags(Flag.COPILOT_AUTO_MODE_SHADOW),
+        patch(f"{_GATE}.spent_past_ceiling", ceiling),
+    ):
+        assert (
+            await check_action("consult_teammate", {}, "user-1", _session())
+        ).allowed
+        await _settled()
+    ceiling.assert_not_awaited()
+    (event,) = _recorded(events)
+    assert (event["verdict"], event["reason_code"]) == ("allow", "mode_run")
+
+
 async def test_a_call_the_gate_never_considers_records_nothing(parking, events):
     with _flags(Flag.COPILOT_AUTO_MODE_SHADOW):
         await check_action("web_search", {"query": "x"}, "user-1", _session())

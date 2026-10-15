@@ -221,7 +221,9 @@ async def check_action(
         # re-point the late result at the retry's tool call id.
         return Decision(allowed=False, reason=_ALREADY_HELD, review_id=review_id)
 
-    ruling = await _rule(tool_name, args, user_id, session, subject_of, context_of)
+    ruling = await _rule(
+        tool_name, args, user_id, session, subject_of, context_of, metered=True
+    )
     if ruling.allowed:
         return ALLOW
     call = held.HeldCall(
@@ -251,8 +253,11 @@ async def _rule(
     session: ChatSession,
     subject_of: Callable[[], Awaitable[Subject | None]] | None,
     context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
+    *,
+    metered: bool,
 ) -> Ruling:
-    """Steps 3 to 5: the subject, the user's rule, then the mode's verdict."""
+    """Steps 3 to 5: the subject, the user's rule, then the mode's verdict.
+    ``metered``: the turn's spend is counted, so a paid step can ask."""
     subject = await subject_of() if subject_of is not None else None
     effect = subject.effect if subject is not None else effect_for(tool_name)
     if effect is Effect.UNGATED:
@@ -276,7 +281,7 @@ async def _rule(
         Ruling, allowed=False, effect=effect, rule_key=rule_key, subject=subject
     )
     spend = None
-    if effect in METERED and estimate > 0 and mode != "unsupervised":
+    if metered and effect in METERED and estimate > 0 and mode != "unsupervised":
         spend = await spent_past_ceiling(user_id)
     if hit and rule in ("ask", "unreadable"):
         return held_as(reason=hit.reason, reason_kind="rule", code=f"rule_{rule}")
@@ -332,7 +337,10 @@ async def _shadow_finding(
     subject_of: Callable[[], Awaitable[Subject | None]] | None,
     context_of: Callable[[], Awaitable[dict[str, str | None] | None]] | None,
 ) -> shadow.Finding:
-    ruling = await _rule(tool_name, args, user_id, session, subject_of, context_of)
+    # Shadow never meters, and reading the ceiling would open the chat's ledger.
+    ruling = await _rule(
+        tool_name, args, user_id, session, subject_of, context_of, metered=False
+    )
     return shadow.action_finding(
         allowed=ruling.allowed,
         code=ruling.code,
