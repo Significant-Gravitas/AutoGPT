@@ -758,6 +758,41 @@ def test_picked_files_of_a_removed_block_are_still_found():
     assert graph.nodes[0].input_default == {"file": None, "note": "plain"}
 
 
+def test_picked_files_in_inputs_the_block_does_not_declare_are_found():
+    """
+    An input the block's schema doesn't declare has no type to say it isn't a
+    picker, so a value embedding a `_credentials_id` there counts as a picked
+    file, as it does for a removed block: exports strip it and a save keeps it
+    only for its owner. Declared inputs that aren't pickers are untouched.
+    """
+    data = {"_credentials_id": "cred-2", "note": "plain data"}
+    node = Node(
+        id="store",
+        block_id=StoreValueBlock().id,
+        input_default={
+            "data": data,
+            "local_file": _picked_file("cred-1"),
+            "note": "plain",
+        },
+    )
+    graph = _graph_of(node)
+
+    stripped = graph.nodes[0].stripped_for_export()
+    kept = graph.clear_auto_credentials(keep_ids={"cred-1"})
+    cleared = graph.clear_auto_credentials()
+
+    assert stripped.input_default == {"data": data, "local_file": None, "note": "plain"}
+    assert kept == []
+    assert [(n.id, field_name) for n, field_name, _ in cleared] == [
+        ("store", "local_file")
+    ]
+    assert graph.nodes[0].input_default == {
+        "data": data,
+        "local_file": None,
+        "note": "plain",
+    }
+
+
 def _sheets_graph_row(owner_id: str) -> AgentGraph:
     return AgentGraph(
         id="g-1",
