@@ -118,9 +118,9 @@ async def evaluate_variant(
 ) -> str | None:
     """The multivariate arm *distinct_id* falls in, or None when not enrolled.
 
-    Evaluated from the local definitions only and without an exposure event, so
-    the read sends PostHog nothing about the user; with no definitions loaded
-    (no ``POSTHOG_SECRET_KEY``) nobody is enrolled.
+    Evaluated from the local definitions only, so the user's properties never
+    reach ``/flags``; with no definitions loaded (no ``POSTHOG_SECRET_KEY``)
+    nobody is enrolled. The read sends the exposure event the experiment counts.
     """
     client = get_flag_client()
     if client is None:
@@ -134,7 +134,9 @@ async def evaluate_variant(
                 distinct_id,
                 person_properties=person_properties or None,
                 only_evaluate_locally=True,
-                send_feature_flag_events=False,
+                # Experiment reads send `$feature_flag_called`, other flag reads
+                # do not (`EXPERIMENT_FLAGS` in #15383).
+                send_feature_flag_events=True,
             ),
         )
     except Exception as e:

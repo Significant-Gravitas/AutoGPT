@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 
 import posthog.client
 import pytest
+import urllib3.connectionpool
 from posthog import Posthog
 
 import backend.util.feature_flag.posthog as ph
@@ -17,8 +18,11 @@ ARMS = ("control", "yearly-pro")
 
 
 @pytest.fixture
-def posthog_client(mocker):
+def posthog_client(mocker, monkeypatch):
     """A real PostHog client holding the experiment's definition, with no network."""
+    monkeypatch.setattr(
+        urllib3.connectionpool.HTTPConnectionPool, "urlopen", _refuse_network
+    )
     client = Posthog(
         "phc_test",
         host="http://127.0.0.1:9",
@@ -44,16 +48,17 @@ def posthog_client(mocker):
     return client
 
 
-async def test_the_arm_is_read_locally_and_tells_posthog_nothing(
+async def test_the_arm_is_read_locally_and_reported_as_an_exposure(
     mocker, posthog_client
 ):
+    """`$feature_flag_called` is how the experiment counts who was shown an arm."""
     capture = mocker.spy(posthog_client, "capture")
     remote = _remote_flags_request(mocker)
 
     arm = await evaluate_experiment_variant(PRICING, "u-1")
 
     assert arm in ARMS
-    capture.assert_not_called()
+    assert [call.args[0] for call in capture.call_args_list] == ["$feature_flag_called"]
     remote.assert_not_called()
 
 
@@ -108,6 +113,10 @@ def _stored_row(mocker, variant: str | None) -> None:
         )
     table = mocker.patch("prisma.models.ExperimentAssignment.prisma")
     table.return_value.find_unique = AsyncMock(return_value=row)
+
+
+def _refuse_network(pool, method, url, *args, **kwargs):
+    raise urllib3.exceptions.ProtocolError(f"no network in tests: {method} {url}")
 
 
 def _remote_flags_request(mocker):
