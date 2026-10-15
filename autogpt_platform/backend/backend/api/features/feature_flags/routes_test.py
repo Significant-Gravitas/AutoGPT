@@ -152,6 +152,26 @@ async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker)
     assert flags == {}
 
 
+async def test_a_signed_in_read_asks_posthog_nothing_about_flags_it_lacks(mocker):
+    """Each would be a remote /flags call on the executor every flag read shares."""
+    mocker.patch.object(
+        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
+    )
+    client = _posthog_splitting_pinning_and_gating_hire_on_email()
+    remote = mocker.patch.object(
+        client, "_get_flags_decision", side_effect=ConnectionError
+    )
+    mocker.patch.object(client, "capture")
+    mocker.patch.object(ph, "get_flag_client", return_value=client)
+    try:
+        flags = (await _get_flags("u-staff"))["flags"]
+    finally:
+        client.shutdown()
+
+    # hire-experts is defined but needs /flags; nothing else may ask.
+    assert (remote.call_count, flags.get(CHAT_SEARCH, "left out")) == (1, None)
+
+
 @pytest.mark.parametrize("loaded", [True, False])
 async def test_on_posthog_only_loaded_definitions_can_rule_a_flag_undefined(
     mocker, loaded
@@ -192,11 +212,14 @@ async def test_an_env_override_forces_a_switch_but_never_a_payload(
 ):
     monkeypatch.setenv("FORCE_FLAG_COPILOT_VOICE_MODE", "true")
     monkeypatch.setenv("FORCE_FLAG_MARKETPLACE_SEARCH_TERMS", "true")
+    # Forced although the vendor has no definition of it.
+    monkeypatch.setenv("FORCE_FLAG_CHAT_SEARCH", "true")
 
     flags = (await _get_flags(user_id, visitor_id))["flags"]
 
     assert flags[FrontendFlag.COPILOT_VOICE_MODE.value] is True
     assert flags[FrontendFlag.MARKETPLACE_SEARCH_TERMS.value] == terms
+    assert flags[CHAT_SEARCH] is True
 
 
 async def test_a_consenting_visitor_is_bucketed_by_their_own_id():

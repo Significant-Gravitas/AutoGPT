@@ -138,17 +138,15 @@ async def _visitor_flags(visitor_id: str) -> dict[FrontendFlag, Any]:
 
 
 async def _evaluate(user_id: str) -> dict[FrontendFlag, Any]:
-    results = await asyncio.gather(*(_read(flag, user_id) for flag in FrontendFlag))
     defined = _defined_flags()
-    # None for a flag the vendor has no definition of, so the page stops waiting.
-    undefined = {
-        flag: None
-        for flag in FrontendFlag
-        if defined is not None and flag.value not in defined
-    }
+    # A flag the vendor has no definition of is never read (on PostHog that is a
+    # /flags call each) and is answered None, so the page stops waiting for it.
+    readable = [f for f in FrontendFlag if defined is None or f.value in defined]
+    results = await asyncio.gather(*(_read(flag, user_id) for flag in readable))
+    undefined = {flag: _forced(flag) for flag in FrontendFlag if flag not in readable}
     return undefined | {
         flag: value
-        for flag, (value, answered) in zip(FrontendFlag, results)
+        for flag, (value, answered) in zip(readable, results)
         if answered and value is not None
     }
 
@@ -157,6 +155,10 @@ async def _read(flag: FrontendFlag, user_id: str) -> tuple[Any, bool]:
     if flag in PAYLOAD_FLAGS:
         return await _evaluate_flag_value(flag.value, user_id)
     return await _evaluate_boolean_flag(flag.value, user_id)
+
+
+def _forced(flag: FrontendFlag) -> bool | None:
+    return None if flag in PAYLOAD_FLAGS else _env_flag_override(flag.value)
 
 
 def _takes_own_answer(flag: FrontendFlag, value: Any) -> bool:
