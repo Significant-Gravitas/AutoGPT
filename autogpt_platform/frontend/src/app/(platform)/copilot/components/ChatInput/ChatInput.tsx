@@ -51,6 +51,7 @@ import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
 import {
+  CARD_GLASS_ICON_BUTTON_CLASS,
   CARD_ICON_BUTTON_CLASS,
   CARD_SEND_BUTTON_CLASS,
   COMPACT_ICON_BUTTON_CLASS,
@@ -464,7 +465,7 @@ export function ChatInput({
               className={
                 stacked
                   ? cn(
-                      CARD_ICON_BUTTON_CLASS,
+                      CARD_GLASS_ICON_BUTTON_CLASS,
                       "[&[aria-expanded=true]_svg]:rotate-45 [&_svg]:transition-transform [&_svg]:duration-200",
                     )
                   : iconButtonClass
