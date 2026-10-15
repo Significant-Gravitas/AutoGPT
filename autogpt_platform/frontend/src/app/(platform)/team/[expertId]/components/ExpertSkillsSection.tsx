@@ -3,11 +3,11 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { PlusSignIcon } from "@hugeicons/core-free-icons";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
 import { useExpertSkills } from "./useExpertSkills";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
 
 interface Props {
   expert: Expert;
@@ -53,12 +53,11 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
           >
             Add skill
           </Button>
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-skills-search"
+            label="Search skills"
             value={query}
             onChange={setQuery}
-            placeholder="Search skills"
-            className="w-48"
           />
         </div>
       </div>

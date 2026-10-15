@@ -166,13 +166,13 @@ describe("managing an expert's integrations", () => {
     await within(section).findByText("Work LinkedIn");
 
     await userEvent.type(
-      within(section).getByRole("searchbox", { name: "Search integrations" }),
+      within(section).getByRole("textbox", { name: "Search integrations" }),
       "notion",
     );
     expect(within(section).getByText("No integrations match.")).toBeDefined();
 
     await userEvent.clear(
-      within(section).getByRole("searchbox", { name: "Search integrations" }),
+      within(section).getByRole("textbox", { name: "Search integrations" }),
     );
     expect(within(section).getByText("Work LinkedIn")).toBeDefined();
   });

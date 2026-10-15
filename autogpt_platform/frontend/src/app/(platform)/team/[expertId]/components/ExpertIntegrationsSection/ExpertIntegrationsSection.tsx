@@ -4,7 +4,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { useState } from "react";
 import { ExpertConnectServiceDialog } from "./ExpertConnectServiceDialog";
 import { ExpertIntegrationGroups } from "./ExpertIntegrationGroups";
@@ -16,6 +15,7 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
+import { ToolbarSearch } from "../../../components/ToolbarSearch";
 
 interface Props {
   expertId: string;
@@ -98,12 +98,11 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           >
             Add integration
           </Button>
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-integrations-search"
+            label="Search integrations"
             value={query}
             onChange={setQuery}
-            placeholder="Search integrations"
-            className="w-48"
           />
         </div>
       </div>

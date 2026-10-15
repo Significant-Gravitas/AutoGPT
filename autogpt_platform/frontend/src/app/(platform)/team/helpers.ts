@@ -1,3 +1,12 @@
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  Calendar04Icon,
+  Clock01Icon,
+  PlayIcon,
+  Time04Icon,
+  WorkflowSquare01Icon,
+} from "@hugeicons/core-free-icons";
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { getExpertTopicHex } from "@/components/molecules/ExpertAvatar/colors";
 import { ExpertPod } from "@/app/api/__generated__/models/expertPod";
@@ -327,10 +336,10 @@ export function getAutopilotSummary({
 }
 
 export const WORKFLOW_FILTERS = [
-  { value: "all", label: "All workflows" },
-  { value: "scheduled", label: "Scheduled" },
-  { value: "manual", label: "Manual" },
-  { value: "needs-setup", label: "Needs setup" },
+  { value: "all", label: "All workflows", icon: WorkflowSquare01Icon },
+  { value: "scheduled", label: "Scheduled", icon: Calendar03Icon },
+  { value: "manual", label: "Manual", icon: PlayIcon },
+  { value: "needs-setup", label: "Needs setup", icon: Alert01Icon },
 ] as const;
 
 export type WorkflowFilter = (typeof WORKFLOW_FILTERS)[number]["value"];
@@ -356,10 +365,10 @@ export function filterExpertWorkflows(
 }
 
 export const SCHEDULE_FILTERS = [
-  { value: "all", label: "All schedules" },
-  { value: "today", label: "Next 24 hours" },
-  { value: "week", label: "Next 7 days" },
-  { value: "later", label: "Later" },
+  { value: "all", label: "All schedules", icon: Calendar03Icon },
+  { value: "today", label: "Next 24 hours", icon: Clock01Icon },
+  { value: "week", label: "Next 7 days", icon: Calendar04Icon },
+  { value: "later", label: "Later", icon: Time04Icon },
 ] as const;
 
 export type ScheduleFilter = (typeof SCHEDULE_FILTERS)[number]["value"];

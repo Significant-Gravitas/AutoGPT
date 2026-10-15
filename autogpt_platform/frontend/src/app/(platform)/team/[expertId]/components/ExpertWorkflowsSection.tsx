@@ -3,7 +3,6 @@
 import { ExpertWorkflowRef } from "@/app/api/__generated__/models/expertWorkflowRef";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import {
   GridViewIcon,
   ListViewIcon,
@@ -17,10 +16,11 @@ import {
 } from "../../helpers";
 import { ExpertWorkflowCard } from "./ExpertWorkflowCard";
 import { ExpertWorkflowListItem } from "./ExpertWorkflowListItem";
-import { FilterIconMenu } from "./FilterIconMenu";
 import { useExpertWorkflowAgents } from "./useExpertWorkflowAgents";
 import { useExpertWorkflowsView } from "./useExpertWorkflowsView";
 import { ViewToggle } from "./ViewToggle";
+import { ToolbarSearch } from "../../components/ToolbarSearch";
+import { PillFilterMenu } from "../../components/PillFilterMenu";
 
 const VIEW_OPTIONS = [
   { value: "list", label: "List view", icon: ListViewIcon },
@@ -71,14 +71,13 @@ export function ExpertWorkflowsSection({
               Install workflow
             </Button>
           ) : null}
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-workflows-search"
+            label="Search workflows"
             value={query}
             onChange={setQuery}
-            placeholder="Search workflows"
-            className="w-48"
           />
-          <FilterIconMenu
+          <PillFilterMenu
             label="Filter workflows"
             value={filter}
             defaultValue="all"
