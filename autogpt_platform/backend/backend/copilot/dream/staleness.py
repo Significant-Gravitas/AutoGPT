@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -86,7 +86,7 @@ _VOLATILE_DOMAIN = re.compile(
 )
 
 
-def score_staleness(fact: FactRow, *, now: datetime | None = None) -> float:
+def score_staleness(fact: "FactRow", *, now: datetime | None = None) -> float:
     """Return a 0.0–1.0 score; ≥ ``STALENESS_THRESHOLD`` is a candidate.
 
     Each heuristic adds an independent contribution; the score is
@@ -101,7 +101,7 @@ def score_staleness(fact: FactRow, *, now: datetime | None = None) -> float:
     if not text.strip():
         return 0.0
 
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(timezone.utc)
 
     score = 0.0
     if _is_old(fact, now):
@@ -117,8 +117,8 @@ def score_staleness(fact: FactRow, *, now: datetime | None = None) -> float:
 
 
 def identify_stale_candidates(
-    facts: list[FactRow], *, now: datetime | None = None
-) -> list[tuple[FactRow, float]]:
+    facts: list["FactRow"], *, now: datetime | None = None
+) -> list[tuple["FactRow", float]]:
     """Filter to facts at or above the staleness threshold.
 
     Returns ``(fact, score)`` tuples ordered by descending score so the
@@ -134,7 +134,7 @@ def identify_stale_candidates(
     return candidates
 
 
-def _is_old(fact: FactRow, now: datetime) -> bool:
+def _is_old(fact: "FactRow", now: datetime) -> bool:
     """True when ``fact.created_at`` is more than 90 days in the past.
 
     Missing or unparseable timestamps return False — we'd rather under-
@@ -147,7 +147,7 @@ def _is_old(fact: FactRow, now: datetime) -> bool:
     if parsed is None:
         return False
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
+        parsed = parsed.replace(tzinfo=timezone.utc)
     return (now - parsed).days > 90
 
 

@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,7 +16,7 @@ from .service import _get_pending_questions, build_home_dashboard
 def _execution() -> GraphExecutionMeta:
     # `build_home_dashboard` reads the live clock, so anchor the run to now — a
     # fixed timestamp would drop out of the 24h briefing window over time.
-    ran_at = datetime.now(UTC) - timedelta(minutes=5)
+    ran_at = datetime.now(timezone.utc) - timedelta(minutes=5)
     return GraphExecutionMeta(
         id="exec-1",
         user_id="user-1",
@@ -119,11 +119,11 @@ def _stored_briefing(**overrides) -> BriefingContent:
         summary="Filed the report. Nothing else was pending.",
         title="Filed the report.",
         detail="Nothing else was pending.",
-        occurred_at=datetime.now(UTC) - timedelta(hours=1),
+        occurred_at=datetime.now(timezone.utc) - timedelta(hours=1),
         link=None,
     )
     return BriefingContent(
-        generated_at=datetime.now(UTC) - timedelta(minutes=30),
+        generated_at=datetime.now(timezone.utc) - timedelta(minutes=30),
         timezone="UTC",
         zero_expert_fallback=True,
         run_items=[item],
@@ -279,7 +279,7 @@ async def test_briefing_date_comes_from_the_requests_own_clock(
     """Loading the source data can cross local midnight. The row looked up has
     to be the one for the date the rest of the dashboard was composed against —
     a second clock read would fetch tomorrow's row for today's dashboard."""
-    just_before_midnight = datetime(2026, 8, 10, 23, 59, 59, tzinfo=UTC)
+    just_before_midnight = datetime(2026, 8, 10, 23, 59, 59, tzinfo=timezone.utc)
     clock = MagicMock(wraps=datetime)
     # Any read after the first lands on the next day; only one is allowed.
     clock.now.side_effect = [

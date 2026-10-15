@@ -7,7 +7,7 @@ with a Bearer token in the Authorization header.
 """
 
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -36,7 +36,7 @@ class SlackAPIException(ValueError):
 async def call_slack_api(
     credentials: APIKeyCredentials,
     method: str,
-    data: dict[str, Any] | None = None,
+    data: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
     Make an authenticated POST request to the Slack Web API.
@@ -69,9 +69,9 @@ async def post_message(
     credentials: APIKeyCredentials,
     channel: str,
     text: str,
-    thread_ts: str | None = None,
-    username: str | None = None,
-    icon_emoji: str | None = None,
+    thread_ts: Optional[str] = None,
+    username: Optional[str] = None,
+    icon_emoji: Optional[str] = None,
     unfurl_links: bool = True,
     mrkdwn: bool = True,
 ) -> SlackMessageResult:

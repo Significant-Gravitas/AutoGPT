@@ -1,7 +1,7 @@
 """Tests for credentials API security: no secret leakage, SDK defaults filtered."""
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import fastapi
@@ -1481,12 +1481,12 @@ class TestDeviceAuthEndpoints:
                 "backend.api.features.integrations.router._merge_or_create_credential",
                 new=AsyncMock(side_effect=RuntimeError("db down")),
             ),
-            pytest.raises(Exception),
         ):
-            client.post(
-                f"/{self.PROVIDER}/device-auth/poll",
-                json={"state_token": "state-token"},
-            )
+            with pytest.raises(Exception):
+                client.post(
+                    f"/{self.PROVIDER}/device-auth/poll",
+                    json={"state_token": "state-token"},
+                )
 
         handler.revoke_tokens.assert_awaited_once_with(issued)
 
@@ -1530,7 +1530,7 @@ class TestAyrshareSSOURL:
     """The builder's connect button, now on the shared provisioning path."""
 
     def test_returns_the_link(self):
-        link = MagicMock(url="https://sso", expires_at=datetime.now(UTC))
+        link = MagicMock(url="https://sso", expires_at=datetime.now(timezone.utc))
         with patch(
             "backend.api.features.integrations.router.get_ayrshare_sso_link",
             AsyncMock(return_value=link),

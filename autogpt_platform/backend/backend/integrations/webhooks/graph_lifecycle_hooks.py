@@ -90,7 +90,7 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
     # Collect every (node, field) credential reference up front so we can
     # resolve them in one parallel batch — important when a graph has
     # several distinct OAuth credentials that each need a refresh round-trip.
-    refs: list[tuple[Node | NodeModel, str, dict, BlockSchema]] = []
+    refs: list[tuple["Node | NodeModel", str, dict, BlockSchema]] = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
         for creds_field_name in block_input_schema.get_credentials_fields():
@@ -109,7 +109,7 @@ async def _before_graph_activate(graph: "BaseGraph | GraphModel", user_id: str):
         *(get_credentials(cid) for cid in unique_ids),
         return_exceptions=True,
     )
-    cred_by_id: dict[str, Credentials | None | BaseException] = dict(
+    cred_by_id: dict[str, "Credentials | None | BaseException"] = dict(
         zip(unique_ids, results)
     )
 

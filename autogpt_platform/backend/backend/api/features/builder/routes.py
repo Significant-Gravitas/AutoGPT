@@ -1,6 +1,5 @@
 import logging
-from collections.abc import Sequence
-from typing import Annotated, cast, get_args
+from typing import Annotated, Sequence, cast, get_args
 
 import fastapi
 from autogpt_libs.auth.dependencies import (

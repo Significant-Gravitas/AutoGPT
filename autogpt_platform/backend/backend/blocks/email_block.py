@@ -158,7 +158,7 @@ class SendEmailBlock(Block):
                 f"Cannot connect to SMTP server '{input_data.config.smtp_server}'. "
                 "Please verify the server address is correct."
             )
-        except TimeoutError:
+        except socket.timeout:
             yield "error", (
                 f"Connection timeout to '{input_data.config.smtp_server}' "
                 f"on port {input_data.config.smtp_port}. "
@@ -178,7 +178,7 @@ class SendEmailBlock(Block):
             )
         except ssl.SSLError as e:
             yield "error", (
-                f"SSL/TLS error when connecting to '{input_data.config.smtp_server}': {e!s}. "
+                f"SSL/TLS error when connecting to '{input_data.config.smtp_server}': {str(e)}. "
                 "The server may require a different security protocol."
             )
         except smtplib.SMTPAuthenticationError:
@@ -207,7 +207,7 @@ class SendEmailBlock(Block):
                 "disconnected unexpectedly."
             )
         except smtplib.SMTPDataError as e:
-            yield "error", f"Email data rejected by server: {e!s}"
+            yield "error", f"Email data rejected by server: {str(e)}"
         except ValueError as e:
             yield "error", str(e)
         except Exception as e:

@@ -118,11 +118,11 @@ async def enforce_subscription_status_rate_limit(
             timeout=SUBSCRIPTION_STATUS_REDIS_TIMEOUT_SECONDS,
         )
     except (
-        TimeoutError,
         RedisError,
         RedisClusterException,
         ConnectionError,
         OSError,
+        asyncio.TimeoutError,
         ValueError,
     ) as e:
         logger.warning(

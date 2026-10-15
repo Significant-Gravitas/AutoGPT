@@ -6,7 +6,7 @@ pinned here: without the non-consuming read the second poll 400s, and without
 single-use consumption an approval stores duplicate credentials.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
@@ -31,7 +31,9 @@ def _state(
     return OAuthState(
         token=token,
         provider=provider,
-        expires_at=int((datetime.now(UTC) + timedelta(seconds=expires_in)).timestamp()),
+        expires_at=int(
+            (datetime.now(timezone.utc) + timedelta(seconds=expires_in)).timestamp()
+        ),
         scopes=["userinfo:read"],
         state_metadata={"flow_type": "device_code", "device_code": "dev-code"},
     )

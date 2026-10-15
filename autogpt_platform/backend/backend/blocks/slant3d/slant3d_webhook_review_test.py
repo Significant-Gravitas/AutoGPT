@@ -161,12 +161,11 @@ async def test_lock_failure_prevents_registration(failure):
         slant3d, "AsyncRedisKeyedMutex", return_value=mutex, create=True
     ), patch.object(
         _base.BaseWebhooksManager, "get_suitable_auto_webhook", AsyncMock()
-    ) as register, pytest.raises(
-        WebhookSetupUnavailableError
-    ):
-        await Slant3DWebhooksManager().get_suitable_auto_webhook(
-            "user-1", TEST_CREDENTIALS, "orders", "platform-1", []
-        )
+    ) as register:
+        with pytest.raises(WebhookSetupUnavailableError):
+            await Slant3DWebhooksManager().get_suitable_auto_webhook(
+                "user-1", TEST_CREDENTIALS, "orders", "platform-1", []
+            )
     register.assert_not_awaited()
     if failure == "acquire":
         mutex.release.assert_awaited_once()

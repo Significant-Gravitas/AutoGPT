@@ -89,9 +89,12 @@ async def hybrid_search(
     if not query:
         return [], 0
 
-    page = max(page, 1)
-    page_size = max(page_size, 1)
-    page_size = min(page_size, 100)
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 1
+    if page_size > 100:
+        page_size = 100
 
     if weights is None:
         weights = DEFAULT_STORE_AGENT_WEIGHTS

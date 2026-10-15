@@ -2,7 +2,7 @@ import datetime
 import threading
 from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import jsonschema
 import pytest
@@ -18,15 +18,15 @@ from backend.util.json import SafeJson, validate_with_jsonschema
 
 class SamplePydanticModel(BaseModel):
     name: str
-    age: int | None = None
-    timestamp: datetime.datetime | None = None
-    metadata: dict | None = None
+    age: Optional[int] = None
+    timestamp: Optional[datetime.datetime] = None
+    metadata: Optional[dict] = None
 
 
 class SampleModelWithNonSerializable(BaseModel):
     name: str
     func: Any = None  # Could contain non-serializable data
-    data: dict | None = None
+    data: Optional[dict] = None
 
 
 class TestSafeJson:
@@ -560,7 +560,7 @@ class TestSafeJson:
         # Simulate CredentialsMetaInput structure
         class MockCredentialsMetaInput(BaseModel):
             id: str
-            title: str | None = None
+            title: Optional[str] = None
             provider: str
             type: str
 
@@ -719,7 +719,7 @@ class TestSafeJson:
         for char in control_chars:
             assert (
                 char not in json_string
-            ), f"Control character {char!r} found in result"
+            ), f"Control character {repr(char)} found in result"
 
         # Verify specific sanitized content is present (control chars removed but text preserved)
         result_data = cast(dict[str, Any], result.data)

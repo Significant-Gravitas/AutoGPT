@@ -1,5 +1,7 @@
 """Blocks that create and advance All Quiet incidents."""
 
+from typing import Optional
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -172,7 +174,7 @@ class AllQuietUpdateIncidentBlock(Block):
             default="",
             advanced=False,
         )
-        severity: IncidentSeverity | None = SchemaField(
+        severity: Optional[IncidentSeverity] = SchemaField(
             description="Optionally change the severity at the same time.",
             default=None,
             advanced=True,
@@ -192,10 +194,10 @@ class AllQuietUpdateIncidentBlock(Block):
                 "can pick its next intent without re-reading the incident"
             )
         )
-        status: IncidentStatus | None = SchemaField(
+        status: Optional[IncidentStatus] = SchemaField(
             description="Status after the update, when the incident reports one"
         )
-        severity: IncidentSeverity | None = SchemaField(
+        severity: Optional[IncidentSeverity] = SchemaField(
             description="Severity after the update, when the incident reports one"
         )
         error: str = SchemaField(description="Error message if the request failed")

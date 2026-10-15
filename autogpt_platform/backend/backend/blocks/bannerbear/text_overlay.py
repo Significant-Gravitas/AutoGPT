@@ -1,5 +1,8 @@
 import uuid
-from typing import Any
+from typing import TYPE_CHECKING, Any, Dict, List
+
+if TYPE_CHECKING:
+    pass
 
 from pydantic import SecretStr
 
@@ -74,7 +77,7 @@ class BannerbearTextOverlayBlock(Block):
             default="",
             advanced=True,
         )
-        text_modifications: list[TextModification] = SchemaField(
+        text_modifications: List[TextModification] = SchemaField(
             description="List of text layers to modify in the template"
         )
         image_url: str = SchemaField(
@@ -193,7 +196,7 @@ class BannerbearTextOverlayBlock(Block):
 
         # Add text modifications
         for text_mod in input_data.text_modifications:
-            mod_data: dict[str, Any] = {
+            mod_data: Dict[str, Any] = {
                 "name": text_mod.name,
                 "text": text_mod.text,
             }

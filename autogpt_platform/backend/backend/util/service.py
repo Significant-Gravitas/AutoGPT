@@ -10,10 +10,23 @@ import threading
 import time
 import typing
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import asynccontextmanager
 from functools import update_wrapper
-from typing import Any, Concatenate, ParamSpec, TypeVar, cast, get_type_hints, overload
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Concatenate,
+    Coroutine,
+    Optional,
+    ParamSpec,
+    Tuple,
+    Type,
+    TypeVar,
+    cast,
+    get_type_hints,
+    overload,
+)
 
 import httpx
 import uvicorn
@@ -22,9 +35,10 @@ from prisma.errors import DataError, UniqueViolationError
 from pydantic import BaseModel, TypeAdapter, create_model
 from sentry_sdk.api import capture_exception as _sentry_capture_exception
 
+import backend.util.exceptions as exceptions
 from backend.data import redis_client
 from backend.monitoring.instrumentation import instrument_fastapi
-from backend.util import exceptions, tracing
+from backend.util import tracing
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess
@@ -199,19 +213,19 @@ class RemoteCallExtras(BaseModel):
     """
 
     # GraphValidationError.node_errors — dict[node_id, dict[field, error_msg]]
-    node_errors: dict[str, dict[str, str]] | None = None
+    node_errors: Optional[dict[str, dict[str, str]]] = None
 
 
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
-    args: tuple[Any, ...] | None = None
+    args: Optional[Tuple[Any, ...]] = None
     # Optional extras for exception types that carry structured attributes
     # beyond ``exc.args``. When set, the client-side handler uses these to
     # reconstruct the exception with the original attributes.
     # Currently used by ``GraphValidationError.node_errors`` so the
     # copilot's credential-race fallback can distinguish credential
     # failures from other graph validation errors over RPC.
-    extras: RemoteCallExtras | None = None
+    extras: Optional[RemoteCallExtras] = None
 
 
 class UnhealthyServiceError(ValueError):
@@ -291,7 +305,7 @@ class AppService(BaseAppService, ABC):
                         f"{request.method} {request.url.path} failed: {exc}",
                         exc_info=exc,
                     )
-            extras: RemoteCallExtras | None = None
+            extras: Optional[RemoteCallExtras] = None
             if isinstance(exc, exceptions.GraphValidationError):
                 # ``exc.args`` only preserves the top-level message; the
                 # structured ``node_errors`` mapping needs to ride along
@@ -495,12 +509,28 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        self.fastapi_app = self.build_fastapi_app()
+
+        # Start the FastAPI server in a separate thread.
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
+        api_thread.start()
+
+        # Run the main service loop (blocking).
+        self.run_service()
+
+    def build_fastapi_app(self) -> FastAPI:
+        """The service's HTTP app: one POST route per exposed method, the
+        health checks and metrics, and nothing else."""
+        app = FastAPI(lifespan=self.lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
-                self.fastapi_app,
+                app,
                 service_name=self.service_name,
                 expose_endpoint=True,
                 endpoint="/metrics",
@@ -519,29 +549,17 @@ class AppService(BaseAppService, ABC):
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
-                self.fastapi_app.add_api_route(
+                app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
-        self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
-        )
-        self.fastapi_app.add_api_route(
+        app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
+        app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self._register_exception_handlers(self.fastapi_app)
-
-        # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(
-            target=self.__start_fastapi,
-            daemon=True,
-            name=f"{self.service_name}-http-server",
-        )
-        api_thread.start()
-
-        # Run the main service loop (blocking).
-        self.run_service()
+        self._register_exception_handlers(app)
+        return app
 
 
 # --------------------------------------------------
@@ -553,7 +571,7 @@ AS = TypeVar("AS", bound=AppService)
 class AppServiceClient(ABC):
     @classmethod
     @abstractmethod
-    def get_service_type(cls) -> type[AppService]:
+    def get_service_type(cls) -> Type[AppService]:
         pass
 
     def health_check(self):
@@ -636,7 +654,7 @@ async def _send_trace_headers_async(request: httpx.Request) -> None:
 
 @conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
-    service_client_type: type[ASC],
+    service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
     request_retry: bool = False,
 ) -> ASC:

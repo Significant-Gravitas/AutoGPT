@@ -1,6 +1,6 @@
 """Tests for the voice-mode speech route, and the metering it must perform."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -94,7 +94,7 @@ def test_speech_refuses_a_caller_over_their_usage_cap(
         "check_rate_limit",
         new=AsyncMock(
             side_effect=RateLimitExceeded(
-                "daily", datetime.now(UTC) + timedelta(hours=1)
+                "daily", datetime.now(timezone.utc) + timedelta(hours=1)
             )
         ),
     )

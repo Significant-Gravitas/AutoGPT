@@ -5,7 +5,7 @@ The block's own test_input/test_mock case mocks the API call away; these
 cover what that mock skips.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import pytest
@@ -15,7 +15,7 @@ from backend.blocks.hacker_news._api import HackerNewsError
 from backend.blocks.hacker_news.search import HackerNewsSearchBlock, parse_time
 from backend.util.exceptions import BlockExecutionError, BlockInputError
 
-NOW = datetime(2026, 10, 5, 12, 0, tzinfo=UTC)
+NOW = datetime(2026, 10, 5, 12, 0, tzinfo=timezone.utc)
 NOW_TS = int(NOW.timestamp())
 HOUR = 3600
 DAY = 24 * HOUR

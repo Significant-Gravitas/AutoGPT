@@ -3,6 +3,7 @@ import io
 import logging
 import time
 import warnings
+from typing import Optional, Tuple
 
 # Suppress the specific pkg_resources deprecation warning from aioclamd
 with warnings.catch_warnings():
@@ -24,7 +25,7 @@ class VirusScanResult(BaseModel):
     is_clean: bool
     scan_time_ms: int
     file_size: int
-    threat_name: str | None = None
+    threat_name: Optional[str] = None
 
 
 class VirusScannerSettings(BaseSettings):
@@ -66,7 +67,7 @@ class VirusScannerService:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _parse_raw(raw: dict | None) -> tuple[bool, str | None]:
+    def _parse_raw(raw: Optional[dict]) -> Tuple[bool, Optional[str]]:
         """
         Convert aioclamd output to (infected?, threat_name).
         Returns (False, None) for clean.
@@ -76,7 +77,7 @@ class VirusScannerService:
         status, threat = next(iter(raw.values()))
         return status == "FOUND", threat
 
-    async def _instream(self, chunk: bytes) -> tuple[bool, str | None]:
+    async def _instream(self, chunk: bytes) -> Tuple[bool, Optional[str]]:
         """Scan **one** chunk with concurrency control."""
         async with self._sem:
             try:
@@ -173,7 +174,7 @@ class VirusScannerService:
         )
 
 
-_scanner: VirusScannerService | None = None
+_scanner: Optional[VirusScannerService] = None
 
 
 def get_virus_scanner() -> VirusScannerService:
@@ -214,5 +215,5 @@ async def scan_content_safe(content: bytes, *, filename: str = "unknown") -> Non
     except VirusDetectedError:
         raise
     except Exception as e:
-        logger.warning(f"Virus scanning failed for {filename}: {e!s}")
-        raise VirusScanError(f"Virus scanning failed: {e!s}") from e
+        logger.warning(f"Virus scanning failed for {filename}: {str(e)}")
+        raise VirusScanError(f"Virus scanning failed: {str(e)}") from e

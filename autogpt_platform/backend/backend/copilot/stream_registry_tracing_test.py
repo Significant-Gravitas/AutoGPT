@@ -71,10 +71,11 @@ async def test_the_relay_keeps_its_polls_off_the_request_transaction(
     )
     with patch.object(
         stream_registry, "get_redis_async", new=AsyncMock(return_value=redis)
-    ), tracing.start_transaction("http.server", "/stream"):
-        queue = await stream_registry.subscribe_to_session("sess-1", "u1")
-        assert queue is not None
-        delivered = [await asyncio.wait_for(queue.get(), 5) for _ in range(2)]
+    ):
+        with tracing.start_transaction("http.server", "/stream"):
+            queue = await stream_registry.subscribe_to_session("sess-1", "u1")
+            assert queue is not None
+            delivered = [await asyncio.wait_for(queue.get(), 5) for _ in range(2)]
 
     assert [type(chunk).__name__ for _, chunk in delivered] == [
         "StreamTextDelta",
@@ -90,11 +91,12 @@ async def test_publishing_a_chunk_adds_no_spans_to_the_turn(sentry_transactions)
         stream_registry,
         "get_redis_async",
         new=AsyncMock(return_value=_SpanPerCommandRedis()),
-    ), tracing.start_transaction("copilot.turn", "copilot.turn"):
-        for _ in range(3):
-            message_id = await stream_registry.publish_chunk(
-                "turn-1", StreamTextDelta(id="t", delta="x"), session_id="s"
-            )
+    ):
+        with tracing.start_transaction("copilot.turn", "copilot.turn"):
+            for _ in range(3):
+                message_id = await stream_registry.publish_chunk(
+                    "turn-1", StreamTextDelta(id="t", delta="x"), session_id="s"
+                )
 
     assert message_id == "1-0"
     [turn] = sentry_transactions

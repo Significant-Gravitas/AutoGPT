@@ -31,7 +31,7 @@ in a fresh turn that the user will see arrive at the scheduled time.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from apscheduler.triggers.cron import CronTrigger
@@ -238,7 +238,7 @@ class ScheduleFollowupTool(BaseTool):
                     error="delay_too_short",
                     session_id=current_session_id,
                 )
-            run_at = datetime.now(tz=UTC) + timedelta(seconds=delay_seconds)
+            run_at = datetime.now(tz=timezone.utc) + timedelta(seconds=delay_seconds)
 
         # ``get_user_by_id`` raises ``ValueError`` when the row is gone
         # (account deletion / replication lag between auth and this

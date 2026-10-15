@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from backend.api.features.builder import db
+import backend.api.features.builder.db as db
 from backend.blocks._base import BlockInfo, BlockType
 from backend.util.text import split_camelcase
 

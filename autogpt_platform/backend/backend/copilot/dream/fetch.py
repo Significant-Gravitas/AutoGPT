@@ -14,7 +14,7 @@ Caps (copied here so they live next to the code that enforces them):
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from pydantic import BaseModel, Field
 
@@ -134,7 +134,7 @@ def _parse_iso_timestamp(raw: str) -> datetime | None:
         parsed = datetime.fromisoformat(raw)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _open_driver(group_id: str) -> AutoGPTFalkorDriver:
@@ -350,7 +350,7 @@ async def gather_dream_input(
     still proceed — a partial dream is better than no dream.
     """
     group_id = derive_memory_group_id(user_id, expert_id)
-    window_end = datetime.now(UTC)
+    window_end = datetime.now(timezone.utc)
     window_start = window_end - timedelta(days=window_days)
 
     driver = _open_driver(group_id)

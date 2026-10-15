@@ -398,7 +398,7 @@ class SendDiscordDMBlock(Block):
             except ValueError:
                 result["status"] = f"Invalid user ID format: {user_id}"
             except Exception as e:
-                result["status"] = f"Error sending DM: {e!s}"
+                result["status"] = f"Error sending DM: {str(e)}"
             finally:
                 await client.close()
 
@@ -575,7 +575,7 @@ class SendDiscordEmbedBlock(Block):
                 result["status"] = "Embed sent successfully"
                 result["message_id"] = str(message.id)
             except Exception as e:
-                result["status"] = f"Error sending embed: {e!s}"
+                result["status"] = f"Error sending embed: {str(e)}"
             finally:
                 await client.close()
 
@@ -778,7 +778,7 @@ class SendDiscordFileBlock(Block):
                 result["status"] = "File sent successfully"
                 result["message_id"] = str(message.id)
             except Exception as e:
-                result["status"] = f"Error sending file: {e!s}"
+                result["status"] = f"Error sending file: {str(e)}"
             finally:
                 await client.close()
 
@@ -910,9 +910,9 @@ class ReplyToDiscordMessageBlock(Block):
                 result["reply_id"] = str(reply.id)
 
             except ValueError as e:
-                result["status"] = f"Invalid ID format: {e!s}"
+                result["status"] = f"Invalid ID format: {str(e)}"
             except Exception as e:
-                result["status"] = f"Error sending reply: {e!s}"
+                result["status"] = f"Error sending reply: {str(e)}"
             finally:
                 await client.close()
 
@@ -1027,7 +1027,7 @@ class DiscordUserInfoBlock(Block):
             except ValueError:
                 result["error"] = f"Invalid user ID format: {user_id}"
             except Exception as e:
-                result["error"] = f"Error fetching user info: {e!s}"
+                result["error"] = f"Error fetching user info: {str(e)}"
             finally:
                 await client.close()
 
@@ -1369,10 +1369,10 @@ class CreateDiscordThreadBlock(Block):
 
             except discord.errors.Forbidden as e:
                 result["status"] = (
-                    f"Bot does not have permission to create threads in this channel. {e!s}"
+                    f"Bot does not have permission to create threads in this channel. {str(e)}"
                 )
             except Exception as e:
-                result["status"] = f"Error creating thread: {e!s}"
+                result["status"] = f"Error creating thread: {str(e)}"
             finally:
                 await client.close()
 

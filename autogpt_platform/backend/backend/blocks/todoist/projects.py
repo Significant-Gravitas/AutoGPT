@@ -1,4 +1,5 @@
 from todoist_api_python.api import TodoistAPI
+from typing_extensions import Optional
 
 from backend.blocks._base import (
     Block,
@@ -129,10 +130,10 @@ class TodoistCreateProjectBlock(Block):
     class Input(BlockSchemaInput):
         credentials: TodoistCredentialsInput = TodoistCredentialsField([])
         name: str = SchemaField(description="Name of the project", advanced=False)
-        parent_id: str | None = SchemaField(
+        parent_id: Optional[str] = SchemaField(
             description="Parent project ID", default=None, advanced=True
         )
-        color: Colors | None = SchemaField(
+        color: Optional[Colors] = SchemaField(
             description="Color of the project icon",
             default=Colors.charcoal,
             advanced=True,
@@ -142,7 +143,7 @@ class TodoistCreateProjectBlock(Block):
             default=False,
             advanced=True,
         )
-        view_style: str | None = SchemaField(
+        view_style: Optional[str] = SchemaField(
             description="Display style (list or board)", default=None, advanced=True
         )
 
@@ -167,10 +168,10 @@ class TodoistCreateProjectBlock(Block):
     def create_project(
         credentials: TodoistCredentials,
         name: str,
-        parent_id: str | None,
-        color: Colors | None,
+        parent_id: Optional[str],
+        color: Optional[Colors],
         is_favorite: bool,
-        view_style: str | None,
+        view_style: Optional[str],
     ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())
@@ -313,18 +314,18 @@ class TodoistUpdateProjectBlock(Block):
         project_id: str = SchemaField(
             description="ID of project to update", advanced=False
         )
-        name: str | None = SchemaField(
+        name: Optional[str] = SchemaField(
             description="New name for the project", default=None, advanced=False
         )
-        color: Colors | None = SchemaField(
+        color: Optional[Colors] = SchemaField(
             description="New color for the project icon", default=None, advanced=True
         )
-        is_favorite: bool | None = SchemaField(
+        is_favorite: Optional[bool] = SchemaField(
             description="Whether the project should be a favorite",
             default=None,
             advanced=True,
         )
-        view_style: str | None = SchemaField(
+        view_style: Optional[str] = SchemaField(
             description="Display style (list or board)", default=None, advanced=True
         )
 
@@ -353,10 +354,10 @@ class TodoistUpdateProjectBlock(Block):
     def update_project(
         credentials: TodoistCredentials,
         project_id: str,
-        name: str | None,
-        color: Colors | None,
-        is_favorite: bool | None,
-        view_style: str | None,
+        name: Optional[str],
+        color: Optional[Colors],
+        is_favorite: Optional[bool],
+        view_style: Optional[str],
     ):
         try:
             api = TodoistAPI(credentials.access_token.get_secret_value())

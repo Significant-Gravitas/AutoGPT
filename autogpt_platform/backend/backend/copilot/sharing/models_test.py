@@ -5,7 +5,7 @@ test here is checking that data which must NOT cross the public link
 genuinely does not.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.copilot.model import ChatMessage as ChatMessageDomain
 from backend.copilot.sharing.models import _redact_secret_keys, sanitize_chat_message
@@ -17,7 +17,7 @@ def _msg(**overrides) -> ChatMessageDomain:
         role="assistant",
         content=None,
         sequence=0,
-        created_at=datetime(2026, 5, 11, tzinfo=UTC),
+        created_at=datetime(2026, 5, 11, tzinfo=timezone.utc),
     )
     defaults.update(overrides)
     return ChatMessageDomain(**defaults)

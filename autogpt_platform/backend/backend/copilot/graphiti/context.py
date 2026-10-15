@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from ._format import (
     extract_episode_body,
@@ -37,7 +37,7 @@ async def fetch_warm_context(
             _fetch(user_id, message, expert_id),
             timeout=graphiti_config.context_timeout,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning(
             "Graphiti warm context timed out after %.1fs",
             graphiti_config.context_timeout,
@@ -78,7 +78,7 @@ async def _fetch(
             group_ids=[group_id],
         ),
         client.retrieve_episodes(
-            reference_time=datetime.now(UTC),
+            reference_time=datetime.now(timezone.utc),
             group_ids=[group_id],
             last_n=5,
         ),

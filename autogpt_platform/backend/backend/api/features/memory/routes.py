@@ -13,7 +13,7 @@ edge in the scope's graph, raw episode text included.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Annotated
 
 import autogpt_libs.auth as autogpt_auth_lib
@@ -51,7 +51,7 @@ _MISSING_GRAPH_MARKERS = ("no such graph", "does not exist", "invalid graph")
 
 def _now_iso() -> str:
     """FalkorDB has no Cypher ``datetime()``; timestamps are bound in Python."""
-    return datetime.now(UTC).isoformat()
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _is_missing_graph_error(exc: BaseException) -> bool:

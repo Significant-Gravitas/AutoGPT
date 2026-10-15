@@ -256,7 +256,7 @@ async def run_sandboxed(
             stdout = stdout_bytes.decode("utf-8", errors="replace")
             stderr = stderr_bytes.decode("utf-8", errors="replace")
             return stdout, stderr, proc.returncode or 0, False
-        except TimeoutError:
+        except asyncio.TimeoutError:
             # Kill entire process group (bwrap + all children).
             # proc.kill() alone only kills the bwrap parent, leaving
             # children running until they finish naturally.

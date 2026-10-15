@@ -279,7 +279,8 @@ def _strip_json_code_fence(content: str) -> str:
     if first_newline == -1:
         return content
     body = stripped[first_newline + 1 :]
-    body = body.removesuffix("```")
+    if body.endswith("```"):
+        body = body[:-3]
     return body.strip()
 
 

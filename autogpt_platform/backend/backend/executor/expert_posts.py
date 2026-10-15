@@ -9,7 +9,7 @@ thread (the activity strip is the overflow surface).
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 from backend.blocks import get_output_block_ids
@@ -211,7 +211,7 @@ def _truncate(text: str, limit: int) -> str:
 
 
 def _cap_key(user_id: str, expert_id: str) -> str:
-    today = datetime.now(UTC).date().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     return f"expert-thread-posts:{user_id}:{expert_id}:{today}"
 
 

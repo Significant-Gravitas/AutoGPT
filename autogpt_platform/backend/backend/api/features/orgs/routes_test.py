@@ -5,7 +5,7 @@ cases. Tests are organized by domain and mock at the Prisma boundary so the
 actual logic in db.py / routes.py / team_db.py is exercised.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import fastapi
@@ -23,7 +23,7 @@ USER_ID = "user-owner-1"
 OTHER_USER_ID = "user-member-2"
 ORG_ID = "org-aaa"
 WS_ID = "ws-default"
-FIXED_NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=UTC)
+FIXED_NOW = datetime(2025, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _fake_transaction(client):
@@ -1218,7 +1218,7 @@ class TestInvitationAcceptance:
         inv.isBillingManager = isBillingManager
         inv.acceptedAt = acceptedAt
         inv.revokedAt = revokedAt
-        inv.expiresAt = expiresAt or (datetime.now(UTC) + timedelta(days=3))
+        inv.expiresAt = expiresAt or (datetime.now(timezone.utc) + timedelta(days=3))
         inv.createdAt = FIXED_NOW
         inv.invitedByUserId = USER_ID
         inv.teamIds = teamIds or []
@@ -1293,7 +1293,7 @@ class TestInvitationAcceptance:
 
         expired = self._make_invitation(
             email="test@example.com",
-            expiresAt=datetime.now(UTC) - timedelta(days=1),
+            expiresAt=datetime.now(timezone.utc) - timedelta(days=1),
         )
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=expired)
         user = MagicMock(id="test-user-id", email="test@example.com")
@@ -1411,7 +1411,7 @@ class TestInvitationListPending:
         inv.isAdmin = False
         inv.isBillingManager = False
         inv.token = "tok-1"
-        inv.expiresAt = datetime.now(UTC) + timedelta(days=5)
+        inv.expiresAt = datetime.now(timezone.utc) + timedelta(days=5)
         inv.createdAt = FIXED_NOW
         inv.teamIds = []
         self.prisma.orginvitation.find_many = AsyncMock(return_value=[inv])
@@ -2432,7 +2432,9 @@ class TestInvitationIdempotency:
         inv = MagicMock()
         inv.acceptedAt = None
         inv.revokedAt = None
-        inv.expiresAt = datetime.now(UTC) + timedelta(days=7)  # Must be in future
+        inv.expiresAt = datetime.now(timezone.utc) + timedelta(
+            days=7
+        )  # Must be in future
         inv.email = "alice@example.com"
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=inv)
 
@@ -2637,7 +2639,7 @@ class TestPRReviewBugs:
         inv = MagicMock()
         inv.acceptedAt = None
         inv.revokedAt = None
-        inv.expiresAt = datetime.now(UTC) + timedelta(days=7)
+        inv.expiresAt = datetime.now(timezone.utc) + timedelta(days=7)
         inv.email = "alice@example.com"
         self.prisma.orginvitation.find_unique = AsyncMock(return_value=inv)
 
@@ -2869,7 +2871,7 @@ class TestInvitationSeeding:
         created.orgId = ORG_ID
         created.isAdmin = False
         created.isBillingManager = False
-        created.expiresAt = datetime.now(UTC) + timedelta(days=3)
+        created.expiresAt = datetime.now(timezone.utc) + timedelta(days=3)
         created.createdAt = FIXED_NOW
         created.invitedByUserId = USER_ID
         created.teamIds = ["team-own"]

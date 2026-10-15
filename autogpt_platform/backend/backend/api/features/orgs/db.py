@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.errors import UniqueViolationError
 
@@ -403,7 +403,7 @@ async def delete_org(org_id: str) -> None:
 
     await prisma.organization.update(
         where={"id": org_id},
-        data={"deletedAt": datetime.now(UTC)},
+        data={"deletedAt": datetime.now(timezone.utc)},
     )
 
 

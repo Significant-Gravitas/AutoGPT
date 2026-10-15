@@ -22,7 +22,7 @@ import json
 import logging
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from fastapi import FastAPI, Request, Response
@@ -86,7 +86,7 @@ class TeamsAdapter(WebhookAdapter):
         self._api = api
         self._client = TeamsClient()
         self._validator = auth.ConnectorTokenValidator()
-        self._on_message_callback: MessageCallback | None = None
+        self._on_message_callback: Optional[MessageCallback] = None
         # serviceUrl is per-tenant and can change, so it is deliberately NOT
         # baked into the conversation token the core handler round-trips (that
         # token is also a Redis key suffix — folding a mutable value into it
@@ -486,7 +486,7 @@ class TeamsAdapter(WebhookAdapter):
 
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Root a reply-chain at ``message_id``.
 
         Teams threads are unnamed, so ``name`` is unused. Only a channel
@@ -507,20 +507,20 @@ class TeamsAdapter(WebhookAdapter):
         # proactive posts target a conversation id directly.
         return []
 
-    async def get_channel_server_id(self, channel_id: str) -> str | None:
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
         # Without channel enumeration there is no channel -> team mapping to
         # authorize against, so raw-id posting stays unauthorized by design.
         return None
 
     async def post_channel_message(
         self, channel_id: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         first_id, sent = await self._send_chunked(channel_id, text, ())
         return PostedRef(id=first_id, chunk_count=sent) if first_id else None
 
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         # Teams threads carry no title; surface it as a heading instead, the
         # same degradation Telegram uses for its unnamed topics.
         body = f"**{name}**\n\n{text}" if name else text
@@ -545,7 +545,7 @@ class TeamsAdapter(WebhookAdapter):
             return EditOutcome.FAILED
         return EditOutcome.OK
 
-    async def open_dm_channel(self, platform_user_id: str) -> str | None:
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         """Create (or fetch) the bot's 1:1 conversation with a user.
 
         Teams returns the existing conversation for a repeat call, so this is
@@ -572,14 +572,14 @@ class TeamsAdapter(WebhookAdapter):
         channel_id: str,
         text: str,
         mentionable_users: tuple[tuple[str, str], ...],
-    ) -> tuple[str | None, int]:
+    ) -> tuple[Optional[str], int]:
         """Post ``text`` in message-sized chunks; return the first activity id
         and how many chunks landed.
 
         Chunks are awaited in sequence: Teams does not guarantee ordering for
         messages posted in quick succession.
         """
-        first_id: str | None = None
+        first_id: Optional[str] = None
         sent = 0
         for chunk in iter_chunks(self.localize_markup(text), config.CHUNK_FLUSH_AT):
             rendered, pinged = resolve_mentions(chunk, mentionable_users, mention_token)
@@ -597,12 +597,14 @@ class TeamsAdapter(WebhookAdapter):
             first_id = first_id or activity_id
         return first_id, sent
 
-    async def _post(self, channel_id: str, activity: dict[str, Any]) -> str | None:
+    async def _post(self, channel_id: str, activity: dict[str, Any]) -> Optional[str]:
         return await self._client.send_activity(
             self._service_url_for(channel_id), channel_id, activity
         )
 
-    async def _build_context(self, activity: dict[str, Any]) -> MessageContext | None:
+    async def _build_context(
+        self, activity: dict[str, Any]
+    ) -> Optional[MessageContext]:
         """Map a Teams message activity onto the platform-neutral context."""
         conversation = activity.get("conversation") or {}
         conversation_id = conversation.get("id")

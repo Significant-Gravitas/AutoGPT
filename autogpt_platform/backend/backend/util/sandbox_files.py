@@ -249,7 +249,8 @@ async def extract_sandbox_files(
                 relative_path = file_path
                 if file_path.startswith(working_directory):
                     relative_path = file_path[len(working_directory) :]
-                    relative_path = relative_path.removeprefix("/")
+                    if relative_path.startswith("/"):
+                        relative_path = relative_path[1:]
 
                 files.append(
                     ExtractedFile(

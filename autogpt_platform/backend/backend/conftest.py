@@ -4,7 +4,7 @@ import os
 import sys
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from multiprocessing import get_all_start_methods, get_context, set_forkserver_preload
 from threading import Thread
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
@@ -81,8 +81,9 @@ def _warm_test_forkserver() -> None:
 async def server():
     from backend.util.test import SpinTestServer
 
-    async with SpinTestServer() as server, _track_test_graphs(server):
-        yield server
+    async with SpinTestServer() as server:
+        async with _track_test_graphs(server):
+            yield server
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -94,7 +95,7 @@ async def no_leaked_db_transaction(request: pytest.FixtureRequest):
     first one that fails aborts the rest. Checked while the session's client
     is connected, i.e. once a test has started the server.
     """
-    started = datetime.now(UTC)
+    started = datetime.now(timezone.utc)
     yield
     # Nothing can leak through a database layer this session never loaded,
     # and checking that keeps Prisma out of unit-only runs.

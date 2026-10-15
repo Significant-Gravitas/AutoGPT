@@ -21,6 +21,7 @@ open, and never crashes the service.
 
 import asyncio
 import logging
+from typing import Optional
 
 from autogpt_libs.auth import User, requires_admin_user
 from fastapi import APIRouter, Body, HTTPException, Security
@@ -127,7 +128,7 @@ async def _send_impersonation_alert(admin: User, target_user_id: str) -> None:
         raise RuntimeError(f"Discord alert not delivered (status: {status!r})")
 
 
-async def _resolve_email(user_id: str) -> str | None:
+async def _resolve_email(user_id: str) -> Optional[str]:
     """Best-effort email lookup for a friendlier alert. Never raises."""
     try:
         return await get_user_email_by_id(user_id)

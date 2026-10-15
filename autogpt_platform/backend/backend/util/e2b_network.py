@@ -39,7 +39,7 @@ import hashlib
 import json
 import logging
 import secrets
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, Literal, Optional, TypeVar, cast
 
 from e2b import AsyncCommandHandle, AsyncSandbox
 from e2b.sandbox.sandbox_api import (
@@ -84,7 +84,7 @@ class EgressOwner(BaseModel):
 
     kind: Literal["session", "expert", "block"]
     id: str
-    user_id: str | None = None
+    user_id: Optional[str] = None
 
     @property
     def label(self) -> str:
@@ -109,7 +109,7 @@ class ProxyCredential(BaseModel):
     secret: str
 
 
-def proxy_address() -> str | None:
+def proxy_address() -> Optional[str]:
     """The swap proxy's ``host:port``, or ``None`` when egress is left direct."""
     return Settings().config.e2b_egress_proxy_address.strip() or None
 
@@ -262,7 +262,7 @@ async def forget_sandbox(sandbox_id: str) -> None:
         )
 
 
-async def credential_record(username: str) -> dict[str, Any] | None:
+async def credential_record(username: str) -> Optional[dict[str, Any]]:
     """What the proxy sees for a username: owner, user, box, secret digest."""
     redis = await get_redis_async()
     raw = await redis.get(_CREDENTIAL_KEY_PREFIX + username)
@@ -295,7 +295,7 @@ def _proxy(address: str, credential: ProxyCredential) -> SandboxEgressProxyOpts:
 
 
 async def _remember(
-    credential: ProxyCredential, owner: EgressOwner, *, sandbox_id: str | None
+    credential: ProxyCredential, owner: EgressOwner, *, sandbox_id: Optional[str]
 ) -> None:
     redis = await get_redis_async()
     record = {
@@ -318,7 +318,7 @@ async def _forget(username: str) -> None:
     await redis.delete(_CREDENTIAL_KEY_PREFIX + username)
 
 
-async def _bound_username(sandbox_id: str) -> str | None:
+async def _bound_username(sandbox_id: str) -> Optional[str]:
     redis = await get_redis_async()
     raw = await redis.get(_BOX_KEY_PREFIX + sandbox_id)
     return raw.decode() if isinstance(raw, bytes) else raw

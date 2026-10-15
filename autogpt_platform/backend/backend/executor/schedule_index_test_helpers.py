@@ -1,6 +1,6 @@
 """Fixtures for scheduler index integration tests."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from sqlalchemy import create_engine
@@ -42,7 +42,7 @@ def _mock_job(kwargs: dict) -> MagicMock:
     job.kwargs = kwargs
     job.id = kwargs.get("schedule_id", "fake-id")
     job.name = "fake-name"
-    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=UTC)
+    job.next_run_time = datetime(2026, 5, 22, 10, 0, tzinfo=timezone.utc)
     job.trigger = MagicMock()
     job.trigger.timezone = "UTC"
     return job

@@ -5,7 +5,7 @@ for the sanitizer; stable fact false positives delete real memory.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -14,7 +14,7 @@ from .staleness import STALENESS_THRESHOLD, identify_stale_candidates, score_sta
 
 
 def _now() -> datetime:
-    return datetime(2026, 5, 21, tzinfo=UTC)
+    return datetime(2026, 5, 21, tzinfo=timezone.utc)
 
 
 def _fact(

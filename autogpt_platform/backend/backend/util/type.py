@@ -1,6 +1,6 @@
 import json
 import types
-from typing import Any, TypeVar, Union, cast, get_args, get_origin, overload
+from typing import Any, Type, TypeVar, Union, cast, get_args, get_origin, overload
 
 from prisma import Json as PrismaJson
 
@@ -44,7 +44,9 @@ def __convert_dict(value: Any) -> dict:
                 return {"value": result}
         except json.JSONDecodeError:
             return {"value": value}  # Fallback conversion
-    elif isinstance(value, list) or isinstance(value, tuple):
+    elif isinstance(value, list):
+        return {i: value[i] for i in range(len(value))}
+    elif isinstance(value, tuple):
         return {i: value[i] for i in range(len(value))}
     elif isinstance(value, dict):
         return value
@@ -109,7 +111,7 @@ def __convert_str(value: Any) -> str:
 NUM = TypeVar("NUM", int, float)
 
 
-def __convert_num(value: Any, num_type: type[NUM]) -> NUM:
+def __convert_num(value: Any, num_type: Type[NUM]) -> NUM:
     if isinstance(value, (list, dict, tuple, set)):
         return num_type(len(value))
     elif isinstance(value, num_type):
@@ -249,12 +251,12 @@ T = TypeVar("T")
 TT = TypeVar("TT")
 
 
-def type_match(value: Any, target_type: type[T]) -> T:
+def type_match(value: Any, target_type: Type[T]) -> T:
     return cast(T, _try_convert(value, target_type, raise_on_mismatch=True))
 
 
 @overload
-def convert(value: Any, target_type: type[T]) -> T: ...
+def convert(value: Any, target_type: Type[T]) -> T: ...
 
 
 @overload

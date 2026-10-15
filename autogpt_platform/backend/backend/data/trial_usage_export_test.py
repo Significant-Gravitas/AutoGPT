@@ -58,8 +58,8 @@ async def test_trial_export_rejects_missing_accepted_limit():
             "backend.copilot.rate_limit.get_tier_multipliers",
             AsyncMock(return_value={"TRIAL": 0}),
         ),
-        pytest.raises(ValueError, match="accepted weekly limit"),
     ):
-        await get_copilot_weekly_usage_for_export(
-            datetime(2026, 9, 7, tzinfo=UTC), datetime(2026, 9, 8, tzinfo=UTC)
-        )
+        with pytest.raises(ValueError, match="accepted weekly limit"):
+            await get_copilot_weekly_usage_for_export(
+                datetime(2026, 9, 7, tzinfo=UTC), datetime(2026, 9, 8, tzinfo=UTC)
+            )

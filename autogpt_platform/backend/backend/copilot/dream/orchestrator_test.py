@@ -9,7 +9,7 @@ the unit-level safety net for the control-flow.
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -66,8 +66,8 @@ def _build_input(*, episodes=1, facts=1) -> DreamInput:
     return DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 5, 1, tzinfo=UTC),
-        window_end=datetime(2026, 5, 14, tzinfo=UTC),
+        window_start=datetime(2026, 5, 1, tzinfo=timezone.utc),
+        window_end=datetime(2026, 5, 14, tzinfo=timezone.utc),
         episodes=[
             EpisodeRow(
                 uuid=f"e{i}",
@@ -994,8 +994,8 @@ def _input_with_episodes(episodes: list[EpisodeRow]) -> DreamInput:
     return DreamInput(
         user_id="u",
         group_id="g",
-        window_start=datetime(2026, 5, 26, tzinfo=UTC),
-        window_end=datetime(2026, 6, 9, tzinfo=UTC),
+        window_start=datetime(2026, 5, 26, tzinfo=timezone.utc),
+        window_end=datetime(2026, 6, 9, tzinfo=timezone.utc),
         episodes=episodes,
         facts=[
             FactRow(
@@ -1385,7 +1385,7 @@ async def test_successful_pass_stamps_last_completed_marker(mocker, _stub_marker
     # Stamped with the gather-window end (NOT apply-completion time) so
     # episodes that arrive mid-pass still count as new next time.
     stamped = datetime.fromisoformat(set_args.args[1])
-    assert stamped == datetime(2026, 6, 9, tzinfo=UTC)
+    assert stamped == datetime(2026, 6, 9, tzinfo=timezone.utc)
     assert set_args.kwargs == {"ex": orchestrator_mod.LAST_COMPLETED_TTL_SECONDS}
 
 
@@ -1804,7 +1804,7 @@ async def test_batch_handoff_revokes_batch_when_lock_extend_fails(mocker):
     result = await orchestrator_mod._submit_dream_pass_batch(
         user_id="u-lock-lost",
         pass_id="p-lock-lost",
-        started_at=datetime.now(UTC),
+        started_at=datetime.now(timezone.utc),
         monotonic_start=0.0,
         execution_path="anthropic_batch",
         config=config,

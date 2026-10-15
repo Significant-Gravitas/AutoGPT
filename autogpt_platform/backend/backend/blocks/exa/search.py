@@ -1,5 +1,6 @@
 from datetime import datetime
 from enum import Enum
+from typing import Optional
 
 from exa_py import AsyncExa
 
@@ -117,7 +118,7 @@ class ExaSearchBlock(Block):
         resolved_search_type: str = SchemaField(
             description="The search type that was actually used for this request (neural or keyword)"
         )
-        cost_dollars: CostDollars | None = SchemaField(
+        cost_dollars: Optional[CostDollars] = SchemaField(
             description="Cost breakdown for the request"
         )
         error: str = SchemaField(description="Error message if the request failed")

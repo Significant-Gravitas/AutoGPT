@@ -32,6 +32,7 @@ enough that dialect-native upserts aren't worth the coupling.
 
 import logging
 from collections.abc import Sequence
+from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Column, MetaData, String, Table, delete, insert, or_, select
@@ -52,13 +53,13 @@ class ScheduleIndexEntry(BaseModel):
     job_id: str
     user_id: str
     kind: str
-    graph_id: str | None = None
-    session_id: str | None = None
+    graph_id: Optional[str] = None
+    session_id: Optional[str] = None
     # Normalized: legacy rows carry ``organization_id=""`` which must never
     # match an org-scoped query, so empty strings are stored as NULL.
-    organization_id: str | None = None
-    team_id: str | None = None
-    expert_id: str | None = None
+    organization_id: Optional[str] = None
+    team_id: Optional[str] = None
+    expert_id: Optional[str] = None
 
 
 class ScheduleIndex:

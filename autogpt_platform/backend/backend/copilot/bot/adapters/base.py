@@ -9,10 +9,9 @@ Telegram, Teams, WhatsApp).
 """
 
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal
+from typing import Awaitable, Callable, Literal, Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
@@ -50,7 +49,7 @@ class MessageHistoryEntry:
     """A prior platform message included as context for the current turn."""
 
     username: str
-    user_id: str | None
+    user_id: Optional[str]
     text: str
 
 
@@ -108,7 +107,7 @@ class ChannelInfo(BaseModel):
     id: str
     name: str
     server_id: str
-    server_name: str | None = None
+    server_name: Optional[str] = None
 
 
 class EditOutcome(Enum):
@@ -151,8 +150,8 @@ class PostedRef(BaseModel):
     """
 
     id: str
-    url: str | None = None
-    channel_id: str | None = None
+    url: Optional[str] = None
+    channel_id: Optional[str] = None
     chunk_count: int = 1
     editable: bool = True
 
@@ -163,7 +162,7 @@ class MessageContext:
 
     platform: str
     channel_type: ChannelType
-    server_id: str | None
+    server_id: Optional[str]
     channel_id: str  # DM channel ID / parent channel ID / thread ID
     message_id: str  # the incoming message itself — used to create threads from it
     user_id: str
@@ -190,7 +189,7 @@ class MessageContext:
     # model so neither thinks the file was read.
     skipped_attachments: tuple[tuple[str, str], ...] = ()
     # Set by a click that answered a card: carry the turn it woke, say nothing.
-    follow: CardTurn | None = None
+    follow: Optional[CardTurn] = None
 
     @property
     def is_dm(self) -> bool:
@@ -346,7 +345,7 @@ class PlatformAdapter(ABC):
     @abstractmethod
     async def create_thread(
         self, channel_id: str, message_id: str, name: str
-    ) -> str | None:
+    ) -> Optional[str]:
         """Create a thread from a message. Returns the thread ID, or None if
         the platform doesn't support threads or creation failed.
         """
@@ -453,7 +452,7 @@ class PlatformAdapter(ABC):
         ...
 
     @abstractmethod
-    async def get_channel_server_id(self, channel_id: str) -> str | None:
+    async def get_channel_server_id(self, channel_id: str) -> Optional[str]:
         """Return the server (guild) ID a channel belongs to, or ``None``.
 
         Used to authorize a post target given a raw channel ID without
@@ -461,7 +460,7 @@ class PlatformAdapter(ABC):
         """
         ...
 
-    async def open_dm_channel(self, platform_user_id: str) -> str | None:
+    async def open_dm_channel(self, platform_user_id: str) -> Optional[str]:
         """Open (or fetch) the bot's 1:1 DM channel with ``platform_user_id``.
 
         Returns a channel ID usable with ``post_channel_message``, or ``None``
@@ -474,7 +473,7 @@ class PlatformAdapter(ABC):
     @abstractmethod
     async def post_channel_message(
         self, channel_id: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         """Post a standalone message to ``channel_id``.
 
         Distinct from ``send_message`` (the streaming-reply path): this
@@ -486,7 +485,7 @@ class PlatformAdapter(ABC):
     @abstractmethod
     async def create_channel_thread(
         self, channel_id: str, name: str, text: str
-    ) -> PostedRef | None:
+    ) -> Optional[PostedRef]:
         """Create a standalone thread in ``channel_id`` and post ``text`` in it.
 
         "Standalone" = not anchored to a pre-existing message (unlike

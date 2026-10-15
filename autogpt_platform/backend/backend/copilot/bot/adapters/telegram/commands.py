@@ -8,8 +8,7 @@ URL button.
 
 import html
 import logging
-from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, Awaitable, Callable, Optional
 
 from backend.copilot.bot import sessions
 from backend.copilot.bot.bot_backend import BotBackend
@@ -48,7 +47,7 @@ _HELP_TEXT = (
 )
 
 
-def parse_command(message: dict[str, Any], bot_username: str) -> str | None:
+def parse_command(message: dict[str, Any], bot_username: str) -> Optional[str]:
     """Return the command name ("setup") when ``message`` is a bot command
     addressed to us (bare ``/setup`` or the disambiguated ``/setup@OurBot``
     form Telegram uses in groups), else None."""

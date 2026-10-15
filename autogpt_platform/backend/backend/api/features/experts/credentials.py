@@ -13,7 +13,7 @@ or no expert could run a single LLM block.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import prisma.models
@@ -173,7 +173,7 @@ async def _stamp_seeded(expert_id: str) -> None:
     """
     await prisma.models.Expert.prisma().update_many(
         where={"id": expert_id, "credentialsSeededAt": None},
-        data={"credentialsSeededAt": datetime.now(UTC)},
+        data={"credentialsSeededAt": datetime.now(timezone.utc)},
     )
 
 

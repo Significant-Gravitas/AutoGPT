@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 
 from prisma.enums import AlertCause
@@ -535,7 +535,7 @@ def _low_balance_cause(
         )
 
     days_left = max(int(current_balance / daily_rate), 0)
-    runs_out = datetime.now(tz=UTC) + timedelta(days=days_left)
+    runs_out = datetime.now(tz=timezone.utc) + timedelta(days=days_left)
     return LowBalanceCause(
         cta_path="/settings/billing",
         days_left=days_left,

@@ -1,5 +1,7 @@
 """Blocks that read the RMFG catalogs: stock, finishes, colors and hardware."""
 
+from typing import Optional
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -130,7 +132,7 @@ class RMFGListFinishesBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = credentials_field()
-        process: Process | None = SchemaField(
+        process: Optional[Process] = SchemaField(
             description="Only finishes that apply to this process; empty for all.",
             default=None,
             advanced=False,
@@ -165,7 +167,7 @@ class RMFGListFinishesBlock(Block):
 
     @staticmethod
     async def list_finishes(
-        credentials: RMFGCredentials, process: Process | None
+        credentials: RMFGCredentials, process: Optional[Process]
     ) -> list[Finish]:
         return await RMFGClient(credentials).list_finishes(process)
 

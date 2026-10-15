@@ -112,7 +112,7 @@ class FixAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Fixer error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Auto-fix encountered an error: {e!s}",
+                message=f"Auto-fix encountered an error: {str(e)}",
                 error="fix_exception",
                 session_id=session_id,
             )
@@ -124,7 +124,7 @@ class FixAgentGraphTool(BaseTool):
             remaining_errors = validator.errors if not is_valid else []
         except Exception as e:
             logger.warning(f"Post-fix validation error: {e}", exc_info=True)
-            remaining_errors = [f"Post-fix validation failed: {e!s}"]
+            remaining_errors = [f"Post-fix validation failed: {str(e)}"]
             is_valid = False
 
         if is_valid:

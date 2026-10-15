@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Literal, overload
 
@@ -288,7 +288,7 @@ async def log_search_term(search_query: str):
     """Log a search term to the database"""
 
     # Anonymize the data by preventing correlation with other logs
-    date = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    date = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
     try:
         await prisma.models.SearchTerms.prisma().create(
             data={"searchTerm": search_query, "createdDate": date}
@@ -984,7 +984,7 @@ async def create_store_submission(
                     "categories": categories,
                     "subHeading": sub_heading,
                     "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
-                    "submittedAt": datetime.now(tz=UTC),
+                    "submittedAt": datetime.now(tz=timezone.utc),
                     "changesSummary": changes_summary,
                     "recommendedScheduleCron": recommended_schedule_cron,
                     "StoreListing": {
@@ -1592,7 +1592,7 @@ async def review_store_submission(
         # Update the version with review information
         update_data: prisma.types.StoreListingVersionUpdateInput = {
             "submissionStatus": submission_status,
-            "reviewedAt": datetime.now(tz=UTC),
+            "reviewedAt": datetime.now(tz=timezone.utc),
             "Reviewer": {"connect": {"id": reviewer_id}},
             "reviewComments": external_comments,
             "internalComments": internal_comments,
@@ -1849,7 +1849,7 @@ async def _approve_sub_agent(
             where={"id": matching_version.id},
             data={
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
-                "reviewedAt": datetime.now(tz=UTC),
+                "reviewedAt": datetime.now(tz=timezone.utc),
             },
         )
         await prisma.models.StoreListing.prisma(tx).update(
@@ -1886,7 +1886,7 @@ def _create_sub_agent_version_data(
         ),
         changesSummary=f"Auto-approved as sub-agent of {main_agent_name}",
         isAvailable=False,
-        submittedAt=datetime.now(tz=UTC),
+        submittedAt=datetime.now(tz=timezone.utc),
         imageUrls=[],  # Sub-agents don't need images
         categories=[],  # Sub-agents don't need categories
     )
@@ -1906,7 +1906,7 @@ async def _send_submission_review_notification(
     base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
     reviewer_name = reviewer.name if reviewer and reviewer.name else DEFAULT_ADMIN_NAME
-    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=UTC)
+    reviewed_at = reviewed_listing_version.reviewedAt or datetime.now(tz=timezone.utc)
     reviewed_at_label = f"{reviewed_at.day} {reviewed_at.strftime('%b %Y')}"
 
     if is_approved:

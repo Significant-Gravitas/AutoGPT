@@ -3,7 +3,7 @@ import contextlib
 import inspect
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from functools import cached_property
 from typing import Annotated, Any, Protocol, cast
 from unittest.mock import Mock
@@ -1015,7 +1015,7 @@ class TestGetReturn:
         in a newer database-manager deploy) are silently dropped instead of raising
         ValidationError — making the RPC layer forward-compatible during rolling deploys.
         """
-        now = datetime.now(UTC).isoformat()
+        now = datetime.now(timezone.utc).isoformat()
         valid_dict = {
             "id": "user-id",
             "email": "test@example.com",

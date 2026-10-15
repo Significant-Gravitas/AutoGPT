@@ -7,9 +7,8 @@ narrowest rule on record decides, and the latest answer replaces a rule.
 """
 
 import logging
-from collections.abc import Mapping
 from datetime import UTC, date, datetime
-from typing import Literal, get_args
+from typing import Literal, Mapping, get_args
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, ConfigDict

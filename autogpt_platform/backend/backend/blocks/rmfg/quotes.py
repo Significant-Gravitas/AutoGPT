@@ -1,5 +1,7 @@
 """Blocks that price a configured design."""
 
+from typing import Optional
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -74,7 +76,7 @@ class RMFGCreateQuoteBlock(Block):
     """Price one or more configured designs. Quoting also runs DFM."""
 
     class Input(RMFGBasketInput):
-        ship_to: ShipTo | None = SchemaField(
+        ship_to: Optional[ShipTo] = SchemaField(
             description="Destination, to include delivery options in the quote.",
             default=None,
             advanced=True,
@@ -144,7 +146,7 @@ class RMFGCreateQuoteBlock(Block):
     async def create_quote(
         credentials: RMFGCredentials,
         items: list[QuoteItemRequest],
-        ship_to: ShipTo | None,
+        ship_to: Optional[ShipTo],
         idempotency_key: str,
         wait_for_ready: bool,
         timeout_seconds: int,

@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -28,15 +28,15 @@ class _GoogleDriveFileBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     id: str = Field(description="Google Drive file/folder ID")
-    name: str | None = Field(None, description="File/folder name")
-    mime_type: str | None = Field(
+    name: Optional[str] = Field(None, description="File/folder name")
+    mime_type: Optional[str] = Field(
         None,
         alias="mimeType",
         description="MIME type (e.g., application/vnd.google-apps.document)",
     )
-    url: str | None = Field(None, description="URL to open the file")
-    icon_url: str | None = Field(None, alias="iconUrl", description="Icon URL")
-    is_folder: bool | None = Field(
+    url: Optional[str] = Field(None, description="URL to open the file")
+    icon_url: Optional[str] = Field(None, alias="iconUrl", description="Icon URL")
+    is_folder: Optional[bool] = Field(
         None, alias="isFolder", description="Whether this is a folder"
     )
 
@@ -54,7 +54,7 @@ class GoogleDriveFile(_GoogleDriveFileBase):
     """
 
     # Hidden field for credential ID - populated by frontend, preserved in outputs
-    credentials_id: str | None = Field(
+    credentials_id: Optional[str] = Field(
         None,
         alias="_credentials_id",
         description="Internal: credential ID for authentication",

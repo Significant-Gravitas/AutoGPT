@@ -6,7 +6,7 @@ from collections import OrderedDict
 from copy import deepcopy
 from enum import Enum
 from threading import Lock
-from typing import Any, TypeVar, overload
+from typing import Any, Type, TypeVar, overload
 
 import jsonschema
 import jsonschema.exceptions
@@ -86,7 +86,7 @@ _NO_FALLBACK = object()
 
 @overload
 def loads(
-    data: str | bytes, *args, target_type: type[T], fallback: T | None = None, **kwargs
+    data: str | bytes, *args, target_type: Type[T], fallback: T | None = None, **kwargs
 ) -> T:
     pass
 
@@ -99,7 +99,7 @@ def loads(data: str | bytes, *args, fallback: Any = None, **kwargs) -> Any:
 def loads(
     data: str | bytes,
     *args,
-    target_type: type[T] | None = None,
+    target_type: Type[T] | None = None,
     fallback: Any = _NO_FALLBACK,
     **kwargs,
 ) -> Any:

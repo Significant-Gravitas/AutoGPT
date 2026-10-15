@@ -7,7 +7,7 @@ assert on the transactions it would have sent.
 import logging
 import threading
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -103,7 +103,7 @@ def test_a_node_run_inside_another_is_its_child(sentry_transactions):
 
 def test_the_queue_wait_runs_from_when_the_node_was_queued(sentry_transactions):
     node_exec = _node_exec()
-    node_exec.queued_at = datetime.now(UTC) - timedelta(seconds=3)
+    node_exec.queued_at = datetime.now(timezone.utc) - timedelta(seconds=3)
     node_exec.queued_by = "node_output"
 
     with node_tracing.node_transaction(node_exec, _AI_BLOCK):
@@ -167,7 +167,7 @@ async def test_on_node_execution_runs_the_node_as_one_transaction(sentry_transac
 
     processor._on_node_execution = run_block  # type: ignore[method-assign]
     node_exec = _node_exec()
-    node_exec.queued_at = datetime.now(UTC)
+    node_exec.queued_at = datetime.now(timezone.utc)
     node_exec.queued_by = "graph_start"
 
     with (
@@ -315,16 +315,16 @@ async def test_a_high_fanout_node_traces_a_bounded_number_of_routings(
             "backend.executor.manager.async_update_node_execution_status",
             new=AsyncMock(),
         ),
-        node_tracing.node_transaction(_node_exec(), _AI_BLOCK),
     ):
-        _, status = await processor._on_node_execution(
-            node=node,
-            node_exec=_node_exec(),
-            node_exec_progress=progress,
-            stats=NodeExecutionStats(),
-            db_client=db_client,
-            log_metadata=_log_metadata(),
-        )
+        with node_tracing.node_transaction(_node_exec(), _AI_BLOCK):
+            _, status = await processor._on_node_execution(
+                node=node,
+                node_exec=_node_exec(),
+                node_exec_progress=progress,
+                stats=NodeExecutionStats(),
+                db_client=db_client,
+                log_metadata=_log_metadata(),
+            )
 
     assert status == ExecutionStatus.COMPLETED
     outputs = progress.output["node-exec-1"]

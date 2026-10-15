@@ -41,7 +41,7 @@ def test_outlook_has_font_fallback_and_fixed_image_density(kit_html: str):
 
 def test_frame_and_footers_keep_fluid_width_when_styles_are_stripped(kit_html: str):
     document = EmailElements()
-    document.feed(re.sub(r"<style>.*?</style>", "", kit_html, flags=re.DOTALL))
+    document.feed(re.sub(r"<style>.*?</style>", "", kit_html, flags=re.S))
     sheets = [
         attrs
         for tag, attrs in document.elements
@@ -52,7 +52,7 @@ def test_frame_and_footers_keep_fluid_width_when_styles_are_stripped(kit_html: s
         assert sheet["width"] == "100%"
         assert "width:100%" in sheet["style"]
         assert "max-width:560px" in sheet["style"]
-    assert len(re.findall(r'<!--\[if mso\]>.*?width="560"', kit_html, re.DOTALL)) == 3
+    assert len(re.findall(r'<!--\[if mso\]>.*?width="560"', kit_html, re.S)) == 3
     assert kit_html.count("<!--[if mso]></td></tr></table><![endif]-->") == 3
 
 
@@ -105,7 +105,7 @@ def test_both_button_sizes_have_full_clickable_padding(kit_html: str):
 
 
 def test_outlook_padding_does_not_double_the_clickable_link_padding(kit_html: str):
-    outlook_head = re.search(r"<!--\[if mso\]>(.*?)<!\[endif\]-->", kit_html, re.DOTALL)
+    outlook_head = re.search(r"<!--\[if mso\]>(.*?)<!\[endif\]-->", kit_html, re.S)
     assert outlook_head is not None
     styles = outlook_head.group(1)
     assert re.search(r"\.email-button\s*\{\s*padding:13px 28px !important;", styles)

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pydantic
 import pytest
@@ -72,7 +72,7 @@ def test_negative_costs_rejected(field):
 def test_routing_shape_accepts_nested_cells():
     payload = CatalogPayload(
         schema_version=CATALOG_SCHEMA_VERSION,
-        generated_at=datetime.now(UTC),
+        generated_at=datetime.now(timezone.utc),
         providers=[],
         creators=[],
         models=[],
@@ -86,7 +86,7 @@ def test_payload_model_count_cap():
     with pytest.raises(pydantic.ValidationError):
         CatalogPayload(
             schema_version=CATALOG_SCHEMA_VERSION,
-            generated_at=datetime.now(UTC),
+            generated_at=datetime.now(timezone.utc),
             providers=[],
             creators=[],
             models=models,

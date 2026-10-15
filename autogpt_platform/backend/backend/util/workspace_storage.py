@@ -9,8 +9,9 @@ import asyncio
 import hashlib
 import logging
 from abc import ABC, abstractmethod
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Optional
 
 import aiofiles
 import aiohttp
@@ -53,6 +54,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             Storage path string (cloud path or local path)
         """
+        pass
 
     @abstractmethod
     async def retrieve(self, storage_path: str) -> bytes:
@@ -65,6 +67,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             File content as bytes
         """
+        pass
 
     @abstractmethod
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
@@ -80,6 +83,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             At most ``max_bytes`` of file content as bytes
         """
+        pass
 
     @abstractmethod
     async def delete(self, storage_path: str) -> None:
@@ -89,6 +93,7 @@ class WorkspaceStorageBackend(ABC):
         Args:
             storage_path: The storage path to delete
         """
+        pass
 
     @abstractmethod
     async def get_download_url(self, storage_path: str, expires_in: int = 3600) -> str:
@@ -102,6 +107,7 @@ class WorkspaceStorageBackend(ABC):
         Returns:
             Download URL (signed URL for GCS, direct API path for local)
         """
+        pass
 
 
 class GCSWorkspaceStorage(WorkspaceStorageBackend):
@@ -116,9 +122,9 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     def __init__(self, bucket_name: str):
         self.bucket_name = bucket_name
-        self._async_client: async_gcs_storage.Storage | None = None
-        self._sync_client: gcs_storage.Client | None = None
-        self._session: aiohttp.ClientSession | None = None
+        self._async_client: Optional[async_gcs_storage.Storage] = None
+        self._sync_client: Optional[gcs_storage.Client] = None
+        self._session: Optional[aiohttp.ClientSession] = None
 
     async def _get_async_client(self) -> async_gcs_storage.Storage:
         """Get or create async GCS client."""
@@ -167,7 +173,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         blob_name = self._build_blob_name(workspace_id, file_id, filename)
 
         # Upload with metadata
-        upload_time = datetime.now(UTC)
+        upload_time = datetime.now(timezone.utc)
         await client.upload(
             self.bucket_name,
             blob_name,
@@ -246,7 +252,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 class LocalWorkspaceStorage(WorkspaceStorageBackend):
     """Local filesystem implementation for workspace storage (self-hosted deployments)."""
 
-    def __init__(self, base_dir: str | None = None):
+    def __init__(self, base_dir: Optional[str] = None):
         """
         Initialize local storage backend.
 
@@ -391,7 +397,7 @@ class LocalWorkspaceStorage(WorkspaceStorageBackend):
 # gets its own ``ClientSession``.
 # ---------------------------------------------------------------------------
 
-_local_storage: LocalWorkspaceStorage | None = None
+_local_storage: Optional[LocalWorkspaceStorage] = None
 _gcs_storages: dict[int, GCSWorkspaceStorage] = {}
 _storage_lock = asyncio.Lock()
 

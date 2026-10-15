@@ -1,6 +1,5 @@
 """Tests for the admin memory inspector routes."""
 
-from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import quote
 
@@ -780,11 +779,11 @@ def _make_fake_initial_status(kind: str):
 
 
 def _fake_status_row(kind: str, user_id: str, job_id: str = "job-1"):
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     from backend.copilot.dream.job_status import JobStatus
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return JobStatus(
         job_id=job_id,
         user_id=user_id,

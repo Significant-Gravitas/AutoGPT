@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from prisma.enums import ReviewStatus
@@ -22,7 +22,7 @@ def _row(instructions: str) -> PendingHumanReview:
         reviewMessage=None,
         wasEdited=None,
         processed=False,
-        createdAt=datetime(2026, 9, 23, tzinfo=UTC),
+        createdAt=datetime(2026, 9, 23, tzinfo=timezone.utc),
         updatedAt=None,
         reviewedAt=None,
     )

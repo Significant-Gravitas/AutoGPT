@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -8,7 +8,7 @@ class AutoModRequest(BaseModel):
 
     type: str = Field(..., description="Content type - 'text', 'image', 'video'")
     content: str = Field(..., description="The content to moderate")
-    metadata: dict[str, Any] | None = Field(
+    metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Additional context about the content"
     )
 
@@ -19,7 +19,7 @@ class ModerationResult(BaseModel):
     decision: str = Field(
         ..., description="Moderation decision: 'approved', 'rejected', 'flagged'"
     )
-    reason: str | None = Field(default=None, description="Reason for the decision")
+    reason: Optional[str] = Field(default=None, description="Reason for the decision")
 
 
 class AutoModResponse(BaseModel):
@@ -32,7 +32,7 @@ class AutoModResponse(BaseModel):
     status: str = Field(
         ..., description="Overall status: 'approved', 'rejected', 'flagged', 'pending'"
     )
-    moderation_results: list[ModerationResult] = Field(
+    moderation_results: List[ModerationResult] = Field(
         default_factory=list, description="List of moderation results"
     )
 

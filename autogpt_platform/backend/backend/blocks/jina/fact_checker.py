@@ -1,3 +1,4 @@
+from typing import List
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -38,7 +39,7 @@ class FactCheckerBlock(Block):
         )
         result: bool = SchemaField(description="The result of the factuality check")
         reason: str = SchemaField(description="The reason for the factuality result")
-        references: list[Reference] = SchemaField(
+        references: List[Reference] = SchemaField(
             description="List of references supporting or contradicting the statement",
             default=[],
         )

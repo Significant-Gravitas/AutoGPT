@@ -10,7 +10,7 @@ import logging
 import time
 import urllib.parse
 from base64 import b64encode
-from typing import ClassVar, Literal
+from typing import ClassVar, Literal, Optional
 
 from pydantic import SecretStr
 
@@ -76,7 +76,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         self,
         scopes: list[str],
         state: str,
-        code_challenge: str | None,
+        code_challenge: Optional[str],
     ) -> str:
         scopes = self.handle_default_scopes(scopes)
 
@@ -102,7 +102,7 @@ class MCPOAuthHandler(BaseOAuthHandler):
         self,
         code: str,
         scopes: list[str],
-        code_verifier: str | None,
+        code_verifier: Optional[str],
     ) -> OAuth2Credentials:
         client_auth, headers = self._token_client_auth()
         data: dict[str, str] = {

@@ -3,7 +3,8 @@
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+from typing import Optional
 
 from openai.types.chat import ChatCompletionUserMessageParam
 
@@ -68,7 +69,7 @@ async def _fetch_tally_page(
     form_id: str,
     page: int,
     limit: int = _PAGE_LIMIT,
-    start_date: str | None = None,
+    start_date: Optional[str] = None,
 ) -> dict:
     """Fetch a single page of submissions from the Tally API."""
     url = f"{TALLY_API_BASE}/forms/{form_id}/submissions?page={page}&limit={limit}"
@@ -94,7 +95,7 @@ def _make_tally_client(api_key: str) -> Requests:
 async def _fetch_all_submissions(
     client: Requests,
     form_id: str,
-    start_date: str | None = None,
+    start_date: Optional[str] = None,
     max_pages: int = _MAX_PAGES,
 ) -> tuple[list[dict], list[dict]]:
     """Paginate through all Tally submissions. Returns (questions, submissions)."""
@@ -140,9 +141,9 @@ def _build_email_index(
     for q in questions:
         label = (q.get("label") or q.get("title") or q.get("name") or "").lower()
         q_type = (q.get("type") or "").lower()
-        if q_type in ("input_email", "email") or any(
-            kw in label for kw in ("email", "e-mail", "contact")
-        ):
+        if q_type in ("input_email", "email"):
+            email_question_ids.append(q["id"])
+        elif any(kw in label for kw in ("email", "e-mail", "contact")):
             email_question_ids.append(q["id"])
 
     index: dict[str, dict] = {}
@@ -159,7 +160,7 @@ def _build_email_index(
 
 def _extract_email_from_submission(
     submission: dict, email_question_ids: list[str]
-) -> str | None:
+) -> Optional[str]:
     """Extract email address from a submission by checking respondentEmail, then field responses."""
     # Try respondent email first (Tally often includes this)
     respondent_email = submission.get("respondentEmail")
@@ -186,7 +187,7 @@ def _extract_email_from_submission(
 
 async def _get_cached_index(
     form_id: str,
-) -> tuple[dict | None, list | None]:
+) -> tuple[Optional[dict], Optional[list]]:
     """Return (email_index, questions) from Redis, or (None, None) on cache miss."""
     redis = await get_redis_async()
     index_key = _EMAIL_INDEX_KEY.format(form_id=form_id)
@@ -248,7 +249,7 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
         email_index = _build_email_index(submissions, questions)
 
     # Store in Redis
-    now = datetime.now(UTC).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     await redis.setex(index_key, _INDEX_TTL, json.dumps(email_index))
     await redis.setex(questions_key, _INDEX_TTL, json.dumps(questions))
     await redis.setex(last_fetch_key, _LAST_FETCH_TTL, now)
@@ -259,7 +260,7 @@ async def _refresh_cache(form_id: str) -> tuple[dict, list]:
 
 async def find_submission_by_email(
     form_id: str, email: str
-) -> tuple[dict, list] | None:
+) -> Optional[tuple[dict, list]]:
     """Look up a Tally submission by email. Uses cache when available.
 
     Returns (submission_data, questions) or None.
@@ -421,7 +422,7 @@ async def extract_business_understanding(
             ),
             timeout=timeout_s,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning("Tally: LLM extraction timed out")
         raise
 

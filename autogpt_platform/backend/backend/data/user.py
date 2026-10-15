@@ -3,7 +3,7 @@ import base64
 import hashlib
 import hmac
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
@@ -203,7 +203,7 @@ async def get_user_subscription_tier(user_id: str) -> SubscriptionTier:
     return user.subscriptionTier or SubscriptionTier.NO_TIER
 
 
-async def get_user_email_by_id(user_id: str) -> str | None:
+async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
         user = await prisma.user.find_unique(where={"id": user_id})
         return user.email if user else None
@@ -220,12 +220,12 @@ class AuthUserFlagFields(BaseModel):
     table via the RPC client rather than a locally-connected Prisma engine.
     """
 
-    role: str | None = None
-    email: str | None = None
-    created_at: datetime | None = None
+    role: Optional[str] = None
+    email: Optional[str] = None
+    created_at: Optional[datetime] = None
 
 
-async def get_auth_user_flag_fields(user_id: str) -> AuthUserFlagFields | None:
+async def get_auth_user_flag_fields(user_id: str) -> Optional[AuthUserFlagFields]:
     """Fetch the AuthUser fields used for LaunchDarkly targeting.
 
     Returns ``None`` when no auth row exists (e.g. mid auth-migration bridge
@@ -247,11 +247,11 @@ class OrphanedAuthIdentity(BaseModel):
 
     id: str
     email: str
-    name: str | None = None
+    name: Optional[str] = None
     createdAt: datetime
     # Set when a *different* platform User already owns this email, which the
     # unique index on ``User.email`` turns into an unprovisionable account.
-    email_owner_id: str | None = None
+    email_owner_id: Optional[str] = None
 
     @property
     def has_email_collision(self) -> bool:
@@ -319,7 +319,7 @@ async def heal_orphaned_auth_identities(
     makes it unprovisionable, and guessing which account the person meant is
     not this function's call.
     """
-    older_than = datetime.now(UTC) - timedelta(seconds=grace_secs)
+    older_than = datetime.now(timezone.utc) - timedelta(seconds=grace_secs)
     report = OrphanedAuthIdentityReport()
     for identity in await find_orphaned_auth_identities(older_than, limit):
         if identity.has_email_collision:
@@ -347,7 +347,7 @@ async def heal_orphaned_auth_identities(
 
 
 @cache_user_lookup
-async def get_user_by_email(email: str) -> User | None:
+async def get_user_by_email(email: str) -> Optional[User]:
     try:
         user = await prisma.user.find_unique(where={"email": email})
         return User.from_db(user) if user else None
@@ -396,7 +396,7 @@ async def update_user_email(user_id: str, email: str):
         ) from e
 
 
-async def create_default_user() -> User | None:
+async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:
         user = await prisma.user.create(
@@ -743,9 +743,9 @@ def generate_unsubscribe_link(user_id: str) -> str:
     ).digest()
 
     # Create a token that combines the user_id and signature
-    token = base64.urlsafe_b64encode(f"{user_id}:{signature.hex()}".encode()).decode(
-        "utf-8"
-    )
+    token = base64.urlsafe_b64encode(
+        f"{user_id}:{signature.hex()}".encode("utf-8")
+    ).decode("utf-8")
     logger.info(f"Generating unsubscribe link for user {user_id}")
 
     base_url = settings.config.platform_base_url
@@ -977,7 +977,7 @@ async def _write_signup_consent(
     The opt-out is conditional on none being stored, so a refusal recorded
     since the caller read the row keeps its own date and source.
     """
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     terms_stamped = opted_out = False
     async with transaction() as tx:
         if terms_version is not None:
@@ -1051,7 +1051,7 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
         written = await PrismaUser.prisma().update_many(
             where={"id": row.id, "marketingOptOutAt": None},
             data={
-                "marketingOptOutAt": datetime.now(UTC),
+                "marketingOptOutAt": datetime.now(timezone.utc),
                 "marketingOptOutSource": source,
             },
         )
@@ -1244,7 +1244,7 @@ async def claim_welcome_email(user_id: str) -> bool:
     try:
         claimed = await prisma.user.update_many(
             where={"id": user_id, "welcomeEmailSentAt": None},
-            data={"welcomeEmailSentAt": datetime.now(tz=UTC)},
+            data={"welcomeEmailSentAt": datetime.now(tz=timezone.utc)},
         )
         return claimed > 0
     except Exception as e:
@@ -1323,17 +1323,17 @@ def _sign_preference_choice(user_id: str, choice: str) -> str:
     # cannot be replayed as "off".
     signature = hmac.new(
         secret_key.encode("utf-8"),
-        f"{user_id}:{choice}".encode(),
+        f"{user_id}:{choice}".encode("utf-8"),
         hashlib.sha256,
     ).digest()
-    return base64.urlsafe_b64encode(f"{user_id}:{signature.hex()}".encode()).decode(
-        "utf-8"
-    )
+    return base64.urlsafe_b64encode(
+        f"{user_id}:{signature.hex()}".encode("utf-8")
+    ).decode("utf-8")
 
 
 async def get_user_default_chat_route(
     user_id: str,
-) -> tuple[str | None, str | None]:
+) -> tuple[Optional[str], Optional[str]]:
     """Read the saved default chat transport exactly as stored.
 
     Returned verbatim rather than validated here: what a provider string
@@ -1361,8 +1361,8 @@ async def get_user_default_chat_route(
 
 async def set_user_default_chat_route(
     user_id: str,
-    auth_provider: str | None,
-    credential_id: str | None,
+    auth_provider: Optional[str],
+    credential_id: Optional[str],
 ) -> None:
     """Save (or, with ``auth_provider=None``, clear) the default chat transport."""
     try:

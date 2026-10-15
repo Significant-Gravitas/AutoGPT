@@ -12,8 +12,7 @@ import contextlib
 import secrets
 import shlex
 import string
-from collections.abc import Mapping
-from typing import Literal
+from typing import Literal, Mapping, Optional
 
 from e2b import AsyncSandbox, AsyncVolume, SandboxLifecycle
 from pydantic import BaseModel
@@ -83,8 +82,8 @@ class DesktopStream(BaseModel):
 
 class PersistenceInfo(BaseModel):
     volume_mounted: bool = False
-    volume_name: str | None = None
-    warning: str | None = None
+    volume_name: Optional[str] = None
+    warning: Optional[str] = None
     # Every mount path that was attached (WORKSPACE_PATH plus, for an expert's
     # computer, SHARED_PATH). ``volume_mounted``/``volume_name`` describe the
     # WORKSPACE_PATH mount specifically.
@@ -106,9 +105,9 @@ class DesktopSession:
         timeout_seconds: int,
         width: int,
         height: int,
-        volume_mounts: Mapping[str, str] | None = None,
+        volume_mounts: Optional[Mapping[str, str]] = None,
         template: str = DESKTOP_TEMPLATE,
-        metadata: Mapping[str, str] | None = None,
+        metadata: Optional[Mapping[str, str]] = None,
         *,
         owner: EgressOwner,
     ) -> tuple["DesktopSession", PersistenceInfo]:
@@ -150,7 +149,7 @@ class DesktopSession:
         cls,
         sandbox_id: str,
         api_key: str,
-        timeout_seconds: int | None = None,
+        timeout_seconds: Optional[int] = None,
         *,
         owner: EgressOwner,
     ) -> "DesktopSession":
@@ -164,7 +163,7 @@ class DesktopSession:
         return cls(sandbox)
 
     async def start_stream(
-        self, password: str | None = None
+        self, password: Optional[str] = None
     ) -> tuple[DesktopStream, str]:
         """Return the live stream URL and its password, starting the VNC stack
         only if needed.
@@ -263,9 +262,9 @@ class DesktopSession:
     async def run_command(
         self,
         command: str,
-        cwd: str | None = None,
+        cwd: Optional[str] = None,
         timeout: int = 60,
-        user: str | None = None,
+        user: Optional[str] = None,
     ):
         return await run_internal(
             self.sandbox,
@@ -366,7 +365,7 @@ def _sandbox_create_kwargs(
     api_key: str,
     timeout_seconds: int,
     template: str,
-    metadata: Mapping[str, str] | None = None,
+    metadata: Optional[Mapping[str, str]] = None,
 ) -> dict:
     kwargs: dict = {
         "template": template,
@@ -405,11 +404,11 @@ MOUNTED_CREATE_ATTEMPTS = 2
 
 
 async def _create_sandbox_with_volumes(
-    volume_mounts: Mapping[str, str] | None,
+    volume_mounts: Optional[Mapping[str, str]],
     api_key: str,
     timeout_seconds: int,
     template: str = DESKTOP_TEMPLATE,
-    metadata: Mapping[str, str] | None = None,
+    metadata: Optional[Mapping[str, str]] = None,
     *,
     owner: EgressOwner,
 ) -> tuple[AsyncSandbox, PersistenceInfo]:

@@ -1475,7 +1475,8 @@ class TestMidLoopPendingFlushOrdering:
             recorded = "".join(
                 m.content or "" for m in state.session_messages if m.role == "assistant"
             )
-            final_text = final_text.removeprefix(recorded)
+            if final_text.startswith(recorded):
+                final_text = final_text[len(recorded) :]
         if final_text.strip():
             session_messages.append(ChatMessage(role="assistant", content=final_text))
 
@@ -2050,18 +2051,16 @@ class TestBaselineReasoningStreaming:
         mock_client = MagicMock()
         mock_client.chat.completions.create = AsyncMock(return_value=stream)
 
-        with (
-            patch(
-                "backend.copilot.baseline.service._get_main_client",
-                return_value=mock_client,
-            ),
-            pytest.raises(RuntimeError),
+        with patch(
+            "backend.copilot.baseline.service._get_main_client",
+            return_value=mock_client,
         ):
-            await _baseline_llm_caller(
-                messages=[{"role": "user", "content": "hi"}],
-                tools=[],
-                state=state,
-            )
+            with pytest.raises(RuntimeError):
+                await _baseline_llm_caller(
+                    messages=[{"role": "user", "content": "hi"}],
+                    tools=[],
+                    state=state,
+                )
 
         types = [type(e).__name__ for e in state.emitted_events]
         # The reasoning block was opened, the exception fired, and the

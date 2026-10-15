@@ -10,7 +10,7 @@ module surface so the dispatch logic can be exercised in isolation.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -265,7 +265,9 @@ async def test_unhit_edge_just_inside_grace_window_is_untouched(
     """Boundary: zero hits with one hour of grace left → still a no-op.
     Derived from RATIFICATION_GRACE_PERIOD so the boundary moves with
     the constant rather than re-encoding a day count."""
-    created_at = datetime.now(UTC) - (RATIFICATION_GRACE_PERIOD - timedelta(hours=1))
+    created_at = datetime.now(timezone.utc) - (
+        RATIFICATION_GRACE_PERIOD - timedelta(hours=1)
+    )
     edge = {"uuid": "edge-near-boundary", "created_at": created_at}
     driver = _make_driver(records_for_list=[edge])
     mocker.patch.object(
@@ -524,8 +526,8 @@ async def test_try_ratify_on_hit_empty_user_id_is_noop(mocker):
 
 
 def _hours_ago(n: int) -> datetime:
-    return datetime.now(UTC) - timedelta(hours=n)
+    return datetime.now(timezone.utc) - timedelta(hours=n)
 
 
 def _days_ago(n: int) -> datetime:
-    return datetime.now(UTC) - timedelta(days=n)
+    return datetime.now(timezone.utc) - timedelta(days=n)

@@ -301,14 +301,15 @@ class TestRateLimitRecording:
         with patch(
             "backend.copilot.token_tracking.record_cost_usage",
             new=mock_record,
-        ), pytest.raises(RuntimeError, match="boom"):
-            await persist_and_record_usage(
-                session=None,
-                user_id="user-xyz",
-                prompt_tokens=100,
-                completion_tokens=50,
-                cost_usd=0.002,
-            )
+        ):
+            with pytest.raises(RuntimeError, match="boom"):
+                await persist_and_record_usage(
+                    session=None,
+                    user_id="user-xyz",
+                    prompt_tokens=100,
+                    completion_tokens=50,
+                    cost_usd=0.002,
+                )
 
     @pytest.mark.asyncio
     async def test_skips_record_when_zero_tokens_and_no_cost(self):

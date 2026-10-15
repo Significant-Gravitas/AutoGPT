@@ -1303,7 +1303,7 @@ class TestSoftDeletedOrgsExcludedFromMigrationSQL:
         must carry the soft-delete guard on the same line."""
         import inspect
 
-        from backend.data import org_migration
+        import backend.data.org_migration as org_migration
 
         for lineno, line in enumerate(
             inspect.getsource(org_migration).splitlines(), start=1

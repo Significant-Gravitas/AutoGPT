@@ -97,7 +97,7 @@ class ValidateAgentGraphTool(BaseTool):
         except Exception as e:
             logger.error(f"Validation error: {e}", exc_info=True)
             return ErrorResponse(
-                message=f"Validation encountered an error: {e!s}",
+                message=f"Validation encountered an error: {str(e)}",
                 error="validation_exception",
                 session_id=session_id,
             )

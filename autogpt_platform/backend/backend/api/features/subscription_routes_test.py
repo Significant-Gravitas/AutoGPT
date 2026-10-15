@@ -1870,7 +1870,7 @@ def test_get_subscription_status_includes_pending_tier(
     mock_user = Mock()
     mock_user.subscription_tier = SubscriptionTier.BUSINESS
 
-    effective_at = dt.datetime(2030, 1, 1, tzinfo=dt.UTC)
+    effective_at = dt.datetime(2030, 1, 1, tzinfo=dt.timezone.utc)
 
     async def mock_price_id(
         tier: SubscriptionTier, billing_cycle: str = "monthly"

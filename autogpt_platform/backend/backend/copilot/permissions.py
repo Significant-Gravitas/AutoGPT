@@ -363,7 +363,7 @@ def _with_implied_grants(allowed: frozenset[str]) -> frozenset[str]:
 
 def _deferred_tool_names() -> frozenset[str]:
     """The registry's deferred set, imported late (heavy tool imports)."""
-    from backend.copilot.tools import DEFERRED_TOOL_NAMES
+    from backend.copilot.tools import DEFERRED_TOOL_NAMES  # noqa: PLC0415
 
     return DEFERRED_TOOL_NAMES
 

@@ -7,7 +7,7 @@ that did it, so the two feeds land in the same block instead of describing
 the same day from different angles.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from backend.api.features.experts.models import Expert
@@ -114,7 +114,7 @@ def _compose_group(found: _Bucket) -> HomeRecentWorkGroup:
     categories = [item.category for item in found.items]
     return HomeRecentWorkGroup(
         actor=found.actor,
-        latest_at=found.latest_at or datetime.min.replace(tzinfo=UTC),
+        latest_at=found.latest_at or datetime.min.replace(tzinfo=timezone.utc),
         runs=found.runs[:_MAX_RUNS_PER_GROUP],
         items=found.items[:_MAX_ITEMS_PER_GROUP],
         run_count=len(found.runs),

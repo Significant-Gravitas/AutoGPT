@@ -26,10 +26,9 @@ import logging
 import re
 import sys
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Iterable, Type
 
 if TYPE_CHECKING:
     from backend.blocks._base import AnyBlockSchema
@@ -273,7 +272,7 @@ def file_path_to_title(file_path: str) -> str:
     return apply_fixes(name.replace("_", " ").title())
 
 
-def extract_block_doc(block_cls: type["AnyBlockSchema"]) -> BlockDoc:
+def extract_block_doc(block_cls: Type["AnyBlockSchema"]) -> BlockDoc:
     """Extract documentation data from a block class."""
     block = block_cls()
 

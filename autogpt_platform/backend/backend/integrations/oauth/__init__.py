@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import BaseModel
 
@@ -45,8 +45,8 @@ class SDKAwareCredentials(BaseModel):
     """OAuth credentials configuration."""
 
     use_secrets: bool = True
-    client_id_env_var: str | None = None
-    client_secret_env_var: str | None = None
+    client_id_env_var: Optional[str] = None
+    client_secret_env_var: Optional[str] = None
 
 
 _credentials_by_provider = {}
@@ -255,6 +255,6 @@ _device_handlers_dict: dict[str, type[BaseDeviceAuthHandler]] = {
 DEVICE_HANDLERS_BY_NAME: dict[str, type[BaseDeviceAuthHandler]] = _device_handlers_dict
 
 __all__ = [
-    "DEVICE_HANDLERS_BY_NAME",
     "HANDLERS_BY_NAME",
+    "DEVICE_HANDLERS_BY_NAME",
 ]

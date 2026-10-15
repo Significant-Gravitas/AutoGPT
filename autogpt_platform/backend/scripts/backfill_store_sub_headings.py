@@ -150,7 +150,7 @@ async def generate_sub_headings(
                 ),
                 timeout=CALL_TIMEOUT_SECONDS,
             )
-        except TimeoutError:
+        except asyncio.TimeoutError:
             print(f"  [{index}/{len(rows)}] timed out on {row_id}", file=sys.stderr)
             continue
         except Exception as exc:  # noqa: BLE001 - one bad row must not end the run

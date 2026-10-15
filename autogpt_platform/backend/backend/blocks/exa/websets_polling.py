@@ -8,7 +8,7 @@ to complete, with progress tracking and timeout management.
 import asyncio
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, Dict
 
 from exa_py import AsyncExa
 from pydantic import BaseModel
@@ -39,7 +39,7 @@ class SampleEnrichmentModel(BaseModel):
 
     item_id: str
     item_title: str
-    enrichment_data: dict[str, Any]
+    enrichment_data: Dict[str, Any]
 
 
 class WebsetTargetStatus(str, Enum):
@@ -243,7 +243,7 @@ class ExaWaitForWebsetBlock(Block):
                     yield "enrichment_progress", enrichment_progress
                 yield "timed_out", True
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             raise ValueError(
                 f"Polling timed out after {input_data.timeout} seconds"
             ) from None
@@ -432,7 +432,7 @@ class ExaWaitForSearchBlock(Block):
             yield "elapsed_time", elapsed
             yield "timed_out", True
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             raise ValueError(
                 f"Search polling timed out after {input_data.timeout} seconds"
             ) from None
@@ -579,7 +579,7 @@ class ExaWaitForEnrichmentBlock(Block):
             yield "elapsed_time", elapsed
             yield "timed_out", True
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             raise ValueError(
                 f"Enrichment polling timed out after {input_data.timeout} seconds"
             ) from None

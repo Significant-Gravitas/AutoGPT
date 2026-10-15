@@ -30,7 +30,7 @@ firing turn makes back to the row — lives in ``routine_jobs``.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import prisma
 import prisma.enums
@@ -257,7 +257,7 @@ async def enable_routine(
     # A spent one-shot switched on again needs a new time: re-arming it at the
     # old one would either fire immediately or never, and neither is a thing
     # the owner asked for.
-    if resolved_run_at is not None and resolved_run_at <= datetime.now(UTC):
+    if resolved_run_at is not None and resolved_run_at <= datetime.now(timezone.utc):
         raise ValueError("That time has already passed; give a future one.")
 
     mode = _session_mode(session_mode or str(row.sessionMode))
@@ -283,7 +283,7 @@ async def enable_routine(
         session_id=pinned,
         user_timezone=user_timezone,
     )
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     data: prisma.types.ExpertRoutineUpdateInput = {
         "prompt": resolved_prompt,
         "crons": resolved_crons,
@@ -382,7 +382,7 @@ async def create_routine(
             "A routine runs either on a cadence or once at a time, not both "
             "and not neither."
         )
-    if run_at is not None and run_at <= datetime.now(UTC):
+    if run_at is not None and run_at <= datetime.now(timezone.utc):
         raise ValueError("That time has already passed; give a future one.")
     mode = _session_mode(session_mode or "THREAD")
     data: prisma.types.ExpertRoutineCreateInput = {
@@ -396,7 +396,7 @@ async def create_routine(
         ),
         "source": prisma.enums.ExpertRoutineSource.OWNER,
         "grantsCredentials": grants_credentials,
-        "customizedAt": datetime.now(UTC),
+        "customizedAt": datetime.now(timezone.utc),
     }
     if credential_pins:
         data["credentialPins"] = _pins_json(credential_pins)

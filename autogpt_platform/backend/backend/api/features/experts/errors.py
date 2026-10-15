@@ -26,8 +26,8 @@ __all__ = [
     "ExpertPodLimitReachedError",
     "ExpertPodNameTakenError",
     "ExpertPodNotFoundError",
-    "ExpertScheduleCleanupError",
     "ExpertTemplateNotFoundError",
+    "ExpertScheduleCleanupError",
     "RaisedExpertLifetimeLimitExceededError",
 ]
 

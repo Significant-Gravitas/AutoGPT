@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -274,7 +274,7 @@ class TestAddCopilotTurnScheduleExpertAttribution:
                 user_id="user-1",
                 session_id=None,
                 message="check CI",
-                run_at=datetime(2026, 5, 24, 4, 0, tzinfo=UTC),
+                run_at=datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc),
                 user_timezone="UTC",
                 expert_id=expert_id,
             )
@@ -307,7 +307,7 @@ class TestUpdateGraphExecutionSchedule:
         job.trigger = _build_trigger(
             cron="0 9 * * 1,2,3,4,5", run_at=None, user_timezone="UTC"
         )
-        job.next_run_time = None if paused else datetime.now(UTC)
+        job.next_run_time = None if paused else datetime.now(timezone.utc)
         if kind == "graph":
             job.kwargs = GraphExecutionJobArgs(
                 schedule_id="sched-1",
@@ -430,7 +430,7 @@ class TestAddCommunityRebuildSchedule:
 
     def test_next_run_time_isoformatted_when_present(self) -> None:
         s = _stub_scheduler()
-        nrt = datetime(2026, 5, 24, 4, 0, tzinfo=UTC)
+        nrt = datetime(2026, 5, 24, 4, 0, tzinfo=timezone.utc)
         s.scheduler.add_job.return_value = MagicMock(
             id="community_rebuild_abc", next_run_time=nrt
         )
@@ -637,8 +637,8 @@ def _nightly_result(**overrides):
     defaults = {
         "user_id": "abc",
         "nightly_id": "nightly-1",
-        "started_at": datetime.now(UTC),
-        "completed_at": datetime.now(UTC),
+        "started_at": datetime.now(timezone.utc),
+        "completed_at": datetime.now(timezone.utc),
         "elapsed_seconds": 1.0,
     }
     defaults.update(overrides)
@@ -656,7 +656,7 @@ def _dream_result(**overrides):
 def _ratification_result(**overrides):
     from backend.copilot.dream.ratification import RatificationResult
 
-    defaults = {"user_id": "abc", "started_at": datetime.now(UTC)}
+    defaults = {"user_id": "abc", "started_at": datetime.now(timezone.utc)}
     defaults.update(overrides)
     return RatificationResult(**defaults)
 
@@ -935,7 +935,7 @@ async def test_copilot_turn_schedule_one_shot(server: SpinTestServer):
     )
     assert existing == []
 
-    run_at = datetime.now(tz=UTC) + timedelta(hours=1)
+    run_at = datetime.now(tz=timezone.utc) + timedelta(hours=1)
     schedule = await scheduler.add_copilot_turn_schedule(
         user_id=test_user.id,
         session_id=session_id,

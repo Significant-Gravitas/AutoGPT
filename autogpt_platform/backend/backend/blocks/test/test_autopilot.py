@@ -410,12 +410,13 @@ class TestRecoveryEnqueue:
         with patch(
             "backend.blocks.autopilot._enqueue_for_recovery",
             side_effect=_cancelled_enqueue,
-        ), pytest.raises(asyncio.CancelledError):
-            async for name, value in block.run(
-                block.Input(prompt="do work", max_recursion_depth=3),
-                execution_context=_make_context(),
-            ):
-                outputs[name] = value
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                async for name, value in block.run(
+                    block.Input(prompt="do work", max_recursion_depth=3),
+                    execution_context=_make_context(),
+                ):
+                    outputs[name] = value
 
         # error must be yielded even when recovery raises CancelledError
         assert outputs.get("error") == "e2b stall"

@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Literal
+from typing import Any, Dict, Literal, Optional, Union
 
 from pydantic import model_validator
 
@@ -24,7 +24,7 @@ class TextDisabled(BaseModel):
 
 class TextAdvanced(BaseModel):
     discriminator: Literal["advanced"] = "advanced"
-    max_characters: int | None = SchemaField(
+    max_characters: Optional[int] = SchemaField(
         default=None,
         description="Maximum number of characters to return",
         placeholder="1000",
@@ -49,7 +49,7 @@ class HighlightSettings(BaseModel):
         placeholder="1",
         ge=1,
     )
-    query: str | None = SchemaField(
+    query: Optional[str] = SchemaField(
         default=None,
         description="Custom query to direct the LLM's selection of highlights",
         placeholder="Key advancements",
@@ -57,12 +57,12 @@ class HighlightSettings(BaseModel):
 
 
 class SummarySettings(BaseModel):
-    query: str | None = SchemaField(
+    query: Optional[str] = SchemaField(
         default=None,
         description="Custom query for the LLM-generated summary",
         placeholder="Main developments",
     )
-    output_schema: dict | None = SchemaField(
+    output_schema: Optional[dict] = SchemaField(
         default=None,
         description="JSON schema for structured output from summary",
         advanced=True,
@@ -103,7 +103,7 @@ class ContextDisabled(BaseModel):
 
 class ContextAdvanced(BaseModel):
     discriminator: Literal["advanced"] = "advanced"
-    max_characters: int | None = SchemaField(
+    max_characters: Optional[int] = SchemaField(
         default=None,
         description="Maximum character limit for context string",
         placeholder="10000",
@@ -111,47 +111,47 @@ class ContextAdvanced(BaseModel):
 
 
 class ContentSettings(BaseModel):
-    text: bool | TextEnabled | TextDisabled | TextAdvanced | None = SchemaField(
+    text: Optional[Union[bool, TextEnabled, TextDisabled, TextAdvanced]] = SchemaField(
         default=None,
         description="Text content retrieval. Boolean for simple enable/disable or object for advanced settings",
     )
-    highlights: HighlightSettings | None = SchemaField(
+    highlights: Optional[HighlightSettings] = SchemaField(
         default=None,
         description="Text snippets most relevant from each page",
     )
-    summary: SummarySettings | None = SchemaField(
+    summary: Optional[SummarySettings] = SchemaField(
         default=None,
         description="LLM-generated summary of the webpage",
     )
-    livecrawl: LivecrawlTypes | None = SchemaField(
+    livecrawl: Optional[LivecrawlTypes] = SchemaField(
         default=None,
         description="Livecrawling options: never, fallback, always, preferred",
         advanced=True,
     )
-    livecrawl_timeout: int | None = SchemaField(
+    livecrawl_timeout: Optional[int] = SchemaField(
         default=None,
         description="Timeout for livecrawling in milliseconds",
         placeholder="10000",
         advanced=True,
     )
-    subpages: int | None = SchemaField(
+    subpages: Optional[int] = SchemaField(
         default=None,
         description="Number of subpages to crawl",
         placeholder="0",
         ge=0,
         advanced=True,
     )
-    subpage_target: str | list[str] | None = SchemaField(
+    subpage_target: Optional[Union[str, list[str]]] = SchemaField(
         default=None,
         description="Keyword(s) to find specific subpages of search results",
         advanced=True,
     )
-    extras: ExtrasSettings | None = SchemaField(
+    extras: Optional[ExtrasSettings] = SchemaField(
         default=None,
         description="Extra parameters for additional content",
         advanced=True,
     )
-    context: bool | ContextEnabled | ContextDisabled | ContextAdvanced | None = (
+    context: Optional[Union[bool, ContextEnabled, ContextDisabled, ContextAdvanced]] = (
         SchemaField(
             default=None,
             description="Format search results into a context string for LLMs",
@@ -162,7 +162,7 @@ class ContentSettings(BaseModel):
 
 # Websets Models
 class WebsetEntitySettings(BaseModel):
-    type: str | None = SchemaField(
+    type: Optional[str] = SchemaField(
         default=None,
         description="Entity type (e.g., 'company', 'person')",
         placeholder="company",
@@ -174,7 +174,7 @@ class WebsetCriterion(BaseModel):
         description="Description of the criterion",
         placeholder="Must be based in the US",
     )
-    success_rate: int | None = SchemaField(
+    success_rate: Optional[int] = SchemaField(
         default=None,
         description="Success rate percentage",
         ge=0,
@@ -193,15 +193,15 @@ class WebsetSearchConfig(BaseModel):
         ge=1,
         le=100,
     )
-    entity: WebsetEntitySettings | None = SchemaField(
+    entity: Optional[WebsetEntitySettings] = SchemaField(
         default=None,
         description="Entity settings for the search",
     )
-    criteria: list[WebsetCriterion] | None = SchemaField(
+    criteria: Optional[list[WebsetCriterion]] = SchemaField(
         default=None,
         description="Search criteria",
     )
-    behavior: str | None = SchemaField(
+    behavior: Optional[str] = SchemaField(
         default="override",
         description="Behavior when updating results ('override' or 'append')",
         placeholder="override",
@@ -229,12 +229,12 @@ class WebsetEnrichmentConfig(BaseModel):
         description="Format of the enrichment result",
         placeholder="text",
     )
-    instructions: str | None = SchemaField(
+    instructions: Optional[str] = SchemaField(
         default=None,
         description="Instructions for the enrichment",
         placeholder="Extract key company metrics",
     )
-    options: list[EnrichmentOption] | None = SchemaField(
+    options: Optional[list[EnrichmentOption]] = SchemaField(
         default=None,
         description="Options for the enrichment",
     )
@@ -331,8 +331,8 @@ class CostDollars(BaseModel):
 
 # Helper functions for payload processing
 def process_text_field(
-    text: bool | TextEnabled | TextDisabled | TextAdvanced | None,
-) -> bool | dict[str, Any] | None:
+    text: Union[bool, TextEnabled, TextDisabled, TextAdvanced, None],
+) -> Optional[Union[bool, Dict[str, Any]]]:
     """Process text field for API payload."""
     if text is None:
         return None
@@ -354,7 +354,7 @@ def process_text_field(
     return None
 
 
-def process_contents_settings(contents: ContentSettings | None) -> dict[str, Any]:
+def process_contents_settings(contents: Optional[ContentSettings]) -> Dict[str, Any]:
     """Process ContentSettings into API payload format."""
     if not contents:
         return {}
@@ -368,7 +368,7 @@ def process_contents_settings(contents: ContentSettings | None) -> dict[str, Any
 
     # Handle highlights
     if contents.highlights is not None:
-        highlights_dict: dict[str, Any] = {
+        highlights_dict: Dict[str, Any] = {
             "numSentences": contents.highlights.num_sentences,
             "highlightsPerUrl": contents.highlights.highlights_per_url,
         }
@@ -415,8 +415,8 @@ def process_contents_settings(contents: ContentSettings | None) -> dict[str, Any
 
 
 def process_context_field(
-    context: bool | dict | ContextEnabled | ContextDisabled | ContextAdvanced | None,
-) -> bool | dict[str, int] | None:
+    context: Union[bool, dict, ContextEnabled, ContextDisabled, ContextAdvanced, None],
+) -> Optional[Union[bool, Dict[str, int]]]:
     """Process context field for API payload."""
     if context is None:
         return None
@@ -438,8 +438,8 @@ def process_context_field(
 
 
 def format_date_fields(
-    input_data: Any, date_field_mapping: dict[str, str]
-) -> dict[str, str]:
+    input_data: Any, date_field_mapping: Dict[str, str]
+) -> Dict[str, str]:
     """Format datetime fields for API payload."""
     formatted_dates = {}
     for input_field, api_field in date_field_mapping.items():
@@ -451,8 +451,8 @@ def format_date_fields(
 
 def add_optional_fields(
     input_data: Any,
-    field_mapping: dict[str, str],
-    payload: dict[str, Any],
+    field_mapping: Dict[str, str],
+    payload: Dict[str, Any],
     process_enums: bool = False,
 ) -> None:
     """Add optional fields to payload if they have values."""
@@ -465,7 +465,7 @@ def add_optional_fields(
                 payload[api_field] = value
 
 
-def extract_exa_cost_usd(response: Any) -> float | None:
+def extract_exa_cost_usd(response: Any) -> Optional[float]:
     """Return ``cost_dollars.total`` (USD) from an Exa SDK response, or None.
 
     Handles dataclass/pydantic responses (``response.cost_dollars.total``),

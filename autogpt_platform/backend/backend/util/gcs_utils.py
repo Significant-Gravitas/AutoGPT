@@ -7,13 +7,12 @@ including path parsing, client management, and signed URL generation.
 
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
-from typing import cast
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
 from google.auth import default as google_auth_default
-from google.auth.credentials import Credentials, Signing
+from google.auth.credentials import Signing
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.cloud import storage as gcs_storage
 
@@ -165,7 +164,7 @@ async def generate_signed_url(
     return await asyncio.to_thread(
         blob.generate_signed_url,
         version="v4",
-        expiration=datetime.now(UTC) + timedelta(seconds=expires_in),
+        expiration=datetime.now(timezone.utc) + timedelta(seconds=expires_in),
         method="GET",
     )
 
@@ -181,10 +180,8 @@ async def generate_iam_signed_url(
     blob = bucket.blob(blob_name)
 
     def generate() -> str:
-        credentials = cast(
-            Credentials, google_auth_default(scopes=[CLOUD_PLATFORM_SCOPE])[0]
-        )
-        expiration = datetime.now(UTC) + timedelta(seconds=expires_in)
+        credentials, _ = google_auth_default(scopes=[CLOUD_PLATFORM_SCOPE])
+        expiration = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
         if isinstance(credentials, Signing):
             return blob.generate_signed_url(
                 version="v4",

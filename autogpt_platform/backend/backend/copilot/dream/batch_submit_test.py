@@ -9,7 +9,7 @@ callback can compare-and-delete the lock hours later.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -28,7 +28,7 @@ from backend.util.llm.providers import BatchSubmissionRef
 
 
 def _bundle(expert_id: str | None = None) -> DreamInput:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return DreamInput(
         user_id="u1",
         expert_id=expert_id,
@@ -73,7 +73,7 @@ async def test_enqueue_failure_cancels_orphaned_batch_and_reraises(fake_redis):
         provider="anthropic",
         provider_batch_id="msgbatch_orphan",
         custom_id="p1_consolidate",
-        submitted_at=datetime.now(UTC),
+        submitted_at=datetime.now(timezone.utc),
     )
     call = AsyncMock(return_value=submitted)
     enqueue = AsyncMock(side_effect=RuntimeError("redis down"))
@@ -105,7 +105,7 @@ async def test_successful_enqueue_does_not_cancel(fake_redis):
         provider="anthropic",
         provider_batch_id="msgbatch_ok",
         custom_id="p1_consolidate",
-        submitted_at=datetime.now(UTC),
+        submitted_at=datetime.now(timezone.utc),
     )
     call = AsyncMock(return_value=submitted)
     enqueue = AsyncMock(return_value=None)
@@ -141,7 +141,7 @@ async def test_submit_phase_refreshes_input_bundle_ttl(fake_redis):
         provider="anthropic",
         provider_batch_id="msgbatch_chain",
         custom_id="p1_recombine",
-        submitted_at=datetime.now(UTC),
+        submitted_at=datetime.now(timezone.utc),
     )
     with patch(
         "backend.copilot.dream.batch_submit.call_provider",

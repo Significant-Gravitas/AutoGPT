@@ -1,6 +1,6 @@
 """Unit tests for the All Quiet API client's request shaping and error handling."""
 
-from typing import Any
+from typing import Any, Optional
 from unittest.mock import AsyncMock
 
 import pytest
@@ -64,7 +64,7 @@ def _client_with(response: _FakeResponse) -> tuple[AllQuietClient, AsyncMock]:
     return client, request
 
 
-def _sent(request: AsyncMock) -> tuple[str, str, dict[str, Any], dict | None]:
+def _sent(request: AsyncMock) -> tuple[str, str, dict[str, Any], Optional[dict]]:
     method, url = request.await_args.args
     kwargs = request.await_args.kwargs
     return method, url, kwargs.get("params") or {}, kwargs.get("json")

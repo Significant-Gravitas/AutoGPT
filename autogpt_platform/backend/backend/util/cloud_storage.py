@@ -6,7 +6,8 @@ import asyncio
 import logging
 import os.path
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Tuple
 
 import aiohttp
 from gcloud.aio import storage as async_gcs_storage
@@ -110,7 +111,7 @@ class CloudStorageHandler:
             self._sync_gcs_client = gcs_storage.Client()
         return self._sync_gcs_client
 
-    def parse_cloud_path(self, path: str) -> tuple[str, str]:
+    def parse_cloud_path(self, path: str) -> Tuple[str, str]:
         """
         Parse a cloud storage path and return provider and actual path.
 
@@ -199,7 +200,7 @@ class CloudStorageHandler:
             blob_name = f"uploads/system/{unique_id}/{filename}"
 
         # Upload content with metadata using pure async client
-        upload_time = datetime.now(UTC)
+        upload_time = datetime.now(timezone.utc)
         expiration_time = upload_time + timedelta(hours=expiration_hours)
 
         await async_client.upload(
@@ -278,7 +279,7 @@ class CloudStorageHandler:
         except Exception as e:
             # Log the specific error for debugging
             logger.error(
-                f"[CloudStorage] GCS download failed - error: {e!s}, "
+                f"[CloudStorage] GCS download failed - error: {str(e)}, "
                 f"error_type: {type(e).__name__}, "
                 f"bucket: {bucket_name}, blob: redacted for privacy"
             )
@@ -455,7 +456,7 @@ class CloudStorageHandler:
             raise ValueError("GCS_BUCKET_NAME not configured")
 
         async_client = await self._get_async_gcs_client()
-        current_time = datetime.now(UTC)
+        current_time = datetime.now(timezone.utc)
 
         try:
             # List all blobs in the uploads directory using pure async client
@@ -497,6 +498,7 @@ class CloudStorageHandler:
                             f"[CloudStorage] Failed to process file {blob_name} during cleanup: {e}"
                         )
                         # Skip files with invalid metadata or delete errors
+                        pass
                     return 0
 
             if items:
@@ -543,7 +545,7 @@ class CloudStorageHandler:
 
             if metadata and "expires_at" in metadata:
                 expires_at = datetime.fromisoformat(metadata["expires_at"])
-                return datetime.now(UTC) > expires_at
+                return datetime.now(timezone.utc) > expires_at
 
         except Exception as e:
             # If file doesn't exist or we can't read metadata

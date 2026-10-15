@@ -1,5 +1,4 @@
-import builtins
-from typing import Any
+from typing import Any, List
 
 from backend.blocks._base import (
     Block,
@@ -67,7 +66,7 @@ class CreateDictionaryBlock(Block):
             # The values are already validated by Pydantic schema
             yield "dictionary", input_data.values
         except Exception as e:
-            yield "error", f"Failed to create dictionary: {e!s}"
+            yield "error", f"Failed to create dictionary: {str(e)}"
 
 
 class AddToDictionaryBlock(Block):
@@ -339,7 +338,7 @@ class DictionaryIsEmptyBlock(Block):
 
 class CreateListBlock(Block):
     class Input(BlockSchemaInput):
-        values: builtins.list[Any] = SchemaField(
+        values: List[Any] = SchemaField(
             description="A list of values to be combined into a new list.",
             placeholder="e.g., ['Alice', 25, True]",
         )
@@ -355,7 +354,7 @@ class CreateListBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        list: builtins.list[Any] = SchemaField(
+        list: List[Any] = SchemaField(
             description="The created list containing the specified values."
         )
 
@@ -416,7 +415,7 @@ class CreateListBlock(Block):
 
 class AddToListBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(
+        list: List[Any] = SchemaField(
             default_factory=list,
             advanced=False,
             description="The list to add the entry to. If not provided, a new list will be created.",
@@ -426,7 +425,7 @@ class AddToListBlock(Block):
             advanced=False,
             default=None,
         )
-        entries: builtins.list[Any] = SchemaField(
+        entries: List[Any] = SchemaField(
             default_factory=lambda: list(),
             description="The entries to add to the list. This is the batch version of the `entry` field.",
             advanced=True,
@@ -437,7 +436,7 @@ class AddToListBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        updated_list: builtins.list[Any] = SchemaField(
+        updated_list: List[Any] = SchemaField(
             description="The list with the new entry added."
         )
 
@@ -496,7 +495,7 @@ class AddToListBlock(Block):
 
 class FindInListBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(description="The list to search in.")
+        list: List[Any] = SchemaField(description="The list to search in.")
         value: Any = SchemaField(description="The value to search for.")
 
     class Output(BlockSchemaOutput):
@@ -539,9 +538,7 @@ class FindInListBlock(Block):
 
 class GetListItemBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(
-            description="The list to get the item from."
-        )
+        list: List[Any] = SchemaField(description="The list to get the item from.")
         index: int = SchemaField(
             description="The 0-based index of the item (supports negative indices)."
         )
@@ -576,7 +573,7 @@ class GetListItemBlock(Block):
 
 class RemoveFromListBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(description="The list to modify.")
+        list: List[Any] = SchemaField(description="The list to modify.")
         value: Any = SchemaField(
             default=None, description="Value to remove from the list."
         )
@@ -589,9 +586,7 @@ class RemoveFromListBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        updated_list: builtins.list[Any] = SchemaField(
-            description="The list after removal."
-        )
+        updated_list: List[Any] = SchemaField(description="The list after removal.")
         removed_item: Any = SchemaField(description="The removed item if requested.")
 
     def __init__(self):
@@ -635,16 +630,14 @@ class RemoveFromListBlock(Block):
 
 class ReplaceListItemBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(description="The list to modify.")
+        list: List[Any] = SchemaField(description="The list to modify.")
         index: int = SchemaField(
             description="Index of the item to replace (supports negative indices)."
         )
         value: Any = SchemaField(description="The new value for the given index.")
 
     class Output(BlockSchemaOutput):
-        updated_list: builtins.list[Any] = SchemaField(
-            description="The list after replacement."
-        )
+        updated_list: List[Any] = SchemaField(description="The list after replacement.")
         old_item: Any = SchemaField(description="The item that was replaced.")
 
     def __init__(self):
@@ -682,7 +675,7 @@ class ReplaceListItemBlock(Block):
 
 class ListIsEmptyBlock(Block):
     class Input(BlockSchemaInput):
-        list: builtins.list[Any] = SchemaField(description="The list to check.")
+        list: List[Any] = SchemaField(description="The list to check.")
 
     class Output(BlockSchemaOutput):
         is_empty: bool = SchemaField(description="True if the list is empty.")
@@ -721,7 +714,7 @@ def _validate_list_input(item: Any, index: int) -> str | None:
     return None
 
 
-def _validate_all_lists(lists: builtins.list[Any]) -> str | None:
+def _validate_all_lists(lists: List[Any]) -> str | None:
     """Validate that all items in a sequence are lists. Returns first error or None."""
     for idx, item in enumerate(lists):
         error = _validate_list_input(item, idx)
@@ -730,11 +723,9 @@ def _validate_all_lists(lists: builtins.list[Any]) -> str | None:
     return None
 
 
-def _concatenate_lists_simple(
-    lists: builtins.list[builtins.list[Any]],
-) -> builtins.list[Any]:
+def _concatenate_lists_simple(lists: List[List[Any]]) -> List[Any]:
     """Concatenate a sequence of lists into a single list, skipping None values."""
-    result: builtins.list[Any] = []
+    result: List[Any] = []
     for lst in lists:
         if lst is None:
             continue
@@ -742,9 +733,7 @@ def _concatenate_lists_simple(
     return result
 
 
-def _flatten_nested_list(
-    nested: builtins.list[Any], max_depth: int = -1
-) -> builtins.list[Any]:
+def _flatten_nested_list(nested: List[Any], max_depth: int = -1) -> List[Any]:
     """
     Recursively flatten a nested list structure.
 
@@ -755,7 +744,7 @@ def _flatten_nested_list(
     Returns:
         A flat list with all nested elements extracted.
     """
-    result: builtins.list[Any] = []
+    result: List[Any] = []
     _flatten_recursive(nested, result, current_depth=0, max_depth=max_depth)
     return result
 
@@ -764,8 +753,8 @@ _MAX_FLATTEN_DEPTH = 1000
 
 
 def _flatten_recursive(
-    items: builtins.list[Any],
-    result: builtins.list[Any],
+    items: List[Any],
+    result: List[Any],
     current_depth: int,
     max_depth: int,
 ) -> None:
@@ -782,7 +771,7 @@ def _flatten_recursive(
             result.append(item)
 
 
-def _deduplicate_list(items: builtins.list[Any]) -> builtins.list[Any]:
+def _deduplicate_list(items: List[Any]) -> List[Any]:
     """
     Remove duplicate elements from a list, preserving order of first occurrences.
 
@@ -793,7 +782,7 @@ def _deduplicate_list(items: builtins.list[Any]) -> builtins.list[Any]:
         A list with duplicates removed, maintaining original order.
     """
     seen: set = set()
-    result: builtins.list[Any] = []
+    result: List[Any] = []
     for item in items:
         item_id = _make_hashable(item)
         if item_id not in seen:
@@ -821,7 +810,7 @@ def _make_hashable(item: Any):
     return item
 
 
-def _filter_none_values(items: builtins.list[Any]) -> builtins.list[Any]:
+def _filter_none_values(items: List[Any]) -> List[Any]:
     """Remove None values from a list."""
     return [item for item in items if item is not None]
 
@@ -863,7 +852,7 @@ def _compute_nesting_depth(
     return max_observed_depth
 
 
-def _interleave_lists(lists: builtins.list[builtins.list[Any]]) -> builtins.list[Any]:
+def _interleave_lists(lists: List[List[Any]]) -> List[Any]:
     """
     Interleave elements from multiple lists in round-robin fashion.
     Example: [[1,2,3], [a,b], [x,y,z]] -> [1, a, x, 2, b, y, 3, z]
@@ -873,7 +862,7 @@ def _interleave_lists(lists: builtins.list[builtins.list[Any]]) -> builtins.list
     filtered = [lst for lst in lists if lst is not None]
     if not filtered:
         return []
-    result: builtins.list[Any] = []
+    result: List[Any] = []
     max_len = max(len(lst) for lst in filtered)
     for i in range(max_len):
         for lst in filtered:
@@ -898,7 +887,7 @@ class ConcatenateListsBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        lists: builtins.list[builtins.list[Any]] = SchemaField(
+        lists: List[List[Any]] = SchemaField(
             description="A list of lists to concatenate together. All lists will be combined in order into a single list.",
             placeholder="e.g., [[1, 2], [3, 4], [5, 6]]",
         )
@@ -914,7 +903,7 @@ class ConcatenateListsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        concatenated_list: builtins.list[Any] = SchemaField(
+        concatenated_list: List[Any] = SchemaField(
             description="The concatenated list containing all elements from all input lists in order."
         )
         length: int = SchemaField(
@@ -956,23 +945,21 @@ class ConcatenateListsBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _validate_inputs(self, lists: builtins.list[Any]) -> str | None:
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
         return _validate_all_lists(lists)
 
-    def _perform_concatenation(
-        self, lists: builtins.list[builtins.list[Any]]
-    ) -> builtins.list[Any]:
+    def _perform_concatenation(self, lists: List[List[Any]]) -> List[Any]:
         return _concatenate_lists_simple(lists)
 
-    def _apply_deduplication(self, items: builtins.list[Any]) -> builtins.list[Any]:
+    def _apply_deduplication(self, items: List[Any]) -> List[Any]:
         return _deduplicate_list(items)
 
-    def _apply_none_removal(self, items: builtins.list[Any]) -> builtins.list[Any]:
+    def _apply_none_removal(self, items: List[Any]) -> List[Any]:
         return _filter_none_values(items)
 
     def _post_process(
-        self, items: builtins.list[Any], deduplicate: bool, remove_none: bool
-    ) -> builtins.list[Any]:
+        self, items: List[Any], deduplicate: bool, remove_none: bool
+    ) -> List[Any]:
         """Apply all post-processing steps to the concatenated result."""
         result = items
         if remove_none:
@@ -1011,7 +998,7 @@ class FlattenListBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        nested_list: builtins.list[Any] = SchemaField(
+        nested_list: List[Any] = SchemaField(
             description="A potentially nested list to flatten into a single-level list.",
             placeholder="e.g., [[1, [2, 3]], [4, [5, [6]]]]",
         )
@@ -1022,7 +1009,7 @@ class FlattenListBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        flattened_list: builtins.list[Any] = SchemaField(
+        flattened_list: List[Any] = SchemaField(
             description="The flattened list with all nested elements extracted."
         )
         length: int = SchemaField(
@@ -1067,11 +1054,11 @@ class FlattenListBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _compute_depth(self, items: builtins.list[Any]) -> int:
+    def _compute_depth(self, items: List[Any]) -> int:
         """Compute the nesting depth of the input list."""
         return _compute_nesting_depth(items)
 
-    def _flatten(self, items: builtins.list[Any], max_depth: int) -> builtins.list[Any]:
+    def _flatten(self, items: List[Any], max_depth: int) -> List[Any]:
         """Flatten the list to the specified depth."""
         return _flatten_nested_list(items, max_depth=max_depth)
 
@@ -1107,13 +1094,13 @@ class InterleaveListsBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        lists: builtins.list[builtins.list[Any]] = SchemaField(
+        lists: List[List[Any]] = SchemaField(
             description="A list of lists to interleave. Elements will be taken in round-robin order.",
             placeholder="e.g., [[1, 2, 3], ['a', 'b', 'c']]",
         )
 
     class Output(BlockSchemaOutput):
-        interleaved_list: builtins.list[Any] = SchemaField(
+        interleaved_list: List[Any] = SchemaField(
             description="The interleaved list with elements alternating from each input list."
         )
         length: int = SchemaField(
@@ -1147,12 +1134,10 @@ class InterleaveListsBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _validate_inputs(self, lists: builtins.list[Any]) -> str | None:
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
         return _validate_all_lists(lists)
 
-    def _interleave(
-        self, lists: builtins.list[builtins.list[Any]]
-    ) -> builtins.list[Any]:
+    def _interleave(self, lists: List[List[Any]]) -> List[Any]:
         return _interleave_lists(lists)
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
@@ -1177,7 +1162,7 @@ class ZipListsBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        lists: builtins.list[builtins.list[Any]] = SchemaField(
+        lists: List[List[Any]] = SchemaField(
             description="A list of lists to zip together. Corresponding elements will be grouped.",
             placeholder="e.g., [[1, 2, 3], ['a', 'b', 'c']]",
         )
@@ -1193,7 +1178,7 @@ class ZipListsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        zipped_list: builtins.list[builtins.list[Any]] = SchemaField(
+        zipped_list: List[List[Any]] = SchemaField(
             description="The zipped list of grouped elements."
         )
         length: int = SchemaField(
@@ -1231,21 +1216,17 @@ class ZipListsBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _validate_inputs(self, lists: builtins.list[Any]) -> str | None:
+    def _validate_inputs(self, lists: List[Any]) -> str | None:
         return _validate_all_lists(lists)
 
-    def _zip_truncate(
-        self, lists: builtins.list[builtins.list[Any]]
-    ) -> builtins.list[builtins.list[Any]]:
+    def _zip_truncate(self, lists: List[List[Any]]) -> List[List[Any]]:
         """Zip lists, truncating to shortest."""
         filtered = [lst for lst in lists if lst is not None]
         if not filtered:
             return []
         return [list(group) for group in zip(*filtered)]
 
-    def _zip_pad(
-        self, lists: builtins.list[builtins.list[Any]], fill_value: Any
-    ) -> builtins.list[builtins.list[Any]]:
+    def _zip_pad(self, lists: List[List[Any]], fill_value: Any) -> List[List[Any]]:
         """Zip lists, padding shorter ones with fill_value."""
         if not lists:
             return []
@@ -1253,9 +1234,9 @@ class ZipListsBlock(Block):
         if not lists:
             return []
         max_len = max(len(lst) for lst in lists)
-        result: builtins.list[builtins.list[Any]] = []
+        result: List[List[Any]] = []
         for i in range(max_len):
-            group: builtins.list[Any] = []
+            group: List[Any] = []
             for lst in lists:
                 if i < len(lst):
                     group.append(lst[i])
@@ -1295,11 +1276,11 @@ class ListDifferenceBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        list_a: builtins.list[Any] = SchemaField(
+        list_a: List[Any] = SchemaField(
             description="The primary list to check elements from.",
             placeholder="e.g., [1, 2, 3, 4, 5]",
         )
-        list_b: builtins.list[Any] = SchemaField(
+        list_b: List[Any] = SchemaField(
             description="The list to subtract. Elements found here will be removed from list_a.",
             placeholder="e.g., [3, 4, 5, 6]",
         )
@@ -1310,7 +1291,7 @@ class ListDifferenceBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        difference: builtins.list[Any] = SchemaField(
+        difference: List[Any] = SchemaField(
             description="Elements from list_a not found in list_b (or symmetric difference if enabled)."
         )
         length: int = SchemaField(
@@ -1348,16 +1329,14 @@ class ListDifferenceBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _compute_difference(
-        self, list_a: builtins.list[Any], list_b: builtins.list[Any]
-    ) -> builtins.list[Any]:
+    def _compute_difference(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements in list_a not in list_b."""
         b_hashes = {_make_hashable(item) for item in list_b}
         return [item for item in list_a if _make_hashable(item) not in b_hashes]
 
     def _compute_symmetric_difference(
-        self, list_a: builtins.list[Any], list_b: builtins.list[Any]
-    ) -> builtins.list[Any]:
+        self, list_a: List[Any], list_b: List[Any]
+    ) -> List[Any]:
         """Compute elements in either list but not both."""
         a_hashes = {_make_hashable(item) for item in list_a}
         b_hashes = {_make_hashable(item) for item in list_b}
@@ -1386,17 +1365,17 @@ class ListIntersectionBlock(Block):
     """
 
     class Input(BlockSchemaInput):
-        list_a: builtins.list[Any] = SchemaField(
+        list_a: List[Any] = SchemaField(
             description="The first list to intersect.",
             placeholder="e.g., [1, 2, 3, 4, 5]",
         )
-        list_b: builtins.list[Any] = SchemaField(
+        list_b: List[Any] = SchemaField(
             description="The second list to intersect.",
             placeholder="e.g., [3, 4, 5, 6, 7]",
         )
 
     class Output(BlockSchemaOutput):
-        intersection: builtins.list[Any] = SchemaField(
+        intersection: List[Any] = SchemaField(
             description="Elements present in both list_a and list_b."
         )
         length: int = SchemaField(
@@ -1430,13 +1409,11 @@ class ListIntersectionBlock(Block):
             effect=BlockEffect.NONE,
         )
 
-    def _compute_intersection(
-        self, list_a: builtins.list[Any], list_b: builtins.list[Any]
-    ) -> builtins.list[Any]:
+    def _compute_intersection(self, list_a: List[Any], list_b: List[Any]) -> List[Any]:
         """Compute elements present in both lists, preserving order from list_a."""
         b_hashes = {_make_hashable(item) for item in list_b}
         seen: set = set()
-        result: builtins.list[Any] = []
+        result: List[Any] = []
         for item in list_a:
             h = _make_hashable(item)
             if h in b_hashes and h not in seen:

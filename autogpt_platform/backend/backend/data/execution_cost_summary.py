@@ -1,7 +1,7 @@
 """Per-user execution cost aggregation models and query."""
 
 import asyncio
-from datetime import UTC, date, datetime
+from datetime import date, datetime, timezone
 
 from prisma.enums import AgentExecutionStatus
 from pydantic import BaseModel
@@ -101,7 +101,7 @@ async def get_user_cost_summary(
     # the whole per-user history on the cost-ordered `top_runs` query.
     top_runs_limit = max(1, min(_MAX_TOP_RUNS, top_runs_limit))
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     if since is None:
         since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     if until is None:

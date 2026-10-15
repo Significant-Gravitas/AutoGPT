@@ -1,4 +1,5 @@
 from base64 import b64encode
+from typing import Optional
 from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
@@ -27,7 +28,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
         self.token_url = "https://api.notion.com/v1/oauth/token"
 
     def get_login_url(
-        self, scopes: list[str], state: str, code_challenge: str | None
+        self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
         params = {
             "client_id": self.client_id,
@@ -39,7 +40,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
         return f"{self.auth_base_url}?{urlencode(params)}"
 
     async def exchange_code_for_tokens(
-        self, code: str, scopes: list[str], code_verifier: str | None
+        self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         request_body = {
             "grant_type": "authorization_code",

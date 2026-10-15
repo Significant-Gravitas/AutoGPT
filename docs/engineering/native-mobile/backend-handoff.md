@@ -13,7 +13,7 @@ The hosted-web shell in [#15495](https://github.com/Significant-Gravitas/AutoGPT
 
 Server-side Better Auth code lives under `autogpt_platform/frontend/`; it belongs to this foundation even when the native UI is handed off separately. No application-data migration or new production secret is required.
 
-Landing requires current-base checks, review of authentication and existing web-client compatibility, and review of the isolated Python cleanup prerequisite [#15537](https://github.com/Significant-Gravitas/AutoGPT/pull/15537). After that prerequisite lands, merge updated `dev` into the foundation branch and retarget #15384 to `dev`. Native simulator timing, complete native cards and provider certification belong to the client/product gates, not this foundation's merge checklist. Merging, deploying and enabling a native feature remain separate actions.
+The foundation targets `dev` directly. Landing requires current-base checks and review of authentication and existing web-client compatibility. Native simulator timing, complete native cards and provider certification belong to the client/product gates, not this foundation's merge checklist. Merging, deploying and enabling a native feature remain separate actions.
 
 ## Contract the client can use
 

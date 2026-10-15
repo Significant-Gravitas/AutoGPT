@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncGenerator
+from typing import AsyncGenerator
 
 from pydantic import BaseModel, field_serializer
 

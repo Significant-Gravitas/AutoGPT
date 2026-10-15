@@ -1,6 +1,6 @@
 import base64
 import hashlib
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -24,7 +24,11 @@ def cursor_scope(user_id: str, organization_id: str | None, kind: str | None) ->
 
 
 def as_utc(value: datetime) -> datetime:
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+    return (
+        value.replace(tzinfo=timezone.utc)
+        if value.tzinfo is None
+        else value.astimezone(timezone.utc)
+    )
 
 
 def decode_cursor(cursor: str, scope: str) -> CreditHistoryCursor:

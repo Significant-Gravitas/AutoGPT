@@ -4,7 +4,7 @@ import signal
 import sys
 from abc import ABC, abstractmethod
 from multiprocessing import Process, get_all_start_methods, set_start_method
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from backend.util.feature_flag import initialize_feature_flags, shutdown_feature_flags
 from backend.util.logging import configure_logging
@@ -28,7 +28,7 @@ class AppProcess(ABC):
     A class to represent an object that can be executed in a background process.
     """
 
-    process: Process | None = None
+    process: Optional[Process] = None
     _shutting_down: bool = False
     _cleaned_up: bool = False
     # Opens the flag vendor's client before `run`, so no read waits on its
@@ -51,6 +51,7 @@ class AppProcess(ABC):
         """
         The method that will be executed in the process.
         """
+        pass
 
     @property
     def service_name(self) -> str:
@@ -61,6 +62,7 @@ class AppProcess(ABC):
         Implement this method on a subclass to do post-execution cleanup,
         e.g. disconnecting from a database or terminating child processes.
         """
+        pass
 
     def execute_run_command(self, silent):
         signal.signal(signal.SIGTERM, self._self_terminate)
@@ -82,7 +84,7 @@ class AppProcess(ABC):
             self.run()
         except BaseException as e:
             logger.warning(
-                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",
+                f"[{self.service_name}] 🛑 Terminating because of {type(e).__name__}: {e}",  # noqa
                 exc_info=e if not isinstance(e, SystemExit) else None,
             )
             # Send error to Sentry before cleanup

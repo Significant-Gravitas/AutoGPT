@@ -29,12 +29,12 @@ _WRITE_VERBS = re.compile(
     r"(^|[_\-.\s])(create|update|delete|remove|send|post|write|set|add|upload|"
     r"publish|archive|merge|close|assign|move|rename|execute|run|trigger|"
     r"cancel|approve|reject|pay|transfer|invite|grant|revoke|reset)([_\-.\s]|$)",
-    re.IGNORECASE,
+    re.I,
 )
 _READ_VERBS = re.compile(
     r"(^|[_\-.\s])(get|list|search|find|read|fetch|query|describe|show|"
     r"lookup|check|count|view)([_\-.\s]|$)",
-    re.IGNORECASE,
+    re.I,
 )
 
 

@@ -4,6 +4,8 @@ A cart re-quotes on every change and carries a website link a person can pay
 from. Paying through the API lives in ``pay_cart``.
 """
 
+from typing import Optional
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -52,7 +54,7 @@ class RMFGCartOutput(BlockSchemaOutput):
     manufacturing_warnings: list[ManufacturingReviewWarning] = SchemaField(
         description="Advisories from automatic file preparation; they do not block ordering"
     )
-    order_id: str | None = SchemaField(
+    order_id: Optional[str] = SchemaField(
         description="Order ID; only emitted once the cart has been paid",
         default=None,
     )
@@ -103,7 +105,7 @@ class RMFGCreateCartBlock(Block):
     """Create a priced cart and a checkout link for a configured design."""
 
     class Input(RMFGBasketInput):
-        ship_to: ShipTo | None = SchemaField(
+        ship_to: Optional[ShipTo] = SchemaField(
             description="Delivery address. Needed for shipping options, tax and API payment.",
             default=None,
             advanced=False,
@@ -153,7 +155,7 @@ class RMFGCreateCartBlock(Block):
     async def create_cart(
         credentials: RMFGCredentials,
         items: list[QuoteItemRequest],
-        ship_to: ShipTo | None,
+        ship_to: Optional[ShipTo],
         shipping_option_id: str,
         client_reference_id: str,
         idempotency_key: str,
@@ -228,7 +230,7 @@ class RMFGUpdateCartBlock(Block):
     class Input(BlockSchemaInput):
         credentials: CredentialsMetaInput = credentials_field()
         cart_id: str = SchemaField(description="Cart ID from Create Cart")
-        ship_to: ShipTo | None = SchemaField(
+        ship_to: Optional[ShipTo] = SchemaField(
             description="New delivery address; leave empty to keep the current one.",
             default=None,
             advanced=False,

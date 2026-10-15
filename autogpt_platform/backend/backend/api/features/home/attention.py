@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 from pydantic import ValidationError
@@ -309,7 +309,7 @@ def _clip(text: str) -> str:
 
 def _attention_sort_key(item: HomeAttentionItem) -> tuple[int, datetime]:
     priority = 0 if item.priority == "high" else 1
-    created = item.created_at or datetime.max.replace(tzinfo=UTC)
+    created = item.created_at or datetime.max.replace(tzinfo=timezone.utc)
     return priority, created
 
 

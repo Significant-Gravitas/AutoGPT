@@ -137,7 +137,8 @@ def build_sdk_env(
     # --- Mode 3: OpenRouter proxy ---
     else:
         base = (config.base_url or "").rstrip("/")
-        base = base.removesuffix("/v1")
+        if base.endswith("/v1"):
+            base = base[:-3]
         env = {
             "ANTHROPIC_BASE_URL": base,
             "ANTHROPIC_AUTH_TOKEN": config.api_key or "",

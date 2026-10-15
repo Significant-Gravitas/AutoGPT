@@ -63,8 +63,9 @@ def test_untrusted_or_wrong_tool_tokens_cannot_label_another_call():
 def test_exception_resets_context_and_token_is_single_use():
     bridge = SDKToolDisplayBridge()
     tagged = bridge.prepare_call("run_agent", {}, "real")
-    with pytest.raises(RuntimeError), bridge.execution_context("run_agent", tagged):
-        raise RuntimeError("test")
+    with pytest.raises(RuntimeError):
+        with bridge.execution_context("run_agent", tagged):
+            raise RuntimeError("test")
     emit_tool_display_name("Outside failed execution")
     with bridge.execution_context("run_agent", tagged):
         emit_tool_display_name("Duplicate")

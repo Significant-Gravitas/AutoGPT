@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -45,15 +46,15 @@ class GithubCreateStatusBlock(Block):
         state: StatusState = SchemaField(
             description="The state of the status (error, failure, pending, success)",
         )
-        target_url: str | None = SchemaField(
+        target_url: Optional[str] = SchemaField(
             description="URL with additional details about this status",
             default=None,
         )
-        description: str | None = SchemaField(
+        description: Optional[str] = SchemaField(
             description="Short description of the status",
             default=None,
         )
-        check_name: str | None = SchemaField(
+        check_name: Optional[str] = SchemaField(
             description="Label to differentiate this status from others",
             default="AutoGPT Platform Checks",
             advanced=False,
@@ -65,8 +66,8 @@ class GithubCreateStatusBlock(Block):
             url: str
             state: str
             context: str
-            description: str | None
-            target_url: str | None
+            description: Optional[str]
+            target_url: Optional[str]
             created_at: str
             updated_at: str
 
@@ -124,16 +125,16 @@ class GithubCreateStatusBlock(Block):
         repo_url: str,
         sha: str,
         state: StatusState,
-        target_url: str | None = None,
-        description: str | None = None,
+        target_url: Optional[str] = None,
+        description: Optional[str] = None,
         context: str = "default",
     ) -> dict:
         api = get_api(credentials)
 
         class StatusData(BaseModel):
             state: str
-            target_url: str | None = None
-            description: str | None = None
+            target_url: Optional[str] = None
+            description: Optional[str] = None
             context: str
 
         data = StatusData(

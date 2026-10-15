@@ -337,25 +337,23 @@ async def test_execute_block_real_execution_unchanged():
         simulate_called = True
         yield "result", "should not happen"
 
-    with (
-        patch(
-            "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
-        ),
-        patch(
+    with patch(
+        "backend.copilot.tools.helpers.simulate_block", side_effect=fake_simulate
+    ):
+        with patch(
             "backend.copilot.tools.helpers.workspace_db",
             side_effect=Exception("db not available"),
-        ),
-    ):
-        response = await execute_block(
-            block=mock_block,
-            block_id="test-block-id",
-            input_data={"query": "hello"},
-            user_id="user-1",
-            session_id="session-1",
-            node_exec_id="node-exec-1",
-            matched_credentials={},
-            dry_run=False,
-        )
+        ):
+            response = await execute_block(
+                block=mock_block,
+                block_id="test-block-id",
+                input_data={"query": "hello"},
+                user_id="user-1",
+                session_id="session-1",
+                node_exec_id="node-exec-1",
+                matched_credentials={},
+                dry_run=False,
+            )
 
     assert simulate_called is False
     # The real path raised an exception, so we get an ErrorResponse (which has .error attr)

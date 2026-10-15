@@ -8,7 +8,7 @@ means we're about to delete real user memory).
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -20,7 +20,7 @@ from .staleness_suite import run_staleness_suite
 
 
 def _now() -> datetime:
-    return datetime(2026, 5, 21, tzinfo=UTC)
+    return datetime(2026, 5, 21, tzinfo=timezone.utc)
 
 
 def _pass(

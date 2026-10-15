@@ -5,6 +5,7 @@ validated straight off the wire.
 """
 
 from enum import Enum
+from typing import Optional
 
 from backend.sdk import BaseModel, Field
 
@@ -101,11 +102,11 @@ class Incident(BaseModel):
 
     id: str = ""
     title: str = ""
-    status: IncidentStatus | None = None
-    severity: IncidentSeverity | None = None
+    status: Optional[IncidentStatus] = None
+    severity: Optional[IncidentSeverity] = None
     created_at: str = Field(default="", alias="createdAt")
     last_updated_at: str = Field(default="", alias="lastUpdatedAt")
-    integration: AllQuietEntity | None = None
+    integration: Optional[AllQuietEntity] = None
     teams: list[AllQuietEntity] = Field(default_factory=list)
     services: list[AllQuietEntity] = Field(default_factory=list)
     on_call_users: list[AllQuietUser] = Field(default_factory=list, alias="onCallUsers")
@@ -130,8 +131,8 @@ class OnCallAvailability(BaseModel):
 class OnCallShift(BaseModel):
     """A user's on-call coverage for one team at the requested point in time."""
 
-    user: AllQuietUser | None = None
-    team: AllQuietEntity | None = None
+    user: Optional[AllQuietUser] = None
+    team: Optional[AllQuietEntity] = None
     availabilities: list[OnCallAvailability] = Field(default_factory=list)
 
 

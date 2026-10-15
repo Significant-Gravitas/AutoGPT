@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import backend.copilot.tools.skills as skills
 from backend.copilot.baseline.service import _prepend_skills_notice_to_current_message
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
-from backend.copilot.tools import skills
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
     _MAX_ROOTS_PER_FOLDER,
@@ -902,9 +902,9 @@ async def test_stale_empty_skill_index_cannot_bypass_capacity_preflight():
             "backend.copilot.tools.skills._read_skills_cache",
             AsyncMock(return_value=[]),
         ),
-        pytest.raises(SkillLimitError),
     ):
-        await store_user_skill("user-1", name="extra", description="d", body="b")
+        with pytest.raises(SkillLimitError):
+            await store_user_skill("user-1", name="extra", description="d", body="b")
     assert len(fake.files) == MAX_SKILLS_PER_EXPERT
 
 
@@ -1228,7 +1228,7 @@ async def test_list_user_skills_handles_read_file_errors():
 
     async def fail_on_broken(path):
         if "broken" in path:
-            raise OSError("simulated read failure")
+            raise IOError("simulated read failure")
         return await original_read(path)
 
     fake_manager.read_file = fail_on_broken  # type: ignore[method-assign]
@@ -1323,7 +1323,7 @@ async def test_delete_skill_continues_after_sibling_delete_failure():
 
     async def flaky_delete(file_id):
         if "refs/a.md" in file_id:
-            raise OSError("sibling delete failure")
+            raise IOError("sibling delete failure")
         await original_delete(file_id)
 
     fake_manager.delete_file = flaky_delete  # type: ignore[method-assign]
@@ -1646,8 +1646,9 @@ async def test_delete_user_skill_rejects_builtin():
 @pytest.mark.asyncio
 async def test_delete_user_skill_raises_not_found_when_missing():
     fake_manager = _FakeWorkspaceManager()
-    with _patch_skills_path(fake_manager), pytest.raises(SkillNotFoundError):
-        await delete_user_skill("user-1", "missing")
+    with _patch_skills_path(fake_manager):
+        with pytest.raises(SkillNotFoundError):
+            await delete_user_skill("user-1", "missing")
 
 
 @pytest.mark.asyncio
@@ -1666,7 +1667,7 @@ async def test_list_user_skills_uses_metadata_fast_path(mocker):
     }
     # Spy on read_file so the test asserts the fast path skipped it.
     read_spy = AsyncMock(side_effect=AssertionError("metadata path must skip read"))
-    fake_manager.read_file = read_spy
+    setattr(fake_manager, "read_file", read_spy)
 
     with _patch_skills_path(fake_manager):
         # Disable cache for this test so we exercise the workspace path.
@@ -1698,14 +1699,15 @@ async def test_list_user_skills_falls_back_to_read_without_metadata(mocker):
     ).encode()
     # metadata dict left empty → triggers the fallback path.
 
-    with _patch_skills_path(fake_manager), patch(
-        "backend.copilot.tools.skills._read_skills_cache",
-        new=AsyncMock(return_value=None),
-    ), patch(
-        "backend.copilot.tools.skills._write_skills_cache",
-        new=AsyncMock(),
-    ):
-        skills = await list_user_skills("user-1")
+    with _patch_skills_path(fake_manager):
+        with patch(
+            "backend.copilot.tools.skills._read_skills_cache",
+            new=AsyncMock(return_value=None),
+        ), patch(
+            "backend.copilot.tools.skills._write_skills_cache",
+            new=AsyncMock(),
+        ):
+            skills = await list_user_skills("user-1")
 
     assert [s.name for s in skills] == ["legacy"]
     assert skills[0].description == "old skill"
@@ -1894,8 +1896,9 @@ async def test_a_package_read_that_never_settles_raises_instead_of_mixing():
     """The body and the files would otherwise come from different versions, and
     a publish would put that mix on the shelf permanently."""
     fake = _MovingTree()
-    with _patch_skills_path(fake), pytest.raises(ConflictError):
-        await read_user_skill_package("user-1", "big")
+    with _patch_skills_path(fake):
+        with pytest.raises(ConflictError):
+            await read_user_skill_package("user-1", "big")
 
 
 @pytest.mark.asyncio
@@ -2050,13 +2053,14 @@ async def test_a_package_that_cannot_be_copied_still_loads_the_body():
     materialisation failure is a note in the message, never an error."""
     fake = _package_manager()
     fake.files["/skills/big/references/guide.md"] = b"read me"
-    with _patch_skills_path(fake), patch(
-        "backend.copilot.tools.skills.save_to_workdir",
-        new=AsyncMock(return_value=ErrorResponse(message="disk full")),
-    ):
-        result = await ReadSkillTool()._execute(
-            user_id="user-1", session=_make_session(), name="big"
-        )
+    with _patch_skills_path(fake):
+        with patch(
+            "backend.copilot.tools.skills.save_to_workdir",
+            new=AsyncMock(return_value=ErrorResponse(message="disk full")),
+        ):
+            result = await ReadSkillTool()._execute(
+                user_id="user-1", session=_make_session(), name="big"
+            )
     assert isinstance(result, ReadSkillResponse)
     assert result.body.strip() == "steps"
     assert result.package_dir is None

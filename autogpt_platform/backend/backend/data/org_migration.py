@@ -17,7 +17,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, LiteralString
 from uuid import uuid4
 
@@ -237,7 +237,7 @@ async def _soft_delete_blocking_orphan(user_id: str) -> bool:
     )
     await prisma.organization.update(
         where={"id": orphan.id},
-        data={"deletedAt": datetime.now(UTC)},
+        data={"deletedAt": datetime.now(timezone.utc)},
     )
     return True
 

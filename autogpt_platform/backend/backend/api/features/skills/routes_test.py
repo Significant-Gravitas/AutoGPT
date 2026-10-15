@@ -28,7 +28,10 @@ from backend.copilot.tools.skills import (
 # _FakeWorkspaceManager/_patch_skills_path: the skills layer's own test owns the
 # in-memory workspace these round-trip tests need; a second copy here would
 # drift from the real manager's surface.
-from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
+from backend.copilot.tools.skills_test import (  # noqa: E402
+    _FakeWorkspaceManager,
+    _patch_skills_path,
+)
 from backend.util.exceptions import ConflictError
 
 app = fastapi.FastAPI()

@@ -1,7 +1,7 @@
 """Tests for the activation event vocabulary and its emitters."""
 
 import time
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -436,7 +436,7 @@ async def test_experiment_arms_become_feature_properties(
                 experiment_key="subscription-pricing-page-initial-state",
                 variant="monthly-max",
                 source="posthog",
-                assigned_at=datetime.now(UTC),
+                assigned_at=datetime.now(timezone.utc),
             )
         ]
 

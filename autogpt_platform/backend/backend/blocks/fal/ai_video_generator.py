@@ -94,8 +94,8 @@ class AIVideoGeneratorBlock(Block):
             response = await Requests().post(url, headers=headers, json=data)
             return response.json()
         except ClientResponseError as e:
-            logger.error(f"FAL API request failed: {e!s}")
-            raise RuntimeError(f"Failed to submit request: {e!s}")
+            logger.error(f"FAL API request failed: {str(e)}")
+            raise RuntimeError(f"Failed to submit request: {str(e)}")
 
     async def _poll_status(
         self, status_url: str, headers: dict[str, str]
@@ -105,8 +105,8 @@ class AIVideoGeneratorBlock(Block):
             response = await Requests().get(status_url, headers=headers)
             return response.json()
         except ClientResponseError as e:
-            logger.error(f"Failed to get status: {e!s}")
-            raise RuntimeError(f"Failed to get status: {e!s}")
+            logger.error(f"Failed to get status: {str(e)}")
+            raise RuntimeError(f"Failed to get status: {str(e)}")
 
     async def generate_video(
         self, input_data: Input, credentials: FalCredentials
@@ -214,7 +214,7 @@ class AIVideoGeneratorBlock(Block):
             raise RuntimeError("Maximum polling attempts reached")
 
         except ClientResponseError as e:
-            raise RuntimeError(f"API request failed: {e!s}")
+            raise RuntimeError(f"API request failed: {str(e)}")
 
     async def run(
         self,

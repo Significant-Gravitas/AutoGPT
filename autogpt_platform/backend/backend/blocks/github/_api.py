@@ -1,5 +1,4 @@
-from collections.abc import Callable
-from typing import overload
+from typing import Callable, Optional, overload
 from urllib.parse import urlparse
 
 from backend.blocks.github._auth import (
@@ -117,8 +116,8 @@ async def get_paginated(
     url: str,
     *,
     limit: int,
-    params: dict[str, str] | None = None,
-    keep: Callable[[dict], bool] | None = None,
+    params: Optional[dict[str, str]] = None,
+    keep: Optional[Callable[[dict], bool]] = None,
     max_page_size: int = 100,
     start_page: int = 1,
 ) -> list[dict]:

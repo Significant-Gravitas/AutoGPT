@@ -1,6 +1,7 @@
 import logging
 import math
-from datetime import UTC, datetime
+import typing
+from datetime import datetime, timezone
 
 from autogpt_libs.auth import get_user_id, requires_admin_user
 from fastapi import APIRouter, HTTPException, Query, Security
@@ -37,8 +38,12 @@ class BlockCostEstimatesResponse(BaseModel):
     summary="Export Block Cost Estimates",
 )
 async def get_block_cost_estimates(
-    start: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
-    end: datetime | None = Query(None, description="ISO timestamp (inclusive)"),
+    start: typing.Optional[datetime] = Query(
+        None, description="ISO timestamp (inclusive)"
+    ),
+    end: typing.Optional[datetime] = Query(
+        None, description="ISO timestamp (inclusive)"
+    ),
     min_samples: int = Query(
         10, ge=1, description="Minimum executions per block to include"
     ),
@@ -58,9 +63,9 @@ async def get_block_cost_estimates(
             status_code=400, detail="start and end query params are required"
         )
     if start.tzinfo is None:
-        start = start.replace(tzinfo=UTC)
+        start = start.replace(tzinfo=timezone.utc)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=UTC)
+        end = end.replace(tzinfo=timezone.utc)
 
     logger.info(
         "Admin %s aggregating block cost estimates [%s..%s] min_samples=%s",
@@ -87,5 +92,5 @@ async def get_block_cost_estimates(
         window_days=window_days,
         max_window_days=ANALYTICS_MAX_DAYS,
         min_samples=min_samples,
-        generated_at=datetime.now(UTC),
+        generated_at=datetime.now(timezone.utc),
     )

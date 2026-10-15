@@ -10,7 +10,7 @@ import logging
 import mimetypes
 import uuid
 from collections.abc import Collection
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from prisma.errors import UniqueViolationError
 
@@ -75,8 +75,8 @@ class WorkspaceManager:
         self,
         user_id: str,
         workspace_id: str,
-        session_id: str | None = None,
-        scope: WorkspaceScope | None = None,
+        session_id: Optional[str] = None,
+        scope: Optional[WorkspaceScope] = None,
     ):
         """
         Initialize WorkspaceManager.
@@ -110,7 +110,9 @@ class WorkspaceManager:
     def _authorize_file(self, file: WorkspaceFile, *, write: bool = False) -> None:
         self._authorize_path(file.path, write=write)
 
-    def _allowed_prefixes(self, requested: list[str] | None = None) -> list[str] | None:
+    def _allowed_prefixes(
+        self, requested: Optional[list[str]] = None
+    ) -> Optional[list[str]]:
         """Prefixes a listing may span: the scope's, narrowed to ``requested``.
 
         A requested prefix survives only if it lies inside a scope prefix, so
@@ -161,8 +163,8 @@ class WorkspaceManager:
         return path if path.startswith("/") else f"/{path}"
 
     def _get_effective_path(
-        self, path: str | None, include_all_sessions: bool
-    ) -> str | None:
+        self, path: Optional[str], include_all_sessions: bool
+    ) -> Optional[str]:
         """
         Get effective path for list/count operations based on session context.
 
@@ -241,10 +243,10 @@ class WorkspaceManager:
         self,
         content: bytes,
         filename: str,
-        path: str | None = None,
-        mime_type: str | None = None,
+        path: Optional[str] = None,
+        mime_type: Optional[str] = None,
         overwrite: bool = False,
-        metadata: dict | None = None,
+        metadata: Optional[dict] = None,
         scanned_checksums: Collection[str] = (),
     ) -> WorkspaceFile:
         """
@@ -483,18 +485,18 @@ class WorkspaceManager:
 
     async def list_files(
         self,
-        path: str | None = None,
-        limit: int | None = None,
+        path: Optional[str] = None,
+        limit: Optional[int] = None,
         offset: int = 0,
         include_all_sessions: bool = False,
-        name_contains: str | None = None,
-        path_not_starts_with: str | None = None,
-        metadata_equals: dict | None = None,
-        metadata_not_equals: dict | None = None,
-        folder_id: str | None = None,
-        folder_ids: list[str] | None = None,
+        name_contains: Optional[str] = None,
+        path_not_starts_with: Optional[str] = None,
+        metadata_equals: Optional[dict] = None,
+        metadata_not_equals: Optional[dict] = None,
+        folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
         root_only: bool = False,
-        allowed_path_prefixes: list[str] | None = None,
+        allowed_path_prefixes: Optional[list[str]] = None,
         include_user_files: bool = False,
     ) -> list[WorkspaceFile]:
         """
@@ -626,7 +628,7 @@ class WorkspaceManager:
         storage = await get_workspace_storage()
         return await storage.get_download_url(file.storage_path, expires_in)
 
-    async def get_file_info(self, file_id: str) -> WorkspaceFile | None:
+    async def get_file_info(self, file_id: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata.
 
@@ -649,7 +651,7 @@ class WorkspaceManager:
             self._authorize_file(file)
         return file
 
-    async def get_file_info_by_path(self, path: str) -> WorkspaceFile | None:
+    async def get_file_info_by_path(self, path: str) -> Optional[WorkspaceFile]:
         """
         Get file metadata by path.
 
@@ -669,12 +671,12 @@ class WorkspaceManager:
 
     async def get_file_count(
         self,
-        path: str | None = None,
+        path: Optional[str] = None,
         include_all_sessions: bool = False,
-        folder_id: str | None = None,
-        folder_ids: list[str] | None = None,
+        folder_id: Optional[str] = None,
+        folder_ids: Optional[list[str]] = None,
         root_only: bool = False,
-        allowed_path_prefixes: list[str] | None = None,
+        allowed_path_prefixes: Optional[list[str]] = None,
         include_user_files: bool = False,
     ) -> int:
         """

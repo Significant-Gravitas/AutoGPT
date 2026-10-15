@@ -1,6 +1,6 @@
 """A briefing lands at ~07:30 in the reader's own morning, not ours."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.enums import BriefingFrequency
 
@@ -12,7 +12,7 @@ from backend.notifications.briefing_period import (
 )
 
 # 07:30 in New York is 11:30 UTC in August.
-NY_MORNING = datetime(2026, 8, 3, 11, 30, tzinfo=UTC)  # a Monday
+NY_MORNING = datetime(2026, 8, 3, 11, 30, tzinfo=timezone.utc)  # a Monday
 
 
 def test_due_in_the_users_own_morning_not_ours():
@@ -26,7 +26,7 @@ def test_due_in_the_users_own_morning_not_ours():
 
 
 def test_weekly_only_fires_on_a_monday():
-    tuesday = datetime(2026, 8, 4, 11, 30, tzinfo=UTC)
+    tuesday = datetime(2026, 8, 4, 11, 30, tzinfo=timezone.utc)
     assert is_briefing_due(
         BriefingFrequency.WEEKLY, "America/New_York", NY_MORNING, None
     )
@@ -36,7 +36,7 @@ def test_weekly_only_fires_on_a_monday():
 
 
 def test_monthly_only_fires_on_the_first():
-    first = datetime(2026, 9, 1, 11, 30, tzinfo=UTC)
+    first = datetime(2026, 9, 1, 11, 30, tzinfo=timezone.utc)
     assert is_briefing_due(BriefingFrequency.MONTHLY, "America/New_York", first, None)
     assert not is_briefing_due(
         BriefingFrequency.MONTHLY, "America/New_York", NY_MORNING, None
@@ -58,7 +58,7 @@ def test_a_period_is_never_briefed_twice():
 
 
 def test_an_unset_timezone_is_treated_as_utc_rather_than_skipped():
-    utc_morning = datetime(2026, 8, 3, BRIEFING_HOUR, 30, tzinfo=UTC)
+    utc_morning = datetime(2026, 8, 3, BRIEFING_HOUR, 30, tzinfo=timezone.utc)
     assert is_briefing_due(BriefingFrequency.DAILY, "not-set", utc_morning, None)
     assert resolve_zone("Nowhere/Fictional").key == "UTC"
 
@@ -71,7 +71,7 @@ def test_daily_window_covers_yesterday_in_local_time():
 
 
 def test_monthly_window_covers_the_previous_calendar_month():
-    first = datetime(2026, 9, 1, 11, 30, tzinfo=UTC)
+    first = datetime(2026, 9, 1, 11, 30, tzinfo=timezone.utc)
     window = period_window(BriefingFrequency.MONTHLY, "America/New_York", first)
     assert window.period.label == "August 2026"
     assert window.period.noun == "in August"
@@ -83,7 +83,7 @@ def test_the_weekly_noun_describes_the_window_it_actually_covers():
     window = period_window(
         BriefingFrequency.WEEKLY,
         "UTC",
-        datetime(2026, 8, 3, 7, 30, tzinfo=UTC),
+        datetime(2026, 8, 3, 7, 30, tzinfo=timezone.utc),
     )
     assert window.period.noun == "last week"
     assert (window.end - window.start).days == 7

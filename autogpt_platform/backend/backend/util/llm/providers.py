@@ -34,7 +34,7 @@ import asyncio
 import functools
 import json as json_module
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, cast
 
 import anthropic
@@ -300,7 +300,7 @@ async def call_provider(
             ),
             timeout=timeout_seconds,
         )
-    except TimeoutError as exc:
+    except asyncio.TimeoutError as exc:
         raise timeout_error(f"{provider}/{model}", timeout_seconds) from exc
 
 
@@ -1088,7 +1088,7 @@ async def call_provider_openai_compat_sync(
             client.chat.completions.create(**create_kwargs),
             timeout=timeout_seconds,
         )
-    except TimeoutError as exc:
+    except asyncio.TimeoutError as exc:
         raise timeout_error(model, timeout_seconds) from exc
 
 
@@ -1235,7 +1235,7 @@ async def _submit_anthropic_batch(
         provider="anthropic",
         provider_batch_id=batch.id,
         custom_id=custom_id,
-        submitted_at=datetime.now(UTC),
+        submitted_at=datetime.now(timezone.utc),
     )
 
 

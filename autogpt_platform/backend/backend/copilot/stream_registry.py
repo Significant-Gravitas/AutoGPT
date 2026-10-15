@@ -19,7 +19,7 @@ import logging
 import time
 from collections.abc import AsyncGenerator, Coroutine, Iterable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 import orjson
@@ -158,7 +158,7 @@ class ActiveSession:
     turn_id: str = ""
     blocking: bool = False  # If True, HTTP request is waiting for completion
     status: Literal["running", "completed", "failed"] = "running"
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     asyncio_task: asyncio.Task | None = None
     checkpoint: TurnCheckpoint | None = None
 
@@ -200,7 +200,7 @@ def _parse_session_meta(meta: dict[Any, Any], session_id: str = "") -> ActiveSes
     ``session_id`` is used as a fallback for ``turn_id`` when the meta hash
     pre-dates the turn_id field (backward compat for in-flight sessions).
     """
-    created_at = datetime.now(UTC)
+    created_at = datetime.now(timezone.utc)
     created_at_raw = meta.get("created_at")
     if created_at_raw:
         try:
@@ -831,7 +831,7 @@ async def _stream_listener(
                             subscriber_queue.put((None, StreamFinish())),
                             timeout=QUEUE_PUT_TIMEOUT,
                         )
-                    except TimeoutError:
+                    except asyncio.TimeoutError:
                         logger.warning(
                             f"Timeout delivering finish event for session {session_id}"
                         )
@@ -843,7 +843,7 @@ async def _stream_listener(
                         subscriber_queue.put((None, StreamHeartbeat())),
                         timeout=QUEUE_PUT_TIMEOUT,
                     )
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     logger.warning(
                         f"Timeout delivering heartbeat for session {session_id}"
                     )
@@ -879,7 +879,7 @@ async def _stream_listener(
                                             }
                                         },
                                     )
-                            except TimeoutError:
+                            except asyncio.TimeoutError:
                                 logger.warning(
                                     f"[TIMING] Subscriber queue full, delivery timed out after {QUEUE_PUT_TIMEOUT}s",
                                     extra={
@@ -954,7 +954,7 @@ async def _stream_listener(
                 subscriber_queue.put((None, StreamFinish())),
                 timeout=QUEUE_PUT_TIMEOUT,
             )
-        except (TimeoutError, asyncio.QueueFull):
+        except (asyncio.TimeoutError, asyncio.QueueFull):
             logger.warning(
                 "Could not deliver finish event after error",
                 extra={"json_fields": log_meta},
@@ -1102,8 +1102,8 @@ async def mark_session_completed(
             try:
                 created_at = datetime.fromisoformat(str(created_at_raw))
                 if created_at.tzinfo is None:
-                    created_at = created_at.replace(tzinfo=UTC)
-                elapsed = datetime.now(UTC) - created_at
+                    created_at = created_at.replace(tzinfo=timezone.utc)
+                elapsed = datetime.now(timezone.utc) - created_at
                 duration_ms = max(0, int(elapsed.total_seconds() * 1000))
             except (ValueError, TypeError):
                 logger.warning(
@@ -1285,7 +1285,7 @@ async def get_active_session(
     if created_at_str:
         try:
             created_at = datetime.fromisoformat(created_at_str)
-            age_seconds = (datetime.now(UTC) - created_at).total_seconds()
+            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
             stale_threshold = COPILOT_CONSUMER_TIMEOUT_SECONDS + 300  # + 5min buffer
             if age_seconds > stale_threshold:
                 logger.warning(
@@ -1433,7 +1433,7 @@ async def unsubscribe_from_session(
     except asyncio.CancelledError:
         # Expected - the task was successfully cancelled
         pass
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning(
             f"Timeout waiting for listener task cancellation for session {session_id}"
         )
@@ -1482,7 +1482,7 @@ async def disconnect_all_listeners(session_id: str) -> int:
             await asyncio.wait_for(task, timeout=5.0)
         except asyncio.CancelledError:
             cancelled += 1
-        except TimeoutError:
+        except asyncio.TimeoutError:
             pass
         except Exception as e:
             logger.error(f"Error cancelling listener for session {session_id}: {e}")

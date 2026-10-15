@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from typing import Optional
 
 import aiohttp
 from fastapi import HTTPException
@@ -17,7 +19,9 @@ OTTO_API_URL = settings.config.otto_api_url
 
 class OttoService:
     @staticmethod
-    async def _fetch_graph_data(request: ChatRequest, user_id: str) -> GraphData | None:
+    async def _fetch_graph_data(
+        request: ChatRequest, user_id: str
+    ) -> Optional[GraphData]:
         """Fetch graph data if requested and available."""
         if not (request.include_graph_data and request.graph_id):
             return None
@@ -58,7 +62,7 @@ class OttoService:
                 graph_description=graph.description,
             )
         except Exception as e:
-            logger.error(f"Failed to fetch graph data: {e!s}")
+            logger.error(f"Failed to fetch graph data: {str(e)}")
             return None
 
     @staticmethod
@@ -120,17 +124,17 @@ class OttoService:
                     return ApiResponse(**data)
 
         except aiohttp.ClientError as e:
-            logger.error(f"Connection error to Otto API: {e!s}")
+            logger.error(f"Connection error to Otto API: {str(e)}")
             raise HTTPException(
                 status_code=503, detail="Failed to connect to Otto service"
             )
-        except TimeoutError:
+        except asyncio.TimeoutError:
             logger.error("Timeout error connecting to Otto API after 60 seconds")
             raise HTTPException(
                 status_code=504, detail="Request to Otto service timed out"
             )
         except Exception as e:
-            logger.error(f"Unexpected error in Otto API proxy: {e!s}")
+            logger.error(f"Unexpected error in Otto API proxy: {str(e)}")
             raise HTTPException(
                 status_code=500, detail="Internal server error in Otto proxy"
             )

@@ -220,7 +220,7 @@ def extract_credentials_as_dict(
 
 def _extract_provider_from_schema(cred_schema: dict[str, Any]) -> str:
     """Extract provider from credential schema."""
-    if cred_schema.get("credentials_provider"):
+    if "credentials_provider" in cred_schema and cred_schema["credentials_provider"]:
         return cred_schema["credentials_provider"][0]
     if "properties" in cred_schema and "provider" in cred_schema["properties"]:
         return cred_schema["properties"]["provider"].get("const", "unknown")
@@ -229,7 +229,7 @@ def _extract_provider_from_schema(cred_schema: dict[str, Any]) -> str:
 
 def _extract_credential_type_from_schema(cred_schema: dict[str, Any]) -> str:
     """Extract credential type from credential schema."""
-    if cred_schema.get("credentials_types"):
+    if "credentials_types" in cred_schema and cred_schema["credentials_types"]:
         return cred_schema["credentials_types"][0]
     if "properties" in cred_schema and "type" in cred_schema["properties"]:
         return cred_schema["properties"]["type"].get("const", "api_key")

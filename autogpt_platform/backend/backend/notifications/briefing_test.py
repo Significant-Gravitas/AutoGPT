@@ -5,7 +5,7 @@ everything the alert engine deferred, and a whisper of activity shrinks the
 email instead of padding it.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -22,7 +22,7 @@ from backend.notifications.briefing import (
 from backend.notifications.conftest import make_db_client
 
 USER = "user-1"
-NOW = datetime(2026, 8, 3, 11, 30, tzinfo=UTC)
+NOW = datetime(2026, 8, 3, 11, 30, tzinfo=timezone.utc)
 
 AUTH = AuthExpiredCause(
     cta_path="/integrations/gmail/reconnect",

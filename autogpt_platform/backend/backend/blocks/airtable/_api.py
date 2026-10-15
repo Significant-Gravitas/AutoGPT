@@ -11,7 +11,7 @@ logger = getLogger(__name__)
 
 def _convert_bools(
     obj: Any,
-) -> Any:
+) -> Any:  # noqa: ANN401 – allow Any for deep conversion utility
     """Recursively walk *obj* and coerce string booleans to real booleans."""
     if isinstance(obj, str):
         lowered = obj.lower()

@@ -287,7 +287,7 @@ async def _enrich_agents_with_graph(
             asyncio.gather(*[_fetch(a) for a in fetchable]),
             timeout=_GRAPH_FETCH_TIMEOUT,
         )
-    except TimeoutError:
+    except asyncio.TimeoutError:
         logger.warning(
             "include_graph: timed out after %ds fetching graphs", _GRAPH_FETCH_TIMEOUT
         )

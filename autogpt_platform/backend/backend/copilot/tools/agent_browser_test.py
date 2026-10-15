@@ -142,16 +142,17 @@ class TestSsrfViaValidateUrl:
                 "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
                 return_value=_run_result(rc=0),
-            ), patch(
-                "backend.copilot.tools.agent_browser._snapshot",
-                new_callable=AsyncMock,
-                return_value="",
             ):
-                await self.tool._execute(
-                    user_id="user1",
-                    session=self.session,
-                    url="https://example.com",
-                )
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="",
+                ):
+                    await self.tool._execute(
+                        user_id="user1",
+                        session=self.session,
+                        url="https://example.com",
+                    )
         mock_validate.assert_called_once_with("https://example.com")
 
 
@@ -235,16 +236,17 @@ class TestBrowserNavigateExecute:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-        ) as mock_run:
-            mock_run.return_value = _run_result(rc=1, stderr="timeout")
-            result = await self.tool._execute(
-                user_id="user1",
-                session=self.session,
-                url="https://example.com",
-            )
+        ):
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+            ) as mock_run:
+                mock_run.return_value = _run_result(rc=1, stderr="timeout")
+                result = await self.tool._execute(
+                    user_id="user1",
+                    session=self.session,
+                    url="https://example.com",
+                )
         assert isinstance(result, ErrorResponse)
         assert result.error == "navigation_failed"
 
@@ -254,27 +256,28 @@ class TestBrowserNavigateExecute:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-        ) as mock_run:
-            # open → success; wait → success; get title; get url
-            mock_run.side_effect = [
-                _run_result(rc=0),  # open
-                _run_result(rc=0),  # wait
-                _run_result(rc=0, stdout="Example Domain"),  # get title
-                _run_result(rc=0, stdout="https://example.com"),  # get url
-            ]
+        ):
             with patch(
-                "backend.copilot.tools.agent_browser._snapshot",
+                "backend.copilot.tools.agent_browser._run",
                 new_callable=AsyncMock,
-                return_value="[snapshot]",
-            ):
-                result = await self.tool._execute(
-                    user_id="user1",
-                    session=self.session,
-                    url="https://example.com",
-                )
+            ) as mock_run:
+                # open → success; wait → success; get title; get url
+                mock_run.side_effect = [
+                    _run_result(rc=0),  # open
+                    _run_result(rc=0),  # wait
+                    _run_result(rc=0, stdout="Example Domain"),  # get title
+                    _run_result(rc=0, stdout="https://example.com"),  # get url
+                ]
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="[snapshot]",
+                ):
+                    result = await self.tool._execute(
+                        user_id="user1",
+                        session=self.session,
+                        url="https://example.com",
+                    )
 
         assert isinstance(result, BrowserNavigateResponse)
         assert result.type == ResponseType.BROWSER_NAVIGATE
@@ -296,18 +299,20 @@ class TestBrowserNavigateExecute:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run", side_effect=fake_run
-        ), patch(
-            "backend.copilot.tools.agent_browser._snapshot",
-            new_callable=AsyncMock,
-            return_value="",
         ):
-            await self.tool._execute(
-                user_id="user1",
-                session=session,
-                url="https://example.com",
-            )
+            with patch(
+                "backend.copilot.tools.agent_browser._run", side_effect=fake_run
+            ):
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="",
+                ):
+                    await self.tool._execute(
+                        user_id="user1",
+                        session=session,
+                        url="https://example.com",
+                    )
 
         for session_name, _ in captured_calls:
             assert session_name == "my-unique-session"
@@ -1151,12 +1156,13 @@ class TestEnsureSession:
             "backend.copilot.tools.agent_browser._has_local_session",
             new_callable=AsyncMock,
             return_value=False,
-        ), patch(
-            "backend.copilot.tools.agent_browser._restore_browser_state",
-            new_callable=AsyncMock,
-            return_value=True,
-        ) as mock_restore:
-            await _ensure_session("dead-sess", "user1", session)
+        ):
+            with patch(
+                "backend.copilot.tools.agent_browser._restore_browser_state",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_restore:
+                await _ensure_session("dead-sess", "user1", session)
 
         mock_restore.assert_called_once_with("dead-sess", "user1", session)
         assert "dead-sess" in _mod._alive_sessions
@@ -1171,12 +1177,13 @@ class TestEnsureSession:
             "backend.copilot.tools.agent_browser._has_local_session",
             new_callable=AsyncMock,
             return_value=False,
-        ), patch(
-            "backend.copilot.tools.agent_browser._restore_browser_state",
-            new_callable=AsyncMock,
-            return_value=False,
         ):
-            await _ensure_session("fail-sess", "user1", session)
+            with patch(
+                "backend.copilot.tools.agent_browser._restore_browser_state",
+                new_callable=AsyncMock,
+                return_value=False,
+            ):
+                await _ensure_session("fail-sess", "user1", session)
 
         assert "fail-sess" not in _mod._alive_sessions
 
@@ -1188,15 +1195,16 @@ class TestEnsureSession:
             "backend.copilot.tools.agent_browser._has_local_session",
             new_callable=AsyncMock,
             return_value=False,
-        ), patch(
-            "backend.copilot.tools.agent_browser._restore_browser_state",
-            new_callable=AsyncMock,
-            return_value=True,
-        ) as mock_restore:
-            await asyncio.gather(
-                _ensure_session("race-sess", "user1", session),
-                _ensure_session("race-sess", "user1", session),
-            )
+        ):
+            with patch(
+                "backend.copilot.tools.agent_browser._restore_browser_state",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_restore:
+                await asyncio.gather(
+                    _ensure_session("race-sess", "user1", session),
+                    _ensure_session("race-sess", "user1", session),
+                )
 
         mock_restore.assert_called_once()
 
@@ -1242,12 +1250,13 @@ class TestCloseBrowserSession:
 
     @pytest.mark.asyncio
     async def test_skips_state_cleanup_without_user_id(self):
-        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr, patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-            return_value=_run_result(rc=0),
-        ):
-            await close_browser_session("close-sess")
+        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr:
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_session("close-sess")
 
         mock_get_mgr.assert_not_called()
 
@@ -1370,12 +1379,13 @@ class TestCloseBrowserDaemon:
         from . import agent_browser as _mod
 
         _mod._touched_sessions.add("keep-sess")
-        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr, patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-            return_value=_run_result(rc=0),
-        ):
-            await close_browser_daemon("keep-sess")
+        with patch(_GET_MANAGER, new_callable=AsyncMock) as mock_get_mgr:
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                await close_browser_daemon("keep-sess")
 
         mock_get_mgr.assert_not_called()
 
@@ -1512,20 +1522,22 @@ class TestStatePersistenceIntegration:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-            return_value=_run_result(rc=0),
-        ), patch(
-            "backend.copilot.tools.agent_browser._snapshot",
-            new_callable=AsyncMock,
-            return_value="",
         ):
-            result = await tool._execute(
-                user_id="user1",
-                session=self.session,
-                url="https://example.com",
-            )
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="",
+                ):
+                    result = await tool._execute(
+                        user_id="user1",
+                        session=self.session,
+                        url="https://example.com",
+                    )
 
         assert isinstance(result, BrowserNavigateResponse)
         mock_ensure.assert_called_once_with("int-sess", "user1", self.session)
@@ -1543,16 +1555,17 @@ class TestStatePersistenceIntegration:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-            return_value=_run_result(rc=1, stderr="fail"),
         ):
-            result = await tool._execute(
-                user_id="user1",
-                session=self.session,
-                url="https://example.com",
-            )
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=1, stderr="fail"),
+            ):
+                result = await tool._execute(
+                    user_id="user1",
+                    session=self.session,
+                    url="https://example.com",
+                )
 
         assert isinstance(result, ErrorResponse)
         mock_save.assert_not_called()
@@ -1573,20 +1586,22 @@ class TestStatePersistenceIntegration:
             _VALIDATE_URL,
             new_callable=AsyncMock,
             return_value=(object(), False, ["1.2.3.4"]),
-        ), patch(
-            "backend.copilot.tools.agent_browser._run",
-            new_callable=AsyncMock,
-            return_value=_run_result(rc=0),
-        ), patch(
-            "backend.copilot.tools.agent_browser._snapshot",
-            new_callable=AsyncMock,
-            return_value="",
         ):
-            result = await tool._execute(
-                user_id=None,
-                session=self.session,
-                url="https://example.com",
-            )
+            with patch(
+                "backend.copilot.tools.agent_browser._run",
+                new_callable=AsyncMock,
+                return_value=_run_result(rc=0),
+            ):
+                with patch(
+                    "backend.copilot.tools.agent_browser._snapshot",
+                    new_callable=AsyncMock,
+                    return_value="",
+                ):
+                    result = await tool._execute(
+                        user_id=None,
+                        session=self.session,
+                        url="https://example.com",
+                    )
 
         assert isinstance(result, BrowserNavigateResponse)
         mock_ensure.assert_not_called()
@@ -1608,17 +1623,18 @@ class TestStatePersistenceIntegration:
             "backend.copilot.tools.agent_browser._run",
             new_callable=AsyncMock,
             return_value=_run_result(rc=0, stdout="https://example.com"),
-        ), patch(
-            "backend.copilot.tools.agent_browser._snapshot",
-            new_callable=AsyncMock,
-            return_value="",
         ):
-            result = await tool._execute(
-                user_id="user1",
-                session=self.session,
-                action="click",
-                target="@e1",
-            )
+            with patch(
+                "backend.copilot.tools.agent_browser._snapshot",
+                new_callable=AsyncMock,
+                return_value="",
+            ):
+                result = await tool._execute(
+                    user_id="user1",
+                    session=self.session,
+                    action="click",
+                    target="@e1",
+                )
 
         assert isinstance(result, BrowserActResponse)
         mock_ensure.assert_called_once()
@@ -1794,12 +1810,16 @@ class TestPartialFailures:
 
         with patch(
             "backend.copilot.tools.agent_browser._run", side_effect=selective_fail
-        ), patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr), patch(
-            _VALIDATE_URL,
-            new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
         ):
-            result = await _restore_browser_state("partial-restore", "user1", session)
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                with patch(
+                    _VALIDATE_URL,
+                    new_callable=AsyncMock,
+                    return_value=(object(), False, ["1.2.3.4"]),
+                ):
+                    result = await _restore_browser_state(
+                        "partial-restore", "user1", session
+                    )
 
         # Restore still returns True — individual cookie failures are non-fatal
         assert result is True
@@ -1822,12 +1842,16 @@ class TestPartialFailures:
             "backend.copilot.tools.agent_browser._run",
             new_callable=AsyncMock,
             return_value=_run_result(rc=1, stderr="navigation failed"),
-        ), patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr), patch(
-            _VALIDATE_URL,
-            new_callable=AsyncMock,
-            return_value=(object(), False, ["1.2.3.4"]),
         ):
-            result = await _restore_browser_state("url-fail-sess", "user1", session)
+            with patch(_GET_MANAGER, new_callable=AsyncMock, return_value=mock_mgr):
+                with patch(
+                    _VALIDATE_URL,
+                    new_callable=AsyncMock,
+                    return_value=(object(), False, ["1.2.3.4"]),
+                ):
+                    result = await _restore_browser_state(
+                        "url-fail-sess", "user1", session
+                    )
 
         assert result is False
 

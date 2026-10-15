@@ -1,6 +1,6 @@
 import asyncio
-from datetime import UTC, datetime
-from typing import Annotated
+from datetime import datetime, timezone
+from typing import Annotated, Optional
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
@@ -61,8 +61,8 @@ async def stop_graph_run(
 
 async def _stop_graph_run(
     user_id: str,
-    graph_id: str | None = None,
-    graph_exec_id: str | None = None,
+    graph_id: Optional[str] = None,
+    graph_exec_id: Optional[str] = None,
 ) -> list[execution_db.GraphExecutionMeta]:
     graph_execs = await execution_db.get_graph_executions(
         user_id=user_id,
@@ -282,7 +282,7 @@ async def enable_execution_sharing(
             user_id=user_id,
             is_shared=True,
             share_token=share_token,
-            shared_at=datetime.now(UTC),
+            shared_at=datetime.now(timezone.utc),
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))

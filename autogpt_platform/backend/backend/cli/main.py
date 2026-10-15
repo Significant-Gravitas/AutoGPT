@@ -24,6 +24,7 @@ from .test import test
 @click.group()
 def main():
     """AutoGPT Server CLI Tool"""
+    pass
 
 
 main.add_command(chat)

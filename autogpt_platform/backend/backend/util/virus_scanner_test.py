@@ -102,6 +102,7 @@ class TestVirusScannerService:
 
         async def mock_instream(_):
             await asyncio.sleep(0.001)
+            return None
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)
@@ -119,6 +120,7 @@ class TestVirusScannerService:
     async def test_scan_clean_file(self, scanner):
         async def mock_instream(_):
             await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
+            return None  # No virus detected
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)
@@ -209,6 +211,7 @@ class TestVirusScannerService:
     async def test_concurrent_scans(self, scanner):
         async def mock_instream(_):
             await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
+            return None
 
         mock_client = Mock()
         mock_client.ping = AsyncMock(return_value=True)

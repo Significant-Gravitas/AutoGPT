@@ -180,7 +180,7 @@ class AIMusicGeneratorBlock(Block):
                     last_error = "Model returned empty or invalid response"
                     raise ValueError(last_error)
             except Exception as e:
-                last_error = f"Unexpected error: {e!s}"
+                last_error = f"Unexpected error: {str(e)}"
                 logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")
                 if attempt < max_retries - 1:
                     await asyncio.sleep(retry_delay)

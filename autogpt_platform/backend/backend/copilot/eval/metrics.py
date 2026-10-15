@@ -8,7 +8,7 @@ fields written to ``results.json``.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from typing import Sequence
 
 
 def percentile(values: Sequence[float], p: float) -> float:

@@ -4,7 +4,7 @@ Targets the ``_handle_*`` functions directly — sidesteps ``CommandTree``
 registration since it requires a live ``discord.Client``.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -322,7 +322,7 @@ def _chat(session_id: str, title: str | None = "A chat") -> ChatSummary:
     return ChatSummary(
         session_id=session_id,
         title=title,
-        updated_at=datetime.now(UTC),
+        updated_at=datetime.now(timezone.utc),
     )
 
 

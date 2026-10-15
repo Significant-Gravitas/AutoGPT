@@ -21,8 +21,7 @@ import json
 import logging
 import os
 import shlex
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable
 
 from backend.copilot.context import (
     E2B_ALLOWED_DIRS,

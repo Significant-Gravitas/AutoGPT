@@ -265,4 +265,4 @@ class MCPToolBlock(Block):
             yield "error", str(e)
         except Exception as e:
             logger.exception(f"MCP tool call failed: {e}")
-            yield "error", f"MCP tool call failed: {e!s}"
+            yield "error", f"MCP tool call failed: {str(e)}"

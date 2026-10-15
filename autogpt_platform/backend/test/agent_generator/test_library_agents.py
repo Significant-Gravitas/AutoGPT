@@ -228,17 +228,18 @@ class TestGetAllRelevantAgentsForGeneration:
             "get_library_agents_for_generation",
             new_callable=AsyncMock,
             return_value=library_agents,
-        ), patch.object(
-            core,
-            "search_marketplace_agents_for_generation",
-            new_callable=AsyncMock,
-            return_value=marketplace_agents,
         ):
-            result = await core.get_all_relevant_agents_for_generation(
-                user_id="user-123",
-                search_query="test query",
-                include_marketplace=True,
-            )
+            with patch.object(
+                core,
+                "search_marketplace_agents_for_generation",
+                new_callable=AsyncMock,
+                return_value=marketplace_agents,
+            ):
+                result = await core.get_all_relevant_agents_for_generation(
+                    user_id="user-123",
+                    search_query="test query",
+                    include_marketplace=True,
+                )
 
         # Library agents should come first
         assert len(result) == 2
@@ -283,17 +284,18 @@ class TestGetAllRelevantAgentsForGeneration:
             "get_library_agents_for_generation",
             new_callable=AsyncMock,
             return_value=library_agents,
-        ), patch.object(
-            core,
-            "search_marketplace_agents_for_generation",
-            new_callable=AsyncMock,
-            return_value=marketplace_agents,
         ):
-            result = await core.get_all_relevant_agents_for_generation(
-                user_id="user-123",
-                search_query="test",
-                include_marketplace=True,
-            )
+            with patch.object(
+                core,
+                "search_marketplace_agents_for_generation",
+                new_callable=AsyncMock,
+                return_value=marketplace_agents,
+            ):
+                result = await core.get_all_relevant_agents_for_generation(
+                    user_id="user-123",
+                    search_query="test",
+                    include_marketplace=True,
+                )
 
         # Shared Agent from marketplace should be excluded by graph_id
         assert len(result) == 2
@@ -320,16 +322,17 @@ class TestGetAllRelevantAgentsForGeneration:
             "get_library_agents_for_generation",
             new_callable=AsyncMock,
             return_value=library_agents,
-        ), patch.object(
-            core,
-            "search_marketplace_agents_for_generation",
-            new_callable=AsyncMock,
-        ) as mock_marketplace:
-            result = await core.get_all_relevant_agents_for_generation(
-                user_id="user-123",
-                search_query="test",
-                include_marketplace=False,
-            )
+        ):
+            with patch.object(
+                core,
+                "search_marketplace_agents_for_generation",
+                new_callable=AsyncMock,
+            ) as mock_marketplace:
+                result = await core.get_all_relevant_agents_for_generation(
+                    user_id="user-123",
+                    search_query="test",
+                    include_marketplace=False,
+                )
 
         # Marketplace should not be called
         mock_marketplace.assert_not_called()
@@ -354,16 +357,17 @@ class TestGetAllRelevantAgentsForGeneration:
             "get_library_agents_for_generation",
             new_callable=AsyncMock,
             return_value=library_agents,
-        ), patch.object(
-            core,
-            "search_marketplace_agents_for_generation",
-            new_callable=AsyncMock,
-        ) as mock_marketplace:
-            result = await core.get_all_relevant_agents_for_generation(
-                user_id="user-123",
-                search_query=None,  # No search query
-                include_marketplace=True,
-            )
+        ):
+            with patch.object(
+                core,
+                "search_marketplace_agents_for_generation",
+                new_callable=AsyncMock,
+            ) as mock_marketplace:
+                result = await core.get_all_relevant_agents_for_generation(
+                    user_id="user-123",
+                    search_query=None,  # No search query
+                    include_marketplace=True,
+                )
 
         # Marketplace should not be called without search query
         mock_marketplace.assert_not_called()

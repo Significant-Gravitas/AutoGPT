@@ -2,9 +2,8 @@ import importlib
 import logging
 import os
 import re
-from collections.abc import Sequence
 from pathlib import Path
-from typing import TypeVar
+from typing import Sequence, Type, TypeVar
 
 from backend.blocks._base import AnyBlockSchema, BlockType
 from backend.util.cache import cached
@@ -55,7 +54,7 @@ def load_all_blocks() -> dict[str, type["AnyBlockSchema"]]:
         importlib.import_module(f".{module}", package=__name__)
 
     # Load all Block instances from the available modules
-    available_blocks: dict[str, type[AnyBlockSchema]] = {}
+    available_blocks: dict[str, type["AnyBlockSchema"]] = {}
     for block_cls in _all_subclasses(Block):
         class_name = block_cls.__name__
 
@@ -130,7 +129,7 @@ def _all_subclasses(cls: type[T]) -> list[type[T]]:
 # ============== Block access helper functions ============== #
 
 
-def get_blocks() -> dict[str, type["AnyBlockSchema"]]:
+def get_blocks() -> dict[str, Type["AnyBlockSchema"]]:
     return load_all_blocks()
 
 

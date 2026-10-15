@@ -1,13 +1,12 @@
 """Helper functions for improved test assertions and error handling."""
 
 import json
-from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any
+from typing import Any, Dict, Iterator, Optional
 
 
 def assert_response_status(
-    response: Any, expected_status: int = 200, error_context: str | None = None
+    response: Any, expected_status: int = 200, error_context: Optional[str] = None
 ) -> None:
     """Assert response status with helpful error message.
 
@@ -31,7 +30,9 @@ def assert_response_status(
         raise AssertionError(error_msg)
 
 
-def safe_parse_json(response: Any, error_context: str | None = None) -> dict[str, Any]:
+def safe_parse_json(
+    response: Any, error_context: Optional[str] = None
+) -> Dict[str, Any]:
     """Safely parse JSON response with error handling.
 
     Args:
@@ -57,8 +58,8 @@ def safe_parse_json(response: Any, error_context: str | None = None) -> dict[str
 def assert_error_response_structure(
     response: Any,
     expected_status: int = 422,
-    expected_error_fields: list[str] | None = None,
-) -> dict[str, Any]:
+    expected_error_fields: Optional[list[str]] = None,
+) -> Dict[str, Any]:
     """Assert error response has expected structure.
 
     Args:

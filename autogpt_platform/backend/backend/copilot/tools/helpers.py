@@ -548,7 +548,7 @@ async def execute_block(
                     success=True,
                     session_id=session_id,
                 ).from_outside(outputs)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 # Structured record of tool-call timeouts (SECRT-2247 part 3).
                 # Grep prod logs for `copilot_tool_timeout` to find tools that
                 # keep hitting the cap — candidates for prompt tuning or
@@ -638,7 +638,7 @@ async def execute_block(
     except Exception as e:
         logger.error("Unexpected error executing block: %s", e, exc_info=True)
         return ErrorResponse(
-            message=f"Failed to execute block: {e!s}",
+            message=f"Failed to execute block: {str(e)}",
             error=str(e),
             session_id=session_id,
         ).from_outside(str(e))
@@ -1640,7 +1640,7 @@ def require_library_check(session: ChatSession, tool_name: str):
     """Return an ErrorResponse if ``find_library_agent(for_creation=true)``
     hasn't been called in this session. Bypassed in builder-bound sessions
     (already editing a specific agent)."""
-    from .models import ErrorResponse
+    from .models import ErrorResponse  # noqa: PLC0415 — avoid circular import
 
     if session.metadata.builder_graph_id:
         return None

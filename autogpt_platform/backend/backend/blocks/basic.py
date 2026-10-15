@@ -211,7 +211,7 @@ class UniversalTypeConverterBlock(Block):
             )
             yield "value", converted_value
         except Exception as e:
-            yield "error", f"Failed to convert value: {e!s}"
+            yield "error", f"Failed to convert value: {str(e)}"
 
 
 class ReverseListOrderBlock(Block):

@@ -15,6 +15,8 @@ A credential's name is its provider slug, and its hosts come from
 bindings exist (SECRT-2616, SECRT-2618).
 """
 
+from typing import Optional
+
 from pydantic import BaseModel
 
 from backend.copilot.integration_creds import get_provider_token
@@ -57,7 +59,7 @@ async def get_swap_bindings() -> dict[str, list[str]]:
 
 async def resolve_swap_credential(
     user_id: str, name: str, host: str
-) -> SwapCredential | None:
+) -> Optional[SwapCredential]:
     """*user_id*'s credential called *name*, if it may be sent to *host*.
 
     ``None`` for an unknown name, an unbound host, or a user who has not

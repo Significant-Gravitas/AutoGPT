@@ -144,6 +144,8 @@ class MCPCallResult(BaseModel):
 class MCPClientError(Exception):
     """Raised when an MCP protocol error occurs."""
 
+    pass
+
 
 class _Reply(BaseModel):
     """A decoded HTTP reply: status, parsed JSON-RPC body (if any), headers."""

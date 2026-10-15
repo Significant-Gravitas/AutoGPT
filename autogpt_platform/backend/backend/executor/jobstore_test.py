@@ -2,7 +2,6 @@ import os
 import pickle
 import tempfile
 from contextlib import contextmanager
-from datetime import UTC
 from enum import Enum
 from unittest.mock import MagicMock, patch
 
@@ -28,7 +27,7 @@ POISONED_STATE = pickle.dumps(
 )
 
 
-class _RemovedEnum(Enum):
+class _RemovedEnum(Enum):  # noqa: F811 - deliberate rebind, drops GONE
     KEPT = "kept"
 
 
@@ -378,6 +377,6 @@ def _next_run_time(store, job_id: str):
 
 
 def _utc(timestamp: float):
-    from datetime import datetime
+    from datetime import datetime, timezone
 
-    return datetime.fromtimestamp(timestamp, tz=UTC)
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc)

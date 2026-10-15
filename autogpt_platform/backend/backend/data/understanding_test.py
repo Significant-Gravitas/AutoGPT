@@ -1,6 +1,6 @@
 """Tests for business understanding merge and format logic."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -73,8 +73,8 @@ def test_from_db_themed_prompts():
     db_record = MagicMock()
     db_record.id = "test-id"
     db_record.userId = "user-1"
-    db_record.createdAt = datetime.now(tz=UTC)
-    db_record.updatedAt = datetime.now(tz=UTC)
+    db_record.createdAt = datetime.now(tz=timezone.utc)
+    db_record.updatedAt = datetime.now(tz=timezone.utc)
     db_record.data = {
         "name": "Alice",
         "business": {"industry": "Tech", "version": 1},
@@ -91,8 +91,8 @@ def test_from_db_legacy_list_prompts_preserved_under_general():
     db_record = MagicMock()
     db_record.id = "test-id"
     db_record.userId = "user-1"
-    db_record.createdAt = datetime.now(tz=UTC)
-    db_record.updatedAt = datetime.now(tz=UTC)
+    db_record.createdAt = datetime.now(tz=timezone.utc)
+    db_record.updatedAt = datetime.now(tz=timezone.utc)
     db_record.data = {
         "name": "Alice",
         "business": {"industry": "Tech", "version": 1},
@@ -128,8 +128,8 @@ def test_format_understanding_excludes_themed_prompts():
     understanding = BusinessUnderstanding(
         id="test-id",
         user_id="user-1",
-        created_at=datetime.now(tz=UTC),
-        updated_at=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=timezone.utc),
+        updated_at=datetime.now(tz=timezone.utc),
         user_name="Alice",
         industry="Technology",
         suggested_prompts={

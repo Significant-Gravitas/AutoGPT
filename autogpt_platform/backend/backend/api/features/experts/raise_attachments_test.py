@@ -161,5 +161,6 @@ async def test_resolve_skill_rejects_a_listing_that_is_not_there():
         "get_marketplace_skill",
         new_callable=AsyncMock,
         side_effect=NotFoundError("no listing"),
-    ), pytest.raises(raise_attachments.RaiseAttachmentUnavailableError):
-        await raise_attachments.resolve_attachments("user-1", [attachment])
+    ):
+        with pytest.raises(raise_attachments.RaiseAttachmentUnavailableError):
+            await raise_attachments.resolve_attachments("user-1", [attachment])

@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from typing import Awaitable, Callable, Dict, Optional, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
 from redis.asyncio import Redis as AsyncRedis
@@ -56,7 +56,7 @@ def _notification_bus_channel(user_id: str) -> str:
     return f"{_settings.config.notification_event_bus_name}/{user_id}"
 
 
-MessageHandler = Callable[[bytes | str | None], Awaitable[None]]
+MessageHandler = Callable[[Optional[bytes | str]], Awaitable[None]]
 
 
 def _is_moved_error(exc: BaseException) -> bool:
@@ -218,13 +218,13 @@ class _Subscription:
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: set[WebSocket] = set()
+        self.active_connections: Set[WebSocket] = set()
         # channel_key → sockets subscribed (public channel keys, not raw Redis channels)
-        self.subscriptions: dict[str, set[WebSocket]] = {}
+        self.subscriptions: Dict[str, Set[WebSocket]] = {}
         # websocket → {channel_key: _Subscription}
-        self._ws_subs: dict[WebSocket, dict[str, _Subscription]] = {}
+        self._ws_subs: Dict[WebSocket, Dict[str, _Subscription]] = {}
         # websocket → notification subscription
-        self._ws_notifications: dict[WebSocket, _Subscription] = {}
+        self._ws_notifications: Dict[WebSocket, _Subscription] = {}
 
     async def connect_socket(self, websocket: WebSocket, *, user_id: str):
         await websocket.accept()
@@ -291,7 +291,7 @@ class ConnectionManager:
             return
         sub = _Subscription(full_channel)
 
-        async def on_message(data: bytes | str | None) -> None:
+        async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_exec_event(websocket, channel_key, data)
 
         await sub.start(on_message)
@@ -316,7 +316,7 @@ class ConnectionManager:
         self,
         websocket: WebSocket,
         channel_key: str,
-        raw_payload: bytes | str | None,
+        raw_payload: Optional[bytes | str],
     ) -> None:
         if raw_payload is None:
             return
@@ -360,7 +360,7 @@ class ConnectionManager:
         full_channel = _notification_bus_channel(user_id)
         sub = _Subscription(full_channel)
 
-        async def on_message(data: bytes | str | None) -> None:
+        async def on_message(data: Optional[bytes | str]) -> None:
             await self._forward_notification(websocket, user_id, data)
 
         try:
@@ -376,7 +376,7 @@ class ConnectionManager:
         self,
         websocket: WebSocket,
         user_id: str,
-        raw_payload: bytes | str | None,
+        raw_payload: Optional[bytes | str],
     ) -> None:
         if raw_payload is None:
             return

@@ -3,7 +3,7 @@ Meeting BaaS API client module.
 All API calls centralized for consistency and maintainability.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from backend.sdk import Requests
 
@@ -26,19 +26,19 @@ class MeetingBaasAPI:
         bot_name: str,
         meeting_url: str,
         reserved: bool = False,
-        bot_image: str | None = None,
-        entry_message: str | None = None,
-        start_time: int | None = None,
-        speech_to_text: dict[str, Any] | None = None,
-        webhook_url: str | None = None,
-        automatic_leave: dict[str, Any] | None = None,
-        extra: dict[str, Any] | None = None,
+        bot_image: Optional[str] = None,
+        entry_message: Optional[str] = None,
+        start_time: Optional[int] = None,
+        speech_to_text: Optional[Dict[str, Any]] = None,
+        webhook_url: Optional[str] = None,
+        automatic_leave: Optional[Dict[str, Any]] = None,
+        extra: Optional[Dict[str, Any]] = None,
         recording_mode: str = "speaker_view",
-        streaming: dict[str, Any] | None = None,
-        deduplication_key: str | None = None,
-        zoom_sdk_id: str | None = None,
-        zoom_sdk_pwd: str | None = None,
-    ) -> dict[str, Any]:
+        streaming: Optional[Dict[str, Any]] = None,
+        deduplication_key: Optional[str] = None,
+        zoom_sdk_id: Optional[str] = None,
+        zoom_sdk_pwd: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Deploy a bot to join and record a meeting.
 
@@ -97,15 +97,15 @@ class MeetingBaasAPI:
     async def retranscribe(
         self,
         bot_uuid: str,
-        speech_to_text: dict[str, Any] | None = None,
-        webhook_url: str | None = None,
-    ) -> dict[str, Any]:
+        speech_to_text: Optional[Dict[str, Any]] = None,
+        webhook_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Re-run transcription on a bot's audio.
 
         POST /bots/retranscribe
         """
-        body: dict[str, Any] = {"bot_uuid": bot_uuid}
+        body: Dict[str, Any] = {"bot_uuid": bot_uuid}
 
         if speech_to_text is not None:
             body["speech_to_text"] = speech_to_text
@@ -126,7 +126,7 @@ class MeetingBaasAPI:
 
     async def get_meeting_data(
         self, bot_id: str, include_transcripts: bool = True
-    ) -> dict[str, Any]:
+    ) -> Dict[str, Any]:
         """
         Retrieve meeting data including recording and transcripts.
 
@@ -144,7 +144,7 @@ class MeetingBaasAPI:
         )
         return response.json()
 
-    async def get_screenshots(self, bot_id: str) -> list[dict[str, Any]]:
+    async def get_screenshots(self, bot_id: str) -> List[Dict[str, Any]]:
         """
         Retrieve screenshots captured during a meeting.
 
@@ -174,12 +174,12 @@ class MeetingBaasAPI:
 
     async def list_bots_with_metadata(
         self,
-        limit: int | None = None,
-        offset: int | None = None,
-        sort_by: str | None = None,
-        sort_order: str | None = None,
-        filter_by: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None,
+        filter_by: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """
         List bots with metadata including IDs, names, and meeting details.
 

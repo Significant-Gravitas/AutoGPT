@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -60,7 +61,7 @@ class GithubCreateCheckRunBlock(Block):
             description="Current status of the check run",
             default=ChecksStatus.QUEUED,
         )
-        conclusion: ChecksConclusion | None = SchemaField(
+        conclusion: Optional[ChecksConclusion] = SchemaField(
             description="The final conclusion of the check (required if status is completed)",
             default=None,
         )
@@ -140,11 +141,11 @@ class GithubCreateCheckRunBlock(Block):
         name: str,
         head_sha: str,
         status: ChecksStatus,
-        conclusion: ChecksConclusion | None = None,
-        details_url: str | None = None,
-        output_title: str | None = None,
-        output_summary: str | None = None,
-        output_text: str | None = None,
+        conclusion: Optional[ChecksConclusion] = None,
+        details_url: Optional[str] = None,
+        output_title: Optional[str] = None,
+        output_summary: Optional[str] = None,
+        output_text: Optional[str] = None,
     ) -> dict:
         api = get_api(credentials)
 
@@ -152,9 +153,9 @@ class GithubCreateCheckRunBlock(Block):
             name: str
             head_sha: str
             status: str
-            conclusion: str | None = None
-            details_url: str | None = None
-            output: dict[str, str] | None = None
+            conclusion: Optional[str] = None
+            details_url: Optional[str] = None
+            output: Optional[dict[str, str]] = None
 
         data = CheckRunData(
             name=name,
@@ -231,15 +232,15 @@ class GithubUpdateCheckRunBlock(Block):
         conclusion: ChecksConclusion = SchemaField(
             description="The final conclusion of the check (required if status is completed)",
         )
-        output_title: str | None = SchemaField(
+        output_title: Optional[str] = SchemaField(
             description="New title of the check run output",
             default=None,
         )
-        output_summary: str | None = SchemaField(
+        output_summary: Optional[str] = SchemaField(
             description="New summary of the check run output",
             default=None,
         )
-        output_text: str | None = SchemaField(
+        output_text: Optional[str] = SchemaField(
             description="New detailed text of the check run output",
             default=None,
         )
@@ -249,7 +250,7 @@ class GithubUpdateCheckRunBlock(Block):
             id: int
             html_url: str
             status: str
-            conclusion: str | None
+            conclusion: Optional[str]
 
         check_run: CheckRunResult = SchemaField(
             description="Details of the updated check run"
@@ -301,17 +302,17 @@ class GithubUpdateCheckRunBlock(Block):
         repo_url: str,
         check_run_id: int,
         status: ChecksStatus,
-        conclusion: ChecksConclusion | None = None,
-        output_title: str | None = None,
-        output_summary: str | None = None,
-        output_text: str | None = None,
+        conclusion: Optional[ChecksConclusion] = None,
+        output_title: Optional[str] = None,
+        output_summary: Optional[str] = None,
+        output_text: Optional[str] = None,
     ) -> dict:
         api = get_api(credentials)
 
         class UpdateCheckRunData(BaseModel):
             status: str
-            conclusion: str | None = None
-            output: dict[str, str] | None = None
+            conclusion: Optional[str] = None
+            output: Optional[dict[str, str]] = None
 
         data = UpdateCheckRunData(
             status=status.value,

@@ -73,7 +73,7 @@ class CatalogModelCost(BaseModel):
     provider_output_usd_per_1m: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
-    def _provider_usd_both_or_neither(self) -> CatalogModelCost:
+    def _provider_usd_both_or_neither(self) -> "CatalogModelCost":
         # A half-authored provider price would silently fall back to the
         # transport module's (cheaper) family default — underpricing a
         # premium SKU with no error. Refuse the partial state at authoring.

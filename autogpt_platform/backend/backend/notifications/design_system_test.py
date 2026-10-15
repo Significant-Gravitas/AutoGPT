@@ -65,7 +65,7 @@ def test_masthead_and_otto_survive_email_image_restrictions(rendered):
     assert otto["alt"] == "Otto, your personal Head of AI"
     for image in images:
         assert image["src"].startswith("https://")
-        assert re.search(r"\.(png|jpe?g)$", image["src"], re.IGNORECASE)
+        assert re.search(r"\.(png|jpe?g)$", image["src"], re.I)
     assert any(link == "https://agpt.co" for link in document.links)
     assert document.text.strip()
 
@@ -75,7 +75,7 @@ def test_authored_copy_uses_workflow_vocabulary_and_plain_punctuation(rendered):
     for part in (email.subject, email.preheader, document.text, email.text):
         assert "—" not in part
         assert "–" not in part
-        assert not re.search(r"\bagents?\b", part, re.IGNORECASE)
+        assert not re.search(r"\bagents?\b", part, re.I)
     for banned in ("Summary", "Report", "Newsletter"):
         assert banned not in email.subject
 

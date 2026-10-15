@@ -9,7 +9,7 @@ rules in one place.
 """
 
 import logging
-from collections.abc import AsyncIterable, Awaitable, Callable, Sequence
+from typing import AsyncIterable, Awaitable, Callable, Sequence
 
 from pydantic import BaseModel
 

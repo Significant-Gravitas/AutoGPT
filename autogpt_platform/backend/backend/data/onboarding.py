@@ -1,6 +1,6 @@
 import re
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
 import prisma
@@ -53,18 +53,18 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     wizardUserId: str | None = pydantic.Field(
         default=None, min_length=1, max_length=128, strict=True
     )
-    walletShown: bool | None = None
+    walletShown: Optional[bool] = None
     # Typed enum so the PATCH endpoint validates step names at the boundary
     # (invalid values get a 422 instead of being stored and then 500-ing reads,
     # which type `notified` as list[OnboardingStep]). The API merges this with
     # the existing column rather than treating it as authoritative.
-    notified: list[OnboardingStep] | None = None
-    usageReason: str | None = None
-    integrations: list[str] | None = None
-    otherIntegrations: str | None = None
-    selectedStoreListingVersionId: str | None = None
-    agentInput: dict[str, Any] | None = None
-    onboardingAgentExecutionId: str | None = None
+    notified: Optional[list[OnboardingStep]] = None
+    usageReason: Optional[str] = None
+    integrations: Optional[list[str]] = None
+    otherIntegrations: Optional[str] = None
+    selectedStoreListingVersionId: Optional[str] = None
+    agentInput: Optional[dict[str, Any]] = None
+    onboardingAgentExecutionId: Optional[str] = None
 
     @pydantic.model_validator(mode="after")
     def require_wizard_revision(self) -> "UserOnboardingUpdate":
@@ -110,7 +110,7 @@ def _default_user_onboarding(user_id: str) -> UserOnboarding:
     """
     return UserOnboarding(
         id="",
-        createdAt=datetime.now(UTC),
+        createdAt=datetime.now(timezone.utc),
         completedSteps=[],
         walletShown=False,
         notified=[],
@@ -366,8 +366,8 @@ def _normalize_datetime(value: datetime | None) -> datetime | None:
     if value is None:
         return None
     if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _calculate_consecutive_run_days(
@@ -378,19 +378,19 @@ def _calculate_consecutive_run_days(
     normalized_last_run = _normalize_datetime(last_run_at)
 
     if normalized_last_run is None:
-        return local_now.astimezone(UTC), 1
+        return local_now.astimezone(timezone.utc), 1
 
     last_run_local = normalized_last_run.astimezone(tz)
     last_run_date = last_run_local.date()
     today = local_now.date()
 
     if last_run_date == today:
-        return local_now.astimezone(UTC), current_consecutive_days
+        return local_now.astimezone(timezone.utc), current_consecutive_days
 
     if last_run_date == today - timedelta(days=1):
-        return local_now.astimezone(UTC), current_consecutive_days + 1
+        return local_now.astimezone(timezone.utc), current_consecutive_days + 1
 
-    return local_now.astimezone(UTC), 1
+    return local_now.astimezone(timezone.utc), 1
 
 
 def _get_run_milestone_steps(

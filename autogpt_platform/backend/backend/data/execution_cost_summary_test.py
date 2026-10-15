@@ -1,7 +1,7 @@
 """Integration tests for the SQL-aggregated user cost summary."""
 
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 import pytest
@@ -121,7 +121,7 @@ async def test_empty_window_returns_zeroed_summary(server: SpinTestServer):
     user_id = f"cs-empty-{uuid4()}"
     await _create_user(user_id)
     try:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         summary = await get_user_cost_summary(
             user_id=user_id,
             since=now - timedelta(days=1),
@@ -158,7 +158,7 @@ async def test_by_expert_rolls_up_stamped_runs_and_drops_unattributed(
     await _create_expert(expert_a, user_id)
     await _create_expert(expert_b, user_id)
     try:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
 
         await _create_run(
             run_id=f"xa1-{uuid4()}",
@@ -247,7 +247,7 @@ async def test_aggregates_by_agent_and_top_runs(server: SpinTestServer):
     await _create_graph(graph_a, user_id, "Alpha")
     await _create_graph(graph_b, user_id, "Beta")
     try:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         since = now - timedelta(days=3)
 
         await _create_run(
@@ -381,7 +381,7 @@ async def test_by_expert_covers_a_roster_larger_than_the_by_agent_cap(
     await _create_graph(graph_id, user_id)
     expert_ids = [f"cs-x-r{index}-{uuid4()}" for index in range(roster_size)]
     try:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         for index, expert_id in enumerate(expert_ids):
             await _create_expert(expert_id, user_id)
             await _create_run(
@@ -414,7 +414,7 @@ async def test_excludes_dry_runs_and_outside_window(server: SpinTestServer):
     await _create_user(user_id)
     await _create_graph(graph_id, user_id)
     try:
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
 
         # In window, real run -> counted
         await _create_run(
@@ -464,8 +464,8 @@ async def test_daily_buckets_group_by_utc_date(server: SpinTestServer):
     await _create_user(user_id)
     await _create_graph(graph_id, user_id)
     try:
-        day1 = datetime(2026, 1, 10, 9, 0, tzinfo=UTC)
-        day2 = datetime(2026, 1, 11, 9, 0, tzinfo=UTC)
+        day1 = datetime(2026, 1, 10, 9, 0, tzinfo=timezone.utc)
+        day2 = datetime(2026, 1, 11, 9, 0, tzinfo=timezone.utc)
 
         await _create_run(
             run_id=f"d1a-{uuid4()}",
@@ -544,8 +544,8 @@ async def test_daily_buckets_follow_created_at_not_started_at(
     await _create_user(user_id)
     await _create_graph(graph_id, user_id)
     try:
-        created_day = datetime(2026, 2, 5, 23, 30, tzinfo=UTC)
-        started_day = datetime(2026, 2, 7, 9, 0, tzinfo=UTC)
+        created_day = datetime(2026, 2, 5, 23, 30, tzinfo=timezone.utc)
+        started_day = datetime(2026, 2, 7, 9, 0, tzinfo=timezone.utc)
 
         await _create_run(
             run_id=f"q-{uuid4()}",

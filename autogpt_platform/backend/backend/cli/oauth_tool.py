@@ -36,6 +36,7 @@ import secrets
 import sys
 import uuid
 from datetime import datetime
+from typing import Optional
 from urllib.parse import urlparse
 
 import click
@@ -211,6 +212,7 @@ def cli():
     Generates client IDs, client secrets, and SQL INSERT statements for OAuth applications.
     Does NOT directly insert into the database - outputs SQL for manual execution.
     """
+    pass
 
 
 AVAILABLE_SCOPES = [
@@ -1065,7 +1067,7 @@ async def setup_and_cleanup_test_app(
     Async context manager that handles test app lifecycle.
     Creates the app, yields control to run the server, then cleans up.
     """
-    app_info: dict | None = None
+    app_info: Optional[dict] = None
 
     try:
         # Create test app in database

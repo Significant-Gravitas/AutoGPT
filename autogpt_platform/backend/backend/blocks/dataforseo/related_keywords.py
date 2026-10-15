@@ -2,7 +2,7 @@
 DataForSEO Google Related Keywords block.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from backend.data.model import NodeExecutionStats
 from backend.sdk import (
@@ -25,20 +25,22 @@ class RelatedKeyword(BlockSchemaInput):
     """Schema for a related keyword result."""
 
     keyword: str = SchemaField(description="The related keyword")
-    search_volume: int | None = SchemaField(
+    search_volume: Optional[int] = SchemaField(
         description="Monthly search volume", default=None
     )
-    competition: float | None = SchemaField(
+    competition: Optional[float] = SchemaField(
         description="Competition level (0-1)", default=None
     )
-    cpc: float | None = SchemaField(description="Cost per click in USD", default=None)
-    keyword_difficulty: int | None = SchemaField(
+    cpc: Optional[float] = SchemaField(
+        description="Cost per click in USD", default=None
+    )
+    keyword_difficulty: Optional[int] = SchemaField(
         description="Keyword difficulty score", default=None
     )
-    serp_info: dict[str, Any] | None = SchemaField(
+    serp_info: Optional[Dict[str, Any]] = SchemaField(
         description="SERP data for the keyword", default=None
     )
-    clickstream_data: dict[str, Any] | None = SchemaField(
+    clickstream_data: Optional[Dict[str, Any]] = SchemaField(
         description="Clickstream data metrics", default=None
     )
 
@@ -53,11 +55,11 @@ class DataForSeoRelatedKeywordsBlock(Block):
         keyword: str = SchemaField(
             description="Seed keyword to find related keywords for"
         )
-        location_code: int | None = SchemaField(
+        location_code: Optional[int] = SchemaField(
             description="Location code for targeting (e.g., 2840 for USA)",
             default=2840,  # USA
         )
-        language_code: str | None = SchemaField(
+        language_code: Optional[str] = SchemaField(
             description="Language code (e.g., 'en' for English)",
             default="en",
         )
@@ -87,7 +89,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        related_keywords: list[RelatedKeyword] = SchemaField(
+        related_keywords: List[RelatedKeyword] = SchemaField(
             description="List of related keywords with metrics"
         )
         related_keyword: RelatedKeyword = SchemaField(
@@ -232,7 +234,7 @@ class DataForSeoRelatedKeywordsBlock(Block):
             yield "total_count", len(related_keywords)
             yield "seed_keyword", input_data.keyword
         except Exception as e:
-            yield "error", f"Failed to fetch related keywords: {e!s}"
+            yield "error", f"Failed to fetch related keywords: {str(e)}"
 
 
 class RelatedKeywordExtractorBlock(Block):
@@ -245,22 +247,22 @@ class RelatedKeywordExtractorBlock(Block):
 
     class Output(BlockSchemaOutput):
         keyword: str = SchemaField(description="The related keyword")
-        search_volume: int | None = SchemaField(
+        search_volume: Optional[int] = SchemaField(
             description="Monthly search volume", default=None
         )
-        competition: float | None = SchemaField(
+        competition: Optional[float] = SchemaField(
             description="Competition level (0-1)", default=None
         )
-        cpc: float | None = SchemaField(
+        cpc: Optional[float] = SchemaField(
             description="Cost per click in USD", default=None
         )
-        keyword_difficulty: int | None = SchemaField(
+        keyword_difficulty: Optional[int] = SchemaField(
             description="Keyword difficulty score", default=None
         )
-        serp_info: dict[str, Any] | None = SchemaField(
+        serp_info: Optional[Dict[str, Any]] = SchemaField(
             description="SERP data for the keyword", default=None
         )
-        clickstream_data: dict[str, Any] | None = SchemaField(
+        clickstream_data: Optional[Dict[str, Any]] = SchemaField(
             description="Clickstream data metrics", default=None
         )
 

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.api.features.library.model import LibraryAgentRef
@@ -102,7 +102,7 @@ def test_next_run_uses_earliest_of_an_experts_jobs() -> None:
 
     next_runs = next_runs_by_expert(jobs, experts_by_schedule(experts, jobs))
 
-    assert next_runs == {"alice": datetime(2026, 8, 10, 10, 0, tzinfo=UTC)}
+    assert next_runs == {"alice": datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc)}
 
 
 def test_upcoming_tasks_attribute_each_job_to_its_own_expert() -> None:
@@ -156,10 +156,10 @@ def test_an_experts_copy_of_a_workflow_keeps_the_library_picture() -> None:
 
 def test_parse_datetime_pins_naive_values_to_utc() -> None:
     assert parse_datetime("2026-08-10T09:00:00") == datetime(
-        2026, 8, 10, 9, 0, tzinfo=UTC
+        2026, 8, 10, 9, 0, tzinfo=timezone.utc
     )
     assert parse_datetime("2026-08-10T09:00:00Z") == datetime(
-        2026, 8, 10, 9, 0, tzinfo=UTC
+        2026, 8, 10, 9, 0, tzinfo=timezone.utc
     )
 
 

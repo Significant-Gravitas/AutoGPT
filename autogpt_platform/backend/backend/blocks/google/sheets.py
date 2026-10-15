@@ -626,7 +626,7 @@ class GoogleSheetsAppendRowBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to append row: {e!s}"
+            yield "error", f"Failed to append row: {str(e)}"
 
     def _append_row(
         self,
@@ -756,7 +756,7 @@ class GoogleSheetsClearBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to clear Google Sheet range: {e!s}"
+            yield "error", f"Failed to clear Google Sheet range: {str(e)}"
 
     def _clear_range(self, service, spreadsheet_id: str, range: str) -> dict:
         result = (
@@ -866,7 +866,7 @@ class GoogleSheetsMetadataBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get spreadsheet metadata: {e!s}"
+            yield "error", f"Failed to get spreadsheet metadata: {str(e)}"
 
     def _get_metadata(self, service, spreadsheet_id: str) -> dict:
         result = (
@@ -996,7 +996,7 @@ class GoogleSheetsManageSheetBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to manage sheet: {e!s}"
+            yield "error", f"Failed to manage sheet: {str(e)}"
 
     def _manage_sheet(
         self,
@@ -1153,7 +1153,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to perform batch operations: {e!s}"
+            yield "error", f"Failed to perform batch operations: {str(e)}"
 
     def _batch_operations(
         self, service, spreadsheet_id: str, operations: list[BatchOperation]
@@ -1318,7 +1318,7 @@ class GoogleSheetsFindReplaceBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to find/replace in Google Sheet: {e!s}"
+            yield "error", f"Failed to find/replace in Google Sheet: {str(e)}"
 
     def _find_replace(
         self,
@@ -1501,7 +1501,7 @@ class GoogleSheetsFindBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to find text in Google Sheet: {e!s}"
+            yield "error", f"Failed to find text in Google Sheet: {str(e)}"
 
     def _find_text(
         self,
@@ -1767,7 +1767,7 @@ class GoogleSheetsFormatBlock(Block):
                     _credentials_id=input_data.spreadsheet.credentials_id,
                 )
         except Exception as e:
-            yield "error", f"Failed to format Google Sheet cells: {e!s}"
+            yield "error", f"Failed to format Google Sheet cells: {str(e)}"
 
     def _format_cells(
         self,
@@ -2393,7 +2393,7 @@ class GoogleSheetsFilterRowsBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to filter rows: {e!s}"
+            yield "error", f"Failed to filter rows: {str(e)}"
 
     def _filter_rows(
         self,
@@ -2611,7 +2611,7 @@ class GoogleSheetsLookupRowBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to lookup row: {e!s}"
+            yield "error", f"Failed to lookup row: {str(e)}"
 
     def _lookup_row(
         self,
@@ -2832,7 +2832,7 @@ class GoogleSheetsDeleteRowsBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to delete rows: {e!s}"
+            yield "error", f"Failed to delete rows: {str(e)}"
 
     def _delete_rows(
         self,
@@ -3011,7 +3011,7 @@ class GoogleSheetsGetColumnBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get column: {e!s}"
+            yield "error", f"Failed to get column: {str(e)}"
 
     def _get_column(
         self,
@@ -3192,7 +3192,7 @@ class GoogleSheetsSortBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to sort sheet: {e!s}"
+            yield "error", f"Failed to sort sheet: {str(e)}"
 
     def _sort_sheet(
         self,
@@ -3456,7 +3456,7 @@ class GoogleSheetsGetUniqueValuesBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get unique values: {e!s}"
+            yield "error", f"Failed to get unique values: {str(e)}"
 
     def _get_unique_values(
         self,
@@ -3637,7 +3637,7 @@ class GoogleSheetsInsertRowBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to insert row: {e!s}"
+            yield "error", f"Failed to insert row: {str(e)}"
 
     def _insert_row(
         self,
@@ -3810,7 +3810,7 @@ class GoogleSheetsAddColumnBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to add column: {e!s}"
+            yield "error", f"Failed to add column: {str(e)}"
 
     def _add_column(
         self,
@@ -4016,7 +4016,7 @@ class GoogleSheetsGetRowCountBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get row count: {e!s}"
+            yield "error", f"Failed to get row count: {str(e)}"
 
     def _get_row_count(
         self,
@@ -4194,7 +4194,7 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to remove duplicates: {e!s}"
+            yield "error", f"Failed to remove duplicates: {str(e)}"
 
     def _remove_duplicates(
         self,
@@ -4444,7 +4444,7 @@ class GoogleSheetsUpdateRowBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to update row: {e!s}"
+            yield "error", f"Failed to update row: {str(e)}"
 
     def _update_row(
         self,
@@ -4491,7 +4491,7 @@ class GoogleSheetsUpdateRowBlock(Block):
                 current_row.append("")
 
             # Update specific columns from dict - validate all column names first
-            for col_name in dict_values:
+            for col_name in dict_values.keys():
                 found = False
                 for h in header:
                     if h.lower() == col_name.lower():
@@ -4634,7 +4634,7 @@ class GoogleSheetsGetRowBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get row: {e!s}"
+            yield "error", f"Failed to get row: {str(e)}"
 
     def _get_row(
         self,
@@ -4772,7 +4772,7 @@ class GoogleSheetsDeleteColumnBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to delete column: {e!s}"
+            yield "error", f"Failed to delete column: {str(e)}"
 
     def _delete_column(
         self,
@@ -4950,7 +4950,7 @@ class GoogleSheetsCreateNamedRangeBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to create named range: {e!s}"
+            yield "error", f"Failed to create named range: {str(e)}"
 
     def _create_named_range(
         self,
@@ -5124,7 +5124,7 @@ class GoogleSheetsListNamedRangesBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to list named ranges: {e!s}"
+            yield "error", f"Failed to list named ranges: {str(e)}"
 
     def _list_named_ranges(
         self,
@@ -5284,7 +5284,7 @@ class GoogleSheetsAddDropdownBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to add dropdown: {e!s}"
+            yield "error", f"Failed to add dropdown: {str(e)}"
 
     def _add_dropdown(
         self,
@@ -5456,7 +5456,7 @@ class GoogleSheetsCopyToSpreadsheetBlock(Block):
                 _credentials_id=input_data.source_spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to copy sheet: {e!s}"
+            yield "error", f"Failed to copy sheet: {str(e)}"
 
     def _copy_to_spreadsheet(
         self,
@@ -5608,7 +5608,7 @@ class GoogleSheetsProtectRangeBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to protect range: {e!s}"
+            yield "error", f"Failed to protect range: {str(e)}"
 
     def _protect_range(
         self,
@@ -5772,7 +5772,7 @@ class GoogleSheetsExportCsvBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to export CSV: {e!s}"
+            yield "error", f"Failed to export CSV: {str(e)}"
 
     def _export_csv(
         self,
@@ -5915,7 +5915,7 @@ class GoogleSheetsImportCsvBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to import CSV: {e!s}"
+            yield "error", f"Failed to import CSV: {str(e)}"
 
     def _import_csv(
         self,
@@ -6052,7 +6052,7 @@ class GoogleSheetsAddNoteBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to add note: {e!s}"
+            yield "error", f"Failed to add note: {str(e)}"
 
     def _add_note(
         self,
@@ -6206,7 +6206,7 @@ class GoogleSheetsGetNotesBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to get notes: {e!s}"
+            yield "error", f"Failed to get notes: {str(e)}"
 
     def _get_notes(
         self,
@@ -6370,7 +6370,7 @@ class GoogleSheetsShareSpreadsheetBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to share spreadsheet: {e!s}"
+            yield "error", f"Failed to share spreadsheet: {str(e)}"
 
     def _share_spreadsheet(
         self,
@@ -6516,7 +6516,7 @@ class GoogleSheetsSetPublicAccessBlock(Block):
                 _credentials_id=input_data.spreadsheet.credentials_id,
             )
         except Exception as e:
-            yield "error", f"Failed to set public access: {e!s}"
+            yield "error", f"Failed to set public access: {str(e)}"
 
     def _set_public_access(
         self,

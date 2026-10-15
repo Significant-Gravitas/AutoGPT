@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.api.features.experts.models import Expert
 from backend.data.activity_event import ActivityEvent, ActivityEventCategory
@@ -7,7 +7,7 @@ from backend.data.execution import ExecutionStatus, GraphExecutionMeta
 from .helpers import AgentRef
 from .recent_work import _MAX_ITEMS_PER_GROUP, _MAX_RUNS_PER_GROUP, compose_recent_work
 
-NOW = datetime(2026, 8, 28, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 28, 9, 0, tzinfo=timezone.utc)
 AGENTS = {
     "graph-notes": AgentRef(
         name="Release Note Generator",

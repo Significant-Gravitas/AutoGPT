@@ -1272,7 +1272,7 @@ class TestHandledStreamErrorTransientRetry:
             )
             # Satisfy the type checker — unreachable
             return
-            yield
+            yield  # noqa: B901
 
         state = MagicMock(generations=TurnGenerations())
         state.usage = MagicMock()

@@ -12,9 +12,8 @@ turn's end wakes it instead (``stream_registry.mark_session_completed``).
 import json
 import logging
 import uuid
-from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Literal
 
 from prisma.enums import ReviewStatus
 from pydantic import BaseModel, Field, ValidationError

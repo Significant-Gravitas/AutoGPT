@@ -2,7 +2,7 @@
 Notion API helper functions and client for making authenticated requests.
 """
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from backend.data.model import OAuth2Credentials
 from backend.util.request import Requests
@@ -51,7 +51,7 @@ class NotionClient:
 
         return response.json()
 
-    async def get_blocks(self, block_id: str, recursive: bool = True) -> list[dict]:
+    async def get_blocks(self, block_id: str, recursive: bool = True) -> List[dict]:
         """
         Fetch all blocks from a page or block.
 
@@ -101,8 +101,8 @@ class NotionClient:
     async def query_database(
         self,
         database_id: str,
-        filter_obj: dict | None = None,
-        sorts: list[dict] | None = None,
+        filter_obj: Optional[dict] = None,
+        sorts: Optional[List[dict]] = None,
         page_size: int = 100,
     ) -> dict:
         """
@@ -119,7 +119,7 @@ class NotionClient:
         """
         url = f"https://api.notion.com/v1/databases/{database_id}/query"
 
-        payload: dict[str, Any] = {"page_size": page_size}
+        payload: Dict[str, Any] = {"page_size": page_size}
         if filter_obj:
             payload["filter"] = filter_obj
         if sorts:
@@ -139,9 +139,9 @@ class NotionClient:
         self,
         parent: dict,
         properties: dict,
-        children: list[dict] | None = None,
-        icon: dict | None = None,
-        cover: dict | None = None,
+        children: Optional[List[dict]] = None,
+        icon: Optional[dict] = None,
+        cover: Optional[dict] = None,
     ) -> dict:
         """
         Create a new page.
@@ -158,7 +158,7 @@ class NotionClient:
         """
         url = "https://api.notion.com/v1/pages"
 
-        payload: dict[str, Any] = {"parent": parent, "properties": properties}
+        payload: Dict[str, Any] = {"parent": parent, "properties": properties}
 
         if children:
             payload["children"] = children
@@ -202,7 +202,7 @@ class NotionClient:
 
         return response.json()
 
-    async def append_blocks(self, block_id: str, children: list[dict]) -> dict:
+    async def append_blocks(self, block_id: str, children: List[dict]) -> dict:
         """
         Append blocks to a page or block.
 
@@ -230,8 +230,8 @@ class NotionClient:
     async def search(
         self,
         query: str = "",
-        filter_obj: dict | None = None,
-        sort: dict | None = None,
+        filter_obj: Optional[dict] = None,
+        sort: Optional[dict] = None,
         page_size: int = 100,
     ) -> dict:
         """
@@ -248,7 +248,7 @@ class NotionClient:
         """
         url = "https://api.notion.com/v1/search"
 
-        payload: dict[str, Any] = {"page_size": page_size}
+        payload: Dict[str, Any] = {"page_size": page_size}
         if query:
             payload["query"] = query
         if filter_obj:
@@ -269,7 +269,7 @@ class NotionClient:
 # Conversion helper functions
 
 
-def parse_rich_text(rich_text_array: list[dict]) -> str:
+def parse_rich_text(rich_text_array: List[dict]) -> str:
     """
     Extract plain text from a Notion rich text array.
 
@@ -290,7 +290,7 @@ def parse_rich_text(rich_text_array: list[dict]) -> str:
     return "".join(text_parts)
 
 
-def rich_text_to_markdown(rich_text_array: list[dict]) -> str:
+def rich_text_to_markdown(rich_text_array: List[dict]) -> str:
     """
     Convert Notion rich text array to markdown with formatting.
 
@@ -488,7 +488,7 @@ def block_to_markdown(block: dict, indent_level: int = 0) -> str:
     return "\n".join(markdown_lines) if markdown_lines else ""
 
 
-def blocks_to_markdown(blocks: list[dict]) -> str:
+def blocks_to_markdown(blocks: List[dict]) -> str:
     """
     Convert a list of Notion blocks to a markdown document.
 

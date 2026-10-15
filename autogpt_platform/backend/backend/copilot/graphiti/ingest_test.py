@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -248,6 +248,7 @@ class TestWaitForIngestion:
             # return immediately so the completion tracker can resolve.
             if kwargs.get("name") == "chat_1":
                 await chat_blocked.wait()
+            return None
 
         mock_client = MagicMock()
         mock_client.add_episode = AsyncMock(side_effect=fake_add_episode)
@@ -744,7 +745,7 @@ class TestWorkerIdleTimeout:
                         "episode_body": "hello",
                         "source": EpisodeType.text,
                         "source_description": "race regression",
-                        "reference_time": datetime.now(UTC),
+                        "reference_time": datetime.now(timezone.utc),
                         "group_id": group_id,
                         "custom_extraction_instructions": "",
                     },
@@ -802,7 +803,7 @@ class TestWorkerIdleTimeout:
                         "episode_body": "hello",
                         "source": EpisodeType.text,
                         "source_description": "cancellation race regression",
-                        "reference_time": datetime.now(UTC),
+                        "reference_time": datetime.now(timezone.utc),
                         "group_id": group_id,
                         "custom_extraction_instructions": "",
                     },
@@ -897,8 +898,8 @@ class TestStampEdgeMetadata:
         stamped with a live status — that would contradict its temporal
         fields. A FUTURE invalid_at is still live (true now, ends later) and
         MUST be stamped, else its dream metadata never lands."""
-        past = datetime.now(UTC) - timedelta(days=1)
-        future = datetime.now(UTC) + timedelta(days=365)
+        past = datetime.now(timezone.utc) - timedelta(days=1)
+        future = datetime.now(timezone.utc) + timedelta(days=365)
         client = self._client()
         result = self._result(
             "ep-1",

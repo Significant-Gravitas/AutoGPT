@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, TypedDict
 try:
     from typing import NotRequired
 except ImportError:
-    from typing import NotRequired
+    from typing_extensions import NotRequired
 
 from openai.types import CompletionUsage
 from openai.types.chat import ChatCompletionMessageParam
@@ -502,7 +502,7 @@ async def generate_activity_status_for_execution(
 
     except Exception as e:
         logger.exception(
-            f"Failed to generate activity status for execution {graph_exec_id}: {e!s}"
+            f"Failed to generate activity status for execution {graph_exec_id}: {str(e)}"
         )
         return None
 

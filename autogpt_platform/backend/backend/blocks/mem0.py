@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, Optional, Union
 
 from pydantic import BaseModel, SecretStr
 
@@ -69,7 +69,7 @@ class AddMemoryBlock(Block, Mem0Base):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.MEM0], Literal["api_key"]
         ] = CredentialsField(description="Mem0 API key credentials")
-        content: Content | Conversation = SchemaField(
+        content: Union[Content, Conversation] = SchemaField(
             discriminator="discriminator",
             description="Content to add - either a string or list of message objects as output from an AI block",
             default=Content(discriminator="content", content="I'm a vegetarian"),
@@ -199,7 +199,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             default_factory=list,
             advanced=True,
         )
-        metadata_filter: dict[str, Any] | None = SchemaField(
+        metadata_filter: Optional[dict[str, Any]] = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -284,10 +284,10 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             default=False,
             advanced=False,
         )
-        categories: list[str] | None = SchemaField(
+        categories: Optional[list[str]] = SchemaField(
             description="Filter by categories", default=None
         )
-        metadata_filter: dict[str, Any] | None = SchemaField(
+        metadata_filter: Optional[dict[str, Any]] = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -371,14 +371,14 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             default=False,
             advanced=False,
         )
-        categories: list[str] | None = SchemaField(
+        categories: Optional[list[str]] = SchemaField(
             description="Filter by categories", default=None
         )
-        conversation_id: str | None = SchemaField(
+        conversation_id: Optional[str] = SchemaField(
             description="Optional conversation ID to retrieve the latest memory from (uses run_id)",
             default=None,
         )
-        metadata_filter: dict[str, Any] | None = SchemaField(
+        metadata_filter: Optional[dict[str, Any]] = SchemaField(
             description="Optional metadata filters to apply",
             default=None,
         )
@@ -390,7 +390,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
         )
 
     class Output(BlockSchemaOutput):
-        memory: dict[str, Any] | None = SchemaField(
+        memory: Optional[dict[str, Any]] = SchemaField(
             description="Latest memory if found"
         )
         found: bool = SchemaField(description="Whether a memory was found")

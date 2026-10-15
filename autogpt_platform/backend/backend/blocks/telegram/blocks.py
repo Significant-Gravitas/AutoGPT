@@ -7,7 +7,7 @@ import logging
 import mimetypes
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from backend.blocks._base import (
     Block,
@@ -64,7 +64,7 @@ class SendTelegramMessageBlock(Block):
             default=ParseMode.NONE,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -128,7 +128,7 @@ class SendTelegramMessageBlock(Block):
         chat_id: int,
         text: str,
         parse_mode: str,
-        reply_to_message_id: int | None,
+        reply_to_message_id: Optional[int],
         disable_notification: bool,
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
@@ -165,7 +165,7 @@ class SendTelegramPhotoBlock(Block):
             default=ParseMode.NONE,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -256,7 +256,7 @@ class SendTelegramPhotoBlock(Block):
         photo_url: str,
         caption: str,
         parse_mode: str,
-        reply_to_message_id: int | None,
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -278,7 +278,7 @@ class SendTelegramPhotoBlock(Block):
         file_path: str,
         caption: str,
         parse_mode: str,
-        reply_to_message_id: int | None,
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         path = Path(file_path)
         file_bytes = path.read_bytes()
@@ -319,12 +319,12 @@ class SendTelegramVoiceBlock(Block):
             default="",
             advanced=True,
         )
-        duration: int | None = SchemaField(
+        duration: Optional[int] = SchemaField(
             description="Duration in seconds",
             default=None,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -415,8 +415,8 @@ class SendTelegramVoiceBlock(Block):
         chat_id: int,
         voice_url: str,
         caption: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -437,8 +437,8 @@ class SendTelegramVoiceBlock(Block):
         chat_id: int,
         file_path: str,
         caption: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         path = Path(file_path)
         file_bytes = path.read_bytes()
@@ -786,12 +786,12 @@ class SendTelegramAudioBlock(Block):
             default="",
             advanced=True,
         )
-        duration: int | None = SchemaField(
+        duration: Optional[int] = SchemaField(
             description="Duration in seconds",
             default=None,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -886,8 +886,8 @@ class SendTelegramAudioBlock(Block):
         caption: str,
         title: str,
         performer: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -914,8 +914,8 @@ class SendTelegramAudioBlock(Block):
         caption: str,
         title: str,
         performer: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         path = Path(file_path)
         file_bytes = path.read_bytes()
@@ -969,7 +969,7 @@ class SendTelegramDocumentBlock(Block):
             default=ParseMode.NONE,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -1058,7 +1058,7 @@ class SendTelegramDocumentBlock(Block):
         document_url: str,
         caption: str,
         parse_mode: str,
-        reply_to_message_id: int | None,
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -1081,7 +1081,7 @@ class SendTelegramDocumentBlock(Block):
         display_filename: str,
         caption: str,
         parse_mode: str,
-        reply_to_message_id: int | None,
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         path = Path(file_path)
         file_bytes = path.read_bytes()
@@ -1125,12 +1125,12 @@ class SendTelegramVideoBlock(Block):
             default=ParseMode.NONE,
             advanced=True,
         )
-        duration: int | None = SchemaField(
+        duration: Optional[int] = SchemaField(
             description="Duration in seconds",
             default=None,
             advanced=True,
         )
-        reply_to_message_id: int | None = SchemaField(
+        reply_to_message_id: Optional[int] = SchemaField(
             description="Message ID to reply to",
             default=None,
             advanced=True,
@@ -1220,8 +1220,8 @@ class SendTelegramVideoBlock(Block):
         video_url: str,
         caption: str,
         parse_mode: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         data: dict[str, Any] = {
             "chat_id": chat_id,
@@ -1245,8 +1245,8 @@ class SendTelegramVideoBlock(Block):
         file_path: str,
         caption: str,
         parse_mode: str,
-        duration: int | None,
-        reply_to_message_id: int | None,
+        duration: Optional[int],
+        reply_to_message_id: Optional[int],
     ) -> TelegramMessageResult:
         path = Path(file_path)
         file_bytes = path.read_bytes()

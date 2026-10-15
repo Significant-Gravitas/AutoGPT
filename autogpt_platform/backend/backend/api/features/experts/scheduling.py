@@ -9,7 +9,7 @@ Split out of ``experts_db`` to keep both files within the size guideline.
 
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import prisma.models
@@ -447,7 +447,7 @@ async def pause_expert_schedules(user_id: str, expert_id: str, reason: str) -> b
             "visibility": ResourceVisibility.PRIVATE,
             "schedulesPausedAt": None,
         },
-        data={"schedulesPausedAt": datetime.now(UTC)},
+        data={"schedulesPausedAt": datetime.now(timezone.utc)},
     )
     if updated == 0:
         return False
@@ -486,7 +486,7 @@ async def resume_expert_schedules(user_id: str, expert_id: str) -> bool:
     await reset_weekly_spend(expert_id)
     await prisma.models.ExpertPauseEvent.prisma().update_many(
         where={"expertId": expert_id, "clearedAt": None},
-        data={"clearedAt": datetime.now(UTC)},
+        data={"clearedAt": datetime.now(timezone.utc)},
     )
     return True
 
@@ -553,7 +553,7 @@ async def _post_budget_message(
     """Post the warning/pause message into the expert's thread. Deduped to
     once per expert per week per kind via the deterministic message id.
     Never raises — a failed post must not affect the run decision."""
-    year, week, _ = datetime.now(UTC).isocalendar()
+    year, week, _ = datetime.now(timezone.utc).isocalendar()
     kind = "pause" if breached else "warn"
     message_id = str(
         uuid.uuid5(_POST_NAMESPACE, f"budget-{kind}:{expert.id}:{year}-W{week:02d}")

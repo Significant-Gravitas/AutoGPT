@@ -15,7 +15,7 @@ loudly if a bump changes the invariant, instead of letting
 ``_stamp_edge_metadata`` silently mis-stamp user-authored edges.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from graphiti_core.edges import EntityEdge
@@ -59,7 +59,7 @@ class ScriptedLLMClient(LLMClient):
 
 
 def _now() -> datetime:
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 def _entity(name: str) -> EntityNode:

@@ -1,7 +1,7 @@
 """CRUD operations for Web Push subscriptions (PushSubscription model)."""
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma.models import PushSubscription
 from pydantic import BaseModel
@@ -133,7 +133,7 @@ async def increment_fail_count(user_id: str, endpoint: str) -> None:
         where={"userId": user_id, "endpoint": endpoint},
         data={
             "failCount": {"increment": 1},
-            "lastFailedAt": datetime.now(UTC),
+            "lastFailedAt": datetime.now(timezone.utc),
         },
     )
 

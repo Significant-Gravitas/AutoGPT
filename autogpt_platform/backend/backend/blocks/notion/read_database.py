@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from backend.blocks._base import (
     Block,
@@ -29,17 +29,17 @@ class NotionReadDatabaseBlock(Block):
         database_id: str = SchemaField(
             description="Notion database ID. Must be accessible by the connected integration.",
         )
-        filter_property: str | None = SchemaField(
+        filter_property: Optional[str] = SchemaField(
             description="Property name to filter by (e.g., 'Status', 'Priority')",
             default=None,
         )
-        filter_value: str | None = SchemaField(
+        filter_value: Optional[str] = SchemaField(
             description="Value to filter for in the specified property", default=None
         )
-        sort_property: str | None = SchemaField(
+        sort_property: Optional[str] = SchemaField(
             description="Property name to sort by", default=None
         )
-        sort_direction: str | None = SchemaField(
+        sort_direction: Optional[str] = SchemaField(
             description="Sort direction: 'ascending' or 'descending'",
             default="ascending",
         )
@@ -51,13 +51,13 @@ class NotionReadDatabaseBlock(Block):
         )
 
     class Output(BlockSchemaOutput):
-        entries: list[dict[str, Any]] = SchemaField(
+        entries: List[Dict[str, Any]] = SchemaField(
             description="List of database entries with their properties."
         )
-        entry: dict[str, Any] = SchemaField(
+        entry: Dict[str, Any] = SchemaField(
             description="Individual database entry (yields one per entry found)."
         )
-        entry_ids: list[str] = SchemaField(
+        entry_ids: List[str] = SchemaField(
             description="List of entry IDs for batch operations."
         )
         entry_id: str = SchemaField(
@@ -188,12 +188,12 @@ class NotionReadDatabaseBlock(Block):
     async def query_database(
         credentials: OAuth2Credentials,
         database_id: str,
-        filter_property: str | None = None,
-        filter_value: str | None = None,
-        sort_property: str | None = None,
+        filter_property: Optional[str] = None,
+        filter_value: Optional[str] = None,
+        sort_property: Optional[str] = None,
         sort_direction: str = "ascending",
         limit: int = 100,
-    ) -> tuple[list[dict[str, Any]], int, str]:
+    ) -> tuple[List[Dict[str, Any]], int, str]:
         """
         Query a Notion database and parse the results.
 

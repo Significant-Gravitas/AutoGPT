@@ -1,7 +1,7 @@
 import json
 import shlex
 import uuid
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Optional
 
 from e2b import AsyncSandbox as BaseAsyncSandbox
 from pydantic import SecretStr
@@ -215,7 +215,7 @@ class ClaudeCodeBlock(Block):
                 "Pass this back along with sandbox_id to continue the conversation."
             )
         )
-        sandbox_id: str | None = SchemaField(
+        sandbox_id: Optional[str] = SchemaField(
             description=(
                 "ID of the sandbox instance. "
                 "Pass this back along with session_id to continue the conversation. "

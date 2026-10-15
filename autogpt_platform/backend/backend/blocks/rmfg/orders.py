@@ -1,5 +1,7 @@
 """Blocks that track paid RMFG orders."""
 
+from typing import Optional
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -36,16 +38,16 @@ class RMFGGetOrderBlock(Block):
         status: OrderStatus = SchemaField(
             description="received, in_production, ready_for_pickup, shipped, delivered, cancelled or refunded"
         )
-        tracking: OrderTracking | None = SchemaField(
+        tracking: Optional[OrderTracking] = SchemaField(
             description="Carrier, number and link once shipped"
         )
-        tracking_url: str | None = SchemaField(
+        tracking_url: Optional[str] = SchemaField(
             default=None, description="Carrier tracking link, once shipped"
         )
-        tracking_number: str | None = SchemaField(
+        tracking_number: Optional[str] = SchemaField(
             description="Carrier tracking number, once shipped", default=None
         )
-        estimated_ship_date: str | None = SchemaField(
+        estimated_ship_date: Optional[str] = SchemaField(
             description="Planned ship date, when known", default=None
         )
         amount_total_cents: int = SchemaField(description="Amount charged, USD cents")
@@ -145,7 +147,7 @@ class RMFGListOrdersBlock(Block):
     @staticmethod
     async def list_orders(
         credentials: RMFGCredentials, limit: int, cursor: str
-    ) -> tuple[list[Order], str | None]:
+    ) -> tuple[list[Order], Optional[str]]:
         return await RMFGClient(credentials).list_orders(limit, cursor)
 
     async def run(

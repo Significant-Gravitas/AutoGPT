@@ -17,8 +17,7 @@ import base64
 import hashlib
 import secrets
 import uuid
-from collections.abc import AsyncGenerator
-from datetime import UTC
+from typing import AsyncGenerator
 
 import httpx
 import pytest
@@ -708,11 +707,11 @@ async def test_token_authorization_code_expired(
     test_oauth_app: dict,
 ):
     """Test token exchange with expired authorization code."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Create an expired authorization code directly in the database
     expired_code = f"expired_code_{secrets.token_urlsafe(16)}"
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     await PrismaOAuthAuthorizationCode.prisma().create(
         data={
@@ -950,12 +949,12 @@ async def test_token_refresh_expired(
     test_oauth_app: dict,
 ):
     """Test token refresh with expired refresh token."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Create an expired refresh token directly in the database
     expired_token_value = f"expired_refresh_{secrets.token_urlsafe(16)}"
     expired_token_hash = hashlib.sha256(expired_token_value.encode()).hexdigest()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -988,12 +987,12 @@ async def test_token_refresh_revoked(
     test_oauth_app: dict,
 ):
     """Test token refresh with revoked refresh token."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Create a revoked refresh token directly in the database
     revoked_token_value = f"revoked_refresh_{secrets.token_urlsafe(16)}"
     revoked_token_hash = hashlib.sha256(revoked_token_value.encode()).hexdigest()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -1060,12 +1059,12 @@ async def test_token_refresh_wrong_application(
     other_oauth_app: dict,
 ):
     """Test token refresh with token from different application."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     # Create a refresh token for `test_oauth_app`
     token_value = f"app1_refresh_{secrets.token_urlsafe(16)}"
     token_hash = hashlib.sha256(token_value.encode()).hexdigest()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     await PrismaOAuthRefreshToken.prisma().create(
         data={
@@ -1272,7 +1271,7 @@ async def test_validate_access_token_fails_when_app_disabled(
     This tests the security feature where disabling an OAuth application
     immediately invalidates all its access tokens.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from backend.data.auth.oauth import InvalidClientError, validate_access_token
 
@@ -1301,7 +1300,7 @@ async def test_validate_access_token_fails_when_app_disabled(
     # Create an access token directly in the database
     token_plaintext = f"test_token_{secrets.token_urlsafe(32)}"
     token_hash = hashlib.sha256(token_plaintext.encode()).hexdigest()
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
 
     await PrismaOAuthAccessToken.prisma().create(
         data={

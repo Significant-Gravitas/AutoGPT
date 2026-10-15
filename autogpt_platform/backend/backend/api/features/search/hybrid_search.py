@@ -16,7 +16,7 @@ import re
 import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, NotRequired, cast
+from typing import Any, cast
 
 from prisma.enums import ContentType
 from rank_bm25 import BM25Okapi
@@ -25,7 +25,7 @@ from rank_bm25 import BM25Okapi
 # cannot build a core schema for a typing.TypedDict on Python < 3.12 (the
 # __orig_bases__ attribute it relies on was only added to typing.TypedDict in
 # 3.12). The search RPC contract test validates HybridSearchRow via TypeAdapter.
-from typing_extensions import TypedDict
+from typing_extensions import NotRequired, TypedDict
 
 from backend.api.features.search.embeddings import (
     EMBEDDING_DIM,
@@ -237,9 +237,12 @@ async def unified_hybrid_search(
             lexical_fn = "to_tsquery"
             lexical_tsquery = " & ".join(f"{t}:*" for t in tokens)
 
-    page = max(page, 1)
-    page_size = max(page_size, 1)
-    page_size = min(page_size, 100)
+    if page < 1:
+        page = 1
+    if page_size < 1:
+        page_size = 1
+    if page_size > 100:
+        page_size = 100
 
     if content_types is None:
         content_types = [

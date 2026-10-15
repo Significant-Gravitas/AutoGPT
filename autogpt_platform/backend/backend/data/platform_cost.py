@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from prisma.models import PlatformCostLog as PrismaLog
@@ -499,7 +499,7 @@ async def get_platform_cost_dashboard(
     provided to avoid full-table scans on large deployments.
     """
     if start is None:
-        start = datetime.now(UTC) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
+        start = datetime.now(timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     raw_where_all, raw_params_all = _build_raw_where(
         start,
@@ -828,7 +828,7 @@ async def get_platform_cost_logs(
     source: str | None = None,
 ) -> tuple[list[CostLogRow], int]:
     if start is None:
-        start = datetime.now(tz=UTC) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
+        start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     offset = (page - 1) * page_size
 
@@ -923,9 +923,9 @@ async def get_copilot_weekly_usage_for_export(
     # `2026-01-01T00:00:00` (no tz) don't trip a TypeError when subtracted
     # against an aware `2026-01-31T00:00:00Z` partner.
     if start.tzinfo is None:
-        start = start.replace(tzinfo=UTC)
+        start = start.replace(tzinfo=timezone.utc)
     if end.tzinfo is None:
-        end = end.replace(tzinfo=UTC)
+        end = end.replace(tzinfo=timezone.utc)
     if end < start:
         raise ValueError("end must be >= start")
     # Compare timedeltas directly so 90d + any sub-day remainder still trips
@@ -992,7 +992,7 @@ async def get_copilot_weekly_usage_for_export(
         else:
             week_start = raw_week_start
         if week_start.tzinfo is None:
-            week_start = week_start.replace(tzinfo=UTC)
+            week_start = week_start.replace(tzinfo=timezone.utc)
         # Inclusive end-of-week (Sunday 23:59:59.999999 UTC); "the week" is
         # Mon–Sun, not Mon–next Mon.
         week_end = week_start + timedelta(days=7, microseconds=-1)
@@ -1048,7 +1048,7 @@ async def get_platform_cost_logs_for_export(
     and the caller should warn the user that not all rows are included.
     """
     if start is None:
-        start = datetime.now(tz=UTC) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
+        start = datetime.now(tz=timezone.utc) - timedelta(days=DEFAULT_DASHBOARD_DAYS)
 
     ids, _ = await _ids_matching_metadata_filter(
         start=start,

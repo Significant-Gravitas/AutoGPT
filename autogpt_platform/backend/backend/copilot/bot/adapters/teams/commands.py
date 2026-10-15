@@ -8,7 +8,7 @@ message with an Adaptive Card button.
 """
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from backend.copilot.bot.bot_backend import BotBackend
 from backend.copilot.bot.command_core import CommandReply, setup_reply, unlink_reply
@@ -30,7 +30,7 @@ _HELP_TEXT = (
 _KNOWN_COMMANDS = {"setup", "help", "unlink"}
 
 
-def parse_command(text: str) -> str | None:
+def parse_command(text: str) -> Optional[str]:
     """Return the command name when ``text`` is one of ours, else None.
 
     The adapter strips the bot's @mention before this runs, so a channel

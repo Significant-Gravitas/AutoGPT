@@ -71,7 +71,7 @@ async def submit_skill(
                 "license": _license_of(skill),
                 "changesSummary": request.changes_summary or "Initial submission",
                 "submissionStatus": prisma.enums.SubmissionStatus.PENDING,
-                "submittedAt": datetime.datetime.now(datetime.UTC),
+                "submittedAt": datetime.datetime.now(datetime.timezone.utc),
             }
         )
         await snapshot_version_files(version.id, files, tx)

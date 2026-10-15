@@ -30,7 +30,7 @@ class AsyncRedisKeyedMutex:
     def __init__(self, redis: "AsyncRedisLike", timeout: int | None = 60):
         self.redis = redis
         self.timeout = timeout
-        self.locks: dict[Any, AsyncRedisLock] = ExpiringDict(
+        self.locks: dict[Any, "AsyncRedisLock"] = ExpiringDict(
             max_len=6000, max_age_seconds=self.timeout
         )
         self.locks_lock = asyncio.Lock()

@@ -8,7 +8,7 @@ submit phase 3 → phase 3 result → apply + mark JobStatus complete.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -85,7 +85,7 @@ def _entry(
     phase: str = "consolidate",
     expert_id: str | None = None,
 ) -> PendingEntry:
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     custom_id = f"{pass_id}:{phase}"
     payload = {
         "user_id": "u1",
@@ -135,7 +135,7 @@ async def _persist_autopilot_bundle(pass_id: str = "p1") -> None:
     from backend.copilot.dream.batch_submit import persist_input_bundle
     from backend.copilot.dream.fetch import DreamInput
 
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     await persist_input_bundle(
         pass_id,
         DreamInput(
@@ -191,7 +191,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -242,7 +242,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -300,7 +300,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -345,7 +345,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -398,7 +398,7 @@ class TestPhaseChaining:
         # The orchestrator holds the dream lock while persisting the bundle;
         # the bundle captures the lock's ownership token for the callback.
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -488,7 +488,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p-expert",
             DreamInput(
@@ -548,7 +548,7 @@ class TestPhaseChaining:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -607,7 +607,7 @@ class TestPhaseChaining:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -818,7 +818,7 @@ class TestErrorPaths:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -866,7 +866,7 @@ class TestErrorPaths:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -927,7 +927,7 @@ class TestMalformedPayload:
 
         _, _, string_store = fake_redis
         string_store["dream:inflight:u1"] = "tok-u1"
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(
@@ -952,7 +952,7 @@ class TestLockTokenWiring:
         from backend.copilot.dream.batch_submit import persist_input_bundle
         from backend.copilot.dream.fetch import DreamInput
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         await persist_input_bundle(
             "p1",
             DreamInput(

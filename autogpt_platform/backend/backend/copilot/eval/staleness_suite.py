@@ -15,8 +15,8 @@ false positives delete real memory.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Sequence
 
 from pydantic.dataclasses import dataclass
 
@@ -58,7 +58,7 @@ def _fixture_to_fact(fixture: StalenessFixture, now: datetime) -> FactRow:
 def run_staleness_suite(
     fixtures: Sequence[StalenessFixture], *, now: datetime | None = None
 ) -> StalenessSuiteResult:
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(timezone.utc)
 
     true_positive = 0  # flagged AND actually stale
     false_positive = 0  # flagged BUT actually stable

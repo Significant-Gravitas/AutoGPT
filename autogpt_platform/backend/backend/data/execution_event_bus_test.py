@@ -7,7 +7,7 @@ SSUBSCRIBE round-trip is covered by the integration test in
 ``event_bus_test.py``.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -57,7 +57,7 @@ def test_exec_and_graph_channels_share_hash_tag():
 
 
 def _sample_node_event() -> NodeExecutionEvent:
-    now = datetime.now(tz=UTC)
+    now = datetime.now(tz=timezone.utc)
     return NodeExecutionEvent(
         user_id="u",
         graph_id="g",
@@ -77,7 +77,7 @@ def _sample_node_event() -> NodeExecutionEvent:
 
 
 def _sample_graph_event() -> GraphExecutionEvent:
-    now = datetime.now(tz=UTC)
+    now = datetime.now(tz=timezone.utc)
     return GraphExecutionEvent(
         id="e",
         user_id="u",
@@ -157,7 +157,7 @@ async def test_async_publish_routes_via_type_dispatch():
 @pytest.mark.asyncio
 async def test_async_publish_truncates_oversized_payload(monkeypatch):
     """Payload truncation applies before sending — size exceeded → replacement."""
-    from backend.data import execution
+    import backend.data.execution as execution
 
     bus = AsyncRedisExecutionEventBus()
     # Force tiny limit so ``truncate`` rewrites the payload.
@@ -331,7 +331,7 @@ def test_sync_publish_node_exec_update_rebuilds_event():
 def test_sync_publish_graph_truncates_inputs_and_outputs(monkeypatch):
     """Sync ``_publish`` must truncate GraphExecutionEvent.inputs/outputs when
     the payload exceeds the cap — protects Redis from oversized frames."""
-    from backend.data import execution
+    import backend.data.execution as execution
 
     bus = RedisExecutionEventBus()
     monkeypatch.setattr(execution.config, "max_message_size_limit", 4)

@@ -1,5 +1,6 @@
 import logging
 import tempfile
+import typing
 
 import autogpt_libs.auth
 import fastapi
@@ -11,8 +12,10 @@ import backend.api.features.library.model as library_model
 import backend.api.features.store.cache as store_cache
 import backend.api.features.store.db as store_db
 import backend.api.features.store.model as store_model
+import backend.api.features.store.skill_model as skill_model
+import backend.api.features.store.skill_routes as skill_routes
+import backend.api.features.store.skill_submission_db as skill_submission_db
 import backend.util.json
-from backend.api.features.store import skill_model, skill_routes, skill_submission_db
 
 logger = logging.getLogger(__name__)
 
@@ -28,8 +31,8 @@ router = fastapi.APIRouter(
     summary="Get Admin Listings History",
 )
 async def get_admin_listings_with_versions(
-    status: prisma.enums.SubmissionStatus | None = None,
-    search: str | None = None,
+    status: typing.Optional[prisma.enums.SubmissionStatus] = None,
+    search: typing.Optional[str] = None,
     page: int = 1,
     page_size: int = 20,
 ) -> store_model.StoreListingsWithVersionsAdminViewResponse:

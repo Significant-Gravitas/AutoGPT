@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Literal, Optional
 from urllib.parse import quote
 
 from typing_extensions import TypedDict
@@ -37,7 +37,7 @@ class GithubListBranchesBlock(Block):
             ge=1,
             le=1000,
         )
-        per_page: int | None = SchemaField(
+        per_page: Optional[int] = SchemaField(
             description="[Legacy] Number of branches to return per page (max 100). "
             "If set (or `page` is set), `limit` is ignored.",
             default=None,
@@ -45,7 +45,7 @@ class GithubListBranchesBlock(Block):
             le=100,
             advanced=True,
         )
-        page: int | None = SchemaField(
+        page: Optional[int] = SchemaField(
             description="[Legacy] Page number for pagination. "
             "If set (or `per_page` is set), `limit` is ignored.",
             default=None,

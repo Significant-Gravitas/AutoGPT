@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import Any, Optional, cast
 
 import pydantic
 from prisma.models import CoPilotUnderstanding
@@ -72,59 +72,59 @@ class BusinessUnderstandingInput(pydantic.BaseModel):
     """Input model for updating business understanding - all fields optional for incremental updates."""
 
     # User info
-    user_name: str | None = pydantic.Field(None, description="The user's name")
-    job_title: str | None = pydantic.Field(None, description="The user's job title")
+    user_name: Optional[str] = pydantic.Field(None, description="The user's name")
+    job_title: Optional[str] = pydantic.Field(None, description="The user's job title")
 
     # Business basics
-    business_name: str | None = pydantic.Field(
+    business_name: Optional[str] = pydantic.Field(
         None, description="Name of the user's business"
     )
-    industry: str | None = pydantic.Field(None, description="Industry or sector")
-    business_size: str | None = pydantic.Field(
+    industry: Optional[str] = pydantic.Field(None, description="Industry or sector")
+    business_size: Optional[str] = pydantic.Field(
         None, description="Company size (e.g., '1-10', '11-50')"
     )
-    user_role: str | None = pydantic.Field(
+    user_role: Optional[str] = pydantic.Field(
         None,
         description="User's role in the organization (e.g., 'decision maker', 'implementer')",
     )
 
     # Processes & activities
-    key_workflows: list[str] | None = pydantic.Field(
+    key_workflows: Optional[list[str]] = pydantic.Field(
         None, description="Key business workflows"
     )
-    daily_activities: list[str] | None = pydantic.Field(
+    daily_activities: Optional[list[str]] = pydantic.Field(
         None, description="Daily activities performed"
     )
 
     # Pain points & goals
-    pain_points: list[str] | None = pydantic.Field(
+    pain_points: Optional[list[str]] = pydantic.Field(
         None, description="Current pain points"
     )
-    bottlenecks: list[str] | None = pydantic.Field(
+    bottlenecks: Optional[list[str]] = pydantic.Field(
         None, description="Process bottlenecks"
     )
-    manual_tasks: list[str] | None = pydantic.Field(
+    manual_tasks: Optional[list[str]] = pydantic.Field(
         None, description="Manual/repetitive tasks"
     )
-    automation_goals: list[str] | None = pydantic.Field(
+    automation_goals: Optional[list[str]] = pydantic.Field(
         None, description="Desired automation goals"
     )
 
     # Current tools
-    current_software: list[str] | None = pydantic.Field(
+    current_software: Optional[list[str]] = pydantic.Field(
         None, description="Software/tools currently used"
     )
-    existing_automation: list[str] | None = pydantic.Field(
+    existing_automation: Optional[list[str]] = pydantic.Field(
         None, description="Existing automations"
     )
 
     # Additional context
-    additional_notes: str | None = pydantic.Field(
+    additional_notes: Optional[str] = pydantic.Field(
         None, description="Any additional context"
     )
 
     # Suggested prompts (UI-only, not included in system prompt)
-    suggested_prompts: dict[str, list[str]] | None = pydantic.Field(
+    suggested_prompts: Optional[dict[str, list[str]]] = pydantic.Field(
         None, description="LLM-generated suggested prompts grouped by theme"
     )
 
@@ -138,14 +138,14 @@ class BusinessUnderstanding(pydantic.BaseModel):
     updated_at: datetime
 
     # User info
-    user_name: str | None = None
-    job_title: str | None = None
+    user_name: Optional[str] = None
+    job_title: Optional[str] = None
 
     # Business basics
-    business_name: str | None = None
-    industry: str | None = None
-    business_size: str | None = None
-    user_role: str | None = None
+    business_name: Optional[str] = None
+    industry: Optional[str] = None
+    business_size: Optional[str] = None
+    user_role: Optional[str] = None
 
     # Processes & activities
     key_workflows: list[str] = pydantic.Field(default_factory=list)
@@ -162,7 +162,7 @@ class BusinessUnderstanding(pydantic.BaseModel):
     existing_automation: list[str] = pydantic.Field(default_factory=list)
 
     # Additional context
-    additional_notes: str | None = None
+    additional_notes: Optional[str] = None
 
     # Suggested prompts (UI-only, not included in system prompt)
     suggested_prompts: dict[str, list[str]] = pydantic.Field(default_factory=dict)
@@ -212,7 +212,7 @@ def _merge_lists(existing: list | None, new: list | None) -> list | None:
     return merged
 
 
-async def _get_from_cache(user_id: str) -> BusinessUnderstanding | None:
+async def _get_from_cache(user_id: str) -> Optional[BusinessUnderstanding]:
     """Get business understanding from Redis cache."""
     try:
         redis = await get_redis_async()
@@ -248,7 +248,7 @@ async def _delete_cache(user_id: str) -> None:
 
 async def get_business_understanding(
     user_id: str,
-) -> BusinessUnderstanding | None:
+) -> Optional[BusinessUnderstanding]:
     """Get the business understanding for a user.
 
     Checks cache first, falls back to database if not cached.

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional
 
 from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
@@ -97,7 +98,7 @@ class ReplicateModelBlock(Block):
             ),
             advanced=False,
         )
-        version: str | None = SchemaField(
+        version: Optional[str] = SchemaField(
             default=None,
             description=(
                 "Version hash of the model to run. Leave empty to run the "

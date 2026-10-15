@@ -29,7 +29,7 @@ Per ``dream/p0-spec.md`` §7 the report shape is::
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Sequence
+from typing import Sequence
 
 from pydantic.dataclasses import dataclass
 

@@ -867,19 +867,20 @@ class TestRunBlockToolAuthenticatedHttp:
         with patch(
             "backend.copilot.tools.helpers.get_block",
             return_value=block,
-        ), patch(
-            "backend.copilot.tools.utils.get_user_credentials",
-            new_callable=AsyncMock,
-            return_value=[],
         ):
-            tool = RunBlockTool()
-            response = await tool._execute(
-                user_id=_TEST_USER_ID,
-                session=session,
-                block_id=block.id,
-                input_data={"url": "https://api.example.com/data", "method": "GET"},
-                dry_run=False,
-            )
+            with patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=[],
+            ):
+                tool = RunBlockTool()
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block.id,
+                    input_data={"url": "https://api.example.com/data", "method": "GET"},
+                    dry_run=False,
+                )
 
         assert isinstance(response, SetupRequirementsResponse)
         assert "credentials" in response.message.lower()
@@ -907,20 +908,21 @@ class TestRunBlockToolAuthenticatedHttp:
         with patch(
             "backend.copilot.tools.helpers.get_block",
             return_value=block,
-        ), patch(
-            "backend.copilot.tools.utils.get_user_credentials",
-            new_callable=AsyncMock,
-            return_value=[mock_cred],
         ):
-            tool = RunBlockTool()
-            # Call with empty input to get schema
-            response = await tool._execute(
-                user_id=_TEST_USER_ID,
-                session=session,
-                block_id=block.id,
-                input_data={},
-                dry_run=False,
-            )
+            with patch(
+                "backend.copilot.tools.utils.get_user_credentials",
+                new_callable=AsyncMock,
+                return_value=[mock_cred],
+            ):
+                tool = RunBlockTool()
+                # Call with empty input to get schema
+                response = await tool._execute(
+                    user_id=_TEST_USER_ID,
+                    session=session,
+                    block_id=block.id,
+                    input_data={},
+                    dry_run=False,
+                )
 
         assert isinstance(response, BlockDetailsResponse)
         assert response.block.name == block.name

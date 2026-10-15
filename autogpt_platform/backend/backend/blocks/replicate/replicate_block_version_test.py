@@ -117,10 +117,12 @@ def _patch_client(monkeypatch, fake: FakeReplicate):
 async def _run(model_name: str, version: str | None = None) -> dict:
     block = ReplicateModelBlock()
     input_data = ReplicateModelBlock.Input(
-        credentials=TEST_CREDENTIALS_INPUT,
-        model_name=model_name,
-        model_inputs={"prompt": "describe"},
-        version=version,
+        **{
+            "credentials": TEST_CREDENTIALS_INPUT,
+            "model_name": model_name,
+            "model_inputs": {"prompt": "describe"},
+            "version": version,
+        }
     )
     outputs = {}
     async for name, value in block.run(

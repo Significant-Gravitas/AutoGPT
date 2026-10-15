@@ -17,8 +17,7 @@ import socket
 import threading
 import time
 import uuid
-from collections.abc import Callable
-from typing import Any
+from typing import Any, Callable
 
 from posthog.flag_definition_cache import (
     FlagDefinitionCacheData,

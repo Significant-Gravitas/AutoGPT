@@ -1,6 +1,7 @@
 """Blocks that read All Quiet incidents."""
 
 import asyncio
+from typing import Optional
 
 from backend.sdk import (
     APIKeyCredentials,
@@ -47,10 +48,10 @@ class AllQuietGetIncidentBlock(Block):
 
     class Output(BlockSchemaOutput):
         incident: Incident = SchemaField(description="The incident")
-        status: IncidentStatus | None = SchemaField(
+        status: Optional[IncidentStatus] = SchemaField(
             description="Current status, when the incident reports one"
         )
-        severity: IncidentSeverity | None = SchemaField(
+        severity: Optional[IncidentSeverity] = SchemaField(
             description="Current severity, when the incident reports one"
         )
         allowed_intents: list[str] = SchemaField(
@@ -144,7 +145,7 @@ class AllQuietListIncidentsBlock(Block):
             default="",
             advanced=False,
         )
-        unattended: bool | None = SchemaField(
+        unattended: Optional[bool] = SchemaField(
             description="Set true to return only incidents nobody has picked up.",
             default=None,
             advanced=False,

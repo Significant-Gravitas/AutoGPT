@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Optional
 
 from backend.util.request import Requests
 
@@ -6,7 +6,7 @@ from backend.util.request import Requests
 class GetRequest:
     @classmethod
     async def get_request(
-        cls, url: str, headers: dict | None = None, json: bool = False
+        cls, url: str, headers: Optional[dict] = None, json: bool = False
     ) -> Any:
         if headers is None:
             headers = {}

@@ -98,7 +98,7 @@ def mailerlite(monkeypatch):
     monkeypatch.setattr(role_backfill.asyncio, "sleep", AsyncMock())
     client = MagicMock(put=AsyncMock(return_value=_response(200)))
     monkeypatch.setattr(role_backfill, "_client", lambda: client)
-    monkeypatch.setattr(role_backfill, "_headers", dict)
+    monkeypatch.setattr(role_backfill, "_headers", lambda: {})
     lookup = AsyncMock(return_value={"id": "ml_1", "fields": {"role": None}})
     monkeypatch.setattr(role_backfill, "_find_subscriber", lookup)
     return client, lookup

@@ -174,11 +174,12 @@ async def test_backfill_all_content_types_with_schema():
     with patch(
         "backend.api.features.search.embeddings.CONTENT_HANDLERS",
         {ContentType.STORE_AGENT: mock_handler},
-    ), patch(
-        "backend.api.features.search.embeddings.ensure_content_embedding",
-        new=AsyncMock(return_value=True),
     ):
-        result = await embeddings.backfill_all_content_types(batch_size=10)
+        with patch(
+            "backend.api.features.search.embeddings.ensure_content_embedding",
+            new=AsyncMock(return_value=True),
+        ):
+            result = await embeddings.backfill_all_content_types(batch_size=10)
 
     mock_handler.get_missing_items.assert_called_once_with(10)
 

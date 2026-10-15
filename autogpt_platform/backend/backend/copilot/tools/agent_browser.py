@@ -92,7 +92,7 @@ async def _run(
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
         return proc.returncode or 0, stdout.decode(), stderr.decode()
-    except TimeoutError:
+    except asyncio.TimeoutError:
         await _reap(proc)
         return 1, "", f"Command timed out after {timeout}s."
     except asyncio.CancelledError:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import model_validator
 
@@ -28,26 +28,26 @@ class NotionCreatePageBlock(Block):
 
     class Input(BlockSchemaInput):
         credentials: NotionCredentialsInput = NotionCredentialsField()
-        parent_page_id: str | None = SchemaField(
+        parent_page_id: Optional[str] = SchemaField(
             description="Parent page ID to create the page under. Either this OR parent_database_id is required.",
             default=None,
         )
-        parent_database_id: str | None = SchemaField(
+        parent_database_id: Optional[str] = SchemaField(
             description="Parent database ID to create the page in. Either this OR parent_page_id is required.",
             default=None,
         )
         title: str = SchemaField(
             description="Title of the new page",
         )
-        content: str | None = SchemaField(
+        content: Optional[str] = SchemaField(
             description="Content for the page. Can be plain text or markdown - will be converted to Notion blocks.",
             default=None,
         )
-        properties: dict[str, Any] | None = SchemaField(
+        properties: Optional[Dict[str, Any]] = SchemaField(
             description="Additional properties for database pages (e.g., {'Status': 'In Progress', 'Priority': 'High'})",
             default=None,
         )
-        icon_emoji: str | None = SchemaField(
+        icon_emoji: Optional[str] = SchemaField(
             description="Emoji to use as the page icon (e.g., '📄', '🚀')", default=None
         )
 
@@ -99,7 +99,7 @@ class NotionCreatePageBlock(Block):
         )
 
     @staticmethod
-    def _markdown_to_blocks(content: str) -> list[dict]:
+    def _markdown_to_blocks(content: str) -> List[dict]:
         """Convert markdown content to Notion block objects."""
         if not content:
             return []
@@ -245,10 +245,10 @@ class NotionCreatePageBlock(Block):
 
     @staticmethod
     def _build_properties(
-        title: str, additional_properties: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+        title: str, additional_properties: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Build properties object for page creation."""
-        properties: dict[str, Any] = {
+        properties: Dict[str, Any] = {
             "title": {"title": [{"type": "text", "text": {"content": title}}]}
         }
 
@@ -287,11 +287,11 @@ class NotionCreatePageBlock(Block):
     async def create_page(
         credentials: OAuth2Credentials,
         title: str,
-        parent_page_id: str | None = None,
-        parent_database_id: str | None = None,
-        content: str | None = None,
-        properties: dict[str, Any] | None = None,
-        icon_emoji: str | None = None,
+        parent_page_id: Optional[str] = None,
+        parent_database_id: Optional[str] = None,
+        content: Optional[str] = None,
+        properties: Optional[Dict[str, Any]] = None,
+        icon_emoji: Optional[str] = None,
     ) -> tuple[str, str]:
         """
         Create a new Notion page.

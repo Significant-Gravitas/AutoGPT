@@ -5,6 +5,7 @@ Handles conversion between user timezones and UTC for scheduler operations.
 
 import logging
 from datetime import datetime
+from typing import Optional
 from zoneinfo import ZoneInfo
 
 from croniter import croniter
@@ -129,7 +130,7 @@ def validate_timezone(timezone: str) -> bool:
         return False
 
 
-def get_user_timezone_or_utc(user_timezone: str | None) -> str:
+def get_user_timezone_or_utc(user_timezone: Optional[str]) -> str:
     """
     Get user timezone or default to UTC if invalid/missing.
 

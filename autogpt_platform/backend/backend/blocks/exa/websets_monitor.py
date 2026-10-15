@@ -6,6 +6,7 @@ keep websets updated with fresh data on a schedule.
 """
 
 from enum import Enum
+from typing import Optional
 
 from exa_py import AsyncExa
 from exa_py.websets.types import Monitor as SdkMonitor
@@ -141,7 +142,7 @@ class ExaCreateMonitorBlock(Block):
         )
 
         # Search configuration (for SEARCH behavior)
-        search_query: str | None = SchemaField(
+        search_query: Optional[str] = SchemaField(
             default=None,
             description="Search query for finding new items (required for search behavior)",
             placeholder="AI startups that raised funding in the last week",
@@ -162,7 +163,7 @@ class ExaCreateMonitorBlock(Block):
             description="How new results interact with existing items",
             advanced=True,
         )
-        entity_type: str | None = SchemaField(
+        entity_type: Optional[str] = SchemaField(
             default=None,
             description="Type of entity to search for (company, person, etc.)",
             advanced=True,
@@ -181,7 +182,7 @@ class ExaCreateMonitorBlock(Block):
         )
 
         # Metadata
-        metadata: dict | None = SchemaField(
+        metadata: Optional[dict] = SchemaField(
             default=None,
             description="Metadata to attach to the monitor",
             advanced=True,
@@ -194,7 +195,7 @@ class ExaCreateMonitorBlock(Block):
         webset_id: str = SchemaField(description="The webset this monitor belongs to")
         status: str = SchemaField(description="Status of the monitor")
         behavior_type: str = SchemaField(description="Type of monitor behavior")
-        next_run_at: str | None = SchemaField(
+        next_run_at: Optional[str] = SchemaField(
             description="When the monitor will next run"
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
@@ -361,10 +362,10 @@ class ExaGetMonitorBlock(Block):
         )
         cron_expression: str = SchemaField(description="The schedule cron expression")
         timezone: str = SchemaField(description="The timezone for scheduling")
-        next_run_at: str | None = SchemaField(
+        next_run_at: Optional[str] = SchemaField(
             description="When the monitor will next run"
         )
-        last_run: dict | None = SchemaField(
+        last_run: Optional[dict] = SchemaField(
             description="Information about the last run"
         )
         created_at: str = SchemaField(description="When the monitor was created")
@@ -418,20 +419,20 @@ class ExaUpdateMonitorBlock(Block):
             description="The ID of the monitor to update",
             placeholder="monitor-id",
         )
-        status: MonitorStatus | None = SchemaField(
+        status: Optional[MonitorStatus] = SchemaField(
             default=None,
             description="New status for the monitor",
         )
-        cron_expression: str | None = SchemaField(
+        cron_expression: Optional[str] = SchemaField(
             default=None,
             description="New cron expression for scheduling",
         )
-        timezone: str | None = SchemaField(
+        timezone: Optional[str] = SchemaField(
             default=None,
             description="New timezone for the schedule",
             advanced=True,
         )
-        metadata: dict | None = SchemaField(
+        metadata: Optional[dict] = SchemaField(
             default=None,
             description="New metadata for the monitor",
             advanced=True,
@@ -442,7 +443,7 @@ class ExaUpdateMonitorBlock(Block):
             description="The unique identifier for the monitor"
         )
         status: str = SchemaField(description="Updated status of the monitor")
-        next_run_at: str | None = SchemaField(
+        next_run_at: Optional[str] = SchemaField(
             description="When the monitor will next run"
         )
         updated_at: str = SchemaField(description="When the monitor was updated")
@@ -545,7 +546,7 @@ class ExaListMonitorsBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        webset_id: str | None = SchemaField(
+        webset_id: Optional[str] = SchemaField(
             default=None,
             description="Filter monitors by webset ID",
             placeholder="webset-id",
@@ -556,7 +557,7 @@ class ExaListMonitorsBlock(Block):
             ge=1,
             le=100,
         )
-        cursor: str | None = SchemaField(
+        cursor: Optional[str] = SchemaField(
             default=None,
             description="Cursor for pagination",
             advanced=True,
@@ -570,7 +571,7 @@ class ExaListMonitorsBlock(Block):
         has_more: bool = SchemaField(
             description="Whether there are more monitors to paginate through"
         )
-        next_cursor: str | None = SchemaField(
+        next_cursor: Optional[str] = SchemaField(
             description="Cursor for the next page of results"
         )
 

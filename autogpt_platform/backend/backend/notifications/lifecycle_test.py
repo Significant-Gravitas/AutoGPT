@@ -7,7 +7,7 @@ every `subscription.updated` as a cancellation.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -23,7 +23,7 @@ from backend.notifications import lifecycle, lifecycle_plan, subscriber_fields
 from backend.notifications.lifecycle_plan import card_from_invoice
 
 CUSTOMER = "cus_1"
-OPTED_OUT = datetime(2026, 10, 2, tzinfo=UTC)
+OPTED_OUT = datetime(2026, 10, 2, tzinfo=timezone.utc)
 PLAN_PATCH = "backend.notifications.lifecycle.plan_from_subscription"
 INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 
@@ -166,7 +166,7 @@ async def test_first_subscription_gets_the_welcome_and_the_tour():
 
 @pytest.mark.asyncio
 async def test_a_returning_customer_is_not_greeted_like_a_stranger():
-    user = _User(welcome_sent_at=datetime(2026, 1, 1, tzinfo=UTC))
+    user = _User(welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
     calls = await _run(
         lambda: lifecycle.on_checkout_completed(
             {"customer": CUSTOMER}, _subscription()
@@ -532,12 +532,11 @@ async def test_a_failed_welcome_publish_gives_the_claim_back():
         "backend.notifications.lifecycle.queue_audience_change", AsyncMock()
     ) as audience, patch(
         "backend.notifications.lifecycle._release_welcome", AsyncMock()
-    ) as released, pytest.raises(
-        RuntimeError
-    ):
-        await lifecycle.on_checkout_completed(
-            {"customer": CUSTOMER, "mode": "subscription"}, _subscription()
-        )
+    ) as released:
+        with pytest.raises(RuntimeError):
+            await lifecycle.on_checkout_completed(
+                {"customer": CUSTOMER, "mode": "subscription"}, _subscription()
+            )
 
     released.assert_awaited_once_with(user)
     # The tour enrolment must not run for a welcome that never went out.
@@ -686,7 +685,7 @@ async def test_an_opted_out_first_subscription_is_welcomed_but_not_enrolled():
 @pytest.mark.asyncio
 async def test_an_opted_out_returning_customer_is_not_added_to_the_changelog():
     user = _User(
-        welcome_sent_at=datetime(2026, 1, 1, tzinfo=UTC),
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         opted_out_at=OPTED_OUT,
     )
     calls = await _run(
@@ -746,7 +745,9 @@ async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("welcomed", [False, True], ids=["first", "returning"])
 async def test_a_checkout_billed_to_russia_is_welcomed_but_not_enrolled(welcomed):
-    user = _User(welcome_sent_at=datetime(2026, 1, 1, tzinfo=UTC) if welcomed else None)
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc) if welcomed else None
+    )
     session = {
         "customer": CUSTOMER,
         "customer_details": {"address": {"country": "RU"}},

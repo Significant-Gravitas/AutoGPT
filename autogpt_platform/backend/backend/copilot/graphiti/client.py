@@ -23,7 +23,7 @@ _MAX_GROUP_ID_LEN = 128
 # "got Future attached to a different loop". Scope the cache (and its lock)
 # per running loop so each loop gets its own clients.
 class _LoopState:
-    __slots__ = ("cache", "indexed", "lock")
+    __slots__ = ("cache", "lock", "indexed")
 
     def __init__(self) -> None:
         self.cache: TTLCache = _EvictingTTLCache(

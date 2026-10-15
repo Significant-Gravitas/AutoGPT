@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Security
@@ -46,7 +46,9 @@ async def get_latest_briefing(
     rather than 500ing the request — and rather than hiding every older
     briefing behind one unreadable row on the newest date.
     """
-    oldest_allowed = datetime.now(UTC).date() - timedelta(days=_MAX_BRIEFING_AGE_DAYS)
+    oldest_allowed = datetime.now(timezone.utc).date() - timedelta(
+        days=_MAX_BRIEFING_AGE_DAYS
+    )
     for record in await briefing_db.get_latest_briefings(user_id):
         if record.briefing_date < oldest_allowed:
             break

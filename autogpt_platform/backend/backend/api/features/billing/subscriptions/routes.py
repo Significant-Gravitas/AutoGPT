@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Annotated, Literal, cast
 from urllib.parse import urlparse
 
@@ -18,6 +18,7 @@ from fastapi import (
 )
 from prisma.enums import SubscriptionTier
 from pydantic import BaseModel, Field
+from typing_extensions import Optional
 
 from backend.api.features.billing.client_country import ClientCountry
 from backend.api.features.billing.credits_rate_limit import (
@@ -84,7 +85,7 @@ class SubscriptionTierRequest(BaseModel):
     success_url: str = ""
     cancel_url: str = ""
     billing_cycle: Literal["monthly", "yearly"] = "monthly"
-    surface: Literal["onboarding", "paywall_gate", "billing"] | None = Field(
+    surface: Optional[Literal["onboarding", "paywall_gate", "billing"]] = Field(
         default=None,
         description="Where the plan was picked; analytics only.",
     )
@@ -129,7 +130,7 @@ class SubscriptionStatusResponse(BaseModel):
             " auto-charge when True, redirect to Stripe Checkout when False."
         ),
     )
-    current_period_end: int | None = Field(
+    current_period_end: Optional[int] = Field(
         default=None,
         description=(
             "Unix timestamp of the active subscription's current_period_end. Used"
@@ -137,9 +138,9 @@ class SubscriptionStatusResponse(BaseModel):
             " upgrade charges, if any). None when no active sub."
         ),
     )
-    pending_tier: Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"] | None = None
-    pending_tier_effective_at: datetime | None = None
-    pending_billing_cycle: Literal["monthly", "yearly"] | None = Field(
+    pending_tier: Optional[Literal["NO_TIER", "BASIC", "PRO", "MAX", "BUSINESS"]] = None
+    pending_tier_effective_at: Optional[datetime] = None
+    pending_billing_cycle: Optional[Literal["monthly", "yearly"]] = Field(
         default=None,
         description=(
             "Billing cycle of the queued change, when resolvable. Set alongside"
@@ -782,7 +783,7 @@ async def _notify_checkout_completed(session: dict) -> None:
         PassWorkEvent(
             kind=PassWorkKind.WELCOME,
             user_id="",
-            scheduled_for=datetime.now(tz=UTC),
+            scheduled_for=datetime.now(tz=timezone.utc),
             context={"session_id": str(session_id)},
         ).model_dump_json(),
     )

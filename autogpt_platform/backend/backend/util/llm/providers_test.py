@@ -24,15 +24,11 @@ from backend.util.llm import providers as providers_mod
 from backend.util.llm.providers import (
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     FAST_FAIL_TIMEOUT_SECONDS,
-    BatchResultRow,
-    BatchSubmissionRef,
     ProviderResponse,
     _anthropic_accepts_temperature,
     _is_temperature_deprecation_error,
     call_provider,
     call_provider_openai_compat_sync,
-    download_batch_results,
-    poll_batch,
     request_timeout,
 )
 from backend.util.settings import Config, Settings
@@ -596,14 +592,15 @@ class TestAnthropicMessages:
             return_value=SimpleNamespace(
                 messages=SimpleNamespace(create=AsyncMock(return_value=fake_response))
             ),
-        ), pytest.raises(ValueError, match="No content"):
-            await call_provider(
-                provider="anthropic",
-                model="claude-sonnet-4-6",
-                api_key="sk-test",
-                messages=[_msg("user", "hi")],
-                max_tokens=10,
-            )
+        ):
+            with pytest.raises(ValueError, match="No content"):
+                await call_provider(
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    api_key="sk-test",
+                    messages=[_msg("user", "hi")],
+                    max_tokens=10,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1409,15 +1406,16 @@ class TestTimeoutWrapping:
         with patch(
             "backend.util.llm.providers.anthropic.AsyncAnthropic",
             return_value=fake_client,
-        ), pytest.raises(TimeoutError, match="anthropic/"):
-            await call_provider(
-                provider="anthropic",
-                model="claude-sonnet-4-6",
-                api_key="x",
-                messages=[_msg("user", "hi")],
-                max_tokens=10,
-                timeout_seconds=0.05,
-            )
+        ):
+            with pytest.raises(TimeoutError, match="anthropic/"):
+                await call_provider(
+                    provider="anthropic",
+                    model="claude-sonnet-4-6",
+                    api_key="x",
+                    messages=[_msg("user", "hi")],
+                    max_tokens=10,
+                    timeout_seconds=0.05,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -1707,6 +1705,14 @@ class TestDefaults:
 # ---------------------------------------------------------------------------
 # Anthropic batch submission + poll + download
 # ---------------------------------------------------------------------------
+
+
+from backend.util.llm.providers import (  # noqa: E402
+    BatchResultRow,
+    BatchSubmissionRef,
+    download_batch_results,
+    poll_batch,
+)
 
 
 class TestBatchSubmission:

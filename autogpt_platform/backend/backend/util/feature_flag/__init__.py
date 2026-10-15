@@ -5,10 +5,9 @@ import json
 import logging
 import os
 import uuid
-from collections.abc import Awaitable, Callable
 from enum import Enum
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, Awaitable, Callable, TypeVar
 
 import ldclient
 import sentry_sdk.feature_flags
@@ -906,7 +905,7 @@ def feature_flag(
                 elif not _flag_backend_initialized():
                     logger.warning(
                         "Feature flag backend not initialized, "
-                        f"using default {flag_key}={default!r}"
+                        f"using default {flag_key}={repr(default)}"
                     )
                     is_enabled = default
                     _record_flag_for_sentry(flag_key, default, False)
@@ -922,8 +921,8 @@ def feature_flag(
                         # Log warning and use default for non-boolean values
                         logger.warning(
                             f"Feature flag {flag_key} returned non-boolean value: "
-                            f"{flag_value!r} (type: {type(flag_value).__name__}). "
-                            f"Using default value {default!r}"
+                            f"{repr(flag_value)} (type: {type(flag_value).__name__}). "
+                            f"Using default value {repr(default)}"
                         )
                         is_enabled = default
                         _record_flag_for_sentry(flag_key, default, False)

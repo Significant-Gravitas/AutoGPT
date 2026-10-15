@@ -9,7 +9,7 @@ as an issue, so these stops buried AUTOGPT-SERVER-8C4 under expected outcomes.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
@@ -21,7 +21,7 @@ from backend.copilot.response_model import StreamError
 from backend.copilot.sdk.response_adapter import SDKResponseAdapter
 from backend.copilot.sdk.service import _dispatch_response, _StreamAccumulator
 
-_NOW = datetime(2024, 1, 1, tzinfo=UTC)
+_NOW = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
 
 @pytest.mark.parametrize(

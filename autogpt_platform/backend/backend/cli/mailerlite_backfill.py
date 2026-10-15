@@ -154,7 +154,7 @@ async def _run(
     finally:
         await disconnect()
 
-    changes: list[PlannedChange] = []
+    changes: "list[PlannedChange]" = []
     if audience is not None:
         customers = [_customer(p) for p in people if p.subscriptions]
         changes = mailerlite_backfill.plan(customers, audience)

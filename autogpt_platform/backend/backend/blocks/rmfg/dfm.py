@@ -1,5 +1,7 @@
 """Blocks that evaluate manufacturability (DFM) for a configured design."""
 
+from typing import Optional
+
 from backend.sdk import (
     Block,
     BlockCategory,
@@ -41,7 +43,7 @@ class RMFGDFMOutput(BlockSchemaOutput):
     parts: list[PartDFM] = SchemaField(
         description="Per-part status, findings, capabilities and images"
     )
-    review_url: str | None = SchemaField(
+    review_url: Optional[str] = SchemaField(
         description=(
             "Website page showing this exact configuration for a person to "
             "adjust; emitted when RMFG provides one"

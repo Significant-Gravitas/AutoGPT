@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,7 +20,7 @@ from backend.copilot.dream.llm import (
     StructuredCompletion,
 )
 
-NOW = datetime(2026, 8, 7, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 7, 9, 0, tzinfo=timezone.utc)
 USER = "user-1"
 
 
@@ -254,10 +254,11 @@ async def test_retry_is_bounded_by_a_total_time_budget():
 @pytest.mark.asyncio
 async def test_retry_timeout_is_clipped_to_the_remaining_budget():
     budget = _MIN_ATTEMPT_SECONDS + 1.0
-    with patch.object(narrative_module, "_TOTAL_BUDGET_SECONDS", budget), patch_llm(
-        side_effect=[RuntimeError("flaky"), completion("Second time lucky.")]
-    ) as mock:
-        await compose_narrative(USER, make_content())
+    with patch.object(narrative_module, "_TOTAL_BUDGET_SECONDS", budget):
+        with patch_llm(
+            side_effect=[RuntimeError("flaky"), completion("Second time lucky.")]
+        ) as mock:
+            await compose_narrative(USER, make_content())
 
     assert mock.await_count == 2
     assert mock.await_args_list[0].kwargs["timeout_seconds"] <= budget

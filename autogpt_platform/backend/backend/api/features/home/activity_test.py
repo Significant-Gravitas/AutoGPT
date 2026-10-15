@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from backend.api.features.experts.models import Expert, ExpertWorkflowRef
 from backend.data.execution import ExecutionStatus, GraphExecutionMeta
@@ -8,7 +8,7 @@ from backend.executor.scheduler import CopilotTurnJobInfo, GraphExecutionJobInfo
 from .activity import compose_active_tasks, compose_upcoming_tasks, compose_week_summary
 from .helpers import AgentRef
 
-NOW = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
 TRIAGE = {
     "graph": AgentRef(
         name="Inbox triage",

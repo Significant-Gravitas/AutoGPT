@@ -6,7 +6,7 @@ that fails aborts the rest (Postgres ``25P02``), in whatever test comes next.
 """
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from prisma import Prisma
 from prisma.errors import PrismaError
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from backend.data.db import DISCONNECT_TIMEOUT
 
-_UNKNOWN_START = datetime.min.replace(tzinfo=UTC)
+_UNKNOWN_START = datetime.min.replace(tzinfo=timezone.utc)
 
 # The guard's own query shows its connection as active, not idle. It was
 # already inside a transaction if that transaction has written something (only

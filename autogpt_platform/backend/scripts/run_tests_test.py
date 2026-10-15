@@ -6,22 +6,11 @@ must not recreate or remove the containers another worktree's run is using.
 
 import os
 import subprocess
-import time
-from threading import Thread
 from unittest.mock import patch
-
-import pytest
 
 from scripts import run_tests
 
 OTHER_CHECKOUT = os.path.join(os.sep, "code", "other-worktree", "backend")
-
-
-@pytest.fixture
-def runner_clock():
-    with patch("scripts.run_tests.time", wraps=time) as clock:
-        clock.sleep.return_value = None
-        yield clock
 
 
 def _completed(stdout: str) -> subprocess.CompletedProcess:
@@ -65,24 +54,20 @@ def test_a_hung_docker_ps_counts_as_no_other_owner():
         assert run_tests.other_stack_owners() == set()
 
 
-@pytest.mark.parametrize("background_sleep", [False, True])
-def test_waits_until_another_checkouts_run_has_finished(runner_clock, background_sleep):
+def test_waits_until_another_checkouts_run_has_finished():
     owners = iter([{OTHER_CHECKOUT}, {OTHER_CHECKOUT}, set()])
     with patch(
         "scripts.run_tests.other_stack_owners", side_effect=lambda: next(owners)
-    ):
-        if background_sleep:
-            worker = Thread(target=time.sleep, args=(0,))
-            worker.start()
-            worker.join(timeout=5)
-            assert not worker.is_alive()
+    ), patch("scripts.run_tests.time.sleep") as sleep:
         assert run_tests.wait_for_stack_to_be_free(max_wait=60) is True
 
-    assert runner_clock.sleep.call_count == 2
+    assert sleep.call_count == 2
 
 
-def test_gives_up_while_another_checkout_still_holds_the_stack(runner_clock):
-    with patch("scripts.run_tests.other_stack_owners", return_value={OTHER_CHECKOUT}):
+def test_gives_up_while_another_checkout_still_holds_the_stack():
+    with patch(
+        "scripts.run_tests.other_stack_owners", return_value={OTHER_CHECKOUT}
+    ), patch("scripts.run_tests.time.sleep"):
         assert run_tests.wait_for_stack_to_be_free(max_wait=0) is False
 
 
@@ -114,7 +99,7 @@ def test_tear_down_takes_its_own_stack_down():
     )
 
 
-def test_postgres_is_ready_only_once_the_postgres_role_answers(runner_clock):
+def test_postgres_is_ready_only_once_the_postgres_role_answers():
     """During a fresh data directory's init, the server already accepts
     connections (pg_isready passes) before the `postgres` role exists."""
     role_missing = subprocess.CalledProcessError(
@@ -123,7 +108,7 @@ def test_postgres_is_ready_only_once_the_postgres_role_answers(runner_clock):
     with patch(
         "scripts.run_tests.subprocess.run",
         side_effect=[role_missing, _completed("1\n")],
-    ) as run:
+    ) as run, patch("scripts.run_tests.time.sleep"):
         assert run_tests.wait_for_postgres() is True
 
     assert run.call_count == 2

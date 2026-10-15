@@ -1,7 +1,7 @@
 import asyncio
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -36,7 +36,7 @@ from backend.copilot.tools import TOOL_REGISTRY
 
 
 def make_session():
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     return ChatSession(
         session_id="session",
         user_id="user",

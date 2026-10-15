@@ -221,9 +221,9 @@ class TestPinned:
             _configured(_PROXY),
             patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_M}._mint", return_value=minted),
-            pytest.raises(RuntimeError),
         ):
-            await create_sandbox(cls, _OWNER, template="t")
+            with pytest.raises(RuntimeError):
+                await create_sandbox(cls, _OWNER, template="t")
         assert redis.store == {}
 
     @pytest.mark.asyncio
@@ -316,8 +316,9 @@ class TestPinned:
         box.update_network = AsyncMock(side_effect=RuntimeError("502"))
         with _configured(_PROXY), patch(
             f"{_M}.get_redis_async", AsyncMock(return_value=redis)
-        ), pytest.raises(RuntimeError):
-            await connect_sandbox(_sdk(box), "sb-old", _OWNER)
+        ):
+            with pytest.raises(RuntimeError):
+                await connect_sandbox(_sdk(box), "sb-old", _OWNER)
         box.pause.assert_awaited_once()
         assert redis.store == {}
 
@@ -362,9 +363,9 @@ class TestPinned:
             _configured(_PROXY),
             patch(f"{_M}.get_redis_async", AsyncMock(return_value=redis)),
             patch(f"{_M}._ROTATION_LOCK_WAIT", 0.3),
-            pytest.raises(TimeoutError),
         ):
-            await connect_sandbox(_sdk(box), "sb-1", _OWNER)
+            with pytest.raises(TimeoutError):
+                await connect_sandbox(_sdk(box), "sb-1", _OWNER)
         box.update_network.assert_not_awaited()
         assert redis.store == {"e2b:egress:lock:sb-1": "someone-else"}
 

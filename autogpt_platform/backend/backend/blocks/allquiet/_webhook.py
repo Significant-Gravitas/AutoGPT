@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException, Request
@@ -101,7 +101,7 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
         expected = base64.b64encode(
             hmac.new(
                 secret.encode("utf-8"),
-                msg=f"{timestamp}:".encode() + body,
+                msg=f"{timestamp}:".encode("utf-8") + body,
                 digestmod=hashlib.sha256,
             ).digest()
         )
@@ -151,7 +151,7 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
                 ),
             )
 
-        if abs(datetime.now(UTC) - sent_at) > MAX_TIMESTAMP_SKEW:
+        if abs(datetime.now(timezone.utc) - sent_at) > MAX_TIMESTAMP_SKEW:
             raise HTTPException(
                 status_code=403,
                 detail="Webhook timestamp is outside the accepted window",
@@ -212,7 +212,7 @@ class AllQuietWebhooksManager(ManualWebhookManagerBase):
         return found[0]
 
 
-def _parse_timestamp(timestamp: str) -> datetime | None:
+def _parse_timestamp(timestamp: str) -> Optional[datetime]:
     """Parse the timestamp formats All Quiet signs with, as an aware UTC datetime.
 
     Covers the ISO-8601 spellings used by the All Quiet header pair
@@ -237,7 +237,7 @@ def _parse_timestamp(timestamp: str) -> datetime | None:
         except ValueError:
             pass
         else:
-            return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
     try:
         epoch = float(candidate)
@@ -249,6 +249,6 @@ def _parse_timestamp(timestamp: str) -> datetime | None:
     if abs(epoch) >= 1e11:
         epoch /= 1000.0
     try:
-        return datetime.fromtimestamp(epoch, tz=UTC)
+        return datetime.fromtimestamp(epoch, tz=timezone.utc)
     except (OverflowError, OSError, ValueError):
         return None

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Optional, cast
 
 import pytest
@@ -571,8 +571,8 @@ async def test_add_graph_execution_via_rpc_returns_typed_user(
         id=user_id,
         email="test@example.com",
         name=None,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         stripe_customer_id=None,
         top_up_config=None,
         timezone="UTC",
@@ -652,8 +652,8 @@ async def test_add_graph_execution_born_tenanted_via_rpc_when_prisma_disconnecte
         id="sched-user",
         email="sched@example.com",
         name=None,
-        created_at=datetime.now(UTC),
-        updated_at=datetime.now(UTC),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
         stripe_customer_id=None,
         top_up_config=None,
         timezone="UTC",

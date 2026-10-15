@@ -5,7 +5,7 @@ These tests ensure that refund operations (deduct_credits, handle_dispute)
 are atomic and maintain data consistency.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -89,7 +89,7 @@ async def test_deduct_credits_atomic(server: SpinTestServer):
         refund.amount = 500  # Refund $5 of the $10 top-up
         refund.status = "succeeded"
         refund.reason = "requested_by_customer"
-        refund.created = int(datetime.now(UTC).timestamp())
+        refund.created = int(datetime.now(timezone.utc).timestamp())
 
         # Create refund request record (simulating webhook flow)
         await CreditRefundRequest.prisma().create(
@@ -153,7 +153,7 @@ async def test_deduct_credits_user_not_found(server: SpinTestServer):
     refund.amount = 500
     refund.status = "succeeded"
     refund.reason = "requested_by_customer"
-    refund.created = int(datetime.now(UTC).timestamp())
+    refund.created = int(datetime.now(timezone.utc).timestamp())
 
     # Should raise error for missing transaction
     with pytest.raises(Exception):  # Should raise NotFoundError for missing transaction
@@ -186,7 +186,7 @@ async def test_handle_dispute_with_sufficient_balance(
         dispute.amount = 100  # Small dispute amount
         dispute.status = "pending"
         dispute.reason = "fraudulent"
-        dispute.created = int(datetime.now(UTC).timestamp())
+        dispute.created = int(datetime.now(timezone.utc).timestamp())
 
         # Mock the close method to prevent real API calls
         dispute.close = MagicMock()
@@ -243,7 +243,7 @@ async def test_handle_dispute_with_insufficient_balance(
         dispute.payment_intent = topup_tx.transactionKey
         dispute.amount = 1000
         dispute.status = "warning_needs_response"
-        dispute.created = int(datetime.now(UTC).timestamp())
+        dispute.created = int(datetime.now(timezone.utc).timestamp())
 
         # Mock the close method to prevent real API calls
         dispute.close = MagicMock()
@@ -297,7 +297,7 @@ async def test_concurrent_refunds(server: SpinTestServer):
             refund.amount = 100  # $1 refund
             refund.status = "succeeded"
             refund.reason = "requested_by_customer"
-            refund.created = int(datetime.now(UTC).timestamp())
+            refund.created = int(datetime.now(timezone.utc).timestamp())
 
             try:
                 await credit_system.deduct_credits(refund)

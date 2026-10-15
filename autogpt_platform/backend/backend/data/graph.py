@@ -3,7 +3,7 @@ import logging
 import uuid
 from collections import defaultdict
 from collections.abc import Container, Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -153,7 +153,7 @@ class NodeModel(Node):
     graph_id: str
     graph_version: int
 
-    webhook_id: str | None = None
+    webhook_id: Optional[str] = None
     # webhook: Optional["Webhook"] = None  # deprecated
 
     @staticmethod
@@ -412,7 +412,7 @@ class GraphTriggerInfo(BaseModel):
     config_schema: dict[str, Any] = Field(
         description="Input schema for the trigger block"
     )
-    credentials_input_name: str | None
+    credentials_input_name: Optional[str]
 
 
 class Graph(BaseGraph):
@@ -2216,7 +2216,7 @@ def make_graph_model(creatable_graph: Graph, user_id: str) -> GraphModel:
     return GraphModel(
         **creatable_graph.model_dump(exclude={"nodes"}),
         user_id=user_id,
-        created_at=datetime.now(tz=UTC),
+        created_at=datetime.now(tz=timezone.utc),
         nodes=[
             NodeModel(
                 **creatable_node.model_dump(),

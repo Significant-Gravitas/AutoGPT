@@ -1,7 +1,6 @@
 import logging
-from collections.abc import Iterator
-from datetime import UTC, datetime
-from typing import Literal
+from datetime import datetime, timezone
+from typing import Iterator, Literal
 
 import praw
 from praw.models import Comment, MoreComments, Submission
@@ -259,11 +258,13 @@ class GetRedditPostsBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
-        current_time = datetime.now(tz=UTC)
+        current_time = datetime.now(tz=timezone.utc)
         all_posts = []
         for post in self.get_posts(input_data=input_data, credentials=credentials):
             if input_data.last_minutes:
-                post_datetime = datetime.fromtimestamp(post.created_utc, tz=UTC)
+                post_datetime = datetime.fromtimestamp(
+                    post.created_utc, tz=timezone.utc
+                )
                 time_difference = current_time - post_datetime
                 if time_difference.total_seconds() / 60 > input_data.last_minutes:
                     # Posts are ordered newest-first, so all subsequent posts will also be older
@@ -1936,13 +1937,15 @@ class GetRedditUserInfoBlock(Block):
     @staticmethod
     def get_user_info(creds: RedditCredentials, username: str):
         client = get_praw(creds)
-        username = username.removeprefix("u/")
+        if username.startswith("u/"):
+            username = username[2:]
         return client.redditor(username)
 
     @staticmethod
     def get_moderated_subreddits(creds: RedditCredentials, username: str) -> list:
         client = get_praw(creds)
-        username = username.removeprefix("u/")
+        if username.startswith("u/"):
+            username = username[2:]
         redditor = client.redditor(username)
         return list(redditor.moderated())
 
@@ -2048,7 +2051,8 @@ class SendRedditMessageBlock(Block):
         creds: RedditCredentials, username: str, subject: str, message: str
     ) -> bool:
         client = get_praw(creds)
-        username = username.removeprefix("u/")
+        if username.startswith("u/"):
+            username = username[2:]
         redditor = client.redditor(username)
         redditor.message(subject=subject, message=message)
         return True

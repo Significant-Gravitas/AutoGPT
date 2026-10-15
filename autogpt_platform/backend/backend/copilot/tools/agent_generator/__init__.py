@@ -26,9 +26,9 @@ from .validation import AgentFixer, AgentValidator
 
 __all__ = [
     "AgentFixer",
+    "AgentValidator",
     "AgentJsonValidationError",
     "AgentSummary",
-    "AgentValidator",
     "DecompositionResult",
     "DecompositionStep",
     "LibraryAgentSummary",

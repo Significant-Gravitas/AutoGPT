@@ -19,10 +19,11 @@ def emit_wire(arrow: str, body: bytes) -> None:
 def test_wire_capture_suppresses_bodies_from_unrelated_contexts(
     caplog: pytest.LogCaptureFixture,
 ):
-    with caplog.at_level(logging.DEBUG), capture_wire() as capture:
-        emit_wire("->", b"own-private-request")
-        Context().run(emit_wire, "<-", b"unrelated-private-response")
-        emit_wire("<-", b"own-private-response")
+    with caplog.at_level(logging.DEBUG):
+        with capture_wire() as capture:
+            emit_wire("->", b"own-private-request")
+            Context().run(emit_wire, "<-", b"unrelated-private-response")
+            emit_wire("<-", b"own-private-response")
     assert capture.request == b"own-private-request"
     assert capture.response == b"own-private-response"
     assert "private" not in caplog.text

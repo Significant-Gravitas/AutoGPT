@@ -16,8 +16,7 @@ one key they have in common is ``service``: a box is only parsed as ours when
 product's keys are never misread and it can ignore ours the same way.
 """
 
-from collections.abc import Mapping
-from typing import TYPE_CHECKING, Literal, Optional
+from typing import TYPE_CHECKING, Literal, Mapping, Optional
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -44,15 +43,15 @@ class SandboxMetadata(BaseModel):
     kind: SandboxUse
     source: SandboxSource
     env: str
-    user: str | None = None
-    session: str | None = None
-    expert: str | None = None
-    graph: str | None = None
-    graph_exec: str | None = None
-    node_exec: str | None = None
-    block: str | None = None
-    template: str | None = None
-    mounts: MountState | None = None
+    user: Optional[str] = None
+    session: Optional[str] = None
+    expert: Optional[str] = None
+    graph: Optional[str] = None
+    graph_exec: Optional[str] = None
+    node_exec: Optional[str] = None
+    block: Optional[str] = None
+    template: Optional[str] = None
+    mounts: Optional[MountState] = None
 
     @classmethod
     def for_copilot(
@@ -60,11 +59,11 @@ class SandboxMetadata(BaseModel):
         owner: str,
         kind: SandboxUse,
         *,
-        user_id: str | None = None,
-        session_id: str | None = None,
-        expert_id: str | None = None,
-        template: str | None = None,
-        mounts: MountState | None = None,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        expert_id: Optional[str] = None,
+        template: Optional[str] = None,
+        mounts: Optional[MountState] = None,
     ) -> "SandboxMetadata":
         """Metadata for a CoPilot box; *owner* is ``"<kind>:<id>"`` from ``SandboxOwner``."""
         return cls(
@@ -85,7 +84,7 @@ class SandboxMetadata(BaseModel):
         context: "ExecutionContext | None",
         kind: SandboxUse,
         block_id: str,
-        template: str | None = None,
+        template: Optional[str] = None,
     ) -> "SandboxMetadata":
         """Metadata for a box a graph block creates, traced to its node execution."""
         if context is None:
@@ -140,7 +139,7 @@ class SandboxMetadata(BaseModel):
         }
 
 
-def owned_by_user(metadata: Mapping[str, str], user_id: str | None) -> bool:
+def owned_by_user(metadata: Mapping[str, str], user_id: Optional[str]) -> bool:
     """Whether a box's metadata says it was created for *user_id*.
 
     Used before attaching to a sandbox id a caller supplied.  Under the

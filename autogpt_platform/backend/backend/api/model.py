@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, Optional
 
 import pydantic
 
@@ -22,7 +22,7 @@ class WSMethod(enum.Enum):
 
 class WSMessage(pydantic.BaseModel):
     method: WSMethod
-    data: dict[str, Any] | list[Any] | str | None = None
+    data: Optional[dict[str, Any] | list[Any] | str] = None
     success: bool | None = None
     channel: str | None = None
     error: str | None = None
@@ -51,7 +51,7 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
-    surface: Literal["billing"] | None = pydantic.Field(
+    surface: Optional[Literal["billing"]] = pydantic.Field(
         default=None, description="Where the top-up was started; analytics only."
     )
 
@@ -99,10 +99,10 @@ class RecordUserConsentRequest(pydantic.BaseModel):
 
 
 class UserConsentResponse(pydantic.BaseModel):
-    terms_accepted_at: datetime | None = None
-    terms_version: str | None = None
-    marketing_opt_out_at: datetime | None = None
-    marketing_opt_out_source: str | None = None
+    terms_accepted_at: Optional[datetime] = None
+    terms_version: Optional[str] = None
+    marketing_opt_out_at: Optional[datetime] = None
+    marketing_opt_out_source: Optional[str] = None
 
 
 class NotificationPayload(pydantic.BaseModel):

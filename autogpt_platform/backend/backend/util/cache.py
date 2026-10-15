@@ -17,10 +17,9 @@ import logging
 import pickle
 import threading
 import time
-from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache, wraps
-from typing import Any, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, Callable, ParamSpec, Protocol, TypeVar, cast, runtime_checkable
 
 import sentry_sdk
 from redis.cluster import ClusterNode, RedisCluster
@@ -161,7 +160,7 @@ class CachedFunction(Protocol[P, R_co]):
 
     def cache_clear(self, pattern: str | None = None) -> None:
         """Clear cached entries. If pattern provided, clear matching entries only."""
-        return
+        return None
 
     def cache_info(self) -> dict[str, int | None]:
         """Get cache statistics."""

@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Sequence
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
@@ -319,7 +319,7 @@ async def set_expert_learning_paused(
             "isTemplate": False,
             "isArchived": False,
         },
-        data={"learningPausedAt": datetime.now(UTC) if paused else None},
+        data={"learningPausedAt": datetime.now(timezone.utc) if paused else None},
     )
     if updated == 0:
         return None
@@ -330,7 +330,7 @@ def _setup_status(row: prisma.models.Expert) -> ExpertSetupStatus:
     # A job whose lease ran out died with its process; show it as retryable.
     if row.setupStatus == prisma.enums.ExpertSetupStatus.INSTALLING and (
         row.setupStartedAt is None
-        or row.setupStartedAt < datetime.now(UTC) - SETUP_LEASE
+        or row.setupStartedAt < datetime.now(timezone.utc) - SETUP_LEASE
     ):
         return "failed"
     return cast(ExpertSetupStatus, row.setupStatus.lower())
@@ -1006,7 +1006,7 @@ async def _hire_expert_impl(
     if template.toolProfile is not None:
         create_data["toolProfile"] = template.toolProfile
     create_data["setupStatus"] = prisma.enums.ExpertSetupStatus.INSTALLING
-    create_data["setupStartedAt"] = datetime.now(UTC)
+    create_data["setupStartedAt"] = datetime.now(timezone.utc)
 
     try:
         expert, state = await _reserve_hired_expert(user_id, template_id, create_data)
@@ -1068,7 +1068,7 @@ async def _claim_setup(expert_id: str) -> bool:
 
     One conditional update, so two concurrent re-hires start one job.
     """
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     claimed = await prisma.models.Expert.prisma().update_many(
         where={
             "id": expert_id,

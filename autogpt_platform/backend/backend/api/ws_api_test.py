@@ -453,7 +453,7 @@ async def test_authenticate_websocket_auth_disabled_returns_default(mocker) -> N
 def test_get_connection_manager_singleton() -> None:
     """Repeated calls must return the same ConnectionManager — the WS router
     depends on a single process-wide subscription table."""
-    from backend.api import ws_api
+    import backend.api.ws_api as ws_api
 
     ws_api._connection_manager = None
     a = ws_api.get_connection_manager()
@@ -516,7 +516,7 @@ def test_health_endpoint_returns_ok() -> None:
 
     from fastapi.testclient import TestClient
 
-    from backend.api import ws_api
+    import backend.api.ws_api as ws_api
 
     @asynccontextmanager
     async def _noop_lifespan(app):

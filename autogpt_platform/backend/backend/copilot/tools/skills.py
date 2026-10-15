@@ -1950,7 +1950,7 @@ async def _update_copy(
     expert_id: str | None,
     scope: WorkspaceScope | None,
     skill: ParsedSkill,
-    current: ActiveSkillVersion,
+    current: "ActiveSkillVersion",
 ) -> str | None:
     """Move one copy to the listing's active version. Returns what happened,
     or None when the copy has to be left alone: edited with no version to
@@ -2029,7 +2029,7 @@ async def _update_copy(
 
 
 async def _prove_baseline(
-    working_hash: str, current: ActiveSkillVersion
+    working_hash: str, current: "ActiveSkillVersion"
 ) -> SkillBaseline | None:
     """The baseline of a copy installed before baselines were recorded.
 
@@ -2106,7 +2106,7 @@ async def _read_working_package(
     return package
 
 
-def _as_package(version: SkillVersionPackage) -> dict[str, PackageFile]:
+def _as_package(version: "SkillVersionPackage") -> dict[str, PackageFile]:
     package = {SKILL_MD: PackageFile(content=version.skill_markdown.encode("utf-8"))}
     for entry in version.files:
         package[entry.relative_path] = PackageFile(

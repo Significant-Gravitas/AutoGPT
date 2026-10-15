@@ -1,6 +1,6 @@
 import base64
 import json
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -15,8 +15,8 @@ from backend.data.credit_history.cursor import (
 
 def test_cursor_preserves_snapshot_and_tie_breaker():
     position = CreditHistoryCursor(
-        snapshot_at=datetime(2026, 9, 5, 12, 0, tzinfo=UTC),
-        transaction_time=datetime(2026, 9, 4, 9, 0, 0, 123000, tzinfo=UTC),
+        snapshot_at=datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc),
+        transaction_time=datetime(2026, 9, 4, 9, 0, 0, 123000, tzinfo=timezone.utc),
         group_id="execution:run-2",
         scope=cursor_scope("user", None, "USAGE"),
     )
@@ -28,7 +28,7 @@ def test_cursor_preserves_snapshot_and_tie_breaker():
     [("other", None, None), ("user", "org", None), ("user", None, "USAGE")],
 )
 def test_cursor_is_bound_to_wallet_and_filter(user_id, org_id, kind):
-    time = datetime(2026, 9, 5, tzinfo=UTC)
+    time = datetime(2026, 9, 5, tzinfo=timezone.utc)
     position = CreditHistoryCursor(
         snapshot_at=time,
         transaction_time=time,
@@ -71,4 +71,4 @@ def test_cursor_rejects_invalid_fields(overrides):
 
 def test_timezone_conversion_preserves_instant():
     paris = datetime(2026, 9, 5, 12, 0, tzinfo=timezone(timedelta(hours=2)))
-    assert as_utc(paris) == datetime(2026, 9, 5, 10, 0, tzinfo=UTC)
+    assert as_utc(paris) == datetime(2026, 9, 5, 10, 0, tzinfo=timezone.utc)

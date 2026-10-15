@@ -6,7 +6,7 @@ Provides utilities for making authenticated requests to the Telegram Bot API.
 
 import logging
 from io import BytesIO
-from typing import Any
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -57,7 +57,7 @@ def get_file_url(bot_token: str, file_path: str) -> str:
 async def call_telegram_api(
     credentials: APIKeyCredentials,
     method: str,
-    data: dict[str, Any] | None = None,
+    data: Optional[dict[str, Any]] = None,
 ) -> TelegramMessageResult:
     """
     Make a request to the Telegram Bot API.
@@ -94,7 +94,7 @@ async def call_telegram_api_with_file(
     file_data: bytes,
     filename: str,
     content_type: str,
-    data: dict[str, Any] | None = None,
+    data: Optional[dict[str, Any]] = None,
 ) -> TelegramMessageResult:
     """
     Make a multipart/form-data request to the Telegram Bot API with a file upload.

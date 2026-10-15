@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import uuid as uuidlib
 from collections.abc import Mapping
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from backend.copilot.graphiti.client import derive_memory_group_id
 from backend.copilot.graphiti.config import graphiti_config
@@ -128,7 +128,7 @@ def _provenance(pass_id: str, phase: str) -> str:
     the dream pass id and the phase so ratification can find originating
     dream-write episodes by prefix-match.
     """
-    return f"dream:{pass_id}:{phase}:{datetime.now(UTC).isoformat()}"
+    return f"dream:{pass_id}:{phase}:{datetime.now(timezone.utc).isoformat()}"
 
 
 def _episode_name(pass_id: str, phase: str, counter: int) -> str:
@@ -463,7 +463,7 @@ async def _create_dream_session(
     # on the batch path the at-most-once apply gate is already claimed by
     # the time we run, so an exception here would permanently lose the
     # dream (a retry hits the "duplicate" branch and skips apply).
-    title = f"Dream summary — {datetime.now(UTC).strftime('%Y-%m-%d')}"
+    title = f"Dream summary — {datetime.now(timezone.utc).strftime('%Y-%m-%d')}"
     try:
         await chat_db().update_chat_session_title(
             session_id=session_id, user_id=user_id, title=title

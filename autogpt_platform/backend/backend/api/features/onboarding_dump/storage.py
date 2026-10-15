@@ -14,8 +14,7 @@ never a recording.
 
 import base64
 import logging
-from collections.abc import Awaitable
-from typing import Any, cast
+from typing import Any, Awaitable, cast
 
 from backend.data import redis_client
 from backend.util.cloud_storage import get_cloud_storage_handler

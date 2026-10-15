@@ -13,7 +13,7 @@ including that nothing a routine's own turn does can create another one.
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from backend.api.features.experts.models import ExpertRoutine
@@ -486,7 +486,7 @@ def _run_at(delay_seconds: int | None) -> datetime | None:
         return None
     if delay_seconds < _MIN_DELAY_SECONDS:
         raise ValueError(f"`delay_seconds` must be at least {_MIN_DELAY_SECONDS}.")
-    return datetime.now(UTC) + timedelta(seconds=delay_seconds)
+    return datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
 
 
 def _confirmation(routine: ExpertRoutine) -> str:

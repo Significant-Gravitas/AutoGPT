@@ -63,7 +63,7 @@ def _clean_config_env(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest_asyncio.fixture(scope="session", loop_scope="session", name="server")
 async def _server_noop() -> None:
     """No-op server stub — SDK tests don't need the full backend."""
-    return
+    return None
 
 
 @pytest_asyncio.fixture(

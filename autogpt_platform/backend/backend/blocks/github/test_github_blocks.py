@@ -1,7 +1,7 @@
 import asyncio
 import copy
 import inspect
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest import mock
 
 import pytest
@@ -1210,12 +1210,12 @@ class TestParseTimestamp:
 
     def test_zulu_suffix_is_understood(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00Z") == datetime(
-            2026, 1, 1, tzinfo=UTC
+            2026, 1, 1, tzinfo=timezone.utc
         )
 
     def test_naive_timestamp_is_assumed_utc(self):
         assert repo._parse_timestamp("2026-01-01T00:00:00") == datetime(
-            2026, 1, 1, tzinfo=UTC
+            2026, 1, 1, tzinfo=timezone.utc
         )
 
 

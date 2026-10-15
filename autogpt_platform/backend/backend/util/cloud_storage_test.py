@@ -2,7 +2,6 @@
 Tests for cloud storage utilities.
 """
 
-from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -198,15 +197,15 @@ class TestCloudStorageHandler:
     @pytest.mark.asyncio
     async def test_delete_expired_files_gcs(self, mock_get_async_client, handler):
         """Test deleting expired files from GCS."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         # Mock async GCS client
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
 
         # Mock list_objects response with expired and valid files
-        expired_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
-        valid_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        valid_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
         mock_list_response = {
             "items": [
@@ -238,14 +237,14 @@ class TestCloudStorageHandler:
     @pytest.mark.asyncio
     async def test_check_file_expired_gcs(self, mock_get_async_client, handler):
         """Test checking if a file has expired."""
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
         # Mock async GCS client
         mock_async_client = AsyncMock()
         mock_get_async_client.return_value = mock_async_client
 
         # Test with expired file
-        expired_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        expired_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
         mock_async_client.download_metadata = AsyncMock(
             return_value={"metadata": {"expires_at": expired_time}}
         )
@@ -254,7 +253,7 @@ class TestCloudStorageHandler:
         assert result is True
 
         # Test with valid file
-        valid_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
+        valid_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
         mock_async_client.download_metadata = AsyncMock(
             return_value={"metadata": {"expires_at": valid_time}}
         )

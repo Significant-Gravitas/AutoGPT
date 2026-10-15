@@ -325,12 +325,13 @@ class TestStructuredCompletionDelegation:
         with patch(
             "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
             return_value=_openrouter_routing(api_key=""),
-        ), pytest.raises(DreamLLMError, match="OPEN_ROUTER_API_KEY"):
-            await structured_completion(
-                model="anthropic/claude-sonnet-4-6",
-                messages=[{"role": "user", "content": "hi"}],
-                response_model=_SampleOutput,
-            )
+        ):
+            with pytest.raises(DreamLLMError, match="OPEN_ROUTER_API_KEY"):
+                await structured_completion(
+                    model="anthropic/claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
 
     @pytest.mark.asyncio
     async def test_raises_with_subscription_hint_when_no_anthropic_key(self):
@@ -342,12 +343,13 @@ class TestStructuredCompletionDelegation:
         with patch(
             "backend.copilot.dream.llm.routing_kwargs_for_chat_transport",
             return_value=_anthropic_routing(api_key=""),
-        ), pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY") as exc_info:
-            await structured_completion(
-                model="anthropic/claude-sonnet-4-6",
-                messages=[{"role": "user", "content": "hi"}],
-                response_model=_SampleOutput,
-            )
+        ):
+            with pytest.raises(DreamLLMError, match="ANTHROPIC_API_KEY") as exc_info:
+                await structured_completion(
+                    model="anthropic/claude-sonnet-4-6",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
         # The hint is user-facing self-serve documentation — the anchor must
         # match the real heading slug in docs/platform/copilot-local-llm.md
         # ("### Subscription mode caveat").
@@ -364,14 +366,13 @@ class TestStructuredCompletionDelegation:
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(return_value=fake),
-        ), pytest.raises(
-            DreamLLMError, match="empty"
         ):
-            await structured_completion(
-                model="x",
-                messages=[{"role": "user", "content": "hi"}],
-                response_model=_SampleOutput,
-            )
+            with pytest.raises(DreamLLMError, match="empty"):
+                await structured_completion(
+                    model="x",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
 
     @pytest.mark.asyncio
     async def test_invalid_pydantic_shape_raises_dream_llm_error(self):
@@ -389,14 +390,13 @@ class TestStructuredCompletionDelegation:
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(return_value=fake),
-        ), pytest.raises(
-            DreamLLMError, match="did not match"
         ):
-            await structured_completion(
-                model="x",
-                messages=[{"role": "user", "content": "hi"}],
-                response_model=_SampleOutput,
-            )
+            with pytest.raises(DreamLLMError, match="did not match"):
+                await structured_completion(
+                    model="x",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
 
     @pytest.mark.asyncio
     async def test_provider_failure_is_wrapped_in_dream_llm_error(self):
@@ -409,14 +409,13 @@ class TestStructuredCompletionDelegation:
         ), patch(
             "backend.copilot.dream.llm.call_provider",
             new=AsyncMock(side_effect=RuntimeError("upstream 502")),
-        ), pytest.raises(
-            DreamLLMError, match="upstream 502"
         ):
-            await structured_completion(
-                model="x",
-                messages=[{"role": "user", "content": "hi"}],
-                response_model=_SampleOutput,
-            )
+            with pytest.raises(DreamLLMError, match="upstream 502"):
+                await structured_completion(
+                    model="x",
+                    messages=[{"role": "user", "content": "hi"}],
+                    response_model=_SampleOutput,
+                )
 
     @pytest.mark.asyncio
     async def test_recovers_from_prose_prefixed_json(self):

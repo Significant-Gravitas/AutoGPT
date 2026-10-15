@@ -130,7 +130,7 @@ class AutoModManager:
 
             return None
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             logger.warning(
                 f"Input moderation timed out for graph execution {graph_exec.graph_exec_id}, bypassing moderation"
             )
@@ -213,7 +213,7 @@ class AutoModManager:
 
             return None
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             logger.warning(
                 f"Output moderation timed out for graph execution {graph_exec_id}, bypassing moderation"
             )
@@ -334,7 +334,7 @@ class AutoModManager:
                 logger.warning(f"Content rejected: {error_msg}")
                 return False, response.content_id
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             # Re-raise timeout to be handled by calling methods
             logger.warning(
                 f"AutoMod API timeout for {metadata.get('graph_exec_id', 'unknown')}"
@@ -366,7 +366,7 @@ class AutoModManager:
             response_data = response.json()
             return AutoModResponse.model_validate(response_data)
 
-        except TimeoutError:
+        except asyncio.TimeoutError:
             # Re-raise timeout error to be caught by _moderate_content
             raise
         except (json.JSONDecodeError, ValidationError) as e:
@@ -374,7 +374,7 @@ class AutoModManager:
         except Exception as e:
             # Check if this is an aiohttp timeout that we should convert
             if "timeout" in str(e).lower():
-                raise TimeoutError(f"AutoMod API request timed out: {e}")
+                raise asyncio.TimeoutError(f"AutoMod API request timed out: {e}")
             raise Exception(f"AutoMod API request failed: {e}")
 
 

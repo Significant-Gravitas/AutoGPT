@@ -47,9 +47,9 @@ from typing import Literal, NamedTuple
 
 import sentry_sdk
 
+import backend.data.llm_registry as llm_registry
 from backend.copilot.config import ChatConfig
 from backend.copilot.model import RoutingSource
-from backend.data import llm_registry
 from backend.data.llm_registry.llm_models import LLMModel, transport_slug_candidates
 from backend.integrations.codex.models import CodexModelInfo, CodexReasoningEffort
 from backend.integrations.codex.transport import (

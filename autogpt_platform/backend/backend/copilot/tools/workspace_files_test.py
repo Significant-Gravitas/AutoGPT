@@ -224,7 +224,7 @@ async def test_workspace_file_round_trip(setup_test_data):
     read_resp2 = await read_tool._execute(
         user_id=user.id, session=session, file_id=file_id, save_to_path=save_path
     )
-    assert read_resp2 is not None
+    assert not isinstance(read_resp2, type(None))
     assert os.path.exists(save_path)
     with open(save_path) as f:
         assert f.read() == "Hello from e2e test!"

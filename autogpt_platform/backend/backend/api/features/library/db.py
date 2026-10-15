@@ -1,7 +1,7 @@
 import asyncio
 import itertools
 import logging
-from typing import Literal, LiteralString, cast
+from typing import Literal, LiteralString, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -95,15 +95,15 @@ async def _fetch_marketplace_details(
 
 async def list_library_agents(
     user_id: str,
-    search_term: str | None = None,
+    search_term: Optional[str] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
     page: int = 1,
     page_size: int = 50,
     include_executions: bool = False,
-    folder_id: str | None = None,
+    folder_id: Optional[str] = None,
     include_root_only: bool = False,
-    is_hidden: bool | None = None,
-    organization_id: str | None = None,
+    is_hidden: Optional[bool] = None,
+    organization_id: Optional[str] = None,
     include_nodes: bool = False,
 ) -> library_model.LibraryAgentResponse:
     """
@@ -135,7 +135,7 @@ async def list_library_agents(
     """
     logger.debug(
         f"Fetching library agents for user_id={user_id}, "
-        f"search_term={search_term!r}, "
+        f"search_term={repr(search_term)}, "
         f"sort_by={sort_by}, page={page}, page_size={page_size}"
     )
 
@@ -144,7 +144,7 @@ async def list_library_agents(
         raise InvalidInputError("Invalid pagination input")
 
     if search_term and len(search_term.strip()) > 100:
-        logger.warning(f"Search term too long: {search_term!r}")
+        logger.warning(f"Search term too long: {repr(search_term)}")
         raise InvalidInputError("Search term is too long")
 
     where_clause: prisma.types.LibraryAgentWhereInput = {
@@ -498,7 +498,7 @@ async def get_library_agent_refs_by_graph_ids(
 async def get_library_agent_by_graph_id(
     user_id: str,
     graph_id: str,
-    graph_version: int | None = None,
+    graph_version: Optional[int] = None,
     include_archived: bool = False,
 ) -> library_model.LibraryAgent | None:
     filter: prisma.types.LibraryAgentWhereInput = {
@@ -531,7 +531,7 @@ async def add_generated_agent_image(
     graph: graph_db.GraphBaseMeta,
     user_id: str,
     library_agent_id: str,
-) -> prisma.models.LibraryAgent | None:
+) -> Optional[prisma.models.LibraryAgent]:
     """
     Generates an image for the specified LibraryAgent and updates its record.
     """
@@ -908,14 +908,14 @@ async def update_library_agent_version_and_settings(
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
-    auto_update_version: bool | None = None,
-    graph_version: int | None = None,
-    is_favorite: bool | None = None,
-    is_archived: bool | None = None,
-    is_hidden: bool | None = None,
-    is_deleted: Literal[False] | None = None,
-    settings: GraphSettings | None = None,
-    folder_id: str | None = None,
+    auto_update_version: Optional[bool] = None,
+    graph_version: Optional[int] = None,
+    is_favorite: Optional[bool] = None,
+    is_archived: Optional[bool] = None,
+    is_hidden: Optional[bool] = None,
+    is_deleted: Optional[Literal[False]] = None,
+    settings: Optional[GraphSettings] = None,
+    folder_id: Optional[str] = None,
 ) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
@@ -1199,7 +1199,7 @@ async def is_store_listing_version_available_for_install(
     lock_clause = "FOR SHARE OF slv, sl" if lock_rows else ""
     query = cast(
         LiteralString,
-        f"""
+        """
         SELECT slv.id
         FROM {schema_prefix}"StoreListingVersion" AS slv
         JOIN {schema_prefix}"StoreListing" AS sl
@@ -1210,7 +1210,9 @@ async def is_store_listing_version_available_for_install(
           AND slv."submissionStatus" = 'APPROVED'
           AND sl."isDeleted" = false
         {lock_clause}
-        """,
+        """.format(
+            schema_prefix=schema_prefix, lock_clause=lock_clause
+        ),
     )
     client = tx if tx is not None else prisma.get_client()
     rows = await client.query_raw(query, store_listing_version_id)
@@ -1321,7 +1323,7 @@ async def add_store_agent_to_library_as_admin(
 
 async def _fetch_user_folders(
     user_id: str,
-    extra_where: prisma.types.LibraryFolderWhereInput | None = None,
+    extra_where: Optional[prisma.types.LibraryFolderWhereInput] = None,
     include_relations: bool = True,
 ) -> list[prisma.models.LibraryFolder]:
     """
@@ -1352,7 +1354,7 @@ async def _fetch_user_folders(
 
 async def list_folders(
     user_id: str,
-    parent_id: str | None = None,
+    parent_id: Optional[str] = None,
     include_relations: bool = True,
 ) -> list[library_model.LibraryFolder]:
     """
@@ -1503,9 +1505,9 @@ async def _is_descendant_of(
 async def create_folder(
     user_id: str,
     name: str,
-    parent_id: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a new folder for the user.
@@ -1556,9 +1558,9 @@ async def create_folder(
 async def create_folder_with_unique_name(
     user_id: str,
     base_name: str,
-    parent_id: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
+    parent_id: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Creates a folder, appending (2), (3), etc. if name exists.
@@ -1592,9 +1594,9 @@ async def create_folder_with_unique_name(
 async def update_folder(
     folder_id: str,
     user_id: str,
-    name: str | None = None,
-    icon: str | None = None,
-    color: str | None = None,
+    name: Optional[str] = None,
+    icon: Optional[str] = None,
+    color: Optional[str] = None,
 ) -> library_model.LibraryFolder:
     """
     Updates a folder's properties.
@@ -1654,7 +1656,7 @@ async def update_folder(
 async def move_folder(
     folder_id: str,
     user_id: str,
-    target_parent_id: str | None,
+    target_parent_id: Optional[str],
 ) -> library_model.LibraryFolder:
     """
     Moves a folder to a new parent.
@@ -1813,7 +1815,7 @@ async def _get_descendant_folder_ids(
 
 async def move_agent_to_folder(
     library_agent_id: str,
-    folder_id: str | None,
+    folder_id: Optional[str],
     user_id: str,
 ) -> library_model.LibraryAgent:
     """
@@ -1852,7 +1854,7 @@ async def move_agent_to_folder(
 
 async def bulk_move_agents_to_folder(
     agent_ids: list[str],
-    folder_id: str | None,
+    folder_id: Optional[str],
     user_id: str,
 ) -> list[library_model.LibraryAgent]:
     """
@@ -1975,7 +1977,7 @@ async def list_presets(
     user_id: str,
     page: int,
     page_size: int,
-    graph_id: str | None = None,
+    graph_id: Optional[str] = None,
     expert_id: str | None = None,
     filter_by_expert: bool = False,
 ) -> library_model.LibraryAgentPresetResponse:
@@ -2112,7 +2114,7 @@ async def create_preset(
         DatabaseError: If there's a database error in creating the preset.
     """
     logger.debug(
-        f"Creating preset ({preset.name!r}) for user #{user_id}",
+        f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
     # A preset may only reference a graph the caller can access (owned, or in
     # their library and submitted); get_graph() enforces that, None if not.
@@ -2158,7 +2160,7 @@ async def create_preset(
         webhookId=webhook_id,
         InputPresets={
             "create": [
-                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+                prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
                     name=name, data=SafeJson(data)
                 )
                 for name, data in {
@@ -2262,11 +2264,11 @@ async def create_preset_from_graph_execution(
 async def update_preset(
     user_id: str,
     preset_id: str,
-    inputs: GraphInput | None = None,
-    credentials: dict[str, CredentialsMetaInput] | None = None,
-    name: str | None = None,
-    description: str | None = None,
-    is_active: bool | None = None,
+    inputs: Optional[GraphInput] = None,
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Updates an existing AgentPreset for a user.
@@ -2291,7 +2293,7 @@ async def update_preset(
     if not current:
         raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
     logger.debug(
-        f"Updating preset #{preset_id} ({current.name!r}) for user #{user_id}",
+        f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
     )
 
     expert_tenancy: tuple[str, str | None] | None = None
@@ -2321,7 +2323,7 @@ async def update_preset(
                 )
             update_data["InputPresets"] = {
                 "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
                         name=name, data=SafeJson(data)
                     )
                     for name, data in {
@@ -2629,7 +2631,7 @@ async def list_trigger_agents(
     user_id: str,
     library_agent_id: str,
     *,
-    parent_graph_id: str | None = None,
+    parent_graph_id: Optional[str] = None,
 ) -> list[library_model.LibraryAgent]:
     """List trigger agents for the given parent library agent.
 

@@ -7,7 +7,7 @@ from Stripe rather than from our own copy is what keeps the copy honest.
 """
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Literal
 
 from prisma.enums import SubscriptionTier
@@ -110,7 +110,7 @@ def format_date(timestamp: int | None) -> str:
     """The one fact these emails exist to state, so it is never relative."""
     if not timestamp:
         return "Not available"
-    moment = datetime.fromtimestamp(timestamp, tz=UTC)
+    moment = datetime.fromtimestamp(timestamp, tz=timezone.utc)
     return f"{moment.day} {moment.strftime('%b %Y')}"
 
 

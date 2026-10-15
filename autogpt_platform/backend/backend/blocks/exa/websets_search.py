@@ -6,7 +6,7 @@ including adding new searches, checking status, and canceling operations.
 """
 
 from enum import Enum
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from exa_py import AsyncExa
 from exa_py.websets.types import WebsetSearch as SdkWebsetSearch
@@ -37,16 +37,16 @@ class WebsetSearchModel(BaseModel):
     status: str
     query: str
     entity_type: str
-    criteria: list[dict[str, Any]]
+    criteria: List[Dict[str, Any]]
     count: int
     behavior: str
-    progress: dict[str, Any]
-    recall: dict[str, Any] | None
+    progress: Dict[str, Any]
+    recall: Optional[Dict[str, Any]]
     created_at: str
     updated_at: str
-    canceled_at: str | None
-    canceled_reason: str | None
-    metadata: dict[str, Any]
+    canceled_at: Optional[str]
+    canceled_reason: Optional[str]
+    metadata: Dict[str, Any]
 
     @classmethod
     def from_sdk(cls, search: SdkWebsetSearch) -> "WebsetSearchModel":
@@ -139,7 +139,7 @@ class ExaCreateWebsetSearchBlock(Block):
             default=SearchEntityType.AUTO,
             description="Type of entity to search for",
         )
-        entity_description: str | None = SchemaField(
+        entity_description: Optional[str] = SchemaField(
             default=None,
             description="Description for custom entity type",
             advanced=True,
@@ -198,7 +198,7 @@ class ExaCreateWebsetSearchBlock(Block):
             advanced=True,
         )
 
-        metadata: dict | None = SchemaField(
+        metadata: Optional[dict] = SchemaField(
             default=None,
             description="Metadata to attach to the search",
             advanced=True,
@@ -227,10 +227,10 @@ class ExaCreateWebsetSearchBlock(Block):
         expected_results: dict = SchemaField(
             description="Recall estimation of expected results"
         )
-        items_found: int | None = SchemaField(
+        items_found: Optional[int] = SchemaField(
             description="Number of items found (if wait_for_completion was True)"
         )
-        completion_time: float | None = SchemaField(
+        completion_time: Optional[float] = SchemaField(
             description="Time taken to complete in seconds (if wait_for_completion was True)"
         )
 
@@ -423,10 +423,10 @@ class ExaGetWebsetSearchBlock(Block):
         recall: dict = SchemaField(description="Recall estimation information")
         created_at: str = SchemaField(description="When the search was created")
         updated_at: str = SchemaField(description="When the search was last updated")
-        canceled_at: str | None = SchemaField(
+        canceled_at: Optional[str] = SchemaField(
             description="When the search was canceled (if applicable)"
         )
-        canceled_reason: str | None = SchemaField(
+        canceled_reason: Optional[str] = SchemaField(
             description="Reason for cancellation (if applicable)"
         )
         metadata: dict = SchemaField(description="Metadata attached to the search")
@@ -634,7 +634,7 @@ class ExaFindOrCreateSearchBlock(Block):
             yield "items_found", search.progress.get("found", 0)
         else:
             # Create new search
-            payload: dict[str, Any] = {
+            payload: Dict[str, Any] = {
                 "query": input_data.query,
                 "count": input_data.count,
                 "behavior": input_data.behavior.value,

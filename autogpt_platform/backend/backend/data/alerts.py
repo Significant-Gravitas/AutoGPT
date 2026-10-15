@@ -17,7 +17,7 @@ The lifecycle the alert engine drives off this table:
 """
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from prisma.enums import AlertCause, AlertConditionStatus
 from prisma.models import AlertCondition
@@ -85,7 +85,7 @@ async def raise_alert_condition(
     becomes DEFERRED and escalates into the next Briefing's attention block
     instead of re-pinging the inbox.
     """
-    dedupe_since = datetime.now(tz=UTC) - ALERT_DEDUPE_WINDOW
+    dedupe_since = datetime.now(tz=timezone.utc) - ALERT_DEDUPE_WINDOW
     try:
         existing = await AlertCondition.prisma().find_unique(
             where={"userId_causeKey": {"userId": user_id, "causeKey": cause_key}}
@@ -154,7 +154,7 @@ async def resolve_alert_condition(user_id: str, cause_key: str) -> bool:
             },
             data={
                 "status": AlertConditionStatus.RESOLVED,
-                "resolvedAt": datetime.now(tz=UTC),
+                "resolvedAt": datetime.now(tz=timezone.utc),
             },
         )
         return cleared > 0
@@ -260,7 +260,7 @@ async def mark_alert_conditions_sent(condition_ids: list[str]) -> None:
             where={"id": {"in": condition_ids}},
             data={
                 "status": AlertConditionStatus.SENT,
-                "sentAt": datetime.now(tz=UTC),
+                "sentAt": datetime.now(tz=timezone.utc),
             },
         )
     except Exception as e:
@@ -308,7 +308,7 @@ async def mark_alert_conditions_briefed(condition_ids: list[str]) -> None:
     try:
         await AlertCondition.prisma().update_many(
             where={"id": {"in": condition_ids}},
-            data={"briefedAt": datetime.now(tz=UTC)},
+            data={"briefedAt": datetime.now(tz=timezone.utc)},
         )
     except Exception as e:
         raise DatabaseError(f"Failed to mark alert conditions briefed: {e}") from e

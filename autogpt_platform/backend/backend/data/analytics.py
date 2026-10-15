@@ -1,5 +1,6 @@
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from pydantic import BaseModel
 
@@ -12,7 +13,7 @@ class AccuracyAlertData(BaseModel):
     """Alert data when accuracy drops significantly."""
 
     graph_id: str
-    user_id: str | None
+    user_id: Optional[str]
     drop_percent: float
     three_day_avg: float
     seven_day_avg: float
@@ -23,24 +24,24 @@ class AccuracyLatestData(BaseModel):
     """Latest execution accuracy data point."""
 
     date: datetime
-    daily_score: float | None
-    three_day_avg: float | None
-    seven_day_avg: float | None
-    fourteen_day_avg: float | None
+    daily_score: Optional[float]
+    three_day_avg: Optional[float]
+    seven_day_avg: Optional[float]
+    fourteen_day_avg: Optional[float]
 
 
 class AccuracyTrendsResponse(BaseModel):
     """Response model for accuracy trends and alerts."""
 
     latest_data: AccuracyLatestData
-    alert: AccuracyAlertData | None
-    historical_data: list[AccuracyLatestData] | None = None
+    alert: Optional[AccuracyAlertData]
+    historical_data: Optional[list[AccuracyLatestData]] = None
 
 
 async def get_accuracy_trends_and_alerts(
     graph_id: str,
     days_back: int = 30,
-    user_id: str | None = None,
+    user_id: Optional[str] = None,
     drop_threshold: float = 10.0,
     include_historical: bool = False,
 ) -> AccuracyTrendsResponse:
@@ -94,7 +95,7 @@ async def get_accuracy_trends_and_alerts(
     {limit_clause}
     """
 
-    start_date = datetime.now(UTC) - timedelta(days=days_back)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
     params = [graph_id, start_date]
     user_filter = ""
     if user_id:
@@ -115,7 +116,7 @@ async def get_accuracy_trends_and_alerts(
     if not result:
         return AccuracyTrendsResponse(
             latest_data=AccuracyLatestData(
-                date=datetime.now(UTC),
+                date=datetime.now(timezone.utc),
                 daily_score=None,
                 three_day_avg=None,
                 seven_day_avg=None,
@@ -139,7 +140,7 @@ async def get_accuracy_trends_and_alerts(
             drop_percent=float(latest["drop_percent"]),
             three_day_avg=float(latest["three_day_avg"]),
             seven_day_avg=float(latest["seven_day_avg"]),
-            detected_at=datetime.now(UTC),
+            detected_at=datetime.now(timezone.utc),
         )
 
     # Prepare historical data if requested
@@ -206,7 +207,7 @@ class MarketplaceGraphData(BaseModel):
     """Data structure for marketplace graph monitoring."""
 
     graph_id: str
-    user_id: str | None
+    user_id: Optional[str]
     execution_count: int
 
 
@@ -238,7 +239,7 @@ async def get_marketplace_graphs_for_monitoring(
     HAVING COUNT(*) >= $2
     ORDER BY execution_count DESC
     """
-    start_date = datetime.now(UTC) - timedelta(days=days_back)
+    start_date = datetime.now(timezone.utc) - timedelta(days=days_back)
     result = await query_raw_with_schema(query_template, start_date, min_executions)
 
     return [

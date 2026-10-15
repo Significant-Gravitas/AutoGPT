@@ -1,5 +1,5 @@
 import io
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import aiohttp
@@ -41,8 +41,8 @@ def _make_workspace(user_id: str = "test-user-id") -> Workspace:
     return Workspace(
         id="ws-001",
         user_id=user_id,
-        created_at=datetime(2026, 1, 1, tzinfo=UTC),
-        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     )
 
 
@@ -50,8 +50,8 @@ def _make_file(**overrides) -> WorkspaceFile:
     defaults = {
         "id": "file-001",
         "workspace_id": "ws-001",
-        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
-        "updated_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
+        "updated_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
         "name": "test.txt",
         "path": "/test.txt",
         "storage_path": "local://test.txt",
@@ -76,7 +76,7 @@ def _make_file_mock(**overrides) -> MagicMock:
         "size_bytes": 100,
         "folder_id": None,
         "metadata": {},
-        "created_at": datetime(2026, 1, 1, tzinfo=UTC),
+        "created_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
     }
     defaults.update(overrides)
     mock = MagicMock(spec=WorkspaceFile)
@@ -286,8 +286,8 @@ def _upload(
 _MOCK_FILE = WorkspaceFile(
     id="file-aaa-bbb",
     workspace_id="ws-001",
-    created_at=datetime(2026, 1, 1, tzinfo=UTC),
-    updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+    created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
     name="hello.txt",
     path="/sessions/sess-1/hello.txt",
     mime_type="text/plain",
