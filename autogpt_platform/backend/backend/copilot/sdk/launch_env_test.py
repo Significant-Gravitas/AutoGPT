@@ -8,6 +8,7 @@ launch's environment is read off the real SDK transport as it spawns the CLI.
 import subprocess
 from pathlib import Path
 
+import anyio
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk._internal.transport import subprocess_cli
@@ -73,7 +74,8 @@ async def _spawned_env(
         seen.update(kwargs["env"])
         raise _Spawned
 
-    monkeypatch.setattr(subprocess_cli.anyio, "open_process", open_process)
+    # The SDK's transport spawns through the anyio module.
+    monkeypatch.setattr(anyio, "open_process", open_process)
     options = launch_options(ClaudeAgentOptions(env=env, cli_path="claude-under-test"))
     transport = subprocess_cli.SubprocessCLITransport(prompt="", options=options)
     with pytest.raises(Exception):

@@ -79,10 +79,8 @@ async def _serve(path: str, reply: dict, seen: list[dict]) -> tuple[web.AppRunne
     app.router.add_post(path, handle)
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, "127.0.0.1", 0)
-    await site.start()
-    assert site._server is not None
-    return runner, site._server.sockets[0].getsockname()[1]
+    await web.TCPSite(runner, "127.0.0.1", 0).start()
+    return runner, runner.addresses[0][1]
 
 
 _CHAT_COMPLETION = {

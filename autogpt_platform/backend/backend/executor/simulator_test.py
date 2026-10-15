@@ -1047,7 +1047,9 @@ class TestPlatformRoute:
             parsed = await _call_llm_for_simulation("system", "user")
 
         assert parsed == {"result": "ok"}
-        kwargs = client.chat.completions.create.await_args.kwargs
+        call = client.chat.completions.create.await_args
+        assert call is not None
+        kwargs = call.kwargs
         assert kwargs["model"] == "claude-haiku-4-5"
         assert kwargs["extra_body"] == {}
 

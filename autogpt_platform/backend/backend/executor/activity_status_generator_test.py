@@ -1329,6 +1329,7 @@ async def test_the_status_runs_on_the_platform_routes_model(
         )
 
     assert result == {"activity_status": "Done.", "correctness_score": 1.0}
+    assert create_mock.await_args is not None
     kwargs = create_mock.await_args.kwargs
     assert kwargs["model"] == model
     assert kwargs["extra_body"] == extra_body
