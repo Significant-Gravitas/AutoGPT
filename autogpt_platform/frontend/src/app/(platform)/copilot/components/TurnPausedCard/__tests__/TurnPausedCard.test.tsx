@@ -313,6 +313,26 @@ describe("TurnPausedCard — what it says and offers", () => {
     await waitFor(() => expect(buttonsIn(card)).toEqual(buttons));
   });
 
+  it("counts a reset just under a day away in hours, as it names the time without a day", async () => {
+    // Tuesday, a day less 30 seconds before the reset.
+    vi.setSystemTime(new Date(2026, 9, 13, 1, 0, 30));
+    backend();
+    renderCard(
+      pause({ reason: "weekly", resets_at: WEDNESDAY_1AM.toISOString() }),
+    );
+    const card = await screen.findByRole("region", {
+      name: "Paused · out of this week's budget",
+    });
+
+    expect(
+      within(card).getByText(
+        phrase(
+          "Otto saved its progress above. Your budget resets at 1:00 AM, in 24 h.",
+        ),
+      ),
+    ).toBeDefined();
+  });
+
   it("offers ChatGPT beside Upgrade on a budget that never refills, and never a resume", async () => {
     const calls = backend({ offers: [PLATFORM, CHATGPT] });
     renderCard(pause({ reason: "weekly", resets_at: null }));
