@@ -1,12 +1,15 @@
-"""Tests for get_openai_client prefer_openrouter parameter."""
+"""Tests for get_openai_client prefer_openrouter parameter, and for the
+scheduler client repeating a call lost in transit."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
 import pytest
 
 from backend.util.clients import (
     _get_local_openai_client,
     get_openai_client,
+    get_scheduler_client,
     openrouter_helper_cost_provider,
 )
 
@@ -139,3 +142,34 @@ class TestOpenrouterHelperCostProvider:
         )
         self._patch_transport(monkeypatch, cfg)
         assert openrouter_helper_cost_provider() == "open_router"
+
+
+class TestGetSchedulerClientRetry:
+    """A pooled connection the scheduler closed just as a call went out fails
+    that call with ``httpx.ReadError`` before the scheduler sees it."""
+
+    @pytest.mark.asyncio
+    async def test_a_retrying_client_repeats_a_call_lost_in_transit(self):
+        post = _lost_then_answered()
+        with patch.object(httpx.AsyncClient, "post", post):
+            client = get_scheduler_client(should_retry=True)
+            assert await client.get_execution_schedules(user_id="user") == []
+        assert post.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_the_default_client_does_not_repeat_it(self):
+        post = _lost_then_answered()
+        with patch.object(httpx.AsyncClient, "post", post):
+            with pytest.raises(httpx.ReadError):
+                await get_scheduler_client().get_execution_schedules(user_id="user")
+        assert post.await_count == 1
+
+
+def _lost_then_answered() -> AsyncMock:
+    request = httpx.Request("POST", "http://scheduler/get_execution_schedules")
+    return AsyncMock(
+        side_effect=[
+            httpx.ReadError("connection closed", request=request),
+            httpx.Response(200, json=[], request=request),
+        ]
+    )
