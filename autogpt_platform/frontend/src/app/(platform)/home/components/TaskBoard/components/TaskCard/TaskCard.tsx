@@ -60,10 +60,7 @@ export function TaskCard({
         draggable={false}
         className="block rounded-lg px-3.5 pb-3 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-violet-400"
       >
-        <div className="flex items-center justify-between gap-2">
-          <Text variant="small" tone="muted" className="truncate">
-            {name}
-          </Text>
+        <div className="flex items-center gap-1.5">
           {expert ? (
             <ExpertAvatar
               name={expert.name}
@@ -78,6 +75,9 @@ export function TaskCard({
               className="rounded-full border border-zinc-200"
             />
           )}
+          <Text variant="small" tone="muted" className="truncate">
+            {name}
+          </Text>
         </div>
         <div className="mt-1 flex items-start gap-2">
           <StatusIcon columnId={columnId} className="mt-[0.2rem]" />
