@@ -3,7 +3,14 @@
 import { Expert } from "@/app/api/__generated__/models/expert";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
-import { PlusSignIcon } from "@hugeicons/core-free-icons";
+import {
+  BookOpen01Icon,
+  BulbIcon,
+  PlusSignIcon,
+  SparklesIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/atoms/Icon/Icon";
+import { SectionEmptyState } from "../../components/SectionEmptyState";
 import { AddSkillDialog } from "./AddSkillDialog";
 import { ExpertSkillListItem } from "./ExpertSkillListItem";
 import { useExpertSkills } from "./useExpertSkills";
@@ -62,16 +69,48 @@ export function ExpertSkillsSection({ expert, accentClassName }: Props) {
         </div>
       </div>
       {!hasAny ? (
-        <Text variant="body" tone="muted" className="pt-4">
-          No skills yet. Add skills from your library so {expert.name} knows how
-          you like things done.
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <Icon
+              key="book"
+              icon={BookOpen01Icon}
+              size={22}
+              className="text-sky-500"
+            />,
+            <Icon
+              key="bulb"
+              icon={BulbIcon}
+              size={22}
+              className="text-amber-500"
+            />,
+            <Icon
+              key="sparkles"
+              icon={SparklesIcon}
+              size={22}
+              className="text-violet-500"
+            />,
+          ]}
+          title="No skills yet"
+          description={`Add skills from your library so ${expert.name} knows how you like things done.`}
+        >
+          <Button
+            variant="primary"
+            size="small"
+            leadingIcon={PlusSignIcon}
+            onClick={openAdd}
+          >
+            Add skill
+          </Button>
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted" className="pt-4">
           No skills match.
         </Text>
       ) : (
-        <ul className="flex flex-col gap-3 pt-4" aria-label="Expert skills">
+        <ul
+          className="grid grid-cols-1 gap-3 pt-4 md:grid-cols-2"
+          aria-label="Expert skills"
+        >
           {visible.map((entry) => (
             <li key={entry.name}>
               <ExpertSkillListItem
