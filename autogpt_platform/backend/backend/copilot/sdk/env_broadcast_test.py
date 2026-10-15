@@ -59,7 +59,15 @@ def test_openrouter_mode_attributes_every_request_to_the_user_and_chat():
             "impersonated": False,
         },
         "provider": {
-            "order": ["google-vertex/global", "anthropic"],
+            # Fastest first, then the other global endpoints at the same
+            # price, then (fallbacks on) anyone else serving the model.
+            "order": [
+                "google-vertex/global",
+                "anthropic",
+                "amazon-bedrock",
+                "azure/global",
+                "claude-on-aws",
+            ],
             "allow_fallbacks": True,
         },
     }

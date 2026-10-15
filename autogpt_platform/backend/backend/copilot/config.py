@@ -685,14 +685,23 @@ class ChatConfig(BaseSettings):
         "property for the final answer.",
     )
     openrouter_provider_order: Annotated[list[str], NoDecode] = Field(
-        default_factory=lambda: ["google-vertex/global", "anthropic"],
+        default_factory=lambda: [
+            "google-vertex/global",
+            "anthropic",
+            "amazon-bedrock",
+            "azure/global",
+            "claude-on-aws",
+        ],
         description="OpenRouter providers the SDK path's Claude calls go to "
         "first, in order (the provider tags in OpenRouter's endpoint list for a "
-        "model). The Claude providers on OpenRouter charge the same but differ "
-        "in how soon they start answering: on a cached prompt Google Vertex's "
-        "first token came about 0.7 s sooner than the default provider's "
-        "(2026-10-15). A call none of them can serve falls back to OpenRouter's "
-        "other providers. Set as a comma-separated list "
+        "model). The global Claude endpoints charge the same but differ in how "
+        "soon they start answering: on a cached prompt Google Vertex's first "
+        "token came about 0.7 s sooner than OpenRouter's default provider's "
+        "(2026-10-15), then Anthropic's. The rest of the list are the other "
+        "global endpoints at the same price, so a call Vertex and Anthropic "
+        "can't serve stays at that price; the regional endpoints (10% dearer) "
+        "come after all of them. A call none of them can serve falls back to "
+        "OpenRouter's other providers. Set as a comma-separated list "
         "(``CHAT_OPENROUTER_PROVIDER_ORDER=google-vertex/global,anthropic``); an "
         "empty value leaves the choice to OpenRouter.",
     )
