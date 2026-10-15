@@ -304,7 +304,7 @@ async def test_schedule_chat_turn_saves_the_spoken_words_it_dispatches() -> None
     persisted = append.await_args.args[1].content
     assert persisted == dispatch.await_args.kwargs["message"]
     assert persisted == "what did I run yesterday"
-    assert dispatch.await_args.kwargs["voice"] is True
+    assert dispatch.await_args_list[-1].kwargs["voice"] is True
 
 
 @pytest.mark.asyncio

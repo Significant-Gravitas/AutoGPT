@@ -3,12 +3,14 @@
 import pytest
 
 from backend.copilot.expert_kickoff import expert_kickoff_metadata
-from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.model import ChatMessage, ChatSession, ChatSessionOrigin
 from backend.copilot.session_kind import SessionKind
 from backend.copilot.tools import kickoff_turn_disabled_tools, origin_disabled_tools
 
 
-def _session(origin="interactive", *, rows=()) -> ChatSession:
+def _session(
+    origin: ChatSessionOrigin | None = "interactive", *, rows=()
+) -> ChatSession:
     session = ChatSession.new("user-1", dry_run=False)
     session.metadata.origin = origin
     session.messages = list(rows)
