@@ -36,7 +36,12 @@ from .pass_record import stop_error
 from .pass_run import DreamPassRun
 from .provider_batch import cancel_provider_batch
 from .schemas import DreamPassResult
-from .store import read_pass, record_submitted, record_taken_back
+from .store import (
+    read_pass,
+    record_batch_left_running,
+    record_submitted,
+    record_taken_back,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,16 +224,21 @@ async def _take_back(
     provider asked to stop it by the id the pass holds, then the batch off
     the executor's queue and the pass's bundle dropped.
 
-    A batch that may still be running is never left without someone to stop
-    it. When the provider does not confirm the stop (it refused, or the call
-    failed or ran out of time), the pass's row closes ERRORED with *error*,
-    the batch on it and marked (``pass_record.taken_back``), so the reaper's
-    cleanup asks the provider again until the batch has stopped or ended.
-    When that write does not land either (the row closed meanwhile, gone, or
-    the store down), the batch stays on the executor's queue: the drop of a
-    closed pass's batch (``batch_deliveries.drop_closed``), or the callback
-    of a pass without a record, stops it by its id. The lock is left to the
-    context manager's single release on the way out."""
+    A batch that may still be running is left to someone to stop. When the
+    provider does not confirm the stop (it refused, or the call failed or
+    ran out of time), the pass's row keeps the batch, marked, so the
+    reaper's cleanup asks the provider again until the batch has stopped or
+    ended: an open row closes ERRORED with *error* (``pass_record.taken_back``),
+    and a row a stop closed meanwhile (a cancel racing the submit) takes the
+    batch and the mark without changing how it closed
+    (``pass_record.batch_left_running``). The lock is left to the context
+    manager's single release on the way out.
+
+    Known limit: when neither write lands (the store down, or no row), the
+    batch stays on the executor's queue, whose drop removes it before
+    anything can stop it; it runs to the provider's 24-hour expiry, its
+    results are discarded, and nothing is charged for it, so the cost is
+    bounded to that one phase."""
     pass_id = run.pass_id
     logger.info(
         f"Dream pass {pass_id} not handed off; taking batch {provider_batch_id} back"
@@ -240,11 +250,13 @@ async def _take_back(
             provider_batch_id=provider_batch_id,
             lease_token=lock_handle.token,
         )
+        if recorded is False:
+            recorded = await record_batch_left_running(pass_id, provider_batch_id)
         if not recorded:
             logger.warning(
                 f"Dream pass {pass_id}: batch {provider_batch_id} is not "
-                "confirmed stopped and not on its record; left on the executor's "
-                "queue, whose drop or callback stops it"
+                "confirmed stopped and its record cannot keep it; it runs to "
+                "the provider's expiry"
             )
             await best_effort_cleanup(pass_id)
             return

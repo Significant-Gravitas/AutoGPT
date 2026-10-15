@@ -3,11 +3,14 @@
     poetry run memory-schedule-backfill [--dry-run] [--force]
 
 Schedules the dream-system crons of every memory scope that should have them
-and pauses the ones that should not. Scopes come from three places: every
-account with a FalkorDB graph (``GRAPH.LIST``), every hired, unarchived
-expert in Postgres, and every ACTIVE registry row. Accounts go through
-``ensure_scope_scheduled``; live experts are resumed or, when their schedules
-are paused, paused; an ACTIVE row whose expert is archived or gone is paused.
+and pauses the ones that should not. Scopes come from four places: every
+account with a FalkorDB graph (``GRAPH.LIST``), every account with
+skill-learning sources (an account can learn without a graph), every hired,
+unarchived expert in Postgres, and every ACTIVE registry row. Accounts whose
+user still exists go through ``ensure_scope_scheduled``, which leaves a
+PAUSED or WIPED row as it is; live experts are resumed or, when their
+schedules are paused, paused; an ACTIVE row whose expert is archived or gone
+is paused.
 
 Safe to re-run: an account or live expert already registered in its owner's
 timezone costs a few reads and no scheduler call, but a paused expert is
@@ -42,9 +45,11 @@ logger = logging.getLogger(__name__)
 Outcome = Literal["registered", "already_scheduled", "skipped", "failed"]
 FAILURE_REASONS = frozenset(
     {
+        "flag_unavailable",
         "registration_failed",
         "record_failed",
         "registry_unavailable",
+        "removal_failed",
         "timezone_lookup_failed",
     }
 )
@@ -67,6 +72,7 @@ class BackfillReport(BaseModel):
 
     dry_run: bool
     accounts: int = 0
+    learning_accounts: int = 0
     experts: int = 0
     experts_to_pause: int = 0
     graphs_without_user: int = 0
@@ -251,13 +257,28 @@ async def _live_experts() -> list[LiveExpertScope]:
 async def _account_owners(
     report: BackfillReport, active_rows: list[MemoryScopeSchedule]
 ) -> list[str]:
-    """Owners of an account graph that still have a user row, plus every
-    account with an ACTIVE registry row."""
-    owners = await list_account_graph_owners()
+    """Owners of an account graph or of skill-learning sources that still
+    have a user row, plus every account with an ACTIVE registry row."""
+    graph_owners = set(await list_account_graph_owners())
+    learning_owners = set(await _learning_owners())
+    owners = sorted(graph_owners | learning_owners)
     existing: set[str] = set()
     for start in range(0, len(owners), _PAGE_SIZE):
         chunk = owners[start : start + _PAGE_SIZE]
         existing |= await memory_schedule.existing_user_ids(chunk)
-    report.graphs_without_user = len(owners) - len(existing)
+    report.graphs_without_user = len(graph_owners - existing)
+    report.learning_accounts = len(learning_owners & existing)
     registered = {row.user_id for row in active_rows if row.expert_id is None}
     return sorted(existing | registered)
+
+
+async def _learning_owners() -> list[str]:
+    owners: list[str] = []
+    while True:
+        after = owners[-1] if owners else None
+        page = await memory_schedule.list_learning_account_ids(
+            after=after, limit=_PAGE_SIZE
+        )
+        owners += page
+        if len(page) < _PAGE_SIZE:
+            return owners
