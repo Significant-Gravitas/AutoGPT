@@ -228,6 +228,24 @@ async def test_active_rows_page_by_scope_key(table):
 
 
 @pytest.mark.asyncio
+async def test_every_row_pages_by_scope_key_whatever_its_state(table):
+    table.find_many.return_value = [_row(), _row(scopeKey="user-2", state=PAUSED)]
+
+    first = await memory_schedule.list_scope_schedules(limit=10)
+    await memory_schedule.list_scope_schedules(after="user-2", limit=10)
+
+    assert [row.state for row in first] == [ACTIVE, PAUSED]
+    assert [call.kwargs for call in table.find_many.await_args_list] == [
+        {"where": {}, "order": {"scopeKey": "asc"}, "take": 10},
+        {
+            "where": {"scopeKey": {"gt": "user-2"}},
+            "order": {"scopeKey": "asc"},
+            "take": 10,
+        },
+    ]
+
+
+@pytest.mark.asyncio
 async def test_live_experts_are_hired_unarchived_and_owner_only(mocker):
     experts = MagicMock()
     experts.find_many = AsyncMock(

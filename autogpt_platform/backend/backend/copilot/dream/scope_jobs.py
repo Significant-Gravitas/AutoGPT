@@ -20,7 +20,7 @@ from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import is_feature_enabled
 
 from .deadline import within_deadline
-from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, write_registration_marker
+from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ async def register_scope_jobs(
     stale = force_refresh or row.timezone != user_timezone
     outcomes: dict[str, Any] = {}
     for job in enabled:
-        if not stale and _recorded_job_id(row, job) is not None:
+        if not stale and recorded_job_id(row, job) is not None:
             outcomes[job.job_id_prefix] = None
             continue
         outcomes[job.job_id_prefix] = await _register_job(scope, job, user_timezone)
@@ -137,7 +137,6 @@ async def _register_job(
             f"(reason={result.get('reason')}) despite the local flag check"
         )
         return result
-    await write_registration_marker(scope, job.registration_key_prefix, user_timezone)
     logger.info(
         f"Dream-system: registered {job.name} for {scope_label(scope)} "
         f"(tz={user_timezone})"
@@ -154,13 +153,16 @@ async def _record(
 ) -> dict[str, Any]:
     """Write the job ids this pass settled on and return the outcomes as
     they stand afterwards: a registration the row could not record is a
-    failure, and one the scope left ACTIVE under is taken down again."""
+    failure, and one the scope left ACTIVE under is ``scope_changed``. Its
+    crons are left where they are: the fire gate holds a scope that is not
+    ACTIVE, the reconcile removes them (``scope_reconcile.py``), and taking
+    them down here could take a concurrent resume's crons with them."""
     ids = {
         job.row_field: _next_job_id(row, job, outcomes.get(job.job_id_prefix), stale)
         for job in DREAM_SYSTEM_JOBS
     }
     if not stale and all(
-        ids[job.row_field] == _recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
+        ids[job.row_field] == recorded_job_id(row, job) for job in DREAM_SYSTEM_JOBS
     ):
         return outcomes
     try:
@@ -180,8 +182,10 @@ async def _record(
         return _replace_registered(outcomes, "record_failed")
     if recorded:
         return outcomes
-    logger.info(f"{scope_label(scope)} left ACTIVE while registering; removing")
-    await remove_scope_jobs(scope)
+    logger.info(
+        f"{scope_label(scope)} left ACTIVE while registering; the reconcile "
+        "removes its crons"
+    )
     return _replace_registered(outcomes, "scope_changed")
 
 
@@ -205,10 +209,11 @@ def _next_job_id(
     was registered in a timezone that no longer holds."""
     if _registered(outcome):
         return outcome["id"]
-    return None if stale else _recorded_job_id(row, job)
+    return None if stale else recorded_job_id(row, job)
 
 
-def _recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
+def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
+    """The job id ``row`` records for ``job``, None when it records none."""
     if job.row_field == "community_job_id":
         return row.community_job_id
     return row.nightly_job_id

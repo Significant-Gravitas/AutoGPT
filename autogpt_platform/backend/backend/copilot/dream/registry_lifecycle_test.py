@@ -12,7 +12,7 @@ import pytest
 
 from backend.util.feature_flag import Flag
 
-from . import registry, scope_jobs
+from . import registry
 from .registry_fakes_test import (
     ACCOUNT,
     ACTIVE,
@@ -166,12 +166,14 @@ async def test_wipe_removes_the_jobs_and_resume_does_not_undo_it(env):
 
 
 @pytest.mark.asyncio
-async def test_a_resume_landing_inside_a_pause_keeps_its_crons(env, monkeypatch):
+async def test_a_resume_landing_inside_a_pause_gets_its_crons_back_next_pass(
+    env, monkeypatch
+):
     """The pause writes PAUSED; before its removal lands, a resume writes
     ACTIVE and registers the crons, whose job ids are the scope's own. The
-    removal takes them, and the pause, finding the row ACTIVE again,
-    registers them once more: the scope does not sit ACTIVE without
-    crons."""
+    removal takes them, leaving the row ACTIVE with its ids recorded and no
+    crons; the pause reports what it did, and the reconcile pass registers
+    them again."""
     await registry.ensure_scope_scheduled(EXPERT)
     remove = registry.remove_scope_jobs
 
@@ -184,19 +186,24 @@ async def test_a_resume_landing_inside_a_pause_keeps_its_crons(env, monkeypatch)
     monkeypatch.setattr(registry, "remove_scope_jobs", resumed_first)
 
     assert await registry.pause_scope(EXPERT)
-
     assert env.db.rows[EXPERT.scope_key].state == ACTIVE
+    assert env.scheduler.jobs == {}
+
+    await env.reconcile()
+
     assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 
 @pytest.mark.asyncio
-async def test_a_registration_taken_down_then_resumed_registers_again(env, monkeypatch):
-    """A registration whose row left ACTIVE while it ran takes its crons down
-    (``scope_changed``); a resume that lands before that takedown loses its
-    crons with them. The registration, finding the row ACTIVE again,
-    registers them once more."""
+async def test_a_resume_after_a_registration_found_the_scope_paused_keeps_its_crons(
+    env, monkeypatch
+):
+    """The round-5 review's stale takedown: a registration records its crons
+    after a pause landed (``scope_changed``), and a resume lands right
+    after. The registration takes nothing down, so the resume's crons stay,
+    recorded on the ACTIVE row, and the next reconcile pass has nothing to
+    change."""
     record = env.db.record_scope_jobs
-    remove = scope_jobs.remove_scope_jobs
     calls = 0
 
     async def paused_meanwhile(*args, **kwargs):
@@ -204,23 +211,25 @@ async def test_a_registration_taken_down_then_resumed_registers_again(env, monke
         calls += 1
         if calls == 1:
             env.db.update(EXPERT.scope_key, state=PAUSED)
-            return False
+            result = await record(*args, **kwargs)
+            await registry.resume_scope(EXPERT)
+            return result
         return await record(*args, **kwargs)
 
-    async def resumed_before_the_takedown(scope):
-        monkeypatch.setattr(scope_jobs, "remove_scope_jobs", remove)
-        await registry.resume_scope(scope)
-        return await remove(scope)
-
     monkeypatch.setattr(env.db, "record_scope_jobs", paused_meanwhile)
-    monkeypatch.setattr(scope_jobs, "remove_scope_jobs", resumed_before_the_takedown)
 
-    await registry.ensure_scope_scheduled(EXPERT)
+    result = await registry.ensure_scope_scheduled(EXPERT)
 
+    assert {r["reason"] for r in result.values()} == {"scope_changed"}
     row = env.db.rows[EXPERT.scope_key]
     assert row.state == ACTIVE
-    assert set(env.scheduler.jobs) == job_ids(EXPERT)
     assert {row.community_job_id, row.nightly_job_id} == job_ids(EXPERT)
+    assert set(env.scheduler.jobs) == job_ids(EXPERT), "the resume's crons stay"
+
+    report = await env.reconcile()
+
+    assert (report.restored, report.removed, report.dropped) == ([], [], [])
+    assert set(env.scheduler.jobs) == job_ids(EXPERT)
 
 
 @pytest.mark.asyncio

@@ -18,8 +18,6 @@ Registration itself (ensure, pause, resume, wipe) is pinned in
 
 from __future__ import annotations
 
-import asyncio
-import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -30,12 +28,7 @@ from backend.util.feature_flag import Flag
 
 from . import deadline, scheduling
 from .registry_fakes_test import Hang
-from .scheduling import (
-    DREAM_SYSTEM_JOBS,
-    REGISTRATION_TTL_SECONDS,
-    dream_system_job,
-    resolve_user_timezone,
-)
+from .scheduling import DREAM_SYSTEM_JOBS, dream_system_job, resolve_user_timezone
 
 _PATH_USER_DB = "backend.copilot.dream.scheduling.user_db"
 USER = "abc"
@@ -54,11 +47,6 @@ def test_table_contains_two_jobs_in_cron_frequency_order():
     the log narrative."""
     prefixes = [j.job_id_prefix for j in DREAM_SYSTEM_JOBS]
     assert prefixes == ["community_rebuild", "dream_nightly_batch"]
-
-
-def test_each_job_has_distinct_registration_key_prefix():
-    keys = [j.registration_key_prefix for j in DREAM_SYSTEM_JOBS]
-    assert len(set(keys)) == len(keys)
 
 
 def test_each_job_has_its_own_registry_column():
@@ -82,18 +70,12 @@ def test_unknown_job_prefix_raises():
 
 
 def test_exported_prefixes_match_table_rows():
-    """The scheduler imports these constants for its job ids and the
-    registry for its markers — drift would register or clear the wrong
-    key."""
-    by_prefix = {j.job_id_prefix: j.registration_key_prefix for j in DREAM_SYSTEM_JOBS}
-    assert by_prefix == {
-        scheduling.COMMUNITY_REBUILD_JOB_PREFIX: (
-            scheduling.COMMUNITY_REBUILD_REGISTRATION_PREFIX
-        ),
-        scheduling.NIGHTLY_BATCH_JOB_PREFIX: (
-            scheduling.NIGHTLY_BATCH_REGISTRATION_PREFIX
-        ),
-    }
+    """The scheduler imports these constants for its job ids: drift would
+    register or remove the wrong job."""
+    assert [j.job_id_prefix for j in DREAM_SYSTEM_JOBS] == [
+        scheduling.COMMUNITY_REBUILD_JOB_PREFIX,
+        scheduling.NIGHTLY_BATCH_JOB_PREFIX,
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -195,75 +177,3 @@ async def test_resolve_user_timezone_unset_value_falls_back_to_utc():
     accessor = _user_db(return_value=MagicMock(timezone=USER_TIMEZONE_NOT_SET))
     with patch(_PATH_USER_DB, return_value=accessor):
         assert await resolve_user_timezone(USER) == "UTC"
-
-
-# ---------------------------------------------------------------------------
-# Redis markers — diagnostic stamps, one per scope and cron; nothing reads them
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_write_registration_marker_stores_the_timezone_per_scope(
-    fake_dream_redis,
-):
-    await scheduling.write_registration_marker(
-        EXPERT, "dream_nightly_batch_registered", "Asia/Tokyo"
-    )
-
-    key = f"dream_nightly_batch_registered:{EXPERT.scope_key}"
-    assert fake_dream_redis.store[key] == "Asia/Tokyo"
-    assert fake_dream_redis.ttls[key] == REGISTRATION_TTL_SECONDS
-
-
-@pytest.mark.asyncio
-async def test_a_hung_redis_never_holds_up_a_marker_write(monkeypatch):
-    """The marker is a diagnostic stamp written inline by hires and resumes; the Redis
-    client's connect retries must not hold those up."""
-
-    async def never_connects():
-        await asyncio.sleep(3600)
-
-    monkeypatch.setattr(scheduling, "MARKER_TIMEOUT_SECONDS", 0.05)
-    with patch("backend.data.redis_client.get_redis_async", new=never_connects):
-        await asyncio.wait_for(
-            scheduling.write_registration_marker(EXPERT, "x_registered", "UTC"),
-            timeout=2,
-        )
-
-
-@pytest.mark.asyncio
-async def test_clear_registration_marker_deletes_the_single_per_cron_key():
-    """Single-key DEL (Redis-cluster-safe) on the per-cron marker."""
-    redis = AsyncMock()
-    with patch(
-        "backend.data.redis_client.get_redis_async",
-        new=AsyncMock(return_value=redis),
-    ):
-        await scheduling.clear_registration_marker(
-            ACCOUNT, "dream_nightly_batch_registered"
-        )
-    redis.delete.assert_awaited_once_with("dream_nightly_batch_registered:abc")
-
-
-@pytest.mark.asyncio
-async def test_clear_registration_marker_swallows_redis_failure(caplog):
-    """Best-effort: a Redis outage during clear must never break the
-    delete RPC — the marker self-heals via its 7-day TTL. The except block
-    must still emit the WARNING (with exc_info) that documents the fallback,
-    so a silent-swallow regression is caught."""
-    with patch(
-        "backend.data.redis_client.get_redis_async",
-        new=AsyncMock(side_effect=ConnectionError("redis down")),
-    ), caplog.at_level(logging.WARNING, logger=scheduling.logger.name):
-        await scheduling.clear_registration_marker(ACCOUNT, "x_registered")
-
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert any("marker will expire via TTL" in r.getMessage() for r in warnings)
-    assert any(r.exc_info is not None for r in warnings)
-
-
-def test_registration_ttl_matches_longest_cron_cadence():
-    """TTL must be at least as long as the weekly community rebuild
-    cadence."""
-    one_week_seconds = 7 * 24 * 3600
-    assert REGISTRATION_TTL_SECONDS >= one_week_seconds
