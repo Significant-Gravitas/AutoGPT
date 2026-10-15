@@ -13,6 +13,7 @@ session-scoped event loop in conftest.py.
 
 import asyncio
 import contextlib
+import time
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import DEFAULT, AsyncMock, MagicMock, patch
@@ -38,6 +39,7 @@ from .e2b_sandbox import (
     SandboxLookupError,
     SandboxNotOwnedError,
     SandboxOwner,
+    _connect_pinned,
     _try_reconnect,
     connect_owned,
     count_expert_turn,
@@ -137,7 +139,7 @@ def _mock_redis(
 
 def _pin_ceiling_alone(script, *args):
     """The pin-ceiling script on a box no other turn pinned: only this pin's."""
-    return [args[2]] if "rpush" in script else DEFAULT
+    return [args[3]] if "hset" in script else DEFAULT
 
 
 def _patch_redis(redis: AsyncMock):
@@ -1201,8 +1203,8 @@ def _keyed_redis(values: dict[str, str | None], decr_result: int = 0) -> AsyncMo
     # (DECR, and DEL when nothing is left).
     r.eval = AsyncMock(
         side_effect=lambda script, *args: (
-            [args[2]]
-            if "rpush" in script
+            [args[3]]
+            if "hset" in script
             else 1 if "incr" in script else max(decr_result, 0)
         )
     )
@@ -1666,12 +1668,14 @@ class TestExpertPause:
         sb.pause.assert_awaited_once()
         # One script does the DECR and, at zero, the DEL: no window for a turn
         # that starts in between to lose its count.
-        script, _, key, ceilings = redis.eval.await_args.args
+        script, _, key, ceilings, session = redis.eval.await_args.args
         assert key == _EXPERT_ACTIVE_KEY and "decr" in script and "del" in script
         # The ceilings pinned while turns shared the box go with the last one,
         # in the counter's cluster slot: one script may touch only one slot.
         assert ceilings == f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings"
         assert key_slot(ceilings.encode()) == key_slot(key.encode())
+        # Only this session's ceiling goes; another's may be pinned, uncounted.
+        assert session == _SESSION_ID and "hdel" in script
 
     def test_concurrent_turn_keeps_the_box_running(self):
         """Pausing under another session of the same expert would sever its
@@ -2217,50 +2221,71 @@ class _CeilingRedis:
     """The pin-ceiling and turn scripts, run against an in-memory store."""
 
     def __init__(self) -> None:
-        self.lists: dict[str, list[str]] = {}
+        self.hashes: dict[str, dict[str, str]] = {}
         self.counts: dict[str, int] = {}
 
     async def eval(self, script, numkeys, *args):
         keys, argv = args[:numkeys], args[numkeys:]
-        if "rpush" in script:
-            self.lists.setdefault(keys[0], []).append(argv[0])
-            return list(self.lists[keys[0]])
+        if "hset" in script:
+            self.hashes.setdefault(keys[0], {})[argv[0]] = argv[1]
+            return list(self.hashes[keys[0]].values())
         if "incr" in script:
             self.counts[keys[0]] = self.counts.get(keys[0], 0) + 1
             return self.counts[keys[0]]
+        self.hashes.get(keys[1], {}).pop(argv[0], None)
         n = self.counts.get(keys[0], 0) - 1
         if n <= 0:
             self.counts.pop(keys[0], None)
-            for key in keys[1:]:
-                self.lists.pop(key, None)
             return 0
         self.counts[keys[0]] = n
         return n
 
+    def count(self) -> None:
+        asyncio.run(self.eval("incr", 1, _EXPERT_ACTIVE_KEY, 1))
+
+    def release(self, session_id: str) -> None:
+        asyncio.run(
+            self.eval(
+                "hdel decr",
+                2,
+                _EXPERT_ACTIVE_KEY,
+                f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings",
+                session_id,
+            )
+        )
+
 
 class TestTurnsSharingABoxShareTheNarrowestCeiling:
     """Turns share an expert's box and its egress: a turn's pin may narrow the
-    ceiling another turn pinned, never lift it, even when both pin at once."""
+    ceiling another live session pinned, never lift it, even when both pin at
+    once or one has not been counted yet."""
 
     _OWNER = SandboxOwner(kind="expert", id=_EXPERT_ID)
 
-    def _pin(self, redis, providers) -> tuple[str, ...] | None:
+    def _pin(self, redis, providers, session_id) -> tuple[str, ...] | None:
         stamp = self._OWNER.creation_metadata(user_id="user-a")
+        redis_patch = patch(
+            "backend.copilot.tools.e2b_sandbox.get_redis_async",
+            AsyncMock(return_value=redis),
+        )
         with (
-            _patch_sdk() as mock_cls,
             patch(
                 "backend.copilot.tools.e2b_sandbox.connect_sandbox",
                 _pinning_connect(),
             ) as connect,
-            patch(
-                "backend.copilot.tools.e2b_sandbox.get_redis_async",
-                AsyncMock(return_value=redis),
-            ),
+            redis_patch,
         ):
-            mock_cls.get_info = AsyncMock(return_value=MagicMock(metadata=stamp))
             asyncio.run(
-                connect_owned(
-                    "sb-1", self._OWNER, _API_KEY, user_id="user-a", providers=providers
+                _connect_pinned(
+                    "sb-1",
+                    MagicMock(metadata=stamp),
+                    self._OWNER,
+                    _API_KEY,
+                    timeout=None,
+                    user_id="user-a",
+                    providers=providers,
+                    pin_egress=True,
+                    session_id=session_id,
                 )
             )
         return connect.pinned.providers
@@ -2278,21 +2303,35 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
     def test_a_second_pin_keeps_what_both_allow_before_either_is_counted(
         self, first, second, pinned
     ):
-        """No turn is counted yet: the record is the pin itself."""
         redis = _CeilingRedis()
-        assert self._pin(redis, first) == first
-        assert self._pin(redis, second) == pinned
+        assert self._pin(redis, first, "s1") == first
+        assert self._pin(redis, second, "s2") == pinned
 
-    def test_once_the_last_turn_ends_a_pin_sets_its_own(self):
+    def test_another_sessions_release_keeps_an_uncounted_pin(self):
+        """s1 ends while s2 has pinned but is not counted yet: s2's ceiling
+        must still hold s3 down."""
         redis = _CeilingRedis()
-        asyncio.run(redis.eval("incr", 1, _EXPERT_ACTIVE_KEY, 1))
-        self._pin(redis, ("slack",))
-        asyncio.run(
-            redis.eval(
-                "decr del", 2, _EXPERT_ACTIVE_KEY, f"{{{_EXPERT_ACTIVE_KEY}}}:ceilings"
-            )
-        )
-        assert self._pin(redis, None) is None
+        redis.count()
+        self._pin(redis, None, "s1")
+        self._pin(redis, ("slack",), "s2")
+        redis.release("s1")
+        assert self._pin(redis, None, "s3") == ("slack",)
+
+    def test_once_a_session_ends_its_ceiling_no_longer_holds(self):
+        redis = _CeilingRedis()
+        redis.count()
+        self._pin(redis, ("slack",), "s1")
+        redis.release("s1")
+        assert self._pin(redis, None, "s2") is None
+
+    def test_a_session_that_never_released_stops_holding_after_a_turn_can_end(
+        self,
+    ):
+        redis = _CeilingRedis()
+        self._pin(redis, ("slack",), "s1")
+        later = time.time() + 7 * 3600
+        with patch("backend.copilot.tools.e2b_sandbox.time.time", return_value=later):
+            assert self._pin(redis, None, "s2") is None
 
     def test_without_the_record_the_boxs_ceiling_narrows_the_pin(self):
         redis = MagicMock()
@@ -2301,7 +2340,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
             "backend.copilot.tools.e2b_sandbox.recorded_providers",
             AsyncMock(return_value=("slack",)),
         ):
-            assert self._pin(redis, None) == ("slack",)
+            assert self._pin(redis, None, "s1") == ("slack",)
 
     def test_a_plain_session_box_is_its_own(self):
         owner = SandboxOwner(kind="session", id=_SESSION_ID)
@@ -2323,7 +2362,7 @@ class TestTurnsSharingABoxShareTheNarrowestCeiling:
                 connect_owned("sb-1", owner, _API_KEY, user_id="user-a", providers=None)
             )
         assert connect.pinned.providers is None
-        assert redis.lists == {}
+        assert redis.hashes == {}
 
 
 class TestNoCeilingGivenKeepsTheBoxs:

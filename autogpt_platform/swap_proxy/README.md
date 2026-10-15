@@ -343,12 +343,13 @@ run it by hand: `gh workflow run platform-swap-proxy-ci.yml --ref <branch>`.
 - A body in gzip or zstd may hold at most 64 members or frames; more is
   treated as undecodable.
 - A box's ceiling on connected accounts is per box, not per turn. On an
-  expert's box, a turn's pin keeps only what every ceiling pinned since the box
-  was last free of turns allows, so turns sharing a box share the narrowest.
-  Once the last turn ends, the next pin sets its own, so a process an earlier
-  turn left running gets the new turn's ceiling. A re-pin with no ceiling of
-  its own (the desktop tool, turning the screen on from the UI) keeps the one
-  on record, and so does a pause.
+  expert's box, a turn's pin keeps only what every live session's ceiling
+  allows, so turns sharing a box share the narrowest. Once a session's turn
+  ends, its ceiling stops holding, so a process it left running gets the next
+  turn's ceiling. A re-pin with no ceiling of its own (the desktop tool,
+  turning the screen on from the UI) keeps the one on record, and so does a
+  pause; with no record left (a box paused past its TTL) it keeps none until a
+  turn pins its own.
 - A connection stays open after its box's credential is rotated (every
   reconnect rotates it), but the backend no longer knows its box: from then on
   nothing is swapped into it, and its text responses from bound hosts are
