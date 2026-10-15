@@ -10,6 +10,7 @@ import { getExpertCover } from "../../helpers";
 import { ExpertCover } from "../../components/ExpertTeamCard/components/ExpertCover";
 import { IntegrationIcons } from "../../components/ExpertTeamCard/components/IntegrationIcons";
 import { ExpertAvatarButton } from "./ExpertAvatarButton/ExpertAvatarButton";
+import { ExpertBudgetSection } from "./ExpertBudgetSection";
 
 interface Props {
   expert: Expert;
@@ -32,6 +33,11 @@ export function ExpertDetailHeader({ expert, onEditSoul, onChat }: Props) {
             className="absolute left-4 top-4 h-7 px-2.5 text-[13px]"
           />
         ) : null}
+        <ExpertBudgetSection
+          expert={expert}
+          color={cover.color}
+          className="absolute right-4 top-4 w-48 rounded-xl bg-white/40 px-3 py-2 backdrop-blur-sm sm:w-64"
+        />
       </div>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">

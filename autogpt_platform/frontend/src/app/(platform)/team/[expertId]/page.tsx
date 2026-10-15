@@ -38,7 +38,6 @@ import {
   PROFILE_TABS_TRIGGER_CLASS,
 } from "../helpers";
 import { ExpertAboutSection } from "./components/ExpertAboutSection";
-import { ExpertBudgetSection } from "./components/ExpertBudgetSection";
 import { ExpertComputerSection } from "./components/ExpertComputerSection/ExpertComputerSection";
 import { ExpertDetailHeader } from "./components/ExpertDetailHeader";
 import { ExpertIntegrationsSection } from "./components/ExpertIntegrationsSection/ExpertIntegrationsSection";
@@ -156,16 +155,11 @@ export default function ExpertDetailPage() {
           </div>
         ) : null}
 
-        {/* items-start keeps the tagline level with the Budget label rather
-            than floating between the label and the bar. */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between md:gap-8">
-          {expert.tagline ? (
-            <Text variant="body" tone="secondary" className="min-w-0 flex-1">
-              {expert.tagline}
-            </Text>
-          ) : null}
-          <ExpertBudgetSection expert={expert} />
-        </div>
+        {expert.tagline ? (
+          <Text variant="body" tone="secondary">
+            {expert.tagline}
+          </Text>
+        ) : null}
 
         <ExpertNeedsYouSection
           expert={expert}
