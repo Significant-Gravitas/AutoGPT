@@ -833,6 +833,7 @@ export function ChatMessagesContainer({
               pollWhileEmpty={reviewTarget?.kind === "chat"}
               refetchKey={countHeldCalls(messages)}
               expertName={expertIdentity?.name ?? null}
+              expert={expertIdentity ?? null}
             />
           )}
           {!readOnly &&

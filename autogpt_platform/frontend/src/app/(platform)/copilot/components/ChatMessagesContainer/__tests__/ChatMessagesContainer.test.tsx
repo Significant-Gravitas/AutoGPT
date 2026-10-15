@@ -1722,6 +1722,7 @@ describe("ChatMessagesContainer — pending reviews", () => {
     pollWhileEmpty,
     refetchKey,
     expertName: null,
+    expert: null,
   });
 
   afterEach(() => {
