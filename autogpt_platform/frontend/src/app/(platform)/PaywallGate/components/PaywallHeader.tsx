@@ -16,7 +16,7 @@ export function PaywallHeader() {
         </span>
       </Text>
       <Text variant="body" className="!text-zinc-500">
-        Pick a plan to start working with experts and running agents.
+        Pick a plan to start working with experts and running workflows.
       </Text>
       <Link
         href="/tour/chat?utm_source=platform_paywall"
