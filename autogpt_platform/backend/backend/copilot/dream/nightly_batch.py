@@ -250,10 +250,15 @@ async def _submit_ratification(result: NightlyBatchResult) -> None:
 
 async def _submit_learning(result: NightlyBatchResult) -> None:
     """Skill learning, when its own flag is on for the user: the dream pass
-    never implies it. A failure stays isolated, as the other submitters' do."""
+    never implies it. Once per account: its pass reviews the account's skills
+    and its experts', so an expert's nightly batch leaves it out. A failure
+    stays isolated, as the other submitters' do."""
     user_id = result.user_id
+    expert_id = result.expert_id
     try:
-        if await is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id):
+        if expert_id is None and await is_feature_enabled(
+            Flag.DREAM_SKILL_LEARNING_ENABLED, user_id
+        ):
             result.learning = await run_skill_learning_pass(user_id, trigger="nightly")
     except Exception as exc:
         logger.exception("Nightly skill learning failed for user %s", user_id[:12])

@@ -514,7 +514,7 @@ async def test_a_tagged_stray_goes_while_its_siblings_repair_keeps_failing(
         pytest.skip("needs the PostgreSQL test DB")
     await registry.ensure_scope_scheduled(ACCOUNT)
     monkeypatch.setattr(sm, "_event_loop", asyncio.get_running_loop())
-    community, nightly = sm.DREAM_SYSTEM_JOBS
+    community, nightly = sm.DREAM_SYSTEM_JOBS[:2]
     name = f"memcore_sibling_{uuid.uuid4().hex[:8]}"
     if failure == "pg_lock":
         monkeypatch.setattr(sm, "MEMORY_CRON_WRITE_TIMEOUT_SECONDS", 0.2)

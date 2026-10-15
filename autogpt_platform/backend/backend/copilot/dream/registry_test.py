@@ -55,7 +55,14 @@ async def test_ensure_is_idempotent(env):
     await registry.ensure_scope_scheduled(ACCOUNT)
     again = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert again == {"community_rebuild": None, "dream_nightly_batch": None}
+    assert again == {
+        "community_rebuild": None,
+        "dream_nightly_batch": None,
+        "skill_learning_nightly": {
+            "skipped": True,
+            "reason": "skill_learning_disabled",
+        },
+    }
     assert env.adds() == 2
 
 
@@ -93,6 +100,10 @@ async def test_flags_off_cost_no_read_and_no_rpc(env):
             "reason": "graphiti_communities_disabled",
         },
         "dream_nightly_batch": {"skipped": True, "reason": "dream_pass_disabled"},
+        "skill_learning_nightly": {
+            "skipped": True,
+            "reason": "skill_learning_disabled",
+        },
     }
     assert env.adds() == 0
 
@@ -138,7 +149,10 @@ async def test_unknown_timezone_is_not_utc_and_changes_nothing(env):
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert {r["reason"] for r in result.values()} == {"timezone_lookup_failed"}
+    assert {r["reason"] for r in result.values()} == {
+        "timezone_lookup_failed",
+        "skill_learning_disabled",
+    }
     assert env.db.rows == {}
     assert env.adds() == 0
 
@@ -149,7 +163,10 @@ async def test_registry_read_failure_skips_the_cycle(env):
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert {r["reason"] for r in result.values()} == {"registry_unavailable"}
+    assert {r["reason"] for r in result.values()} == {
+        "registry_unavailable",
+        "skill_learning_disabled",
+    }
     assert env.adds() == 0
 
 
@@ -187,7 +204,10 @@ async def test_a_registration_the_row_cannot_record_is_a_failure(env, monkeypatc
 
     result = await registry.ensure_scope_scheduled(ACCOUNT)
 
-    assert {r["reason"] for r in result.values()} == {"record_failed"}
+    assert {r["reason"] for r in result.values()} == {
+        "record_failed",
+        "skill_learning_disabled",
+    }
     assert env.db.rows[USER].nightly_job_id is None
 
 

@@ -1908,9 +1908,11 @@ model MemoryScopeSchedule {
   state    MemoryScopeScheduleState @default(ACTIVE)
 
   // Null while that cron is not registered: its flag is off, registration
-  // failed, or the scope is paused or wiped.
+  // failed, or the scope is paused or wiped. Skill learning runs per account,
+  // so an expert's scope never records a learning job.
   communityJobId String?
   nightlyJobId   String?
+  learningJobId  String?
 
   // When each job body last ran its pass without an error.
   lastNightlyRunAt   DateTime?

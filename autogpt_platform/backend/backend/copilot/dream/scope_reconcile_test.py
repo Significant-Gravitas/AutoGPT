@@ -660,7 +660,7 @@ async def test_a_stray_goes_before_a_restore_that_fails_in_its_scope(
     is cancelled there) on every pass; its tagged stray goes first all the
     same, so a repair that keeps failing never keeps one running."""
     await registry.ensure_scope_scheduled(ACCOUNT)
-    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS
+    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
     env.scheduler.tagged.add(community.job_id(ACCOUNT))
     await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
     env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
@@ -690,7 +690,7 @@ async def test_a_take_back_that_fails_does_not_hold_up_the_restore(env, monkeypa
     (its drop fails), and the row's cron running in the wrong timezone is
     repaired all the same; the scope is reported failed once."""
     await registry.ensure_scope_scheduled(ACCOUNT)
-    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS
+    community, nightly = scope_reconcile.DREAM_SYSTEM_JOBS[:2]
     env.scheduler.tagged.add(community.job_id(ACCOUNT))
     await env.db.forget_scope_job(USER, ACCOUNT.scope_key, community.job_id(ACCOUNT))
     env.scheduler.jobs[nightly.job_id(ACCOUNT)] = TOKYO
@@ -719,5 +719,6 @@ async def test_a_tagged_cron_with_no_row_goes_and_an_untagged_one_stays(env):
 
     report = await env.reconcile()
 
-    assert set(env.scheduler.jobs) == job_ids(legacy)
-    assert sorted(report.dropped) == sorted(job_ids(gone))
+    every = scope_reconcile.DREAM_SYSTEM_JOBS
+    assert set(env.scheduler.jobs) == {job.job_id(legacy) for job in every}
+    assert sorted(report.dropped) == sorted(job.job_id(gone) for job in every)
