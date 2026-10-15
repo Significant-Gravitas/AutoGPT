@@ -97,19 +97,21 @@ def nightly_error_parts(result: "NightlyBatchResult") -> list[str]:
     ``run_nightly_batch_submit`` never raises: a submitter CRASH is captured
     in ``NightlyBatchResult.error``, while a submitter that ran but reported
     its own failure carries it on its sub-result (``dream.error`` /
-    ``ratification.error``) with the top-level error left unset. A run is
-    clean only when all of these are empty.
+    ``ratification.error`` / ``learning.error``) with the top-level error
+    left unset. A run is clean only when all of these are empty.
     """
     dream_error = result.dream.error if result.dream is not None else None
     ratification_error = (
         result.ratification.error if result.ratification is not None else None
     )
+    learning_error = result.learning.error if result.learning is not None else None
     return [
         part
         for part in (
             result.error,
             f"dream: {dream_error}" if dream_error else None,
             f"ratification: {ratification_error}" if ratification_error else None,
+            f"learning: {learning_error}" if learning_error else None,
         )
         if part
     ]

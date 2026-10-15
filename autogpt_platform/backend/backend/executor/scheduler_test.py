@@ -14,6 +14,7 @@ from backend.api.model import CreateGraph
 from backend.copilot.dream import deadline, scope_crons
 from backend.copilot.dream.scheduling import DREAM_SYSTEM_JOBS
 from backend.copilot.graphiti.scope import MemoryScope
+from backend.copilot.learning.dispositions import SkillLearningResult
 from backend.data import db
 from backend.data.execution import get_graph_executions
 from backend.executor import scheduler as scheduler_module
@@ -25,6 +26,7 @@ from backend.executor.scheduler import (
     _execute_graph,
     _memory_scope_may_fire,
     _normalize_cron_day_of_week,
+    execute_skill_learning_sync,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
@@ -716,6 +718,147 @@ class TestDeleteNightlyBatchSchedule:
         run_async_mock.assert_called_once()
 
 
+class TestAddSkillLearningSchedule:
+    """The account's skill-learning cron (#14551), on the registry's
+    scope-keyed pattern: recorded like the scope's other crons, the
+    account's alone."""
+
+    def _stub(self, existing=None):
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = existing
+        s.scheduler.add_job.side_effect = lambda *a, **kw: MagicMock(
+            id=kw["id"], next_run_time=None
+        )
+        return s
+
+    def test_registers_the_accounts_cron_caught_up_only_the_same_morning(
+        self,
+    ) -> None:
+        s = self._stub()
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_skill_learning_schedule(
+                user_id="abc", user_timezone="Asia/Tokyo"
+            )
+
+        kwargs = s.scheduler.add_job.call_args.kwargs
+        assert kwargs["id"] == "skill_learning_nightly_abc"
+        assert kwargs["kwargs"] == {"user_id": "abc"}
+        assert kwargs["max_instances"] == 1
+        assert kwargs["misfire_grace_time"] == 6 * 3600
+        assert "hour='3'" in repr(kwargs["trigger"])
+        assert "Asia/Tokyo" in repr(kwargs["trigger"])
+        assert result["id"] == "skill_learning_nightly_abc"
+        assert result.get("skipped") is not True
+
+    def test_the_other_memory_crons_keep_the_schedulers_catch_up(self) -> None:
+        s = self._stub()
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            s.add_nightly_batch_schedule(user_id="abc", user_timezone="UTC")
+
+        assert s.scheduler.add_job.call_args.kwargs["misfire_grace_time"] is None
+
+    def test_an_experts_scope_is_refused(self) -> None:
+        """One pass reviews the account's skills and its experts': an expert
+        has no skill-learning cron, whoever asks."""
+        s = self._stub()
+        with patch(
+            "backend.executor.scheduler.run_async", return_value=True
+        ) as run_async_mock:
+            result = s.add_scope_skill_learning_schedule(
+                scope=MemoryScope.for_expert("abc", "expert-1"), user_timezone="UTC"
+            )
+
+        s.scheduler.add_job.assert_not_called()
+        run_async_mock.assert_not_called()
+        assert (result["skipped"], result["reason"]) == (True, "account_only")
+
+    def test_flag_off_returns_skipped_without_calling_add_job(self) -> None:
+        s = self._stub()
+        with patch("backend.executor.scheduler.run_async", return_value=False):
+            result = s.add_skill_learning_schedule(user_id="abc")
+
+        s.scheduler.add_job.assert_not_called()
+        assert (result["skipped"], result["reason"]) == (
+            True,
+            "skill_learning_disabled",
+        )
+
+    def test_a_cron_in_that_timezone_is_kept_and_reported_registered(self) -> None:
+        """The registry records the id it gets back, so a kept cron must not
+        come back as a skip; its overdue next run is not pushed back."""
+        overdue = datetime(2026, 8, 7, 8, tzinfo=timezone.utc)
+        existing = MagicMock(
+            id="skill_learning_nightly_abc",
+            next_run_time=overdue,
+            trigger=CronTrigger.from_crontab("0 3 * * *", timezone="Asia/Tokyo"),
+        )
+        s = self._stub(existing)
+        with patch("backend.executor.scheduler.run_async", return_value=True):
+            result = s.add_skill_learning_schedule(
+                user_id="abc", user_timezone="Asia/Tokyo"
+            )
+
+        s.scheduler.add_job.assert_not_called()
+        assert result["id"] == "skill_learning_nightly_abc"
+        assert result["next_run_time"] == overdue.isoformat()
+        assert result.get("skipped") is not True
+
+    def test_reachable_over_rpc(self) -> None:
+        s = _stub_scheduler()
+        s._create_fastapi_endpoint(s.add_scope_skill_learning_schedule)
+
+
+class TestRemoveScopeMemoryJobsWithSkillLearning:
+    def test_the_accounts_learning_cron_goes_with_its_scope(self) -> None:
+        scope = MemoryScope.for_user("abc")
+        s = _stub_scheduler()
+        learning = MagicMock(id="skill_learning_nightly_abc")
+        s.scheduler.get_job.side_effect = lambda job_id, jobstore: (
+            learning if job_id == learning.id else None
+        )
+
+        assert s.remove_scope_memory_jobs(scope=scope) == [learning.id]
+
+        learning.remove.assert_called_once()
+        looked_up = [call.args[0] for call in s.scheduler.get_job.call_args_list]
+        assert looked_up == [
+            "community_rebuild_abc",
+            "dream_nightly_batch_abc",
+            "skill_learning_nightly_abc",
+        ]
+
+
+class TestDeleteSkillLearningSchedule:
+    def test_the_registry_forgets_the_cron_before_it_is_removed(self) -> None:
+        s = _stub_scheduler()
+        job = MagicMock()
+        s.scheduler.get_job.return_value = job
+        order: list[str] = []
+        job.remove.side_effect = lambda: order.append("remove")
+
+        def forgot(*args, **kwargs):
+            order.append("forget")
+            return True
+
+        with (
+            patch("backend.executor.scheduler.run_async", side_effect=forgot),
+            patch("backend.executor.scheduler.forget_registration") as forget_mock,
+        ):
+            assert s.delete_skill_learning_schedule("abc") is True
+        assert order == ["forget", "remove"]
+        s.scheduler.get_job.assert_called_once_with(
+            "skill_learning_nightly_abc", jobstore=Jobstores.EXECUTION.value
+        )
+        scope, forgotten = forget_mock.call_args.args
+        assert scope == MemoryScope.for_user("abc")
+        assert forgotten.job_id_prefix == "skill_learning_nightly"
+
+    def test_returns_false_when_no_job(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = None
+        assert s.delete_skill_learning_schedule("abc") is False
+
+
 # ---------------------------------------------------------------------------
 # Execution-time gates for the nightly batch and community crons
 # ---------------------------------------------------------------------------
@@ -808,6 +951,56 @@ class TestNightlyBatchScopeGate:
         stamp.assert_awaited_once_with(
             MemoryScope.for_expert("abc", "expert-1"), "nightly"
         )
+
+
+class TestSkillLearningScopeGate:
+    """The learning cron body runs only while the registry lets the
+    account's scope fire: a cron straggling past a pause or a wipe does
+    nothing."""
+
+    def _fire(self, *, gate: bool, flag: bool = True):
+        learned = SkillLearningResult(
+            user_id="abc",
+            run_id="learn-1",
+            trigger="nightly",
+            started_at=datetime.now(timezone.utc),
+        )
+        with (
+            patch("backend.executor.scheduler.run_async", new=_run_coroutine),
+            patch(
+                "backend.executor.scheduler._memory_scope_may_fire",
+                return_value=gate,
+            ) as gate_mock,
+            patch(
+                "backend.util.feature_flag.is_feature_enabled",
+                new=AsyncMock(return_value=flag),
+            ),
+            patch(
+                "backend.copilot.learning.nightly.run_skill_learning_pass",
+                new=AsyncMock(return_value=learned),
+            ) as learn,
+        ):
+            returned = execute_skill_learning_sync("abc")
+        return returned, learned, gate_mock, learn
+
+    def test_an_account_the_registry_holds_back_does_not_learn(self) -> None:
+        returned, _, gate_mock, learn = self._fire(gate=False)
+
+        assert returned is None
+        gate_mock.assert_called_once_with(MemoryScope.for_user("abc"))
+        learn.assert_not_awaited()
+
+    def test_an_account_the_registry_lets_fire_learns(self) -> None:
+        returned, learned, _, learn = self._fire(gate=True)
+
+        assert returned is learned
+        learn.assert_awaited_once_with("abc", trigger="nightly")
+
+    def test_the_flag_off_still_short_circuits(self) -> None:
+        returned, _, _, learn = self._fire(gate=True, flag=False)
+
+        assert returned is None
+        learn.assert_not_awaited()
 
 
 class TestCommunityRebuildScopeGate:

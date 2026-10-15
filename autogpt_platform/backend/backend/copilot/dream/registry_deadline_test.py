@@ -61,7 +61,10 @@ async def test_ensure_is_bounded_when_the_database_manager_hangs(env, monkeypatc
         await rpc.aclose()
 
     assert time.monotonic() - started < PROMPT
-    assert {r["reason"] for r in result.values()} == {"registry_unavailable"}
+    assert {r["reason"] for r in result.values()} == {
+        "registry_unavailable",
+        "skill_learning_disabled",
+    }
     assert transport.cancelled == transport.paths == ["/get_scope_schedule"]
 
 
@@ -87,7 +90,10 @@ async def test_a_retrying_database_manager_client_is_cut_off(env, monkeypatch):
         await rpc.aclose()
 
     assert time.monotonic() - started < PROMPT
-    assert {r["reason"] for r in result.values()} == {"registry_unavailable"}
+    assert {r["reason"] for r in result.values()} == {
+        "registry_unavailable",
+        "skill_learning_disabled",
+    }
     assert attempts == ["/get_scope_schedule"]
 
 
@@ -103,7 +109,10 @@ async def test_a_hanging_scheduler_is_cut_off_and_reported(env, monkeypatch):
         await scheduler.aclose()
 
     assert time.monotonic() - started < PROMPT
-    assert {r["reason"] for r in result.values()} == {"registration_failed"}
+    assert {r["reason"] for r in result.values()} == {
+        "registration_failed",
+        "skill_learning_disabled",
+    }
     assert transport.cancelled == transport.paths
     assert transport.paths == [
         "/add_scope_community_rebuild_schedule",

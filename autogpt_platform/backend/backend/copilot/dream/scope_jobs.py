@@ -20,17 +20,17 @@ from backend.util.clients import get_scheduler_client
 from backend.util.feature_flag import is_feature_enabled
 
 from .deadline import within_deadline
-from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob
+from .scheduling import DREAM_SYSTEM_JOBS, DreamSystemJob, jobs_for
 
 logger = logging.getLogger(__name__)
 
 
 async def flag_gate(scope: MemoryScope) -> tuple[dict[str, Any], list[DreamSystemJob]]:
-    """Split the crons on the owner's flags: skip results for the disabled
-    ones, and the enabled ones still to consider."""
+    """Split the scope's crons (``jobs_for``) on the owner's flags: skip
+    results for the disabled ones, and the enabled ones still to consider."""
     results: dict[str, Any] = {}
     enabled: list[DreamSystemJob] = []
-    for job in DREAM_SYSTEM_JOBS:
+    for job in jobs_for(scope):
         try:
             on = await within_deadline(
                 is_feature_enabled(job.flag, scope.owner_user_id)
@@ -173,6 +173,7 @@ async def _record(
                 user_timezone=user_timezone,
                 community_job_id=ids["community_job_id"],
                 nightly_job_id=ids["nightly_job_id"],
+                learning_job_id=ids["learning_job_id"],
             )
         )
     except Exception:
@@ -214,6 +215,10 @@ def _next_job_id(
 
 def recorded_job_id(row: MemoryScopeSchedule, job: DreamSystemJob) -> str | None:
     """The job id ``row`` records for ``job``, None when it records none."""
-    if job.row_field == "community_job_id":
-        return row.community_job_id
-    return row.nightly_job_id
+    match job.row_field:
+        case "community_job_id":
+            return row.community_job_id
+        case "nightly_job_id":
+            return row.nightly_job_id
+        case "learning_job_id":
+            return row.learning_job_id
