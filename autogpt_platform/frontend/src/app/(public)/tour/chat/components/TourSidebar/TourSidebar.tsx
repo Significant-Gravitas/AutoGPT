@@ -20,6 +20,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import { motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
@@ -64,12 +65,24 @@ interface Props {
   variant?: "tour" | "marketplace";
 }
 
+// Matches the sheet's closing animation (`data-[state=closed]:duration-300`).
+const SHEET_CLOSE_MS = 300;
+
 export function TourSidebar({ variant = "tour" }: Props) {
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   // In the tour, the end card replaces the sidebar upsell after completion.
   // The marketplace always shows the sidebar card.
   const isDemoComplete = useTourStore((s) => s.isDemoComplete);
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+
+  // On phones the sidebar is a modal sheet, which blocks clicks and focus
+  // outside itself, Cookiebot's dialog included: close it first.
+  const isSheetOpen = isMobile && openMobile;
+  async function closeMobileSheet() {
+    setOpenMobile(false);
+    await new Promise((resolve) => setTimeout(resolve, SHEET_CLOSE_MS));
+  }
 
   return (
     <Sidebar
@@ -157,7 +170,10 @@ export function TourSidebar({ variant = "tour" }: Props) {
         {(variant === "marketplace" || !isDemoComplete) && (
           <TourUpsellCard surface={variant} />
         )}
-        <CookieSettingsLink className="self-center" />
+        <CookieSettingsLink
+          className="self-center"
+          beforeOpen={isSheetOpen ? closeMobileSheet : undefined}
+        />
       </SidebarFooter>
 
       <SidebarRail />

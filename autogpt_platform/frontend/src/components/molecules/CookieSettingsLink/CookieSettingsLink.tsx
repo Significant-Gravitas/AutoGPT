@@ -10,18 +10,26 @@ import { useConsentManagerStatus } from "@/services/consent/useConsent";
 
 interface Props {
   className?: string;
+  // Runs before the dialog opens, e.g. to close a modal sheet that would
+  // otherwise block clicks on Cookiebot's dialog.
+  beforeOpen?: () => void | Promise<void>;
 }
 
-export function CookieSettingsLink({ className }: Props) {
+export function CookieSettingsLink({ className, beforeOpen }: Props) {
   const status = useConsentManagerStatus();
 
   if (!isConsentManagerConfigured() || status === "unavailable") return null;
+
+  function handleClick() {
+    if (!beforeOpen) return openConsentSettings();
+    void Promise.resolve(beforeOpen()).then(openConsentSettings);
+  }
 
   return (
     <button
       type="button"
       disabled={status !== "ready"}
-      onClick={openConsentSettings}
+      onClick={handleClick}
       className={cn(
         "group inline-flex items-center rounded-md px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-default disabled:opacity-60 sm:py-1",
         className,
