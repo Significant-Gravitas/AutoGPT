@@ -260,6 +260,22 @@ async def test_a_chat_off_the_platform_route_skips_the_budget(limits, chat_reads
 
 
 @pytest.mark.asyncio
+async def test_a_resume_on_a_chat_moved_to_microsoft_365_is_dropped(limits, chat_reads):
+    """It would hand Microsoft the resume note as the user's message."""
+    chat = _chat(provider="microsoft_365_copilot")
+    verdict = await fire_verdict("resume", chat, SET_AT)
+    assert verdict.action == "drop"
+    assert verdict.why == "the chat now runs on Microsoft 365 Copilot"
+
+
+@pytest.mark.asyncio
+async def test_a_send_on_a_microsoft_365_chat_still_goes(limits, chat_reads):
+    chat = _chat(provider="microsoft_365_copilot")
+    verdict = await fire_verdict("send", chat, SET_AT)
+    assert verdict.action == "fire"
+
+
+@pytest.mark.asyncio
 async def test_still_out_of_budget_waits_for_the_next_reset(limits, chat_reads):
     _, status, gate = limits
     gate.side_effect = RateLimitExceeded("daily", DAILY_RESET)
