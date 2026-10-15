@@ -14,7 +14,10 @@ import logging
 from unittest.mock import AsyncMock
 
 import pytest
+from prisma.enums import DreamPassRoute, DreamPassStatus, SubscriptionTier
 
+from backend.copilot.trial_cost_context import TrialCostContext, get_trial_cost_context
+from backend.data.pro_activation import UsageActivationState
 from backend.util.llm.providers import BatchResultRow
 
 from . import batch_costs as costs_mod
@@ -24,7 +27,7 @@ from .batch_costs import charge_landed_phases
 from .batch_state import read_state, state_key, write_phase_to_state
 from .reaper import reap_expired_passes
 from .reaper_cleanup_test import _scale_the_budget
-from .reaper_test import _charged, _dead_batch_pass
+from .reaper_test import _charged, _dead_batch_pass, _seed
 
 _MODELS = {p: "claude-sonnet-5" for p in ("consolidate", "recombine", "sanitize")}
 _PASS_KEY = "dream:batch:costs_logged:p1"
@@ -47,6 +50,75 @@ def charges(mocker) -> AsyncMock:
     return mocker.patch(
         "backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()
     )
+
+
+@pytest.fixture(autouse=True)
+def pass_row(fake_dream_db) -> None:
+    """The charged pass's row, live, carrying the usage attribution every
+    charge of it goes by (``store.read_cost_context``); a test about a dead
+    pass seeds its own over it."""
+    _seed(
+        fake_dream_db,
+        "p1",
+        route=DreamPassRoute.ANTHROPIC_BATCH,
+        status=DreamPassStatus.SUBMITTED,
+        lapsed=-3600,
+    )
+
+
+class TestTheAttributionAChargeGoesBy:
+    """Every charge of a pass goes by the usage attribution its row carries,
+    whoever makes it and whatever the account's own reads now; a row without
+    one is never charged."""
+
+    async def test_is_the_one_the_pass_started_under(
+        self, mocker, fake_dream_db, fake_dream_redis, usage_snapshot
+    ):
+        trial = TrialCostContext(user_id="u1", trial_id="trial-1", generation=None)
+        fake_dream_db.rows["p1"]["cost_context"] = trial.model_dump(mode="json")
+        usage_snapshot.side_effect = lambda user_id: UsageActivationState(
+            user_id=user_id, generation="paid-1", tier=SubscriptionTier.PRO, ready=True
+        )
+        seen: list[TrialCostContext | None] = []
+
+        async def observe(ctx, usage):
+            seen.append(get_trial_cost_context("u1"))
+
+        mocker.patch.object(costs_mod, "record_phase_cost", observe)
+
+        charged = await _charge(await _landed_state())
+
+        assert charged.settled and charged.charged == ["consolidate", "recombine"]
+        assert seen == [trial, trial]
+        assert get_trial_cost_context("u1") is None
+        usage_snapshot.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        "kept",
+        [None, {"user_id": "someone-else", "trial_id": None}, {"trial_id": 7}],
+        ids=["none", "another_users", "unparseable"],
+    )
+    async def test_a_row_without_a_usable_one_is_never_charged(
+        self, fake_dream_db, fake_dream_redis, charges, kept
+    ):
+        fake_dream_db.rows["p1"]["cost_context"] = kept
+
+        charged = await _charge(await _landed_state())
+
+        assert charged.settled and charged.charged == []
+        charges.assert_not_awaited()
+        assert _PASS_KEY not in fake_dream_redis.store
+
+    async def test_a_row_that_cannot_be_read_leaves_the_charge_for_later(
+        self, fake_dream_db, fake_dream_redis, charges
+    ):
+        fake_dream_db.fail = True
+
+        charged = await _charge(await _landed_state())
+
+        assert not charged.settled
+        charges.assert_not_awaited()
+        assert _PASS_KEY not in fake_dream_redis.store
 
 
 class TestACleanupCutShortInItsCharge:

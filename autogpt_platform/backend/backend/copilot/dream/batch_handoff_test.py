@@ -4,6 +4,7 @@ in-memory store: a pass cancelled while it gathered submits nothing, and one
 cancelled while it submitted takes its batch back and releases its lock
 instead of handing both to callbacks that would only stop."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
@@ -19,6 +20,7 @@ from .batch_submit import input_bundle_key
 from .cancel import cancel_dream_pass
 from .fetch import DreamInput, EpisodeRow
 from .locks import BATCH_LOCK_TTL_SECONDS
+from .provider_batch import cancel_provider_batch
 
 _SCOPE = MemoryScope.for_user("u")
 _LOCK_KEY = _SCOPE.redis_key("dream_lock")
@@ -124,25 +126,83 @@ async def test_a_pass_nobody_stopped_records_its_batch_then_hands_off_its_lock(
     provider.cancel.assert_not_awaited()
 
 
-async def test_a_submit_write_that_fails_on_an_open_row_still_hands_off(
-    fake_dream_db, fake_dream_redis, gather, provider, mocker, caplog
-):
+def _submit_write_fails(mocker, fake_dream_db, *, lands: bool) -> None:
+    """The submit's write fails as the pass sees it; with *lands* it reached
+    the row all the same (a write that committed after the store gave up)."""
     record = fake_dream_db.update_dream_pass
 
     async def submit_write_fails(pass_id, update):
-        if update.status is DreamPassStatus.SUBMITTED:
-            raise ConnectionError("dream pass database unreachable")
-        return await record(pass_id, update)
+        if update.status is not DreamPassStatus.SUBMITTED:
+            return await record(pass_id, update)
+        if lands:
+            await record(pass_id, update)
+        raise ConnectionError("dream pass database unreachable")
 
     mocker.patch.object(fake_dream_db, "update_dream_pass", submit_write_fails)
 
-    with caplog.at_level(logging.WARNING, logger=batch_handoff_mod.logger.name):
+
+async def test_a_failed_submit_write_whose_batch_the_row_holds_hands_off(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker, caplog
+):
+    """The write landed after all: a read of the row finds the batch on it,
+    with its day-long lease, so the pass hands off as usual."""
+    _submit_write_fails(mocker, fake_dream_db, lands=True)
+
+    with caplog.at_level(logging.INFO, logger=batch_handoff_mod.logger.name):
         result = await orchestrator_mod.execute_dream_pass("u")
 
     assert result.error is None
-    assert "batch batch-1 is not on its record" in caplog.text
+    assert "its submit write landed after all" in caplog.text
+    row = fake_dream_db.rows[result.pass_id]
+    assert (row["status"], row["provider_batch_id"]) == (
+        DreamPassStatus.SUBMITTED,
+        "batch-1",
+    )
     assert fake_dream_redis.ttls[_LOCK_KEY] == BATCH_LOCK_TTL_SECONDS
+    provider.revoke.assert_not_awaited()
     provider.cancel.assert_not_awaited()
+
+
+async def test_a_failed_submit_write_whose_batch_the_row_lacks_takes_it_back(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker
+):
+    """The row does not hold the batch, so nothing would renew the pass's
+    half-hour lease while the batch ran, and the reaper would close the live
+    pass: the pass takes its batch back (off the executor's queue, cancelled
+    at the provider) and ends now, the lock released on the way out."""
+    _submit_write_fails(mocker, fake_dream_db, lands=False)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
+    assert fake_dream_db.rows[result.pass_id]["status"] is DreamPassStatus.ERRORED
+
+
+async def test_a_failed_submit_write_whose_row_cannot_be_read_takes_it_back(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker
+):
+    """The read that would find the batch fails too: the pass cannot know
+    its lease is held, so it takes its batch back, even though the write
+    landed here (the cost of not knowing)."""
+    _submit_write_fails(mocker, fake_dream_db, lands=True)
+    read = fake_dream_db.get_dream_pass
+    reads_after_the_submit = 0
+
+    async def read_fails_after_the_submit(pass_id):
+        nonlocal reads_after_the_submit
+        if fake_dream_db.rows[pass_id]["status"] is DreamPassStatus.SUBMITTED:
+            reads_after_the_submit += 1
+            raise ConnectionError("dream pass database unreachable")
+        return await read(pass_id)
+
+    mocker.patch.object(fake_dream_db, "get_dream_pass", read_fails_after_the_submit)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert reads_after_the_submit >= 1
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    _assert_revoked(provider, fake_dream_redis, result.pass_id)
 
 
 async def test_a_refused_submit_whose_row_cannot_be_read_is_not_handed_off(
@@ -231,3 +291,111 @@ def _input() -> DreamInput:
         window_end=now,
         episodes=[episode],
     )
+
+
+def _the_stop_is_not_confirmed(mocker, provider, how: str) -> None:
+    """The provider does not confirm the take-back's cancel: it refuses it
+    (``denied``), or the call outlasts its deadline (``timed_out``, through
+    the real cancel)."""
+    if how == "denied":
+        provider.cancel.return_value = False
+        return
+
+    async def hangs(**_kwargs) -> bool:
+        await asyncio.Event().wait()
+        return True
+
+    mocker.patch.object(
+        batch_handoff_mod, "cancel_provider_batch", cancel_provider_batch
+    )
+    mocker.patch(
+        "backend.copilot.dream.provider_batch.anthropic_api_key", return_value="k"
+    )
+    mocker.patch(
+        "backend.copilot.dream.provider_batch.PROVIDER_CANCEL_TIMEOUT_SECONDS", 0.05
+    )
+    provider.cancel = mocker.patch(
+        "backend.copilot.dream.provider_batch.cancel_batch",
+        AsyncMock(side_effect=hangs),
+    )
+
+
+def _submit_lands_during_the_cancel(mocker, fake_dream_db, provider) -> None:
+    """The submit's write fails as the pass sees it and lands later, after
+    the read that looked for it: while the take-back cancels the batch."""
+    record = fake_dream_db.update_dream_pass
+    late: list = []
+
+    async def lands_late(pass_id, update):
+        if update.status is DreamPassStatus.SUBMITTED:
+            late.append((pass_id, update))
+            raise ConnectionError("dream pass database unreachable")
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", lands_late)
+    cancel = provider.cancel.side_effect
+
+    async def cancel_after_the_write_lands(*args, **kwargs):
+        for pass_id, update in late:
+            await record(pass_id, update)
+        if cancel is not None:
+            return await cancel(*args, **kwargs)
+        return provider.cancel.return_value
+
+    provider.cancel.side_effect = cancel_after_the_write_lands
+
+
+@pytest.mark.parametrize("stop", ["denied", "timed_out"])
+@pytest.mark.parametrize("submit", ["absent", "landed_late"])
+async def test_a_batch_taken_back_without_a_confirmed_stop_stays_on_its_record(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker, stop, submit
+):
+    """The take-back cannot confirm the batch stopped: the row closes
+    ERRORED with the batch on it and marked, so the reaper's cleanup keeps
+    asking the provider to stop it; the batch leaves the executor's queue,
+    the bundle goes and the lock is released once, on the way out."""
+    _the_stop_is_not_confirmed(mocker, provider, stop)
+    if submit == "absent":
+        _submit_write_fails(mocker, fake_dream_db, lands=False)
+    else:
+        _submit_lands_during_the_cancel(mocker, fake_dream_db, provider)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    provider.cancel.assert_awaited_once()
+    row = fake_dream_db.rows[result.pass_id]
+    assert (row["status"], row["provider_batch_id"]) == (
+        DreamPassStatus.ERRORED,
+        "batch-1",
+    )
+    assert row["cleanup_pending_at"] is not None
+    provider.revoke.assert_awaited_once_with("batch-1")
+    assert input_bundle_key(result.pass_id) not in fake_dream_redis.store
+    assert _LOCK_KEY not in fake_dream_redis.store
+
+
+async def test_a_batch_neither_stopped_nor_recorded_stays_on_the_executors_queue(
+    fake_dream_db, fake_dream_redis, gather, provider, mocker
+):
+    """The stop is not confirmed and the row will not take the batch either
+    (the store down for writes): the batch stays on the executor's queue,
+    whose drop or callback stops it by its id; the bundle goes and the lock
+    is released on the way out."""
+    _the_stop_is_not_confirmed(mocker, provider, "denied")
+    record = fake_dream_db.update_dream_pass
+
+    async def store_down_from_the_submit(pass_id, update):
+        if update.status in (DreamPassStatus.SUBMITTED, DreamPassStatus.ERRORED):
+            raise ConnectionError("dream pass database unreachable")
+        return await record(pass_id, update)
+
+    mocker.patch.object(fake_dream_db, "update_dream_pass", store_down_from_the_submit)
+
+    result = await orchestrator_mod.execute_dream_pass("u")
+
+    assert result.error == batch_handoff_mod.UNRECORDED_SUBMIT_ERROR
+    provider.cancel.assert_awaited_once_with("batch-1")
+    provider.revoke.assert_not_awaited()
+    assert input_bundle_key(result.pass_id) not in fake_dream_redis.store
+    assert _LOCK_KEY not in fake_dream_redis.store

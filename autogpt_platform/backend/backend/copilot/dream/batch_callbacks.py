@@ -38,6 +38,8 @@ from pydantic import BaseModel, ValidationError
 
 from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.inference.context import InferenceError
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
+from backend.copilot.usage_activation import UsageActivationUnavailable
 
 from .batch_costs import landed_usage
 from .batch_deliveries import (
@@ -63,7 +65,12 @@ from .lease import ApplyLease, admit_batch_apply, renew_batch_lease
 from .llm import parse_json_with_prose_fallback
 from .provider_batch import anthropic_api_key
 from .schemas import DreamOperations, DreamPhase, IngestionDrainStatus
-from .store import record_applying, record_next_batch, record_phase_output
+from .store import (
+    read_cost_context,
+    record_applying,
+    record_next_batch,
+    record_phase_output,
+)
 
 if TYPE_CHECKING:
     from backend.executor.batch_executor import PendingEntry
@@ -76,6 +83,12 @@ logger = logging.getLogger(__name__)
 
 NAMESPACE = "dream_pass"
 
+# The error a batch pass closes with when the usage attribution it started
+# under could not be established for one of its results (#15208): a fixed,
+# content-free string. Its phases are charged only under the attribution
+# its row carries, if any (``batch_costs``).
+UNATTRIBUTED_ERROR = "batch usage attribution unavailable"
+
 NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
     "consolidate": "recombine",
     "recombine": "sanitize",
@@ -86,7 +99,99 @@ NEXT_PHASE: dict[DreamPhase, DreamPhase | None] = {
 async def handle_dream_batch_result(
     entry: PendingEntry, rows: list[BatchResultRow]
 ) -> None:
-    """BatchExecutor entry, once per finished phase batch: validate and keep
+    """BatchExecutor entry, once per finished phase batch: the usage
+    attribution the pass started under (#15208), read off its row
+    (``_pass_attribution``), restored around the phase's handling
+    (``_handle_dream_batch_result``); a pass without one, or whose batch
+    carries another, ends (``_fail_unattributed_pass``)."""
+    payload = entry.payload or {}
+    user_id = str(payload.get("user_id") or "")
+    if (
+        not user_id
+        or not payload.get("pass_id")
+        or payload.get("phase") not in NEXT_PHASE
+    ):
+        await _handle_dream_batch_result(entry, rows)
+        return
+    try:
+        context = await _pass_attribution(payload)
+    except (UsageActivationUnavailable, ValueError):
+        await _fail_unattributed_pass(entry)
+        raise
+    with restore_cost_context(user_id, context):
+        await _handle_dream_batch_result(entry, rows)
+
+
+async def _pass_attribution(payload: dict[str, Any]) -> TrialCostContext:
+    """The usage attribution the pass started under: its row's
+    (``store.read_cost_context``), the one source every charge of the pass
+    goes by. The batch's payload carries the copy #15208 put there, which
+    must agree with it. While the row cannot be read (the store is down),
+    the copy stands in for this callback's own work, so a store outage does
+    not end the pass; its charges (``batch_costs``) still wait on the row.
+
+    Raises ``UsageActivationUnavailable`` when the payload carries no copy,
+    the row holds no attribution (none was kept, or there is no row), or
+    the two differ; ``ValueError`` when the copy does not parse or is
+    another user's."""
+    user_id = str(payload["user_id"])
+    carried = payload.get("cost_context")
+    if carried is None:
+        raise UsageActivationUnavailable("Dream batch has no usage attribution")
+    copy = TrialCostContext.model_validate(carried)
+    if copy.user_id != user_id:
+        raise ValueError("Trial cost attribution belongs to a different user")
+    pass_id = str(payload["pass_id"])
+    try:
+        recorded = await read_cost_context(pass_id)
+    except Exception:
+        logger.warning(
+            f"Dream pass {pass_id}: could not read its usage attribution; the "
+            "callback goes on under its batch's copy",
+            exc_info=True,
+        )
+        return copy
+    if recorded is None:
+        raise UsageActivationUnavailable("Dream pass has no usage attribution")
+    if recorded != copy:
+        raise UsageActivationUnavailable(
+            "Dream batch attribution differs from its pass's"
+        )
+    return recorded
+
+
+async def _fail_unattributed_pass(entry: PendingEntry) -> None:
+    """Close a pass whose usage attribution could not be established for its
+    batch's result (#15208): errored like any failed pass (its admin job,
+    its record with what the landed phases used, the disowned lock, its
+    state, the batch stopped at the provider), and charged only under the
+    attribution its row carries, if any (``batch_costs``): never under
+    another. The lock is the pass's own scope's, read off its input bundle
+    as the phase handlers read it; without the bundle there is no token to
+    release it with, and it is left to its TTL. The batch is the one this
+    result came from: a result the executor gave up waiting for (its
+    lifetime timeout) may still be running, and the row stays marked until
+    the provider says it has stopped (``cleanup.py``)."""
+    bp = BatchPass.from_payload(entry.payload or {})
+    try:
+        input_bundle = await read_input_bundle(bp.pass_id)
+    except Exception:
+        logger.exception("Unattributed dream batch pass=%s: no bundle", bp.pass_id)
+        input_bundle = None
+    if input_bundle is not None:
+        bp = bp.model_copy(
+            update={
+                "user_id": input_bundle.user_id,
+                "expert_id": input_bundle.expert_id,
+            }
+        )
+    await fail_pass(bp, UNATTRIBUTED_ERROR, provider_batch_id=entry.provider_batch_id)
+
+
+async def _handle_dream_batch_result(
+    entry: PendingEntry, rows: list[BatchResultRow]
+) -> None:
+    """One finished phase batch, under its pass's attribution: validate and keep
     the phase's result, then end the pass on an error, submit the next phase
     (the job left ``submitted`` at it), or after sanitize apply, charge the
     three phases and complete the job. A payload no phase can take is a dead

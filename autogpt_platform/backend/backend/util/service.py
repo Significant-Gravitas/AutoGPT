@@ -8,6 +8,7 @@ import signal
 import sys
 import threading
 import time
+import typing
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from functools import update_wrapper
@@ -92,6 +93,30 @@ def expose(func: C) -> C:
     func = getattr(func, "__func__", func)
     setattr(func, EXPOSED_FLAG, True)
     return func
+
+
+def resolve_type_hints(func: Callable[..., Any]) -> dict[str, Any]:
+    """Type hints of ``func`` evaluated in its *defining* module.
+
+    Exposed service functions are plain functions from other modules (or
+    stubs wrapping them via ``update_wrapper``), and those modules may use
+    ``from __future__ import annotations``. ``inspect.signature`` then yields
+    string annotations such as ``"SomeRecord | None"`` that neither
+    ``create_model`` nor ``TypeAdapter`` can resolve from here — the request
+    model would reject model-valued arguments and the client would hand
+    back raw dicts. Unwrapping to the original function and using
+    ``typing.get_type_hints`` evaluates the strings where the names live.
+    Falls back to the raw annotations when evaluation is impossible.
+    """
+    target = inspect.unwrap(func)
+    target = getattr(target, "__func__", target)
+    try:
+        return typing.get_type_hints(target, include_extras=True)
+    except Exception:
+        try:
+            return typing.get_type_hints(func, include_extras=True)
+        except Exception:
+            return {}
 
 
 # --------------------------------------------------
@@ -317,6 +342,7 @@ class AppService(BaseAppService, ABC):
         :return: A FastAPI endpoint function.
         """
         sig = inspect.signature(func)
+        hints = resolve_type_hints(func)
         fields = {}
 
         is_bound_method = False
@@ -325,9 +351,18 @@ class AppService(BaseAppService, ABC):
                 is_bound_method = True
                 continue
 
-            # Use the provided annotation or fallback to str if not specified
-            annotation = (
-                param.annotation if param.annotation != inspect.Parameter.empty else str
+            # Use the resolved annotation or fallback to str if not specified.
+            # ``resolve_type_hints`` evaluates string annotations (modules
+            # using ``from __future__ import annotations``) in the defining
+            # module's namespace; the raw signature would leave model names
+            # as strings that a dynamic model created here cannot resolve.
+            annotation = hints.get(
+                name,
+                (
+                    param.annotation
+                    if param.annotation != inspect.Parameter.empty
+                    else str
+                ),
             )
 
             # If a default value is provided, use it; otherwise, mark the field as required with '...'
@@ -474,12 +509,28 @@ class AppService(BaseAppService, ABC):
         sentry_init()
         super().run()
 
-        self.fastapi_app = FastAPI(lifespan=self.lifespan)
+        self.fastapi_app = self.build_fastapi_app()
+
+        # Start the FastAPI server in a separate thread.
+        api_thread = threading.Thread(
+            target=self.__start_fastapi,
+            daemon=True,
+            name=f"{self.service_name}-http-server",
+        )
+        api_thread.start()
+
+        # Run the main service loop (blocking).
+        self.run_service()
+
+    def build_fastapi_app(self) -> FastAPI:
+        """The service's HTTP app: one POST route per exposed method, the
+        health checks and metrics, and nothing else."""
+        app = FastAPI(lifespan=self.lifespan)
 
         # Add Prometheus instrumentation to all services
         try:
             instrument_fastapi(
-                self.fastapi_app,
+                app,
                 service_name=self.service_name,
                 expose_endpoint=True,
                 endpoint="/metrics",
@@ -498,29 +549,17 @@ class AppService(BaseAppService, ABC):
         for attr_name, attr in vars(type(self)).items():
             if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
-                self.fastapi_app.add_api_route(
+                app.add_api_route(
                     route_path,
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
-        self.fastapi_app.add_api_route(
-            "/health_check", self.health_check, methods=["POST", "GET"]
-        )
-        self.fastapi_app.add_api_route(
+        app.add_api_route("/health_check", self.health_check, methods=["POST", "GET"])
+        app.add_api_route(
             "/health_check_async", self.health_check, methods=["POST", "GET"]
         )
-        self._register_exception_handlers(self.fastapi_app)
-
-        # Start the FastAPI server in a separate thread.
-        api_thread = threading.Thread(
-            target=self.__start_fastapi,
-            daemon=True,
-            name=f"{self.service_name}-http-server",
-        )
-        api_thread.start()
-
-        # Run the main service loop (blocking).
-        self.run_service()
+        self._register_exception_handlers(app)
+        return app
 
 
 # --------------------------------------------------
@@ -904,7 +943,9 @@ def get_service_client(
 
             rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
-            ret_ann = sig.return_annotation
+            ret_ann = resolve_type_hints(original_func).get(
+                "return", sig.return_annotation
+            )
             expected_return = (
                 None
                 if ret_ann is inspect.Signature.empty

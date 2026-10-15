@@ -1,7 +1,7 @@
 """The dream-system cron table and the owner-timezone lookup.
 
 Two APScheduler cron jobs serve every memory scope (the account, or one
-hired expert):
+hired expert), and a third the account alone:
 
   * ``community_rebuild_{scope_key}``    — weekly, owner-local 04:00 on
     Mondays (P-1.7): its crontab ``0 4 * * 0`` means Monday to APScheduler,
@@ -10,6 +10,9 @@ hired expert):
   * ``dream_nightly_batch_{scope_key}``  — daily 03:00 owner-local,
     submits all nightly-batch-family work (dream pass, ratification
     supersession sweep, plus future P2 / P3 / P4 / P11 stages).
+  * ``skill_learning_nightly_{user_id}`` — daily 03:00 owner-local, the
+    account's skill-learning pass (``copilot/learning/nightly.py``), on its
+    own flag; one pass covers the account's skills and its experts'.
 
 The account's scope key is its user id, so its job ids are unchanged from
 when the crons were keyed per user. Registering, pausing and resuming them
@@ -48,6 +51,7 @@ logger = logging.getLogger(__name__)
 # can never disagree on a job id.
 COMMUNITY_REBUILD_JOB_PREFIX = "community_rebuild"
 NIGHTLY_BATCH_JOB_PREFIX = "dream_nightly_batch"
+SKILL_LEARNING_JOB_PREFIX = "skill_learning_nightly"
 
 
 # A SchedulerClient is the caller's handle to the scheduler service. The
@@ -74,16 +78,23 @@ class DreamSystemJob:
     """The ``reason`` recorded when the flag is off, so "why does this scope
     have no schedule" is grep-able."""
 
-    row_field: Literal["community_job_id", "nightly_job_id"]
+    row_field: Literal["community_job_id", "nightly_job_id", "learning_job_id"]
     """The ``MemoryScopeSchedule`` field holding this cron's job id."""
 
     register: Callable[[SchedulerLike, MemoryScope, str], Awaitable[dict]]
     """``(client, scope, owner_timezone) -> awaitable[result dict]``: the
     SchedulerClient method that creates the cron job."""
 
+    account_only: bool = False
+    """The cron runs for the account alone: an expert's scope has none."""
+
     def job_id(self, scope: MemoryScope) -> str:
         """This cron's APScheduler job id for ``scope``."""
         return f"{self.job_id_prefix}_{scope.scope_key}"
+
+    def serves(self, scope: MemoryScope) -> bool:
+        """Whether ``scope`` has this cron at all."""
+        return not (self.account_only and scope.is_expert)
 
 
 def _register_community_rebuild(
@@ -102,9 +113,17 @@ def _register_nightly_batch(
     )
 
 
+def _register_skill_learning(
+    client: SchedulerLike, scope: MemoryScope, user_timezone: str
+) -> Awaitable[dict]:
+    return client.add_scope_skill_learning_schedule(
+        scope=scope, user_timezone=user_timezone
+    )
+
+
 # Listed in cron-frequency order (rarest first) so a new scope's log trail
 # reads "weekly → daily". The future P8 cross-scope cron (weekly, batch)
-# lands between these two.
+# lands between the first two.
 DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
     DreamSystemJob(
         name="Community rebuild",
@@ -125,7 +144,27 @@ DREAM_SYSTEM_JOBS: list[DreamSystemJob] = [
         row_field="nightly_job_id",
         register=_register_nightly_batch,
     ),
+    DreamSystemJob(
+        name="Skill learning nightly",
+        job_id_prefix=SKILL_LEARNING_JOB_PREFIX,
+        # Its own gate: skill learning can run with the dream pass off and
+        # the dream pass never implies skill learning. Same 03:00
+        # user-local cadence, separate lease, separate cost rows. One pass
+        # per account reviews the account's and its experts' skills, so an
+        # expert's scope has no cron of its own.
+        flag=Flag.DREAM_SKILL_LEARNING_ENABLED,
+        skip_reason="skill_learning_disabled",
+        row_field="learning_job_id",
+        register=_register_skill_learning,
+        account_only=True,
+    ),
 ]
+
+
+def jobs_for(scope: MemoryScope) -> list[DreamSystemJob]:
+    """The crons ``scope`` has: every row for the account, and those not
+    ``account_only`` for an expert."""
+    return [job for job in DREAM_SYSTEM_JOBS if job.serves(scope)]
 
 
 def dream_system_job(job_id_prefix: str) -> DreamSystemJob:

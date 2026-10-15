@@ -181,6 +181,7 @@ async def _deliver(phase: str) -> None:
         next_poll_at=now,
         payload={
             "user_id": "u1",
+            "cost_context": {"user_id": "u1", "trial_id": None, "generation": None},
             "pass_id": "p1",
             "job_id": "",
             "phase": phase,

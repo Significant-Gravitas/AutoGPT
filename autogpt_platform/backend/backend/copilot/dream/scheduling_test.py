@@ -1,16 +1,15 @@
-"""Tests for the dream-system cron table, the owner-timezone lookup and the
-Redis registration markers.
+"""Tests for the dream-system cron table and the owner-timezone lookup.
 
 Contracts pinned here:
 
-  1. Table shape — 2 rows (community + nightly batch), distinct markers,
-     distinct flags, distinct registry columns.
+  1. Table shape — 3 rows (community, nightly batch, skill learning),
+     distinct flags, distinct registry columns; skill learning is the
+     account's alone.
   2. Job ids are keyed by scope, and the account's are the per-user ids
      the crons had before they were per scope.
   3. Each row registers through the scheduler's scope-keyed method.
   4. Timezone lookup failure is "unknown", not "UTC" — a transient DB blip
      must never re-register the owner's local-time crons onto UTC.
-  5. Markers are per scope and cleared with a single-key DEL.
 
 Registration itself (ensure, pause, resume, wipe) is pinned in
 ``registry_test.py``.
@@ -28,7 +27,12 @@ from backend.util.feature_flag import Flag
 
 from . import deadline, scheduling
 from .registry_fakes_test import Hang
-from .scheduling import DREAM_SYSTEM_JOBS, dream_system_job, resolve_user_timezone
+from .scheduling import (
+    DREAM_SYSTEM_JOBS,
+    dream_system_job,
+    jobs_for,
+    resolve_user_timezone,
+)
 
 _PATH_USER_DB = "backend.copilot.dream.scheduling.user_db"
 USER = "abc"
@@ -41,23 +45,27 @@ EXPERT = MemoryScope.for_expert(USER, "expert-1")
 # ---------------------------------------------------------------------------
 
 
-def test_table_contains_two_jobs_in_cron_frequency_order():
-    """Weekly community first, daily nightly batch second — the order
-    matches how schedules build up over time and reads naturally in
-    the log narrative."""
+def test_table_contains_three_jobs_in_cron_frequency_order():
+    """Weekly community first, then the daily crons — the order matches
+    how schedules build up over time and reads naturally in the log
+    narrative."""
     prefixes = [j.job_id_prefix for j in DREAM_SYSTEM_JOBS]
-    assert prefixes == ["community_rebuild", "dream_nightly_batch"]
+    assert prefixes == [
+        "community_rebuild",
+        "dream_nightly_batch",
+        "skill_learning_nightly",
+    ]
 
 
 def test_each_job_has_its_own_registry_column():
     fields = [j.row_field for j in DREAM_SYSTEM_JOBS]
-    assert fields == ["community_job_id", "nightly_job_id"]
+    assert fields == ["community_job_id", "nightly_job_id", "learning_job_id"]
 
 
 def test_community_and_nightly_batch_have_distinct_flags():
     """Community rebuild and nightly batch are independent features
     behind separate LD flags. A user can have one enabled without
-    the other."""
+    the other. (Skill learning's own flag is pinned below.)"""
     assert dream_system_job("community_rebuild").flag == (
         Flag.GRAPHITI_COMMUNITIES_ENABLED
     )
@@ -75,6 +83,33 @@ def test_exported_prefixes_match_table_rows():
     assert [j.job_id_prefix for j in DREAM_SYSTEM_JOBS] == [
         scheduling.COMMUNITY_REBUILD_JOB_PREFIX,
         scheduling.NIGHTLY_BATCH_JOB_PREFIX,
+        scheduling.SKILL_LEARNING_JOB_PREFIX,
+    ]
+
+
+def test_skill_learning_is_gated_independently_of_the_dream_pass():
+    """Enabling skill learning must not imply the dream pass (or vice
+    versa): its own flag, its own cron id, its own registry column."""
+    learning = dream_system_job("skill_learning_nightly")
+    assert learning.flag == Flag.DREAM_SKILL_LEARNING_ENABLED
+    assert learning.skip_reason == "skill_learning_disabled"
+    assert learning.row_field == "learning_job_id"
+
+
+def test_skill_learning_is_the_accounts_alone():
+    """One pass reviews the account's skills and its experts': an expert's
+    scope has no skill-learning cron, and the account has all three."""
+    assert [j.job_id_prefix for j in jobs_for(ACCOUNT)] == [
+        "community_rebuild",
+        "dream_nightly_batch",
+        "skill_learning_nightly",
+    ]
+    assert [j.job_id_prefix for j in jobs_for(EXPERT)] == [
+        "community_rebuild",
+        "dream_nightly_batch",
+    ]
+    assert [j.job_id_prefix for j in DREAM_SYSTEM_JOBS if j.account_only] == [
+        "skill_learning_nightly"
     ]
 
 
@@ -89,11 +124,12 @@ def test_account_job_ids_are_the_legacy_per_user_ids():
     assert [j.job_id(ACCOUNT) for j in DREAM_SYSTEM_JOBS] == [
         "community_rebuild_abc",
         "dream_nightly_batch_abc",
+        "skill_learning_nightly_abc",
     ]
 
 
 def test_expert_job_ids_are_keyed_by_the_expert_scope():
-    assert [j.job_id(EXPERT) for j in DREAM_SYSTEM_JOBS] == [
+    assert [j.job_id(EXPERT) for j in jobs_for(EXPERT)] == [
         f"community_rebuild_{EXPERT.scope_key}",
         f"dream_nightly_batch_{EXPERT.scope_key}",
     ]
@@ -104,16 +140,17 @@ async def test_each_row_registers_through_the_scope_keyed_method():
     client = MagicMock()
     client.add_scope_community_rebuild_schedule = AsyncMock(return_value={"id": "c"})
     client.add_scope_nightly_batch_schedule = AsyncMock(return_value={"id": "n"})
+    client.add_scope_skill_learning_schedule = AsyncMock(return_value={"id": "l"})
 
     for job in DREAM_SYSTEM_JOBS:
-        await job.register(client, EXPERT, "Europe/Paris")
+        await job.register(client, ACCOUNT, "Europe/Paris")
 
-    client.add_scope_community_rebuild_schedule.assert_awaited_once_with(
-        scope=EXPERT, user_timezone="Europe/Paris"
-    )
-    client.add_scope_nightly_batch_schedule.assert_awaited_once_with(
-        scope=EXPERT, user_timezone="Europe/Paris"
-    )
+    for method in (
+        client.add_scope_community_rebuild_schedule,
+        client.add_scope_nightly_batch_schedule,
+        client.add_scope_skill_learning_schedule,
+    ):
+        method.assert_awaited_once_with(scope=ACCOUNT, user_timezone="Europe/Paris")
 
 
 # ---------------------------------------------------------------------------

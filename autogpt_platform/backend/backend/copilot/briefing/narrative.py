@@ -44,6 +44,7 @@ from backend.copilot.inference.context import (
 from backend.copilot.inference.record import record
 from backend.copilot.inference.routing import resolve_route
 from backend.copilot.inference.trace import trace
+from backend.copilot.trial_cost_context import attributed_usage
 
 from .models import BriefingContent, BriefingRunItem
 
@@ -92,6 +93,7 @@ class NarrativeResponse(BaseModel):
     narrative: str
 
 
+@attributed_usage
 async def compose_narrative(user_id: str, content: BriefingContent) -> str | None:
     """Write the briefing's opening paragraph, or ``None`` to fall back.
 

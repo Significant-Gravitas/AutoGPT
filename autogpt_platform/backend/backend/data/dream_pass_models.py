@@ -8,7 +8,7 @@ How an update lands on a row, only ever moving it forward, is
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 import prisma.models
 from prisma.enums import (
@@ -97,8 +97,9 @@ class DreamPassOperations(BaseModel):
 
 
 class DreamPassDraft(BaseModel):
-    """A new row: whose pass it is, how it runs, what started it, and the
-    lease it starts with (the token of the lock it is about to take)."""
+    """A new row: whose pass it is, how it runs, what started it, the lease
+    it starts with (the token of the lock it is about to take), and the usage
+    attribution it runs under."""
 
     id: str = Field(min_length=1)
     user_id: str = Field(min_length=1)
@@ -111,6 +112,10 @@ class DreamPassDraft(BaseModel):
     started_at: datetime | None = None
     lease_token: str | None = None
     lease_expires_at: datetime | None = None
+    # The pass's ``TrialCostContext`` as JSON (#15208), captured when it
+    # started: every charge of its phases goes by it, and a row without one
+    # is never charged (``copilot/dream/batch_costs.py``).
+    cost_context: dict[str, Any] | None = None
 
 
 class DreamPassUpdate(BaseModel):
@@ -211,6 +216,7 @@ class DreamPassRecord(BaseModel):
     lease_token: str | None
     lease_expires_at: datetime | None
     cleanup_pending_at: datetime | None = None
+    cost_context: dict[str, Any] | None = None
     input_bundle: DreamInput | None
     phase_outputs: DreamPhaseOutputs
     operations: DreamPassOperations
@@ -242,6 +248,9 @@ class DreamPassRecord(BaseModel):
             lease_token=row.leaseToken,
             lease_expires_at=row.leaseExpiresAt,
             cleanup_pending_at=row.cleanupPendingAt,
+            cost_context=(
+                dict(row.costContext) if row.costContext is not None else None
+            ),
             input_bundle=(
                 input_bundle_from_dict(dict(row.inputBundle))
                 if row.inputBundle is not None
