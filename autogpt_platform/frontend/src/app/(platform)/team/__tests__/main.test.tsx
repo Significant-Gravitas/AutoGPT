@@ -583,7 +583,12 @@ describe("TeamPage", () => {
         "These rules are part of every expert's soul and cannot be edited.",
       ),
     ).toBeDefined();
-    expect(screen.getAllByRole("textbox")).toHaveLength(4);
+    // The roster's search field is a textbox too; count only the Soul's.
+    expect(
+      screen
+        .getAllByRole("textbox")
+        .filter((box) => box.id !== "team-roster-search"),
+    ).toHaveLength(4);
     expect(screen.queryByRole("button", { name: /remove/i })).toBeNull();
   });
 
