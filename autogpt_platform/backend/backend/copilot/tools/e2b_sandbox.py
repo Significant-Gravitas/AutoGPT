@@ -411,10 +411,15 @@ async def _connect_pinned(
     pin_egress: bool,
 ) -> AsyncSandbox:
     """Connect to *sandbox_id*, which *info* already showed to be *owner*'s."""
-    if isinstance(providers, _KeepCeiling):
-        providers = await recorded_providers(sandbox_id) if pin_egress else None
-    elif pin_egress:
-        providers = await _shared_ceiling(owner, providers, sandbox_id)
+
+    async def ceiling_at_pin(egress_owner: EgressOwner) -> EgressOwner:
+        # Under the box's rotation lock: concurrent pins see each other's.
+        if isinstance(providers, _KeepCeiling):
+            ceiling = await recorded_providers(sandbox_id)
+        else:
+            ceiling = await _shared_ceiling(owner, providers, sandbox_id)
+        return egress_owner.model_copy(update={"providers": ceiling})
+
     stamped = info.metadata or {}
     # Whose credentials the proxy may swap in is the box's own record too,
     # not the caller's word: processes of the user it was created for may
@@ -432,8 +437,9 @@ async def _connect_pinned(
     sandbox = await connect_sandbox(
         AsyncSandbox,
         sandbox_id,
-        owner.egress_owner(swap_user_id, providers),
+        owner.egress_owner(swap_user_id, ()),
         apply_network=pin_egress,
+        owner_at_pin=ceiling_at_pin,
         api_key=api_key,
         timeout=timeout,
     )
