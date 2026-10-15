@@ -6,14 +6,9 @@ import {
 import { render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const flagsOnly = vi.hoisted(() => ({
-  identify: vi.fn(),
-  setPersonPropertiesForFlags: vi.fn(),
-}));
 const posthog = vi.hoisted(() => ({
   identify: vi.fn(),
   setPersonPropertiesForFlags: vi.fn(),
-  init: vi.fn(() => flagsOnly),
 }));
 const flags = vi.hoisted(() => ({ usesPostHog: false }));
 
@@ -45,17 +40,13 @@ vi.mock("@/services/feature-flags/flag-backend", () => ({
 
 describe("PostHogUserTracker", () => {
   beforeEach(() => {
-    vi.resetModules();
     posthog.identify.mockClear();
     posthog.setPersonPropertiesForFlags.mockClear();
-    flagsOnly.identify.mockClear();
-    flagsOnly.setPersonPropertiesForFlags.mockClear();
     installCookiebot({ statistics: true });
   });
 
   afterEach(() => {
     removeCookiebot();
-    vi.unstubAllEnvs();
   });
 
   it.each([false, true])(
@@ -84,25 +75,6 @@ describe("PostHogUserTracker", () => {
       email_domain: "example.com",
       role: "authenticated",
       created_at: "2026-05-08T12:00:00Z",
-    });
-  });
-
-  it("identifies a flags-only instance too, and hands it the flag properties", async () => {
-    flags.usesPostHog = true;
-    vi.stubEnv("NEXT_PUBLIC_POSTHOG_KEY", "phc_dev");
-    vi.stubEnv("NEXT_PUBLIC_POSTHOG_FLAGS_KEY", "phc_prod");
-    const { PostHogUserTracker } = await import("../posthog-provider");
-
-    render(<PostHogUserTracker />);
-
-    expect(flagsOnly.identify).toHaveBeenCalledWith("user-1");
-    expect(flagsOnly.setPersonPropertiesForFlags).toHaveBeenCalledWith(
-      expect.objectContaining({ email: "user@example.com" }),
-    );
-    expect(posthog.setPersonPropertiesForFlags).not.toHaveBeenCalled();
-    expect(posthog.identify).toHaveBeenCalledWith("user-1", {
-      email: "user@example.com",
-      name: "Ada",
     });
   });
 

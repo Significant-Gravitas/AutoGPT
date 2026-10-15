@@ -21,12 +21,6 @@ import {
   forgetPostHogStorageWithoutConsent,
   getConsentGatedConfig,
 } from "./posthog-consent";
-import {
-  applyFlagEnvironment,
-  ensureFlagsOnlyClient,
-  identifyFlagsOnlyClient,
-  setFlagPersonProperties,
-} from "./posthog-flags-client";
 import { getPostHogClientHosts } from "./posthog-proxy";
 
 export function PostHogProvider({ children }: { children: ReactNode }) {
@@ -43,10 +37,9 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
       // every tool lands on the same person once identify() runs. Without
       // analytics consent that id only lives for this page load.
       const anonymousID = getAnonymousID();
-      const hosts = getPostHogClientHosts(postHogCredentials);
       forgetPostHogStorageWithoutConsent(postHogCredentials.key);
       posthog.init(postHogCredentials.key, {
-        ...hosts,
+        ...getPostHogClientHosts(postHogCredentials),
         defaults: "2025-11-30",
         capture_pageview: false,
         capture_pageleave: true,
@@ -54,12 +47,9 @@ export function PostHogProvider({ children }: { children: ReactNode }) {
         ...(anonymousID && {
           bootstrap: { distinctID: anonymousID, isIdentifiedID: false },
         }),
-        loaded: applyFlagEnvironment,
         ...getConsentGatedConfig(),
       });
       posthog.register(getPostHogBaseProperties());
-      // Usually created already, by a flag read during the first render.
-      ensureFlagsOnlyClient();
       unfollowConsent = followAnalyticsConsent();
     }
     return () => {
@@ -93,13 +83,12 @@ export function PostHogUserTracker() {
         // Flag-only properties ride on /flags and are never stored on the
         // person profile, so identify stays exactly what analytics sends.
         if (usesPostHog()) {
-          setFlagPersonProperties(buildFlagPersonProperties(user));
+          posthog.setPersonPropertiesForFlags(buildFlagPersonProperties(user));
         }
         posthog.identify(user.id, {
           email: user.email,
           ...(user.user_metadata?.name && { name: user.user_metadata.name }),
         });
-        identifyFlagsOnlyClient(user.id);
         previousUserIdRef.current = user.id;
       }
     } else if (previousUserIdRef.current !== null) {

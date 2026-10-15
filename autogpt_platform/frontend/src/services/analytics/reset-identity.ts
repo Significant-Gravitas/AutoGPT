@@ -1,10 +1,6 @@
 import { syncPostHogConsent } from "@/providers/posthog/posthog-consent";
-import {
-  applyFlagEnvironment,
-  resetFlagsOnlyClient,
-} from "@/providers/posthog/posthog-flags-client";
 import posthog from "posthog-js";
-import { getAnonymousID, resetAnonymousID } from "./anonymous-id";
+import { resetAnonymousID } from "./anonymous-id";
 import { getPostHogBaseProperties } from "./posthog-base-properties";
 
 export function resetAnalyticsIdentity(): void {
@@ -21,7 +17,6 @@ export function resetAnalyticsIdentity(): void {
   }
   if (didReset) restoreBaseProperties();
   resetAnonymousID(anonymousID);
-  resetFlagsIdentity(getAnonymousID());
   // reset() also drops PostHog's own opt-in, which opts a consenting visitor
   // out until the next page load unless it is restored here.
   if (didReset) {
@@ -33,20 +28,11 @@ export function resetAnalyticsIdentity(): void {
   }
 }
 
-// reset() wipes the super properties and flag properties along with the identity.
+// reset() wipes the super properties along with the identity.
 function restoreBaseProperties() {
   try {
     posthog.register(getPostHogBaseProperties());
-    applyFlagEnvironment(posthog);
   } catch {
     // Analytics is never worth a broken logout.
-  }
-}
-
-function resetFlagsIdentity(anonymousID: string | null) {
-  try {
-    resetFlagsOnlyClient(anonymousID);
-  } catch {
-    // Flags fall back to their defaults; never worth a broken logout.
   }
 }

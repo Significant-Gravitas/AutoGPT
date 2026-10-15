@@ -277,8 +277,7 @@ describe("PostHog before analytics consent", () => {
       first.distinct_id,
     );
     expect(first.$device_id).toBe(first.distinct_id);
-    // Nothing stored about the person; only the deployment, for flag targeting.
-    expect(first.person_properties).toEqual({ environment: "local" });
+    expect(first.person_properties).toEqual({});
 
     seedEarlierVisit();
     await renderPostHog();
@@ -409,25 +408,6 @@ describe("PostHog when analytics consent is granted", () => {
     expect(window.localStorage.getItem("agpt_anonymous_id")).toBe(
       posthog.get_distinct_id(),
     );
-  });
-
-  it("keeps flags from another project on the analytics anonymous id after logout", async () => {
-    vi.stubEnv("NEXT_PUBLIC_FEATURE_FLAG_BACKEND", "posthog");
-    vi.stubEnv("NEXT_PUBLIC_POSTHOG_FLAGS_KEY", "phc_flags_project");
-    installCookiebot({ statistics: true });
-    const { posthog, resetAnalyticsIdentity } = await renderPostHog({
-      user: USER,
-    });
-    const { getFlagsClient } = await import(
-      "@/providers/posthog/posthog-flags-client"
-    );
-    const flagsClient = getFlagsClient();
-    expect(flagsClient).not.toBe(posthog);
-
-    resetAnalyticsIdentity();
-
-    expect(flagsClient.get_distinct_id()).not.toBe(USER.id);
-    expect(flagsClient.get_distinct_id()).toBe(posthog.get_distinct_id());
   });
 
   it("still deletes its storage when the visitor withdraws after a logout", async () => {

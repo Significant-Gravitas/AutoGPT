@@ -8,9 +8,15 @@ the choice; they read through `evaluate_feature_flag()` on the backend and
 
 ## One set of flags, separate reporting
 
-Flags are defined once, in the **prod** PostHog project. Dev (and Vercel
-previews) read those definitions, while every event and person they produce
+Flags are defined once, in the **prod** PostHog project. Dev reads those
+definitions, while every event and person they produce
 goes to the **dev** project, so prod's analytics never mix with dev's.
+
+Only the backend reads flag definitions. The browser gets its flags from the
+backend's `GET /api/feature-flags` (`NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server`),
+which evaluates them through the same path as the backend's own reads. So the
+split below covers the browser's flags too, with no PostHog flags client in
+the browser.
 
 | Setting | Prod | Dev |
 |---|---|---|
@@ -18,12 +24,15 @@ goes to the **dev** project, so prod's analytics never mix with dev's.
 | `POSTHOG_FLAGS_API_KEY` (backend) | blank | prod project API key |
 | `POSTHOG_SECRET_KEY` (backend) | prod Feature Flags Secure API Key | prod Feature Flags Secure API Key |
 | `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | prod project API key | dev project API key |
-| `NEXT_PUBLIC_POSTHOG_FLAGS_KEY` (Vercel) | blank | prod project API key |
+
+This applies to flags PostHog answers, so dev needs `FEATURE_FLAG_BACKEND=posthog`
+(under `dual`, LaunchDarkly's answer is served and PostHog's is only compared),
+and `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server` so the browser asks the backend.
 
 A blank flags key reads flags from the analytics project, which is what prod
 and every self-hosted deployment do. `POSTHOG_SECRET_KEY` always belongs to the
 project flags are read from. All projects must be in the one region
-`POSTHOG_HOST` / `NEXT_PUBLIC_POSTHOG_HOST` names.
+`POSTHOG_HOST` names.
 
 **Backend.** The flag client uses the flags key and the secret key, so it polls
 prod's definitions and evaluates in-process. When the flags key names another
@@ -35,28 +44,25 @@ the secret key required on dev; without it every read serves its default, and
 the client logs a warning at startup. The analytics client
 (`backend/util/posthog_client.py`) keeps `POSTHOG_API_KEY`.
 
-**Frontend.** posthog-js asks `/flags` of the project its token names, so with a
-separate flags key the browser runs a second, flags-only posthog-js instance
-(`src/providers/posthog/posthog-flags-client.ts`) and `usePostHogFlag` reads
-from it. The instance is created on the first flag read, during the first
-render, so no flag is ever answered from the analytics project first. It
-starts on, and after a logout returns to, the same first-party anonymous id as
-the analytics instance. It is opted out of capturing, drops anything that still
-reaches `capture()` in `before_send`, keeps its state in memory (no cookie or
-storage, with or without consent), loads no scripts, and records nothing. It is
-identified and handed the flag person properties only when the analytics
-instance is, that is, with analytics consent. Its only traffic to prod is the
-`/flags` call itself; events, `$identify` and `$feature_flag_called` stay on
-the analytics instance or are dropped. PostHog bills those `/flags` calls to
-prod's flag-request quota.
+This covers every PostHog flag read the backend makes: its own
+(`evaluate_feature_flag`, `get_feature_flag_value`, route gates) and the
+browser's through `/api/feature-flags`.
 
-**Rolling out to dev only.** Every flag read carries the person property
-`environment`, the same value the analytics events carry: `local`, `dev` or
-`prod` from `APP_ENV` on the backend, and `NEXT_PUBLIC_APP_ENV` in the browser,
-where a Vercel branch preview reports `preview`. A release condition
-`environment = dev` (add `preview` for previews) turns a flag on for dev alone;
-prod never matches it. The property is only an evaluation input: it is never
-stored on a person.
+**Browser.** In `server` mode the browser asks the backend and nothing else
+for its flags, so on dev it gets prod's definitions with no change of its own.
+posthog-js still talks only to the analytics project. Any other
+`NEXT_PUBLIC_FEATURE_FLAG_BACKEND` reads flags in the browser from the project
+`NEXT_PUBLIC_POSTHOG_KEY` names, so dev must run `server` mode to share prod's
+flags. The one browser read left is `useExperiment`, which reads posthog-js and
+so, on dev, the dev project's experiment flags, until experiment arms are
+assigned on the backend.
+
+**Rolling out to dev only.** Every PostHog flag read carries the person
+property `environment`, the backend's `APP_ENV`: `local`, `dev` or `prod`, the
+same value the analytics events carry. A release condition `environment = dev`
+turns a flag on for dev alone; prod never matches it. A Vercel preview in
+`server` mode gets the answer of the backend it calls. The property is only an
+evaluation input: it is never stored on a person.
 
 ## Sharing PostHog's flag definitions
 
