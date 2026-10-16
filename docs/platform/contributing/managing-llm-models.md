@@ -92,20 +92,20 @@ Each `(mode, tier)` cell resolves through three layers, top wins:
 2. **Catalog routing cell** — the PR-authored default above.
 3. **`CHAT_*_MODEL` environment variables** — the bootstrap floor (see `.env.default`).
 
-On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged every time, reported to Sentry once per slug — and resolution falls through to the next layer. A typo'd LD slug therefore degrades to the default instead of erroring at users. Self-hosted installs and local transports skip the gate entirely (LD → env, their slugs are their own business). Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain (message stamping covers the baseline path today).
+On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slug that is unknown to the catalog or has `is_enabled: False` is refused — logged every time, reported to Sentry once per slug — and resolution falls through to the next layer. A typo'd slug in the flag therefore degrades to the default instead of erroring at users. Self-hosted installs and local transports skip the gate entirely (flag → env, their slugs are their own business). Assistant messages served by the baseline path are stamped with the model that served them and which layer picked it (`ChatMessage.model` / `routingSource`), which is what allows product-intelligence to compare model quality; the SDK path resolves through the same chain (message stamping covers the baseline path today).
 
 ## Rolling out a new model
 
 1. Add the model to the catalog with `visibility="HIDDEN"` — registered and routable, invisible in any picker or public listing.
-2. Add an LD targeting rule on `copilot-model-routing` sending your test cohort (e.g. employees) to its slug.
+2. Send your test cohort (e.g. employees) to its slug on the `copilot-model-routing` flag, in the vendor `FEATURE_FLAG_BACKEND` names. On PostHog, the default, that is a variant whose JSON payload carries the slug, served by a release condition matching the cohort, in each environment's own project; on LaunchDarkly, a targeting rule.
 3. Watch product-intelligence quality scores segmented by the stamped model column.
-4. Graduate: flip `visibility` to `GA` and set the routing cell in a catalog PR; delete the LD rule.
+4. Graduate: flip `visibility` to `GA` and set the routing cell in a catalog PR; remove the cohort's condition from the flag.
 
 ## Retiring a model
 
 Retirement has two halves:
 
-1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats LD routing). Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs.
+1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats the routing flag). Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs.
 2. **Migrate existing graph nodes** onto a replacement so users' agents keep working:
 
 ```bash
