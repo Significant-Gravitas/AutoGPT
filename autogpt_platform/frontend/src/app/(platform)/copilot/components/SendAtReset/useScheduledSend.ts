@@ -49,7 +49,10 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
         sessionId,
         data: { kind: "send", message },
       });
-      if (response.status !== 200) return;
+      // The client throws on error statuses. Any other answer without the
+      // job leaves the message unset, so it fails the same way and the
+      // message goes back to whoever cleared it.
+      if (response.status !== 200) throw new Error();
       const job = response.data;
       await writeJobs((all) => [...all.filter((j) => j.kind !== "send"), job]);
     } catch (error) {
