@@ -40,8 +40,9 @@ async def settle_publication_in(
     state: str,
     disposition: str,
     reason: str,
-) -> None:
-    """:func:`settle_publication` inside the caller's transaction."""
+) -> bool:
+    """:func:`settle_publication` inside the caller's transaction; False when
+    the version was no longer pending."""
     where: prisma.types.SkillVersionWhereInput = {
         "id": version_id,
         "userId": user_id,
@@ -53,7 +54,7 @@ async def settle_publication_in(
         where=where, data={"state": state, "stateReason": reason[:1000]}
     )
     if not changed or review_id is None:
-        return
+        return bool(changed)
     await tx.skilllearningreview.update_many(
         where={"id": review_id, "userId": user_id, "appliedVersionId": version_id},
         data={
@@ -63,3 +64,4 @@ async def settle_publication_in(
             "completedAt": datetime.now(timezone.utc),
         },
     )
+    return True

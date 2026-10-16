@@ -1019,11 +1019,6 @@ class FakeLearningStore:
             for v in self.versions.values()
             if v.user_id == user_id and v.head_id == head.id
         ]
-        archived = [v.id for v in history if v.state in ("ready", "needs_decision")]
-        for version_id in archived:
-            await self.set_version_state(
-                user_id, version_id, "archived", DELETED_REASON
-            )
         pending = [v for v in history if v.state == PENDING_WRITE_STATE]
         for version in pending:
             await self.abandon_publication(
@@ -1032,6 +1027,11 @@ class FakeLearningStore:
                 review_id=version.review_id,
                 reason=DELETED_REASON,
                 disposition="suppressed",
+            )
+        archived = [v.id for v in history if v.state in ("ready", "needs_decision")]
+        for version_id in archived:
+            await self.set_version_state(
+                user_id, version_id, "archived", DELETED_REASON
             )
         return SkillDeletion(
             committed=True,

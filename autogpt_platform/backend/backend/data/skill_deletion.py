@@ -6,13 +6,14 @@ excluding an old source would then restore one of them, and a learned
 ``create`` for the name would conflict with the head for good.
 :func:`record_skill_deletion` ends the history in one transaction instead.
 It suppresses the deleted behaviour, appends a ``deleted`` marker version,
-clears the head's pointer and per-skill policy, archives what is left, and
-settles any publication still waiting for its workspace write.
+clears the head's pointer and per-skill policy, settles any publication
+still waiting for its workspace write, and archives what is left.
 """
 
 from __future__ import annotations
 
 import prisma.errors
+import prisma.models
 from prisma import Prisma
 from pydantic import BaseModel, Field
 
@@ -43,8 +44,8 @@ class DeletedBehavior(BaseModel):
 
 
 class SkillDeletion(BaseModel):
-    """``committed=False`` means the head no longer names the version the
-    caller read, so nothing was recorded; read it again and retry."""
+    """``committed=False`` means the head moved after the caller read it, so
+    nothing was recorded; read it again and retry."""
 
     committed: bool
     marker: SkillVersionRecord | None = None
@@ -67,13 +68,14 @@ async def record_skill_deletion(
 ) -> SkillDeletion:
     """End *skill_name*'s history and suppress *behaviors*, or change nothing.
 
-    The head row is locked first, so a publication's compare-and-swap either
-    lands before (and the caller sees ``committed=False``) or fails against
-    the marker's version number afterwards. A skill with no head has no
-    history to end; only its suppressions are recorded. The next version
-    under the name starts a new chain: the head names no version, and the
-    marker links to none, so revoking a source of the deleted history can
-    never reach it.
+    Locks are taken in the order a publication takes them, the new version
+    row and then the head, so the two never deadlock. Whichever moves the
+    head first wins. The loser finds the head changed, or its version number
+    taken, and rolls back: a publication reports a conflict, and a deletion
+    returns ``committed=False``. A skill with no head has no history to end;
+    only its suppressions are recorded. The next version under the name
+    starts a new chain: the head names no version, and the marker links to
+    none, so revoking a source of the deleted history can never reach it.
     """
     try:
         async with transaction() as tx:
@@ -101,48 +103,104 @@ async def _record(
     actor_user_id: str | None,
 ) -> SkillDeletion:
     owner_key = owner_key_for(expert_id)
-    heads = await query_raw_with_schema(
-        'SELECT "id", "currentVersion", "currentVersionId" '
-        'FROM {schema_prefix}"SkillHead" '
-        'WHERE "userId" = $1 AND "ownerKey" = $2 AND "skillName" = $3 FOR UPDATE',
-        user_id,
-        owner_key,
-        skill_name,
-        client=tx,
+    head = await tx.skillhead.find_unique(
+        where={
+            "userId_ownerKey_skillName": {
+                "userId": user_id,
+                "ownerKey": owner_key,
+                "skillName": skill_name,
+            }
+        }
     )
-    current_id = heads[0]["currentVersionId"] if heads else None
+    current_id = head.currentVersionId if head is not None else None
     if current_id != expected_current_version_id:
         raise _HeadChanged()
     if behaviors:
-        await tx.skillsuppression.create_many(
-            data=[
-                {
-                    "userId": user_id,
-                    "expertId": expert_id,
-                    "ownerKey": owner_key,
-                    "skillName": skill_name,
-                    "behaviorFingerprint": behavior.behavior_fingerprint,
-                    "behaviorTokens": list(behavior.behavior_tokens),
-                    "evidenceFingerprints": list(behavior.evidence_fingerprints),
-                    "actorUserId": actor_user_id,
-                    "reason": "deleted by the owner",
-                }
-                for behavior in behaviors
-            ],
-            skip_duplicates=True,
-        )
-    if not heads:
+        await _suppress(tx, user_id, expert_id, skill_name, behaviors, actor_user_id)
+    if head is None:
         return SkillDeletion(committed=True)
-    head_id = heads[0]["id"]
-    number = await next_version_number(head_id)
-    marker = await tx.skillversion.create(
+    marker = await _append_marker(tx, head, actor_user_id)
+    ended = await tx.skillhead.update_many(
+        where={
+            "id": head.id,
+            "currentVersion": head.currentVersion,
+            "currentVersionId": current_id,
+        },
         data={
-            "userId": user_id,
-            "expertId": expert_id,
-            "ownerKey": owner_key,
-            "skillName": skill_name,
-            "headId": head_id,
-            "version": number,
+            "currentVersion": marker.version,
+            "currentVersionId": None,
+            "contentHash": None,
+            "autoImprove": True,
+            "learningPausedAt": None,
+            "usePausedAt": None,
+        },
+    )
+    if not ended:
+        raise _HeadChanged()
+    abandoned = await _settle_pending(tx, user_id, head.id)
+    # A ``ready`` version is what a source revocation would restore, and an
+    # open proposal would edit a skill that is gone. Archived after the
+    # pending ones are settled: ``complete_publication`` runs outside the
+    # write lock, and a version it turns ready in between is caught here.
+    archived = await query_raw_with_schema(
+        """UPDATE {schema_prefix}"SkillVersion"
+        SET "state" = 'archived', "stateReason" = $3
+        WHERE "userId" = $1 AND "headId" = $2
+              AND "state" IN ('ready', 'needs_decision')
+        RETURNING "id" """,
+        user_id,
+        head.id,
+        DELETED_REASON,
+        client=tx,
+    )
+    return SkillDeletion(
+        committed=True,
+        marker=SkillVersionRecord.from_db(marker),
+        archived_version_ids=[str(row["id"]) for row in archived],
+        abandoned_version_ids=abandoned,
+    )
+
+
+async def _suppress(
+    tx: Prisma,
+    user_id: str,
+    expert_id: str | None,
+    skill_name: str,
+    behaviors: list[DeletedBehavior],
+    actor_user_id: str | None,
+) -> None:
+    await tx.skillsuppression.create_many(
+        data=[
+            {
+                "userId": user_id,
+                "expertId": expert_id,
+                "ownerKey": owner_key_for(expert_id),
+                "skillName": skill_name,
+                "behaviorFingerprint": behavior.behavior_fingerprint,
+                "behaviorTokens": list(behavior.behavior_tokens),
+                "evidenceFingerprints": list(behavior.evidence_fingerprints),
+                "actorUserId": actor_user_id,
+                "reason": "deleted by the owner",
+            }
+            for behavior in behaviors
+        ],
+        skip_duplicates=True,
+    )
+
+
+async def _append_marker(
+    tx: Prisma, head: prisma.models.SkillHead, actor_user_id: str | None
+) -> prisma.models.SkillVersion:
+    # A version number a concurrent publication already holds fails the
+    # insert, which rolls the deletion back for the caller to retry.
+    return await tx.skillversion.create(
+        data={
+            "userId": head.userId,
+            "expertId": head.expertId,
+            "ownerKey": head.ownerKey,
+            "skillName": head.skillName,
+            "headId": head.id,
+            "version": await next_version_number(head.id),
             "content": "",
             "contentHash": content_hash(""),
             "packageFiles": version_files_json(None),
@@ -152,7 +210,9 @@ async def _record(
             "origin": DELETED_ORIGIN,
             "actorUserId": actor_user_id,
             "summary": (
-                f"Deleted v{heads[0]['currentVersion']}" if current_id else "Deleted"
+                f"Deleted v{head.currentVersion}"
+                if head.currentVersionId
+                else "Deleted"
             ),
             "sources": SafeJson([]),
             "evidence": SafeJson([]),
@@ -160,37 +220,22 @@ async def _record(
             "state": DELETED_STATE,
         }
     )
-    await tx.skillhead.update(
-        where={"id": head_id},
-        data={
-            "currentVersion": number,
-            "currentVersionId": None,
-            "contentHash": None,
-            "autoImprove": True,
-            "learningPausedAt": None,
-            "usePausedAt": None,
-        },
-    )
-    # A ``ready`` version is what a source revocation would restore, and an
-    # open proposal would edit a skill that is gone.
-    archived = await query_raw_with_schema(
-        """UPDATE {schema_prefix}"SkillVersion"
-        SET "state" = 'archived', "stateReason" = $3
-        WHERE "userId" = $1 AND "headId" = $2
-              AND "state" IN ('ready', 'needs_decision')
-        RETURNING "id" """,
-        user_id,
-        head_id,
-        DELETED_REASON,
-        client=tx,
-    )
+
+
+async def _settle_pending(tx: Prisma, user_id: str, head_id: str) -> list[str]:
+    """Settle publications still waiting for their workspace write.
+
+    ``suppressed`` is terminal, so the review is not re-run for a skill its
+    owner deleted. A version that turned ready meanwhile is not pending any
+    more and is left to the archive step.
+    """
     pending = await tx.skillversion.find_many(
         where={"userId": user_id, "headId": head_id, "state": PENDING_WRITE_STATE}
     )
-    for version in pending:
-        # ``suppressed`` is terminal: the review is not re-run for a skill
-        # its owner deleted.
-        await settle_publication_in(
+    return [
+        version.id
+        for version in pending
+        if await settle_publication_in(
             tx,
             user_id,
             version_id=version.id,
@@ -199,9 +244,4 @@ async def _record(
             disposition="suppressed",
             reason=DELETED_REASON,
         )
-    return SkillDeletion(
-        committed=True,
-        marker=SkillVersionRecord.from_db(marker),
-        archived_version_ids=[str(row["id"]) for row in archived],
-        abandoned_version_ids=[version.id for version in pending],
-    )
+    ]
