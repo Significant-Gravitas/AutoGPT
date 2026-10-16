@@ -876,6 +876,26 @@ def _build_catalog() -> CatalogPayload:
                 ),
             ),
             CatalogModel(
+                slug="meta/muse-spark-open",
+                display_name="Muse Spark Open",
+                provider="open_router",
+                creator="meta",
+                context_window=1048576,
+                max_output_tokens=943718,
+                price_tier=1,
+                supports_tools=True,
+                supports_json_output=True,
+                supports_reasoning=True,
+                # Meta list price $1.25/$4.25 per Mtok, cache read $0.15/1M --
+                # live OpenRouter listing 2026-10-16 (meta/muse-spark-open).
+                cost=CatalogModelCost(
+                    run_credits=3,
+                    input_credits_per_1m=187.5,
+                    output_credits_per_1m=637.5,
+                    cache_read_credits_per_1m=22.5,
+                ),
+            ),
+            CatalogModel(
                 slug="meta/muse-wonder",
                 display_name="Muse Wonder",
                 provider="open_router",
