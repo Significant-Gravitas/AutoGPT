@@ -104,20 +104,15 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function withinPage(canvasElement: HTMLElement) {
-  return within(canvasElement.ownerDocument.body);
-}
-
 export const AccountPicker: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const page = withinPage(canvasElement);
     await userEvent.type(canvas.getByRole("textbox"), "Check my @");
     await expect(
-      await page.findByRole("option", { name: /Work Gmail/ }),
+      await canvas.findByRole("option", { name: /Work Gmail/ }),
     ).toBeVisible();
     await expect(
-      await page.findByRole("option", { name: /Team TODOs/ }),
+      await canvas.findByRole("option", { name: /Team TODOs/ }),
     ).toBeVisible();
   },
 };
@@ -126,11 +121,10 @@ export const EmptyState: Story = {
   args: { atTop: true },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const page = withinPage(canvasElement);
     const textbox = canvas.getByRole("textbox");
     await userEvent.type(textbox, "Check my @");
-    const first = await page.findByRole("option", { name: /Work Gmail/ });
-    const list = page.getByRole("listbox", { name: "Mention suggestions" });
+    const first = await canvas.findByRole("option", { name: /Work Gmail/ });
+    const list = canvas.getByRole("listbox", { name: "Mention suggestions" });
     await waitFor(() => {
       const listTop = list.getBoundingClientRect().top;
       expect(listTop).toBeGreaterThanOrEqual(0);
@@ -146,30 +140,28 @@ export const ExpertAccounts: Story = {
   args: { expertId: "expert-a" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const page = withinPage(canvasElement);
     await userEvent.type(canvas.getByRole("textbox"), "Check my @");
     await expect(
-      await page.findByRole("option", { name: /Work Gmail/ }),
+      await canvas.findByRole("option", { name: /Work Gmail/ }),
     ).toBeVisible();
     await expect(
-      page.queryByRole("option", { name: /Personal Gmail/ }),
+      canvas.queryByRole("option", { name: /Personal Gmail/ }),
     ).not.toBeInTheDocument();
   },
 };
 
 async function fillAccountPrompt(canvasElement: HTMLElement) {
   const canvas = within(canvasElement);
-  const page = withinPage(canvasElement);
   await userEvent.type(canvas.getByRole("textbox"), "Check my @Work");
   await userEvent.click(
-    await page.findByRole("option", { name: /Work Gmail/ }),
+    await canvas.findByRole("option", { name: /Work Gmail/ }),
   );
   await userEvent.type(
     canvas.getByRole("textbox"),
     "for new TODOs, and @Personal",
   );
   await userEvent.click(
-    await page.findByRole("option", { name: /Personal Gmail/ }),
+    await canvas.findByRole("option", { name: /Personal Gmail/ }),
   );
   await userEvent.type(canvas.getByRole("textbox"), "for work related emails.");
   await expect(canvas.getByRole("textbox")).toHaveTextContent("Personal Gmail");
