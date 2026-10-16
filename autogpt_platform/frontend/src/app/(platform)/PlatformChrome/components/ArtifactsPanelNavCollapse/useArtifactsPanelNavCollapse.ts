@@ -34,14 +34,14 @@ export function useArtifactsPanelNavCollapse() {
 
     if (collapsesNav) {
       openBeforePanelRef.current = openRef.current;
-      setOpen(false);
+      setOpen(false, { persist: false });
       return;
     }
     // Restore only what this hook collapsed. If the user re-opened the nav
     // by hand while the panel was up, that is a deliberate choice and closing
     // it again on panel-close would undo it in front of them.
     if (openBeforePanelRef.current !== null && openRef.current === false) {
-      setOpen(openBeforePanelRef.current);
+      setOpen(openBeforePanelRef.current, { persist: false });
     }
     openBeforePanelRef.current = null;
   }, [collapsesNav, setOpen]);

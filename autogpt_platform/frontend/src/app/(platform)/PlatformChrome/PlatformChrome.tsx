@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Navbar } from "@/components/layout/Navbar/Navbar";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
+  getPersistedSidebarOpen,
   SidebarInset,
   SidebarProvider,
   SidebarTrigger,
@@ -70,12 +71,15 @@ export function PlatformChrome({ children }: Props) {
   }
 
   if (showNewLayout) {
+    // Never server-rendered (usePlatformChrome), so reading the cookie is safe.
+    const openOutsideBuilder = getPersistedSidebarOpen() ?? !isBrainDumpEnabled;
     return (
       <SidebarProvider
-        defaultOpen={!isBuilderRoute && !isBrainDumpEnabled}
+        persistState
+        defaultOpen={!isBuilderRoute && openOutsideBuilder}
         style={{ "--sidebar-width": "18.25rem" } as CSSProperties}
       >
-        <BuilderSidebarAutoClose />
+        <BuilderSidebarAutoClose openOutsideBuilder={openOutsideBuilder} />
         <ArtifactsPanelNavCollapse />
         <AppSidebar />
         <SidebarInset className="bg-[#f9f9f9]">
