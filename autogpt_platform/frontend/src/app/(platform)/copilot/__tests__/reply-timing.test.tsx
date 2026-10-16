@@ -472,7 +472,7 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
 
       renderHost();
       await typeAndSend("over the limit");
-      await screen.findByText(/daily usage limit reached/i, undefined, {
+      await screen.findByText(/We couldn’t check your usage/i, undefined, {
         timeout: 5000,
       });
       await waitFor(() =>
