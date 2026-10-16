@@ -63,12 +63,7 @@ from .packages import load_reviewed_packages
 from .proposal import build_publish_request, validate_proposal
 from .publish import PublishRequest, publish_learned_version, reconcile_pending
 from .review_replay import MAX_MODEL_ATTEMPTS, load_review_replay, save_review_replay
-from .reviewer import (
-    REVIEW_TIMEOUT_SECONDS,
-    DreamLLMError,
-    record_review_cost,
-    review_evidence,
-)
+from .reviewer import DreamLLMError, record_review_cost, review_evidence
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +75,6 @@ MAX_EXISTING_SKILL_BODIES = 12
 MAX_EVIDENCE_CHARS = 24_000
 LEASE_KEY_PREFIX = "copilot:skill_learning:lease:"
 LEASE_TTL_SECONDS = 1800
-# A model review is cut off after REVIEW_TIMEOUT_SECONDS; a row another run
-# reserved more recently than twice that may still be waiting on its call.
-LIVE_REVIEW_SECONDS = 2 * REVIEW_TIMEOUT_SECONDS
 
 
 Trigger = Literal["nightly", "requested", "admin"]
@@ -303,16 +295,13 @@ async def _process_source(
         policy_version=POLICY_VERSION,
         run_id=result.run_id,
         max_attempts=MAX_MODEL_ATTEMPTS,
-        live_seconds=LIVE_REVIEW_SECONDS,
         expected_epoch=source.epoch,
     )
     if claim is None:
         previous = await reviews.get_review_for_revision(
             user_id, source.source_id, source.revision, POLICY_VERSION
         )
-        if previous is not None and previous.held_by_another_run(
-            result.run_id, LIVE_REVIEW_SECONDS
-        ):
+        if previous is not None and previous.held_by_another_run(result.run_id):
             # Every exit below writes this revision's row, which would cut
             # off that run's paid review mid-call; it settles the row itself.
             result.reviewed += 1

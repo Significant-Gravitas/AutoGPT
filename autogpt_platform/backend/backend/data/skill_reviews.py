@@ -25,6 +25,12 @@ from backend.data.skill_learning import (
 from backend.data.skill_review_lock import lock_review_source
 from backend.util.json import SafeJson
 
+# A model review is cut off after the reviewer's timeout (240s). A reviewing
+# row another run reserved or checkpointed more recently than twice that may
+# still be waiting on its paid call, so no other run may take it over or
+# overwrite it; an older one was left by a run that died.
+LIVE_REVIEW_SECONDS = 480
+
 TERMINAL_REVIEW_DISPOSITIONS = frozenset(
     {
         "applied",
@@ -94,7 +100,9 @@ class LearningReviewRecord(BaseModel):
             completed_at=row.completedAt,
         )
 
-    def held_by_another_run(self, run_id: str, live_seconds: int) -> bool:
+    def held_by_another_run(
+        self, run_id: str, live_seconds: int = LIVE_REVIEW_SECONDS
+    ) -> bool:
         """Another run reserved or checkpointed this review within
         ``live_seconds``, so its paid model call may still be running."""
         return (
@@ -155,10 +163,12 @@ async def upsert_review_in(
     policy_version: int,
     data: dict[str, Any],
     expected_run_id: str | None = None,
+    live_seconds: int = LIVE_REVIEW_SECONDS,
 ) -> prisma.models.SkillLearningReview:
     """Ledger upsert on ``client`` (a transaction or the default client).
 
     The caller must hold the owned source row lock throughout the update.
+    A review another run is still making is returned unchanged.
     """
     rev = canonical_revision(source_revision)
     existing = await client.skilllearningreview.find_unique(
@@ -190,6 +200,9 @@ async def upsert_review_in(
         existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
         or existing.disposition == "applied_pending"
         or (expected_run_id is not None and existing.runId != expected_run_id)
+        or LearningReviewRecord.from_db(existing).held_by_another_run(
+            data["runId"], live_seconds
+        )
     ):
         return existing
     if existing.reviewReplay is not None and not data.get("completedAt"):
@@ -219,6 +232,7 @@ async def upsert_review(
     cost_microdollars: int | None = None,
     completed: bool = True,
     expected_run_id: str | None = None,
+    live_seconds: int = LIVE_REVIEW_SECONDS,
 ) -> LearningReviewRecord:
     """Write the ledger row for one review attempt (update in place on retry)."""
     async with transaction() as tx:
@@ -232,6 +246,7 @@ async def upsert_review(
             source_revision=source_revision,
             policy_version=policy_version,
             expected_run_id=expected_run_id,
+            live_seconds=live_seconds,
             data=review_data(
                 run_id=run_id,
                 disposition=disposition,
@@ -327,8 +342,8 @@ async def reserve_model_review(
     policy_version: int,
     run_id: str,
     max_attempts: int,
-    live_seconds: int,
     expected_epoch: int,
+    live_seconds: int = LIVE_REVIEW_SECONDS,
 ) -> LearningReviewRecord | None:
     """Claim one paid model review of the revision for ``run_id``.
 

@@ -35,6 +35,7 @@ from backend.data.skill_publication import (
     VersionDraft,
 )
 from backend.data.skill_reviews import (
+    LIVE_REVIEW_SECONDS,
     TERMINAL_REVIEW_DISPOSITIONS,
     LearningReviewRecord,
     LearningRunSummary,
@@ -286,6 +287,7 @@ class FakeLearningStore:
         cost_microdollars: int | None = None,
         completed: bool = True,
         expected_run_id: str | None = None,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord:
         source = await self.require_owned_source(user_id, source_id)
         key = self._review_key(source_id, source_revision, policy_version)
@@ -298,6 +300,7 @@ class FakeLearningStore:
             existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == APPLIED_PENDING_DISPOSITION
             or (expected_run_id is not None and existing.run_id != expected_run_id)
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return existing
         if existing is not None and existing.replay is not None and not completed:
@@ -358,8 +361,8 @@ class FakeLearningStore:
         policy_version: int,
         run_id: str,
         max_attempts: int,
-        live_seconds: int,
         expected_epoch: int,
+        live_seconds: int = LIVE_REVIEW_SECONDS,
     ) -> LearningReviewRecord | None:
         source = await self.get_source(user_id, source_id)
         if (

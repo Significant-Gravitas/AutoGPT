@@ -71,6 +71,7 @@ async def test_model_attempt_reservation_is_atomic_and_owned(server):
             run_id="settled",
             disposition="skipped",
             reason="attempt limit reached",
+            live_seconds=0,
         )
         assert settled.cost_microdollars == 1000 and settled.input_tokens == 10
         assert settled.model_attempts == 3 and settled.replay is None

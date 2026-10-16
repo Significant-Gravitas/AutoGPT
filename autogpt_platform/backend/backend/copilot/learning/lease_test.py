@@ -5,6 +5,8 @@ import pytest
 
 from backend.copilot.learning import nightly, nightly_test
 from backend.copilot.learning.nightly_test import USER, _run, _source
+from backend.copilot.learning.reviewer import REVIEW_TIMEOUT_SECONDS
+from backend.data.skill_reviews import LIVE_REVIEW_SECONDS
 
 adapter = nightly_test.adapter
 boundaries = nightly_test.boundaries
@@ -53,7 +55,6 @@ async def _reviewed_by_another_run(
             policy_version=nightly.POLICY_VERSION,
             run_id="another-run",
             max_attempts=nightly.MAX_MODEL_ATTEMPTS,
-            live_seconds=nightly.LIVE_REVIEW_SECONDS,
             expected_epoch=source.epoch,
         )
         assert claim is not None
@@ -69,8 +70,7 @@ def _left_by_a_run_that_died(store, review):
     )
     store.reviews[key] = review.model_copy(
         update={
-            "updated_at": review.updated_at
-            - timedelta(seconds=nightly.LIVE_REVIEW_SECONDS + 1)
+            "updated_at": review.updated_at - timedelta(seconds=LIVE_REVIEW_SECONDS + 1)
         }
     )
 
@@ -133,3 +133,28 @@ async def test_a_review_left_by_a_run_that_died_is_settled(
         USER, source.id, source.revision, nightly.POLICY_VERSION
     )
     assert row.disposition == "skipped" and "attempt" in row.reason
+
+
+def test_a_claim_stays_live_for_longer_than_a_model_review_can_run():
+    assert LIVE_REVIEW_SECONDS >= 2 * REVIEW_TIMEOUT_SECONDS
+
+
+@pytest.mark.asyncio
+async def test_an_exit_before_the_reservation_leaves_a_live_review_alone(
+    fake_store, adapter, boundaries
+):
+    """The pass can stop on a source before reserving it, here because the
+    budget ran out after the pass began; recording why must not overwrite
+    another run's review either."""
+    source = await _source(fake_store)
+    live = await _reviewed_by_another_run(fake_store, source, 1)
+    boundaries["budget"].side_effect = [(True, None), (False, "insufficient_credits")]
+
+    result = await _run()
+
+    assert result.dispositions == {"deferred": 1}
+    boundaries["review"].assert_not_called()
+    row = await fake_store.get_review_for_revision(
+        USER, source.id, source.revision, nightly.POLICY_VERSION
+    )
+    assert row == live

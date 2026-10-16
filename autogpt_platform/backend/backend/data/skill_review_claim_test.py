@@ -89,7 +89,6 @@ async def test_a_live_claim_is_left_to_its_run_and_a_dead_one_is_taken_over(serv
             source_revision=source.revision,
             policy_version=1,
             max_attempts=3,
-            live_seconds=480,
             expected_epoch=source.epoch,
         )
         claims = await asyncio.gather(
@@ -103,7 +102,9 @@ async def test_a_live_claim_is_left_to_its_run_and_a_dead_one_is_taken_over(serv
             await reviews.get_review_for_revision(user, source.id, source.revision, 1)
             == live
         )
-        died_at = datetime.now(timezone.utc) - timedelta(seconds=481)
+        died_at = datetime.now(timezone.utc) - timedelta(
+            seconds=reviews.LIVE_REVIEW_SECONDS + 1
+        )
         await prisma.models.SkillLearningReview.prisma().update(
             where={"id": live.id}, data={"updatedAt": died_at}
         )
@@ -115,6 +116,45 @@ async def test_a_live_claim_is_left_to_its_run_and_a_dead_one_is_taken_over(serv
             user, source.id, source.revision, 1
         )
         assert stored.updated_at == taken_over.updated_at
+    finally:
+        await _cleanup(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_another_runs_write_leaves_a_live_claim_alone(server):
+    """Every ledger write, not only a reservation, leaves a claim another
+    run may still be using as it is; once the claim is older than any
+    call can run, the write applies."""
+    user = str(uuid4())
+    await _create_user(user)
+    try:
+        source = await _source(user)
+        params = dict(
+            source_id=source.id, source_revision=source.revision, policy_version=1
+        )
+        await reviews.reserve_model_review(
+            user, **params, run_id="paid", max_attempts=3, expected_epoch=source.epoch
+        )
+        live = await reviews.get_review_for_revision(
+            user, source.id, source.revision, 1
+        )
+        stopped = dict(
+            **params, run_id="other", disposition="budget_exhausted", completed=False
+        )
+        assert await reviews.upsert_review(user, **stopped) == live
+        assert (
+            await reviews.get_review_for_revision(user, source.id, source.revision, 1)
+            == live
+        )
+        await prisma.models.SkillLearningReview.prisma().update(
+            where={"id": live.id},
+            data={
+                "updatedAt": datetime.now(timezone.utc)
+                - timedelta(seconds=reviews.LIVE_REVIEW_SECONDS + 1)
+            },
+        )
+        applied = await reviews.upsert_review(user, **stopped)
+        assert (applied.run_id, applied.disposition) == ("other", "budget_exhausted")
     finally:
         await _cleanup(user)
 
