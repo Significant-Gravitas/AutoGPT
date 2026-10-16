@@ -39,6 +39,8 @@ const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
 const KICKOFF_SESSION_ID = "session-zara-kickoff";
 const RESET_SESSION_ID = "session-zara-reset";
+const RETRY_SESSION_ID = "session-zara-retry";
+const REMOVE_SESSION_ID = "session-zara-remove";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -121,6 +123,31 @@ function uploadHandler(recorder: Recorder) {
         path: "/photo.png",
         mime_type: "image/png",
         size_bytes: 2048,
+      });
+    },
+  );
+}
+
+const NOTES_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000cc";
+
+/** Fails the first upload of `notes.pdf`; every other upload lands. */
+function uploadFailingNotesOnce(uploadedNames: string[]) {
+  let hasFailed = false;
+  return http.post(
+    `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+    async ({ request }) => {
+      const file = (await request.formData()).get("file") as File;
+      uploadedNames.push(file.name);
+      if (file.name === "notes.pdf" && !hasFailed) {
+        hasFailed = true;
+        return HttpResponse.json({ detail: "Upload failed" }, { status: 500 });
+      }
+      return HttpResponse.json({
+        file_id: file.name === "notes.pdf" ? NOTES_FILE_ID : UPLOADED_FILE_ID,
+        name: file.name,
+        path: `/${file.name}`,
+        mime_type: file.type,
+        size_bytes: file.size,
       });
     },
   );
@@ -439,5 +466,102 @@ describe("ExpertChatDrawer attachments", () => {
       message: "what is this",
       file_ids: [UPLOADED_FILE_ID],
     });
+  });
+});
+
+describe("ExpertChatDrawer failed uploads", () => {
+  async function sendPhotoAndNotes(
+    sessionId: string,
+    recorder: Recorder,
+    uploadedNames: string[],
+  ) {
+    const user = userEvent.setup();
+    server.use(
+      existingThreadList(sessionId),
+      sessionHandler(sessionId),
+      uploadFailingNotesOnce(uploadedNames),
+      streamHandler(recorder, sessionId),
+    );
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+    const input = await enabledComposer();
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    if (!fileInput) throw new Error("The composer has no file input");
+    await user.upload(fileInput, [
+      photo(),
+      new File(["y".repeat(4096)], "notes.pdf", { type: "application/pdf" }),
+    ]);
+    await screen.findByText("notes.pdf");
+    await user.type(input, "compare these{Enter}");
+
+    const failedCard = await waitFor(() => {
+      const card = within(pendingBubble())
+        .getAllByTestId("pending-upload-attachment")
+        .find((c) => within(c).queryByText("notes.pdf"));
+      expect(card?.dataset.status).toBe("failed");
+      return card!;
+    });
+    return { user, failedCard };
+  }
+
+  test("keeps a failed file in the bubble and sends nothing until it is retried", async () => {
+    const recorder = newRecorder();
+    const uploadedNames: string[] = [];
+    const { user, failedCard } = await sendPhotoAndNotes(
+      RETRY_SESSION_ID,
+      recorder,
+      uploadedNames,
+    );
+
+    expect(within(failedCard).getByText("Upload failed")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe(
+      "Couldn't upload notes.pdf. Retry or remove it to send your message.",
+    );
+    const photoCard = within(pendingBubble())
+      .getAllByTestId("pending-upload-attachment")
+      .find((c) => within(c).queryByText("photo.png"));
+    expect(photoCard?.dataset.status).toBe("uploaded");
+    expect(recorder.streamBodies).toEqual([]);
+
+    await user.click(
+      within(failedCard).getByRole("button", { name: "Retry notes.pdf" }),
+    );
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    expect(uploadedNames.filter((name) => name === "photo.png")).toEqual([
+      "photo.png",
+    ]);
+    expect(uploadedNames.filter((name) => name === "notes.pdf")).toEqual([
+      "notes.pdf",
+      "notes.pdf",
+    ]);
+    expect(recorder.streamBodies[0]).toMatchObject({
+      message: "compare these",
+      file_ids: [UPLOADED_FILE_ID, NOTES_FILE_ID],
+    });
+  });
+
+  test("sends the rest once the failed file is removed", async () => {
+    const recorder = newRecorder();
+    const uploadedNames: string[] = [];
+    const { user, failedCard } = await sendPhotoAndNotes(
+      REMOVE_SESSION_ID,
+      recorder,
+      uploadedNames,
+    );
+
+    await user.click(
+      within(failedCard).getByRole("button", { name: "Remove notes.pdf" }),
+    );
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    expect(recorder.streamBodies[0]).toMatchObject({
+      message: "compare these",
+      file_ids: [UPLOADED_FILE_ID],
+    });
+    expect(uploadedNames.filter((name) => name === "notes.pdf")).toEqual([
+      "notes.pdf",
+    ]);
   });
 });

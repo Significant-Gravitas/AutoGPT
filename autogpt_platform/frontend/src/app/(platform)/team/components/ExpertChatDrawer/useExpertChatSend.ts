@@ -1,4 +1,7 @@
-import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
+import {
+  useCopilotStreamStore,
+  type PendingUploadSend,
+} from "@/app/(platform)/copilot/copilotStreamStore";
 import {
   describePendingUpload,
   sendWithAttachments,
@@ -27,7 +30,10 @@ interface Args {
  * long as its files upload or it waits for the reply in flight to end.
  */
 export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
-  const [heldMessage, setHeldMessage] = useState<OutgoingMessage | null>(null);
+  const [held, setHeld] = useState<{
+    message: OutgoingMessage;
+    pending: PendingUploadSend;
+  } | null>(null);
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
   const { waitUntilSettled } = useSettleGate(
@@ -38,13 +44,16 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   );
 
   function hold(message: OutgoingMessage) {
-    setHeldMessage((current) => current ?? message);
+    setHeld(
+      (current) =>
+        current ?? { message, pending: describePendingUpload(message) },
+    );
   }
 
   /** Without a message, drops whatever is held (the thread was reset). */
   function release(message?: OutgoingMessage) {
-    setHeldMessage((current) =>
-      !message || current === message ? null : current,
+    setHeld((current) =>
+      !message || current?.message === message ? null : current,
     );
   }
 
@@ -89,8 +98,7 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   }
 
   return {
-    pendingSend:
-      placeholder ?? (heldMessage ? describePendingUpload(heldMessage) : null),
+    pendingSend: placeholder ?? held?.pending ?? null,
     hold,
     release,
     sendNow,

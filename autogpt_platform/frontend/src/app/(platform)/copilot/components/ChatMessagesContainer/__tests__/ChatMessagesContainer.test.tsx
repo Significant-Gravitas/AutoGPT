@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatMessagesContainer } from "../ChatMessagesContainer";
 import { buildKickoffMessage } from "../../../expertKickoff";
 import type { TurnStatsMap } from "../../../helpers/convertChatSessionToUiMessages";
+import type { PendingUploadSend } from "../../../copilotStreamStore";
 
 type Message = UIMessage<unknown, UIDataTypes, UITools>;
 
@@ -1179,16 +1180,23 @@ describe("ChatMessagesContainer — expert kickoff", () => {
 // ── pending upload placeholder ────────────────────────────────────────────
 
 describe("ChatMessagesContainer — pendingSend", () => {
-  const pendingSend = {
+  const pendingSend: PendingUploadSend = {
+    id: "pending-1",
     text: "tell me about this",
     attachments: [
       {
+        id: "talk",
         name: "talk.pdf",
         mediaType: "application/pdf",
         sizeBytes: 2048,
-        isUploading: true,
+        status: "uploading",
       },
-      { name: "icon.png", mediaType: "image/png", isUploading: true },
+      {
+        id: "icon",
+        name: "icon.png",
+        mediaType: "image/png",
+        status: "uploading",
+      },
     ],
   };
 

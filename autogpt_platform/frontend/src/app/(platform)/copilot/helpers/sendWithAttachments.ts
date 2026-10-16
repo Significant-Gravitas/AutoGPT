@@ -75,7 +75,9 @@ export function validateAttachments(message: OutgoingMessage): boolean {
 /**
  * Uploads the message's local files into the session, then sends the message
  * with every attachment as a file part. While that runs, the session's
- * placeholder bubble shows the message and reads "Uploading N files…".
+ * placeholder bubble shows the message with each file's own upload status.
+ * A file that fails to upload holds the send until the user retries it or
+ * removes it (`retryPendingUpload` / `removePendingUpload`).
  */
 export async function sendWithAttachments({
   sessionId,
@@ -102,23 +104,20 @@ export async function sendWithAttachments({
   // files goes through, including the flush after session creation.
   const pending = describePendingUpload(message);
   useCopilotStreamStore.getState().setPendingUploadSend(sessionId, pending);
+  const localAttachments = pending.attachments.slice(parts.length);
   let send: Promise<void> | undefined;
   try {
-    const uploaded = await uploadFiles(files, sessionId);
-    let sentParts = [...parts, ...buildFileParts(uploaded)];
-    if (files.length > 0 && uploaded.length === 0) {
-      toast({
-        title: "File upload failed",
-        description: "Could not upload any files. Please try again.",
-        variant: "destructive",
-      });
-      // The workspace references didn't fail to upload (they need no upload),
-      // so don't discard them just because the local uploads failed.
-      if (parts.length === 0) {
-        throw new Error("All file uploads failed");
-      }
-      sentParts = parts;
-    }
+    const uploads = await Promise.all(
+      files.map((file, i) =>
+        uploadUntilSettled(sessionId, pending, localAttachments[i].id, file),
+      ),
+    );
+    if (uploads.includes(ABANDONED)) return;
+    const sentParts = [
+      ...parts,
+      ...uploads.filter((part): part is FileUIPart => part !== null),
+    ];
+    if (!text && sentParts.length === 0) return;
     if (waitUntilReady && !(await waitUntilReady())) return;
     send = sendMessage(messageInput(text, sentParts, metadata));
   } finally {
@@ -136,62 +135,132 @@ export function describePendingUpload(
 ): PendingUploadSend {
   const stored: PendingUploadAttachment[] = message.parts.map((part) =>
     isFolderPart(part)
-      ? { name: part.data.name, mediaType: "folder", isUploading: false }
+      ? {
+          id: nextPendingUploadId(),
+          name: part.data.name,
+          mediaType: "folder",
+          status: "uploaded",
+        }
       : {
+          id: nextPendingUploadId(),
           name: part.filename ?? "file",
           mediaType: part.mediaType,
-          isUploading: false,
+          status: "uploaded",
         },
   );
   const local: PendingUploadAttachment[] = message.files.map((file) => ({
+    id: nextPendingUploadId(),
     name: file.name,
     mediaType: file.type || "application/octet-stream",
     sizeBytes: file.size,
-    isUploading: true,
+    status: "uploading",
   }));
-  return { text: message.text, attachments: [...stored, ...local] };
+  return {
+    id: nextPendingUploadId(),
+    text: message.text,
+    attachments: [...stored, ...local],
+  };
 }
 
-async function uploadFiles(
-  files: File[],
+let pendingUploadCount = 0;
+
+function nextPendingUploadId() {
+  pendingUploadCount += 1;
+  return `pending-upload-${pendingUploadCount}`;
+}
+
+type FailedUploadChoice = "retry" | "remove";
+
+const ABANDONED = Symbol("abandoned");
+
+/** What each failed card's Retry and Remove resolve, by attachment id. An
+ *  entry lives exactly as long as its card shows the failed state. */
+const failedUploads = new Map<
+  string,
+  (choice: FailedUploadChoice | typeof ABANDONED) => void
+>();
+
+export function retryPendingUpload(attachmentId: string) {
+  failedUploads.get(attachmentId)?.("retry");
+}
+
+export function removePendingUpload(attachmentId: string) {
+  failedUploads.get(attachmentId)?.("remove");
+}
+
+/** Resolves to the file's part once it is stored, `null` when the user
+ *  removed it, or `ABANDONED` when its placeholder went away first. */
+async function uploadUntilSettled(
   sessionId: string,
-): Promise<UploadedFile[]> {
-  const results = await Promise.allSettled(
-    files.map(async (file) => {
-      try {
-        const data = await uploadFileDirect(file, sessionId);
-        if (!data.file_id) throw new Error("No file_id returned");
-        return {
-          file_id: data.file_id,
-          name: data.name || file.name,
-          mime_type: data.mime_type || "application/octet-stream",
-        } as UploadedFile;
-      } catch (err) {
-        console.error("File upload failed:", err);
-        toast({
-          title: "File upload failed",
-          description: file.name,
-          variant: "destructive",
-        });
-        throw err;
-      }
-    }),
-  );
-  return results
-    .filter(
-      (r): r is PromiseFulfilledResult<UploadedFile> =>
-        r.status === "fulfilled",
-    )
-    .map((r) => r.value);
+  pending: PendingUploadSend,
+  attachmentId: string,
+  file: File,
+): Promise<FileUIPart | null | typeof ABANDONED> {
+  const store = useCopilotStreamStore.getState();
+  for (;;) {
+    store.setPendingUploadAttachment(sessionId, attachmentId, {
+      status: "uploading",
+    });
+    try {
+      const uploaded = await uploadFile(file, sessionId);
+      store.setPendingUploadAttachment(sessionId, attachmentId, {
+        status: "uploaded",
+      });
+      return buildFilePart(uploaded);
+    } catch (err) {
+      console.error("File upload failed:", err);
+      store.setPendingUploadAttachment(sessionId, attachmentId, {
+        status: "failed",
+      });
+    }
+    const choice = await waitForChoice(sessionId, pending, attachmentId);
+    if (choice === "remove") {
+      store.removePendingUploadAttachment(sessionId, attachmentId);
+      return null;
+    }
+    if (choice === ABANDONED) return ABANDONED;
+  }
 }
 
-function buildFileParts(uploaded: UploadedFile[]): FileUIPart[] {
-  return uploaded.map((f) => ({
-    type: "file" as const,
-    mediaType: f.mime_type,
-    filename: f.name,
-    url: workspaceFileDownloadUrl(f.file_id),
-  }));
+function waitForChoice(
+  sessionId: string,
+  pending: PendingUploadSend,
+  attachmentId: string,
+) {
+  const isShown = () =>
+    useCopilotStreamStore.getState().pendingUploadSends[sessionId]?.id ===
+    pending.id;
+  if (!isShown()) return Promise.resolve(ABANDONED);
+  return new Promise<FailedUploadChoice | typeof ABANDONED>((resolve) => {
+    const unsubscribe = useCopilotStreamStore.subscribe(() => {
+      if (!isShown()) settle(ABANDONED);
+    });
+    function settle(choice: FailedUploadChoice | typeof ABANDONED) {
+      failedUploads.delete(attachmentId);
+      unsubscribe();
+      resolve(choice);
+    }
+    failedUploads.set(attachmentId, settle);
+  });
+}
+
+async function uploadFile(file: File, sessionId: string) {
+  const data = await uploadFileDirect(file, sessionId);
+  if (!data.file_id) throw new Error("No file_id returned");
+  return {
+    file_id: data.file_id,
+    name: data.name || file.name,
+    mime_type: data.mime_type || "application/octet-stream",
+  } satisfies UploadedFile;
+}
+
+function buildFilePart(uploaded: UploadedFile): FileUIPart {
+  return {
+    type: "file",
+    mediaType: uploaded.mime_type,
+    filename: uploaded.name,
+    url: workspaceFileDownloadUrl(uploaded.file_id),
+  };
 }
 
 function messageInput(

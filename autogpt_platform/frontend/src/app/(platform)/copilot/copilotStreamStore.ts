@@ -58,12 +58,17 @@ export interface PendingFirstSend {
   metadata?: ExpertKickoffMetadata;
 }
 
+/** Local files start `uploading`; workspace references are already stored,
+ *  so they start `uploaded`. A `failed` file holds the send until the user
+ *  retries or removes it. */
+export type PendingUploadStatus = "uploading" | "uploaded" | "failed";
+
 export interface PendingUploadAttachment {
+  id: string;
   name: string;
   mediaType: string;
   sizeBytes?: number;
-  /** Local files upload before the send; workspace references are already stored. */
-  isUploading: boolean;
+  status: PendingUploadStatus;
 }
 
 /**
@@ -81,6 +86,7 @@ export interface PendingUploadAttachment {
  * loses the `File` objects, so there is nothing left to wait for.
  */
 export interface PendingUploadSend {
+  id: string;
   text: string;
   attachments: PendingUploadAttachment[];
 }
@@ -125,6 +131,15 @@ interface CopilotStreamStore {
   clearPendingUploadSend: (
     sessionId: string | null,
     send?: PendingUploadSend,
+  ) => void;
+  setPendingUploadAttachment: (
+    sessionId: string,
+    attachmentId: string,
+    patch: Partial<Omit<PendingUploadAttachment, "id">>,
+  ) => void;
+  removePendingUploadAttachment: (
+    sessionId: string,
+    attachmentId: string,
   ) => void;
   /** Read-and-clear; used by the post-session-creation flush effect. */
   takePendingFirstSend: (sessionId: string) => {
@@ -214,11 +229,25 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
         set((state) => {
           const key = pendingUploadKey(sessionId);
           const current = state.pendingUploadSends[key];
-          if (!current || (send && current !== send)) return {};
+          if (!current || (send && current.id !== send.id)) return {};
           const pendingUploadSends = { ...state.pendingUploadSends };
           delete pendingUploadSends[key];
           return { pendingUploadSends };
         });
+      },
+      setPendingUploadAttachment(sessionId, attachmentId, patch) {
+        updateAttachments(set, sessionId, (attachments) =>
+          attachments.map((attachment) =>
+            attachment.id === attachmentId
+              ? { ...attachment, ...patch }
+              : attachment,
+          ),
+        );
+      },
+      removePendingUploadAttachment(sessionId, attachmentId) {
+        updateAttachments(set, sessionId, (attachments) =>
+          attachments.filter((attachment) => attachment.id !== attachmentId),
+        );
       },
       takePendingFirstSend(sessionId) {
         const {
@@ -316,3 +345,20 @@ export const useCopilotStreamStore = create<CopilotStreamStore>()(
 );
 
 export const DEFAULT_SESSION_COORD = defaultCoord;
+
+function updateAttachments(
+  set: (fn: (state: CopilotStreamStore) => Partial<CopilotStreamStore>) => void,
+  sessionId: string,
+  update: (attachments: PendingUploadAttachment[]) => PendingUploadAttachment[],
+) {
+  set((state) => {
+    const current = state.pendingUploadSends[sessionId];
+    if (!current) return {};
+    return {
+      pendingUploadSends: {
+        ...state.pendingUploadSends,
+        [sessionId]: { ...current, attachments: update(current.attachments) },
+      },
+    };
+  });
+}

@@ -4,6 +4,10 @@ import { useCopilotStreamStore } from "../copilotStreamStore";
 import { useCopilotUIStore } from "../store";
 import { useSendMessage } from "../useSendMessage";
 import {
+  removePendingUpload,
+  retryPendingUpload,
+} from "../helpers/sendWithAttachments";
+import {
   MAX_ATTACHMENTS,
   type WorkspaceAttachment,
 } from "../helpers/workspaceAttachments";
@@ -80,13 +84,15 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(result.current.pendingSend).not.toBeNull());
     expect(result.current.pendingSend).toEqual({
+      id: expect.any(String),
       text: "tell me about this",
       attachments: [
         {
+          id: expect.any(String),
           name: "talk.pdf",
           mediaType: "application/pdf",
           sizeBytes: 2048,
-          isUploading: true,
+          status: "uploading",
         },
       ],
     });
@@ -142,67 +148,37 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(result.current.pendingSend).not.toBeNull());
     expect(result.current.pendingSend?.attachments).toEqual([
-      { name: "notes.txt", mediaType: "text/plain", isUploading: false },
       {
+        id: expect.any(String),
+        name: "notes.txt",
+        mediaType: "text/plain",
+        status: "uploaded",
+      },
+      {
+        id: expect.any(String),
         name: "icon.png",
         mediaType: "image/png",
         sizeBytes: 2048,
-        isUploading: true,
+        status: "uploading",
       },
     ]);
   });
 
-  it("drops the placeholder and rethrows when every upload fails", async () => {
-    uploadFileDirectMock.mockRejectedValue(new Error("boom"));
-    const { result, sendMessage } = renderSendMessage();
-
-    let failure: unknown;
-    await act(async () => {
-      failure = await result.current
-        .onSend("hi", [makeFile("talk.pdf")])
-        .catch((err: unknown) => err);
-    });
-
-    expect(failure).toBeInstanceOf(Error);
-    expect(sendMessage).not.toHaveBeenCalled();
-    expect(result.current.pendingSend).toBeNull();
-    expect(result.current.isUploadingFiles).toBe(false);
-  });
-
-  it("still sends the workspace references when every local upload fails", async () => {
+  it("keeps a failed upload in the bubble and sends nothing", async () => {
     uploadFileDirectMock.mockRejectedValue(new Error("boom"));
     const { result, sendMessage } = renderSendMessage();
 
     act(() => {
-      void result.current.onSend(
-        "compare",
-        [makeFile("talk.pdf")],
-        [
-          {
-            kind: "workspace" as const,
-            fileId: FILE_ID,
-            name: "notes.txt",
-            mimeType: "text/plain",
-          },
-        ],
-      );
+      void result.current.onSend("hi", [makeFile("talk.pdf")]);
     });
 
-    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
-    expect(sendMessage).toHaveBeenCalledWith({
-      text: "compare",
-      files: [
-        {
-          type: "file",
-          mediaType: "text/plain",
-          filename: "notes.txt",
-          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
-        },
-      ],
-      metadata: undefined,
-    });
-    await waitFor(() => expect(result.current.pendingSend).toBeNull());
-    expect(result.current.isUploadingFiles).toBe(false);
+    await waitFor(() =>
+      expect(result.current.pendingSend?.attachments[0].status).toBe("failed"),
+    );
+    expect(result.current.pendingSend?.text).toBe("hi");
+    expect(result.current.isUploadingFiles).toBe(true);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(toastMock).not.toHaveBeenCalled();
   });
 
   it("does not publish a placeholder for a text-only first message", async () => {
@@ -233,13 +209,15 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(createSession).toHaveBeenCalledTimes(1));
     expect(result.current.pendingSend).toEqual({
+      id: expect.any(String),
       text: "first",
       attachments: [
         {
+          id: expect.any(String),
           name: "talk.pdf",
           mediaType: "application/pdf",
           sizeBytes: 2048,
-          isUploading: true,
+          status: "uploading",
         },
       ],
     });
@@ -251,6 +229,7 @@ describe("useSendMessage with local attachments", () => {
 
     act(() => {
       useCopilotStreamStore.getState().setPendingUploadSend(SESSION_ID, {
+        id: "elsewhere",
         text: "elsewhere",
         attachments: [],
       });
@@ -258,6 +237,79 @@ describe("useSendMessage with local attachments", () => {
 
     await waitFor(() => expect(result.current.pendingSend).toBeNull());
     expect(result.current.isUploadingFiles).toBe(false);
+  });
+});
+
+describe("useSendMessage with a failed upload", () => {
+  async function failedAttachment(
+    result: ReturnType<typeof renderSendMessage>["result"],
+  ) {
+    await waitFor(() =>
+      expect(result.current.pendingSend?.attachments[0].status).toBe("failed"),
+    );
+    return result.current.pendingSend!.attachments[0].id;
+  }
+
+  it("sends the text alone once the failed file is removed", async () => {
+    uploadFileDirectMock.mockRejectedValue(new Error("boom"));
+    const { result, sendMessage } = renderSendMessage();
+
+    act(() => {
+      void result.current.onSend("still here", [makeFile("talk.pdf")]);
+    });
+    const id = await failedAttachment(result);
+
+    act(() => removePendingUpload(id));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(sendMessage).toHaveBeenCalledWith({
+      text: "still here",
+      files: undefined,
+      metadata: undefined,
+    });
+    expect(uploadFileDirectMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(result.current.pendingSend).toBeNull());
+  });
+
+  it("drops a message with nothing left once its only file is removed", async () => {
+    uploadFileDirectMock.mockRejectedValue(new Error("boom"));
+    const { result, sendMessage } = renderSendMessage();
+
+    let sent: Promise<void> | undefined;
+    act(() => {
+      sent = result.current.onSend("", [makeFile("talk.pdf")]);
+    });
+    const id = await failedAttachment(result);
+
+    await act(async () => {
+      removePendingUpload(id);
+      await sent;
+    });
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(result.current.pendingSend).toBeNull();
+    expect(result.current.isUploadingFiles).toBe(false);
+  });
+
+  it("forgets a failed file's Retry once its placeholder is gone", async () => {
+    uploadFileDirectMock.mockRejectedValue(new Error("boom"));
+    const { result, sendMessage } = renderSendMessage();
+
+    let sent: Promise<void> | undefined;
+    act(() => {
+      sent = result.current.onSend("hi", [makeFile("talk.pdf")]);
+    });
+    const id = await failedAttachment(result);
+
+    await act(async () => {
+      useCopilotStreamStore.getState().clearPendingUploadSend(SESSION_ID);
+      await sent;
+    });
+    act(() => retryPendingUpload(id));
+
+    expect(uploadFileDirectMock).toHaveBeenCalledTimes(1);
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(result.current.pendingSend).toBeNull();
   });
 });
 
@@ -399,22 +451,40 @@ describe("useSendMessage first send failing after the session exists", () => {
     return renderSendMessage(SESSION_ID);
   }
 
-  it("restores the draft when every upload for the first send fails", async () => {
-    uploadFileDirectMock.mockRejectedValue(new Error("network down"));
+  it("keeps the first send's failed upload in the new chat's bubble until it is retried", async () => {
+    uploadFileDirectMock.mockRejectedValueOnce(new Error("network down"));
+    uploadFileDirectMock.mockResolvedValueOnce({
+      file_id: FILE_ID,
+      name: "talk.pdf",
+      mime_type: "application/pdf",
+    });
 
     const created = await startFirstSend("first", [makeFile("talk.pdf")]);
 
     await waitFor(() =>
-      expect(useCopilotUIStore.getState().initialPrompt).toBe("first"),
+      expect(created.result.current.pendingSend?.attachments[0].status).toBe(
+        "failed",
+      ),
     );
     expect(created.sendMessage).not.toHaveBeenCalled();
-    expect(created.result.current.pendingSend).toBeNull();
-    expect(created.result.current.isUploadingFiles).toBe(false);
-    expect(toastMock).toHaveBeenLastCalledWith({
-      title: "Couldn't send message",
-      description:
-        "All file uploads failed — your message is back in the composer.",
-      variant: "destructive",
+    expect(useCopilotUIStore.getState().initialPrompt).toBeNull();
+
+    act(() => {
+      retryPendingUpload(created.result.current.pendingSend!.attachments[0].id);
+    });
+
+    await waitFor(() => expect(created.sendMessage).toHaveBeenCalledTimes(1));
+    expect(created.sendMessage).toHaveBeenCalledWith({
+      text: "first",
+      files: [
+        {
+          type: "file",
+          mediaType: "application/pdf",
+          filename: "talk.pdf",
+          url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+        },
+      ],
+      metadata: undefined,
     });
   });
 
