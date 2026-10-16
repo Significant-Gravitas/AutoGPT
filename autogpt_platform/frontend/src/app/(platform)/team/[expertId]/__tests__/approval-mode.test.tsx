@@ -270,7 +270,9 @@ describe("Expert approval mode", () => {
     render(<ExpertDetailPage />);
     await openSettings();
 
-    expect(await screen.findByText("Danger zone")).toBeDefined();
+    expect(
+      await screen.findByRole("region", { name: "Fire Maria" }),
+    ).toBeDefined();
     expect(
       screen.queryByRole("region", { name: "Maria approval mode" }),
     ).toBeNull();

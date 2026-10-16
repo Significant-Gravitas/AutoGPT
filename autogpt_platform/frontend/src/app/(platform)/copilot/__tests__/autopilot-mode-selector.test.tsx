@@ -214,9 +214,7 @@ describe("AutoPilot mode selector", () => {
 
     renderHost({ searchParams: "?expertId=expert-maria" });
 
-    expect(
-      await screen.findByRole("button", { name: /approval mode: ask first/i }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(bodies).toHaveLength(1), { timeout: 5000 });
@@ -258,9 +256,7 @@ describe("AutoPilot mode selector", () => {
 
     renderHost({ searchParams: "?expertId=expert-maria" });
 
-    expect(
-      await screen.findByRole("button", { name: /approval mode: ask first/i }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(createBodies).toHaveLength(1), {
@@ -282,11 +278,7 @@ describe("AutoPilot mode selector", () => {
       },
     });
 
-    expect(
-      await screen.findByRole("button", {
-        name: /approval mode: unsupervised/i,
-      }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
   });
 });
 
