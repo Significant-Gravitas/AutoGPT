@@ -178,3 +178,41 @@ async def test_a_failed_package_write_drops_only_unpublished_blobs(
         assert deleted == set()
     else:
         assert deleted == {"test://root", "test://a", "test://b"}
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_during_refusal_cleanup_still_drops_the_blobs():
+    """A refused package whose save is cancelled while it cleans up still
+    deletes everything it staged."""
+    checking, release = asyncio.Event(), asyncio.Event()
+
+    async def held_check(*_args):
+        checking.set()
+        await release.wait()
+
+    database = AsyncMock()
+    database.get_workspace_total_size.return_value = 0
+    database.get_workspace_file_by_path.return_value = None
+    database.get_workspace_file.side_effect = held_check
+    publisher = AsyncMock()
+    publisher.publish_workspace_skill_file.return_value = WorkspaceSkillPublication(
+        status="capacity"
+    )
+    storage = AsyncMock()
+    blobs = iter(["test://root", "test://a", "test://b"])
+    storage.store.side_effect = lambda **_kwargs: next(blobs)
+    patches = package_manager(database, publisher, storage)
+    with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        save = asyncio.create_task(
+            WorkspaceManager("user", "workspace").write_skill_package(**package_write())
+        )
+        await asyncio.wait_for(checking.wait(), 5)
+        save.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await save
+        release.set()
+        for _ in range(10):
+            await asyncio.sleep(0)
+
+    deleted = {call.args[0] for call in storage.delete.await_args_list}
+    assert deleted == {"test://root", "test://a", "test://b"}

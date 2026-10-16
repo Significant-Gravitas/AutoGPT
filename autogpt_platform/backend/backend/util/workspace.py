@@ -528,7 +528,7 @@ class WorkspaceManager:
             raise
         refusal = publication_refusal(publication, write)
         if refusal is not None:
-            await self._discard_unpublished(storage, stored)
+            await asyncio.shield(self._discard_unpublished(storage, stored))
             raise refusal
         assert publication.file is not None
         await self._retire_replaced(storage, publication)
