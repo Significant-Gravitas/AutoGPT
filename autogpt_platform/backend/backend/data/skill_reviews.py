@@ -61,6 +61,7 @@ class LearningReviewRecord(BaseModel):
     output_tokens: int
     cost_microdollars: int | None
     created_at: datetime
+    updated_at: datetime
     completed_at: datetime | None
 
     @classmethod
@@ -89,6 +90,7 @@ class LearningReviewRecord(BaseModel):
                 int(row.costMicrodollars) if row.costMicrodollars is not None else None
             ),
             created_at=row.createdAt,
+            updated_at=row.updatedAt,
             completed_at=row.completedAt,
         )
 

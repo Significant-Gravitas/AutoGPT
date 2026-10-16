@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from backend.copilot.config import ChatConfig
@@ -36,6 +36,7 @@ from backend.data.db_accessors import (
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_learning import LearningSourceRecord
 from backend.data.skill_publication import ReviewStamp
+from backend.data.skill_reviews import LearningReviewRecord
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -63,7 +64,12 @@ from .packages import load_reviewed_packages
 from .proposal import build_publish_request, validate_proposal
 from .publish import PublishRequest, publish_learned_version, reconcile_pending
 from .review_replay import MAX_MODEL_ATTEMPTS, load_review_replay, save_review_replay
-from .reviewer import DreamLLMError, record_review_cost, review_evidence
+from .reviewer import (
+    REVIEW_TIMEOUT_SECONDS,
+    DreamLLMError,
+    record_review_cost,
+    review_evidence,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,6 +81,9 @@ MAX_EXISTING_SKILL_BODIES = 12
 MAX_EVIDENCE_CHARS = 24_000
 LEASE_KEY_PREFIX = "copilot:skill_learning:lease:"
 LEASE_TTL_SECONDS = 1800
+# A model review is cut off after REVIEW_TIMEOUT_SECONDS; a row another run
+# reserved more recently than twice that may still be waiting on its call.
+LIVE_REVIEW_SECONDS = 2 * REVIEW_TIMEOUT_SECONDS
 
 
 Trigger = Literal["nightly", "requested", "admin"]
@@ -298,6 +307,14 @@ async def _process_source(
         expected_epoch=source.epoch,
     )
     if claim is None:
+        previous = await reviews.get_review_for_revision(
+            user_id, source.source_id, source.revision, POLICY_VERSION
+        )
+        if _reviewed_elsewhere(previous, result.run_id):
+            # Every exit below writes this revision's row, which would cut
+            # off that run's paid review mid-call; it settles the row itself.
+            result.reviewed += 1
+            return "deferred"
         current = await adapter.revalidate(
             source_id=source.source_id,
             revision=source.revision,
@@ -313,9 +330,6 @@ async def _process_source(
             return await settle_ineligible(
                 user_id, source, result, current.state, problem
             )
-        previous = await reviews.get_review_for_revision(
-            user_id, source.source_id, source.revision, POLICY_VERSION
-        )
         if previous is not None and previous.model_attempts >= MAX_MODEL_ATTEMPTS:
             return await settle(
                 user_id,
@@ -455,6 +469,18 @@ async def _open_proposals(user_id: str, owner_key: str) -> int:
 # ---------------------------------------------------------------------------
 # Lease
 # ---------------------------------------------------------------------------
+
+
+def _reviewed_elsewhere(previous: LearningReviewRecord | None, run_id: str) -> bool:
+    """Another run reserved a model review of this revision recently enough
+    that its call may still be running."""
+    return (
+        previous is not None
+        and previous.disposition == "reviewing"
+        and previous.run_id != run_id
+        and datetime.now(timezone.utc) - previous.updated_at
+        < timedelta(seconds=LIVE_REVIEW_SECONDS)
+    )
 
 
 async def _acquire_lease(user_id: str) -> AsyncClusterLock | None:

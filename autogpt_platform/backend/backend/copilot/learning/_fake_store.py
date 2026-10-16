@@ -343,6 +343,7 @@ class FakeLearningStore:
             output_tokens=output_tokens,
             cost_microdollars=cost_microdollars,
             created_at=existing.created_at if existing else _now(),
+            updated_at=_now(),
             completed_at=_now() if completed else None,
         )
         self.reviews[key] = record
@@ -395,6 +396,7 @@ class FakeLearningStore:
                 "disposition": "reviewing",
                 "reason": "review started",
                 "completed_at": None,
+                "updated_at": _now(),
             }
         )
         self.reviews[self._review_key(source_id, source_revision, policy_version)] = (
@@ -430,6 +432,7 @@ class FakeLearningStore:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "cost_microdollars": cost_microdollars,
+                "updated_at": _now(),
             }
         )
         return True
@@ -447,7 +450,9 @@ class FakeLearningStore:
             or row.completed_at is not None
         ):
             return False
-        self.reviews[key] = row.model_copy(update={"replay": replay})
+        self.reviews[key] = row.model_copy(
+            update={"replay": replay, "updated_at": _now()}
+        )
         return True
 
     async def get_review_for_revision(
@@ -798,6 +803,7 @@ class FakeLearningStore:
                     "disposition": "applied",
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )
@@ -834,6 +840,7 @@ class FakeLearningStore:
                     "disposition": disposition,
                     "reason": reason,
                     "completed_at": _now(),
+                    "updated_at": _now(),
                     "replay": None,
                 }
             )

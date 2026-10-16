@@ -74,6 +74,34 @@ async def test_replaced_worker_cannot_publish_after_newer_reservation(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_review_claim_records_when_it_was_taken(server):
+    """The nightly pass reads updated_at to tell a claim another run may
+    still be using from one a dead run left behind."""
+    user = str(uuid4())
+    await _create_user(user)
+    try:
+        source = await _source(user)
+        params = dict(
+            source_id=source.id,
+            source_revision=source.revision,
+            policy_version=1,
+            max_attempts=3,
+            expected_epoch=source.epoch,
+        )
+        first = await reviews.reserve_model_review(user, run_id="first", **params)
+        await asyncio.sleep(0.01)
+        taken_over = await reviews.reserve_model_review(user, run_id="second", **params)
+        assert first is not None and taken_over is not None
+        assert taken_over.updated_at > first.updated_at
+        stored = await reviews.get_review_for_revision(
+            user, source.id, source.revision, 1
+        )
+        assert stored.updated_at == taken_over.updated_at
+    finally:
+        await _cleanup(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_late_standalone_write_cannot_reopen_a_terminal_review(server):
     user = str(uuid4())
     await _create_user(user)
