@@ -14,6 +14,7 @@ from backend.copilot.gate.workflow import (
     close_step_cards,
     finish_step_cards,
     is_step_card,
+    step_of,
     step_rule_keys,
 )
 from backend.data.execution import (
@@ -231,6 +232,16 @@ async def process_review_action(
 
     graph_exec_id, chat_session_id = next(iter(scopes))
 
+    # A step's card is answered once its run has paused, as on the run page: a
+    # run still running would finish its pass with nothing waiting, the step unrun.
+    for review in reviews_map.values():
+        step = step_of(review)
+        if step is not None and not await _paused(user_id, step.graph_exec_id):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This workflow is still running other steps. Answer once it pauses.",
+            )
+
     # Validate execution status for graph executions; a chat has none
     if graph_exec_id is not None:
         graph_exec_meta = await get_graph_execution_meta(
@@ -375,8 +386,8 @@ async def process_review_action(
     if chat_session_id is not None and updated_reviews:
         # A workflow step's card answers the step's own row; its run resumes
         # below, so the card never wakes the chat.
-        steps = await finish_step_cards(user_id, updated_reviews.values())
-        for run in {step.graph_exec_id: step for step in steps}.values():
+        finished = await finish_step_cards(user_id, updated_reviews.values())
+        for run in {step.graph_exec_id: step for step in finished.answered}.values():
             meta = await get_graph_execution_meta(
                 user_id=user_id, execution_id=run.graph_exec_id
             )
@@ -394,6 +405,12 @@ async def process_review_action(
             chat_session_id,
             [r for r in updated_reviews.values() if not is_step_card(r)],
         )
+        if finished.failed:
+            # Each card is kept, so answering it again finishes the job.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="The answer could not reach its workflow step. Try again.",
+            )
 
     # Resume graph execution only for real graph executions; a chat is resumed
     # by the LLM calling resume_capability with the review_id
@@ -422,6 +439,14 @@ async def process_review_action(
         rejected_count=rejected_count,
         failed_count=auto_approval_failed_count,
         error=error_message,
+    )
+
+
+async def _paused(user_id: str, graph_exec_id: str) -> bool:
+    meta = await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
+    return meta is None or meta.status in (
+        ExecutionStatus.REVIEW,
+        ExecutionStatus.INCOMPLETE,
     )
 
 

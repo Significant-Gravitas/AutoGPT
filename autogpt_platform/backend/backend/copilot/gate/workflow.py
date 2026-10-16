@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from prisma.enums import ReviewStatus
+from pydantic import BaseModel
 
 from backend.api.features.graph_executions.review.model import PendingHumanReviewModel
 from backend.blocks._base import Block
@@ -157,13 +158,19 @@ def step_card_payload(
     )
 
 
+class StepAnswers(BaseModel):
+    # The steps whose rows took their card's answer, for the route to resume.
+    answered: list[review_store.WorkflowStep] = []
+    # Cards whose step could not take the answer; each stays for a retry.
+    failed: list[str] = []
+
+
 async def finish_step_cards(
     user_id: str, cards: Iterable[PendingHumanReviewModel]
-) -> list[review_store.WorkflowStep]:
-    """Answer each answered workflow card's row the way the card was answered,
-    and consume the card. Returns the steps whose rows it answered, for the
-    review route to resume their runs."""
-    answered: list[review_store.WorkflowStep] = []
+) -> StepAnswers:
+    """Answer each answered workflow card's row the way the card was answered.
+    A card is consumed once its row has the answer, or already had another."""
+    finished = StepAnswers()
     for card in cards:
         step = step_of(card)
         if step is None or card.status == ReviewStatus.WAITING:
@@ -181,17 +188,25 @@ async def finish_step_cards(
                     )
                 },
             )
-            answered.append(step)
-        except Exception:
+            finished.answered.append(step)
+        except ValueError:
             # Answered differently on the run page first: that answer stands.
             logger.warning(
                 f"Step {step.node_exec_id} kept its answer from the run page",
                 exc_info=True,
             )
+        except Exception:
+            logger.warning(
+                f"Step {step.node_exec_id} could not take its card's answer",
+                exc_info=True,
+            )
+            finished.failed.append(card.node_exec_id)
+            await _reopen(user_id, card.node_exec_id)
+            continue
         await review_store.consume(card.node_exec_id, user_id)
         if not approved and card.session_id:
             await _ask_from_now_on(user_id, card)
-    return answered
+    return finished
 
 
 async def close_step_cards(user_id: str, node_exec_ids: Iterable[str]) -> None:
@@ -305,6 +320,14 @@ def request_that_started(session: ChatSession, run_id: str | None) -> list[str]:
     if started is None:
         return []
     return _typed_messages(session, upto=started)
+
+
+async def _reopen(user_id: str, card_id: str) -> None:
+    # Back in the chat's queue, so the user can answer it again.
+    try:
+        await review_db().reopen_review(card_id, user_id)
+    except Exception:
+        logger.warning(f"Could not reopen card {card_id}", exc_info=True)
 
 
 async def _ask_from_now_on(user_id: str, card: PendingHumanReviewModel) -> None:

@@ -33,6 +33,7 @@ from backend.data.human_review import (
     cancel_pending_reviews_for_execution,
     get_pending_reviews_for_user,
     get_reviews_by_node_exec_ids,
+    has_pending_reviews_for_graph_exec,
 )
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import BlockExecutionError
@@ -88,7 +89,9 @@ class _Run:
     def card_id(self) -> str:
         return step_card_id(self.user_id, self.node_exec_id)
 
-    async def create(self) -> "_Run":
+    async def create(
+        self, status: AgentExecutionStatus = AgentExecutionStatus.REVIEW
+    ) -> "_Run":
         await AgentGraph.prisma().create(
             data={
                 "id": self.graph_id,
@@ -113,7 +116,7 @@ class _Run:
                 "agentGraphId": self.graph_id,
                 "agentGraphVersion": 1,
                 "userId": self.user_id,
-                "executionStatus": AgentExecutionStatus.REVIEW,
+                "executionStatus": status,
                 "triggerSource": "copilot",
                 "triggerRef": self.chat_id,
             }
@@ -388,3 +391,72 @@ async def test_a_rule_from_a_step_card_covers_every_later_call_of_its_block(
             test_user_id, (await _chat(test_user_id)).session_id
         ).create()
         assert (await elsewhere.step())[0]
+
+
+async def test_a_card_answered_before_its_run_pauses_waits_until_it_has(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    """While other steps still run, the run cannot be resumed: an answer the
+    step took then would let the executor finish the pass with nothing waiting
+    and mark the run complete, the step never run."""
+    chat = await _chat(test_user_id)
+    run = await _Run(test_user_id, chat.session_id).create(
+        status=AgentExecutionStatus.RUNNING
+    )
+    paused, _ = await run.step()
+    assert paused
+
+    early = await client.post(
+        "/api/review/action",
+        json={"reviews": [{"node_exec_id": run.card_id, "approved": True}]},
+    )
+
+    assert early.status_code == 409, early.text
+    row, card = await run.row(), await run.card()
+    assert row is not None and row.status == ReviewStatus.WAITING
+    assert card is not None and card.status == ReviewStatus.WAITING
+    # The executor ends its pass in REVIEW only while a row still waits.
+    assert await has_pending_reviews_for_graph_exec(run.graph_exec_id)
+    resumed.assert_not_awaited()
+
+    await AgentGraphExecution.prisma().update(
+        where={"id": run.graph_exec_id},
+        data={"executionStatus": AgentExecutionStatus.REVIEW},
+    )
+    await _answer(client, run.card_id, approved=True)
+
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.APPROVED
+    assert resumed.await_args.kwargs["graph_exec_id"] == run.graph_exec_id
+
+
+async def test_an_answer_the_step_could_not_take_keeps_its_card_for_a_retry(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    _, run = await _parked(test_user_id)
+
+    with patch(
+        "backend.data.human_review.process_all_reviews_for_execution",
+        AsyncMock(side_effect=OSError("database unavailable")),
+    ):
+        failed = await client.post(
+            "/api/review/action",
+            json={"reviews": [{"node_exec_id": run.card_id, "approved": True}]},
+        )
+
+    assert failed.status_code == 503, failed.text
+    # Back in the chat's queue, and still the one item Home shows.
+    card = await run.card()
+    assert card is not None and card.status == ReviewStatus.WAITING
+    home = {r.node_exec_id for r in await get_pending_reviews_for_user(test_user_id)}
+    assert run.card_id in home and run.node_exec_id not in home
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.WAITING
+    resumed.assert_not_awaited()
+
+    await _answer(client, run.card_id, approved=True)
+
+    row = await run.row()
+    assert row is not None and row.status == ReviewStatus.APPROVED
+    assert await run.card() is None
+    resumed.assert_awaited_once()

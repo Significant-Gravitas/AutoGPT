@@ -281,6 +281,7 @@ def rows():
     db = SimpleNamespace(
         process_all_reviews_for_execution=AsyncMock(return_value={}),
         delete_review_by_node_exec_id=AsyncMock(return_value=1),
+        reopen_review=AsyncMock(return_value=1),
     )
     with (
         patch(f"{_WORKFLOW}.review_db", return_value=db),
@@ -304,8 +305,8 @@ async def test_an_answered_card_answers_its_steps_row_and_is_consumed(
         f"{_WORKFLOW}.get_chat_session_metadata",
         AsyncMock(return_value=SimpleNamespace(expert_id=None)),
     ):
-        steps = await workflow.finish_step_cards("user-1", [card])
-    assert steps == [_STEP]
+        finished = await workflow.finish_step_cards("user-1", [card])
+    assert finished.answered == [_STEP] and finished.failed == []
     rows.process_all_reviews_for_execution.assert_awaited_once_with(
         user_id="user-1",
         review_decisions={_STEP.node_exec_id: (status, None, message)},
@@ -320,15 +321,32 @@ async def test_an_answered_card_answers_its_steps_row_and_is_consumed(
 async def test_a_step_answered_on_the_run_page_first_keeps_that_answer(rows, redis):
     rows.process_all_reviews_for_execution.side_effect = ValueError("already done")
     card = _card(ReviewStatus.APPROVED)
-    assert await workflow.finish_step_cards("user-1", [card]) == []
+    finished = await workflow.finish_step_cards("user-1", [card])
+    assert finished.answered == [] and finished.failed == []
     rows.delete_review_by_node_exec_id.assert_awaited_once()
+
+
+async def test_a_step_update_that_fails_keeps_the_card_and_says_so(rows, redis):
+    rows.process_all_reviews_for_execution.side_effect = OSError("unavailable")
+    card = _card(ReviewStatus.REJECTED)
+
+    finished = await workflow.finish_step_cards("user-1", [card])
+
+    rows.delete_review_by_node_exec_id.assert_not_awaited()
+    rows.reopen_review.assert_awaited_once_with(card.node_exec_id, "user-1")
+    assert finished.answered == [] and finished.failed == [card.node_exec_id]
+    # Nothing was declined yet, so the block keeps no new rule.
+    assert (
+        await chat_rules.rule_for("chat-1", f"block:{_BLOCK.id}", "user-1", None)
+        is None
+    )
 
 
 async def test_a_held_call_card_is_no_step(rows):
     card = _card(ReviewStatus.APPROVED).model_copy(
         update={"node_exec_id": "copilot-node-gate-run_capability:abc"}
     )
-    assert await workflow.finish_step_cards("user-1", [card]) == []
+    assert (await workflow.finish_step_cards("user-1", [card])).answered == []
     rows.process_all_reviews_for_execution.assert_not_awaited()
     assert workflow.step_rule_keys([card]) == {}
     assert workflow.step_rule_keys([_card(ReviewStatus.APPROVED)]) == {

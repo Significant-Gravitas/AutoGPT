@@ -931,6 +931,19 @@ async def cancel_pending_reviews_for_execution(graph_exec_id: str, user_id: str)
     return result
 
 
+async def reopen_review(node_exec_id: str, user_id: str) -> int:
+    """Put an answered review back to waiting, for an answer that never took effect."""
+    return await PendingHumanReview.prisma().update_many(
+        where={"nodeExecId": node_exec_id, "userId": user_id},
+        data={
+            "status": ReviewStatus.WAITING,
+            "reviewMessage": None,
+            "reviewedAt": None,
+            "processed": False,
+        },
+    )
+
+
 async def delete_review_by_node_exec_id(node_exec_id: str, user_id: str) -> int:
     """Delete a review record by node execution ID after it has been consumed.
 
