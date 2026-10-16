@@ -23,9 +23,10 @@ A credit-billed turn:
   recorded unpaid. A turn that ended without a result is charged what it
   recorded too, through the same accounting as any other turn;
 - still owes what a debit failed to take for a reason other than the balance:
-  the next charge takes it up, and the turn's last charge retries it a few
-  times before it gives up and logs the leak. When other runs spent the
-  balance meanwhile, the turn takes what is left and never overdraws it.
+  the next charge takes it up. The database client already retries transient
+  failures, so a last charge that still fails logs the leak. When other runs
+  spent the balance meanwhile, the turn takes what is left and never
+  overdraws it.
 """
 
 import asyncio
@@ -59,8 +60,6 @@ CREDITS_PER_USD = 100
 # stream ends (see ``sdk.openrouter_cost``). The charge waits that long for it;
 # a cost recorded later still is charged when it lands.
 _COST_SETTLE_TIMEOUT_SECONDS = 45.0
-# The turn's last charge tries a failed debit again after each of these.
-_DEBIT_RETRY_DELAYS_SECONDS = (0.2, 0.5, 1.0)
 _BUDGET_WINDOW: dict[PauseReason, BudgetWindow] = {
     "daily": "daily",
     "weekly": "weekly",
@@ -159,11 +158,12 @@ class CreditBilledTurn:
     async def _spend(self, credits: int, *, final: bool) -> int:
         """Debit up to ``credits``, never below zero; returns what was debited.
 
-        What a failed debit didn't take stays due: mid-turn the next charge
-        takes it up, and the turn's last charge retries it before giving up.
+        What a failed debit didn't take stays due for the next charge to take
+        up. Once the turn has ended there may be no next charge, so a failure
+        then is logged as a leak.
         """
         try:
-            await self._debit_retrying(credits, final=final)
+            await self._debit(credits)
             return credits
         except InsufficientBalanceError:
             return await self._spend_what_is_left(credits)
@@ -181,25 +181,6 @@ class CreditBilledTurn:
                 exc_info=True,
             )
             return 0
-
-    async def _debit_retrying(self, credits: int, *, final: bool) -> None:
-        """Debit ``credits``; the turn's last charge tries a debit that failed
-        for a reason other than the balance again after each retry delay."""
-        delays = _DEBIT_RETRY_DELAYS_SECONDS if final else ()
-        for delay in delays:
-            try:
-                await self._debit(credits)
-                return
-            except InsufficientBalanceError:
-                raise
-            except Exception as exc:
-                logger.warning(
-                    f"Charging {credits} credits for the credit-billed turn in "
-                    f"session {self.session_id[:12]} failed ({exc!r}); trying "
-                    f"again in {delay}s"
-                )
-            await asyncio.sleep(delay)
-        await self._debit(credits)
 
     async def _spend_what_is_left(self, credits: int) -> int:
         # Other runs spent the balance while this turn ran: it takes what is

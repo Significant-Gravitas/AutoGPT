@@ -89,13 +89,6 @@ def wallet(credits: MagicMock) -> _Wallet:
     return wallet
 
 
-@pytest.fixture
-def no_retry_delay(mocker) -> None:
-    mocker.patch(
-        "backend.copilot.credit_billing._DEBIT_RETRY_DELAYS_SECONDS", (0.0,) * 3
-    )
-
-
 async def _billed(credits: MagicMock, balance: int) -> CreditBilledTurn:
     credits.get_credits.return_value = balance
     turn = await bill_to_credits(
@@ -421,25 +414,7 @@ async def test_a_charge_that_fails_mid_turn_is_taken_up_by_the_next(credits, cap
 
 
 @pytest.mark.asyncio
-async def test_a_debit_that_fails_at_the_end_is_tried_again(
-    credits, no_retry_delay, caplog
-):
-    caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
-    turn = await _billed(credits, balance=500)
-    credits.spend_credits.side_effect = [ConnectionError("db blip"), 0]
-
-    async with credit_billing(turn):
-        await record_credit_billed_cost("user-1", 5_000)
-
-    assert _charged(credits) == [1, 1]
-    assert turn.charged_credits == 1
-    assert not _leaks(caplog)
-
-
-@pytest.mark.asyncio
-async def test_a_debit_that_keeps_failing_logs_the_leak_once(
-    credits, no_retry_delay, caplog
-):
+async def test_a_debit_that_keeps_failing_logs_the_leak_once(credits, caplog):
     caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
     turn = await _billed(credits, balance=500)
     credits.spend_credits.side_effect = ConnectionError("db down")
@@ -448,9 +423,9 @@ async def test_a_debit_that_keeps_failing_logs_the_leak_once(
         await record_credit_billed_cost("user-1", 25_000)
         await record_credit_billed_cost("user-1", 20_000)
 
-    # A charge mid-turn is tried once, the last one four times, and none asks
-    # for more than the 5 credits the turn owes.
-    assert _charged(credits) == [2, 4, 5, 5, 5, 5]
+    # Each charge asks for everything owed so far, never more than the 5
+    # credits the turn owes, and only the last one is a leak.
+    assert _charged(credits) == [2, 4, 5]
     assert turn.charged_credits == 0
     assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR]
 
@@ -458,7 +433,7 @@ async def test_a_debit_that_keeps_failing_logs_the_leak_once(
     # once.
     credits.spend_credits.side_effect = None
     await turn.record(1)
-    assert _charged(credits)[6:] == [5]
+    assert _charged(credits)[3:] == [5]
     assert turn.charged_credits == 5
 
 
