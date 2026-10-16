@@ -31,12 +31,13 @@ export function useServerFlag(key: string): FlagSourceResult {
       // user never sees them.
       placeholderData: (previous, previousQuery) =>
         previousQuery?.queryKey.at(-1) === userID ? previous : undefined,
-      // A 200 leaves a flag out while the vendor is down or starting, so ask
-      // again, backing off to once a minute, until this one is answered.
-      refetchInterval: (query) =>
-        isUnanswered(query.state.data, key) &&
+      // A failed request, or a 200 leaving this flag out (vendor down or
+      // starting), is asked again, backing off to once a minute.
+      refetchInterval: ({ state }) =>
+        (state.status === "error" || isUnanswered(state.data, key)) &&
         Math.min(
-          UNANSWERED_RETRY_MS * 2 ** (query.state.dataUpdateCount - 1),
+          UNANSWERED_RETRY_MS *
+            2 ** (state.dataUpdateCount + state.errorUpdateCount - 1),
           FLAGS_STALE_MS,
         ),
       select: (response) => (response.status === 200 ? response.data : null),

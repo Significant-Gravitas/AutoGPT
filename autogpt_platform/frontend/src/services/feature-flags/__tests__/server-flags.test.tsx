@@ -29,6 +29,7 @@ import {
 } from "@/tests/integrations/cookiebot";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { http, HttpResponse } from "msw";
 import type { ReactNode } from "react";
 import { Flag, useFlagStatus } from "../use-get-flag";
 
@@ -135,6 +136,48 @@ describe("server backend", () => {
       await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
 
       expect(requests).toBe(1);
+    });
+
+    it("asks again after a request that failed, until one succeeds", async () => {
+      let requests = 0;
+      server.use(
+        http.get("/api/proxy/api/feature-flags", () =>
+          requests++ === 0
+            ? HttpResponse.json({ detail: "bad gateway" }, { status: 502 })
+            : HttpResponse.json({
+                flags: { [HIRE_EXPERTS]: true },
+                configured: true,
+              }),
+        ),
+      );
+
+      const { result } = renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() => expect(requests).toBe(1));
+      await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+      expect(result.current).toMatchObject({ enabled: true, answered: true });
+    });
+
+    it("backs off on failed requests too, so an outage is not hammered", async () => {
+      let requests = 0;
+      server.use(
+        http.get("/api/proxy/api/feature-flags", () => {
+          requests++;
+          return HttpResponse.json({ detail: "bad gateway" }, { status: 502 });
+        }),
+      );
+
+      renderHook(() => useFlagStatus(Flag.HIRE_EXPERTS), {
+        wrapper: withQueryClient(),
+      });
+      await waitFor(() => expect(requests).toBe(1));
+      await act(() => vi.advanceTimersByTimeAsync(10 * 60_000));
+
+      // Every 2.5 s would be 240; backing off to a minute is a dozen or so.
+      expect(requests).toBeGreaterThan(4);
+      expect(requests).toBeLessThan(20);
     });
 
     it("backs off to about once a minute when it never answers", async () => {

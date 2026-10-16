@@ -11,7 +11,7 @@ from autogpt_libs.auth import get_optional_user_id
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.integrations.test_data import TestData
-from ldclient.interfaces import EventProcessor
+from ldclient.interfaces import EventProcessor, UpdateProcessor
 from posthog import Posthog
 from posthog.types import FeatureFlag
 
@@ -169,6 +169,22 @@ async def test_a_signed_out_answer_is_kept_long_only_when_complete(
 
     # Either way the second read sees the first, complete answer.
     assert (HIRE_EXPERTS in first, second.get(HIRE_EXPERTS)) == (ready_first, True)
+
+
+async def test_a_vendor_that_never_starts_serves_every_default_as_the_gates_do(mocker):
+    """A stale SDK key leaves LaunchDarkly uninitialised for good; the route gates
+    then serve defaults, and the page must too rather than poll forever."""
+    client = LDClient(
+        LDConfig("sdk-test", update_processor_class=_NeverReady, send_events=False),
+        start_wait=0,
+    )
+    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    try:
+        body = await _get_flags("u-staff")
+    finally:
+        client.close()
+
+    assert body == {"flags": {}, "configured": False}
 
 
 async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker):
@@ -352,6 +368,25 @@ async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
     # takes the shared signed-out answer where only PostHog's servers could.
     assert {v.get(PINNING) for v in visitors} == {True, False}
     assert all(v.get(HIRE_EXPERTS) is True for v in visitors)
+
+
+class _NeverReady(UpdateProcessor):
+    """A data source that never receives flags, as with a revoked SDK key."""
+
+    def __init__(self, config: LDConfig, store: Any, ready: Any):
+        pass
+
+    def start(self) -> None:
+        pass
+
+    def stop(self) -> None:
+        pass
+
+    def is_alive(self) -> bool:
+        return True
+
+    def initialized(self) -> bool:
+        return False
 
 
 class _RecordedEvents(EventProcessor):
