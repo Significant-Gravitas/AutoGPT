@@ -1,3 +1,4 @@
+import { waitUntilChatSettled } from "@/app/(platform)/copilot/copilotChatRegistry";
 import {
   useCopilotStreamStore,
   type PendingUploadSend,
@@ -9,16 +10,13 @@ import {
 } from "@/app/(platform)/copilot/helpers/sendWithAttachments";
 import type { SendInput } from "@/app/(platform)/copilot/stream/turnRuntime";
 import { recoverFailedDeferredSend } from "@/app/(platform)/copilot/useSendMessage";
-import { useSettleGate } from "@/app/(platform)/copilot/useSettleGate";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import * as Sentry from "@sentry/nextjs";
-import type { ChatStatus } from "ai";
 import { useRef, useState } from "react";
 
 interface Args {
   sessionId: string | null;
-  status: ChatStatus;
   sendMessage: (message: SendInput) => Promise<void>;
 }
 
@@ -29,7 +27,7 @@ interface Args {
  * kickoff, and the session's placeholder takes over once it is sent, for as
  * long as its files upload or it waits for the reply in flight to end.
  */
-export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
+export function useExpertChatSend({ sessionId, sendMessage }: Args) {
   const [held, setHeld] = useState<{
     message: OutgoingMessage;
     pending: PendingUploadSend;
@@ -38,9 +36,6 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   sendMessageRef.current = sendMessage;
   const sessionIdRef = useRef(sessionId);
   sessionIdRef.current = sessionId;
-  const { waitUntilSettled } = useSettleGate(
-    status === "ready" || status === "error",
-  );
   const placeholder = useCopilotStreamStore((s) =>
     sessionId ? (s.pendingUploadSends[sessionId] ?? null) : null,
   );
@@ -99,14 +94,16 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   /**
    * The pending buffer keeps a follow-up's files without their names, so the
    * transcript could not show them: a follow-up with files uploads them now
-   * and goes out as the next turn once the reply in flight has ended.
+   * and goes out as the next turn once the reply in flight has ended. The
+   * wait is on the session's chat, so a file retried after the panel was
+   * closed and reopened still sends.
    */
   function sendAfterReply(targetSessionId: string, message: OutgoingMessage) {
     return sendWithAttachments({
       sessionId: targetSessionId,
       message,
       sendMessage: sendInSession(targetSessionId),
-      waitUntilReady: waitUntilSettled,
+      waitUntilReady: () => waitUntilChatSettled(targetSessionId),
     });
   }
 

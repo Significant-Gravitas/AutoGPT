@@ -126,6 +126,24 @@ export function getOrCreateCopilotChatRuntime(sessionId: string) {
   return runtime;
 }
 
+/**
+ * Resolves once the session's chat has no turn in flight. It watches the
+ * session's own chat rather than a component, so a send waiting on it still
+ * goes out after the panel that started it has closed.
+ */
+export function waitUntilChatSettled(sessionId: string): Promise<boolean> {
+  const { chat } = getOrCreateCopilotChatRuntime(sessionId);
+  const isSettled = () => chat.status === "ready" || chat.status === "error";
+  if (isSettled()) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const unregister = chat["~registerStatusCallback"](() => {
+      if (!isSettled()) return;
+      unregister();
+      resolve(true);
+    });
+  });
+}
+
 export function markCopilotChatRuntimeHealthy(sessionId: string) {
   useCopilotChatRuntimeStore.getState().clearNeedsReload(sessionId);
 }

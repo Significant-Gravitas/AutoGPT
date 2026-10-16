@@ -209,7 +209,7 @@ export function useExpertChatDrawer({
       copilotModel: undefined,
     });
   const { pendingSend, hold, release, reset, sendNow, sendAfterReply } =
-    useExpertChatSend({ sessionId, status, sendMessage });
+    useExpertChatSend({ sessionId, sendMessage });
 
   const hasAssistantReply = messages.some(
     (message) => message.role === "assistant",
