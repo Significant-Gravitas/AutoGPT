@@ -109,10 +109,14 @@ async def _dispatch(
     async def acquire(*_args, **_kwargs):
         yield slot
 
-    async def save(_session_id: str, message: ChatMessage) -> ChatMessage:
+    async def save(
+        _session_id: str, message: ChatMessage, *, dedupe_content: bool = True
+    ) -> ChatSession | None:
+        # The chat route's dispatch dedupes a message against the last row.
+        assert dedupe_content
         message.sequence = len(session.messages)
         session.messages.append(message)
-        return message
+        return session
 
     queue = MagicMock(publish_message=AsyncMock())
     with (
@@ -160,6 +164,11 @@ async def _engine_call(
         patch(
             "backend.copilot.model.get_chat_session",
             new=AsyncMock(return_value=session),
+        ),
+        # The pickup budget gate has its own tests (processor_budget_gate_test).
+        patch(
+            "backend.copilot.executor.processor.refusal_for",
+            new=AsyncMock(return_value=None),
         ),
     ):
         await CoPilotProcessor()._execute_async(
