@@ -176,6 +176,7 @@ def test_result_from_dict_rejects_non_dict():
 def _ok_response(payload: dict):
     resp = mock.Mock()
     resp.ok = True
+    resp.status = 200
     resp.json.return_value = payload
     return resp
 
@@ -312,10 +313,7 @@ async def test_client_sub_domains_requires_a_domain():
 
 @pytest.mark.asyncio
 async def test_client_catalog_non_ok_raises():
-    """Both free catalog endpoints translate a non-OK HTTP status into a
-    ValueError carrying the status. A real >=400 never reaches the guard
-    (raise_for_status throws first), so this exercises the 3xx band - a
-    stranded redirect the response.ok check is exactly for."""
+    """Catalog endpoints reject stranded redirects with their HTTP status."""
     client = AnySearchClient(None)
     resp = mock.Mock()
     resp.ok = False
@@ -331,10 +329,7 @@ async def test_client_catalog_non_ok_raises():
 
 @pytest.mark.asyncio
 async def test_client_catalog_server_error_propagates():
-    """Requests(raise_for_status=True) converts a >=400 response into
-    HTTPServerError inside the client before the response.ok guard is
-    ever reached - the block-level stale-catalog hint keys on exactly
-    this type, so pin the propagation contract at the client seam."""
+    """An HTTPServerError raised by the transport still propagates unchanged."""
     client = AnySearchClient(None)
     client.requests.get = mock.AsyncMock(
         side_effect=HTTPServerError("HTTP 502 Error: Bad Gateway, Body: upstream", 502)

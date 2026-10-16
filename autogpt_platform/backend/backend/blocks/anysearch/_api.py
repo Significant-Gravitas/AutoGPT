@@ -4,6 +4,8 @@ from urllib.parse import quote
 
 from backend.sdk import APIKeyCredentials, BaseModel, Requests, SchemaField
 
+from ._http import raise_for_status
+
 ANYSEARCH_API_URL = "https://api.anysearch.com"
 
 # Sent on every request, anonymous or keyed, for AnySearch's version-based
@@ -110,12 +112,15 @@ class AnySearchClient:
         self.requests = Requests(
             trusted_origins=[ANYSEARCH_API_URL],
             extra_headers=headers,
+            raise_for_status=False,
+            retry_max_attempts=1,
         )
 
     async def search(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = await self.requests.post(
             f"{ANYSEARCH_API_URL}/v1/search", json=payload
         )
+        raise_for_status(response)
         if not response.ok:
             raise ValueError(
                 f"AnySearch search request failed with HTTP {response.status}"
@@ -126,6 +131,7 @@ class AnySearchClient:
         response = await self.requests.post(
             f"{ANYSEARCH_API_URL}/v1/extract", json={"url": url}
         )
+        raise_for_status(response)
         if not response.ok:
             raise ValueError(
                 f"AnySearch extract request failed with HTTP {response.status}"
@@ -135,6 +141,7 @@ class AnySearchClient:
     async def domains(self) -> dict[str, Any]:
         """GET /v1/domains - public catalog; free of auth and quota cost."""
         response = await self.requests.get(f"{ANYSEARCH_API_URL}/v1/domains")
+        raise_for_status(response)
         if not response.ok:
             raise ValueError(
                 f"AnySearch domains request failed with HTTP {response.status}"
@@ -153,6 +160,7 @@ class AnySearchClient:
         response = await self.requests.get(
             f"{ANYSEARCH_API_URL}/v1/sub-domains?{query}"
         )
+        raise_for_status(response)
         if not response.ok:
             raise ValueError(
                 "AnySearch sub-domains request failed " f"with HTTP {response.status}"

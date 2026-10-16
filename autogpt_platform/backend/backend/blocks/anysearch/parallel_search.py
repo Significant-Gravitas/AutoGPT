@@ -28,6 +28,7 @@ from ._api import (
     unwrap_envelope,
 )
 from ._config import anysearch
+from ._http import AnySearchHTTPClientError, AnySearchHTTPServerError
 
 
 class AnySearchParallelSearchBlock(Block):
@@ -176,6 +177,10 @@ class AnySearchParallelSearchBlock(Block):
             if not isinstance(raw_results, list):
                 raise ValueError("AnySearch response data.results is not a list")
             results = [result_from_dict(r) for r in raw_results]
+        except (AnySearchHTTPClientError, AnySearchHTTPServerError) as e:
+            return AnySearchQueryResults(
+                query=query, error=str(e), request_id=e.request_id
+            )
         except (
             ValueError,
             HTTPClientError,
