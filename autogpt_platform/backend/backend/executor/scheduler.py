@@ -2977,7 +2977,9 @@ class Scheduler(AppService):
         if job is None:
             return False
         job.remove()
-        self._delete_schedule_index_row(job_id)
+        # Its index row stays: a row with no job is skipped on read, while the
+        # chat's next turn at reset reuses this id, so deleting the row could
+        # hide a job set again meanwhile from the chat's listing.
         self._invalidate_jobs_cache()
         logger.info(f"Removed {kind}-at-reset job for session {session_id[:12]}")
         return True

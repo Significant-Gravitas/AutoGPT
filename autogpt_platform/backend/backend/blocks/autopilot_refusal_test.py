@@ -110,6 +110,9 @@ def frontend(mocker):
     settings = MagicMock()
     settings.config.frontend_base_url = "https://platform.agpt.co/"
     mocker.patch("backend.blocks.autopilot.Settings", return_value=settings)
+    mocker.patch(
+        "backend.blocks.autopilot.credits_can_pay_block_turns", return_value=True
+    )
 
 
 @pytest.mark.asyncio
@@ -137,12 +140,31 @@ async def test_a_spent_trial_says_its_allowance_is_used_up(frontend):
 
 
 @pytest.mark.asyncio
+async def test_where_credits_cant_pay_the_refusal_doesnt_send_the_user_to_top_up(
+    frontend, mocker
+):
+    # Credits off, or no engine to cap a credit-billed turn: credits never pay.
+    mocker.patch(
+        "backend.blocks.autopilot.credits_can_pay_block_turns", return_value=False
+    )
+    with _refused_for_budget(_OUT_OF_TODAY):
+        with pytest.raises(AutoPilotOutOfBudgetError) as raised:
+            await _execute()
+    assert str(raised.value) == (
+        "Out of AutoPilot budget: your plan's AutoPilot allowance is used up. "
+        "The allowance resets 2026-10-12 00:00 UTC."
+    )
+
+
+@pytest.mark.asyncio
 async def test_a_recovery_run_is_still_the_blocks_turn():
     """So it may run on the credit balance as the first run could. It goes
     through the one dispatch, which carries the block's name to the queue."""
     session = MagicMock()
     session.metadata.llm_auth_provider = "platform"
     session.metadata.llm_credential_id = None
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
     enqueue = AsyncMock()
 
     @asynccontextmanager
@@ -163,6 +185,9 @@ async def test_a_recovery_run_is_still_the_blocks_turn():
 
     enqueue.assert_awaited_once()
     assert enqueue.await_args.kwargs["tool_name"] == "autopilot_block"
+    # Billed to the same wallet: the organization's in an organization's run.
+    kwargs = enqueue.await_args.kwargs
+    assert (kwargs["organization_id"], kwargs["team_id"]) == ("org-1", "team-1")
 
 
 @pytest.mark.asyncio
