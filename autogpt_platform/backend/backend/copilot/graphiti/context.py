@@ -77,7 +77,8 @@ async def _fetch(scope: MemoryScope, message: str) -> str | None:
     # Ratification sync hit-hook (P0.4 layer-2): every retrieved edge
     # that's currently ``status='tentative'`` gets promoted to
     # ``active`` inline, and every retrieved edge bumps its
-    # warm-context hit counter. Fire-and-forget so the chat turn
+    # warm-context hit counter and gets its recall stamped
+    # (``recall_stamp.py``). Fire-and-forget so the chat turn
     # never blocks on Redis or FalkorDB writes.
     if edges:
         _spawn_ratification_hits(scope, edges)
