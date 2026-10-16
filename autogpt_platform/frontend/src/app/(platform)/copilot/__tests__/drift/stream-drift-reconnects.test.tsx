@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { STREAM_PATHS, TEST_BACKEND_BASE_URL } from "../sse-helpers";
 import {
@@ -139,6 +139,17 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         setTabVisibility("visible");
         vi.useRealTimers();
         await waitForConnections(sim, 2);
+        if (path === "AI SDK") {
+          // A connection can open before its replay renders. Keep both streams
+          // alive until the overlap is visible instead of racing the finish.
+          await waitFor(
+            () =>
+              expect(
+                screen.getAllByText("Let me fetch that page."),
+              ).toHaveLength(2),
+            { timeout: 5000 },
+          );
+        }
         sim.publish();
 
         expectDrift(
