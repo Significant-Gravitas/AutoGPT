@@ -2971,9 +2971,9 @@ class Scheduler(AppService):
         if job is None:
             return False
         job.remove()
-        # Its index row stays: a row with no job is skipped on read, while the
-        # chat's next turn at reset reuses this id, so deleting the row could
-        # hide a job set again meanwhile from the chat's listing.
+        # Its index row stays for the next listing to drop. The chat's next
+        # turn at reset reuses this id, and that drop puts back the row of a
+        # job set again meanwhile, which a delete here would not.
         self._invalidate_jobs_cache()
         logger.info(f"Removed {kind}-at-reset job for session {session_id[:12]}")
         return True
@@ -3341,6 +3341,7 @@ class Scheduler(AppService):
             return full_scan()
         if self.scheduler.running:
             self._delete_schedule_index_rows(dangling)
+            self._restore_reused_index_rows(dangling)
         return jobs
 
     def _upsert_schedule_index_row(
@@ -3372,6 +3373,30 @@ class Scheduler(AppService):
             self._schedule_index.delete_many(job_ids)
         except Exception:
             logger.warning("Failed to remove stale schedule index rows", exc_info=True)
+
+    def _restore_reused_index_rows(self, job_ids: list[str]) -> None:
+        """Put back the row of any job set again under one of *job_ids*, the
+        rows just dropped for having no job.
+
+        A chat's turn at the budget reset reuses its id, so a new one can be
+        set between a listing finding the old job gone and the drop, and the
+        drop would hide it from the chat's listings until the next reconcile.
+        Every schedule is added before its row is written, so reading the job
+        after the drop catches each such row.
+        """
+        for job_id in job_ids:
+            try:
+                job = self.scheduler.get_job(job_id, jobstore=Jobstores.EXECUTION.value)
+            except Exception:
+                logger.warning(
+                    "Could not load job %s to check its dropped index row",
+                    job_id,
+                    exc_info=True,
+                )
+                continue
+            info = _job_to_info(job) if job else None
+            if info is not None:
+                self._upsert_schedule_index_row(job_id, info)
 
     def _mark_schedule_index_ready(self, failure_version: int) -> None:
         with self._jobs_cache_lock:
@@ -3445,6 +3470,7 @@ class Scheduler(AppService):
         if not self.scheduler.running:
             return
         index.delete_many(confirmed_gone)
+        self._restore_reused_index_rows(confirmed_gone)
 
         self._mark_schedule_index_ready(failure_version)
         logger.info(

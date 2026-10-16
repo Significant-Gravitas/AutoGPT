@@ -9,6 +9,11 @@ import { formatPaymentDue } from "@/services/usageExperience/payment";
 import { usagePresentation } from "@/services/usageExperience/presentation";
 import { PaymentDueAction } from "@/components/organisms/UsageExperience/PaymentDueAction";
 import { ProviderContinuation } from "@/components/organisms/UsageExperience/ProviderContinuation";
+import { UsageMeters } from "@/components/organisms/UsageExperience/UsageMeters";
+import {
+  budgetOutTitle,
+  budgetResetSentence,
+} from "@/services/usageExperience/budget";
 import type { UsageNoticeContext } from "./useUsageLimitReachedCard";
 import { useUsageLimitReachedCard } from "./useUsageLimitReachedCard";
 
@@ -54,7 +59,9 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
           ? "Checking your usage"
           : state.isError
             ? "We couldn’t check your usage."
-            : copy.noticeTitle}
+            : state.wait
+              ? budgetOutTitle(state.wait.window)
+              : copy.noticeTitle}
       </Text>
       <Text
         variant="small"
@@ -65,8 +72,17 @@ export function UsageLimitReachedCard(props: UsageNoticeContext = {}) {
           ? "Refreshing your plan and usage…"
           : state.isError
             ? "Your work is saved. Try again to check your allowance."
-            : copy.description}
+            : state.wait
+              ? budgetResetSentence(state.wait)
+              : copy.description}
       </Text>
+      {state.wait && (
+        <UsageMeters
+          className="mt-4"
+          daily={state.usage?.daily}
+          weekly={state.usage?.weekly}
+        />
+      )}
       {isOffer && (
         <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
           <Button
