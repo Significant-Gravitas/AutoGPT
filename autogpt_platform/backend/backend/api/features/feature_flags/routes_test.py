@@ -1,3 +1,4 @@
+import asyncio
 import os
 import uuid
 from typing import Any, ClassVar
@@ -15,7 +16,12 @@ from posthog import Posthog
 from posthog.types import FeatureFlag
 
 import backend.util.feature_flag as ff
-from backend.util.feature_flag import Flag, get_feature_flag_value, is_feature_enabled
+from backend.util.feature_flag import (
+    Flag,
+    frontend,
+    get_feature_flag_value,
+    is_feature_enabled,
+)
 from backend.util.feature_flag import posthog as ph
 from backend.util.feature_flag.frontend import (
     FrontendFlag,
@@ -138,6 +144,31 @@ async def test_a_defined_flag_the_vendor_could_not_answer_is_left_out(mocker):
 
     # A default here would read as an answer and 404 a gated route for a user who has it.
     assert (HIRE_EXPERTS in flags, flags.get(CHAT_SEARCH, "left out")) == (False, None)
+
+
+@pytest.mark.parametrize("ready_first", [False, True])
+async def test_a_signed_out_answer_is_kept_long_only_when_complete(
+    mocker, monkeypatch, ready_first
+):
+    """A vendor that is down or starting is asked again within seconds, while a
+    complete answer keeps serving every signed-out visitor from one read."""
+    monkeypatch.setattr(frontend, "PARTIAL_TTL_SECONDS", 0.01)
+    ready = ff.ldclient.get()
+    not_ready = LDClient(LDConfig("sdk-test", offline=True))
+    get = mocker.patch(
+        "backend.util.feature_flag.ldclient.get",
+        return_value=ready if ready_first else not_ready,
+    )
+    try:
+        first = (await _get_flags(None))["flags"]
+        get.return_value = not_ready if ready_first else ready
+        await asyncio.sleep(0.05)
+        second = (await _get_flags(None))["flags"]
+    finally:
+        not_ready.close()
+
+    # Either way the second read sees the first, complete answer.
+    assert (HIRE_EXPERTS in first, second.get(HIRE_EXPERTS)) == (ready_first, True)
 
 
 async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker):

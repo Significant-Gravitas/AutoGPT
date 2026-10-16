@@ -26,6 +26,8 @@ from . import (
 VISITOR_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
 # A visitor's flag key; no user id has a colon, so it can never target a user.
 VISITOR_KEY = "visitor:{}"
+# How long a signed-out answer missing a flag is served before the vendor is asked again.
+PARTIAL_TTL_SECONDS = 5
 
 
 class FrontendFlag(str, Enum):
@@ -115,7 +117,14 @@ async def evaluate_frontend_flags(
 @cached(maxsize=1, ttl_seconds=30)
 async def _anonymous_flags() -> dict[FrontendFlag, Any]:
     # Every signed-out visitor gets the same answer, so one read serves them all.
-    return await _evaluate(ANONYMOUS_USER)
+    flags = await _evaluate(ANONYMOUS_USER)
+    if len(flags) < len(FrontendFlag):
+        # A vendor that is down or starting is asked again soon; one read per
+        # window still answers the whole flood of visitors meanwhile.
+        asyncio.get_running_loop().call_later(
+            PARTIAL_TTL_SECONDS, _anonymous_flags.cache_clear
+        )
+    return flags
 
 
 # Listing LaunchDarkly's flags evaluates all of them; "cannot tell yet" is retried.
