@@ -52,7 +52,7 @@ export function AutopilotUsageCard({ index = 0 }: Props) {
           <Text variant="small" tone="secondary" className="leading-6">
             {state.unlimited
               ? "Your plan has no daily or weekly usage limits."
-              : "Choose a plan to continue working with your saved conversations and agents."}
+              : "Choose a plan to continue working with your saved conversations and workflows."}
           </Text>
         </div>
       ) : (
