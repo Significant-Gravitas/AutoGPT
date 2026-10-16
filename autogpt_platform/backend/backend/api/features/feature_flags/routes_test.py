@@ -11,7 +11,7 @@ from autogpt_libs.auth import get_optional_user_id
 from ldclient import Context, LDClient
 from ldclient.config import Config as LDConfig
 from ldclient.integrations.test_data import TestData
-from ldclient.interfaces import EventProcessor, UpdateProcessor
+from ldclient.interfaces import DataSourceState, EventProcessor, UpdateProcessor
 from posthog import Posthog
 from posthog.types import FeatureFlag
 
@@ -171,20 +171,32 @@ async def test_a_signed_out_answer_is_kept_long_only_when_complete(
     assert (HIRE_EXPERTS in first, second.get(HIRE_EXPERTS)) == (ready_first, True)
 
 
-async def test_a_vendor_that_never_starts_serves_every_default_as_the_gates_do(mocker):
-    """A stale SDK key leaves LaunchDarkly uninitialised for good; the route gates
-    then serve defaults, and the page must too rather than poll forever."""
+@pytest.mark.parametrize(
+    "data_source,body",
+    [
+        # A rejected key ends LaunchDarkly's attempts; the route gates then serve
+        # defaults, and the page must too rather than poll forever.
+        ("_RejectedKey", {"flags": {}, "configured": False}),
+        # Still connecting past the start-up wait: the page keeps asking.
+        ("_StillConnecting", {"flags": {}, "configured": True}),
+    ],
+)
+async def test_a_vendor_that_cannot_answer_says_whether_it_ever_will(
+    mocker, data_source, body
+):
     client = LDClient(
-        LDConfig("sdk-test", update_processor_class=_NeverReady, send_events=False),
+        LDConfig(
+            "sdk-test", update_processor_class=globals()[data_source], send_events=False
+        ),
         start_wait=0,
     )
     mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
     try:
-        body = await _get_flags("u-staff")
+        answer = await _get_flags("u-staff")
     finally:
         client.close()
 
-    assert body == {"flags": {}, "configured": False}
+    assert answer == body
 
 
 async def test_a_launchdarkly_client_not_ready_yet_leaves_every_flag_out(mocker):
@@ -370,11 +382,11 @@ async def test_fresh_visitor_ids_cost_posthog_nothing(mocker):
     assert all(v.get(HIRE_EXPERTS) is True for v in visitors)
 
 
-class _NeverReady(UpdateProcessor):
-    """A data source that never receives flags, as with a revoked SDK key."""
+class _StillConnecting(UpdateProcessor):
+    """A data source that has not received flags yet."""
 
     def __init__(self, config: LDConfig, store: Any, ready: Any):
-        pass
+        self.config = config
 
     def start(self) -> None:
         pass
@@ -387,6 +399,15 @@ class _NeverReady(UpdateProcessor):
 
     def initialized(self) -> bool:
         return False
+
+
+class _RejectedKey(_StillConnecting):
+    """Gives up for good, as LaunchDarkly's own data sources do on a 401."""
+
+    def start(self) -> None:
+        sink = self.config.data_source_update_sink
+        assert sink is not None
+        sink.update_status(DataSourceState.OFF, None)
 
 
 class _RecordedEvents(EventProcessor):

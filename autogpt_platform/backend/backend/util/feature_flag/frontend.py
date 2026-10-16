@@ -18,7 +18,7 @@ from . import (
     _evaluate_boolean_flag,
     _evaluate_flag_value,
     _flag_backend_configured,
-    _flag_backend_initialized,
+    _flag_backend_gave_up,
     defined_flag_keys,
     evaluate_flags_in_memory,
 )
@@ -93,8 +93,8 @@ class FrontendFlagValues(BaseModel):
         "of, which takes the frontend's default; one left out has no answer yet."
     )
     configured: bool = Field(
-        description="False when no flag vendor is configured or it never started, so "
-        "every flag is its default."
+        description="False when no flag vendor is configured or it gave up starting, "
+        "so every flag is its default."
     )
 
 
@@ -113,8 +113,9 @@ async def evaluate_frontend_flags(
         flags = await _visitor_flags(visitor_id)
     else:
         flags = await _anonymous_flags()
-    # As the route gates do: a vendor that never started serves every default.
-    configured = _flag_backend_configured() and _flag_backend_initialized()
+    # A vendor that gave up for good serves every default, as the route gates do;
+    # one still connecting leaves its flags out, so the page asks again.
+    configured = _flag_backend_configured() and not _flag_backend_gave_up()
     return FrontendFlagValues(flags=flags, configured=configured)
 
 

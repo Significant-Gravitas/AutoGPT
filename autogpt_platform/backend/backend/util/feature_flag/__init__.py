@@ -16,6 +16,7 @@ from fastapi import HTTPException, Security
 from ldclient import Context, LDClient
 from ldclient.config import Config
 from ldclient.evaluation import EvaluationDetail
+from ldclient.interfaces import DataSourceState
 from typing_extensions import ParamSpec
 
 from backend.util.cache import cached
@@ -1112,6 +1113,14 @@ def _flag_backend_configured() -> bool:
     if serves_launchdarkly():
         return is_configured()
     return posthog.is_configured()
+
+
+def _flag_backend_gave_up() -> bool:
+    """Whether the serving vendor has stopped trying to start, as on a rejected key."""
+    if serves_launchdarkly():
+        status = get_client().data_source_status_provider.status
+        return status.state is DataSourceState.OFF
+    return False
 
 
 def _flag_backend_initialized() -> bool:

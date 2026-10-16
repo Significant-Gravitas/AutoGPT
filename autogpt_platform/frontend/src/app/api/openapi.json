@@ -24873,7 +24873,7 @@
           "configured": {
             "type": "boolean",
             "title": "Configured",
-            "description": "False when no flag vendor is configured or it never started, so every flag is its default."
+            "description": "False when no flag vendor is configured or it gave up starting, so every flag is its default."
           }
         },
         "type": "object",
