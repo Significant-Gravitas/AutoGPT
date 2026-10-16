@@ -7,7 +7,7 @@ change. Every mutation enforces the owning ``user_id``.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import prisma
@@ -92,6 +92,16 @@ class LearningReviewRecord(BaseModel):
             created_at=row.createdAt,
             updated_at=row.updatedAt,
             completed_at=row.completedAt,
+        )
+
+    def held_by_another_run(self, run_id: str, live_seconds: int) -> bool:
+        """Another run reserved or checkpointed this review within
+        ``live_seconds``, so its paid model call may still be running."""
+        return (
+            self.disposition == "reviewing"
+            and self.run_id != run_id
+            and datetime.now(timezone.utc) - self.updated_at
+            < timedelta(seconds=live_seconds)
         )
 
 
@@ -317,8 +327,16 @@ async def reserve_model_review(
     policy_version: int,
     run_id: str,
     max_attempts: int,
+    live_seconds: int,
     expected_epoch: int,
 ) -> LearningReviewRecord | None:
+    """Claim one paid model review of the revision for ``run_id``.
+
+    Declines (``None``) a claim another run made within ``live_seconds``:
+    taking it over would make that run's checkpoint fail after its call
+    was paid for. An older ``reviewing`` row was left by a run that died,
+    and is taken over.
+    """
     async with transaction() as tx:
         source = await lock_review_source(tx, user_id, source_id)
         if source is None:
@@ -344,6 +362,9 @@ async def reserve_model_review(
             or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == "applied_pending"
             or existing.reviewReplay is not None
+            or LearningReviewRecord.from_db(existing).held_by_another_run(
+                run_id, live_seconds
+            )
         ):
             return None
         if existing is None:

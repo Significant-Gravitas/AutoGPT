@@ -40,10 +40,12 @@ async def test_only_confirmed_lease_contention_is_reported_as_held(
         assert result.error == "RuntimeError: skill learning lease unavailable"
 
 
-async def _reviewed_by_another_run(store, source):
-    """The revision at its model-attempt limit, the last attempt still
+async def _reviewed_by_another_run(
+    store, source, attempts: int = nightly.MAX_MODEL_ATTEMPTS
+):
+    """The revision after ``attempts`` model attempts, the last one still
     reviewing under another run's id."""
-    for _ in range(nightly.MAX_MODEL_ATTEMPTS):
+    for _ in range(attempts):
         claim = await store.reserve_model_review(
             USER,
             source_id=source.id,
@@ -51,6 +53,7 @@ async def _reviewed_by_another_run(store, source):
             policy_version=nightly.POLICY_VERSION,
             run_id="another-run",
             max_attempts=nightly.MAX_MODEL_ATTEMPTS,
+            live_seconds=nightly.LIVE_REVIEW_SECONDS,
             expected_epoch=source.epoch,
         )
         assert claim is not None
@@ -59,14 +62,29 @@ async def _reviewed_by_another_run(store, source):
     )
 
 
+def _left_by_a_run_that_died(store, review):
+    """Age the claim past any model call it could still be waiting on."""
+    key = store._review_key(
+        review.source_id, review.source_revision, review.policy_version
+    )
+    store.reviews[key] = review.model_copy(
+        update={
+            "updated_at": review.updated_at
+            - timedelta(seconds=nightly.LIVE_REVIEW_SECONDS + 1)
+        }
+    )
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize("attempts", range(1, nightly.MAX_MODEL_ATTEMPTS + 1))
 async def test_a_review_another_run_may_still_be_making_is_left_alone(
-    fake_store, adapter, boundaries
+    fake_store, adapter, boundaries, attempts
 ):
-    """A run that lost its lease can still be inside its model call. Settling
-    the revision here would overwrite its row and waste that paid review."""
+    """A run that lost its lease can still be inside its model call. Taking
+    over or settling the revision here would overwrite its row and waste
+    that paid review."""
     source = await _source(fake_store)
-    live = await _reviewed_by_another_run(fake_store, source)
+    live = await _reviewed_by_another_run(fake_store, source, attempts)
 
     result = await _run()
 
@@ -79,20 +97,33 @@ async def test_a_review_another_run_may_still_be_making_is_left_alone(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("attempts", range(1, nightly.MAX_MODEL_ATTEMPTS))
+async def test_a_review_left_by_a_run_that_died_is_taken_over(
+    fake_store, adapter, boundaries, attempts
+):
+    """Below the attempt limit, the revision is reviewed again."""
+    source = await _source(fake_store)
+    stale = await _reviewed_by_another_run(fake_store, source, attempts)
+    _left_by_a_run_that_died(fake_store, stale)
+
+    result = await _run()
+
+    assert result.dispositions == {"applied": 1}
+    boundaries["review"].assert_awaited_once()
+    row = await fake_store.get_review_for_revision(
+        USER, source.id, source.revision, nightly.POLICY_VERSION
+    )
+    assert (row.run_id, row.model_attempts) == (result.run_id, attempts + 1)
+
+
+@pytest.mark.asyncio
 async def test_a_review_left_by_a_run_that_died_is_settled(
     fake_store, adapter, boundaries
 ):
-    """A reviewing row older than any model call can run belongs to a run
-    that died; the attempt limit settles the revision as before."""
+    """At the attempt limit, the revision settles as before."""
     source = await _source(fake_store)
     stale = await _reviewed_by_another_run(fake_store, source)
-    key = fake_store._review_key(source.id, source.revision, nightly.POLICY_VERSION)
-    fake_store.reviews[key] = stale.model_copy(
-        update={
-            "updated_at": stale.updated_at
-            - timedelta(seconds=nightly.LIVE_REVIEW_SECONDS + 1)
-        }
-    )
+    _left_by_a_run_that_died(fake_store, stale)
 
     result = await _run()
 

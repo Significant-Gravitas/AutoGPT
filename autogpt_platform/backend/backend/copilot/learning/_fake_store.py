@@ -358,6 +358,7 @@ class FakeLearningStore:
         policy_version: int,
         run_id: str,
         max_attempts: int,
+        live_seconds: int,
         expected_epoch: int,
     ) -> LearningReviewRecord | None:
         source = await self.get_source(user_id, source_id)
@@ -376,6 +377,7 @@ class FakeLearningStore:
             or existing.disposition in TERMINAL_REVIEW_DISPOSITIONS
             or existing.disposition == "applied_pending"
             or existing.replay is not None
+            or existing.held_by_another_run(run_id, live_seconds)
         ):
             return None
         if existing is None:

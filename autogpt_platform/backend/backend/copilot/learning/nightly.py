@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 import uuid as uuidlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Literal
 
 from backend.copilot.config import ChatConfig
@@ -36,7 +36,6 @@ from backend.data.db_accessors import (
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_learning import LearningSourceRecord
 from backend.data.skill_publication import ReviewStamp
-from backend.data.skill_reviews import LearningReviewRecord
 from backend.executor.cluster_lock import AsyncClusterLock
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -304,13 +303,16 @@ async def _process_source(
         policy_version=POLICY_VERSION,
         run_id=result.run_id,
         max_attempts=MAX_MODEL_ATTEMPTS,
+        live_seconds=LIVE_REVIEW_SECONDS,
         expected_epoch=source.epoch,
     )
     if claim is None:
         previous = await reviews.get_review_for_revision(
             user_id, source.source_id, source.revision, POLICY_VERSION
         )
-        if _reviewed_elsewhere(previous, result.run_id):
+        if previous is not None and previous.held_by_another_run(
+            result.run_id, LIVE_REVIEW_SECONDS
+        ):
             # Every exit below writes this revision's row, which would cut
             # off that run's paid review mid-call; it settles the row itself.
             result.reviewed += 1
@@ -469,18 +471,6 @@ async def _open_proposals(user_id: str, owner_key: str) -> int:
 # ---------------------------------------------------------------------------
 # Lease
 # ---------------------------------------------------------------------------
-
-
-def _reviewed_elsewhere(previous: LearningReviewRecord | None, run_id: str) -> bool:
-    """Another run reserved a model review of this revision recently enough
-    that its call may still be running."""
-    return (
-        previous is not None
-        and previous.disposition == "reviewing"
-        and previous.run_id != run_id
-        and datetime.now(timezone.utc) - previous.updated_at
-        < timedelta(seconds=LIVE_REVIEW_SECONDS)
-    )
 
 
 async def _acquire_lease(user_id: str) -> AsyncClusterLock | None:
