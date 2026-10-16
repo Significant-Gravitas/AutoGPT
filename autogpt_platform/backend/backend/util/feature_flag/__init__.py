@@ -738,9 +738,9 @@ def _launchdarkly_flag_keys() -> frozenset[str] | None:
 def _person_properties(context: Context) -> dict[str, Any]:
     """PostHog person properties for one read: the user's, plus ``environment``.
 
-    ``environment`` rides on every read, anonymous ones included: dev reads
-    prod's flag definitions, so a rollout to dev alone is a release condition
-    on it. It is the app env the analytics events also carry.
+    ``environment`` rides on every read, anonymous ones included, so a release
+    condition can tell deployments apart. It is the app env the analytics events
+    also carry.
     """
     return {
         **_context_properties(context),
