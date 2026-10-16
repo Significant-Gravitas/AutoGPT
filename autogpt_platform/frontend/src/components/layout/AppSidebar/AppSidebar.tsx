@@ -26,8 +26,8 @@ import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
 import { useNavItemClassName } from "./useNavItemClassName";
 import {
+  FileAttachmentIcon,
   FlowIcon,
-  Folder01Icon,
   GridViewIcon,
   Home10Icon,
   Store01Icon,
@@ -49,7 +49,7 @@ const MAIN_LINKS: NavLink[] = [
 ];
 
 const WORKSPACE_LINKS: NavLink[] = [
-  { name: "Files", href: "/artifacts", icon: Folder01Icon },
+  { name: "Files", href: "/artifacts", icon: FileAttachmentIcon },
 ];
 
 function isLinkActive(pathname: string | null, href: string) {

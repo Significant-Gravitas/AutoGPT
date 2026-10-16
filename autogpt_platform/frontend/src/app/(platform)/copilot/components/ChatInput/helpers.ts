@@ -48,8 +48,15 @@ export function formatElapsedTime(ms: number): string {
   return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`;
 }
 
-export const CARD_ICON_BUTTON_CLASS =
-  "size-9 rounded-full border-transparent bg-zinc-950/[0.06] p-0 text-zinc-900 shadow-none transition-[background-color,transform] hover:border-transparent hover:bg-zinc-950/10 hover:text-zinc-900 active:scale-[0.98] aria-expanded:bg-zinc-950/[0.12]";
+/** Frosted white circle shared by the composer's + and the task board CTAs. */
+export const GLASS_CIRCLE_CLASS =
+  "rounded-full border border-white bg-gradient-to-b from-white/90 to-zinc-100/70 text-zinc-700 shadow-[inset_0_1px_1px_rgba(255,255,255,0.9),0_1px_3px_rgba(0,0,0,0.08),0_0_0_1px_rgba(0,0,0,0.04)] backdrop-blur-md";
+
+export const CARD_GLASS_ICON_BUTTON_CLASS = `size-9 p-0 ${GLASS_CIRCLE_CLASS} transition-[transform,color] duration-200 ease-out hover:scale-105 hover:border-white hover:bg-transparent hover:text-zinc-900 active:scale-[0.98] aria-expanded:text-zinc-900 motion-reduce:transition-none`;
+
+/** Bare icon button for the card composer, matching the Test mode toggle. */
+export const CARD_PLAIN_ICON_BUTTON_CLASS =
+  "size-8 rounded-full border-transparent bg-transparent p-0 text-zinc-500 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-700";
 
 export const COMPACT_ICON_BUTTON_CLASS =
   "size-8 rounded-lg border-transparent bg-transparent p-0 text-zinc-700 shadow-none hover:border-transparent hover:bg-zinc-100 hover:text-zinc-900 aria-expanded:bg-zinc-100";

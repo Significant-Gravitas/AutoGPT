@@ -35,6 +35,8 @@ from backend.copilot.credential_selection import remember_selection
 from backend.copilot.db import (
     chat_message_has_assistant_reply,
     get_chat_messages_paginated,
+    get_last_message_texts,
+    set_chat_sessions_archived,
 )
 from backend.copilot.executor.utils import enqueue_cancel_task, schedule_chat_turn
 from backend.copilot.expert_kickoff import (
@@ -169,7 +171,7 @@ from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
-from backend.data.workspace import build_files_block
+from backend.data.workspace import build_files_block, count_generated_files_by_session
 from backend.data.workspace_folder import resolve_attachable_workspace_folders
 from backend.integrations.codex.access import enforce_codex_access_http
 from backend.integrations.credentials_store import provider_matches
@@ -540,6 +542,18 @@ class SessionSummaryResponse(BaseModel):
     source_platform: str | None = None
     is_pinned: bool = False
     expert_id: str | None = None
+    # First line of the newest user/assistant text; None until the chat starts.
+    last_message: str | None = None
+    # Files the chat produced, as counted by the chat's files button.
+    file_count: int = 0
+
+
+LAST_MESSAGE_PREVIEW_CHARS = 200
+
+
+def _first_line(text: str) -> str:
+    line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    return line[:LAST_MESSAGE_PREVIEW_CHARS]
 
 
 class ListSessionsResponse(BaseModel):
@@ -568,6 +582,19 @@ class UpdateSessionTitleRequest(BaseModel):
         if not stripped:
             raise ValueError("Title must not be blank")
         return stripped
+
+
+class ArchiveSessionsRequest(BaseModel):
+    """Request model for archiving or restoring chat sessions."""
+
+    session_ids: list[str] = Field(min_length=1, max_length=100)
+    archived: bool = True
+
+
+class ArchiveSessionsResponse(BaseModel):
+    """Response model for the archive sessions endpoint."""
+
+    updated: int
 
 
 class UpdateSessionPinnedRequest(BaseModel):
@@ -647,6 +674,29 @@ async def list_sessions(
                 "Failed to fetch processing status from Redis; defaulting to empty"
             )
 
+    previews: dict[str, str] = {}
+    file_counts: dict[str, int] = {}
+    if sessions:
+        session_ids = [session.session_id for session in sessions]
+        try:
+            file_counts = await count_generated_files_by_session(user_id, session_ids)
+        except Exception:
+            logger.warning(
+                "Failed to count session files; defaulting to empty", exc_info=True
+            )
+        try:
+            texts = await get_last_message_texts(session_ids)
+            previews = {
+                session_id: line
+                for session_id, text in texts.items()
+                if (line := _first_line(strip_injected_context_for_display(text)))
+            }
+        except Exception:
+            logger.warning(
+                "Failed to fetch last message previews; defaulting to empty",
+                exc_info=True,
+            )
+
     return ListSessionsResponse(
         sessions=[
             SessionSummaryResponse(
@@ -659,6 +709,8 @@ async def list_sessions(
                 source_platform=session.metadata.source_platform,
                 is_pinned=session.is_pinned,
                 expert_id=session.expert_id,
+                last_message=previews.get(session.session_id),
+                file_count=file_counts.get(session.session_id, 0),
             )
             for session in sessions
         ],
@@ -1274,6 +1326,35 @@ async def update_session_title_route(
             detail=f"Session {session_id} not found or access denied",
         )
     return {"status": "ok"}
+
+
+@router.post(
+    "/sessions/archive",
+    summary="Archive sessions",
+    dependencies=[Security(auth.requires_user)],
+)
+async def archive_sessions(
+    request: ArchiveSessionsRequest,
+    user_id: Annotated[str, Security(auth.get_user_id)],
+) -> ArchiveSessionsResponse:
+    """
+    Archive or restore chat sessions.
+
+    Archived sessions drop out of the session list and search until the
+    user restores them or a new turn starts in them. Ids the user does not
+    own, or already in the requested state, are skipped.
+
+    Args:
+        request: The session ids and whether to archive or restore them.
+        user_id: The authenticated user's ID.
+
+    Returns:
+        ArchiveSessionsResponse: How many sessions changed.
+    """
+    updated = await set_chat_sessions_archived(
+        list(dict.fromkeys(request.session_ids)), user_id, request.archived
+    )
+    return ArchiveSessionsResponse(updated=updated)
 
 
 @router.patch(

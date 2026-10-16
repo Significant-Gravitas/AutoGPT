@@ -715,6 +715,10 @@ model ChatSession {
   // Mirrors the LibraryAgent.isFavorite pattern.
   isPinned Boolean @default(false)
 
+  // Set when the user archives the chat. Archived chats drop out of the
+  // user's session lists; the next turn clears it.
+  archivedAt DateTime?
+
   // Sharing fields — mirrors AgentGraphExecution sharing
   isShared   Boolean   @default(false)
   shareToken String?   @unique

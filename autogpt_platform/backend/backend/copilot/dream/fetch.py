@@ -277,11 +277,11 @@ async def _fetch_recent_sessions(
     try:
         if expert_id is None:
             sessions = await chat_db().get_user_chat_sessions(
-                user_id, limit=limit, autopilot_only=True
+                user_id, limit=limit, autopilot_only=True, include_archived=True
             )
         else:
             sessions = await chat_db().get_user_chat_sessions(
-                user_id, limit=limit, expert_id=expert_id
+                user_id, limit=limit, expert_id=expert_id, include_archived=True
             )
     except Exception:
         logger.warning(

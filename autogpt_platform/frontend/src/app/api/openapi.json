@@ -4062,6 +4062,48 @@
         }
       }
     },
+    "/api/chat/sessions/archive": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Archive sessions",
+        "description": "Archive or restore chat sessions.\n\nArchived sessions drop out of the session list and search until the\nuser restores them or a new turn starts in them. Ids the user does not\nown, or already in the requested state, are skipped.\n\nArgs:\n    request: The session ids and whether to archive or restore them.\n    user_id: The authenticated user's ID.\n\nReturns:\n    ArchiveSessionsResponse: How many sessions changed.",
+        "operationId": "postV2Archive sessions",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArchiveSessionsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArchiveSessionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
     "/api/chat/sessions/{session_id}": {
       "delete": {
         "tags": ["v2", "chat", "chat"],
@@ -19392,6 +19434,33 @@
         "required": ["answer", "documents", "success"],
         "title": "ApiResponse"
       },
+      "ArchiveSessionsRequest": {
+        "properties": {
+          "session_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Session Ids"
+          },
+          "archived": {
+            "type": "boolean",
+            "title": "Archived",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["session_ids"],
+        "title": "ArchiveSessionsRequest",
+        "description": "Request model for archiving or restoring chat sessions."
+      },
+      "ArchiveSessionsResponse": {
+        "properties": { "updated": { "type": "integer", "title": "Updated" } },
+        "type": "object",
+        "required": ["updated"],
+        "title": "ArchiveSessionsResponse",
+        "description": "Response model for the archive sessions endpoint."
+      },
       "AssignPodRequest": {
         "properties": {
           "pod_id": {
@@ -31776,6 +31845,15 @@
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Expert Id"
+          },
+          "last_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Message"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "default": 0
           }
         },
         "type": "object",

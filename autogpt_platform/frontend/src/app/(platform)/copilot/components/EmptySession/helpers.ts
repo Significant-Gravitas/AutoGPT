@@ -1,6 +1,8 @@
 import type { User } from "@/lib/auth/types";
 import { getExpertRoleLabel as getExpertDisplayRoleLabel } from "@/services/experts/expert-role-label";
 
+export const HOME_COMPOSER_ID = "chat-input-empty";
+
 export const AUTOPILOT_INTRO =
   "Tell me about your work — I'll find what to automate.";
 

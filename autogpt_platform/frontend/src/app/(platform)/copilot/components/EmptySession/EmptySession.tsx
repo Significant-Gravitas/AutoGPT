@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import type { ComponentProps, ReactNode } from "react";
 import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import {
+  HOME_COMPOSER_ID,
   getExpertInputPlaceholder,
   getGreetingName,
   getIntroLine,
@@ -19,7 +20,8 @@ import type { WorkspaceAttachment } from "../../helpers/workspaceAttachments";
 import { EmptyHero } from "./components/EmptyHero";
 import { GreetingLoader } from "./components/GreetingLoader";
 import { ExpertKickoffLoader } from "./components/ExpertKickoffLoader/ExpertKickoffLoader";
-import { HomeRecap } from "@/app/(platform)/home/components/HomeRecap/HomeRecap";
+import { RecentWorkList } from "@/app/(platform)/home/components/RecentWorkList/RecentWorkList";
+import { TaskBoard } from "@/app/(platform)/home/components/TaskBoard/TaskBoard";
 import { RecipientChip } from "../ChatInput/components/RecipientChip";
 import { ConnectionPicker } from "../ChatInput/components/ConnectionPicker/ConnectionPicker";
 import { useRecipientPicker } from "./useRecipientPicker";
@@ -119,7 +121,7 @@ export function EmptySession({
       <motion.div
         className={cn(
           "relative z-10 w-full text-center",
-          isExpertsEnabled ? "max-w-[1120px]" : "max-w-[52rem]",
+          isExpertsEnabled ? "max-w-none" : "max-w-[52rem]",
           // The whole greeting flow reads top-down like a letter, so it
           // anchors to the top from its first visible frame; the regular
           // hero centers itself. `my-auto` rather than the parent's
@@ -182,7 +184,7 @@ export function EmptySession({
                   <div className="mb-3 text-left">{usageNotice}</div>
                 )}
                 <ChatInput
-                  inputId="chat-input-empty"
+                  inputId={HOME_COMPOSER_ID}
                   draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
                   voiceToggle={voiceToggle}
@@ -217,7 +219,10 @@ export function EmptySession({
         </div>
 
         {!intro.isVisible && !intro.isAwaitingGreeting && isExpertsEnabled && (
-          <HomeRecap />
+          <>
+            <TaskBoard />
+            <RecentWorkList />
+          </>
         )}
       </motion.div>
     </div>

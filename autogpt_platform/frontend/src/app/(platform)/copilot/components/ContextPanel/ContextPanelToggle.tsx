@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useCopilotUIStore, type ContextPanelExpert } from "../../store";
-import { ComputerIcon, LicenseDraftIcon } from "@hugeicons/core-free-icons";
+import { ComputerIcon, FileAttachmentIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { useIsMobile } from "../../useIsMobile";
 import { IntegrationsToggle } from "./components/IntegrationsToggle/IntegrationsToggle";
@@ -101,7 +101,7 @@ export function ContextPanelToggle({
               )}
             >
               <Icon
-                icon={LicenseDraftIcon}
+                icon={FileAttachmentIcon}
                 className="!size-4 text-sidebar-foreground/90"
               />
               {documentCount > 0 && (

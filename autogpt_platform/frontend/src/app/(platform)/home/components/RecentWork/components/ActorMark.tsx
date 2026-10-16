@@ -7,25 +7,33 @@ import { WorkflowAvatar } from "@/components/molecules/WorkflowAvatar/WorkflowAv
 
 interface Props {
   actor: HomeWorkActor;
+  size?: number;
+  className?: string;
 }
 
-export function ActorMark({ actor }: Props) {
+export function ActorMark({ actor, size = 18, className }: Props) {
   if (actor.kind === "expert" && actor.expert) {
     return (
       <ExpertAvatar
         name={actor.expert.name}
         avatarUrl={actor.expert.avatar_url}
-        size={18}
+        size={size}
+        className={className}
       />
     );
   }
   if (actor.kind === "workflow") {
     return (
-      <WorkflowAvatar name={actor.name} imageUrl={actor.image_url} size={18} />
+      <WorkflowAvatar
+        name={actor.name}
+        imageUrl={actor.image_url}
+        size={18}
+        className={className}
+      />
     );
   }
   if (actor.kind === "autopilot") {
-    return <AutopilotAvatar size={18} />;
+    return <AutopilotAvatar size={size} className={className} />;
   }
   return (
     <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
