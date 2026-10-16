@@ -12,23 +12,11 @@ import {
 } from "../../ToolAccordion/AccordionContent";
 import { ArtifactCard } from "../../ArtifactCard/ArtifactCard";
 import { filePartToArtifactRef } from "../helpers";
-import {
-  Download04Icon,
-  File02Icon,
-  Folder01Icon,
-  LinkSquare01Icon,
-} from "@hugeicons/core-free-icons";
+import { Download04Icon, File02Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
-import Link from "next/link";
-import { folderSummary } from "@/app/(platform)/artifacts/components/WorkspaceFolders/folderTree";
-import type { WorkspaceFolderPartData } from "../../../helpers/workspaceAttachments";
 
 interface Props {
   files: FileUIPart[];
-  /** Folders attached to the message — a pointer for the model, never
-   *  expanded into files, so they never take the ArtifactCard path. */
-  folders?: WorkspaceFolderPartData[];
-  isUser?: boolean;
   /** URL→file-ID pattern used by ``filePartToArtifactRef``.  Owner
    *  side defaults to the workspace-file URL shape; the public viewer
    *  passes a per-token pattern from ``lib/share/routes.ts``. */
@@ -56,30 +44,13 @@ function renderFileContent(file: FileUIPart): React.ReactNode | null {
   );
 }
 
-export function MessageAttachments({
-  files,
-  folders = [],
-  isUser,
-  filePattern,
-  readOnly,
-}: Props) {
-  if (files.length === 0 && folders.length === 0) return null;
+export function MessageAttachments({ files, filePattern, readOnly }: Props) {
+  if (files.length === 0) return null;
 
   return (
     <div className="mt-2 flex flex-col gap-2">
-      {folders.map((folder) => (
-        <FolderAttachmentCard
-          key={folder.id}
-          folder={folder}
-          readOnly={readOnly}
-        />
-      ))}
       {files.map((file, i) => {
-        const artifactRef = filePartToArtifactRef(
-          file,
-          isUser ? "user-upload" : "agent",
-          filePattern,
-        );
+        const artifactRef = filePartToArtifactRef(file, "agent", filePattern);
         if (artifactRef) {
           return (
             <ArtifactCard
@@ -93,18 +64,10 @@ export function MessageAttachments({
         return rendered ? (
           <div
             key={`${file.filename}-${i}`}
-            className={`inline-block rounded-lg border p-1.5 ${
-              isUser
-                ? "border-purple-300 bg-purple-50"
-                : "border-neutral-200 bg-neutral-50"
-            }`}
+            className="inline-block rounded-lg border border-neutral-200 bg-neutral-50 p-1.5"
           >
             {rendered}
-            <div
-              className={`mt-1 flex items-center gap-1 px-0.5 text-xs ${
-                isUser ? "text-zinc-600" : "text-neutral-500"
-              }`}
-            >
+            <div className="mt-1 flex items-center gap-1 px-0.5 text-xs text-neutral-500">
               <span className="truncate">{file.filename || "file"}</span>
               {file.url && (
                 <a
@@ -114,38 +77,6 @@ export function MessageAttachments({
                   className="ml-auto shrink-0 opacity-50 hover:opacity-100"
                 >
                   <Icon icon={Download04Icon} className="h-3.5 w-3.5" />
-                </a>
-              )}
-            </div>
-          </div>
-        ) : isUser ? (
-          <div
-            key={`${file.filename}-${i}`}
-            className="min-w-0 rounded-lg border border-purple-300 bg-purple-100 p-3"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <Icon
-                  icon={File02Icon}
-                  className="h-5 w-5 shrink-0 text-neutral-400"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-zinc-800">
-                    {file.filename || "file"}
-                  </p>
-                  <p className="mt-0.5 truncate font-mono text-xs text-zinc-800">
-                    {file.mediaType || "file"}
-                  </p>
-                </div>
-              </div>
-              {file.url && (
-                <a
-                  href={file.url}
-                  download
-                  aria-label="Download file"
-                  className="shrink-0 text-purple-400 hover:text-purple-600"
-                >
-                  <Icon icon={Download04Icon} className="h-5 w-5" />
                 </a>
               )}
             </div>
@@ -182,41 +113,6 @@ export function MessageAttachments({
           </ContentCard>
         );
       })}
-    </div>
-  );
-}
-
-function FolderAttachmentCard({
-  folder,
-  readOnly,
-}: {
-  folder: WorkspaceFolderPartData;
-  readOnly?: boolean;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3 rounded-lg border border-purple-300 bg-purple-100 p-3">
-      <Icon icon={Folder01Icon} size={20} className="shrink-0 text-zinc-700" />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm font-medium text-zinc-800">
-          {folder.name}
-        </span>
-        <span className="text-xs text-zinc-600">
-          {/* The part counts direct files only, so zero is not "Empty". */}
-          {folder.fileCount > 0
-            ? `Folder · ${folderSummary(folder.fileCount, 0)}`
-            : "Folder"}
-        </span>
-      </div>
-      {/* The share viewer has no Files page to send anyone to. */}
-      {readOnly ? null : (
-        <Link
-          href={`/artifacts?folder=${encodeURIComponent(folder.id)}`}
-          aria-label={`Open folder ${folder.name} in Files`}
-          className="shrink-0 rounded-md p-1 text-zinc-500 transition-colors hover:bg-purple-200 hover:text-zinc-800"
-        >
-          <Icon icon={LinkSquare01Icon} size={16} />
-        </Link>
-      )}
     </div>
   );
 }

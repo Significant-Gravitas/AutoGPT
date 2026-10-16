@@ -56,6 +56,7 @@ import { withToolDisplayNames } from "../../helpers/toolDisplay";
 import { CopyButton } from "./components/CopyButton";
 import { TailSpacer } from "./components/TailSpacer";
 import { MessageAttachments } from "./components/MessageAttachments";
+import { UserMessageAttachments } from "./components/UserMessageAttachments";
 import { MessagePartRenderer } from "./components/MessagePartRenderer";
 import { PendingAnswerContexts } from "./components/PendingAnswerContexts";
 import { QueueBadge } from "./components/QueueBadge";
@@ -639,6 +640,15 @@ export function ChatMessagesContainer({
                 : [],
             );
 
+            // A user's attachments sit above the bubble, so a message that
+            // only carries files has no bubble at all.
+            const hasBubble =
+              isAssistant ||
+              renderableParts.some(
+                (p) =>
+                  p.type !== "file" && p.type !== WORKSPACE_FOLDER_PART_TYPE,
+              );
+
             const sentFrom = readOnly
               ? null
               : (getSentFromMetadata(message.metadata) ??
@@ -651,68 +661,80 @@ export function ChatMessagesContainer({
                 data-message-id={message.id}
                 className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
               >
-                <MessageContent
-                  className={cn(
-                    isCompact
-                      ? "text-sm leading-6 group-[.is-user]:rounded-xl"
-                      : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-                    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
-                    // Streamdown's links (buttons, `text-primary`) and light
-                    // code chips would sink into the dark bubble.
-                    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
-                    "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
-                    // Chain hover pills use negative margins that the base
-                    // overflow-hidden would clip.
-                    "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
-                  )}
-                >
-                  {isAssistant ? (
-                    <ChainMessageParts
-                      parts={renderableParts}
-                      messageID={message.id}
-                      isCurrentlyStreaming={isCurrentlyStreaming}
-                      onRetry={isLastAssistant ? onRetry : undefined}
-                      fileUrlBuilder={fileUrlBuilder}
-                      readOnly={readOnly}
-                      compactionPhase={compactionPhase}
-                      liveCompactionCallId={liveCompactionCallId}
-                      liveCompactionStats={liveCompactionStats}
-                    />
-                  ) : (
-                    <UserMessageClamp
-                      trailing={
-                        sentFrom ? <SentFromBadge sentFrom={sentFrom} /> : null
-                      }
-                    >
-                      {renderableParts.map((part, i) => (
-                        <MessagePartRenderer
-                          key={`${message.id}-${i}`}
-                          part={part}
-                          messageID={message.id}
-                          partIndex={i}
-                          fileUrlBuilder={fileUrlBuilder}
-                          readOnly={readOnly}
-                          compactionPhase={compactionPhase}
-                          liveCompactionCallId={liveCompactionCallId}
-                          liveCompactionStats={liveCompactionStats}
-                          isCurrentlyStreaming={isCurrentlyStreaming}
-                        />
-                      ))}
-                    </UserMessageClamp>
-                  )}
-                  {isLastInTurn && !isCurrentlyStreaming && (
-                    <TurnStatsBar
-                      turnMessages={turnMessagesForRow(messages, message)}
-                      elapsedSeconds={
-                        rowIndex === renderRows.length - 1
-                          ? frozenElapsedRef.current
-                          : undefined
-                      }
-                      stats={turnStats?.get(message.id)}
-                    />
-                  )}
-                  {isLastAssistant && showIndicator && indicator}
-                </MessageContent>
+                {!isAssistant && (
+                  <UserMessageAttachments
+                    files={fileParts}
+                    folders={folderParts}
+                    filePattern={filePattern}
+                    readOnly={readOnly}
+                  />
+                )}
+                {hasBubble && (
+                  <MessageContent
+                    className={cn(
+                      isCompact
+                        ? "text-sm leading-6 group-[.is-user]:rounded-xl"
+                        : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
+                      "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+                      // Streamdown's links (buttons, `text-primary`) and light
+                      // code chips would sink into the dark bubble.
+                      "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
+                      "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
+                      // Chain hover pills use negative margins that the base
+                      // overflow-hidden would clip.
+                      "group-[.is-assistant]:overflow-visible group-[.is-assistant]:bg-transparent group-[.is-assistant]:text-slate-900",
+                    )}
+                  >
+                    {isAssistant ? (
+                      <ChainMessageParts
+                        parts={renderableParts}
+                        messageID={message.id}
+                        isCurrentlyStreaming={isCurrentlyStreaming}
+                        onRetry={isLastAssistant ? onRetry : undefined}
+                        fileUrlBuilder={fileUrlBuilder}
+                        readOnly={readOnly}
+                        compactionPhase={compactionPhase}
+                        liveCompactionCallId={liveCompactionCallId}
+                        liveCompactionStats={liveCompactionStats}
+                      />
+                    ) : (
+                      <UserMessageClamp
+                        trailing={
+                          sentFrom ? (
+                            <SentFromBadge sentFrom={sentFrom} />
+                          ) : null
+                        }
+                      >
+                        {renderableParts.map((part, i) => (
+                          <MessagePartRenderer
+                            key={`${message.id}-${i}`}
+                            part={part}
+                            messageID={message.id}
+                            partIndex={i}
+                            fileUrlBuilder={fileUrlBuilder}
+                            readOnly={readOnly}
+                            compactionPhase={compactionPhase}
+                            liveCompactionCallId={liveCompactionCallId}
+                            liveCompactionStats={liveCompactionStats}
+                            isCurrentlyStreaming={isCurrentlyStreaming}
+                          />
+                        ))}
+                      </UserMessageClamp>
+                    )}
+                    {isLastInTurn && !isCurrentlyStreaming && (
+                      <TurnStatsBar
+                        turnMessages={turnMessagesForRow(messages, message)}
+                        elapsedSeconds={
+                          rowIndex === renderRows.length - 1
+                            ? frozenElapsedRef.current
+                            : undefined
+                        }
+                        stats={turnStats?.get(message.id)}
+                      />
+                    )}
+                    {isLastAssistant && showIndicator && indicator}
+                  </MessageContent>
+                )}
                 {!readOnly &&
                   message.role === "user" &&
                   sessionChatStatus === "queued" &&
@@ -751,11 +773,9 @@ export function ChatMessagesContainer({
                     />
                   </MessageActions>
                 )}
-                {(fileParts.length > 0 || folderParts.length > 0) && (
+                {isAssistant && fileParts.length > 0 && (
                   <MessageAttachments
                     files={fileParts}
-                    folders={folderParts}
-                    isUser={message.role === "user"}
                     filePattern={filePattern}
                     readOnly={readOnly}
                   />

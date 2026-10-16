@@ -5,10 +5,11 @@ import { PendingUploadMessage } from "./PendingUploadMessage";
 
 const photo: PendingUploadAttachment = {
   id: "photo",
-  name: "photo.png",
-  mediaType: "image/png",
+  name: "photo.jpg",
+  mediaType: "image/jpeg",
   sizeBytes: 2_400_000,
   status: "uploading",
+  previewUrl: "/images/team-card-banner.jpg",
 };
 
 const report: PendingUploadAttachment = {

@@ -12,6 +12,7 @@ import {
   isFolderPart,
   MAX_ATTACHMENTS,
   workspaceFileDownloadUrl,
+  type SizedFileUIPart,
   type StoredAttachmentPart,
 } from "./workspaceAttachments";
 
@@ -146,6 +147,7 @@ export function describePendingUpload(
           name: part.filename ?? "file",
           mediaType: part.mediaType,
           status: "uploaded",
+          previewUrl: part.url,
         },
   );
   const local: PendingUploadAttachment[] = message.files.map((file) => ({
@@ -154,6 +156,7 @@ export function describePendingUpload(
     mediaType: file.type || "application/octet-stream",
     sizeBytes: file.size,
     status: "uploading",
+    file,
   }));
   return {
     id: nextPendingUploadId(),
@@ -206,7 +209,7 @@ async function uploadUntilSettled(
       store.setPendingUploadAttachment(sessionId, attachmentId, {
         status: "uploaded",
       });
-      return buildFilePart(uploaded);
+      return buildFilePart(uploaded, file.size);
     } catch (err) {
       console.error("File upload failed:", err);
       store.setPendingUploadAttachment(sessionId, attachmentId, {
@@ -254,12 +257,16 @@ async function uploadFile(file: File, sessionId: string) {
   } satisfies UploadedFile;
 }
 
-function buildFilePart(uploaded: UploadedFile): FileUIPart {
+function buildFilePart(
+  uploaded: UploadedFile,
+  sizeBytes: number,
+): SizedFileUIPart {
   return {
     type: "file",
     mediaType: uploaded.mime_type,
     filename: uploaded.name,
     url: workspaceFileDownloadUrl(uploaded.file_id),
+    sizeBytes,
   };
 }
 

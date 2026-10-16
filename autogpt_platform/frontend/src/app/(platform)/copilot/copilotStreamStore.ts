@@ -69,6 +69,10 @@ export interface PendingUploadAttachment {
   mediaType: string;
   sizeBytes?: number;
   status: PendingUploadStatus;
+  /** The local file, kept so an image can show its thumbnail mid-upload. */
+  file?: File;
+  /** Where a stored image's thumbnail loads from. */
+  previewUrl?: string;
 }
 
 /**

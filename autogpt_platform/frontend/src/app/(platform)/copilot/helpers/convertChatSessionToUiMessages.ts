@@ -1,5 +1,5 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
-import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
+import type { UIMessage, UIDataTypes, UITools } from "ai";
 import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
 import {
   TURN_PAUSED_PART_TYPE,
@@ -9,6 +9,7 @@ import {
 import { toolDisplayName } from "./toolDisplay";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
+  type SizedFileUIPart,
   type WorkspaceFolderPartData,
 } from "./workspaceAttachments";
 
@@ -115,7 +116,8 @@ const FOLDER_HINT =
 const ATTACHED_FILES_RE = new RegExp(
   `\\n?\\n?\\[Attached files\\]\\n([\\s\\S]*?)(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)})(?:\\n(?:${escapeRe(FILE_HINT)}|${escapeRe(FOLDER_HINT)}))*`,
 );
-const FILE_LINE_RE = /^- (.+) \(([^,]+),\s*[\d.]+ KB\), file_id=([0-9a-f-]+)$/;
+const FILE_LINE_RE =
+  /^- (.+) \(([^,]+),\s*([\d.]+) KB\), file_id=([0-9a-f-]+)$/;
 const FOLDER_LINE_RE =
   /^- (.+) \(folder, (\d+) file\(s\) directly inside\), folder_id=([0-9a-f-]+)$/;
 
@@ -140,7 +142,7 @@ function extractFileParts(
   fileUrlBuilder: (fileId: string) => string,
 ): {
   cleanText: string;
-  fileParts: FileUIPart[];
+  fileParts: SizedFileUIPart[];
   folderParts: WorkspaceFolderUiPart[];
 } {
   const match = content.match(ATTACHED_FILES_RE);
@@ -148,7 +150,7 @@ function extractFileParts(
 
   const cleanText = content.replace(match[0], "").trim();
   const lines = match[1].trim().split("\n");
-  const fileParts: FileUIPart[] = [];
+  const fileParts: SizedFileUIPart[] = [];
   const folderParts: WorkspaceFolderUiPart[] = [];
 
   for (const line of lines) {
@@ -164,12 +166,13 @@ function extractFileParts(
     }
     const m = trimmed.match(FILE_LINE_RE);
     if (!m) continue;
-    const [, filename, mimeType, fileId] = m;
+    const [, filename, mimeType, sizeKB, fileId] = m;
     fileParts.push({
       type: "file",
       filename,
       mediaType: mimeType,
       url: fileUrlBuilder(fileId),
+      sizeBytes: Math.round(Number(sizeKB) * 1024),
     });
   }
 

@@ -140,6 +140,8 @@ vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
 vi.mock("../helpers", async (importOriginal) => ({
   extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
     .extractReviewTarget,
+  filePartToArtifactRef: (await importOriginal<typeof import("../helpers")>())
+    .filePartToArtifactRef,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
@@ -1174,6 +1176,60 @@ describe("ChatMessagesContainer — expert kickoff", () => {
     );
 
     expect(screen.getAllByTestId("message-user")).toHaveLength(1);
+  });
+});
+
+// ── user attachments ──────────────────────────────────────────────────────
+
+describe("ChatMessagesContainer — user attachments", () => {
+  const FILE_ID = "550e8400-e29b-41d4-a716-446655440000";
+  const filePart = {
+    type: "file" as const,
+    url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+    filename: "report.pdf",
+    mediaType: "application/pdf",
+  };
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  function userBubble(container: HTMLElement) {
+    return container.querySelector('[class*="group-[.is-user]:bg-zinc-900"]');
+  }
+
+  it("puts a user's files above the text bubble", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "what is this" }, filePart],
+          },
+        ]}
+      />,
+    );
+
+    const row = screen.getByTestId("user-message-attachments");
+    expect(row.textContent).toContain("report.pdf");
+    expect(
+      row.compareDocumentPosition(screen.getByText("what is this")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("draws no empty bubble for a message that only carries files", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[{ id: "user-1", role: "user", parts: [filePart] }]}
+      />,
+    );
+
+    expect(screen.getByText("report.pdf")).toBeDefined();
+    expect(userBubble(container)).toBeNull();
   });
 });
 

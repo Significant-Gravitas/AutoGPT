@@ -60,6 +60,16 @@ export interface WorkspaceFolderPartData {
 // (chat/routes.py): every attachment, uploaded or from the workspace, is one entry.
 export const MAX_ATTACHMENTS = 20;
 
+/** A file part that also knows the file's size, for its attachment card.
+ *  The SDK keeps the extra field on the message; the transport only ever
+ *  reads the file id out of `url`. */
+export type SizedFileUIPart = FileUIPart & { sizeBytes?: number };
+
+export function filePartSize(part: FileUIPart): number | undefined {
+  const { sizeBytes } = part as SizedFileUIPart;
+  return typeof sizeBytes === "number" ? sizeBytes : undefined;
+}
+
 export function workspaceFileDownloadUrl(fileId: string): string {
   return `/api/proxy/api/workspace/files/${encodeURIComponent(fileId)}/download`;
 }

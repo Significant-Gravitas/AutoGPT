@@ -64,8 +64,11 @@ function pending(list: PendingUploadAttachment[]) {
 
 function cardFor(name: string) {
   const card = screen
-    .getAllByTestId("pending-upload-attachment")
-    .find((c) => within(c).queryByText(name));
+    .getAllByTestId("attachment-card")
+    .find(
+      (c) =>
+        within(c).queryByText(name) ?? within(c).queryByRole("img", { name }),
+    );
   if (!card) throw new Error(`No card for ${name}`);
   return card;
 }
@@ -75,7 +78,7 @@ afterEach(() => {
 });
 
 describe("PendingUploadMessage", () => {
-  it("renders artifact-style cards with kind and size", () => {
+  it("renders attachment cards with type and size", () => {
     render(
       <PendingUploadMessage
         pendingSend={{ id: "pending", text: "look at these", attachments }}
@@ -84,13 +87,41 @@ describe("PendingUploadMessage", () => {
 
     expect(screen.getByText("look at these")).toBeDefined();
     expect(screen.getByText("talk.pdf")).toBeDefined();
-    expect(screen.getByText(/3\.0 MB/)).toBeDefined();
-    expect(screen.getByText(/2\.0 KB/)).toBeDefined();
-    expect(screen.getByText(/12 B/)).toBeDefined();
+    expect(screen.getByText("PDF · 3.0 MB")).toBeDefined();
+    expect(screen.getByText("Text · 12 B")).toBeDefined();
     expect(screen.getByText("notes.md")).toBeDefined();
     expect(screen.getByTestId("thinking-indicator").textContent).toBe(
       "Uploading 3 files…",
     );
+  });
+
+  it("puts the attachments above the text bubble", () => {
+    render(<PendingUploadMessage pendingSend={pending(attachments)} />);
+
+    const row = screen.getByTestId("user-message-attachments");
+    const text = screen.getByText("hi");
+    expect(
+      row.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("shows a local image's thumbnail while it uploads", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:icon");
+    URL.revokeObjectURL = vi.fn();
+    render(
+      <PendingUploadMessage
+        pendingSend={pending([
+          {
+            ...attachments[1],
+            file: new File(["png"], "icon.png", { type: "image/png" }),
+          },
+        ])}
+      />,
+    );
+
+    const thumbnail = await screen.findByRole("img", { name: "icon.png" });
+    expect(thumbnail.getAttribute("src")).toBe("blob:icon");
+    expect(within(cardFor("icon.png")).getByText("Uploading")).toBeDefined();
   });
 
   it("carries the message id the tail spacer measures", () => {

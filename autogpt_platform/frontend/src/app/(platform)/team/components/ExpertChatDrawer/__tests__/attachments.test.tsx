@@ -217,7 +217,7 @@ async function attachLocalFile(user: ReturnType<typeof userEvent.setup>) {
   const input = document.querySelector<HTMLInputElement>('input[type="file"]');
   if (!input) throw new Error("The composer has no file input");
   await user.upload(input, photo());
-  await screen.findByText("photo.png");
+  await screen.findByRole("img", { name: "photo.png" });
 }
 
 async function enabledComposer() {
@@ -232,7 +232,20 @@ function pendingBubble() {
   return screen.getByTestId("pending-upload-message");
 }
 
+function pendingCard(name: string) {
+  return within(pendingBubble())
+    .getAllByTestId("attachment-card")
+    .find(
+      (card) =>
+        within(card).queryByText(name) ??
+        within(card).queryByRole("img", { name }),
+    );
+}
+
 beforeEach(() => {
+  // jsdom has no blob: URLs; the image cards preview local files with them.
+  URL.createObjectURL = vi.fn(() => "blob:preview");
+  URL.revokeObjectURL = vi.fn();
   window.localStorage.clear();
   useCopilotStreamStore.getState().resetAll();
   server.use(backendSocket.addEventListener("connection", () => {}));
@@ -280,7 +293,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("what is this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      await within(bubble).findByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     expect(screen.queryByText("What can I do for you?")).toBeNull();
     expect(recorder.uploadSessionIds).toEqual([]);
 
@@ -362,7 +377,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     const bubble = await screen.findByTestId("pending-upload-message");
     expect(within(bubble).getByText("and this")).toBeDefined();
-    expect(within(bubble).getByText("photo.png")).toBeDefined();
+    expect(
+      await within(bubble).findByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
     await waitFor(() =>
       expect(recorder.uploadSessionIds).toEqual([SESSION_ID]),
     );
@@ -455,7 +472,9 @@ describe("ExpertChatDrawer attachments", () => {
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     expect(recorder.streamBodies[0].expert_kickoff).toBe(true);
-    expect(within(pendingBubble()).getByText("photo.png")).toBeDefined();
+    expect(
+      await within(pendingBubble()).findByRole("img", { name: "photo.png" }),
+    ).toBeDefined();
 
     kickoffReply.release();
 
@@ -496,9 +515,7 @@ describe("ExpertChatDrawer failed uploads", () => {
     await user.type(input, "compare these{Enter}");
 
     const failedCard = await waitFor(() => {
-      const card = within(pendingBubble())
-        .getAllByTestId("pending-upload-attachment")
-        .find((c) => within(c).queryByText("notes.pdf"));
+      const card = pendingCard("notes.pdf");
       expect(card?.dataset.status).toBe("failed");
       return card!;
     });
@@ -518,9 +535,7 @@ describe("ExpertChatDrawer failed uploads", () => {
     expect(screen.getByRole("status").textContent).toBe(
       "Couldn't upload notes.pdf. Retry or remove it to send your message.",
     );
-    const photoCard = within(pendingBubble())
-      .getAllByTestId("pending-upload-attachment")
-      .find((c) => within(c).queryByText("photo.png"));
+    const photoCard = pendingCard("photo.png");
     expect(photoCard?.dataset.status).toBe("uploaded");
     expect(recorder.streamBodies).toEqual([]);
 

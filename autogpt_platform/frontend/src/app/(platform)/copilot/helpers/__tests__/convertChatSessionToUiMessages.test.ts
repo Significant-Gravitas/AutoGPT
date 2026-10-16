@@ -686,6 +686,17 @@ describe("the [Attached files] block", () => {
     expect(JSON.stringify(parts)).not.toContain("[Attached files]");
   });
 
+  it("keeps each file's size for its attachment card", () => {
+    const parts = userParts(
+      `Here.\n\n[Attached files]\n- talk.pdf (application/pdf, 3072.0 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n${FILE_HINT}`,
+    );
+    expect(parts.find((p) => p.type === "file")).toMatchObject({
+      filename: "talk.pdf",
+      mediaType: "application/pdf",
+      sizeBytes: 3 * 1024 * 1024,
+    });
+  });
+
   it("leaves a message with no block alone", () => {
     expect(userParts("just text")).toEqual([
       { type: "text", text: "just text", state: "done" },

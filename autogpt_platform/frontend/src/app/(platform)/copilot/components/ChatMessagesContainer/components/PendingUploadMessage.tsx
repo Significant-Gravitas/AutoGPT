@@ -1,17 +1,8 @@
 "use client";
 
 import { CredentialMentionText } from "../../CredentialMention/CredentialMentionText";
-import { Icon } from "@/components/atoms/Icon/Icon";
 import { Message, MessageContent } from "@/components/ai-elements/message";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/atoms/Button/Button";
-import {
-  AlertCircleIcon,
-  Cancel01Icon,
-  CheckmarkCircle02Icon,
-  Loading03Icon,
-  RefreshIcon,
-} from "@hugeicons/core-free-icons";
 import type {
   PendingUploadAttachment,
   PendingUploadSend,
@@ -21,9 +12,12 @@ import {
   removePendingUpload,
   retryPendingUpload,
 } from "../../../helpers/sendWithAttachments";
-import { classifyArtifact } from "../../ArtifactPanel/helpers";
+import { AttachmentCard } from "../../AttachmentCard/AttachmentCard";
+import { isImageType } from "../../AttachmentCard/helpers";
+import { useObjectUrl } from "../../AttachmentCard/useObjectUrl";
 import { useElapsedTimer } from "../../JobStatsBar/useElapsedTimer";
 import { ThinkingIndicator } from "./ThinkingIndicator";
+import { UserAttachmentRow } from "./UserAttachmentRow";
 
 interface Props {
   pendingSend: PendingUploadSend;
@@ -53,107 +47,28 @@ function countWithStatus(
   return attachments.filter((a) => a.status === status).length;
 }
 
-function formatSize(bytes?: number): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 interface CardProps {
   attachment: PendingUploadAttachment;
 }
 
-function PendingArtifactCard({ attachment }: CardProps) {
-  const classification = classifyArtifact(
-    attachment.mediaType,
-    attachment.name,
-    attachment.sizeBytes,
-  );
+function PendingAttachmentCard({ attachment }: CardProps) {
+  const localImage =
+    attachment.file && isImageType(attachment.mediaType)
+      ? attachment.file
+      : undefined;
+  const localPreviewUrl = useObjectUrl(localImage);
   const isFailed = attachment.status === "failed";
   return (
-    <div
-      data-testid="pending-upload-attachment"
-      data-status={attachment.status}
-      className={cn(
-        "my-1 flex w-full min-w-0 items-center gap-3 rounded-2xl border bg-white px-3 py-2.5 text-left",
-        isFailed ? "border-red-200" : "border-zinc-200",
-      )}
-    >
-      <Icon
-        icon={isFailed ? AlertCircleIcon : classification.icon}
-        size={20}
-        className={cn("shrink-0", isFailed ? "text-red-600" : "text-zinc-400")}
-      />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-zinc-900">
-          {attachment.name}
-        </p>
-        {isFailed ? (
-          <p className="truncate text-xs font-medium text-red-600">
-            Upload failed
-          </p>
-        ) : (
-          <p className="text-xs text-zinc-400">
-            <span className="inline-block rounded-full bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-500">
-              {classification.label}
-            </span>
-            {attachment.sizeBytes
-              ? ` • ${formatSize(attachment.sizeBytes)}`
-              : ""}
-          </p>
-        )}
-      </div>
-      <UploadStatus attachment={attachment} />
-    </div>
-  );
-}
-
-function UploadStatus({ attachment }: CardProps) {
-  if (attachment.status === "uploading")
-    return (
-      <span className="flex shrink-0 items-center">
-        <Icon
-          icon={Loading03Icon}
-          size={16}
-          aria-hidden
-          className="animate-spin text-zinc-500 motion-reduce:animate-none"
-        />
-        <span className="sr-only">Uploading</span>
-      </span>
-    );
-  if (attachment.status === "uploaded")
-    return (
-      <span className="flex shrink-0 items-center">
-        <Icon
-          icon={CheckmarkCircle02Icon}
-          size={16}
-          aria-hidden
-          className="text-zinc-500"
-        />
-        <span className="sr-only">Uploaded</span>
-      </span>
-    );
-  return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Button
-        variant="ghost"
-        size="xs"
-        leadingIcon={RefreshIcon}
-        aria-label={`Retry ${attachment.name}`}
-        onClick={() => retryPendingUpload(attachment.id)}
-      >
-        <span className="hidden sm:inline">Retry</span>
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-xs"
-        aria-label={`Remove ${attachment.name}`}
-        onClick={() => removePendingUpload(attachment.id)}
-      >
-        <Icon icon={Cancel01Icon} size={14} aria-hidden />
-      </Button>
-    </div>
+    <AttachmentCard
+      size="message"
+      name={attachment.name}
+      mediaType={attachment.mediaType}
+      sizeBytes={attachment.sizeBytes}
+      previewUrl={localPreviewUrl ?? attachment.previewUrl}
+      status={attachment.status}
+      onRetry={isFailed ? () => retryPendingUpload(attachment.id) : undefined}
+      onRemove={isFailed ? () => removePendingUpload(attachment.id) : undefined}
+    />
   );
 }
 
@@ -178,6 +93,16 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
         data-message-id={PENDING_UPLOAD_MESSAGE_ID}
         className="duration-300 animate-in fade-in slide-in-from-bottom-2 fill-mode-both"
       >
+        {pendingSend.attachments.length > 0 && (
+          <UserAttachmentRow>
+            {pendingSend.attachments.map((attachment) => (
+              <PendingAttachmentCard
+                key={attachment.id}
+                attachment={attachment}
+              />
+            ))}
+          </UserAttachmentRow>
+        )}
         {pendingSend.text && (
           <MessageContent
             className={cn(
@@ -191,16 +116,6 @@ export function PendingUploadMessage({ pendingSend, isCompact }: Props) {
               <CredentialMentionText text={pendingSend.text} />
             </div>
           </MessageContent>
-        )}
-        {pendingSend.attachments.length > 0 && (
-          <div className="mt-2 flex flex-col gap-2">
-            {pendingSend.attachments.map((attachment) => (
-              <PendingArtifactCard
-                key={attachment.id}
-                attachment={attachment}
-              />
-            ))}
-          </div>
         )}
       </Message>
       <Message

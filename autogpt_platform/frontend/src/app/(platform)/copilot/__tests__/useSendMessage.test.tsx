@@ -93,6 +93,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           status: "uploading",
+          file: expect.any(File),
         },
       ],
     });
@@ -116,6 +117,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           filename: "talk.pdf",
           url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+          sizeBytes: 2048,
         },
       ],
       metadata: undefined,
@@ -153,6 +155,7 @@ describe("useSendMessage with local attachments", () => {
         name: "notes.txt",
         mediaType: "text/plain",
         status: "uploaded",
+        previewUrl: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
       },
       {
         id: expect.any(String),
@@ -160,6 +163,7 @@ describe("useSendMessage with local attachments", () => {
         mediaType: "image/png",
         sizeBytes: 2048,
         status: "uploading",
+        file: expect.any(File),
       },
     ]);
   });
@@ -218,6 +222,7 @@ describe("useSendMessage with local attachments", () => {
           mediaType: "application/pdf",
           sizeBytes: 2048,
           status: "uploading",
+          file: expect.any(File),
         },
       ],
     });
@@ -482,6 +487,7 @@ describe("useSendMessage first send failing after the session exists", () => {
           mediaType: "application/pdf",
           filename: "talk.pdf",
           url: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
+          sizeBytes: 2048,
         },
       ],
       metadata: undefined,
