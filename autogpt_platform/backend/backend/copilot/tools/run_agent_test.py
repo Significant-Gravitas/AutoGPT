@@ -559,7 +559,10 @@ async def test_run_agent_rejects_unknown_input_fields(setup_test_data):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_missing_credentials_reuses_one_credential_scope_snapshot():
+@pytest.mark.parametrize("unattended", [False, True])
+async def test_missing_credentials_reuses_one_credential_scope_snapshot(
+    unattended: bool,
+):
     """One snapshot still honors session choices and filters the grant hint."""
 
     field = CredentialsFieldInfo.model_validate(
@@ -596,6 +599,7 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot():
             ),
         ]
     )
+    store.get_all_creds.side_effect = [store.get_all_creds.return_value, []]
     credentials_manager = MagicMock(store=store)
     experts = MagicMock()
     experts.expert_allowed_credential_ids = AsyncMock(return_value=[])
@@ -608,6 +612,10 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot():
         patch(
             "backend.copilot.tools.expert_scope.IntegrationCredentialsManager",
             return_value=credentials_manager,
+        ),
+        patch(
+            "backend.copilot.tools.run_agent.is_unattended_turn",
+            return_value=unattended,
         ),
         patch("backend.data.db_accessors.experts_db", return_value=experts),
         patch("backend.copilot.tools.expert_scope.experts_db", return_value=experts),
@@ -624,13 +632,17 @@ async def test_missing_credentials_reuses_one_credential_scope_snapshot():
             expert_id="expert-a",
         )
 
-    assert isinstance(response, SetupRequirementsResponse)
-    grant = response.setup_info.user_readiness.missing_credentials["github_api_key"][
-        "expert_grant"
-    ]
-    assert [credential["id"] for credential in grant["credentials"]] == [
-        "spare-credential"
-    ]
+    if unattended:
+        assert isinstance(response, ErrorResponse)
+        assert response.error == "missing_credentials"
+    else:
+        assert isinstance(response, SetupRequirementsResponse)
+        grant = response.setup_info.user_readiness.missing_credentials[
+            "github_api_key"
+        ]["expert_grant"]
+        assert [credential["id"] for credential in grant["credentials"]] == [
+            "spare-credential"
+        ]
     assert "spare-credential" in response.message
     assert "wrong-type" not in response.message
     selections.assert_awaited_once_with("test-session")

@@ -781,6 +781,7 @@ class RunAgentTool(BaseTool):
                     session_id,
                     user_id,
                     expert_id,
+                    credential_scope=credential_scope,
                 )
             return (
                 graph_credentials,
