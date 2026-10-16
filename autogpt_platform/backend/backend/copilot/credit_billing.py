@@ -205,7 +205,7 @@ async def bill_to_credits(
     """
     if user_id is None or tool_name != AUTOPILOT_BLOCK_TOOL_NAME:
         return None
-    if not settings.config.enable_credit or not config.thinking_available:
+    if not credits_can_pay_block_turns():
         return None
     try:
         balance = await _balance(user_id, organization_id)
@@ -222,6 +222,12 @@ async def bill_to_credits(
         organization_id=organization_id,
         team_id=team_id,
     )
+
+
+def credits_can_pay_block_turns() -> bool:
+    """Whether a block turn past the allowance can run on credits here: credits
+    are on, and the SDK engine that caps a turn's spend can run."""
+    return settings.config.enable_credit and config.thinking_available
 
 
 async def _balance(user_id: str, organization_id: str | None) -> int:

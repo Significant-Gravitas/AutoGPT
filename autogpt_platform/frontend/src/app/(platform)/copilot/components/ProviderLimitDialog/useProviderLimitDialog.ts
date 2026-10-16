@@ -8,6 +8,7 @@ import {
   useGetV2ListChatConnections,
   usePutV2ChangeTheConnectionAnExistingChatRunsOn,
 } from "@/app/api/__generated__/endpoints/chat/chat";
+import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnectionOffer";
 import { toast } from "@/components/molecules/Toast/use-toast";
 
 import type { ProviderFailure } from "../../providerFailure";
@@ -17,12 +18,15 @@ interface Args {
   failure: ProviderFailure | null;
   sessionId: string | null;
   onDismiss: () => void;
+  /** Narrows which connections may be offered; any of them by default. */
+  eligible?: (offer: AIConnectionOffer) => boolean;
 }
 
 export function useProviderLimitDialog({
   failure,
   sessionId,
   onDismiss,
+  eligible,
 }: Args) {
   const queryClient = useQueryClient();
 
@@ -43,7 +47,10 @@ export function useProviderLimitDialog({
     connectionsQuery.isError ||
     (connectionsQuery.data !== undefined &&
       connectionsQuery.data.status !== 200);
-  const alternative = alternativeConnection(offers, failure);
+  const alternative = alternativeConnection(
+    eligible ? offers?.filter(eligible) : offers,
+    failure,
+  );
 
   const { mutateAsync: changeConnection, isPending: isSwitching } =
     usePutV2ChangeTheConnectionAnExistingChatRunsOn({
