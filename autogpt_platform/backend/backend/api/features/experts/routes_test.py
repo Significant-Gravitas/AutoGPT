@@ -42,6 +42,7 @@ from backend.api.features.experts.models import (
 from backend.api.features.experts.routes import public_router, router
 from backend.api.features.store.skill_model import MarketplaceSkill
 from backend.api.rest_api import app as rest_app
+from backend.copilot.tools.skills import SkillWriteLockError
 from backend.util.exceptions import ConflictError, NotFoundError
 from backend.util.feature_flag import Flag
 
@@ -1173,6 +1174,21 @@ def test_update_expert_skills_returns_400_when_a_listing_is_also_removed(
 
     assert response.status_code == 400
     assert "both attached and removed" in response.json()["detail"]
+
+
+def test_update_expert_skills_returns_409_when_a_removal_could_not_be_ordered(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    mocker.patch(
+        "backend.api.features.experts.routes.experts_db.update_skills",
+        new_callable=AsyncMock,
+        side_effect=SkillWriteLockError("held elsewhere; try again"),
+    )
+
+    response = client.put("/experts/expert-1/skills", json={"remove": ["SEO"]})
+
+    assert response.status_code == 409
+    assert "try again" in response.json()["detail"]
 
 
 def test_update_expert_skills_rejects_a_name_both_added_and_removed(
