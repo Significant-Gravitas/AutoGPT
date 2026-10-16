@@ -7,6 +7,7 @@ import type { ArtifactRef } from "../../store";
 import { useCopilotUIStore } from "../../store";
 import { downloadArtifact } from "../ArtifactPanel/downloadArtifact";
 import { classifyArtifact } from "../ArtifactPanel/helpers";
+import { formatSize } from "../AttachmentCard/helpers";
 import { ArrowRight01Icon, Download01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
 
@@ -23,13 +24,6 @@ interface Props {
    *  other words, ``readOnly`` does NOT force every click to download
    *  — that's only true for non-openable assets, regardless of mode. */
   readOnly?: boolean;
-}
-
-function formatSize(bytes?: number): string {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function ArtifactCard({ artifact, readOnly }: Props) {
