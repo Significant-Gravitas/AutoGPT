@@ -70,7 +70,9 @@ def subscription(trial):
         },
         "pending_setup_intent": None,
         "items": {
-            "data": [{"price": {"id": trial.offer.price_id}, "quantity": 1}],
+            "data": [
+                {"id": "si_1", "price": {"id": trial.offer.price_id}, "quantity": 1}
+            ],
             "has_more": False,
         },
     }

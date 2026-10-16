@@ -12,13 +12,15 @@ import { GoogleDrivePickerInput } from "@/components/contextual/GoogleDrivePicke
 import { InformationTooltip } from "@/components/molecules/InformationTooltip/InformationTooltip";
 import { TimePicker } from "@/components/molecules/TimePicker/TimePicker";
 import {
+  BlockIOObjectSubSchema,
   BlockIOSubSchema,
   BlockIOTableSubSchema,
   DataType,
-  determineDataType,
+  GoogleDrivePickerSchema,
+  resolveDataType,
   TableRow,
 } from "@/lib/autogpt-server-api/types";
-import { getMultiSelectProperties, getSelectOptions } from "./helpers";
+import { getSelectOptions } from "./helpers";
 import { useRunAgentInputs } from "./useRunAgentInputs";
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -52,7 +54,15 @@ export function RunAgentInputs({
 }: Props & React.HTMLAttributes<HTMLElement>) {
   const { handleUploadFile, uploadProgress } = useRunAgentInputs();
 
-  const dataType = determineDataType(schema);
+  // Options and keys come from the schema the type was judged by: an optional
+  // field keeps them on its anyOf member, not on the field itself.
+  const { type, schema: valueSchema } = resolveDataType(schema);
+  const selectOptions = getSelectOptions(valueSchema);
+  // A select with nothing to pick from, like an empty enum, takes text.
+  const dataType =
+    type === DataType.SELECT && selectOptions.length === 0
+      ? DataType.SHORT_TEXT
+      : type;
 
   const baseId = String(schema.title ?? "input")
     .replace(/\s+/g, "-")
@@ -100,9 +110,9 @@ export function RunAgentInputs({
       break;
 
     case DataType.GOOGLE_DRIVE_PICKER: {
-      const pickerSchema = schema as any;
-      const config: import("@/lib/autogpt-server-api/types").GoogleDrivePickerConfig =
-        pickerSchema.google_drive_picker_config || {};
+      const config =
+        (valueSchema as GoogleDrivePickerSchema).google_drive_picker_config ??
+        {};
 
       innerInputElement = (
         <GoogleDrivePickerInput
@@ -216,16 +226,17 @@ export function RunAgentInputs({
           value={value ?? ""}
           onValueChange={(val: string) => onChange(val)}
           placeholder={placeholder || "Select an option"}
-          options={getSelectOptions(schema)
-            .filter((opt) => opt)
-            .map((opt) => ({ value: opt, label: String(opt) }))}
+          options={selectOptions.map((opt) => ({
+            value: opt,
+            label: String(opt),
+          }))}
         />
       );
       break;
 
     case DataType.MULTI_SELECT: {
-      const properties = getMultiSelectProperties(schema);
-      const allKeys = Object.keys(properties);
+      const _schema = valueSchema as BlockIOObjectSubSchema;
+      const allKeys = Object.keys(_schema.properties);
       const selectedValues = Object.entries(value || {})
         .filter(([_, v]) => v)
         .map(([k]) => k);
@@ -234,7 +245,7 @@ export function RunAgentInputs({
         <MultiToggle
           items={allKeys.map((key) => ({
             value: key,
-            label: properties[key]?.title ?? key,
+            label: _schema.properties[key]?.title ?? key,
           }))}
           selectedValues={selectedValues}
           onChange={(values: string[]) =>
@@ -253,7 +264,7 @@ export function RunAgentInputs({
 
     case DataType.TABLE: {
       // Render a simple table UI for the run modal
-      const tableSchema = schema as BlockIOTableSubSchema;
+      const tableSchema = valueSchema as BlockIOTableSubSchema;
       const headers = tableSchema.items?.properties
         ? Object.keys(tableSchema.items.properties)
         : ["Column 1", "Column 2", "Column 3"];

@@ -5,7 +5,8 @@ import { useArtifactsPanelNavCollapse } from "../components/ArtifactsPanelNavCol
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 
 const mockUsePathname = vi.fn<() => string | null>();
-const mockSetOpen = vi.fn<(open: boolean) => void>();
+const mockSetOpen =
+  vi.fn<(open: boolean, options?: { persist?: boolean }) => void>();
 let sidebarOpen = true;
 
 vi.mock("next/navigation", () => ({
@@ -14,6 +15,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({ open: sidebarOpen, setOpen: mockSetOpen }),
+  getPersistedSidebarOpen: () => undefined,
 }));
 
 /** The docked panel — an open artifact preview, or the artifacts tab. */
@@ -48,7 +50,7 @@ describe("useArtifactsPanelNavCollapse", () => {
     setPanelOpen(true);
     rerender();
 
-    expect(mockSetOpen).toHaveBeenCalledWith(false);
+    expect(mockSetOpen).toHaveBeenCalledWith(false, { persist: false });
   });
 
   it("restores the nav when the panel closes", () => {
@@ -61,7 +63,7 @@ describe("useArtifactsPanelNavCollapse", () => {
     setPanelOpen(false);
     rerender();
 
-    expect(mockSetOpen).toHaveBeenCalledWith(true);
+    expect(mockSetOpen).toHaveBeenCalledWith(true, { persist: false });
   });
 
   it("leaves a nav that was already collapsed before the panel opened", () => {
@@ -74,7 +76,7 @@ describe("useArtifactsPanelNavCollapse", () => {
     setPanelOpen(false);
     rerender();
 
-    expect(mockSetOpen).toHaveBeenCalledWith(false);
+    expect(mockSetOpen).toHaveBeenCalledWith(false, { persist: false });
   });
 
   it("keeps a nav the user re-opened by hand while the panel was up", () => {
@@ -103,7 +105,7 @@ describe("useArtifactsPanelNavCollapse", () => {
     mockUsePathname.mockReturnValue("/library");
     rerender();
 
-    expect(mockSetOpen).toHaveBeenCalledWith(true);
+    expect(mockSetOpen).toHaveBeenCalledWith(true, { persist: false });
   });
 
   it("ignores an artifacts panel left open on another route", () => {

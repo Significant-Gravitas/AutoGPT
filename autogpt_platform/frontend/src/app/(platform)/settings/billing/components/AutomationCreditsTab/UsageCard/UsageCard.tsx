@@ -176,13 +176,13 @@ function UsageBar({
       </TooltipTrigger>
       <TooltipContent side="top">
         <div className="flex flex-col gap-0.5">
-          <span className="text-[0.6785rem] font-medium uppercase tracking-[0.06em] text-zinc-500">
+          <span className="text-[0.6785rem] font-medium uppercase tracking-[0.06em] text-zinc-400">
             {day.date}
           </span>
-          <span className="text-sm font-medium tabular-nums text-textBlack">
+          <span className="text-sm font-medium tabular-nums text-zinc-50">
             ${day.amount.toFixed(2)}
           </span>
-          <span className="text-xs tabular-nums text-zinc-500">
+          <span className="text-xs tabular-nums text-zinc-400">
             {day.runs} runs
           </span>
         </div>

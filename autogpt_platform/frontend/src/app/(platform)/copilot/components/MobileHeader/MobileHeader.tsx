@@ -6,7 +6,9 @@ import { Icon } from "@/components/atoms/Icon/Icon";
 
 export function MobileHeader() {
   const setDrawerOpen = useCopilotUIStore((s) => s.setDrawerOpen);
-  const toggleContextPanel = useCopilotUIStore((s) => s.toggleContextPanel);
+  const toggleContextPanelTab = useCopilotUIStore(
+    (s) => s.toggleContextPanelTab,
+  );
   return (
     <div
       className="fixed z-50 flex gap-2"
@@ -25,7 +27,7 @@ export function MobileHeader() {
         variant="icon"
         size="icon"
         aria-label="Open workspace files"
-        onClick={toggleContextPanel}
+        onClick={() => toggleContextPanelTab("files")}
         className="bg-white shadow-md"
       >
         <Icon icon={Folder01Icon} width="1.25rem" height="1.25rem" />

@@ -3,6 +3,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { listWorkspaceFiles } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
 import type { WorkspaceFolder } from "@/app/api/__generated__/models/workspaceFolder";
+import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { ancestorsOf } from "./components/WorkspaceFolders/folderTree";
 
@@ -166,9 +167,11 @@ function flattenFiles(
   data: InfiniteData<ListPage> | undefined,
 ): WorkspaceFileItem[] {
   if (!data) return [];
-  return data.pages.flatMap((page) =>
-    page.status === 200 ? (page.data.files ?? []) : [],
-  );
+  // Hidden here rather than in the fetch: paging offsets count every file
+  // the server returned (see countLoadedFiles).
+  return data.pages
+    .flatMap((page) => (page.status === 200 ? (page.data.files ?? []) : []))
+    .filter((file) => !isHiddenWorkspaceFile(file));
 }
 
 function countLoadedFiles(pages: ListPage[]): number {

@@ -9,8 +9,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from backend.copilot.graphiti._format import extract_fact, extract_temporal_validity
-from backend.copilot.graphiti.client import derive_memory_group_id, get_graphiti_client
+from backend.copilot.graphiti.client import get_graphiti_client
 from backend.copilot.graphiti.config import is_enabled_for_user
+from backend.copilot.graphiti.scope import MemoryScope
 from backend.copilot.model import ChatSession
 
 from .base import BaseTool
@@ -124,7 +125,7 @@ class MemoryForgetSearchTool(BaseTool):
             )
 
         try:
-            group_id = derive_memory_group_id(user_id, session.expert_id)
+            group_id = MemoryScope.build(user_id, session.expert_id).group_id
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",
@@ -207,11 +208,14 @@ class MemoryForgetConfirmTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "List of edge UUIDs to delete (from memory_forget_search results)",
+                    "title": "Memories",
+                    "entity": None,
                 },
                 "hard_delete": {
                     "type": "boolean",
                     "description": "If true, permanently removes edges from the graph (GDPR). Default false (soft delete — marks as expired).",
                     "default": False,
+                    "title": "Deletes permanently",
                 },
             },
             "required": ["uuids"],
@@ -249,7 +253,7 @@ class MemoryForgetConfirmTool(BaseTool):
             )
 
         try:
-            group_id = derive_memory_group_id(user_id, session.expert_id)
+            group_id = MemoryScope.build(user_id, session.expert_id).group_id
         except ValueError:
             return ErrorResponse(
                 message="Invalid user ID for memory operations.",

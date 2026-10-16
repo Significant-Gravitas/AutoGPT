@@ -43,7 +43,7 @@ export function ModalHeader({ agent }: ModalHeaderProps) {
             <div className="h-px w-full bg-blue-100" />
 
             <Text variant="body">
-              For best results, run this agent{" "}
+              For best results, run this workflow{" "}
               {humanizeCronExpression(
                 agent.recommended_schedule_cron,
               ).toLowerCase()}

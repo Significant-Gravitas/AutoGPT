@@ -17,7 +17,7 @@ AutoGPT Platform is a monorepo containing:
 
 ## Key Concepts
 
-1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend
+1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend; identifiers, routes and API fields say agent or graph; any text a person reads says workflow (see "User-facing copy" in the root `AGENTS.md`)
 2. **Blocks**: Reusable components in `backend/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
@@ -69,7 +69,7 @@ setting to `BLANK_IN_ENV_DEFAULT` too.
 - All services use hardcoded defaults in docker-compose files (no `${VARIABLE}` substitutions)
 - The `env_file` directive loads variables INTO containers at runtime
 - Backend/Frontend services use YAML anchors for consistent configuration
-- Supabase services (`db/docker/docker-compose.yml`) follow the same pattern
+- PostgreSQL uses the pgvector image; the retired Supabase stack is not used.
 
 ### Branching Strategy
 

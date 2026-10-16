@@ -28,7 +28,7 @@ import logging
 import time
 from typing import Any
 
-from backend.copilot.active_turns import running_turn_limit_message
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.budget_signal import build_spawn_state_note
 from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS
 from backend.copilot.context import get_current_permissions, get_workspace_manager
@@ -98,11 +98,13 @@ class RunSubSessionTool(BaseTool):
                 "prompt": {
                     "type": "string",
                     "description": "The task for the child session to execute.",
+                    "title": "Task",
                 },
                 "system_context": {
                     "type": "string",
                     "description": "Optional context prepended to the prompt.",
                     "default": "",
+                    "title": "Background",
                 },
                 "sub_autopilot_session_id": {
                     "type": "string",
@@ -111,6 +113,8 @@ class RunSubSessionTool(BaseTool):
                         "Cheaper when the follow-up builds on what it read."
                     ),
                     "default": "",
+                    "title": "Continues",
+                    "entity": "chat_session",
                 },
                 "wait_for_result": {
                     "type": "integer",
@@ -119,6 +123,8 @@ class RunSubSessionTool(BaseTool):
                         f"Clamped to {MAX_SUB_SESSION_WAIT_SECONDS}."
                     ),
                     "default": 60,
+                    "title": "Waits up to",
+                    "format": "seconds",
                 },
             },
             "required": ["prompt"],
@@ -512,6 +518,22 @@ def response_from_outcome(
             elapsed_seconds=round(elapsed, 2),
         ).from_outside()
 
+    if outcome == "queued_for_slot":
+        return SubSessionStatusResponse(
+            message=(
+                f"{actor} is queued: the user's task slots for sub-work are all "
+                "taken, and it starts on its own when one frees. Call "
+                "tool:get_sub_session_result to wait for it or check on it"
+                f"{f', or watch at {link}' if link else ''}."
+            ),
+            session_id=parent_session_id,
+            status="queued",
+            sub_session_id=inner_session_id,
+            sub_autopilot_session_id=inner_session_id,
+            sub_autopilot_session_link=link,
+            elapsed_seconds=round(elapsed, 2),
+        ).from_outside()
+
     if outcome == "running":
         return SubSessionStatusResponse(
             message=(
@@ -546,7 +568,7 @@ def response_from_outcome(
         # Render the actionable message instead of a "see transcript"
         # pointer to nothing.
         return SubSessionStatusResponse(
-            message=running_turn_limit_message(),
+            message=spawn_limit_message(),
             session_id=parent_session_id,
             status="error",
             sub_session_id=inner_session_id,

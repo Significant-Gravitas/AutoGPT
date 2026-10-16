@@ -49,8 +49,9 @@ SubmissionSortDir = Literal["asc", "desc"]
 async def get_profile(
     user_id: str = Security(autogpt_libs.auth.get_user_id),
 ) -> store_model.ProfileDetails:
-    """Get the profile details for the authenticated user."""
-    profile = await store_db.get_user_profile(user_id)
+    """Get the profile details for the authenticated user, creating their
+    default profile if account setup hasn't yet."""
+    profile = await store_db.get_or_create_user_profile(user_id)
     if profile is None:
         raise NotFoundError("User does not have a profile yet")
     return profile
@@ -325,7 +326,7 @@ async def get_creators(
     ),
     sorted_by: store_db.StoreCreatorsSortOptions | None = None,
     page: int = Query(ge=1, default=1),
-    page_size: int = Query(ge=1, default=20),
+    page_size: int = Query(ge=1, le=100, default=20),
 ) -> store_model.CreatorsResponse:
     """List or search marketplace creators"""
     creators = await store_cache._get_cached_store_creators(
