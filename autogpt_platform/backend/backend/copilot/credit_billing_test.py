@@ -396,25 +396,75 @@ async def test_a_charge_still_counts_when_its_recorder_is_cancelled(credits):
 
 
 @pytest.mark.asyncio
-async def test_a_charge_that_fails_mid_turn_is_taken_up_by_the_next(credits, caplog):
+async def test_a_failed_debit_counts_as_charged(credits, caplog):
+    # It may have landed, and charging it again could take it twice.
     caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
     turn = await _billed(credits, balance=500)
     credits.spend_credits.side_effect = [ConnectionError("db blip"), 0, 0]
 
     await turn.record(25_000)
-    assert turn.charged_credits == 0
-    # 3 whole credits now, the 2 the failed debit didn't take included.
+    assert turn.charged_credits == 2
     await turn.record(10_000)
     assert turn.charged_credits == 3
     await turn.end()
 
-    assert _charged(credits) == [2, 3, 1]
+    assert _charged(credits) == [2, 1, 1]
     assert turn.charged_credits == 4
-    assert not _leaks(caplog)
+    assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR]
 
 
 @pytest.mark.asyncio
-async def test_a_debit_that_keeps_failing_logs_the_leak_once(credits, caplog):
+async def test_a_debit_that_lands_then_raises_is_not_taken_again(
+    credits, wallet, caplog
+):
+    # The credit model commits a debit before it looks up the user's auto
+    # top-up, which can still raise: the credits are gone, but the call failed.
+    caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
+    turn = await _billed(credits, balance=500)
+
+    async def lands_then_raises(**debit) -> int:
+        await wallet.spend_credits(**debit)
+        raise RuntimeError("auto top-up settings unreadable")
+
+    credits.spend_credits.side_effect = lands_then_raises
+    await turn.record(25_000)
+    credits.spend_credits.side_effect = wallet.spend_credits
+    await turn.end()
+
+    # 25,000 microdollars rounds up to 3 credits, taken once.
+    assert wallet.debits == [2, 1]
+    assert wallet.balance == 497
+    assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_what_is_left_counts_as_charged_once_its_debit_may_have_landed(
+    credits, wallet, caplog
+):
+    caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
+    turn = await _billed(credits, balance=500)
+    # Other runs spent all but a credit meanwhile.
+    wallet.balance = 1
+
+    async def lands_then_raises(**debit) -> int:
+        await wallet.spend_credits(**debit)
+        raise RuntimeError("reply lost")
+
+    credits.spend_credits.side_effect = lands_then_raises
+    await turn.record(25_000)
+    # A top-up lands before the turn ends.
+    wallet.balance += 100
+    credits.spend_credits.side_effect = wallet.spend_credits
+    await turn.end()
+
+    # The credit that was left, then the 2 more the 3 owed come to.
+    assert wallet.debits == [1, 2]
+    assert turn.charged_credits == 3
+    assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR]
+
+
+@pytest.mark.asyncio
+async def test_a_debit_that_keeps_failing_is_never_asked_for_twice(credits, caplog):
     caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
     turn = await _billed(credits, balance=500)
     credits.spend_credits.side_effect = ConnectionError("db down")
@@ -423,18 +473,18 @@ async def test_a_debit_that_keeps_failing_logs_the_leak_once(credits, caplog):
         await record_credit_billed_cost("user-1", 25_000)
         await record_credit_billed_cost("user-1", 20_000)
 
-    # Each charge asks for everything owed so far, never more than the 5
-    # credits the turn owes, and only the last one is a leak.
-    assert _charged(credits) == [2, 4, 5]
-    assert turn.charged_credits == 0
-    assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR]
-
-    # Once debits go through again, a cost landing late charges what is owed,
-    # once.
-    credits.spend_credits.side_effect = None
-    await turn.record(1)
-    assert _charged(credits)[3:] == [5]
+    # Each charge asks only for what the ones before it didn't, 5 credits in
+    # all, and each failure is logged as a possible leak.
+    assert _charged(credits) == [2, 2, 1]
     assert turn.charged_credits == 5
+    assert [leak.levelno for leak in _leaks(caplog)] == [logging.ERROR] * 3
+
+    # Once debits go through again, a cost landing late charges only its own
+    # part.
+    credits.spend_credits.side_effect = None
+    await turn.record(10_000)
+    assert _charged(credits)[3:] == [1]
+    assert turn.charged_credits == 6
 
 
 @pytest.mark.asyncio

@@ -22,11 +22,12 @@ A credit-billed turn:
   cap, and a process that dies mid-turn leaves under a credit of what it
   recorded unpaid. A turn that ended without a result is charged what it
   recorded too, through the same accounting as any other turn;
-- still owes what a debit failed to take for a reason other than the balance:
-  the next charge takes it up. The database client already retries transient
-  failures, so a last charge that still fails logs the leak. When other runs
-  spent the balance meanwhile, the turn takes what is left and never
-  overdraws it.
+- counts a debit that failed for a reason other than the balance as charged,
+  and logs it as a possible leak. Such a debit may still have landed: the
+  credit model commits it before its auto top-up runs, and a reply can be
+  lost, so taking it again could charge it twice. The database client already
+  retries what fails before reaching the database. When other runs spent the
+  balance meanwhile, the turn takes what is left and never overdraws it.
 """
 
 import asyncio
@@ -146,7 +147,7 @@ class CreditBilledTurn:
             due = self._owed_credits(final) - self.charged_credits
             if due <= 0:
                 return
-            self.charged_credits += await self._spend(due, final=final)
+            self.charged_credits += await self._spend(due)
 
     def _owed_credits(self, final: bool) -> int:
         """Whole credits while the turn runs, the part credit too once it has
@@ -155,47 +156,47 @@ class CreditBilledTurn:
         owed = credits_for(spent) if final else spent // MICRODOLLARS_PER_CREDIT
         return min(owed, self.cap_credits)
 
-    async def _spend(self, credits: int, *, final: bool) -> int:
-        """Debit up to ``credits``, never below zero; returns what was debited.
-
-        What a failed debit didn't take stays due for the next charge to take
-        up. Once the turn has ended there may be no next charge, so a failure
-        then is logged as a leak.
-        """
+    async def _spend(self, credits: int) -> int:
+        """Debit up to ``credits``, never below zero; returns what the turn
+        counts as charged, which a debit that may have landed is."""
         try:
             await self._debit(credits)
-            return credits
         except InsufficientBalanceError:
             return await self._spend_what_is_left(credits)
-        except Exception as exc:
-            if not final:
-                logger.warning(
-                    f"Could not charge {credits} credits yet for the credit-billed "
-                    f"turn in session {self.session_id[:12]} ({exc!r}); its next "
-                    "charge takes them up"
-                )
-                return 0
-            logger.error(
-                f"Billing leak: could not charge {credits} credits for the "
-                f"credit-billed turn in session {self.session_id[:12]}",
-                exc_info=True,
-            )
-            return 0
+        except Exception:
+            self._log_unconfirmed(credits)
+        return credits
 
     async def _spend_what_is_left(self, credits: int) -> int:
         # Other runs spent the balance while this turn ran: it takes what is
-        # left rather than overdrawing the account.
+        # left rather than overdrawing the account. A balance it can't read
+        # took nothing, so what is due stays due.
         try:
-            left = min(credits, await _balance(self.user_id, self.organization_id))
-            if left > 0:
-                await self._debit(left)
+            left = max(
+                min(credits, await _balance(self.user_id, self.organization_id)), 0
+            )
         except Exception:
             left = 0
+        if left > 0:
+            try:
+                await self._debit(left)
+            except InsufficientBalanceError:
+                left = 0
+            except Exception:
+                self._log_unconfirmed(left)
         logger.warning(
             f"Credit-billed turn in session {self.session_id[:12]} owed "
-            f"{credits} credits; the balance covered {max(left, 0)}"
+            f"{credits} credits; the balance covered {left}"
         )
-        return max(left, 0)
+        return left
+
+    def _log_unconfirmed(self, credits: int) -> None:
+        logger.error(
+            f"Billing leak: could not confirm a charge of {credits} credits for "
+            f"the credit-billed turn in session {self.session_id[:12]}; it "
+            "counts as charged, since taking it again could charge it twice",
+            exc_info=True,
+        )
 
     async def _debit(self, credits: int) -> None:
         metadata = UsageTransactionMetadata(
