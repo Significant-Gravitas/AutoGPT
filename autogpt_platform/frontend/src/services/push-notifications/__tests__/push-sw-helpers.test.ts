@@ -239,6 +239,7 @@ describe("push-sw resolveIconUrl", () => {
     ["data URL", "data:image/png;base64,abc"],
     ["javascript URL", "javascript:alert(1)"],
     ["protocol-relative URL", "//evil.example.com/m.png"],
+    ["backslash host", "/\\evil.example.com/m.png"],
   ])("returns null for %s", (_label, icon) => {
     expect(sw.resolveIconUrl(icon)).toBeNull();
   });
@@ -255,6 +256,10 @@ describe("push-sw isSafeRelativeUrl", () => {
     ["missing", undefined],
     ["absolute https URL", "https://example.com/copilot"],
     ["protocol-relative URL", "//example.com/copilot"],
+    ["backslash host", "/\\evil.example.com/copilot"],
+    ["backslash mid-path", "/copilot\\..\\admin"],
+    ["tab in path", "/copilot\t/evil"],
+    ["newline in path", "/copilot\n/evil"],
     ["bare path", "copilot"],
     ["over-long path", `/${"a".repeat(2048)}`],
   ])("rejects %s", (_label, url) => {
@@ -309,16 +314,21 @@ describe("push-sw resolvePushContent", () => {
   });
 
   it("builds the session url from session_id when the server url is unsafe", () => {
-    const content = sw.resolvePushContent(
-      {
-        type: "copilot_completion",
-        event: "session_completed",
-        session_id: "sess-1",
-        url: "https://evil.example.com/phish",
-      },
-      fallback,
-    );
-    expect(content.url).toBe("/copilot?sessionId=sess-1");
+    for (const url of [
+      "https://evil.example.com/phish",
+      "/\\evil.example.com/phish",
+    ]) {
+      const content = sw.resolvePushContent(
+        {
+          type: "copilot_completion",
+          event: "session_completed",
+          session_id: "sess-1",
+          url,
+        },
+        fallback,
+      );
+      expect(content.url).toBe("/copilot?sessionId=sess-1");
+    }
   });
 
   it("uses the default icon when the server icon is unsafe", () => {

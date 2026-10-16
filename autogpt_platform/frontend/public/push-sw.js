@@ -44,14 +44,17 @@ function isNonEmptyString(value) {
   return typeof value === "string" && value.length > 0;
 }
 
-// Same rule as the CLIENT_URL guard below: a same-origin relative path.
-// Absolute URLs are never accepted for navigation — the click target must
-// stay inside the app.
+// A same-origin relative path, safe to navigate to or match clients
+// against. Absolute URLs are never accepted — the click target must stay
+// inside the app. Backslashes and control characters are refused outright:
+// browsers treat "\" as "/" for special schemes, so "/\evil.example/a"
+// would resolve to a third-party origin despite looking site-relative.
 function isSafeRelativeUrl(value) {
   return (
     typeof value === "string" &&
     value.startsWith("/") &&
     !value.startsWith("//") &&
+    !/[\\\u0000-\u001F\u007F]/.test(value) &&
     value.length <= 2048
   );
 }
@@ -127,10 +130,9 @@ self.addEventListener("message", function (event) {
     // Only accept same-origin relative paths. Defends against a hostile
     // (e.g. XSS-injected) page pinning an attacker-controlled URL that
     // would later be passed to clients.openWindow on notification click.
-    if (!event.data.url.startsWith("/") || event.data.url.startsWith("//")) {
+    if (!isSafeRelativeUrl(event.data.url)) {
       return;
     }
-    if (event.data.url.length > 2048) return;
     _clientUrls[event.source.id] = event.data.url;
     return;
   }

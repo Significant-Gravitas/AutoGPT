@@ -49,10 +49,19 @@ _FORWARDED_FIELDS = (
 # the subscription. Measured in UTF-8 bytes, not characters.
 MAX_PUSH_BYTES = 3800
 
+# Display text is capped for any publisher, mirroring the caps
+# completion_notify composes with: unbounded input must never be what
+# overflows the byte budget.
+_TITLE_CHAR_CAP = 80
+_BODY_CHAR_CAP = 160
+
 # Optional fields, shed first (in order) when the payload would exceed the
 # byte budget. The notification still renders from title/body, degrading to
-# the default icon only if those don't bring it under budget either.
-_DROPPABLE_FIELDS = ("session_title", "expert_name", "icon")
+# the default icon — and finally to the static click target — only if the
+# earlier drops don't bring it under budget. Dropping `url` is safe: the
+# service worker falls back to its static map (for copilot completions it
+# rebuilds the identical session URL from `session_id`).
+_DROPPABLE_FIELDS = ("session_title", "expert_name", "icon", "url")
 
 
 def _extract_status_code(e: WebPushException) -> int | None:
@@ -73,20 +82,24 @@ def _encode_push_payload(compact: dict[str, object]) -> str:
 
 
 def _fit_push_payload(compact: dict[str, object]) -> str:
-    """Serialize under MAX_PUSH_BYTES, shedding optional fields first.
+    """Serialize under MAX_PUSH_BYTES, capping display text and shedding context.
 
-    Drops session_title, expert_name, then icon until the UTF-8 encoded
-    payload fits: the notification still renders from title/body. Returns
-    best-effort if even those are shed — every current publisher bounds its
-    required fields, so that only fires on a future unbounded one.
+    Caps title/body first so no publisher's unbounded text can overflow the
+    budget, then drops session_title, expert_name, icon and url until the
+    UTF-8 encoded payload fits. The notification still renders from the
+    capped title/body; an oversized payload would fail delivery and count
+    toward the failure janitor that deletes the subscription.
     """
-    payload_json = _encode_push_payload(compact)
+    for field, cap in (("title", _TITLE_CHAR_CAP), ("body", _BODY_CHAR_CAP)):
+        text = compact.get(field)
+        if isinstance(text, str) and len(text) > cap:
+            compact[field] = text[: cap - 1].rstrip() + "…"
     for field in _DROPPABLE_FIELDS:
+        payload_json = _encode_push_payload(compact)
         if len(payload_json.encode("utf-8")) <= MAX_PUSH_BYTES:
             return payload_json
         compact.pop(field, None)
-        payload_json = _encode_push_payload(compact)
-    return payload_json
+    return _encode_push_payload(compact)
 
 
 def _build_push_payload(payload: NotificationPayload) -> str:

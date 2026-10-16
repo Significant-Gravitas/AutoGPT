@@ -1,5 +1,6 @@
 """Tests for fire-and-forget Web Push delivery."""
 
+import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -66,8 +67,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["type"] == "agent_run"
         assert parsed["event"] == "completed"
@@ -80,8 +79,6 @@ class TestBuildPushPayload:
         )
 
         result = push_sender._build_push_payload(payload)
-
-        import json
 
         parsed = json.loads(result)
         assert parsed["execution_id"] == "exec-1"
@@ -104,8 +101,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert parsed["title"] == "Maria"
         assert parsed["body"] == "Finished: Q3 revenue report"
@@ -121,8 +116,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert "custom_field" not in parsed
 
@@ -132,15 +125,12 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert isinstance(parsed["type"], str)
         assert isinstance(parsed["event"], str)
 
     def test_includes_unique_id_per_call(self):
         """Each push gets a fresh UUID so repeats don't collapse under the same SW tag."""
-        import json
 
         payload = _make_payload(type="agent_run", event="completed")
 
@@ -171,8 +161,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert "session_title" not in parsed
         assert parsed["expert_name"] == "Maria"
@@ -191,8 +179,6 @@ class TestBuildPushPayload:
 
         result = push_sender._build_push_payload(payload)
 
-        import json
-
         parsed = json.loads(result)
         assert "session_title" not in parsed
         assert "expert_name" not in parsed
@@ -201,17 +187,34 @@ class TestBuildPushPayload:
         assert parsed["body"] == "Finished: something"
         assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
 
-    def test_returns_best_effort_when_required_fields_overflow(self):
+    def test_caps_oversized_required_fields_to_fit(self):
         """Completion payloads bound title/body, but the sender is generic:
-        a future unbounded required field still goes out rather than being
-        silently dropped."""
-        payload = _make_payload(body="x" * 5000)
+        a future unbounded required field is capped with an ellipsis so the
+        push still fits instead of failing delivery."""
+        payload = _make_payload(title="t" * 500, body="x" * 5000)
 
         result = push_sender._build_push_payload(payload)
 
-        import json
+        parsed = json.loads(result)
+        assert parsed["title"] == "t" * 79 + "…"
+        assert parsed["body"] == "x" * 159 + "…"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
 
-        assert json.loads(result)["body"] == "x" * 5000
+    def test_drops_url_last_for_oversized_click_target(self):
+        """An oversized `url` is shed after the other optional fields; the
+        service worker falls back to its static map for the click target."""
+        payload = _make_payload(
+            title="Maria",
+            body="Finished: something",
+            url="/copilot?" + "x" * 4000,
+        )
+
+        result = push_sender._build_push_payload(payload)
+
+        parsed = json.loads(result)
+        assert "url" not in parsed
+        assert parsed["title"] == "Maria"
+        assert len(result.encode("utf-8")) <= push_sender.MAX_PUSH_BYTES
 
 
 class TestSendPushForUser:
