@@ -46,7 +46,7 @@ One launch brief to Otto. Maria prepares the article, Max researches prospects, 
 
 [![Watch the team demo: Otto coordinates Maria, Max, and Frankie working in parallel.](docs/content/imgs/readme/experts-demo-poster.webp)](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)
 
-**[Watch the 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [15-second highlight](docs/content/imgs/readme/experts-demo.mp4) · [Try the interactive demo](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
+**[Watch the 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [Download the 15-second highlight](docs/content/imgs/readme/experts-demo.mp4?raw=true) · [Try the interactive demo](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
 
 An edited recording of a real run, sped up. In this example, the team prepares the work for review without sending or publishing it.
 

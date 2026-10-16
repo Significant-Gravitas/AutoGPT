@@ -56,3 +56,19 @@ measure the decoded audio peak, and inspect frames from every shot and transitio
 Verify the linked poster, video fallback, and banner on GitHub at desktop and
 mobile widths in light and dark themes. These checks do not replace a human
 playback review of the finished film.
+
+The 2026-10-16 refresh passed the repository's pre-commit hooks and eight docs
+layout checks. All 16 product/documentation URLs and 14 local links, anchors, and
+assets resolved. Full media decode passed; the finished video has 450 frames over
+15 seconds and a decoded audio peak of 0.804 or lower. Frames from each shot and
+transition were inspected. GitHub rendered the README at 1280 × 800 and
+390 × 844 in light and dark themes without horizontal page overflow.
+
+GitHub does not provide an inline player for this repository MP4, so its README
+link explicitly downloads the highlight. The primary poster opens the full film
+on agpt.co in the browser's video player.
+
+Before/after captures of the actual GitHub render:
+
+- [Desktop](readme-experts-desktop.webp)
+- [Mobile](readme-experts-mobile.webp)
