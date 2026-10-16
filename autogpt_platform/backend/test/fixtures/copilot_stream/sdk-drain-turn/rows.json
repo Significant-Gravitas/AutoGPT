@@ -2,7 +2,7 @@
   {
     "id": "row-0",
     "role": "user",
-    "content": "Compare example.com and example.org",
+    "content": "Summarise example.com",
     "name": null,
     "tool_call_id": null,
     "refusal": null,
@@ -19,37 +19,28 @@
   },
   {
     "id": "row-1",
-    "role": "assistant",
-    "content": "",
+    "role": "user",
+    "content": "Keep it short.",
     "name": null,
     "tool_call_id": null,
     "refusal": null,
-    "tool_calls": [
-      {
-        "id": "call-com",
-        "type": "function",
-        "function": {
-          "name": "web_fetch",
-          "arguments": "{\"url\": \"example.com\"}"
-        }
-      }
-    ],
+    "tool_calls": null,
     "function_call": null,
     "sequence": 1,
     "duration_ms": null,
     "created_at": "2026-09-30T00:00:01Z",
-    "model": "anthropic/claude-sonnet-4-6",
-    "llm_auth_provider": "platform",
+    "model": null,
+    "llm_auth_provider": null,
     "llm_credential_id": null,
     "session_id": "drift-session",
     "metadata": null
   },
   {
     "id": "row-2",
-    "role": "tool",
-    "content": "Example Domain",
+    "role": "reasoning",
+    "content": "The user wants a summary.",
     "name": null,
-    "tool_call_id": "call-com",
+    "tool_call_id": null,
     "refusal": null,
     "tool_calls": null,
     "function_call": null,
@@ -65,17 +56,17 @@
   {
     "id": "row-3",
     "role": "assistant",
-    "content": "",
+    "content": "Fetching it.",
     "name": null,
     "tool_call_id": null,
     "refusal": null,
     "tool_calls": [
       {
-        "id": "call-org",
+        "id": "call-fetch",
         "type": "function",
         "function": {
           "name": "web_fetch",
-          "arguments": "{\"url\": \"example.org\"}"
+          "arguments": "{\"url\": \"example.com\"}"
         }
       }
     ],
@@ -83,7 +74,7 @@
     "sequence": 3,
     "duration_ms": null,
     "created_at": "2026-09-30T00:00:03Z",
-    "model": "anthropic/claude-sonnet-4-6",
+    "model": "drift",
     "llm_auth_provider": "platform",
     "llm_credential_id": null,
     "session_id": "drift-session",
@@ -93,8 +84,8 @@
     "id": "row-4",
     "role": "tool",
     "content": "Example Domain",
-    "name": null,
-    "tool_call_id": "call-org",
+    "name": "web_fetch",
+    "tool_call_id": "call-fetch",
     "refusal": null,
     "tool_calls": null,
     "function_call": null,
@@ -109,8 +100,8 @@
   },
   {
     "id": "row-5",
-    "role": "assistant",
-    "content": "Both are placeholder pages.",
+    "role": "user",
+    "content": "In French, please.",
     "name": null,
     "tool_call_id": null,
     "refusal": null,
@@ -119,7 +110,43 @@
     "sequence": 5,
     "duration_ms": null,
     "created_at": "2026-09-30T00:00:05Z",
-    "model": "anthropic/claude-sonnet-4-6",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-6",
+    "role": "reasoning",
+    "content": "Short answer.",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 6,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:06Z",
+    "model": null,
+    "llm_auth_provider": null,
+    "llm_credential_id": null,
+    "session_id": "drift-session",
+    "metadata": null
+  },
+  {
+    "id": "row-7",
+    "role": "assistant",
+    "content": "It is a placeholder page.",
+    "name": null,
+    "tool_call_id": null,
+    "refusal": null,
+    "tool_calls": null,
+    "function_call": null,
+    "sequence": 7,
+    "duration_ms": null,
+    "created_at": "2026-09-30T00:00:07Z",
+    "model": "drift",
     "llm_auth_provider": "platform",
     "llm_credential_id": null,
     "session_id": "drift-session",

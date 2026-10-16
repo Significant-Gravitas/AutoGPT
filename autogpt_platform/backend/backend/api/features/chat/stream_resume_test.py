@@ -23,7 +23,7 @@ pytestmark = pytest.mark.skipif(
     reason="no local Redis reachable; the stream registry needs one to run",
 )
 
-RECORDED_TURNS = ["dummy-text-turn", "baseline-tool-turn", "sdk-late-tool-result"]
+RECORDED_TURNS = ["dummy-text-turn", "sdk-tool-turn", "sdk-late-tool-result"]
 DONE = "data: [DONE]\n\n"
 
 app = fastapi.FastAPI()
@@ -78,7 +78,7 @@ async def test_a_cursor_read_serves_exactly_the_recorded_frames_after_it(name, s
 
 
 async def test_a_cursor_before_the_trim_is_answered_with_the_checkpoint(stored):
-    turn = load_fixture("baseline-tool-turn")
+    turn = load_fixture("sdk-tool-turn")
     [checkpoint] = [e for e in turn.entries if e["data"]["type"] == "data-checkpoint"]
     session_id, turn_id = await stored(turn)
     redis = await redis_client.get_redis_async()

@@ -98,11 +98,13 @@ async def sdk_service_turn(
     *,
     queued_after_first: list[PendingMessage],
     held_results: list[PendingMessage] | None = None,
+    queued_at_start: list[PendingMessage] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
     its turn-end persist and auto-continue included. ``held_results`` are the
-    answered cards' results the turn opens with. Only what reaches beyond the
+    answered cards' results the turn opens with, ``queued_at_start`` the
+    follow-ups drained before its first query. Only what reaches beyond the
     process (CLI, sandbox, RPC services, billing) is stubbed."""
     scripted = iter(queries)
 
@@ -146,7 +148,8 @@ async def sdk_service_turn(
         ),
         "gate_auto_continue": AsyncMock(return_value=AutoContinueGate(proceed=True)),
         "drain_pending_safe": AsyncMock(
-            side_effect=[[], queued_after_first] + [[]] * len(queries)
+            side_effect=[queued_at_start or [], queued_after_first]
+            + [[]] * len(queries)
         ),
         "resolve_answered": AsyncMock(return_value=held_results or []),
         "build_session_context": AsyncMock(return_value=""),

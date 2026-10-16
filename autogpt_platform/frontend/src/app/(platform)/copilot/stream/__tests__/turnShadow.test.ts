@@ -13,7 +13,7 @@ import { loadRecordedTurn } from "./recordedTurns";
 vi.mock("@sentry/nextjs", () => ({ captureMessage: vi.fn() }));
 
 const SESSION = "s1";
-const turn = loadRecordedTurn("baseline-tool-turn");
+const turn = loadRecordedTurn("sdk-tool-turn");
 const body = turn.sse.join("") + "data: [DONE]\n\n";
 // The turn up to the first text block's second delta, as a server cut leaves it.
 const cutBody = turn.sse.slice(0, 7).join("");

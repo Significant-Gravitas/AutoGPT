@@ -18,7 +18,7 @@ export interface RecordedTurn {
   rows: PersistedRow[];
 }
 
-/** Every turn `stream_drift/recording.py` recorded, both engines. */
+/** Every turn `stream_drift/recording.py` recorded. */
 export function recordedTurnNames(): string[] {
   return fs
     .readdirSync(FIXTURE_ROOT, { withFileTypes: true })

@@ -25,11 +25,12 @@ import {
 import { fakeBackend, type FakeBackend } from "./fakeBackend";
 import { loadRecordedTurn } from "./recordedTurns";
 
-const toolTurn = loadRecordedTurn("baseline-tool-turn");
+const toolTurn = loadRecordedTurn("sdk-tool-turn");
 const PROMPT = String(toolTurn.rows[0].content);
-// 9-0 ends the first text block, 12-0 opens the tool call, 20-0 is the checkpoint.
+// 9-0 ends the first text block, 10-0 and 11-0 open the tool call, 21-0 is
+// the checkpoint.
 const FIRST_BLOCK_DONE = 9;
-const TOOL_CALL_OPEN = 12;
+const TOOL_CALL_OPEN = 11;
 const FIRST_TEXT = "Let me fetch that page.";
 const SECOND_TEXT = "It says Example Domain.";
 
@@ -353,7 +354,7 @@ describe("recovery", () => {
 
     release();
     await advance(1_000);
-    expect(backend.requests.at(-1)?.url.searchParams.get("after")).toBe("20-0");
+    expect(backend.requests.at(-1)?.url.searchParams.get("after")).toBe("21-0");
     expect(turnSegment().frozen).toBe(false);
     expect(snapshot().phase).toBe("finished");
   });
@@ -1054,7 +1055,7 @@ describe("resync", () => {
     backend.connections[0].fail();
     backend.publish();
     const checkpoint = backend.lastCheckpoint();
-    expect(checkpoint?.entry_id).toBe("20-0");
+    expect(checkpoint?.entry_id).toBe("21-0");
     backend.respond(({ url }) =>
       url.searchParams.get("after") === "9-0"
         ? { status: 409, body: { reason: "trimmed", checkpoint } }
@@ -1063,7 +1064,7 @@ describe("resync", () => {
     await advance(2_000);
 
     const tail = backend.connections.at(-1)!;
-    expect(tail.url.searchParams.get("after")).toBe("20-0");
+    expect(tail.url.searchParams.get("after")).toBe("21-0");
     expect(snapshot().phase).toBe("finished");
     expect(turnSegment().log.rows.map((r) => r.content)).toEqual(
       toolTurn.rows.slice(1).map((r) => r.content),
@@ -1085,10 +1086,10 @@ describe("resync", () => {
 
   it("a fresh mount seeds the running turn from its checkpoint and tails from there", async () => {
     backend.beginRunning();
-    backend.publish(20);
+    backend.publish(21);
     runtime.observe(backend.view());
     await advance(0);
-    expect(backend.connections[0].url.searchParams.get("after")).toBe("20-0");
+    expect(backend.connections[0].url.searchParams.get("after")).toBe("21-0");
     expect(snapshot().ownedFrom).toBe(1);
     backend.publish();
     await advance(1_000);

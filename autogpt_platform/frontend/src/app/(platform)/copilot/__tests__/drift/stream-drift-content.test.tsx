@@ -55,13 +55,13 @@ vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
   return { ...actual, toast: toastMock };
 });
 
-const toolTurn = loadRecordedTurn("baseline-tool-turn");
+const toolTurn = loadRecordedTurn("sdk-tool-turn");
 const textTurn = loadRecordedTurn("dummy-text-turn");
 const heldTurn = loadRecordedTurn("sdk-held-result-turn");
-// Frame 6 is the first block's second delta, 12 the tool's output, and
-// 13-17 the whole second text block.
+// Frame 6 is the first block's second delta, 11 the tool's output, and
+// 14-17 the whole second text block.
 const SECOND_DELTA = 6;
-const TOOL_OUTPUT_DONE = 13;
+const TOOL_OUTPUT_DONE = 12;
 const SECOND_BLOCK_DONE = 18;
 
 beforeEach(() => {
