@@ -30,6 +30,7 @@ import {
 import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
 import { AtResetFilesNotice } from "./components/AtResetFilesNotice";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
+import { ComposerOverflowMenu } from "./components/ComposerOverflowMenu";
 import {
   ComposerPlusMenu,
   type ComposerMenuItem,
@@ -56,6 +57,7 @@ import {
   CARD_SEND_BUTTON_CLASS,
   COMPACT_ICON_BUTTON_CLASS,
   COMPACT_SEND_BUTTON_CLASS,
+  MOBILE_SEND_BUTTON_CLASS,
   getFilesFromClipboard,
 } from "./helpers";
 import { useChatInput } from "./useChatInput";
@@ -399,7 +401,13 @@ export function ChatInput({
     ? CARD_SEND_BUTTON_CLASS
     : isCompact
       ? COMPACT_SEND_BUTTON_CLASS
-      : undefined;
+      : MOBILE_SEND_BUTTON_CLASS;
+
+  // Per-message settings and voice mode sit behind the "..." button, so the
+  // row stays usable at phone width. Model and token usage live in the + menu.
+  const showDryRunToggle = showAdvancedComposerControls && !hasSession;
+  const hasOverflowControls =
+    !!modeSelector || showDryRunToggle || !!voiceToggle;
 
   return (
     <form onSubmit={handleSubmit} className={cn("relative flex-1", className)}>
@@ -516,7 +524,9 @@ export function ChatInput({
           <div
             className={cn(
               "relative",
-              stacked || isMultiline ? "order-first w-full" : "min-w-0 flex-1",
+              stacked || isMultiline
+                ? "order-first w-full"
+                : "min-w-0 flex-1 max-md:order-first max-md:w-full max-md:basis-full",
             )}
           >
             <CredentialMentionEditor
@@ -531,6 +541,7 @@ export function ChatInput({
               placeholder={resolvedPlaceholder}
               onMultilineChange={setIsMultiline}
               className={cn(
+                "max-md:max-h-32",
                 stacked && "px-0.5 py-1",
                 isCompact && "text-sm leading-5 md:text-sm",
               )}
@@ -552,17 +563,21 @@ export function ChatInput({
               isCompact && "gap-0.5 py-1 pr-1",
             )}
           >
-            {/* Connection and tier are per-message settings, so they remain
-                changeable between turns in an existing session. The card
-                composer leaves this to the page's top-right control. */}
-            {modeSelector}
-            {showAdvancedComposerControls && !hasSession && (
-              <DryRunToggleButton
-                isDryRun={isDryRun}
-                onToggle={handleToggleDryRun}
-              />
+            {hasOverflowControls && (
+              <ComposerOverflowMenu
+                forceClosed={!!voiceBar}
+                className={iconButtonClass}
+              >
+                {modeSelector}
+                {showDryRunToggle && (
+                  <DryRunToggleButton
+                    isDryRun={isDryRun}
+                    onToggle={handleToggleDryRun}
+                  />
+                )}
+                {voiceToggle}
+              </ComposerOverflowMenu>
             )}
-            {voiceToggle}
             {showMicButton && (
               <RecordingButton
                 isRecording={isRecording}

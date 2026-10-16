@@ -16,6 +16,7 @@ import {
   Attachment01Icon,
   BookOpen01Icon,
   Calendar03Icon,
+  Camera01Icon,
   FolderOpenIcon,
   PlugSocketIcon,
   PlusSignIcon,
@@ -55,9 +56,13 @@ export function ComposerPlusMenu({
   const {
     fileInputRef,
     openModal,
+    cameraInputRef,
     showWorkspaceOption,
+    showCameraOption,
     openFilePicker,
+    openCamera,
     handleFileChange,
+    handlePhotoChange,
   } = useComposerPlusMenu({ onFilesSelected });
 
   return (
@@ -69,6 +74,18 @@ export function ComposerPlusMenu({
         className="hidden"
         onChange={handleFileChange}
         tabIndex={-1}
+      />
+      {/* Opens the rear camera on phones and tablets; the captured photo
+          goes through the same path as any attached file. */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handlePhotoChange}
+        tabIndex={-1}
+        data-testid="composer-camera-input"
       />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -100,6 +117,19 @@ export function ComposerPlusMenu({
             Attach file
             {isAtCap && <CapLabel />}
           </DropdownMenuItem>
+          {showCameraOption && (
+            <DropdownMenuItem
+              disabled={isAtCap}
+              onSelect={() => {
+                onClearGuidedPrompt?.();
+                openCamera();
+              }}
+            >
+              <Icon icon={Camera01Icon} className="mr-2 h-4 w-4" />
+              Take photo
+              {isAtCap && <CapLabel />}
+            </DropdownMenuItem>
+          )}
           {showWorkspaceOption && (
             <DropdownMenuItem
               disabled={isAtCap}
