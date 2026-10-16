@@ -52,7 +52,7 @@ interface RowProps {
 function RecentWorkRow({ line }: RowProps) {
   const content = (
     <>
-      <span className="shrink-0">
+      <span className="flex shrink-0 items-center">
         <ActorMark
           actor={line.actor}
           size={22}
