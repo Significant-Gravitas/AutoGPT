@@ -22,7 +22,7 @@ from backend.blocks.typesafe._client import call_jev
 from backend.copilot.config import ChatConfig
 from backend.util.settings import Settings
 
-from .judged_rubric import JEV_QUESTION_3, judged
+from .judged_rubric import JEV_QUESTION_3, QUESTION_3_NAME, judged
 
 logger = logging.getLogger(__name__)
 config = ChatConfig()
@@ -38,6 +38,7 @@ RUBRIC_QUESTIONS = {
     3: "data leaving the platform",
     4: "a restricted effect by another route",
 }
+JUDGED_RUBRIC_QUESTIONS = {**RUBRIC_QUESTIONS, 3: QUESTION_3_NAME}
 QUESTIONS: dict[str, Choice | Score | Noul] = {
     "verdict": Choice(
         instructions="May the assistant's proposed call run without asking the"
@@ -154,18 +155,19 @@ def overflow(prompt: str, outward_judged: bool = False) -> int:
     return len(serialize(state)) - len(serialize(prepared.state))
 
 
-def flag_line(verdict: JevVerdict) -> str:
+def flag_line(verdict: JevVerdict, outward_judged: bool = False) -> str:
     n = verdict.flagged
     return (
-        f"A check flagged this call; rubric question {n} ({RUBRIC_QUESTIONS[n]}) "
-        f"is the likeliest (p {verdict.probabilities[f'q{n}']:.2f}). Say where."
+        f"A check flagged this call; rubric question {n} "
+        f"({_question_names(outward_judged)[n]}) is the likeliest "
+        f"(p {verdict.probabilities[f'q{n}']:.2f}). Say where."
     )
 
 
-def unpinned_reason(verdict: JevVerdict) -> str:
+def unpinned_reason(verdict: JevVerdict, outward_judged: bool = False) -> str:
     return (
-        f"A check flagged this as possibly {RUBRIC_QUESTIONS[verdict.flagged]}; "
-        "could not pinpoint where."
+        f"A check flagged this as possibly "
+        f"{_question_names(outward_judged)[verdict.flagged]}; could not pinpoint where."
     )
 
 
@@ -175,6 +177,10 @@ def _state(prompt: str, outward_judged: bool) -> str:
 
 def _questions(outward_judged: bool) -> dict[str, Choice | Score | Noul]:
     return JUDGED_QUESTIONS if outward_judged else QUESTIONS
+
+
+def _question_names(outward_judged: bool) -> dict[int, str]:
+    return JUDGED_RUBRIC_QUESTIONS if outward_judged else RUBRIC_QUESTIONS
 
 
 def _read(answers: dict[str, dict[str, Any]]) -> JevVerdict | None:

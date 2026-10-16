@@ -218,7 +218,14 @@ async def check_action(
             )
         else:
             outward_judged = effect is Effect.EXTERNAL_JUDGED
-            runs = subject.name if outward_judged and subject is not None else None
+            # A workflow's name is its author's free text; only a block's is vouched for.
+            runs = (
+                subject.name
+                if outward_judged
+                and subject is not None
+                and subject.key.startswith("block:")
+                else None
+            )
             judgement = await supervise(
                 tool_name=tool_name,
                 args=_judged_args(args, files, runs),

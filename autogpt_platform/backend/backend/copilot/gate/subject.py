@@ -112,6 +112,9 @@ def workflow_subject(
                 f"{_steps(steps)} that can't be undone: {_listed(steps)}.",
             }
         )
+    if schedules and subject.effect is Effect.EXTERNAL_JUDGED:
+        # No supervisor reads a scheduled run and no irreversible pause catches one.
+        return subject.model_copy(update={"effect": Effect.EXTERNAL})
     creates = (
         f"Runs {name} and creates a schedule."
         if schedules

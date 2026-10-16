@@ -118,12 +118,14 @@ async def supervise(
             decided_by="jev",
             first_stage=first.probabilities,
         )
-    answer = await _judge(prompt + "\n\n" + jev.flag_line(first), tool_name, rubric)
+    answer = await _judge(
+        prompt + "\n\n" + jev.flag_line(first, outward_judged), tool_name, rubric
+    )
     # Jev's ask holds even when the LLM would allow: the card never waits on it.
     if answer is not None and answer[0] == "ask" and answer[1]:
         reason = answer[1]
     else:
-        reason = jev.unpinned_reason(first)
+        reason = jev.unpinned_reason(first, outward_judged)
     return Judgement(
         allowed=False,
         reason=reason,
