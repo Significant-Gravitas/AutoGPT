@@ -5,6 +5,7 @@ import {
   screen,
   within,
 } from "@/tests/integrations/test-utils";
+import userEvent from "@testing-library/user-event";
 import { useState, type MutableRefObject } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
@@ -310,7 +311,8 @@ describe("MentionDropdown", () => {
     ).toBeTruthy();
   });
 
-  it("selects an option on mousedown without moving focus", () => {
+  it("selects an option on click without moving focus", async () => {
+    const user = userEvent.setup();
     const onSelect = vi.fn();
     const { rerender } = render(
       <ComposerWithDropdown open={false} onSelect={onSelect} />,
@@ -318,7 +320,7 @@ describe("MentionDropdown", () => {
     const textbox = screen.getByRole("textbox");
     textbox.focus();
     rerender(<ComposerWithDropdown open onSelect={onSelect} />);
-    fireEvent.mouseDown(screen.getByRole("option", { name: /alpha\.txt/ }));
+    await user.click(screen.getByRole("option", { name: /alpha\.txt/ }));
     expect(onSelect).toHaveBeenCalledWith(FILE_ITEM);
     expect(document.activeElement).toBe(textbox);
   });
