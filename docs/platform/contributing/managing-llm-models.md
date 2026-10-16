@@ -24,7 +24,7 @@ Each `CatalogModel` entry:
 | `creator` | Who trained the model (display metadata; must match a `CatalogCreator.name`). |
 | `context_window` / `max_output_tokens` | Token limits. |
 | `price_tier` | 1 (cheapest) to 3 (most expensive); used for display. |
-| `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when LaunchDarkly routes to it. |
+| `is_enabled` | **The kill switch.** A disabled model is refused at serve time — even when the routing flag routes to it. |
 | `visibility` | Who may *see* the model: `GA` (everyone), `EMPLOYEES`, `ADMINS`, or `HIDDEN`. `HIDDEN` models still **serve when explicitly routed** — that is the pre-launch testing state. Informational until the catalog-driven picker lands (today a model stays out of block pickers by not having an enum line); the field is the picker's contract. Visibility never overrides `is_enabled`. |
 | `fallback_model_slug` | Standing replacement pointer: the retirement CLI defaults `--replacement` to it, and it is reserved for future automatic failover. |
 | `supports_*` | Capability flags (tools, JSON output, reasoning, parallel tool calls). Informational and authored opportunistically — `False` means *not asserted*, not "unsupported"; nothing consumes them at runtime yet, so only rely on authored `True` values. |
@@ -57,7 +57,7 @@ above). The catalog's integrity tests enforce this convention.
 
 **Cells apply only on the managed cloud deployment** (`BEHAVE_AS=cloud`).
 Self-hosted installs — cloud transport or local — always resolve
-LaunchDarkly → env: a cell set for the cloud platform travels in the
+the routing flag → env: a cell set for the cloud platform travels in the
 shipped file but never overrides a self-hosted operator's
 `CHAT_*_MODEL` configuration.
 
@@ -88,7 +88,7 @@ Two notes. The file is public: a `HIDDEN` model is hidden from pickers, **not fr
 
 Each `(mode, tier)` cell resolves through three layers, top wins:
 
-1. **LaunchDarkly `copilot-model-routing`** — per-user JSON flag returning model slugs; used for cohort experiments and rollouts. Optional: when LD is down, resolution falls through and only A/B targeting is lost.
+1. **The `copilot-model-routing` feature flag** — per-user JSON flag returning model slugs; used for cohort experiments and rollouts. Optional: when the flag vendor is down, resolution falls through and only A/B targeting is lost.
 2. **Catalog routing cell** — the PR-authored default above.
 3. **`CHAT_*_MODEL` environment variables** — the bootstrap floor (see `.env.default`).
 

@@ -220,7 +220,7 @@ def initialize_feature_flags() -> None:
     if backend is not FeatureFlagBackend.POSTHOG:
         initialize_launchdarkly()
     if backend is not FeatureFlagBackend.LAUNCHDARKLY:
-        if not settings.secrets.posthog_secret_key:
+        if posthog.is_configured() and not settings.secrets.posthog_secret_key:
             logger.warning(
                 f"Feature flag backend is {backend.value} without "
                 "POSTHOG_SECRET_KEY: every flag read becomes a remote "
@@ -656,9 +656,12 @@ async def _evaluate_posthog(
     for a user without the targeted attributes. Only a served *exposure*
     sends the experiment's event; dual mode's shadow read never does.
     """
-    user_context, context_resolved = context or await _fetch_user_context_status(
-        user_id
-    )
+    if context is None:
+        # As on LaunchDarkly: no client means the default, without a user lookup.
+        if posthog.get_flag_client() is None:
+            return default, False
+        context = await _fetch_user_context_status(user_id)
+    user_context, context_resolved = context
     value, evaluated = await posthog.evaluate_flag(
         flag_key,
         user_id,
