@@ -55,8 +55,8 @@ function RecentWorkRow({ line }: RowProps) {
       <span className="flex shrink-0 items-center">
         <ActorMark
           actor={line.actor}
-          size={22}
-          className="size-[22px] rounded-full border border-zinc-200"
+          size={28}
+          className="size-7 rounded-full border border-zinc-200"
         />
       </span>
       <Text variant="body" tone="secondary" className="min-w-0 flex-1 truncate">
