@@ -616,7 +616,7 @@ export function ChatMessagesContainer({
                 : undefined;
             const textParts = renderableParts.filter(
               (p): p is Extract<typeof p, { type: "text" }> =>
-                p.type === "text",
+                p.type === "text" && p.text.trim() !== "",
             );
             const lastTextPart = textParts[textParts.length - 1];
             const markerType =

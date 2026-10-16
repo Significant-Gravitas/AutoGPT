@@ -1248,6 +1248,7 @@ describe("ChatMessagesContainer — user attachments", () => {
 
     expect(screen.getByText("report.pdf")).toBeDefined();
     expect(userBubble(container)).toBeNull();
+    expect(screen.queryByTestId("copy-message")).toBeNull();
   });
 });
 
