@@ -205,6 +205,12 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
         return PublishOutcome(
             status="conflict", reason="the target skill already has a version"
         )
+    if head.deleted and current_text is not None:
+        # This run read the package before its owner deleted it; importing
+        # those bytes now would bring the deleted skill back.
+        return PublishOutcome(
+            status="conflict", reason="the skill was deleted after it was read"
+        )
     if head.current_version_id is None and current is not None and current_text:
         await record_registry_write(
             request.user_id,
@@ -218,6 +224,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
             summary="Existing skill preserved before learning",
             keep_auto_improve=False,
             files=snapshot_files(current_files),
+            only_if_head_at=head.current_version,
         )
         head = await versions.ensure_head(
             request.user_id, request.expert_id, request.skill_name
