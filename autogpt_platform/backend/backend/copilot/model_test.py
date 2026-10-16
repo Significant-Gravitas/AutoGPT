@@ -16,6 +16,7 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.models import Expert
 from pytest_mock import MockerFixture
 
+from backend.copilot import model as chat_model
 from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
 from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
@@ -2302,14 +2303,14 @@ async def test_delete_chat_session_returns_before_cleanup_finishes(
     redis, release, close_browser, delete_embedding = _mock_delete_dependencies(
         mocker, deleted=True
     )
+    spawn = mocker.spy(chat_model, "spawn_background_task")
 
     deleted = await asyncio.wait_for(delete_chat_session("sess-1", "user-1"), 1)
 
     assert deleted is True
     redis.delete.assert_awaited_once()
     release.set()
-    for _ in range(5):
-        await asyncio.sleep(0)
+    await asyncio.wait_for(asyncio.gather(*spawn.spy_return_list), 1)
     delete_embedding.assert_awaited_once_with("sess-1", "user-1")
     close_browser.assert_awaited_once_with("sess-1", user_id="user-1")
 

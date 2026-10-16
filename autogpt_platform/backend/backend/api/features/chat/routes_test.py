@@ -3574,6 +3574,30 @@ def test_delete_session_not_found(mocker: pytest_mock.MockerFixture) -> None:
     spawn.assert_not_called()
 
 
+def test_delete_session_without_e2b_spawns_no_cleanup(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """With E2B inactive the delete starts no sandbox-kill task."""
+    mocker.patch(
+        "backend.api.features.chat.routes.delete_chat_session",
+        new_callable=AsyncMock,
+        return_value=True,
+    )
+    mocker.patch.object(
+        chat_routes,
+        "ChatConfig",
+        return_value=SimpleNamespace(e2b_active=False, e2b_api_key=None),
+    )
+    kill = mocker.patch.object(chat_routes, "kill_sandbox", new_callable=AsyncMock)
+    spawn = mocker.patch.object(chat_routes, "spawn_background_task")
+
+    response = client.delete("/sessions/sess-1")
+
+    assert response.status_code == 204
+    kill.assert_not_called()
+    spawn.assert_not_called()
+
+
 def test_delete_session_kills_sandbox_in_background(
     mocker: pytest_mock.MockerFixture,
 ) -> None:
