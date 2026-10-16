@@ -1,7 +1,6 @@
 """Raise reconciliation with real skill IO and isolated database/service boundaries."""
 
 from contextlib import asynccontextmanager
-from dataclasses import replace
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -297,7 +296,13 @@ async def test_raise_keeps_a_confirmed_builtin_without_a_workspace_copy(
         await skills.store_user_skill(
             "owner", name="shared", description="Custom skill", body="Private steps"
         )
-    builtin = replace(skills.DEFAULT_SKILLS[0], name="shared")
+    original_builtin = skills.DEFAULT_SKILLS[0]
+    builtin = skills._DefaultSkill(
+        name="shared",
+        description=original_builtin.description,
+        body_path=original_builtin.body_path,
+        triggers=original_builtin.triggers,
+    )
     monkeypatch.setattr(skills, "DEFAULT_SKILLS", (builtin,))
     monkeypatch.setattr(skills, "_DEFAULT_SKILLS_BY_NAME", {builtin_slug: builtin})
     monkeypatch.setattr(
