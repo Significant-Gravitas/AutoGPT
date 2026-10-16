@@ -57,6 +57,33 @@ export function flattenSessions(data: SessionListInfiniteData | undefined) {
   );
 }
 
+export function removeSessionFromList(
+  data: SessionListInfiniteData | undefined,
+  sessionId: string,
+): SessionListInfiniteData | undefined {
+  if (!data) return data;
+  return {
+    ...data,
+    pages: data.pages.map((page) => {
+      if (page.status !== 200) return page;
+      const sessions = page.data.sessions.filter(
+        (session) => session.id !== sessionId,
+      );
+      if (sessions.length === page.data.sessions.length) return page;
+      // Lowering `total` keeps `getNextPageParam`'s offset in step with the
+      // server once the row is really gone.
+      return {
+        ...page,
+        data: {
+          ...page.data,
+          sessions,
+          total: Math.max(0, page.data.total - 1),
+        },
+      };
+    }),
+  };
+}
+
 export interface SessionGroup {
   expertId: string | null;
   sessions: SessionSummaryResponse[];
