@@ -1,6 +1,5 @@
 import {
   getDeleteV2DeleteSessionMockHandler,
-  getDeleteV2DeleteSessionMockHandler422,
   getGetV2ListSessionsMockHandler200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import { server } from "@/mocks/mock-server";
@@ -179,24 +178,75 @@ describe("ChatSidebar — delete flow", () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it("puts the chat back and toasts when the delete fails", async () => {
-    server.use(getDeleteV2DeleteSessionMockHandler422());
+  it("keeps a chat out of the list while its delete is pending, even after the list refetches", async () => {
+    let activeTitle = "Active chat";
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(() => ({
+        sessions: sessions.map((session) =>
+          session.id === "s1" ? { ...session, title: activeTitle } : session,
+        ),
+        total: sessions.length,
+      })),
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+      }),
+    );
     renderSidebar();
 
-    await openDeleteDialogFor("Active chat");
-    const confirmButton = await screen.findByRole("button", {
-      name: /^delete$/i,
+    await openDeleteDialogFor("Other chat");
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+    await vi.waitFor(() => {
+      expect(screen.queryByText("Other chat")).toBeNull();
     });
-    fireEvent.click(confirmButton);
+
+    activeTitle = "Active chat, refetched";
+    fireEvent.click(screen.getByText("Active chat"));
+
+    expect(await screen.findByText("Active chat, refetched")).toBeDefined();
+    expect(screen.queryByText("Other chat")).toBeNull();
+
+    releaseDelete();
+  });
+
+  it("puts the chat back and toasts when the delete fails, without waiting for a refetch", async () => {
+    let holdListRequests = false;
+    let rejectDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      rejectDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(async () => {
+        if (holdListRequests) await new Promise(() => {});
+        return { sessions, total: sessions.length };
+      }),
+      http.delete("/api/proxy/api/chat/sessions/:sessionId", async () => {
+        await deleteHeld;
+        return HttpResponse.json({ detail: "boom" }, { status: 500 });
+      }),
+    );
+    renderSidebar();
+
+    await openDeleteDialogFor("Other chat");
+    holdListRequests = true;
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
 
     await vi.waitFor(() => {
-      expect(toastMock).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Other chat")).toBeNull();
     });
+    expect(screen.queryByRole("heading", { name: /delete chat/i })).toBeNull();
+
+    rejectDelete();
+
+    expect(await screen.findByText("Other chat")).toBeDefined();
+    expect(toastMock).toHaveBeenCalledTimes(1);
     expect(toastMock.mock.calls[0][0]).toMatchObject({
       title: "Failed to delete chat",
       variant: "destructive",
     });
-    expect(await screen.findByText("Active chat")).toBeDefined();
     expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
   });
 });
