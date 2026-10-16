@@ -63,6 +63,7 @@ from backend.copilot.sharing.db import link_new_execution_to_chat_share
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
@@ -655,6 +656,7 @@ class DatabaseManager(AppService):
     list_heads = _(skill_versions_data.list_heads)
     list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
     update_head_policy = _(skill_versions_data.update_head_policy)
+    pause_use_if_current = _(skill_versions_data.pause_use_if_current)
     publish_version_if_current = _(skill_versions_data.publish_version_if_current)
     commit_version_safe = _(skill_publication_data.commit_version_safe)
     complete_publication = _(skill_publication_data.complete_publication)
@@ -672,6 +674,7 @@ class DatabaseManager(AppService):
     list_versions_in_states = _(skill_versions_data.list_versions_in_states)
     invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
     latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
+    record_skill_deletion = _(skill_deletion_data.record_skill_deletion)
     add_suppression = _(skill_use_data.add_suppression)
     find_suppression = _(skill_use_data.find_suppression)
     list_suppressions = _(skill_use_data.list_suppressions)
@@ -1148,6 +1151,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_heads = d.list_heads
     list_use_paused_skill_names = d.list_use_paused_skill_names
     update_head_policy = d.update_head_policy
+    pause_use_if_current = d.pause_use_if_current
     publish_version_if_current = d.publish_version_if_current
     commit_version_safe = d.commit_version_safe
     complete_publication = d.complete_publication
@@ -1163,6 +1167,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_versions_in_states = d.list_versions_in_states
     invalidate_source_versions = d.invalidate_source_versions
     latest_independent_version_id = d.latest_independent_version_id
+    record_skill_deletion = d.record_skill_deletion
     add_suppression = d.add_suppression
     find_suppression = d.find_suppression
     list_suppressions = d.list_suppressions

@@ -85,9 +85,7 @@ describe("AutoPilot mode selector", () => {
     renderHost();
     await pickMode(/approval mode: auto/i, /ask first/i);
 
-    expect(
-      await screen.findByRole("button", { name: /approval mode: ask first/i }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -107,9 +105,7 @@ describe("AutoPilot mode selector", () => {
         screen.queryByRole("heading", { name: /run this chat unsupervised/i }),
       ).toBeNull(),
     );
-    expect(
-      screen.getByRole("button", { name: /approval mode: auto/i }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: auto/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -129,11 +125,7 @@ describe("AutoPilot mode selector", () => {
       await screen.findByRole("button", { name: /run unsupervised/i }),
     );
 
-    expect(
-      await screen.findByRole("button", {
-        name: /approval mode: unsupervised/i,
-      }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: unsupervised/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -149,9 +141,7 @@ describe("AutoPilot mode selector", () => {
       },
     });
 
-    expect(
-      await screen.findByRole("button", { name: /approval mode: ask first/i }),
-    ).toBeDefined();
+    expect(await findModeButton(/approval mode: ask first/i)).toBeDefined();
     await typeAndSend("hi");
 
     await waitFor(() => expect(bodies).toHaveLength(1));
@@ -222,8 +212,20 @@ function captureStreamBodies() {
   return bodies;
 }
 
+// The mode selector lives behind the composer's "..." menu, and the panel
+// closes again once a pick is made: open it only when it is not showing.
+async function findModeButton(name: RegExp) {
+  if (!screen.queryByRole("button", { name: /approval mode/i })) {
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: /more options/i }),
+    );
+  }
+  return screen.findByRole("button", { name });
+}
+
 async function pickMode(trigger: RegExp, option: RegExp) {
   const user = userEvent.setup();
-  await user.click(await screen.findByRole("button", { name: trigger }));
+  await user.click(await findModeButton(trigger));
   await user.click(await screen.findByRole("menuitemradio", { name: option }));
 }
