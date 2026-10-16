@@ -1,5 +1,6 @@
 // Kept out of the "use client" sidebar module so server components can read it too.
-export const SIDEBAR_COOKIE_NAME = "sidebar_state";
+// Not `sidebar_state`: automatic collapses wrote that one too, so its value is no choice.
+export const SIDEBAR_COOKIE_NAME = "sidebar_open";
 
 export function parseSidebarCookie(
   value: string | undefined,

@@ -1,4 +1,4 @@
-import { useSidebar } from "@/components/ui/sidebar";
+import { getPersistedSidebarOpen, useSidebar } from "@/components/ui/sidebar";
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -31,7 +31,10 @@ export function useBuilderSidebarAutoClose(openOutsideBuilder: boolean) {
       return;
     }
     if (openBeforeBuildRef.current !== null) {
-      setOpen(openBeforeBuildRef.current, { persist: false });
+      // A choice made on /build is already remembered; showing it keeps a reload consistent.
+      setOpen(getPersistedSidebarOpen() ?? openBeforeBuildRef.current, {
+        persist: false,
+      });
       openBeforeBuildRef.current = null;
     }
   }, [isBuildRoute, setOpen, openOutsideBuilder]);

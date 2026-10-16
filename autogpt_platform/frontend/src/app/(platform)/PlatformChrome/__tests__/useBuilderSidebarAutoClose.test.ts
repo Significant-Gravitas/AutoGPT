@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/ui/sidebar", () => ({
   useSidebar: () => ({ open: sidebarOpen, setOpen: mockSetOpen }),
+  getPersistedSidebarOpen: () => undefined,
 }));
 
 function renderAt(pathname: string, openOutsideBuilder = true) {

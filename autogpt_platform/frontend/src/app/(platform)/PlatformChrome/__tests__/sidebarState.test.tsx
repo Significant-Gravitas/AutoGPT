@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Sidebar, useSidebar } from "@/components/ui/sidebar";
+import { SIDEBAR_COOKIE_NAME } from "@/components/ui/sidebar-cookie";
 import { PlatformChrome } from "../PlatformChrome";
 
 let pathname = "/home";
@@ -64,12 +65,19 @@ function load(persistedSidebarOpen?: boolean) {
     paintedStates.push(useSidebar().state);
     return null;
   }
-  const view = render(
-    <PlatformChrome persistedSidebarOpen={persistedSidebarOpen}>
-      <StateLog />
-    </PlatformChrome>,
-  );
-  return { ...view, paintedStates };
+  function tree() {
+    return (
+      <PlatformChrome persistedSidebarOpen={persistedSidebarOpen}>
+        <StateLog />
+      </PlatformChrome>
+    );
+  }
+  const view = render(tree());
+  function navigate(to: string) {
+    pathname = to;
+    view.rerender(tree());
+  }
+  return { ...view, paintedStates, navigate };
 }
 
 function sidebarState() {
@@ -79,13 +87,13 @@ function sidebarState() {
 }
 
 function rememberSidebar(open: boolean) {
-  document.cookie = `sidebar_state=${open}; path=/`;
+  document.cookie = `${SIDEBAR_COOKIE_NAME}=${open}; path=/`;
 }
 
 beforeEach(() => {
   pathname = "/home";
   isBrainDumpEnabled = false;
-  document.cookie = "sidebar_state=; path=/; max-age=0";
+  document.cookie = `${SIDEBAR_COOKIE_NAME}=; path=/; max-age=0`;
 });
 
 afterEach(() => {
@@ -158,6 +166,28 @@ describe("the app sidebar across reloads", () => {
 
     expect(sidebarState()).toBe("expanded");
   });
+
+  it.each([
+    { before: "closed", remembered: false, toggles: 1, expected: "expanded" },
+    { before: "open", remembered: true, toggles: 2, expected: "collapsed" },
+  ])(
+    "leaving the builder after toggling there ($before before, $toggles toggles) shows what a reload would",
+    ({ remembered, toggles, expected }) => {
+      rememberSidebar(remembered);
+      const view = load();
+      view.navigate("/build");
+      for (let i = 0; i < toggles; i++) {
+        fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+      }
+
+      view.navigate("/home");
+
+      expect(sidebarState()).toBe(expected);
+      view.unmount();
+      load();
+      expect(sidebarState()).toBe(expected);
+    },
+  );
 
   it("does not open the mobile sheet over the page when open is remembered", () => {
     Object.defineProperty(window, "innerWidth", {
