@@ -460,3 +460,52 @@ async def test_an_answer_the_step_could_not_take_keeps_its_card_for_a_retry(
     assert row is not None and row.status == ReviewStatus.APPROVED
     assert await run.card() is None
     resumed.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    "ended", [AgentExecutionStatus.FAILED, AgentExecutionStatus.TERMINATED]
+)
+async def test_a_card_whose_run_has_ended_can_still_be_answered_and_goes(
+    setup_test_user, test_user_id, flags, client, resumed, ended
+):
+    _, run = await _parked(test_user_id)
+    await AgentGraphExecution.prisma().update(
+        where={"id": run.graph_exec_id}, data={"executionStatus": ended}
+    )
+
+    await _answer(client, run.card_id, approved=False)
+
+    assert await run.card() is None
+    resumed.assert_not_awaited()
+
+
+async def test_a_card_that_could_not_be_reopened_leaves_the_step_to_the_run_page(
+    setup_test_user, test_user_id, flags, client, resumed
+):
+    """With both writes failing, the step's own row is the way back: Home lists
+    it again, and answering it there closes the card."""
+    _, run = await _parked(test_user_id)
+
+    with (
+        patch(
+            "backend.data.human_review.process_all_reviews_for_execution",
+            AsyncMock(side_effect=OSError("database unavailable")),
+        ),
+        patch(
+            "backend.data.human_review.reopen_review",
+            AsyncMock(side_effect=OSError("database unavailable")),
+        ),
+    ):
+        failed = await client.post(
+            "/api/review/action",
+            json={"reviews": [{"node_exec_id": run.card_id, "approved": True}]},
+        )
+
+    assert failed.status_code == 503, failed.text
+    home = {r.node_exec_id for r in await get_pending_reviews_for_user(test_user_id)}
+    assert run.node_exec_id in home and run.card_id not in home
+
+    await _answer(client, run.node_exec_id, approved=True)
+
+    assert await run.card() is None
+    resumed.assert_awaited_once()

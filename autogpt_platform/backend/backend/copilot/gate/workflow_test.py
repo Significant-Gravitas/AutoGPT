@@ -342,6 +342,15 @@ async def test_a_step_update_that_fails_keeps_the_card_and_says_so(rows, redis):
     )
 
 
+async def test_a_decline_whose_rule_cannot_be_set_still_answers_its_step(rows, redis):
+    card = _card(ReviewStatus.REJECTED)
+    with patch(
+        f"{_WORKFLOW}.get_chat_session_metadata", AsyncMock(side_effect=OSError)
+    ):
+        finished = await workflow.finish_step_cards("user-1", [card])
+    assert finished.answered == [_STEP]
+
+
 async def test_a_held_call_card_is_no_step(rows):
     card = _card(ReviewStatus.APPROVED).model_copy(
         update={"node_exec_id": "copilot-node-gate-run_capability:abc"}

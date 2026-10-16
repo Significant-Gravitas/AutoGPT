@@ -232,11 +232,11 @@ async def process_review_action(
 
     graph_exec_id, chat_session_id = next(iter(scopes))
 
-    # A step's card is answered once its run has paused, as on the run page: a
-    # run still running would finish its pass with nothing waiting, the step unrun.
+    # A run still running would finish its pass with nothing waiting, the step
+    # unrun; a queued or ended run is safe to answer.
     for review in reviews_map.values():
         step = step_of(review)
-        if step is not None and not await _paused(user_id, step.graph_exec_id):
+        if step is not None and await _running(user_id, step.graph_exec_id):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This workflow is still running other steps. Answer once it pauses.",
@@ -442,12 +442,9 @@ async def process_review_action(
     )
 
 
-async def _paused(user_id: str, graph_exec_id: str) -> bool:
+async def _running(user_id: str, graph_exec_id: str) -> bool:
     meta = await get_graph_execution_meta(user_id=user_id, execution_id=graph_exec_id)
-    return meta is None or meta.status in (
-        ExecutionStatus.REVIEW,
-        ExecutionStatus.INCOMPLETE,
-    )
+    return meta is not None and meta.status == ExecutionStatus.RUNNING
 
 
 async def resume_reviewed_execution(

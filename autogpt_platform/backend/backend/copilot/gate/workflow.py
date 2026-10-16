@@ -335,10 +335,14 @@ async def _ask_from_now_on(user_id: str, card: PendingHumanReviewModel) -> None:
     key = step_rule_keys([card]).get(card.node_exec_id)
     if not key or not card.session_id:
         return
-    chat = await get_chat_session_metadata(card.session_id, user_id)
-    await chat_rules.set_ask(
-        card.session_id, key, user_id, chat.expert_id if chat else None
-    )
+    try:
+        chat = await get_chat_session_metadata(card.session_id, user_id)
+        await chat_rules.set_ask(
+            card.session_id, key, user_id, chat.expert_id if chat else None
+        )
+    except Exception:
+        # The step already has its answer; a lost rule must not strand its run.
+        logger.warning(f"Could not set an ask rule from card {card.node_exec_id}")
 
 
 def _allowed_by(ruling: Ruling, subject: Subject) -> str:
