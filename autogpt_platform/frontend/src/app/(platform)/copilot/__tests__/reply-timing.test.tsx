@@ -487,37 +487,6 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
       expect(replySpans()).toHaveLength(0);
     });
 
-    // Only the AI SDK client drops a repeat of the message it just sent.
-    it.runIf(path === "AI SDK")(
-      "records nothing for a send suppressed as a duplicate",
-      async () => {
-        const posts = vi.fn();
-        server.use(
-          http.post(
-            `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
-            ({ request }) => {
-              posts();
-              return streamSseResponse(assistantTextChunks("Only reply."), {
-                abortSignal: request.signal,
-              });
-            },
-          ),
-        );
-
-        renderHost();
-        await typeAndSend("same again");
-        await screen.findByText("Only reply.", undefined, { timeout: 5000 });
-        await recordedReplies(1);
-        await waitForTurnOver();
-
-        await typeAndSend("same again");
-        await sleep(SETTLE_GRACE_MS + HELD_MS);
-
-        expect(posts).toHaveBeenCalledTimes(1);
-        expect(replySpans()).toHaveLength(1);
-      },
-    );
-
     it("ends a reply the user stops before its text as abandoned", async () => {
       const { hold } = createStreamHold(3);
       server.use(
@@ -621,5 +590,40 @@ describe.each(STREAM_PATHS)("on the %s path", (path) => {
         expect(msOf(span, "first_text_ms")).toBeGreaterThanOrEqual(creatingMs);
       },
     );
+  });
+});
+
+// Only the AI SDK client drops a repeat of the message it just sent, so this
+// runs on that path alone: CI rejects a report with a skipped test.
+describe("on the AI SDK path", () => {
+  beforeEach(() => {
+    streamPath.runtime = false;
+  });
+
+  it("records nothing for a send suppressed as a duplicate", async () => {
+    const posts = vi.fn();
+    server.use(
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${TEST_SESSION_ID}/stream`,
+        ({ request }) => {
+          posts();
+          return streamSseResponse(assistantTextChunks("Only reply."), {
+            abortSignal: request.signal,
+          });
+        },
+      ),
+    );
+
+    renderHost();
+    await typeAndSend("same again");
+    await screen.findByText("Only reply.", undefined, { timeout: 5000 });
+    await recordedReplies(1);
+    await waitForTurnOver();
+
+    await typeAndSend("same again");
+    await sleep(SETTLE_GRACE_MS + HELD_MS);
+
+    expect(posts).toHaveBeenCalledTimes(1);
+    expect(replySpans()).toHaveLength(1);
   });
 });
