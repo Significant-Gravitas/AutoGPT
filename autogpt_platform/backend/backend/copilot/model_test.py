@@ -2304,8 +2304,20 @@ async def test_delete_chat_session_returns_before_cleanup_finishes(
         mocker, deleted=True
     )
     spawn = mocker.spy(chat_model, "spawn_background_task")
+    redis_started = asyncio.Event()
+    redis_release = asyncio.Event()
 
-    deleted = await asyncio.wait_for(delete_chat_session("sess-1", "user-1"), 1)
+    async def wait_for_redis_delete(*_args, **_kwargs):
+        redis_started.set()
+        await redis_release.wait()
+
+    redis.delete.side_effect = wait_for_redis_delete
+
+    delete_task = asyncio.create_task(delete_chat_session("sess-1", "user-1"))
+    await asyncio.wait_for(redis_started.wait(), 1)
+    assert not delete_task.done()
+    redis_release.set()
+    deleted = await asyncio.wait_for(delete_task, 1)
 
     assert deleted is True
     redis.delete.assert_awaited_once()
