@@ -43,6 +43,8 @@ const WORKSPACE_REPLY_SESSION_ID = "session-zara-workspace-reply";
 const OLD_TASK_SESSION_ID = "session-zara-old-task";
 const NEW_TASK_SESSION_ID = "session-zara-new-task";
 const DISCONNECT_SESSION_ID = "session-zara-disconnect";
+const RECONNECT_SEND_SESSION_ID = "session-zara-reconnect-send";
+const CLOSED_SESSION_ID = "session-zara-closed";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -549,16 +551,17 @@ describe("ExpertChatDrawer attachments", () => {
       await screen.findByTestId("pending-upload-message");
 
       fireEvent.click(screen.getByRole("button", { name: "New task" }));
-      await user.type(await enabledComposer(), "new task question{Enter}");
+      const newTaskInput = await enabledComposer();
+      await user.type(newTaskInput, "new task question{Enter}");
       await screen.findByText("New task reply");
+      await user.type(newTaskInput, "new unsent draft");
 
       upload.resolve();
 
       await waitFor(() =>
-        expect(
-          (screen.getByPlaceholderText("Message Zara…") as HTMLTextAreaElement)
-            .value,
-        ).toBe("old task attachment"),
+        expect(newTaskInput.value).toBe(
+          "old task attachment\n\nnew unsent draft",
+        ),
       );
       expect(sentTo).toEqual([NEW_TASK_SESSION_ID]);
       expect(recorder.streamBodies).toEqual([
@@ -660,4 +663,178 @@ describe("ExpertChatDrawer attachments", () => {
       resumed.release();
     }
   }, 20_000);
+
+  test("holds a file sent while the connection is being restored and sends it once the resumed reply ends", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const disconnect = deferred();
+    const resumed = createStreamHold(5);
+    const encoder = new TextEncoder();
+    server.use(
+      existingThreadList(RECONNECT_SEND_SESSION_ID),
+      sessionHandler(RECONNECT_SEND_SESSION_ID),
+      uploadHandler(recorder),
+      pendingHandler(recorder, RECONNECT_SEND_SESSION_ID),
+      http.post(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
+        async ({ request }) => {
+          const turn = recorder.streamBodies.length;
+          recorder.streamBodies.push(
+            (await request.clone().json()) as Record<string, unknown>,
+          );
+          if (turn > 0) {
+            return streamSseResponse(assistantTextChunks("Second reply"), {
+              abortSignal: request.signal,
+            });
+          }
+          return new HttpResponse(
+            new ReadableStream<Uint8Array>({
+              async start(controller) {
+                for (const chunk of assistantTextChunks("First reply").slice(
+                  0,
+                  4,
+                )) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
+                  );
+                }
+                await disconnect.promise;
+                controller.error(new TypeError("network failed"));
+              },
+            }),
+            {
+              headers: {
+                "content-type": "text/event-stream",
+                "x-vercel-ai-ui-message-stream": "v1",
+              },
+            },
+          );
+        },
+      ),
+      http.get(
+        `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${RECONNECT_SEND_SESSION_ID}/stream`,
+        ({ request }) =>
+          streamSseResponse(assistantTextChunks("Resumed reply"), {
+            hold: resumed.hold,
+            abortSignal: request.signal,
+          }),
+      ),
+    );
+
+    try {
+      render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+      const input = await enabledComposer();
+      await user.type(input, "hello{Enter}");
+      await screen.findByRole("button", { name: /Stop/ });
+      await attachLocalFile(user);
+      await user.type(input, "sent while reconnecting");
+
+      disconnect.resolve();
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: /Stop/ })).toBeNull(),
+      );
+      await user.type(input, "{Enter}");
+
+      await waitFor(() =>
+        expect(recorder.uploadSessionIds).toEqual([RECONNECT_SEND_SESSION_ID]),
+      );
+      await screen.findByText("Resumed reply", undefined, { timeout: 5_000 });
+      expect(pendingBubble().textContent).toContain("sent while reconnecting");
+      expect(recorder.streamBodies).toEqual([
+        expect.objectContaining({ message: "hello" }),
+      ]);
+
+      resumed.release();
+
+      await waitFor(() => expect(recorder.streamBodies.length).toBe(2), {
+        timeout: 5_000,
+      });
+      expect(recorder.pendingPosts).toBe(0);
+      expect(recorder.streamBodies[1]).toMatchObject({
+        message: "sent while reconnecting",
+        file_ids: [UPLOADED_FILE_ID],
+      });
+    } finally {
+      disconnect.resolve();
+      resumed.release();
+    }
+  }, 20_000);
+
+  test.each([
+    { when: "while the expert replies", replying: true },
+    { when: "with no reply in flight", replying: false },
+  ])(
+    "leaves the chat usable when the panel closes during an upload $when",
+    async ({ replying }) => {
+      markKickoffDone(
+        USER_ID,
+        EXPERT_ID,
+        markKickoffPending(USER_ID, EXPERT_ID),
+      );
+      const user = userEvent.setup();
+      const recorder = newRecorder();
+      const upload = deferred();
+      const reply = createStreamHold(3);
+      let uploadReturned = false;
+      server.use(
+        existingThreadList(CLOSED_SESSION_ID),
+        sessionHandler(CLOSED_SESSION_ID),
+        streamHandler(recorder, CLOSED_SESSION_ID, [reply.hold]),
+        http.post(
+          `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
+          async () => {
+            recorder.uploadSessionIds.push(CLOSED_SESSION_ID);
+            await upload.promise;
+            uploadReturned = true;
+            return HttpResponse.json({
+              file_id: UPLOADED_FILE_ID,
+              name: "photo.png",
+              mime_type: "image/png",
+            });
+          },
+        ),
+      );
+
+      try {
+        const view = render(
+          <ExpertChatDrawer target={ZARA} onClose={() => {}} />,
+        );
+        const input = await enabledComposer();
+        if (replying) {
+          await user.type(input, "hello{Enter}");
+          await screen.findByRole("button", { name: /Stop/ });
+        }
+        await attachLocalFile(user);
+        await user.type(input, "held while the upload runs{Enter}");
+        await screen.findByTestId("pending-upload-message");
+        await waitFor(() =>
+          expect(recorder.uploadSessionIds).toEqual([CLOSED_SESSION_ID]),
+        );
+
+        view.unmount();
+        upload.resolve();
+        await waitFor(() => expect(uploadReturned).toBe(true));
+        reply.release();
+
+        render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+        await waitFor(() =>
+          expect(
+            useCopilotStreamStore.getState().pendingUploadSends[
+              CLOSED_SESSION_ID
+            ],
+          ).toBeUndefined(),
+        );
+        await enabledComposer();
+        expect(screen.queryByTestId("pending-upload-message")).toBeNull();
+        expect(recorder.streamBodies).toEqual(
+          replying ? [expect.objectContaining({ message: "hello" })] : [],
+        );
+      } finally {
+        upload.resolve();
+        reply.release();
+      }
+    },
+  );
 });
