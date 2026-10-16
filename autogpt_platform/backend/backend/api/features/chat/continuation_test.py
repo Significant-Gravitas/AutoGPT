@@ -394,7 +394,9 @@ def test_keep_going_starts_with_the_paused_turns_taint(queued, tainted: bool):
     assert entry.envelope.tainted is tainted
 
 
-def test_keep_going_on_a_marker_from_before_the_field_continues_untainted(queued):
+def test_keep_going_on_a_marker_from_before_the_field_continues_tainted(queued):
+    """An executor from before the field wrote it, so how the paused turn ran
+    is unknown: Keep going runs as if it was tainted."""
     queued.session.messages = [
         ChatMessage(role="user", content="Build the report"),
         ChatMessage(
@@ -408,4 +410,4 @@ def test_keep_going_on_a_marker_from_before_the_field_continues_untainted(queued
 
     entry = queued.entry()
     assert entry.envelope is not None
-    assert entry.envelope.tainted is False
+    assert entry.envelope.tainted is True
