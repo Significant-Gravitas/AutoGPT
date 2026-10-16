@@ -14,6 +14,19 @@ vi.mock("../../helpers", () => ({
   setWebSocketDisconnectIntent: vi.fn(),
   setupSessionEventListeners: vi.fn(() => ({ cleanup: vi.fn() })),
 }));
+vi.mock("@/services/push-notifications/helpers", () => ({
+  teardownPushSubscriptionBeforeLogout: vi.fn(),
+}));
+const { mockClearAllCompletedSessions } = vi.hoisted(() => ({
+  mockClearAllCompletedSessions: vi.fn(),
+}));
+vi.mock("@/app/(platform)/copilot/store", () => ({
+  useCopilotUIStore: {
+    getState: () => ({
+      clearAllCompletedSessions: mockClearAllCompletedSessions,
+    }),
+  },
+}));
 vi.mock("../helpers", () => ({
   fetchUser: vi.fn(),
   handleStorageEvent: vi.fn(),
@@ -21,6 +34,8 @@ vi.mock("../helpers", () => ({
   validateSession: vi.fn(),
 }));
 
+import { teardownPushSubscriptionBeforeLogout } from "@/services/push-notifications/helpers";
+import { serverLogout } from "../../actions";
 import type { User } from "../../types";
 import { validateSession as validateSessionHelper } from "../helpers";
 import { useAuthStore } from "../useAuthStore";
@@ -176,5 +191,52 @@ describe("useAuthStore.validateSession", () => {
     expect(stillValid).toBe(true);
     expect(useAuthStore.getState().user).toBe(user);
     expect(router.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("useAuthStore.logOut", () => {
+  afterEach(async () => {
+    useAuthStore.setState({ user: null, hasLoadedUser: false });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("removes this browser's push subscription before the server signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+
+    await useAuthStore.getState().logOut();
+
+    const teardown = vi.mocked(teardownPushSubscriptionBeforeLogout);
+    const logout = vi.mocked(serverLogout);
+    expect(teardown).toHaveBeenCalledOnce();
+    expect(logout).toHaveBeenCalledOnce();
+    expect(teardown.mock.invocationCallOrder[0]).toBeLessThan(
+      logout.mock.invocationCallOrder[0],
+    );
+  });
+});
+
+describe("useAuthStore account change", () => {
+  afterEach(async () => {
+    useAuthStore.setState({ user: null });
+    await vi.dynamicImportSettled();
+    vi.clearAllMocks();
+  });
+
+  it("clears the finished-chats list when the user signs out", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: null });
+
+    await vi.waitFor(() =>
+      expect(mockClearAllCompletedSessions).toHaveBeenCalledOnce(),
+    );
+  });
+
+  it("keeps the finished-chats list when the same user is refreshed", async () => {
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    useAuthStore.setState({ user: { id: "user-1" } as User });
+    await vi.dynamicImportSettled();
+
+    expect(mockClearAllCompletedSessions).not.toHaveBeenCalled();
   });
 });

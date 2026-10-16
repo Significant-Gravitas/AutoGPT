@@ -139,6 +139,44 @@ class TestUpsertPushSubscription:
 
         mock_prisma.upsert.assert_awaited_once()
 
+    @pytest.mark.asyncio
+    async def test_claims_endpoint_from_other_users(self, mock_prisma):
+        # A browser has one push endpoint: after switching accounts on it, the
+        # previous account must stop receiving pushes there.
+        mock_prisma.upsert.return_value = MagicMock()
+
+        await push_subscription.upsert_push_subscription(
+            user_id="user-2",
+            endpoint="https://fcm.googleapis.com/fcm/send/sub/1",
+            p256dh="test-p256dh",
+            auth="test-auth",
+        )
+
+        mock_prisma.delete_many.assert_awaited_once_with(
+            where={
+                "endpoint": "https://fcm.googleapis.com/fcm/send/sub/1",
+                "userId": {"not": "user-2"},
+            }
+        )
+        mock_prisma.upsert.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_does_not_claim_endpoint_when_over_cap(self, mock_prisma):
+        mock_prisma.find_many.return_value = [
+            MagicMock(endpoint=f"https://fcm.googleapis.com/fcm/send/sub/{i}")
+            for i in range(push_subscription.MAX_SUBSCRIPTIONS_PER_USER)
+        ]
+
+        with pytest.raises(ValueError, match="Subscription limit"):
+            await push_subscription.upsert_push_subscription(
+                user_id="user-2",
+                endpoint="https://fcm.googleapis.com/fcm/send/sub/NEW",
+                p256dh="test-p256dh",
+                auth="test-auth",
+            )
+
+        mock_prisma.delete_many.assert_not_awaited()
+
 
 class TestGetUserPushSubscriptions:
     @pytest.mark.asyncio

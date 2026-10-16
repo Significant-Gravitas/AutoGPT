@@ -96,6 +96,12 @@ async def upsert_push_subscription(
         raise ValueError(
             f"Subscription limit of {MAX_SUBSCRIPTIONS_PER_USER} per user reached"
         )
+    # An endpoint belongs to one browser profile, so whoever subscribed it
+    # last owns it. Without this, signing into a second account on the same
+    # browser keeps delivering the first account's notifications there.
+    await PushSubscription.prisma().delete_many(
+        where={"endpoint": endpoint, "userId": {"not": user_id}}
+    )
     return await PushSubscription.prisma().upsert(
         where={"userId_endpoint": {"userId": user_id, "endpoint": endpoint}},
         data={
