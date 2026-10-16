@@ -464,6 +464,39 @@ async def test_what_is_left_counts_as_charged_once_its_debit_may_have_landed(
 
 
 @pytest.mark.asyncio
+async def test_a_balance_it_cannot_read_takes_nothing_and_stays_due(credits, wallet):
+    turn = await _billed(credits, balance=500)
+    # Other runs spent all but a credit, and the balance can't be read.
+    wallet.balance = 1
+    credits.get_credits.side_effect = ConnectionError("db down")
+
+    await turn.record(25_000)
+    assert (turn.charged_credits, wallet.debits) == (0, [])
+
+    # Once it reads again, after a top-up, the end takes all that is due.
+    credits.get_credits.side_effect = wallet.get_credits
+    wallet.balance += 100
+    await turn.end()
+    assert (turn.charged_credits, wallet.debits) == (3, [3])
+
+
+@pytest.mark.asyncio
+async def test_what_is_left_that_goes_before_it_is_taken_takes_nothing(credits, wallet):
+    turn = await _billed(credits, balance=500)
+    wallet.balance = 1
+
+    async def spent_right_after_the_read(user_id: str) -> int:
+        # Another run takes the last credit between the read and the debit.
+        left, wallet.balance = wallet.balance, 0
+        return left
+
+    credits.get_credits.side_effect = spent_right_after_the_read
+    await turn.record(25_000)
+
+    assert (turn.charged_credits, wallet.debits, wallet.balance) == (0, [], 0)
+
+
+@pytest.mark.asyncio
 async def test_a_debit_that_keeps_failing_is_never_asked_for_twice(credits, caplog):
     caplog.set_level(logging.WARNING, logger="backend.copilot.credit_billing")
     turn = await _billed(credits, balance=500)
