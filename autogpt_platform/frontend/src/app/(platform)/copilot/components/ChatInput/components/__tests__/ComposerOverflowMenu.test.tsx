@@ -51,4 +51,28 @@ describe("ComposerOverflowMenu", () => {
 
     expect(screen.queryByText("Inner control")).toBeNull();
   });
+
+  it("does not reopen on its own after being forced closed", async () => {
+    const { rerender } = render(
+      <ComposerOverflowMenu>
+        <button>Inner control</button>
+      </ComposerOverflowMenu>,
+    );
+    openMenu();
+    expect(await screen.findByText("Inner control")).toBeDefined();
+
+    rerender(
+      <ComposerOverflowMenu forceClosed>
+        <button>Inner control</button>
+      </ComposerOverflowMenu>,
+    );
+    expect(screen.queryByText("Inner control")).toBeNull();
+
+    rerender(
+      <ComposerOverflowMenu>
+        <button>Inner control</button>
+      </ComposerOverflowMenu>,
+    );
+    expect(screen.queryByText("Inner control")).toBeNull();
+  });
 });

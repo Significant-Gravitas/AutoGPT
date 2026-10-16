@@ -34,6 +34,10 @@ export function ComposerOverflowMenu({
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
 
+  // Forget the open state while forced shut, or the panel pops back open
+  // on its own once voice mode ends.
+  if (forceClosed && isOpen) setIsOpen(false);
+
   return (
     <Popover open={isOpen && !forceClosed} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
