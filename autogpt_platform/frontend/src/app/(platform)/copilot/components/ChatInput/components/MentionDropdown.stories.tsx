@@ -9,14 +9,23 @@ import { CARD_SEND_BUTTON_CLASS } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 import { useConnectedIntegrations } from "../useConnectedIntegrations";
 import { MentionDropdown } from "./MentionDropdown";
-import { mentionStoryHandlers } from "./mentionStoryFixtures";
+import {
+  lateFileResultsHandlers,
+  mentionStoryHandlers,
+} from "./mentionStoryFixtures";
+
+const COMPOSER_POSITION = {
+  top: "w-full max-w-2xl",
+  middle: "w-full max-w-2xl pt-64",
+  bottom: "w-full max-w-2xl pt-80",
+};
 
 interface Props {
   expertId?: string;
-  atTop?: boolean;
+  position?: keyof typeof COMPOSER_POSITION;
 }
 
-function AccountMentionComposer({ expertId, atTop = false }: Props) {
+function AccountMentionComposer({ expertId, position = "bottom" }: Props) {
   const [value, setValue] = useState("");
   const [sent, setSent] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -34,7 +43,7 @@ function AccountMentionComposer({ expertId, atTop = false }: Props) {
       setAttachments((items) => [...items, folder.name]),
   });
   return (
-    <div className={atTop ? "w-full max-w-2xl" : "w-full max-w-2xl pt-80"}>
+    <div className={COMPOSER_POSITION[position]}>
       {sent && (
         <div className="mb-8 flex justify-end">
           <div
@@ -118,7 +127,7 @@ export const AccountPicker: Story = {
 };
 
 export const EmptyState: Story = {
-  args: { atTop: true },
+  args: { position: "top" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const textbox = canvas.getByRole("textbox");
@@ -133,6 +142,27 @@ export const EmptyState: Story = {
       );
     });
     await expect(first).toBeVisible();
+  },
+};
+
+export const ResultsLoadLate: Story = {
+  args: { expertId: "expert-late-results", position: "middle" },
+  parameters: { msw: { handlers: lateFileResultsHandlers } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.type(canvas.getByRole("textbox"), "Check my @");
+    await canvas.findByText("Searching files…");
+    await canvas.findByRole("option", { name: /Report 8/ }, { timeout: 3000 });
+    const list = canvas.getByRole("listbox", { name: "Mention suggestions" });
+    const form = canvasElement.querySelector("form");
+    if (!form) throw new Error("Composer form not rendered");
+    await waitFor(() => {
+      const { top, bottom } = form.getBoundingClientRect();
+      const roomOnRoomierSide = Math.max(top, window.innerHeight - bottom) - 16;
+      expect(list.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+        Math.min(320, list.scrollHeight + 2, roomOnRoomierSide) - 1,
+      );
+    });
   },
 };
 
