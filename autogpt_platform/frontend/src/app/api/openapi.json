@@ -16473,6 +16473,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
