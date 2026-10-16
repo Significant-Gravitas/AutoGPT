@@ -44,7 +44,7 @@ interface BodyProps {
 }
 
 function DialogBody({ picker, connectionLocked }: BodyProps) {
-  const { offers, active, showTiers, isLoading, isError } = picker;
+  const { offers, active, isLoading, isError } = picker;
 
   if (isLoading && offers.length === 0) {
     return <Skeleton className="h-32 w-full rounded-xl" />;
@@ -72,8 +72,7 @@ function DialogBody({ picker, connectionLocked }: BodyProps) {
   // Asked for from the menu, so the dialog always says what the chat runs
   // on: with nothing to choose, it still lists the active connection.
   const listed = listedConnections(offers, connectionLocked);
-  const rows =
-    listed.length > 0 || showTiers ? listed : active ? [active] : offers;
+  const rows = listed.length > 0 ? listed : active ? [active] : offers;
 
   return <ConnectionPickerPanel picker={picker} rows={rows} />;
 }
