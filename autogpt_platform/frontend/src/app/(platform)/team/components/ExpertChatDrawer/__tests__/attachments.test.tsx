@@ -37,6 +37,8 @@ const USER_ID = "user-1";
 const EXPERT_ID = "3f8b0f7e-9f30-4a3b-a6a1-000000000001";
 const SESSION_ID = "session-zara";
 const FRESH_SESSION_ID = "session-zara-fresh";
+const KICKOFF_SESSION_ID = "session-zara-kickoff";
+const RESET_SESSION_ID = "session-zara-reset";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -143,7 +145,9 @@ function streamHandler(
     `${TEST_BACKEND_BASE_URL}/api/chat/sessions/${sessionId}/stream`,
     async ({ request }) => {
       const turn = recorder.streamBodies.length;
-      recorder.streamBodies.push(await request.clone().json());
+      recorder.streamBodies.push(
+        (await request.clone().json()) as Record<string, unknown>,
+      );
       return streamSseResponse(assistantTextChunks(`Reply ${turn + 1}`), {
         abortSignal: request.signal,
         hold: holds[turn],
@@ -163,11 +167,11 @@ function sessionHandler(sessionId: string) {
   );
 }
 
-function existingThreadList() {
+function existingThreadList(sessionId = SESSION_ID) {
   return getGetV2ListSessionsMockHandler200({
     sessions: [
       {
-        id: SESSION_ID,
+        id: sessionId,
         created_at: "2026-09-27T18:00:00Z",
         updated_at: "2026-09-27T18:01:00Z",
         is_processing: false,
@@ -280,6 +284,7 @@ describe("ExpertChatDrawer attachments", () => {
             mime_type: "application/pdf",
             size_bytes: 4096,
             created_at: "2026-09-27T18:00:00Z",
+            origin: "uploaded",
           },
         ],
         has_more: false,
@@ -346,6 +351,41 @@ describe("ExpertChatDrawer attachments", () => {
     });
   });
 
+  test("gives a follow-up waiting on the reply back when the user starts a new task", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const firstReply = createStreamHold(3);
+    server.use(
+      existingThreadList(RESET_SESSION_ID),
+      sessionHandler(RESET_SESSION_ID),
+      uploadHandler(recorder),
+      pendingHandler(recorder, RESET_SESSION_ID),
+      streamHandler(recorder, RESET_SESSION_ID, [firstReply.hold]),
+    );
+
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+    const input = await enabledComposer();
+    await user.type(input, "hello{Enter}");
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    await attachLocalFile(user);
+    await user.type(input, "and this{Enter}");
+    await screen.findByTestId("pending-upload-message");
+
+    fireEvent.click(screen.getByRole("button", { name: "New task" }));
+    firstReply.release();
+
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText("Message Zara…") as HTMLTextAreaElement)
+          .value,
+      ).toBe("and this"),
+    );
+    expect(screen.queryByTestId("pending-upload-message")).toBeNull();
+    expect(recorder.streamBodies.length).toBe(1);
+    expect(recorder.pendingPosts).toBe(0);
+  });
+
   test("sends a file queued behind the kickoff once the kickoff replies", async () => {
     const user = userEvent.setup();
     const recorder = newRecorder();
@@ -362,12 +402,12 @@ describe("ExpertChatDrawer attachments", () => {
           );
         }
         return HttpResponse.json(
-          getPostV2CreateSessionResponseMock200({ id: FRESH_SESSION_ID }),
+          getPostV2CreateSessionResponseMock200({ id: KICKOFF_SESSION_ID }),
         );
       }),
-      sessionHandler(FRESH_SESSION_ID),
+      sessionHandler(KICKOFF_SESSION_ID),
       uploadHandler(recorder),
-      streamHandler(recorder, FRESH_SESSION_ID, [kickoffReply.hold]),
+      streamHandler(recorder, KICKOFF_SESSION_ID, [kickoffReply.hold]),
     );
 
     render(
@@ -383,7 +423,8 @@ describe("ExpertChatDrawer attachments", () => {
     await attachLocalFile(user);
     await user.type(input, "what is this{Enter}");
 
-    expect(within(pendingBubble()).getByText("what is this")).toBeDefined();
+    const bubble = await screen.findByTestId("pending-upload-message");
+    expect(within(bubble).getByText("what is this")).toBeDefined();
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
     expect(recorder.streamBodies[0].expert_kickoff).toBe(true);
@@ -392,7 +433,7 @@ describe("ExpertChatDrawer attachments", () => {
     kickoffReply.release();
 
     await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
-    expect(recorder.uploadSessionIds).toEqual([FRESH_SESSION_ID]);
+    expect(recorder.uploadSessionIds).toEqual([KICKOFF_SESSION_ID]);
     expect(recorder.streamBodies[1]).toMatchObject({
       expert_kickoff: false,
       message: "what is this",
