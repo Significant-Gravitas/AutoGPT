@@ -24,9 +24,11 @@ PauseReason = Literal["daily", "weekly", "trial", "task", "steps"]
 # ``PROVIDER_FAILURE_KEY``: the bag is shared with other writers.
 PAUSE_KEY = "turn_paused"
 
-# Beside the card's part, not in it: set when the paused turn's envelope was
-# tainted. Keep going and the resume at the budget reset carry on that turn's
-# work, so they start with its taint. A marker from before the key has none.
+# Beside the card's part, not in it: whether the paused turn's envelope was
+# tainted, written on every marker, true or false. Keep going and the resume at
+# the budget reset carry on that turn's work, so they start with its taint. A
+# marker without the key reads as tainted: only one written before the key
+# lacks it, and it can't say how its turn ran.
 PAUSED_TURN_TAINTED_KEY = "turn_paused_tainted"
 
 _SUMMARIES: dict[PauseReason, str] = {
@@ -78,9 +80,10 @@ def append_pause_marker(
     Returns whether a row was added."""
     if session is None or has_trailing_marker(session):
         return False
-    metadata: dict[str, Any] = {PAUSE_KEY: pause.as_part()}
-    if tainted:
-        metadata[PAUSED_TURN_TAINTED_KEY] = True
+    metadata: dict[str, Any] = {
+        PAUSE_KEY: pause.as_part(),
+        PAUSED_TURN_TAINTED_KEY: tainted,
+    }
     session.messages.append(
         ChatMessage(
             role="assistant",
@@ -93,11 +96,12 @@ def append_pause_marker(
 
 def continues_tainted(messages: Sequence[ChatMessage]) -> bool:
     """Whether picking up the chat's latest pause starts a tainted turn: the
-    turn that paused ran tainted. False with no pause in *messages*, and for
-    a marker written before the field."""
+    turn that paused ran tainted. False with no pause in *messages*. A marker
+    written before the field reads as tainted: whether its turn was is
+    unknown, so the turn that picks it up assumes it was."""
     for message in reversed(messages):
         if pause_of(message) is not None:
-            return (message.metadata or {}).get(PAUSED_TURN_TAINTED_KEY) is True
+            return (message.metadata or {}).get(PAUSED_TURN_TAINTED_KEY) is not False
     return False
 
 

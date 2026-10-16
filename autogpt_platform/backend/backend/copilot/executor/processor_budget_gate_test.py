@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 import pytest
 
 from backend.copilot.config import ChatConfig
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.executor.processor import (
     RATE_LIMIT_UNAVAILABLE_CODE,
     RATE_LIMIT_UNAVAILABLE_MESSAGE,
@@ -28,7 +29,12 @@ from backend.copilot.response_model import StreamStart, StreamTurnPaused
 from backend.copilot.route_table import PlatformRoute, platform_row
 from backend.copilot.token_tracking import persist_and_record_usage
 from backend.copilot.tree import root_envelope
-from backend.copilot.turn_pause import TurnPause, continues_tainted, pause_of
+from backend.copilot.turn_pause import (
+    TurnPause,
+    append_pause_marker,
+    continues_tainted,
+    pause_of,
+)
 
 _PROC = "backend.copilot.executor.processor"
 PAUSE = TurnPause(
@@ -164,6 +170,33 @@ async def test_a_refused_turns_marker_keeps_the_taint_it_would_have_run_with(
     turn.engine.assert_not_called()
     assert pause_of(turn.session.messages[-1]) == PAUSE
     assert continues_tainted(turn.session.messages) is tainted
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("note", [KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE])
+@pytest.mark.parametrize(
+    "paused_tainted", [True, False], ids=["paused-tainted", "paused-untainted"]
+)
+async def test_a_refused_pickup_keeps_the_paused_turns_taint(
+    note: str, paused_tainted: bool
+):
+    """Keep going, or the resume at the reset, queued without the taint (by an
+    API or a scheduler from before the field): the not-started marker still
+    says how the paused turn ran, for the resume that picks this one up."""
+    session = _session(ChatMessage(role="user", content="Build the report"))
+    append_pause_marker(
+        session, TurnPause(reason="steps", steps=450), tainted=paused_tainted
+    )
+    turn = _Turn(session)
+
+    await turn.run(
+        _entry(message=note, is_user_message=False, envelope=root_envelope("turn-1")),
+        AsyncMock(return_value=PAUSE),
+    )
+
+    turn.engine.assert_not_called()
+    assert pause_of(turn.session.messages[-1]) == PAUSE
+    assert continues_tainted(turn.session.messages) is paused_tainted
 
 
 @pytest.mark.asyncio

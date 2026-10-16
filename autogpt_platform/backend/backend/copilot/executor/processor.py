@@ -19,6 +19,7 @@ from backend.copilot import stream_registry
 from backend.copilot.budget_gate import record_refusal, refusal_for
 from backend.copilot.config import ChatConfig
 from backend.copilot.context import set_turn_unattended
+from backend.copilot.continuation import KEEP_GOING_NOTE, RESUMED_AT_RESET_NOTE
 from backend.copilot.credential_selection import set_turn_credential_pins
 from backend.copilot.credit_billing import (
     CreditBilledTurn,
@@ -46,7 +47,7 @@ from backend.copilot.session_kind import SessionKind
 from backend.copilot.stream_heartbeat import wrap_stream_with_heartbeat
 from backend.copilot.tools.agent_browser import close_browser_daemon
 from backend.copilot.trial_cost_context import trial_cost_context
-from backend.copilot.turn_pause import TurnPause
+from backend.copilot.turn_pause import TurnPause, continues_tainted
 from backend.copilot.turn_tracing import TurnTrace, turn_transaction
 from backend.data.model import OAuth2Credentials
 from backend.executor.cluster_lock import ClusterLock
@@ -191,6 +192,36 @@ def taint_for_source_platform(
     return envelope.model_copy(update={"tainted": True})
 
 
+def picks_up_tainted_turn(entry: CoPilotExecutionEntry, session: "ChatSession") -> bool:
+    """Whether the turn is a Keep going, or a resume at the budget reset, of a
+    paused turn that ran tainted, as the chat's latest pause records.
+
+    The route and the scheduler put that taint on the envelope when they
+    dispatch one; it is read again here, so a turn queued by an API or a
+    scheduler from before they did still carries it. A send at the reset is
+    the user's own words, not a note, so it never matches.
+    """
+    return entry.message in (
+        KEEP_GOING_NOTE,
+        RESUMED_AT_RESET_NOTE,
+    ) and continues_tainted(session.messages)
+
+
+def taint_for_pickup(
+    envelope: "TurnEnvelope | None",
+    entry: CoPilotExecutionEntry,
+    session: "ChatSession",
+) -> "TurnEnvelope | None":
+    """*envelope*, tainted when the turn picks up a paused turn that ran
+    tainted (see :func:`picks_up_tainted_turn`). Taint only ever rises, and a
+    turn with no envelope keeps none."""
+    if envelope is None or envelope.tainted:
+        return envelope
+    if not picks_up_tainted_turn(entry, session):
+        return envelope
+    return envelope.model_copy(update={"tainted": True})
+
+
 # ============ Mode Routing ============ #
 
 
@@ -261,8 +292,10 @@ async def _refuse_turn(
         session, entry.message or None, entry.is_user_message, entry.message_metadata
     )
     kind = SessionKind.for_turn(session, from_chat_platform=entry.from_chat_platform)
-    tainted = kind.from_chat_platform or (
-        entry.envelope is not None and entry.envelope.tainted
+    tainted = (
+        kind.from_chat_platform
+        or (entry.envelope is not None and entry.envelope.tainted)
+        or picks_up_tainted_turn(entry, session)
     )
     await record_refusal(session, pause, tainted=tainted)
     for chunk in (
@@ -802,7 +835,9 @@ class CoPilotProcessor:
                 voice=entry.voice,
                 from_chat_platform=entry.from_chat_platform,
             )
-            envelope = taint_for_source_platform(entry.envelope, kind)
+            envelope = taint_for_pickup(
+                taint_for_source_platform(entry.envelope, kind), entry, session
+            )
             set_turn_unattended(kind.unattended)
             set_turn_impersonated(entry.impersonated)
             set_turn_credential_pins(entry.credential_pins)

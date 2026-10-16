@@ -522,9 +522,11 @@ async def test_a_resume_starts_with_the_paused_turns_taint(queued, tainted: bool
 
 
 @pytest.mark.asyncio
-async def test_a_resume_on_a_marker_from_before_the_field_continues_untainted(
+async def test_a_resume_on_a_marker_from_before_the_field_continues_tainted(
     queued,
 ):
+    """An executor from before the field wrote it, so how the paused turn ran
+    is unknown: the resume runs as if it was tainted."""
     old = ChatMessage(
         role="assistant",
         content="Paused: this task is out of today's budget.",
@@ -538,7 +540,7 @@ async def test_a_resume_on_a_marker_from_before_the_field_continues_untainted(
 
     entry = queued.entry()
     assert entry.envelope is not None
-    assert entry.envelope.tainted is False
+    assert entry.envelope.tainted is True
 
 
 @pytest.mark.asyncio

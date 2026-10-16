@@ -61,6 +61,18 @@ class SessionKind(BaseModel):
             voice=voice,
         )
 
+    def with_turn_rows(self, session: ChatSession) -> "SessionKind":
+        """This kind once the turn's own rows are in *session*.
+
+        Whether the turn answers a hire's kickoff message is read off the
+        latest user row, and an engine appends some turns' rows itself: the
+        replies an auto-continue picks up, or a message nothing saved before
+        dispatch. So it is read again then; the dispatch's facts stay.
+        """
+        return self.model_copy(
+            update={"expert_kickoff": is_expert_kickoff_turn(session)}
+        )
+
     def hidden_tools(self) -> frozenset[str]:
         """Tools the turn does not offer, both rules at once: a kickoff is
         narrowed to the onboarding card, and a session no person drives is not

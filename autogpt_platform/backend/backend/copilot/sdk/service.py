@@ -4739,6 +4739,10 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
         _user_message_appended = maybe_append_user_message(
             session, message, is_user_message, message_metadata
         )
+    # Whether the turn answers a hire's kickoff is read once its own rows
+    # are in: the replies an auto-continue picks up, or a message nothing
+    # saved before dispatch, become the latest user rows only here.
+    kind = kind.with_turn_rows(session)
     if (_user_message_appended or continued_entry) and is_user_message:
         track_user_message(
             user_id=user_id,
@@ -6698,10 +6702,14 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
                     organization_id=organization_id,
                     team_id=team_id,
                     credential_lease=credential_lease,
-                    # A new reading for the queued messages it answers, not
-                    # a kickoff and not spoken; still unattended if this was.
+                    # A new reading for the queued messages it answers: not
+                    # spoken, still unattended and from the same source if
+                    # this was. Whether it answers a kickoff is read once
+                    # their rows are in.
                     session_kind=SessionKind.for_turn(
-                        session, scheduled=kind.unattended
+                        session,
+                        scheduled=kind.unattended,
+                        from_chat_platform=kind.from_chat_platform,
                     ),
                     turn_start=turn_start,
                     continued_pending=_auto_pending_messages,

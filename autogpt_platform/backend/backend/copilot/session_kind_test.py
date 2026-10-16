@@ -55,6 +55,23 @@ def test_a_typed_reply_after_the_kickoff_is_not():
     assert not SessionKind.for_turn(_session(rows=rows)).expert_kickoff
 
 
+def test_a_kind_read_before_the_turns_rows_reads_the_kickoff_again_after():
+    """An auto-continue's queued reply, or a message the engine saves itself,
+    is the latest user row only once it is in: the kickoff is read again
+    then, and the dispatch's facts stay as they were."""
+    session = _session(rows=[_kickoff_row()])
+    kind = SessionKind.for_turn(
+        session, scheduled=True, voice=True, from_chat_platform=True
+    )
+    assert kind.expert_kickoff
+
+    session.messages.append(ChatMessage(role="user", content="Now run my report"))
+    after = kind.with_turn_rows(session)
+
+    assert not after.expert_kickoff
+    assert after == kind.model_copy(update={"expert_kickoff": False})
+
+
 def test_the_stored_facts_and_the_dispatch_facts_are_read_once():
     session = _session()
     session.metadata.source_platform = "slack"
