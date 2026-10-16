@@ -5,7 +5,7 @@ import os
 import secrets
 import shutil
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock
 from urllib.parse import urlencode
@@ -55,18 +55,20 @@ async def auth_service(
         stderr=asyncio.subprocess.PIPE,
     )
     connected = db.is_connected()
-    try:
+
+    async def wait_for_origin() -> str:
         assert process.stdout is not None
-        async with asyncio.timeout(40):
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    raise RuntimeError(
-                        "The production auth harness exited before readiness"
-                    )
-                if line.startswith(b"NATIVE_AUTH_READY "):
-                    origin = line.decode().split()[1]
-                    break
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                raise RuntimeError(
+                    "The production auth harness exited before readiness"
+                )
+            if line.startswith(b"NATIVE_AUTH_READY "):
+                return line.decode().split()[1]
+
+    try:
+        origin = await asyncio.wait_for(wait_for_origin(), timeout=40)
         monkeypatch.setenv("JWT_JWKS_URL", f"{origin}/api/auth/jwks")
         monkeypatch.setattr(auth_config, "_settings", auth_config.Settings())
         if not connected:
@@ -83,7 +85,7 @@ async def auth_service(
             process.terminate()
             try:
                 await asyncio.wait_for(process.wait(), 5)
-            except TimeoutError:
+            except asyncio.TimeoutError:
                 process.kill()
                 await process.wait()
 
@@ -183,7 +185,7 @@ async def test_backend_rechecks_session_authority(
     if change == "expire":
         await AuthSession.prisma().update_many(
             where={"userId": user.id},
-            data={"expiresAt": datetime.now(UTC) - timedelta(seconds=1)},
+            data={"expiresAt": datetime.now(timezone.utc) - timedelta(seconds=1)},
         )
     elif change in {"ban", "past_ban", "future_ban"}:
         await AuthUser.prisma().update(
@@ -193,7 +195,7 @@ async def test_backend_rechecks_session_authority(
                 "banExpires": (
                     None
                     if change == "ban"
-                    else datetime.now(UTC)
+                    else datetime.now(timezone.utc)
                     + timedelta(seconds=-60 if change == "past_ban" else 60)
                 ),
             },

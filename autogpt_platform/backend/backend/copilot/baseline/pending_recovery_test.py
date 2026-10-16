@@ -39,8 +39,8 @@ async def test_final_baseline_turn_consumes_all_recovered_messages(
     provider = AsyncMock(return_value=_final_stream())
     monkeypatch.setattr(service, "call_provider_stream", provider)
 
-    async with asyncio.timeout(10):
-        events = [
+    async def collect_events():
+        return [
             event
             async for event in service.stream_chat_completion_baseline(
                 session.session_id,
@@ -49,6 +49,8 @@ async def test_final_baseline_turn_consumes_all_recovered_messages(
                 is_user_message=False,
             )
         ]
+
+    events = await asyncio.wait_for(collect_events(), timeout=10)
 
     assert isinstance(events[-1], StreamFinish)
     assert not queue

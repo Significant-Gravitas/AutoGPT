@@ -6,7 +6,7 @@ pending-message admission, Redis scripts, and draining run unchanged.
 
 import asyncio
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -44,7 +44,7 @@ async def pending_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncIterator[tuple[AsyncClient, str, str]]:
     user_id, session_id = str(uuid4()), str(uuid4())
-    now = datetime.now(UTC)
+    now = datetime.now(timezone.utc)
     session = ChatSessionInfo(
         session_id=session_id,
         user_id=user_id,
@@ -266,10 +266,12 @@ async def test_restored_receipt_expires_with_undrained_queue(
     await redis.pexpire(queue_key, 2000)
     original_cas = pending_messages.string_compare_and_set
 
+    async def poll_for_expiry() -> None:
+        while await redis.exists(queue_key):
+            await asyncio.sleep(0.01)
+
     async def wait_for_expiry() -> None:
-        async with asyncio.timeout(10):
-            while await redis.exists(queue_key):
-                await asyncio.sleep(0.01)
+        await asyncio.wait_for(poll_for_expiry(), timeout=10)
 
     async def delayed_settlement(*args: Any, **kwargs: Any) -> bool:
         if expire_before_settlement:

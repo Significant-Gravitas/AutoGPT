@@ -33,13 +33,16 @@ async def websocket_server(
         )
     )
     serving = asyncio.create_task(server.serve())
+
+    async def wait_until_ready() -> None:
+        while not server.started:
+            if serving.done():
+                await serving
+                pytest.fail("Uvicorn exited before readiness")
+            await asyncio.sleep(0.01)
+
     try:
-        async with asyncio.timeout(10):
-            while not server.started:
-                if serving.done():
-                    await serving
-                    pytest.fail("Uvicorn exited before readiness")
-                await asyncio.sleep(0.01)
+        await asyncio.wait_for(wait_until_ready(), timeout=10)
         port = server.servers[0].sockets[0].getsockname()[1]
         yield f"ws://127.0.0.1:{port}/ws", manager
     finally:
@@ -160,6 +163,9 @@ async def test_valid_socket_is_accepted_once_and_serves_heartbeats(
         response = json.loads(await asyncio.wait_for(websocket.recv(), timeout=3))
         assert response == {"method": "heartbeat", "data": "pong", "success": True}
         assert len(manager.active_connections) == 1
-    async with asyncio.timeout(3):
+
+    async def wait_until_disconnected() -> None:
         while manager.active_connections:
             await asyncio.sleep(0.01)
+
+    await asyncio.wait_for(wait_until_disconnected(), timeout=3)
