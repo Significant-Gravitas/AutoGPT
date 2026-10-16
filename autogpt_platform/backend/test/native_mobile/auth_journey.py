@@ -7,6 +7,7 @@ import shutil
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from test.native_mobile.auth_process import auth_harness
 from unittest.mock import AsyncMock
 from urllib.parse import urlencode
 from uuid import uuid4
@@ -44,50 +45,27 @@ async def auth_service(
         "AUTH_REQUIRE_EMAIL_VERIFICATION": "false",
         "NATIVE_AUTH_PORT": "0",
     }
-    process = await asyncio.create_subprocess_exec(
-        node,
-        "--import",
-        "tsx",
-        "scripts/native-auth-server.ts",
+    connected = db.is_connected()
+    async with auth_harness(
+        [node, "--import", "tsx", "scripts/native-auth-server.ts"],
         cwd=frontend,
         env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    connected = db.is_connected()
-
-    async def wait_for_origin() -> str:
-        assert process.stdout is not None
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                raise RuntimeError(
-                    "The production auth harness exited before readiness"
-                )
-            if line.startswith(b"NATIVE_AUTH_READY "):
-                return line.decode().split()[1]
-
-    try:
-        origin = await asyncio.wait_for(wait_for_origin(), timeout=40)
-        monkeypatch.setenv("JWT_JWKS_URL", f"{origin}/api/auth/jwks")
-        monkeypatch.setattr(auth_config, "_settings", auth_config.Settings())
-        if not connected:
-            await db.connect()
-        async with AsyncClient(base_url=origin, timeout=15) as client:
-            yield client, prefix
-    finally:
-        if db.is_connected():
-            await AuthUser.prisma().delete_many(where={"email": {"startswith": prefix}})
-            await User.prisma().delete_many(where={"email": {"startswith": prefix}})
+    ) as origin:
+        try:
+            monkeypatch.setenv("JWT_JWKS_URL", f"{origin}/api/auth/jwks")
+            monkeypatch.setattr(auth_config, "_settings", auth_config.Settings())
             if not connected:
-                await db.disconnect()
-        if process.returncode is None:
-            process.terminate()
-            try:
-                await asyncio.wait_for(process.wait(), 5)
-            except asyncio.TimeoutError:
-                process.kill()
-                await process.wait()
+                await db.connect()
+            async with AsyncClient(base_url=origin, timeout=15) as client:
+                yield client, prefix
+        finally:
+            if db.is_connected():
+                await AuthUser.prisma().delete_many(
+                    where={"email": {"startswith": prefix}}
+                )
+                await User.prisma().delete_many(where={"email": {"startswith": prefix}})
+                if not connected:
+                    await db.disconnect()
 
 
 async def sign_in_native(client: AsyncClient, email: str) -> str:

@@ -141,6 +141,7 @@ jobs:
         run: |
           poetry run pytest \
             test/native_mobile/auth_journey.py \
+            test/native_mobile/auth_process_test.py \
             backend/api/features/chat/pending_retries_test.py \
             backend/copilot/pending_retries_db_test.py \
             --cov=backend --cov-report=xml:native-server-coverage.xml \
