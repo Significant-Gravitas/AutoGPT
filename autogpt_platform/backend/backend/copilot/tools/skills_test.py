@@ -278,6 +278,34 @@ class _FakeWorkspaceManager:
         self.metadata[path] = metadata or {}
         self.scanned[path] = frozenset(scanned_checksums)
 
+    async def write_skill_package(
+        self, *, root, files, removed_paths, scanned_checksums=()
+    ):
+        """All or nothing, as the real manager's single transaction is: a
+        failure part-way puts every file back as it was."""
+        before = (dict(self.files), dict(self.metadata), dict(self.scanned))
+        try:
+            for item in files:
+                await self._write_package_item(item, scanned_checksums)
+            for path in removed_paths:
+                self.files.pop(path, None)
+                self.metadata.pop(path, None)
+            await self._write_package_item(root, scanned_checksums)
+        except Exception:
+            self.files, self.metadata, self.scanned = before
+            raise
+
+    async def _write_package_item(self, item, scanned_checksums):
+        await self.write_file(
+            content=item.content,
+            filename=item.path.rsplit("/", 1)[-1],
+            path=item.path,
+            mime_type=item.mime_type,
+            overwrite=True,
+            metadata=item.metadata,
+            scanned_checksums=scanned_checksums,
+        )
+
     async def read_file(self, path: str) -> bytes:
         if path not in self.files:
             raise FileNotFoundError(path)
@@ -2519,14 +2547,11 @@ async def test_a_rejected_root_publication_removes_new_package_files():
 
 
 @pytest.mark.asyncio
-async def test_a_failed_re_store_undoes_only_what_it_wrote():
-    """The rollback deletes what this call created, never what was already
-    there: a file that existed has lost its old bytes to the overwrite either
-    way, so deleting it would turn a failed write into a lost file."""
-    fake = _FailingWorkspaceManager(fail_on=6)
+async def test_a_failed_re_store_leaves_the_previous_package_as_it_was():
+    """A save that fails part-way changes nothing: the old SKILL.md never
+    ends up beside new bytes, or without a file it still names."""
+    fake = _FailingWorkspaceManager(fail_on=0)
     with _patch_skills_path(fake):
-        # Writes 1-2 the siblings, 3 the SKILL.md.
-        fake.fail_on = 0
         await store_user_skill(
             "user-1",
             name="pkg",
@@ -2537,8 +2562,9 @@ async def test_a_failed_re_store_undoes_only_what_it_wrote():
                 SkillFile(relative_path="untouched.md", content=b"old too"),
             ],
         )
-        # Writes 4 kept.md (already there), 5 added.md (new), 6 fails.
-        fake.fail_on = 6
+        before = dict(fake.files)
+        # kept.md changes, added.md is new, and doomed.md's write fails.
+        fake.fail_on = fake.writes + 3
         with pytest.raises(RuntimeError, match="storage unavailable"):
             await store_user_skill(
                 "user-1",
@@ -2552,12 +2578,7 @@ async def test_a_failed_re_store_undoes_only_what_it_wrote():
                 ],
             )
 
-    assert "/skills/pkg/kept.md" in fake.files, "an existing file was deleted"
-    assert "/skills/pkg/untouched.md" in fake.files
-    assert "/skills/pkg/added.md" not in fake.files
-    assert "/skills/pkg/doomed.md" not in fake.files
-    # The skill itself survives: the root was never rewritten.
-    assert "/skills/pkg/SKILL.md" in fake.files
+    assert fake.files == before
 
 
 @pytest.mark.asyncio

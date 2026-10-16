@@ -14,10 +14,11 @@ from backend.data import db
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT, SkillLimitError
 from backend.data.workspace import WorkspaceFile, rename_workspace_file
 from backend.data.workspace_skill import (
+    WorkspaceSkillFile,
     WorkspaceSkillWrite,
     publish_workspace_skill_file,
 )
-from backend.util.workspace import WorkspaceManager
+from backend.util.workspace import SkillPackageFile, WorkspaceManager
 from backend.util.workspace_storage import LocalWorkspaceStorage
 
 
@@ -401,3 +402,157 @@ async def test_rename_and_new_publication_share_last_slot(workspace_id: str):
         )
         == MAX_SKILLS_PER_EXPERT
     )
+
+
+def sibling(workspace_id: str, path: str) -> WorkspaceSkillFile:
+    file_id = str(uuid.uuid4())
+    return WorkspaceSkillFile(
+        file_id=file_id,
+        name=path.rsplit("/", 1)[-1],
+        path=path,
+        storage_path=f"test://{file_id}",
+        mime_type="text/markdown",
+        size_bytes=3,
+    )
+
+
+async def live_paths(workspace_id: str, prefix: str) -> dict[str, str]:
+    rows = await db.prisma.userworkspacefile.find_many(
+        where={"workspaceId": workspace_id, "isDeleted": False}
+    )
+    return {row.path: row.storagePath for row in rows if row.path.startswith(prefix)}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/skills/other/a.md",
+        "/skills/pkg/SKILL.md",
+        "/skills/pkg/../other/a.md",
+        "/skills/pkgx/a.md",
+    ],
+)
+async def test_package_files_must_sit_inside_their_package(
+    workspace_id: str, path: str
+):
+    with pytest.raises(ValueError, match="inside the package"):
+        await publish_workspace_skill_file(
+            write(workspace_id, "pkg").model_copy(
+                update={"files": [sibling(workspace_id, path)]}
+            )
+        )
+    assert await live_paths(workspace_id, "/skills/") == {}
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_refused_root_leaves_its_package_files_alone(workspace_id: str):
+    await seed(workspace_id, MAX_SKILLS_PER_EXPERT)
+    await db.prisma.userworkspacefile.create(
+        data={
+            "workspaceId": workspace_id,
+            "name": "a.md",
+            "path": "/skills/new/a.md",
+            "storagePath": "test://old-a",
+            "mimeType": "text/markdown",
+            "sizeBytes": 3,
+        }
+    )
+    result = await publish_workspace_skill_file(
+        write(workspace_id, "new").model_copy(
+            update={
+                "files": [sibling(workspace_id, "/skills/new/a.md")],
+                "removed_paths": ["/skills/new/b.md"],
+            }
+        )
+    )
+    assert result.status == "capacity"
+    assert await live_paths(workspace_id, "/skills/new/") == {
+        "/skills/new/a.md": "test://old-a"
+    }
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_package_write_swaps_every_file_or_none(
+    workspace_id: str, tmp_path: Path
+):
+    """Readers see the whole old package or the whole new one: a failed
+    blob or a failed transaction leaves every file, and no stray blob."""
+    workspace = await db.prisma.userworkspace.find_unique(where={"id": workspace_id})
+    assert workspace is not None
+    manager = WorkspaceManager(workspace.userId, workspace_id)
+    storage = LocalWorkspaceStorage(base_dir=str(tmp_path))
+
+    def package(root: bytes, files: dict[str, bytes], removed: list[str]):
+        return dict(
+            root=SkillPackageFile(
+                path="/skills/pkg/SKILL.md", content=root, mime_type="text/markdown"
+            ),
+            files=[
+                SkillPackageFile(path=f"/skills/pkg/{name}", content=content)
+                for name, content in files.items()
+            ],
+            removed_paths=[f"/skills/pkg/{name}" for name in removed],
+        )
+
+    async def contents() -> dict[str, bytes]:
+        paths = await live_paths(workspace_id, "/skills/pkg/")
+        return {path: await manager.read_file(path) for path in sorted(paths)}
+
+    def blobs() -> int:
+        return sum(1 for p in tmp_path.rglob("*") if p.is_file())
+
+    with (
+        patch(
+            "backend.util.workspace.get_workspace_storage",
+            AsyncMock(return_value=storage),
+        ),
+        patch(
+            "backend.util.workspace.get_workspace_storage_limit_bytes",
+            AsyncMock(return_value=1_000_000),
+        ),
+        patch("backend.util.workspace.scan_content_safe", AsyncMock()),
+        patch(
+            "backend.api.features.workspace.embeddings.schedule_workspace_file_embedding"
+        ),
+        patch(
+            "backend.api.features.workspace.embeddings.delete_workspace_file_embedding",
+            AsyncMock(),
+        ),
+    ):
+        await manager.write_skill_package(
+            **package(b"v1", {"a.md": b"a1", "b.md": b"b1"}, [])
+        )
+        before, stored = await contents(), blobs()
+        update = package(b"v2", {"a.md": b"a2", "c.md": b"c2"}, ["b.md"])
+
+        real_store = storage.store
+        calls = 0
+
+        async def fail_second_blob(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise RuntimeError("storage unavailable")
+            return await real_store(**kwargs)
+
+        with patch.object(storage, "store", side_effect=fail_second_blob):
+            with pytest.raises(RuntimeError, match="storage unavailable"):
+                await manager.write_skill_package(**update)
+        assert (await contents(), blobs()) == (before, stored)
+
+        with patch(
+            "backend.data.workspace_skill._replace_root",
+            AsyncMock(side_effect=RuntimeError("database unavailable")),
+        ):
+            with pytest.raises(RuntimeError, match="database unavailable"):
+                await manager.write_skill_package(**update)
+        assert (await contents(), blobs()) == (before, stored)
+
+        await manager.write_skill_package(**update)
+        assert await contents() == {
+            "/skills/pkg/SKILL.md": b"v2",
+            "/skills/pkg/a.md": b"a2",
+            "/skills/pkg/c.md": b"c2",
+        }
+        assert blobs() == 3
