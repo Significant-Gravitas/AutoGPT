@@ -239,7 +239,7 @@
           "kind": "block",
           "key": "block:b8a934d5-fca0-4be3-9fc2-a99bf63bd385",
           "name": "Google Sheets Update Row",
-          "effect": "external",
+          "effect": "external_judged",
           "irreversible": false,
           "block_id": "b8a934d5-fca0-4be3-9fc2-a99bf63bd385"
         },

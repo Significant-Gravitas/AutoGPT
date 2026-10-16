@@ -454,7 +454,7 @@ class GoogleSheetsWriteBlock(Block):
                     "updatedRows": 2,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -723,7 +723,7 @@ class GoogleSheetsClearBlock(Block):
                     "clearedRange": "Sheet1!A1:B2"
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -962,7 +962,7 @@ class GoogleSheetsManageSheetBlock(Block):
                     "sheetId": 123,
                 }
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1123,7 +1123,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
                     "replies": [],
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1285,7 +1285,7 @@ class GoogleSheetsFindReplaceBlock(Block):
             test_mock={
                 "_find_replace": lambda *args, **kwargs: {"occurrencesChanged": 5},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2097,7 +2097,7 @@ class GoogleSheetsUpdateCellBlock(Block):
                     "updatedRows": 1,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2807,7 +2807,7 @@ class GoogleSheetsDeleteRowsBlock(Block):
                     "deleted_count": 2,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -3165,7 +3165,7 @@ class GoogleSheetsSortBlock(Block):
             test_mock={
                 "_sort_sheet": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -4170,7 +4170,7 @@ class GoogleSheetsRemoveDuplicatesBlock(Block):
                     "remaining_rows": 95,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -4419,7 +4419,7 @@ class GoogleSheetsUpdateRowBlock(Block):
                     "updatedCells": 2,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -4754,7 +4754,7 @@ class GoogleSheetsDeleteColumnBlock(Block):
             test_mock={
                 "_delete_column": lambda *args, **kwargs: {"success": True},
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -5900,7 +5900,7 @@ class GoogleSheetsImportCsvBlock(Block):
                     "rows_imported": 2,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

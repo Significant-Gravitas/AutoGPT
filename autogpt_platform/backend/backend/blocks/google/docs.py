@@ -671,7 +671,7 @@ class GoogleDocsFindReplacePlainTextBlock(Block):
                     "replacements_made": 3,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -1285,7 +1285,7 @@ class GoogleDocsDeleteContentBlock(Block):
                     "characters_deleted": 40,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2103,7 +2103,7 @@ class GoogleDocsReplaceAllWithMarkdownBlock(Block):
                     "requests_count": 3,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2351,7 +2351,7 @@ class GoogleDocsReplaceRangeWithMarkdownBlock(Block):
                     "characters_deleted": 40,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(
@@ -2496,7 +2496,7 @@ class GoogleDocsReplaceContentWithMarkdownBlock(Block):
                     "requests_count": 4,
                 },
             },
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

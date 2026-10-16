@@ -144,9 +144,10 @@ _PLATFORM = frozenset(
 # there; Ask First still asks, as that chat runs in Auto.
 _TEAM = frozenset({"delegate_to_expert", "handoff_to_expert"})
 
-_EXTERNAL = frozenset(
-    {"browser_act", "edit_chat_platform_message", "post_to_chat_platform"}
-)
+_EXTERNAL = frozenset({"browser_act"})
+
+# A bot post in a chat platform the user linked: the supervisor judges it.
+_EXTERNAL_JUDGED = frozenset({"edit_chat_platform_message", "post_to_chat_platform"})
 
 _UNGATED = frozenset(
     {
@@ -173,6 +174,7 @@ _EFFECTS: dict[str, Effect] = {
     "bash_exec": Effect.SHELL,
     **{name: Effect.TEAM for name in _TEAM},
     **{name: Effect.PLATFORM for name in _PLATFORM},
+    **{name: Effect.EXTERNAL_JUDGED for name in _EXTERNAL_JUDGED},
     **{name: Effect.EXTERNAL for name in _EXTERNAL | _BY_SUBJECT},
     **{name: Effect.UNGATED for name in _UNGATED},
 }

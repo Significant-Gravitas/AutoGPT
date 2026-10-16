@@ -31,3 +31,12 @@ def test_only_item_3_its_caveat_and_the_examples_change(rubric, style):
         if not line.startswith(("3. ", _SHEETS_EXAMPLE)) and _SETTLES not in line
     ]
     assert all(line in lines for line in kept)
+
+
+def test_a_reworded_sheets_example_refuses_to_build():
+    """A reworded copy would slip past the filter and teach the judge that a
+    judged write asks."""
+    moved = JEV_RUBRIC.replace(_SHEETS_EXAMPLE, '- "Put the totals in row 52."')
+    assert moved != JEV_RUBRIC
+    with pytest.raises(ValueError):
+        judged(moved, "jev")

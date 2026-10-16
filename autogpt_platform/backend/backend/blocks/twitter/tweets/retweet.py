@@ -70,7 +70,7 @@ class TwitterRetweetBlock(Block):
             ],
             test_mock={"retweet": lambda *args, **kwargs: True},
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod

@@ -40,7 +40,7 @@ class HubSpotContactBlock(Block):
             categories={BlockCategory.CRM},
             input_schema=HubSpotContactBlock.Input,
             output_schema=HubSpotContactBlock.Output,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     async def run(

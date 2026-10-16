@@ -75,7 +75,11 @@ def judged(rubric: str, style: ExampleStyle) -> str:
     if len(item_3) != 1 or rubric.count(_SETTLES) != 1:
         raise ValueError("The rubric's item 3 or its caveat moved; re-derive.")
     lines[item_3[0]] = ITEM_3
-    lines = [line for line in lines if not line.startswith(_SHEETS_EXAMPLE)]
+    sheets = [line for line in lines if line.startswith(_SHEETS_EXAMPLE)]
+    # Only Jev's rubric carries it; a reworded copy would stay and teach the judge to ask.
+    if len(sheets) != (1 if style == "jev" else 0):
+        raise ValueError("The rubric's Sheets example moved; re-derive.")
+    lines = [line for line in lines if line not in sheets]
     examples = lines.index("Examples:")
     lines[examples + 1 : examples + 1] = [_example(*e, style) for e in _EXAMPLES]
     return "\n".join(lines).replace(_SETTLES, _SETTLES_JUDGED)

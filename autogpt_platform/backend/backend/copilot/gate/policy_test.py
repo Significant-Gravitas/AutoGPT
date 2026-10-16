@@ -34,7 +34,8 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
         ("delegate_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
         ("handoff_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
-        ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
+        ("post_to_chat_platform", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("browser_act", Verdict.ASK, Verdict.ASK, Verdict.RUN),
     ],
 )
 def test_each_modes_column(tool, ask_first, auto, unsupervised):
