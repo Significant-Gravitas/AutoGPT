@@ -36,6 +36,7 @@ from prisma.enums import (
     DreamPassStatus,
     DreamPassTrigger,
 )
+from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession, DreamPass, Expert, User
 from pytest_mock import MockerFixture
 
@@ -83,33 +84,46 @@ async def postgres(
 ) -> AsyncIterator[None]:
     """The scope's owner in a real Postgres, and the dream's store, its
     narrative and the forget's blanking on it; the graph as ``conftest.py``
-    gives it."""
+    gives it.
+
+    Each test runs on a loop of its own, for its FalkorDB driver, so it gets
+    a Prisma client of its own, connected on that loop and registered for
+    the test: the session's shared client may already be connected on the
+    session's loop by an earlier test, and its HTTP pool works only on the
+    loop that opened it."""
     _, scope = scope_graph
-    await db.connect()
-    await User.prisma().create(
-        data={
-            "id": scope.owner_user_id,
-            "email": f"{uuid.uuid4()}@example.invalid",
-            "topUpConfig": SafeJson({}),
-            "timezone": "UTC",
-        }
+    client = Prisma(
+        http={"timeout": db.HTTP_TIMEOUT}, datasource={"url": db.DATABASE_URL}
     )
-    patch_recall_boundaries(mocker, scope_graph[0], stub_graphiti_client)
-    mocker.patch.object(
-        recall_forget, "blank_dream_copies", forget_copies.blank_dream_copies
-    )
-    mocker.patch.object(forget_copies, "chat_db", lambda: chat)
-    mocker.patch.object(store, "dream_db", lambda: dream_pass)
-    mocker.patch("backend.data.db_accessors.chat_db", lambda: chat)
-    mocker.patch(
-        "backend.copilot.dream.registry.ensure_dream_system_scheduled",
-        AsyncMock(return_value=None),
-    )
-    mocker.patch.object(apply, "_create_dream_session", _dream_session)
-    yield
-    await stop_ingestion_workers()
-    await User.prisma().delete(where={"id": scope.owner_user_id})
-    await db.disconnect()
+    await client.connect()
+    try:
+        mocker.patch.object(db, "prisma", client)
+        mocker.patch("prisma._registry._registered_client", client)
+        await User.prisma().create(
+            data={
+                "id": scope.owner_user_id,
+                "email": f"{uuid.uuid4()}@example.invalid",
+                "topUpConfig": SafeJson({}),
+                "timezone": "UTC",
+            }
+        )
+        patch_recall_boundaries(mocker, scope_graph[0], stub_graphiti_client)
+        mocker.patch.object(
+            recall_forget, "blank_dream_copies", forget_copies.blank_dream_copies
+        )
+        mocker.patch.object(forget_copies, "chat_db", lambda: chat)
+        mocker.patch.object(store, "dream_db", lambda: dream_pass)
+        mocker.patch("backend.data.db_accessors.chat_db", lambda: chat)
+        mocker.patch(
+            "backend.copilot.dream.registry.ensure_dream_system_scheduled",
+            AsyncMock(return_value=None),
+        )
+        mocker.patch.object(apply, "_create_dream_session", _dream_session)
+        yield
+        await stop_ingestion_workers()
+        await User.prisma().delete(where={"id": scope.owner_user_id})
+    finally:
+        await client.disconnect(db.DISCONNECT_TIMEOUT)
 
 
 async def _dream_session(scope: MemoryScope, pass_id: str) -> str:

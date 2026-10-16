@@ -26,32 +26,34 @@ from backend.copilot.graphiti.scope import write_lock_key
 
 from . import dream_markers
 
-_NOW = datetime.now(timezone.utc)
-
 
 def _row(
     uuid: str, rank: int, *, state: str = "pending", saved: bool = False, hours=1
 ) -> dict[str, Any]:
+    created = datetime.now(timezone.utc) - timedelta(hours=hours)
     return {
         "uuid": uuid,
         "episode": f"episode-{uuid}",
         "facts": ["f1", "f2"],
         "episodes": ["ep1"],
-        "created_at": (_NOW - timedelta(hours=hours)).isoformat(),
+        "created_at": created.isoformat(),
         "state": state,
         "saved": saved,
         "rank": rank,
     }
 
 
-# A write that landed, one crashed mid-save (its episode saved), one that
-# never landed and one expired.
-_ROWS = [
-    _row("landed", LANDED, saved=True),
-    _row("partial", UNLANDED, saved=True),
-    _row("young", UNLANDED),
-    _row("old", KEPT, state="expired", hours=30),
-]
+def _rows() -> list[dict[str, Any]]:
+    """A write that landed, one crashed mid-save (its episode saved), one
+    that never landed and one expired; aged from the moment the test asks,
+    so a test that runs long after this module was imported sees the same
+    ages."""
+    return [
+        _row("landed", LANDED, saved=True),
+        _row("partial", UNLANDED, saved=True),
+        _row("young", UNLANDED),
+        _row("old", KEPT, state="expired", hours=30),
+    ]
 
 
 def _driver(*results: list[dict[str, Any]]) -> MagicMock:
@@ -64,8 +66,8 @@ def _driver(*results: list[dict[str, Any]]) -> MagicMock:
 class TestList:
     @pytest.mark.asyncio
     async def test_lists_every_marker_with_its_state_age_and_landing(self) -> None:
-        unreadable = {**_ROWS[3], "created_at": "long ago"}
-        driver = _driver([*_ROWS[:3], unreadable])
+        unreadable = {**_rows()[3], "created_at": "long ago"}
+        driver = _driver([*_rows()[:3], unreadable])
 
         markers = await dream_markers.list_markers(driver, "user_a")
 
@@ -89,7 +91,7 @@ class TestResolve:
     async def test_a_dry_run_counts_what_it_would_do_and_writes_nothing(
         self,
     ) -> None:
-        driver = _driver(_ROWS)
+        driver = _driver(_rows())
         wanted = dream_markers.Selection(
             uuids={"landed", "young"}, expired=True, force=True
         )
@@ -108,7 +110,7 @@ class TestResolve:
         """A write whose episode graphiti saved, even in part, is completed
         as reconcile would; the rest go only while no saved episode has
         their uuid (the second's was saved since the read)."""
-        driver = _driver(_ROWS, [{"dropped": 1}], [{"dropped": 0}])
+        driver = _driver(_rows(), [{"dropped": 1}], [{"dropped": 0}])
         held: list[bool] = []
 
         async def complete(driver_, graph: str, row: dict[str, Any]) -> bool:
@@ -140,7 +142,7 @@ class TestResolve:
         """Its writer may still be writing. The refusal says what ``--force``
         would do; a pending marker past the bound is resolved."""
         stale = _row("stale", UNLANDED, hours=30)
-        driver = _driver([*_ROWS[:3], stale], [{"dropped": 1}])
+        driver = _driver([*_rows()[:3], stale], [{"dropped": 1}])
         wanted = dream_markers.Selection(uuids={"landed", "young", "stale"})
 
         found = await dream_markers.resolve_graph(driver, "user_a", wanted, apply=apply)
@@ -165,7 +167,7 @@ class TestResolve:
 
     @pytest.mark.asyncio
     async def test_only_the_selected_markers_are_touched(self) -> None:
-        driver = _driver(_ROWS, [{"dropped": 1}])
+        driver = _driver(_rows(), [{"dropped": 1}])
 
         found = await dream_markers.resolve_graph(
             driver,
@@ -182,7 +184,7 @@ class TestResolve:
         self, lock_redis: FakeRedis
     ) -> None:
         lock_redis.values[write_lock_key("user_a")] = "an ingestion's token"
-        driver = _driver(_ROWS)
+        driver = _driver(_rows())
 
         with patch.object(dream_markers, "MARKERS_LOCK_WAIT_SECONDS", 0):
             found = await dream_markers.resolve_graph(
@@ -198,7 +200,7 @@ class TestCommandLine:
     async def test_lists_then_resolves_and_exits_1_while_a_graph_failed(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        good, bad = _driver([_ROWS[2]], [_ROWS[2]], [{"dropped": 1}]), _driver()
+        good, bad = _driver([_rows()[2]], [_rows()[2]], [{"dropped": 1}]), _driver()
         bad.execute_query.side_effect = RuntimeError("down")
         opened = MagicMock(side_effect=[good, bad])
         args = dream_markers.parser().parse_args(
@@ -228,7 +230,7 @@ class TestCommandLine:
     async def test_a_refusal_is_printed_and_exits_1(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        driver = _driver([_ROWS[2]], [_ROWS[2]])
+        driver = _driver([_rows()[2]], [_rows()[2]])
         args = dream_markers.parser().parse_args(
             ["--graph", "user_a", "--resolve", "young", "--apply"]
         )
