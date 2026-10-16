@@ -36,8 +36,13 @@ export function useChatInput({
   // unlike state which batches and can leave a gap for a second call.
   const isSubmittingRef = useRef(false);
   const isEnqueueingRef = useRef(false);
-  const { initialPrompt, setInitialPrompt, notifyMessageSent } =
-    useCopilotUIStore();
+  const {
+    initialPrompt,
+    setInitialPrompt,
+    recoveredDraft,
+    clearRecoveredDraft,
+    notifyMessageSent,
+  } = useCopilotUIStore();
 
   useEffect(
     function consumeInitialPrompt() {
@@ -55,6 +60,15 @@ export function useChatInput({
       textarea?.focus();
     },
     [initialPrompt, setInitialPrompt, inputId, setValue],
+  );
+
+  useEffect(
+    function consumeRecoveredDraft() {
+      if (!recoveredDraft) return;
+      setValue((current) => restoreFailedDraft(current, recoveredDraft));
+      clearRecoveredDraft();
+    },
+    [recoveredDraft, clearRecoveredDraft, setValue],
   );
 
   useEffect(

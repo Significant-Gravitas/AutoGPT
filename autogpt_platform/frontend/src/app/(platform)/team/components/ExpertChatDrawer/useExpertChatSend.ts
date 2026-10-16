@@ -1,11 +1,12 @@
 import { useCopilotStreamStore } from "@/app/(platform)/copilot/copilotStreamStore";
 import {
   describePendingUpload,
+  hasAttachments,
   sendWithAttachments,
   type OutgoingMessage,
 } from "@/app/(platform)/copilot/helpers/sendWithAttachments";
 import type { SendInput } from "@/app/(platform)/copilot/stream/turnRuntime";
-import { recoverFailedDeferredSend } from "@/app/(platform)/copilot/useSendMessage";
+import { toastSendFailure } from "@/app/(platform)/copilot/helpers/sendFailureToast";
 import { useSettleGate } from "@/app/(platform)/copilot/useSettleGate";
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
 import { toast } from "@/components/molecules/Toast/use-toast";
@@ -87,16 +88,24 @@ export function useExpertChatSend({
     return false;
   }
 
-  /** Resolves once the reply to the message has streamed. */
-  function sendNow(targetSessionId: string, message: OutgoingMessage) {
+  /**
+   * Resolves once the reply to the message has streamed. A message with
+   * files, or with workspace files, goes out only once the turn in flight has
+   * ended: the pending buffer keeps a follow-up's files without their names,
+   * so the transcript could not show them, and the stream refuses a send
+   * while it reconnects without saying so to its caller.
+   */
+  function send(targetSessionId: string, message: OutgoingMessage) {
     const sent = sendWithAttachments({
       sessionId: targetSessionId,
       message,
       sendMessage: latestSendMessage,
-      waitUntilReady:
-        message.files.length > 0
-          ? async () => isStillShown(targetSessionId, message)
-          : undefined,
+      waitUntilReady: hasAttachments(message)
+        ? async () =>
+            isStillShown(targetSessionId, message) &&
+            (await waitForReplyToEnd()) &&
+            isStillShown(targetSessionId, message)
+        : undefined,
     });
     // The send above put the message on screen in this same tick, as the
     // placeholder or as the user's bubble, so the held copy can go.
@@ -104,35 +113,19 @@ export function useExpertChatSend({
     return sent;
   }
 
-  /**
-   * The pending buffer keeps a follow-up's files without their names, so the
-   * transcript could not show them: a follow-up with files uploads them now
-   * and goes out as the next turn once the reply in flight has ended.
-   */
-  function sendAfterReply(targetSessionId: string, message: OutgoingMessage) {
-    return sendWithAttachments({
-      sessionId: targetSessionId,
-      message,
-      sendMessage: latestSendMessage,
-      waitUntilReady: async () =>
-        (await waitForReplyToEnd()) && isStillShown(targetSessionId, message),
-    });
-  }
-
   return {
     pendingSend:
       placeholder ?? (heldMessage ? describePendingUpload(heldMessage) : null),
     hold,
     release,
-    sendNow,
-    sendAfterReply,
+    send,
   };
 }
 
 /** The user started a new task while the message's files uploaded or it
  *  waited on the reply. */
 function returnToComposer(message: OutgoingMessage) {
-  if (message.text) useCopilotUIStore.getState().setInitialPrompt(message.text);
+  if (message.text) useCopilotUIStore.getState().restoreDraft(message.text);
   toast({
     title: "Message not sent",
     description: message.text
@@ -148,5 +141,12 @@ export function recoverUnsentMessage(message: OutgoingMessage, error: unknown) {
     Sentry.captureException(error);
     return;
   }
-  recoverFailedDeferredSend(message.text, [], error);
+  if (message.text) useCopilotUIStore.getState().restoreDraft(message.text);
+  toastSendFailure({
+    title: "Couldn't send message",
+    error,
+    recovery: message.text
+      ? "your message is back in the composer"
+      : "your files were not sent",
+  });
 }

@@ -9,19 +9,24 @@ export function useSettleGate(isSettled: boolean) {
   const isSettledRef = useRef(isSettled);
   isSettledRef.current = isSettled;
   const waitersRef = useRef<Array<(settled: boolean) => void>>([]);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     if (!isSettled) return;
     waitersRef.current.splice(0).forEach((resolve) => resolve(true));
   }, [isSettled]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
       waitersRef.current.splice(0).forEach((resolve) => resolve(false));
-    },
-    [],
-  );
+    };
+  }, []);
 
+  /** A send still uploading when the host unmounted asks only afterwards,
+   *  when nothing is left to resolve it. */
   function waitUntilSettled() {
+    if (!isMountedRef.current) return Promise.resolve(false);
     if (isSettledRef.current) return Promise.resolve(true);
     return new Promise<boolean>((resolve) => {
       waitersRef.current.push(resolve);

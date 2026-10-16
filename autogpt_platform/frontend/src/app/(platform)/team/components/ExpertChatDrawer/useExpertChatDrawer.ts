@@ -216,14 +216,13 @@ export function useExpertChatDrawer({
     refetchSession: sessionQuery.refetch,
     copilotModel: undefined,
   });
-  const { pendingSend, hold, release, sendNow, sendAfterReply } =
-    useExpertChatSend({
-      sessionId,
-      status,
-      isReconnecting,
-      isFinishProbing,
-      sendMessage,
-    });
+  const { pendingSend, hold, release, send } = useExpertChatSend({
+    sessionId,
+    status,
+    isReconnecting,
+    isFinishProbing,
+    sendMessage,
+  });
 
   const hasAssistantReply = messages.some(
     (message) => message.role === "assistant",
@@ -241,13 +240,13 @@ export function useExpertChatDrawer({
         const queued = takeQueued();
         if (!queued) return;
         try {
-          await sendNow(sessionId, queued.message);
+          await send(sessionId, queued.message);
           queued.resolve();
         } catch (err) {
           queued.reject(err);
         }
       });
-  }, [hasAssistantReply, sendNow, sessionId, status]);
+  }, [hasAssistantReply, send, sessionId, status]);
 
   useEffect(() => {
     const attempt = kickoffAttemptRef.current;
@@ -298,10 +297,10 @@ export function useExpertChatDrawer({
     if (!sessionId || !pendingPromptRef.current) return;
     const pending = pendingPromptRef.current;
     pendingPromptRef.current = null;
-    void sendNow(sessionId, pending).catch((err: unknown) =>
+    void send(sessionId, pending).catch((err: unknown) =>
       recoverUnsentMessage(pending, err),
     );
-  }, [sessionId, sendNow]);
+  }, [sessionId, send]);
 
   function startNewThread() {
     setSuppressOnboarding(false);
@@ -456,13 +455,13 @@ export function useExpertChatDrawer({
       }
       return;
     }
-    const isInFlight = status === "streaming" || status === "submitted";
-    if (isInFlight && hasAttachments(message)) {
-      void sendAfterReply(sessionId, message).catch((err: unknown) =>
+    if (hasAttachments(message)) {
+      void send(sessionId, message).catch((err: unknown) =>
         recoverUnsentMessage(message, err),
       );
       return;
     }
+    const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight) {
       try {
         await queueFollowUpMessage(sessionId, message.text);
@@ -472,7 +471,7 @@ export function useExpertChatDrawer({
           err instanceof Error &&
           err.name === "QueueFollowUpNotActiveError"
         ) {
-          void sendNow(sessionId, message).catch((sendErr: unknown) =>
+          void send(sessionId, message).catch((sendErr: unknown) =>
             recoverUnsentMessage(message, sendErr),
           );
           return;
@@ -483,7 +482,7 @@ export function useExpertChatDrawer({
       }
       return;
     }
-    void sendNow(sessionId, message).catch((err: unknown) =>
+    void send(sessionId, message).catch((err: unknown) =>
       recoverUnsentMessage(message, err),
     );
   }

@@ -13,6 +13,7 @@ export function useNextCommit() {
   const [committed, setCommitted] = useState(0);
   const requestedRef = useRef(0);
   const waitersRef = useRef<Array<{ ticket: number; resolve: Resolve }>>([]);
+  const isMountedRef = useRef(true);
 
   useEffect(() => {
     waitersRef.current = waitersRef.current.filter((waiter) => {
@@ -21,14 +22,16 @@ export function useNextCommit() {
       return false;
     });
   }, [committed]);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
       waitersRef.current.splice(0).forEach((waiter) => waiter.resolve(false));
-    },
-    [],
-  );
+    };
+  }, []);
 
   function nextCommit() {
+    if (!isMountedRef.current) return Promise.resolve(false);
     requestedRef.current += 1;
     const ticket = requestedRef.current;
     return new Promise<boolean>((resolve) => {
