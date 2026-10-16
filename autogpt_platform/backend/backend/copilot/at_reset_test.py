@@ -128,6 +128,16 @@ async def test_out_of_both_waits_for_the_one_that_resets_last(limits):
 
 
 @pytest.mark.asyncio
+async def test_unreadable_usage_is_unavailable_not_a_budget_back(limits):
+    # Read as no usage, an outage would tell the client to send right away.
+    _, status, _ = limits
+    status.side_effect = RateLimitUnavailable("Redis down")
+    with pytest.raises(RateLimitUnavailable):
+        await next_reset_run_at("user-1", SESSION, "send")
+    assert status.await_args.kwargs["fail_closed"] is True
+
+
+@pytest.mark.asyncio
 async def test_a_resume_fires_a_minute_after_a_send_on_the_same_chat(limits):
     _, status, _ = limits
     status.return_value = _status(daily_used=3_000_000, weekly_used=0)

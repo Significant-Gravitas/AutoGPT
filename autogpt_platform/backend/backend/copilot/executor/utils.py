@@ -387,6 +387,11 @@ class CoPilotExecutionEntry(BaseModel):
     """Set when the scheduler fired this turn. ``None`` for every other
     caller, and for entries queued before the field existed."""
 
+    tool_name: str | None = None
+    """What started the turn, as registered with the stream registry
+    (``"autopilot_block"`` for the AutoPilot block, whose turns may run on the
+    credit balance once the plan's allowance is used up). ``None`` for entries
+    queued before the field existed."""
     trace_headers: dict[str, str] = Field(default_factory=dict)
     """``sentry-trace``/``baggage`` of the transaction that dispatched the turn,
     which the turn's own transaction continues. Empty when the dispatcher was
@@ -437,6 +442,7 @@ async def enqueue_copilot_turn(
     from_chat_platform: bool = False,
     credential_pins: CredentialPins | None = None,
     scheduled: ScheduledTurnOrigin | None = None,
+    tool_name: str | None = None,
     trace_headers: Mapping[str, str] | None = None,
 ) -> None:
     """Enqueue a CoPilot task for processing by the executor service.
@@ -496,6 +502,7 @@ async def enqueue_copilot_turn(
         ),
         enqueued_at=time.time(),
         cost_context=await capture_cost_context(user_id),
+        tool_name=tool_name,
     )
 
     queue_client = await get_async_copilot_queue()
@@ -755,6 +762,7 @@ async def dispatch_turn(
             from_chat_platform=from_chat_platform,
             credential_pins=credential_pins,
             scheduled=scheduled,
+            tool_name=tool_name,
             trace_headers=trace_headers,
         )
         slot.keep()

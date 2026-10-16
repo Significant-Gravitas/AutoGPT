@@ -30,6 +30,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.config import ChatConfig
 from backend.copilot.constants import COMPACTION_TOOL_NAME
 from backend.copilot.model import ChatMessage, ChatSession
@@ -760,6 +761,12 @@ def _make_sdk_patches(
                 new_callable=AsyncMock,
                 return_value=TurnBudget(usd=100.0, limiting="task"),
             ),
+        ),
+        # The auto-continue allowance check peeks the pending queue in Redis
+        # (covered in budget_gate_test).
+        (
+            f"{_SVC}.gate_auto_continue",
+            dict(new_callable=AsyncMock, return_value=AutoContinueGate(proceed=True)),
         ),
         # Stub pending-message drain so retry tests don't hit Redis.
         # Returns an empty list → no mid-turn injection happens.
@@ -1791,6 +1798,64 @@ class TestStreamChatCompletionRetryIntegration:
         # both empty here; without them the CLI declares every built-in it has.
         assert captured_options["options"].tools == []
         assert any(isinstance(e, StreamStart) for e in events)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("tainted", [False, True])
+    async def test_queued_messages_wait_when_the_allowance_is_used_up(
+        self, tainted: bool
+    ):
+        """Auto-continue asks the allowance first. Refused, it drains nothing
+        and starts no second query: the turn ends on a not-started pause and
+        the queued messages stay queued for the next turn. The pause records
+        the taint the continuation would have kept."""
+        from backend.copilot.response_model import StreamTurnPaused
+        from backend.copilot.tree import root_envelope
+        from backend.copilot.turn_pause import TurnPause
+
+        session = self._make_session()
+        result_msg = self._make_result_message()
+        queries: list[int] = []
+
+        def _client_factory(*args, **kwargs):
+            queries.append(1)
+            return self._make_client_mock(result_message=result_msg)
+
+        pause = TurnPause(reason="daily", checkpoint_saved=False, started=False)
+        refused = AsyncMock(return_value=AutoContinueGate(proceed=False, pause=pause))
+        drain = AsyncMock(return_value=[])
+        patches = _make_sdk_patches(
+            session,
+            original_transcript=_build_transcript(
+                [("user", "prior question"), ("assistant", "prior answer")]
+            ),
+            compacted_transcript=None,
+            client_side_effect=_client_factory,
+        )
+
+        events = []
+        with contextlib.ExitStack() as stack:
+            for target, kwargs in patches:
+                stack.enter_context(patch(target, **kwargs))
+            stack.enter_context(patch(f"{_SVC}.gate_auto_continue", new=refused))
+            stack.enter_context(patch(f"{_SVC}.drain_pending_safe", new=drain))
+            async for event in stream_chat_completion_sdk(
+                session_id="test-session-id",
+                message="hello",
+                is_user_message=True,
+                user_id="test-user",
+                session=session,
+                envelope=root_envelope("turn-1", tainted=tainted),
+            ):
+                events.append(event)
+
+        refused.assert_awaited_once_with(
+            session, "test-user", platform_billed=True, tainted=tainted
+        )
+        assert [e.pause for e in events if isinstance(e, StreamTurnPaused)] == [
+            pause.as_part()
+        ]
+        assert len(queries) == 1, "a refused auto-continue must not query again"
+        drain.assert_awaited_once()  # the turn-start drain only
 
 
 # ---------------------------------------------------------------------------
