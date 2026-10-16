@@ -286,7 +286,7 @@ describe("MentionDropdown", () => {
     expect(screen.getByText("Files")).toBeTruthy();
   });
 
-  it("places the list with fixed positioning so a scrolling ancestor can't clip it", () => {
+  it("uses the fixed positioning strategy inside a scrolling ancestor", () => {
     render(
       <div className="overflow-y-auto">
         <form className="relative">

@@ -9,6 +9,7 @@ import {
 } from "@floating-ui/react-dom";
 
 const VIEWPORT_MARGIN = 8;
+const ANCHOR_OFFSET = 8;
 const LIST_MAX_HEIGHT_REM = 20;
 
 // The height cap from the last placement must not decide the next one: results
@@ -44,7 +45,7 @@ export function useMentionDropdown() {
     whileElementsMounted: autoUpdate,
     middleware: [
       measureFullHeight,
-      offset(8),
+      offset(ANCHOR_OFFSET),
       flip({ padding: VIEWPORT_MARGIN }),
       shift({ padding: VIEWPORT_MARGIN }),
       size({
