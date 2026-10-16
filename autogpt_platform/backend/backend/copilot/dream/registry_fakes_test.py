@@ -209,7 +209,6 @@ class FakeScheduler:
             side_effect=self._adder("skill_learning_nightly")
         )
         self.remove_scope_memory_jobs = AsyncMock(side_effect=self._remove)
-        self.remove_scope_memory_job = AsyncMock(side_effect=self._remove_one)
 
     def _adder(self, prefix: str):
         async def add(*, scope: MemoryScope, user_timezone: str) -> dict:
@@ -220,12 +219,6 @@ class FakeScheduler:
             return {"id": job_id, "scope_key": scope.scope_key, "next_run_time": None}
 
         return add
-
-    async def _remove_one(self, *, scope: MemoryScope, job_id_prefix: str) -> bool:
-        job_id = f"{job_id_prefix}_{scope.scope_key}"
-        self.scopes.pop(job_id, None)
-        self.tagged.discard(job_id)
-        return self.jobs.pop(job_id, None) is not None
 
     async def _remove(self, *, scope: MemoryScope) -> list[str]:
         every = [job.job_id(scope) for job in DREAM_SYSTEM_JOBS]
@@ -275,8 +268,7 @@ class RegistryEnv:
         self.db = FakeRegistryDB()
         self.scheduler = FakeScheduler()
         self.crons = FakeCronStore(self.scheduler)
-        # A flag set to None cannot be read: it answers only its default.
-        self.flags: dict[Flag, bool | None] = {
+        self.flags = {
             Flag.GRAPHITI_COMMUNITIES_ENABLED: True,
             Flag.DREAM_PASS_ENABLED: True,
         }
@@ -298,9 +290,8 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     """Point the registry modules at a fresh set of fakes."""
     env = RegistryEnv()
 
-    async def flag(flag: Flag, user_id: str) -> tuple[bool, bool]:
-        value = env.flags.get(flag, False)
-        return (False, False) if value is None else (value, True)
+    async def flag(flag: Flag, user_id: str) -> bool:
+        return env.flags.get(flag, False)
 
     async def owner_timezone(user_id: str) -> str | None:
         return env.timezone
@@ -308,7 +299,7 @@ def install_registry_env(monkeypatch: pytest.MonkeyPatch) -> RegistryEnv:
     for module in (registry, scope_jobs, scope_crons, scope_reconcile):
         monkeypatch.setattr(module, "memory_schedule_db", lambda: env.db)
     monkeypatch.setattr(scope_jobs, "get_scheduler_client", lambda: env.scheduler)
-    monkeypatch.setattr(scope_jobs, "evaluate_feature_flag", flag)
+    monkeypatch.setattr(scope_jobs, "is_feature_enabled", flag)
     monkeypatch.setattr(registry, "resolve_user_timezone", owner_timezone)
     # Every walk starts at the first scope, so a test sees key order.
     monkeypatch.setattr(scope_reconcile._Place, "last", "")

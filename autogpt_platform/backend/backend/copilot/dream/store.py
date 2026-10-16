@@ -52,7 +52,6 @@ from .fetch import DreamInput
 from .pass_record import (
     DreamTrigger,
     applying,
-    batch_left_running,
     cleanup_finished,
     expired,
     failed,
@@ -186,19 +185,6 @@ async def record_taken_back(
         lambda: taken_back(
             error, provider_batch_id=provider_batch_id, lease_token=lease_token
         ),
-    )
-
-
-async def record_batch_left_running(
-    pass_id: str, provider_batch_id: str
-) -> bool | None:
-    """A take-back whose stop the provider did not confirm, on a row a stop
-    had already closed: the row keeps the batch and is marked for the
-    reaper's cleanup (see ``_write``)."""
-    return await _write(
-        pass_id,
-        "the batch left running",
-        lambda: batch_left_running(provider_batch_id),
     )
 
 

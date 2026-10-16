@@ -320,23 +320,9 @@ def reaped(reason: str, *, not_updated_since: datetime) -> DreamPassUpdate:
     )
 
 
-def batch_left_running(provider_batch_id: str) -> DreamPassUpdate:
-    """A pass whose row a stop had closed took back the batch it had just
-    submitted, and the provider did not confirm its stop: the closed row
-    takes the batch and is marked, so the reaper's cleanup keeps asking the
-    provider to stop it. Nothing else on the row moves: written to a closed
-    row only, and its status and error stay how it closed."""
-    return DreamPassUpdate(
-        phase=_PHASE_STEPS["consolidate"],
-        provider_batch_id=provider_batch_id,
-        cleanup_pending_at=datetime.now(timezone.utc),
-        closed_row=True,
-    )
-
-
 def cleanup_finished() -> DreamPassUpdate:
     """The cleanup after a closed pass has finished: the mark and the lease
-    the row kept for it go. One of the two writes a closed row takes."""
+    the row kept for it go. The one write a closed row takes."""
     return DreamPassUpdate(
         closed_row=True,
         clear=frozenset({"cleanup_pending_at", "lease_token", "lease_expires_at"}),

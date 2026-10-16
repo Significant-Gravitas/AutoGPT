@@ -45,11 +45,9 @@ logger = logging.getLogger(__name__)
 Outcome = Literal["registered", "already_scheduled", "skipped", "failed"]
 FAILURE_REASONS = frozenset(
     {
-        "flag_unavailable",
         "registration_failed",
         "record_failed",
         "registry_unavailable",
-        "removal_failed",
         "timezone_lookup_failed",
     }
 )

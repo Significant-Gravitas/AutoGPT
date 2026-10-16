@@ -1310,15 +1310,19 @@ def execute_skill_learning_sync(user_id: str):
     the other dream-system crons do: a cron that straggles past a pause or a
     wipe of the account's memory does nothing. Runtime flag gate (layer 3):
     if ``DREAM_SKILL_LEARNING_ENABLED`` flipped off after the cron was
-    registered, the body returns before any work, and the cron removes
-    itself (``_learning_flag_on``). The pass itself never raises; its
-    outcome is logged here and kept in the per-source review ledger.
+    registered, the body returns before any work. The pass itself never
+    raises; its outcome is logged here and kept in the per-source review
+    ledger.
     """
     from backend.copilot.learning.nightly import run_skill_learning_pass
+    from backend.util.feature_flag import Flag, is_feature_enabled
 
     if not _memory_scope_may_fire(MemoryScope.for_user(user_id)):
         return None
-    if not _learning_flag_on(user_id):
+    if not run_async(is_feature_enabled(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)):
+        logger.info(
+            "Skill learning skipped for user %s — flag flipped off", user_id[:12]
+        )
         return None
 
     result = run_async(
@@ -1351,32 +1355,6 @@ def execute_skill_learning_sync(user_id: str):
             result.proposed,
         )
     return result
-
-
-def _learning_flag_on(user_id: str) -> bool:
-    """Whether the account's learning flag is on now.
-
-    Authoritatively off, the cron removes itself, the registry forgetting it
-    first (``_delete_account_memory_job``). The registry notices a flag
-    turned off at the scope's next ensure, but an account that learns
-    without memory writes has none once learning is off: the chat capture
-    hook ensures only while learning is on. So the cron's own next run does.
-    A flag that cannot be read only skips the run, and a forget that fails
-    keeps the cron for the next night.
-    """
-    from backend.util.feature_flag import Flag, evaluate_feature_flag
-
-    enabled, authoritative = run_async(
-        evaluate_feature_flag(Flag.DREAM_SKILL_LEARNING_ENABLED, user_id)
-    )
-    if enabled:
-        return True
-    logger.info("Skill learning skipped for user %s — flag flipped off", user_id[:12])
-    if authoritative and _scheduler_instance is not None:
-        _scheduler_instance._delete_account_memory_job(
-            user_id, dream_system_job(SKILL_LEARNING_JOB_PREFIX)
-        )
-    return False
 
 
 # ---------------------------------------------------------------------------
@@ -3682,21 +3660,6 @@ class Scheduler(AppService):
             logger.info("Removed the memory crons of %s", scope_label(scope))
         return removed
 
-    @expose
-    def remove_scope_memory_job(self, scope: MemoryScope, job_id_prefix: str) -> bool:
-        """Remove one dream-system cron of ``scope``; whether it was there.
-        The registry calls this for a cron whose flag is off, once the row no
-        longer records it (``scope_jobs._remove_disabled``): the reconcile
-        restores a cron a row records, so the record goes first."""
-        job = dream_system_job(job_id_prefix)
-        existing = self.scheduler.get_job(
-            job.job_id(scope), jobstore=Jobstores.EXECUTION.value
-        )
-        if existing is None or not _removed(existing):
-            return False
-        logger.info("Removed %s job of %s", job.name, scope_label(scope))
-        return True
-
     def _reconcile_memory_crons(self) -> None:
         """One reconcile pass (``reconcile_memory_scope_crons``), its listing
         of the dream-system crons included, under
@@ -4266,7 +4229,6 @@ class SchedulerClient(AppServiceClient):
         Scheduler.delete_community_rebuild_schedule
     )
     remove_scope_memory_jobs = endpoint_to_async(Scheduler.remove_scope_memory_jobs)
-    remove_scope_memory_job = endpoint_to_async(Scheduler.remove_scope_memory_job)
     execute_community_rebuild_pass = endpoint_to_async(
         Scheduler.execute_community_rebuild_pass
     )
