@@ -12,11 +12,10 @@ import {
 
 /**
  * Session deletion flow: reads the pending `sessionToDelete` from the store,
- * closes the dialog as soon as the user confirms and fires the delete
- * mutation. `useSessionList` hides the chat while the mutation is pending. On
- * success it is dropped from the cached list and the active session is
- * cleared if it was the one deleted; on error the chat shows again and a
- * toast is shown.
+ * closes the dialog as soon as the user confirms, leaves the chat if it is
+ * the open one, and fires the delete mutation. `useSessionList` hides the
+ * chat while the mutation is pending. On success it is dropped from the
+ * cached list; on error the chat shows again and a toast is shown.
  *
  * Consumed by `ChatSidebar`, `MobileDrawer` and `RecentChats` so each can
  * render its own `DeleteChatDialog` without duplicating the mutation wiring.
@@ -65,6 +64,11 @@ export function useSessionDeletion() {
   function confirmDelete() {
     if (!sessionToDelete) return;
     deleteSession({ sessionId: sessionToDelete.id });
+    // Leaving now keeps the composer from sending into a chat that is
+    // already on its way out.
+    if (sessionToDelete.id === sessionId) {
+      setSessionId(null);
+    }
     setSessionToDelete(null);
   }
 
