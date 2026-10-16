@@ -85,6 +85,9 @@ interface UseCopilotStreamArgs {
   /** Id of the first hydrated message of the turn the backend is still
    *  running — the point the GET-resume replay starts from. */
   activeTurnStartMessageId?: string | null;
+  /** ``active_stream.started_at`` of that turn. Known with no start message
+   *  above, it means the turn has persisted nothing yet. */
+  activeTurnStartedAt?: string | null;
   hasActiveStream: boolean;
   refetchSession: () => Promise<{ data?: unknown }>;
   /** Model tier override. `undefined` = let backend decide. */
@@ -99,6 +102,7 @@ export function useCopilotStream({
   sessionAuthProvider = null,
   sessionCredentialId = null,
   activeTurnStartMessageId = null,
+  activeTurnStartedAt = null,
   hasActiveStream,
   refetchSession,
   copilotModel,
@@ -444,6 +448,19 @@ export function useCopilotStream({
       // backend) cannot redraw it. When the hint does carry the text, the
       // transcript draws the bubble at the drain point and drops the
       // matching fallback row (`splitMessagesAtDrainHints`).
+      const last = prev[prev.length - 1];
+      // When the running turn's start is known and no hydrated row falls at
+      // or after it, nothing of that turn is persisted yet — a turn started
+      // by Keep going or a resume at the reset saves its note row before the
+      // turn opens. Every hydrated row then belongs to earlier turns and the
+      // replay only appends, so none is cut; only a partial this mount
+      // streamed itself goes, because the replay redraws it.
+      if (activeTurnStartedAt !== null && activeTurnStartMessageId === null) {
+        return hasInProgressAssistantParts(last) &&
+          extractDbSequence(last) === null
+          ? prev.slice(0, -1)
+          : prev;
+      }
       const lastUserIndex = prev.findLastIndex((m) => m.role === "user");
       const userCut = lastUserIndex === -1 ? -1 : lastUserIndex + 1;
       const activeTurnIndex = activeTurnStartMessageId
@@ -460,7 +477,6 @@ export function useCopilotStream({
           .map(asMidTurnFallbackRow);
         return [...prev.slice(0, cutIndex), ...drainedFollowUps];
       }
-      const last = prev[prev.length - 1];
       return hasInProgressAssistantParts(last) ? prev.slice(0, -1) : prev;
     });
     resumeStream();
@@ -561,7 +577,7 @@ export function useCopilotStream({
 
   useEffect(() => {
     if (!sessionId || !rawSessionMessages?.length) return;
-    const historical = latestProviderFailure(
+    const latest = latestProviderFailure(
       rawSessionMessages,
       sessionAuthProvider
         ? {
@@ -570,6 +586,10 @@ export function useCopilotStream({
           }
         : null,
     );
+    // The dialog answers a spent quota, as on the live path. Reopening it for
+    // an expired login or a refused prompt would tell the user they hit a
+    // limit they never hit.
+    const historical = latest?.kind === "usage_limit" ? latest : null;
     const dismissed = dismissedProviderFailureRef.current;
     if (
       historical &&

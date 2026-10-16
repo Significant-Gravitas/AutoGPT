@@ -205,7 +205,7 @@ async def bill_to_credits(
     """
     if user_id is None or tool_name != AUTOPILOT_BLOCK_TOOL_NAME:
         return None
-    if not settings.config.enable_credit or not _route_caps_turn_spend():
+    if not credits_can_pay_block_turns():
         return None
     try:
         balance = await _balance(user_id, organization_id)
@@ -224,12 +224,13 @@ async def bill_to_credits(
     )
 
 
-def _route_caps_turn_spend() -> bool:
-    """Whether the platform route's engine gives a turn a dollar ceiling:
-    the SDK engine with the CLI's ``max_budget_usd``, which the local route's
-    engine doesn't have."""
+def credits_can_pay_block_turns() -> bool:
+    """Whether a block turn past the allowance can run on credits here: credits
+    are on, and the platform route's engine gives a turn a dollar ceiling (the
+    SDK engine with the CLI's ``max_budget_usd``, which the local route's
+    engine doesn't have)."""
     row = config.route_row
-    return row is not None and row.usd_budget
+    return settings.config.enable_credit and row is not None and row.usd_budget
 
 
 async def _balance(user_id: str, organization_id: str | None) -> int:
