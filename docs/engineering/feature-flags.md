@@ -11,7 +11,9 @@ the choice; they read through `evaluate_feature_flag()` on the backend and
 Dev and Prod each have their own PostHog project, and each project holds its
 own flags. A deployment reads its flags from the same project its analytics go
 to, the one `POSTHOG_API_KEY` names, and evaluates them locally with that
-project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`.
+project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
+evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
+instead, unless the read is local-only, as a signed-out visitor's own read is.
 
 | | Dev | Prod |
 |---|---|---|
@@ -140,5 +142,6 @@ process, `cached` once per poll on each of the other N−1, and `empty` and
 | The refresher dies | Its lock expires and another process takes the job on its next poll. |
 | A definitions fetch fails | The definitions already in memory stay in use, and the refresher keeps writing that copy to the cache. |
 
-Nothing here can make a flag read wait on Redis or on PostHog: flag evaluation
-only ever reads the definitions already in the process.
+Nothing here can make a flag read wait on Redis: evaluation reads the
+definitions already in the process, and only a read they can't decide waits on
+PostHog's `/flags`.
