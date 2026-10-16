@@ -6,7 +6,8 @@ import { TURN_PAUSED_PART_TYPE, type TurnPause } from "../../turnPause";
  * The pause the chat is sitting on: the last thing in it, with nothing drawn
  * after it. Once anything follows (a "Keep going" note, a resumed turn, the
  * user's next message) the pause is history and its card stops offering
- * ways back in.
+ * ways back in. A card knows it is this pause by comparing its `data` to it
+ * by reference, so the chat's message transforms must pass that object on.
  */
 export function getCurrentPause(messages: readonly UIMessage[]): unknown {
   const last = messages[messages.length - 1];
