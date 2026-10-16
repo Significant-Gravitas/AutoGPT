@@ -16,6 +16,7 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_messages import PendingMessage
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.db_accessors import review_db
 
 
@@ -128,6 +129,7 @@ async def test_a_held_read_comes_back_from_its_row_byte_identical(
         tool_name="read_file",
         tool_call_id="call-1",
         args=args,
+        cost_context=TrialCostContext(user_id=test_user_id, trial_id=None),
     )
     await reads._hold(call, test_user_id, session, "src", "passage", output, True)
     await PendingHumanReview.prisma().update(

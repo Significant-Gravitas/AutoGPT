@@ -9,6 +9,7 @@ from prisma import Prisma
 from prisma.models import UserWorkspaceFile
 from pydantic import BaseModel
 
+from backend.data import db
 from backend.data.db import transaction
 from backend.data.skill_capacity import (
     MAX_SKILLS_PER_EXPERT,
@@ -76,7 +77,7 @@ async def publish_workspace_skill_file(
             and existing_origin == SKILL_ORIGIN_USER
         ):
             return WorkspaceSkillPublication(status="owned")
-        if (not active or (existing_origin or SKILL_ORIGIN_USER) != origin) and (
+        if _takes_a_slot(existing, origin) and (
             await _root_count(tx, write.workspace_id, folder, origin)
             >= MAX_SKILLS_PER_EXPERT
         ):
@@ -92,6 +93,34 @@ async def publish_workspace_skill_file(
             replaced_storage_path=existing.storagePath if existing else None,
             replaced_file_id=existing.id if existing else None,
         )
+
+
+async def skill_root_has_room(workspace_id: str, path: str, origin: str) -> bool:
+    """Whether a root at ``path`` would fit the owner's budget for ``origin``:
+    the capacity decision :func:`publish_workspace_skill_file` makes, read
+    without taking its lock, so a concurrent write can still win the slot."""
+    folder = skill_owner_folder(path)
+    if folder is None:
+        raise ValueError("Skill capacity is counted for canonical SKILL.md paths")
+    existing = await UserWorkspaceFile.prisma().find_first(
+        where={"workspaceId": workspace_id, "path": path, "isDeleted": False}
+    )
+    if not _takes_a_slot(existing, origin):
+        return True
+    return (
+        await _root_count(db.prisma, workspace_id, folder, origin)
+        < MAX_SKILLS_PER_EXPERT
+    )
+
+
+def _takes_a_slot(existing: UserWorkspaceFile | None, origin: str) -> bool:
+    """A new root, or one changing budgets, needs a free slot in its own."""
+    if existing is None:
+        return True
+    existing_origin = skill_origin(
+        existing.metadata if isinstance(existing.metadata, dict) else None
+    )
+    return (existing_origin or SKILL_ORIGIN_USER) != origin
 
 
 @asynccontextmanager

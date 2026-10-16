@@ -60,10 +60,10 @@ from backend.api.features.store.db import (
 from backend.api.features.store.embeddings import backfill_missing_embeddings
 from backend.copilot import db as chat_db
 from backend.copilot.sharing.db import link_new_execution_to_chat_share
-from backend.copilot.swap_credentials import get_swap_bindings, resolve_swap_credential
 from backend.data import bot_analytics as bot_analytics_db
 from backend.data import bot_installs as bot_installs_db
 from backend.data import db
+from backend.data import skill_deletion as skill_deletion_data
 from backend.data import skill_learning as skill_learning_data
 from backend.data import skill_publication as skill_publication_data
 from backend.data import skill_reviews as skill_reviews_data
@@ -164,6 +164,7 @@ from backend.data.posthog_lifecycle_sync import (
     request_posthog_lifecycle_sync,
     start_posthog_lifecycle_sweep,
 )
+from backend.data.pro_activation import get_usage_activation_state
 from backend.data.push_subscription import (
     cleanup_failed_subscriptions,
     delete_push_subscription,
@@ -213,7 +214,10 @@ from backend.data.workspace import (
     soft_delete_workspace_file,
 )
 from backend.data.workspace_folder import list_workspace_folders
-from backend.data.workspace_skill import publish_workspace_skill_file
+from backend.data.workspace_skill import (
+    publish_workspace_skill_file,
+    skill_root_has_room,
+)
 from backend.platform_linking import db as platform_linking_db
 from backend.util.service import (
     AppService,
@@ -294,6 +298,11 @@ async def _spend_org_credits(
 
 async def _get_org_credits(org_id: str) -> int:
     return await _get_org_credits_raw(org_id)
+
+
+# Public aliases used by db_accessors.credit_db() when Prisma is connected
+get_org_credits = _get_org_credits
+spend_org_credits = _spend_org_credits
 
 
 class DatabaseManager(AppService):
@@ -391,6 +400,7 @@ class DatabaseManager(AppService):
     # The scheduler routes unattended chats by the user's saved default.
     get_user_default_chat_route = _(get_user_default_chat_route)
     get_user_subscription_tier = _(get_user_subscription_tier)
+    get_usage_activation_state = _(get_usage_activation_state)
     get_subscription_trial = _(get_subscription_trial)
     sync_subscription_from_stripe = _(sync_subscription_from_stripe)
     record_subscription_trial_cost = _(record_subscription_trial_cost)
@@ -403,12 +413,6 @@ class DatabaseManager(AppService):
     update_user_integrations = _(update_user_integrations)
     get_user_credentials = _(get_user_credentials)
     set_user_credentials = _(set_user_credentials)
-
-    # ============ Credential Swap Proxy ============ #
-    # Called by the swap proxy (autogpt_platform/swap_proxy), which has no
-    # database access of its own; see backend/copilot/swap_credentials.py.
-    get_swap_bindings = _(get_swap_bindings)
-    resolve_swap_credential = _(resolve_swap_credential)
 
     # ============ User Comms ============ #
     get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
@@ -511,6 +515,7 @@ class DatabaseManager(AppService):
     count_workspace_files = _(count_workspace_files)
     create_workspace_file = _(create_workspace_file)
     publish_workspace_skill_file = _(publish_workspace_skill_file)
+    skill_root_has_room = _(skill_root_has_room)
     get_or_create_workspace = _(get_or_create_workspace)
     get_workspace_file = _(get_workspace_file)
     get_workspace_file_by_path = _(get_workspace_file_by_path)
@@ -655,6 +660,7 @@ class DatabaseManager(AppService):
     list_heads = _(skill_versions_data.list_heads)
     list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
     update_head_policy = _(skill_versions_data.update_head_policy)
+    pause_use_if_current = _(skill_versions_data.pause_use_if_current)
     publish_version_if_current = _(skill_versions_data.publish_version_if_current)
     commit_version_safe = _(skill_publication_data.commit_version_safe)
     complete_publication = _(skill_publication_data.complete_publication)
@@ -672,6 +678,7 @@ class DatabaseManager(AppService):
     list_versions_in_states = _(skill_versions_data.list_versions_in_states)
     invalidate_source_versions = _(skill_versions_data.invalidate_source_versions)
     latest_independent_version_id = _(skill_versions_data.latest_independent_version_id)
+    record_skill_deletion = _(skill_deletion_data.record_skill_deletion)
     add_suppression = _(skill_use_data.add_suppression)
     find_suppression = _(skill_use_data.find_suppression)
     list_suppressions = _(skill_use_data.list_suppressions)
@@ -893,6 +900,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     get_user_by_id = d.get_user_by_id
     get_user_default_chat_route = d.get_user_default_chat_route
     get_user_subscription_tier = d.get_user_subscription_tier
+    get_usage_activation_state = d.get_usage_activation_state
     get_subscription_trial = d.get_subscription_trial
     sync_subscription_from_stripe = d.sync_subscription_from_stripe
     record_subscription_trial_cost = d.record_subscription_trial_cost
@@ -1019,6 +1027,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     count_workspace_files = d.count_workspace_files
     create_workspace_file = d.create_workspace_file
     publish_workspace_skill_file = d.publish_workspace_skill_file
+    skill_root_has_room = d.skill_root_has_room
     get_or_create_workspace = d.get_or_create_workspace
     get_workspace_file = d.get_workspace_file
     get_workspace_file_by_path = d.get_workspace_file_by_path
@@ -1147,6 +1156,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_heads = d.list_heads
     list_use_paused_skill_names = d.list_use_paused_skill_names
     update_head_policy = d.update_head_policy
+    pause_use_if_current = d.pause_use_if_current
     publish_version_if_current = d.publish_version_if_current
     commit_version_safe = d.commit_version_safe
     complete_publication = d.complete_publication
@@ -1162,6 +1172,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_versions_in_states = d.list_versions_in_states
     invalidate_source_versions = d.invalidate_source_versions
     latest_independent_version_id = d.latest_independent_version_id
+    record_skill_deletion = d.record_skill_deletion
     add_suppression = d.add_suppression
     find_suppression = d.find_suppression
     list_suppressions = d.list_suppressions

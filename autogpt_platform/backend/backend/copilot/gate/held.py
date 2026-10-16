@@ -26,6 +26,7 @@ from backend.copilot.model import CHAT_STATUS_RUNNING, ChatSession
 from backend.copilot.pending_messages import PendingMessage
 from backend.copilot.response_model import StreamStatus
 from backend.copilot.tree import TreeRefusal, TurnEnvelope
+from backend.copilot.trial_cost_context import TrialCostContext, restore_cost_context
 from backend.data.db_accessors import chat_db, review_db
 from backend.data.redis_client import get_redis_async
 from backend.util.encryption import JSONCryptor
@@ -91,6 +92,7 @@ class HeldCall(BaseModel):
     # The turn that held it. Its wake starts under this, re-checked against the
     # tree; a call rebuilt from its card has none and is not woken.
     envelope: TurnEnvelope | None = None
+    cost_context: TrialCostContext | None = None
 
 
 async def remember(session_id: str, call: HeldCall) -> bool:
@@ -197,7 +199,7 @@ async def resolve_answered(
             logger.warning(f"Held call {call.review_id} unreadable", exc_info=True)
             continue
         row = rows.get(call.review_id)
-        tool = _due(call, row)
+        tool = _due(call, row, user_id)
         # Before the claim: a stream closed at this yield leaves the call held.
         if tool:
             yield StreamStatus(
@@ -276,75 +278,82 @@ async def wake(
             return True
         message = _wake_message(waiting)
         refusal_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{wake_id}:refused"))
-        envelope = max(calls, key=lambda c: c.held_at).envelope
+        latest = max(calls, key=lambda c: c.held_at)
+        envelope = latest.envelope
         if envelope is None and not is_users_own_chat(info):
             # Deriving one from the turn that just ended would run the approved
             # action under that turn's limits, not the ones it was held under.
             await post_refusal(session_id, UNRECORDED_WAKE, message_id=refusal_id)
             return True
+        if latest.cost_context is None or latest.cost_context.user_id != user_id:
+            await post_refusal(session_id, _RESEND, message_id=refusal_id)
+            return True
         permissions = resolve_session_permissions(info)
         metadata = {_WAKE_KEY: True}
         capacity = get_delegated_turn_limit() if wakes_sub_work(info) else None
-        try:
-            async with acquire_turn_slot(
-                user_id, session_id, capacity=capacity
-            ) as slot:
-                # Not admitted: a turn is already running, and its end wakes us.
-                if not slot.admitted:
-                    return True
-                if (
-                    await append_and_save_message(
-                        session_id,
-                        ChatMessage(
-                            id=wake_id,
-                            role="user",
-                            content=message,
-                            metadata=metadata,
-                        ),
+        with restore_cost_context(user_id, latest.cost_context):
+            try:
+                async with acquire_turn_slot(
+                    user_id, session_id, capacity=capacity
+                ) as slot:
+                    # Not admitted: a turn is already running, and its end wakes us.
+                    if not slot.admitted:
+                        return True
+                    if (
+                        await append_and_save_message(
+                            session_id,
+                            ChatMessage(
+                                id=wake_id,
+                                role="user",
+                                content=message,
+                                metadata=metadata,
+                            ),
+                        )
+                        is None
+                    ):
+                        return True
+                    turn_id = str(uuid.uuid4())
+                    await dispatch_turn(
+                        slot,
+                        session_id=session_id,
+                        user_id=user_id,
+                        turn_id=turn_id,
+                        message=message,
+                        organization_id=info.organization_id,
+                        team_id=info.team_id,
+                        llm_auth_provider=info.metadata.llm_auth_provider,
+                        llm_credential_id=info.metadata.llm_credential_id,
+                        permissions=permissions,
+                        message_metadata=metadata,
+                        envelope=envelope,
+                        # Lost in the user's own chat: a root, as their message would be.
+                        root=envelope is None,
                     )
-                    is None
-                ):
-                    return True
-                turn_id = str(uuid.uuid4())
-                await dispatch_turn(
-                    slot,
-                    session_id=session_id,
+                    # A channel that answered one of these follows this turn.
+                    await woken_turns.record(
+                        session_id, [c.review_id for c in calls], turn_id
+                    )
+            except ConcurrentTurnLimitError:
+                await try_enqueue_turn(
                     user_id=user_id,
-                    turn_id=turn_id,
+                    inflight_cap=get_inflight_turn_limit(),
+                    session_id=session_id,
                     message=message,
-                    organization_id=info.organization_id,
-                    team_id=info.team_id,
+                    message_id=wake_id,
+                    message_metadata=metadata,
                     llm_auth_provider=info.metadata.llm_auth_provider,
                     llm_credential_id=info.metadata.llm_credential_id,
-                    permissions=permissions,
-                    message_metadata=metadata,
+                    permissions=(
+                        permissions.model_dump(exclude_none=True)
+                        if permissions
+                        else None
+                    ),
                     envelope=envelope,
-                    # Lost in the user's own chat: a root, as their message would be.
-                    root=envelope is None,
                 )
-                # A channel that answered one of these follows this turn.
-                await woken_turns.record(
-                    session_id, [c.review_id for c in calls], turn_id
+            except TreeRefusal as refused:
+                await post_refusal(
+                    session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
                 )
-        except ConcurrentTurnLimitError:
-            await try_enqueue_turn(
-                user_id=user_id,
-                inflight_cap=get_inflight_turn_limit(),
-                session_id=session_id,
-                message=message,
-                message_id=wake_id,
-                message_metadata=metadata,
-                llm_auth_provider=info.metadata.llm_auth_provider,
-                llm_credential_id=info.metadata.llm_credential_id,
-                permissions=(
-                    permissions.model_dump(exclude_none=True) if permissions else None
-                ),
-                envelope=envelope,
-            )
-        except TreeRefusal as refused:
-            await post_refusal(
-                session_id, f"{refused.message} {WAKE_LATER}", message_id=refusal_id
-            )
     except InflightCapExceeded:
         logger.info(f"Held calls in {session_id} wait for the user's next turn")
     except Exception:
@@ -383,10 +392,15 @@ async def _resolve(
     deliver: Callable[[PendingMessage], None],
     cap: Callable[[str], str],
 ) -> None:
-    if tool:
-        outcome, output = await _run(user_id, session, call, tool)
-    else:
-        outcome, output = await _settled(user_id, session, call, row)
+    if call.cost_context is None or call.cost_context.user_id != user_id:
+        await review_store.consume(call.review_id, user_id)
+        deliver(_result_row(call, _RESEND, "closed"))
+        return
+    with restore_cost_context(user_id, call.cost_context):
+        if tool:
+            outcome, output = await _run(user_id, session, call, tool)
+        else:
+            outcome, output = await _settled(user_id, session, call, row)
     shown = _card_copy(row)
     try:
         deliver(_result_row(call, cap(output), outcome, shown))
@@ -453,9 +467,11 @@ def _card_copy(card: "PendingHumanReviewModel | None") -> dict[str, Any]:
     return {k: payload[k] for k in ("arguments", "fields", "clipped") if k in payload}
 
 
-def _due(call: HeldCall, row: "PendingHumanReviewModel | None") -> "BaseTool | None":
+def _due(
+    call: HeldCall, row: "PendingHumanReviewModel | None", user_id: str
+) -> "BaseTool | None":
     """The tool an answered card's approved call runs with; None when it runs
-    nothing, which :func:`_settled` then says."""
+    nothing, which :func:`_resolve` then says."""
     from backend.copilot.tools import get_tool
 
     from .reads import is_held_read
@@ -466,6 +482,8 @@ def _due(call: HeldCall, row: "PendingHumanReviewModel | None") -> "BaseTool | N
         or is_held_read(call.review_id)
         or _expired(row)
         or call.lost
+        or call.cost_context is None
+        or call.cost_context.user_id != user_id
     ):
         return None
     return get_tool(call.tool_name)

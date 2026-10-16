@@ -38,6 +38,11 @@ from backend.copilot.sdk.tool_adapter import (
 )
 from backend.copilot.tools.base import BaseTool
 from backend.copilot.tools.models import ResponseType, ToolResponseBase
+from backend.copilot.trial_cost_context import (
+    TrialCostContext,
+    capture_cost_context,
+    restore_cost_context,
+)
 from backend.util.json import sanitize_json
 
 _READS = "backend.copilot.gate.reads"
@@ -142,6 +147,10 @@ def _session(mode: AutopilotMode | None = "auto") -> ChatSession:
 def rows():
     fake = _Rows()
     with (
+        patch(
+            f"{_READS}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
         patch("backend.copilot.gate.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
@@ -152,6 +161,18 @@ def rows():
         patch.object(review_store, "open_review_row", fake.open_review_row),
     ):
         yield fake
+
+
+async def test_held_read_keeps_the_origin_of_its_request(rows):
+    origin = TrialCostContext(user_id="user-1", trial_id="trial-1")
+    with (
+        restore_cost_context("user-1", origin),
+        patch(f"{_READS}.capture_cost_context", capture_cost_context),
+        patch(f"{_READS}.judge_content", _judge(_HELD)),
+    ):
+        await _call(_Fetch(_MARKER), _session())
+    assert len(rows.held) == 1
+    assert rows.held[0].cost_context == origin
 
 
 def _experts(**by_name: str | None):
@@ -1192,6 +1213,10 @@ async def test_a_declared_part_the_cap_cut_is_judged_as_cut(rows):
         patch(f"{_READS}.judge_content", judge),
         patch(
             "backend.copilot.sdk.tool_adapter.resolve_tool_dispatch", lambda *_: None
+        ),
+        patch(
+            "backend.copilot.tools.base._persist_and_summarize",
+            AsyncMock(side_effect=lambda raw_output, *args: raw_output),
         ),
     ):
         to_model = _text_from_mcp_result(await wrapper({"url": "u"}))

@@ -32,6 +32,8 @@ def test_the_table_names_no_tool_that_does_not_exist():
         ("Write", Verdict.RUN, Verdict.RUN, Verdict.RUN),
         ("bash_exec", Verdict.JUDGE, Verdict.JUDGE, Verdict.RUN),
         ("delete_folder", Verdict.ASK, Verdict.JUDGE, Verdict.RUN),
+        ("delegate_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
+        ("handoff_to_expert", Verdict.ASK, Verdict.RUN, Verdict.RUN),
         ("post_to_chat_platform", Verdict.ASK, Verdict.ASK, Verdict.RUN),
     ],
 )

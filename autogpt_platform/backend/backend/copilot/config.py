@@ -46,7 +46,7 @@ ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 # auto-overrides them when left at default — see ``_apply_local_aux_models``
 # below. Kept as module constants so the validator and the field defaults
 # can't drift.
-_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-4-5"
+_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-5.5"
 _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # Default for ``fast_advanced_model`` — kept in sync with the field default
 # below. ``_apply_local_aux_models`` reads this to detect "operator left it
@@ -299,7 +299,11 @@ class ChatConfig(BaseSettings):
         "judged call and the LLM (``gate_model``) runs only on an ask, to write "
         "the reason. Off without ``TYPESAFE_API_KEY``.",
     )
-    gate_jev_model: str = Field(default="jev-1.13.0", description="Jev model id.")
+    gate_jev_model: str = Field(
+        default="jev-1.13.0",
+        description="Pinned Jev version. Once TypeSafe retires it, calls run on "
+        "``jev-latest`` and log an ERROR naming it.",
+    )
     gate_jev_ask_threshold: float | None = Field(
         default=None,
         description="Unset: Jev's allow/ask choice decides. Set: the call also "
@@ -478,12 +482,21 @@ class ChatConfig(BaseSettings):
             "CHAT_AGENT_MAX_TURNS",
             "CHAT_CLAUDE_AGENT_MAX_TURNS",
         ),
-        description="Maximum number of tool-call rounds per turn — applies to "
-        "both the baseline and Claude Agent SDK paths, including Codex models "
-        "on the SDK path, where each Codex function call counts as one round. "
-        "Prevents runaway tool loops from burning budget. Override via "
-        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS "
-        "still accepted).",
+        description="Maximum number of tool-call rounds per turn on the "
+        "baseline path, which has no spend governor. The Claude Agent SDK path, "
+        "Codex models included, uses ``sdk_step_checkin`` instead. Override via "
+        "CHAT_AGENT_MAX_TURNS env var (legacy CHAT_CLAUDE_AGENT_MAX_TURNS still "
+        "accepted).",
+    )
+    sdk_step_checkin: int = Field(
+        default=450,
+        ge=1,
+        le=10000,
+        description="Model calls an SDK turn may make before its tools are "
+        "refused for a check-in: the agent writes a progress summary and the "
+        "user can choose to keep going, which starts a fresh count. The CLI's "
+        "own max_turns sits a little above this as a backstop. Spend, not "
+        "steps, is what bounds cost: the governor lands a turn at its budget.",
     )
     claude_agent_max_budget_usd: float = Field(
         default=10.0,

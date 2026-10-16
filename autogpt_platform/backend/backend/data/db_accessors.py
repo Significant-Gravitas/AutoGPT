@@ -348,6 +348,19 @@ def skill_use_db():
     return skill_use_db
 
 
+def skill_deletion_db():
+    if db.is_connected():
+        from backend.data import skill_deletion as _skill_deletion_db
+
+        skill_deletion_db = _skill_deletion_db
+    else:
+        from backend.util.clients import get_database_manager_async_client
+
+        skill_deletion_db = get_database_manager_async_client()
+
+    return skill_deletion_db
+
+
 def skill_versions_db():
     if db.is_connected():
         from backend.data import skill_versions as _skill_versions_db
@@ -372,6 +385,16 @@ def bot_installs_db():
         bot_installs_db = get_database_manager_async_client()
 
     return bot_installs_db
+
+
+def pro_activation_db():
+    if db.is_connected():
+        from backend.data import pro_activation
+
+        return pro_activation
+    from backend.util.clients import get_database_manager_async_client
+
+    return get_database_manager_async_client()
 
 
 def posthog_lifecycle_db():

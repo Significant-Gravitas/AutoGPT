@@ -9,7 +9,7 @@ import pytest
 from ldclient import Context, LDClient
 from ldclient.evaluation import EvaluationDetail
 from posthog import Posthog
-from posthog.request import GetResponse
+from posthog.request import APIError, GetResponse
 from pydantic import ValidationError
 
 import backend.data.redis_client as redis_client
@@ -590,6 +590,53 @@ class TestStartupLoad:
 
         warn.assert_called()
         assert await ph.evaluate_flag("shared-flag", "u-1") == (True, True)
+
+
+class TestWhichFlagsTheProjectHas:
+    """Only a load that succeeded says which flags exist; the SDK also empties its
+    definitions on a rejected key or a quota limit."""
+
+    @pytest.fixture(autouse=True)
+    def configured(self, mocker, redis):
+        mocker.patch.object(ph, "_client", None)
+        mocker.patch.object(ph, "_init_attempted", False)
+        mocker.patch.object(ph, "_shut_down", False)
+        mocker.patch.object(ph, "_definition_cache", None)
+        mocker.patch.object(ph.settings.secrets, "posthog_api_key", "phc_test")
+        mocker.patch.object(ph.settings.secrets, "posthog_secret_key", "phx_personal")
+        mocker.patch.object(
+            ph, "get_flag_definition_cache", return_value=provider(redis)
+        )
+        yield
+        ph.shutdown_posthog_flags()
+
+    @pytest.mark.parametrize("shared", [True, False])
+    def test_a_project_that_loaded_with_no_flags_has_none(
+        self, mocker, redis, fetches, shared
+    ):
+        if not shared:
+            mocker.patch.object(
+                ph,
+                "get_flag_definition_cache",
+                return_value=cache.MemoryFlagDefinitionCache(refresh_interval=REFRESH),
+            )
+        fetches.return_value = GetResponse(data={**DEFINITIONS, "flags": []}, etag="e2")
+
+        ph.initialize_posthog_flags()
+
+        assert ph.defined_flag_keys() == frozenset()
+
+    @pytest.mark.parametrize("status", [401, 402])
+    def test_definitions_a_failed_load_emptied_are_not_known(self, fetches, status):
+        ph.initialize_posthog_flags()
+        assert ph.defined_flag_keys() == frozenset({"shared-flag"})
+        fetches.side_effect = APIError(status, "rejected")
+
+        client = ph.get_flag_client()
+        assert client is not None
+        client.load_feature_flags()
+
+        assert (client.feature_flags, ph.defined_flag_keys()) == ([], None)
 
 
 @pytest.mark.skipif(
