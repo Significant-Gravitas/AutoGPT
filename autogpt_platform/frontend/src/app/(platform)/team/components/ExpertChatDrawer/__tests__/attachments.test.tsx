@@ -8,6 +8,7 @@ import {
   getGetV2GetSessionMockHandler200,
   getGetV2GetSessionResponseMock200,
   getGetV2ListSessionsMockHandler200,
+  getPostV2CancelSessionTaskMockHandler,
   getPostV2CreateSessionResponseMock200,
 } from "@/app/api/__generated__/endpoints/chat/chat.msw";
 import {
@@ -45,6 +46,8 @@ const NEW_TASK_SESSION_ID = "session-zara-new-task";
 const DISCONNECT_SESSION_ID = "session-zara-disconnect";
 const RECONNECT_SEND_SESSION_ID = "session-zara-reconnect-send";
 const CLOSED_SESSION_ID = "session-zara-closed";
+const SAME_CAPTION_SESSION_ID = "session-zara-same-caption";
+const STOP_SESSION_ID = "session-zara-stop";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -376,6 +379,91 @@ describe("ExpertChatDrawer attachments", () => {
       message: "and this",
       file_ids: [UPLOADED_FILE_ID],
     });
+  });
+
+  test("sends a file held mid-reply even when its caption repeats the last message", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const firstReply = createStreamHold(3);
+    server.use(
+      existingThreadList(SAME_CAPTION_SESSION_ID),
+      sessionHandler(SAME_CAPTION_SESSION_ID),
+      uploadHandler(recorder),
+      pendingHandler(recorder, SAME_CAPTION_SESSION_ID),
+      streamHandler(recorder, SAME_CAPTION_SESSION_ID, [firstReply.hold]),
+    );
+
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+    const input = await enabledComposer();
+    await user.type(input, "summarize this{Enter}");
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    await screen.findByRole("button", { name: /Stop/ });
+
+    await attachLocalFile(user);
+    await user.type(input, "summarize this");
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(recorder.uploadSessionIds).toEqual([SAME_CAPTION_SESSION_ID]),
+    );
+
+    firstReply.release();
+
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(2));
+    expect(recorder.streamBodies[1]).toMatchObject({
+      message: "summarize this",
+      file_ids: [UPLOADED_FILE_ID],
+    });
+  });
+
+  test("gives a follow-up waiting on the reply back when the user stops the reply", async () => {
+    const user = userEvent.setup();
+    const recorder = newRecorder();
+    const firstReply = createStreamHold(3);
+    let cancels = 0;
+    server.use(
+      existingThreadList(STOP_SESSION_ID),
+      sessionHandler(STOP_SESSION_ID),
+      uploadHandler(recorder),
+      pendingHandler(recorder, STOP_SESSION_ID),
+      streamHandler(recorder, STOP_SESSION_ID, [firstReply.hold]),
+      getPostV2CancelSessionTaskMockHandler(() => {
+        cancels += 1;
+        return { cancelled: true };
+      }),
+    );
+
+    render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
+
+    const input = await enabledComposer();
+    await user.type(input, "hello{Enter}");
+    await waitFor(() => expect(recorder.streamBodies.length).toBe(1));
+    await attachLocalFile(user);
+    await user.type(input, "and this");
+    fireEvent.click(screen.getByRole("button", { name: "Queue message" }));
+    await waitFor(() =>
+      expect(recorder.uploadSessionIds).toEqual([STOP_SESSION_ID]),
+    );
+
+    const stop = await screen.findByRole("button", { name: /Stop/ });
+    await waitFor(
+      () => expect((stop as HTMLButtonElement).disabled).toBe(false),
+      {
+        timeout: 2000,
+      },
+    );
+    fireEvent.click(stop);
+
+    await waitFor(() => expect(cancels).toBe(1));
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText("Message Zara…") as HTMLTextAreaElement)
+          .value,
+      ).toBe("and this"),
+    );
+    expect(screen.queryByTestId("pending-upload-message")).toBeNull();
+    expect(recorder.streamBodies.length).toBe(1);
+    expect(recorder.pendingPosts).toBe(0);
   });
 
   test("gives a follow-up waiting on the reply back when the user starts a new task", async () => {

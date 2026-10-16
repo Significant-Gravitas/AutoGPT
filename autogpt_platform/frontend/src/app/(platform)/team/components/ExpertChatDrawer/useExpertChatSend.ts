@@ -21,6 +21,7 @@ interface Args {
   isReconnecting: boolean;
   isFinishProbing: boolean;
   sendMessage: (message: SendInput) => Promise<void>;
+  stop: () => Promise<void>;
 }
 
 /**
@@ -36,6 +37,7 @@ export function useExpertChatSend({
   isReconnecting,
   isFinishProbing,
   sendMessage,
+  stop,
 }: Args) {
   const [heldMessage, setHeldMessage] = useState<OutgoingMessage | null>(null);
   const sessionIdRef = useRef(sessionId);
@@ -52,6 +54,9 @@ export function useExpertChatSend({
   isSettledRef.current = isSettled;
   const { waitUntilSettled } = useSettleGate(isSettled);
   const nextCommit = useNextCommit();
+  // Bumped by every Stop. The backend drops the follow-ups it buffered when
+  // a reply is cancelled, so one held here for the reply drops with them.
+  const stopCountRef = useRef(0);
   const placeholder = useCopilotStreamStore((s) =>
     sessionId ? (s.pendingUploadSends[sessionId] ?? null) : null,
   );
@@ -65,6 +70,11 @@ export function useExpertChatSend({
     setHeldMessage((current) =>
       !message || current === message ? null : current,
     );
+  }
+
+  function stopReply() {
+    stopCountRef.current += 1;
+    return stop();
   }
 
   function latestSendMessage(input: SendInput) {
@@ -84,7 +94,13 @@ export function useExpertChatSend({
    *  uploads outlived its own thread goes back to the composer instead. */
   function isStillShown(targetSessionId: string, message: OutgoingMessage) {
     if (sessionIdRef.current === targetSessionId) return true;
-    returnToComposer(message);
+    returnToComposer(message, "new-task");
+    return false;
+  }
+
+  function wasNotStopped(stopCount: number, message: OutgoingMessage) {
+    if (stopCountRef.current === stopCount) return true;
+    returnToComposer(message, "stopped");
     return false;
   }
 
@@ -96,6 +112,7 @@ export function useExpertChatSend({
    * while it reconnects without saying so to its caller.
    */
   function send(targetSessionId: string, message: OutgoingMessage) {
+    const stopCount = stopCountRef.current;
     const sent = sendWithAttachments({
       sessionId: targetSessionId,
       message,
@@ -104,7 +121,8 @@ export function useExpertChatSend({
         ? async () =>
             isStillShown(targetSessionId, message) &&
             (await waitForReplyToEnd()) &&
-            isStillShown(targetSessionId, message)
+            isStillShown(targetSessionId, message) &&
+            wasNotStopped(stopCount, message)
         : undefined,
     });
     // The send above put the message on screen in this same tick, as the
@@ -119,18 +137,27 @@ export function useExpertChatSend({
     hold,
     release,
     send,
+    stop: stopReply,
   };
 }
 
-/** The user started a new task while the message's files uploaded or it
- *  waited on the reply. */
-function returnToComposer(message: OutgoingMessage) {
+const UNSENT_BECAUSE = {
+  "new-task": "You started a new task before it went out.",
+  stopped: "You stopped the reply before it went out.",
+};
+
+/** The user started a new task, or stopped the reply, while the message's
+ *  files uploaded or it waited on the reply. */
+function returnToComposer(
+  message: OutgoingMessage,
+  reason: keyof typeof UNSENT_BECAUSE,
+) {
   if (message.text) useCopilotUIStore.getState().restoreDraft(message.text);
   toast({
     title: "Message not sent",
     description: message.text
-      ? "You started a new task before it went out. Its text is back in the composer; attach the files again."
-      : "You started a new task before it went out. Attach the files again to send them.",
+      ? `${UNSENT_BECAUSE[reason]} Its text is back in the composer; attach the files again.`
+      : `${UNSENT_BECAUSE[reason]} Attach the files again to send them.`,
   });
 }
 

@@ -203,7 +203,7 @@ export function useExpertChatDrawer({
     messages,
     setMessages,
     sendMessage,
-    stop,
+    stop: stopStream,
     status,
     error,
     isReconnecting,
@@ -216,12 +216,13 @@ export function useExpertChatDrawer({
     refetchSession: sessionQuery.refetch,
     copilotModel: undefined,
   });
-  const { pendingSend, hold, release, send } = useExpertChatSend({
+  const { pendingSend, hold, release, send, stop } = useExpertChatSend({
     sessionId,
     status,
     isReconnecting,
     isFinishProbing,
     sendMessage,
+    stop: stopStream,
   });
 
   const hasAssistantReply = messages.some(
