@@ -377,8 +377,7 @@ class TestPostHogBackend:
     async def test_a_dev_only_rollout_evaluates_in_process(
         self, mocker, user_context, app_env, expected
     ):
-        """Dev reads prod's definitions; a release condition on ``environment``
-        is how a flag goes out to dev alone."""
+        """A release condition on ``environment`` decides in process, per app env."""
         use_backend(mocker, FeatureFlagBackend.POSTHOG)
         mocker.patch.object(ff.settings.config, "app_env", app_env)
         posthog_client = _posthog_rolled_out_to_dev_only()
