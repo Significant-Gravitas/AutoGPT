@@ -292,7 +292,10 @@ def initialize_launchdarkly() -> None:
     )
 
     if not sdk_key:
-        logger.warning("LaunchDarkly SDK key not configured")
+        logger.warning(
+            "LaunchDarkly SDK key not configured; every LaunchDarkly flag read "
+            "will use its default"
+        )
         return
 
     config = Config(sdk_key)
@@ -684,6 +687,12 @@ async def _evaluate_launchdarkly(
     client is not on its own enough: the context lookup is a database read,
     so a live client can still fail to produce a value.
     """
+    if not is_configured():
+        # No SDK key means no client to ask. initialize_launchdarkly() says so
+        # once when the service starts; a warning on every read instead buried
+        # a self-hosted install's logs at ~24 lines a minute.
+        return default, False
+
     try:
         client = get_client()
 

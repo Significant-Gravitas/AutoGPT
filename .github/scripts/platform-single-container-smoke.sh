@@ -601,7 +601,7 @@ SELECT current_user = 'autogpt_frontend'
   AND NOT rolinherit
   AND NOT rolreplication
   AND NOT rolbypassrls
-  AND rolconnlimit = 10
+  AND rolconnlimit = 20
 FROM pg_catalog.pg_roles
 WHERE rolname = current_user;
 

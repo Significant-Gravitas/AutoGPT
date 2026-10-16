@@ -5,7 +5,9 @@ import {
   VERCEL_COUNTRY_HEADER_NAME,
 } from "@/lib/constants";
 import { getCountryToken } from "@/lib/auth/country-token";
+import { authTokenUnavailableResponse } from "@/lib/auth/server/authTokenUnavailableResponse";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { environment } from "@/services/environment";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -304,6 +306,13 @@ async function handler(
       headers: responseHeaders,
     });
   } catch (error) {
+    if (error instanceof AuthTokenUnavailableError) {
+      const response = authTokenUnavailableResponse(error);
+      if (isPrivateMedia) {
+        hardenPrivateMediaResponseHeaders(response.headers);
+      }
+      return response;
+    }
     const timedOut = isTimeoutError(error);
     const errorMessage = timedOut
       ? "Proxy request timed out"

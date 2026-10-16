@@ -301,6 +301,9 @@ async def test_the_recommended_rule_fails_closed_through_the_real_evaluator(
         with patch.object(
             trials, "is_feature_enabled", AsyncMock(return_value=True)
         ), patch("backend.util.feature_flag.ldclient.get", return_value=client), patch(
+            "backend.util.feature_flag.settings.secrets.launch_darkly_sdk_key",
+            "sdk-test",
+        ), patch(
             "backend.util.feature_flag._fetch_user_context_status",
             AsyncMock(
                 return_value=(Context.builder("user-1").kind("user").build(), True)

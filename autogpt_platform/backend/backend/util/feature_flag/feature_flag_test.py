@@ -23,17 +23,18 @@ from backend.util.feature_flag import (
     evaluate_feature_flag,
     feature_flag,
     get_client,
+    get_feature_flag_value,
     is_feature_enabled,
     mock_flag_variation,
     shutdown_launchdarkly,
 )
-from backend.util.settings import AppEnvironment
+from backend.util.settings import AppEnvironment, FeatureFlagBackend
 
 
 @pytest.fixture
-def ld_client(mocker):
+def ld_client(mocker, serve_launchdarkly):
     client = mocker.Mock(spec=LDClient)
-    mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+    serve_launchdarkly(client)
     client.is_initialized.return_value = True
     return client
 
@@ -859,6 +860,68 @@ class TestShutdown:
         assert warn.call_count == 1
 
 
+class TestUnconfiguredLaunchDarkly:
+    """A self-hosted install has no SDK key: it says so once, then stays quiet."""
+
+    @pytest.fixture(autouse=True)
+    def unconfigured(self, mocker, monkeypatch: pytest.MonkeyPatch):
+        initialized = feature_flag_module._is_initialized
+        attempted = feature_flag_module._init_attempted
+        feature_flag_module._is_initialized = False
+        feature_flag_module._init_attempted = False
+        mocker.patch.object(
+            feature_flag_module.settings.secrets, "launch_darkly_sdk_key", ""
+        )
+        mocker.patch.object(
+            feature_flag_module.settings.config,
+            "feature_flag_backend",
+            FeatureFlagBackend.LAUNCHDARKLY,
+        )
+        for name in ("FORCE_FLAG_HIRE_EXPERTS", "NEXT_PUBLIC_FORCE_FLAG_HIRE_EXPERTS"):
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv("FORCE_ALL_FLAGS", raising=False)
+        monkeypatch.delenv("NEXT_PUBLIC_FORCE_ALL_FLAGS", raising=False)
+        yield
+        feature_flag_module._is_initialized = initialized
+        feature_flag_module._init_attempted = attempted
+
+    @pytest.mark.asyncio
+    async def test_flag_reads_after_startup_log_no_warnings(self, mocker, caplog):
+        # What the SDK does when set_config never ran, as on every install
+        # without a key. A read that reached it logged a warning, ~24 a minute
+        # on an appliance with one user (W51 F10).
+        get_ldclient = mocker.patch(
+            "backend.util.feature_flag.ldclient.get",
+            side_effect=Exception("set_config was not called"),
+        )
+        context_lookup = mocker.patch(
+            "backend.util.feature_flag._fetch_user_context_status"
+        )
+
+        with caplog.at_level(logging.WARNING, logger=feature_flag_module.__name__):
+            feature_flag_module.initialize_feature_flags()
+            for _ in range(5):
+                assert await is_feature_enabled(Flag.HIRE_EXPERTS, "u-1", True)
+                assert await evaluate_feature_flag(Flag.HIRE_EXPERTS, "u-1") == (
+                    False,
+                    False,
+                )
+                assert (
+                    await get_feature_flag_value("copilot-model-routing", "u-1", "x")
+                    == "x"
+                )
+
+        warnings = [
+            record.getMessage()
+            for record in caplog.records
+            if record.levelno >= logging.WARNING
+        ]
+        assert len(warnings) == 1, warnings
+        assert "LaunchDarkly SDK key not configured" in warnings[0]
+        get_ldclient.assert_not_called()
+        context_lookup.assert_not_called()
+
+
 class TestEvaluateFeatureFlag:
     """Callers that delete state on a False need to know it was a real answer."""
 
@@ -987,7 +1050,7 @@ class TestRequestAttributes:
         "country,offered", [("US", True), ("BR", True), ("IN", False), (None, False)]
     )
     async def test_a_real_country_rule_decides_the_offer(
-        self, mocker, country, offered
+        self, mocker, serve_launchdarkly, country, offered
     ):
         """End to end through the real SDK evaluator, not a mocked variation.
 
@@ -1006,7 +1069,7 @@ class TestRequestAttributes:
         client = LDClient(
             Config("sdk-test", update_processor_class=td, send_events=False)
         )
-        mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
+        serve_launchdarkly(client)
         mocker.patch(
             "backend.util.feature_flag._fetch_user_context_status",
             return_value=(Context.builder("user-1").kind("user").build(), True),

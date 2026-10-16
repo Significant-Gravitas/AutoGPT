@@ -214,9 +214,12 @@ BEGIN
 END
 $role$;
 
+-- Twice the frontend's auth pool (frontend/src/lib/auth/auth-db-pool.ts):
+-- Postgres counts a connection until its backend exits, and a limit equal
+-- to the pool left no headroom for that.
 ALTER ROLE autogpt_frontend
   LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS
-  CONNECTION LIMIT 10 PASSWORD NULL;
+  CONNECTION LIMIT 20 PASSWORD NULL;
 ALTER ROLE autogpt_frontend RESET ALL;
 ALTER ROLE autogpt_frontend IN DATABASE postgres RESET ALL;
 

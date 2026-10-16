@@ -1,5 +1,6 @@
 import {
   ApiError,
+  AuthTokenUnavailableError,
   createRequestHeaders,
   getServerAuthToken,
 } from "@/lib/autogpt-server-api/helpers";
@@ -109,6 +110,8 @@ export const customMutator = async <
       const authHeaders = createRequestHeaders(token, !!data, contentType);
       headers = { ...headers, ...authHeaders };
     } catch (error) {
+      // A signed-in request must not go out without its token.
+      if (error instanceof AuthTokenUnavailableError) throw error;
       console.warn("Failed to get server auth token:", error);
     }
   }

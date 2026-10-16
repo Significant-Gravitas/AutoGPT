@@ -12,8 +12,8 @@ vi.mock("@/services/environment", () => ({
   },
 }));
 
-vi.mock("@/lib/autogpt-server-api/helpers", () => ({
-  ApiError: class ApiError extends Error {
+vi.mock("@/lib/autogpt-server-api/helpers", () => {
+  class ApiError extends Error {
     constructor(
       message: string,
       public status: number,
@@ -21,10 +21,20 @@ vi.mock("@/lib/autogpt-server-api/helpers", () => ({
     ) {
       super(message);
     }
-  },
-  createRequestHeaders: vi.fn(() => ({})),
-  getServerAuthToken: vi.fn(),
-}));
+  }
+  return {
+    ApiError,
+    AuthTokenUnavailableError: class AuthTokenUnavailableError extends ApiError {
+      constructor() {
+        super("Could not verify your sign-in", 503, {
+          code: "auth_token_unavailable",
+        });
+      }
+    },
+    createRequestHeaders: vi.fn(() => ({})),
+    getServerAuthToken: vi.fn(),
+  };
+});
 
 vi.mock("@sentry/nextjs", () => ({
   getTraceData: vi.fn(() => ({})),
@@ -33,6 +43,10 @@ vi.mock("@sentry/nextjs", () => ({
 }));
 
 import { customMutator } from "../custom-mutator";
+import {
+  AuthTokenUnavailableError,
+  getServerAuthToken,
+} from "@/lib/autogpt-server-api/helpers";
 import { getSystemHeaders } from "@/lib/impersonation";
 import { environment } from "@/services/environment";
 import { IMPERSONATION_HEADER_NAME } from "@/lib/constants";
@@ -400,5 +414,25 @@ describe("customMutator — response dates", () => {
     expect(JSON.parse(JSON.stringify(res.data.inputs))).toEqual(
       execution.inputs,
     );
+  });
+});
+
+describe("customMutator — server-side auth", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsClientSide.mockReturnValue(false);
+    vi.mocked(environment.isServerSide).mockReturnValue(true);
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  it("fails rather than calling the backend without a signed-in user's token", async () => {
+    vi.mocked(getServerAuthToken).mockRejectedValue(
+      new AuthTokenUnavailableError(),
+    );
+
+    await expect(
+      customMutator("/api/library/agents", { method: "GET" }),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -17,6 +17,7 @@ vi.mock("@/services/environment", () => ({
 
 import { getCountryToken } from "@/lib/auth/country-token";
 import { getServerAuthToken } from "@/lib/auth/server/getServerAuthToken";
+import { AuthTokenUnavailableError } from "@/lib/autogpt-server-api/helpers";
 import { GET, POST } from "../route";
 
 const PRIVATE_IMAGE_HEADER_KEYS = [
@@ -309,6 +310,23 @@ describe("proxy route — handler pass-through", () => {
 
     const sentHeaders = vi.mocked(fetch).mock.calls[0][1]!.headers as Headers;
     expect(sentHeaders.get("authorization")).toBeNull();
+  });
+
+  it("answers a retryable 503 instead of forwarding a session it could not mint a token for", async () => {
+    // Forwarded without a token, the request got a 401 from the backend, which
+    // the browser reads as a logout (W51 N2: the auth database had run out of
+    // connections for the frontend role).
+    vi.mocked(getServerAuthToken).mockRejectedValueOnce(
+      new AuthTokenUnavailableError(),
+    );
+
+    const req = new NextRequest("https://app.test/api/proxy/api/v1/items");
+    const res = await GET(req, makeParams(["api", "v1", "items"]));
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(res.status).toBe(503);
+    expect(res.headers.get("retry-after")).toBe("2");
+    expect(await res.json()).toMatchObject({ code: "auth_token_unavailable" });
   });
 
   it("returns 502 with error detail when backend fetch throws (network error)", async () => {

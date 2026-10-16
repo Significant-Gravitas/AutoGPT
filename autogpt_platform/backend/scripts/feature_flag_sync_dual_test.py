@@ -53,6 +53,8 @@ async def test_every_ported_flag_serves_launchdarklys_answer(
     monkeypatch.setattr(
         ff.settings.config, "feature_flag_backend", FeatureFlagBackend.DUAL
     )
+    # A live client has an SDK key; without one, a read never asks it.
+    monkeypatch.setattr(ff.settings.secrets, "launch_darkly_sdk_key", "sdk-test")
     monkeypatch.setattr(ff, "get_client", lambda: ld)
     monkeypatch.setattr(ph, "get_flag_client", lambda: posthog_client)
     monkeypatch.setattr(db_accessors, "user_db", _AuthTable)

@@ -38,6 +38,26 @@ export class ApiError<R = any> extends Error {
   }
 }
 
+export const AUTH_TOKEN_UNAVAILABLE = "auth_token_unavailable";
+
+/**
+ * A signed-in request whose backend token could not be minted, because the
+ * auth database refused or timed out. Unlike a missing or expired session it
+ * is not "signed out": the request fails with a retryable 503 instead of
+ * reaching the backend without a token, whose 401 would read as a logout.
+ */
+export class AuthTokenUnavailableError extends ApiError<{
+  detail: string;
+  code: typeof AUTH_TOKEN_UNAVAILABLE;
+}> {
+  constructor(options?: { cause?: unknown }) {
+    const message = "Could not verify your sign-in. Try again in a moment.";
+    super(message, 503, { detail: message, code: AUTH_TOKEN_UNAVAILABLE });
+    this.name = "AuthTokenUnavailableError";
+    this.cause = options?.cause;
+  }
+}
+
 export function buildRequestUrl(
   baseUrl: string,
   path: string,
@@ -130,6 +150,9 @@ export async function handleFetchError(response: Response): Promise<ApiError> {
  * lifetime after logout or `revokeSessionsOnPasswordReset` deleted the session
  * row, since the backend only verifies the signature and never session
  * existence. Going back to /api/auth/token each render re-validates it.
+ *
+ * Returns null only when there is no session to send. A session whose token
+ * cannot be minted throws AuthTokenUnavailableError instead.
  */
 export const getServerAuthToken = cache(async (): Promise<string | null> => {
   if (environment.isClientSide()) {
@@ -138,6 +161,7 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
     return null;
   }
 
+  let cookieHeader: string;
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const headersModule = require("next/headers");
@@ -153,16 +177,22 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
       );
     if (!sessionCookie) return null;
 
-    const cookieHeader = cookieStore
+    cookieHeader = cookieStore
       .getAll()
       .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
       .join("; ");
+  } catch (error) {
+    // Outside a request (prerendering) there is no session to send.
+    console.error("Failed to get auth token:", error);
+    return null;
+  }
 
-    const baseURL =
-      process.env.BETTER_AUTH_INTERNAL_URL ||
-      process.env.BETTER_AUTH_URL ||
-      process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
-      "http://localhost:3000";
+  const baseURL =
+    process.env.BETTER_AUTH_INTERNAL_URL ||
+    process.env.BETTER_AUTH_URL ||
+    process.env.NEXT_PUBLIC_FRONTEND_BASE_URL ||
+    "http://localhost:3000";
+  try {
     // This is a request from the Next server back to itself, which the route
     // handlers avoid by minting in-process (lib/auth/server/getServerAuthToken).
     // This module is in the client bundle graph and so cannot import `auth`
@@ -174,13 +204,17 @@ export const getServerAuthToken = cache(async (): Promise<string | null> => {
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
-    if (!response.ok) return null;
+    // Better Auth's answer to a missing, expired or revoked session.
+    if (response.status === 401) return null;
+    if (!response.ok) {
+      throw new Error(`/api/auth/token answered ${response.status}`);
+    }
 
     const { token } = (await response.json()) as { token?: string };
     return token ?? null;
   } catch (error) {
     console.error("Failed to get auth token:", error);
-    return null;
+    throw new AuthTokenUnavailableError({ cause: error });
   }
 });
 

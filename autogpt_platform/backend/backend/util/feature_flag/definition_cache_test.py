@@ -405,6 +405,8 @@ class TestDefaultBackendIsUntouched:
 
     @pytest.fixture
     def ld_client(self, mocker):
+        # A live client has an SDK key; without one, a read never asks it.
+        mocker.patch.object(ff.settings.secrets, "launch_darkly_sdk_key", "sdk-test")
         client = mocker.Mock(spec=LDClient)
         mocker.patch("backend.util.feature_flag.ldclient.get", return_value=client)
         client.is_initialized.return_value = True
