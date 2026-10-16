@@ -325,12 +325,12 @@ describe("an expert's AI connection", () => {
     expect(await within(section).findByText(/cannot run tools/)).toBeDefined();
   });
 
-  it("lives in the Settings tab rather than Basics", async () => {
+  it("lives in the Settings tab rather than Overview", async () => {
     render(<ExpertDetailPage />);
 
-    const basics = await screen.findByRole("tabpanel", { name: "Basics" });
+    const overview = await screen.findByRole("tabpanel", { name: "Overview" });
     expect(
-      within(basics).queryByRole("region", { name: "Maria AI connection" }),
+      within(overview).queryByRole("region", { name: "Maria AI connection" }),
     ).toBeNull();
 
     await openTab("Settings");
