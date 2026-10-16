@@ -17,6 +17,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useCopilotUIStore } from "../../../store";
+import { useChatSession } from "../../../useChatSession";
 import { useSendMessage } from "../../../useSendMessage";
 import { ChatSidebar } from "../ChatSidebar";
 
@@ -274,6 +275,101 @@ describe("ChatSidebar — delete flow", () => {
     releaseDelete();
     await vi.waitFor(() => expect(deleted).toBe(true));
   });
+
+  it.each([
+    ["while the delete is pending", "pending"],
+    ["after the delete has returned", "deleted"],
+  ])(
+    "does not reopen a deleted expert chat when the expert's latest-thread lookup answers %s",
+    async (_label, answerExpertLookup) => {
+      const expertId = "expert-maria";
+      const expertChat = { ...sessions[0], expert_id: expertId };
+      let releaseDelete = () => {};
+      const deleteHeld = new Promise<void>((resolve) => {
+        releaseDelete = resolve;
+      });
+      let releaseExpertLookup = () => {};
+      const expertLookupHeld = new Promise<void>((resolve) => {
+        releaseExpertLookup = resolve;
+      });
+      let deleted = false;
+      server.use(
+        getGetV2ListSessionsMockHandler200(async ({ request }) => {
+          if (new URL(request.url).searchParams.has("expert_id")) {
+            if (answerExpertLookup === "deleted") await expertLookupHeld;
+            return { sessions: [expertChat], total: 1 };
+          }
+          return deleted
+            ? { sessions: [sessions[1]], total: 1 }
+            : { sessions: [expertChat, sessions[1]], total: 2 };
+        }),
+        getDeleteV2DeleteSessionMockHandler(async () => {
+          await deleteHeld;
+          deleted = true;
+        }),
+      );
+      useCopilotUIStore.setState({ adoptedExpertThreads: new Set<string>() });
+      const sent: (string | null)[] = [];
+      const createSession = vi.fn();
+      const ExpertChatWrapper = withNuqsTestingAdapter({
+        searchParams: `?sessionId=s1&expertId=${expertId}`,
+        hasMemory: true,
+      });
+      function ExpertChat() {
+        const [expertIdParam] = useQueryState("expertId", parseAsString);
+        const { sessionId } = useChatSession({ expertId: expertIdParam });
+        const { onSend } = useSendMessage({
+          sessionId,
+          createSession,
+          isUserStoppingRef: { current: false },
+          sendMessage: async () => {
+            sent.push(sessionId);
+          },
+        });
+        return (
+          <>
+            <span data-testid="open-session">{sessionId ?? "none"}</span>
+            <button onClick={() => onSend("New task")}>Send</button>
+          </>
+        );
+      }
+      function KeyedChatHost() {
+        const [sessionId] = useQueryState("sessionId", parseAsString);
+        return <ExpertChat key={sessionId ?? "new"} />;
+      }
+      render(
+        <ExpertChatWrapper>
+          <SidebarProvider>
+            <ChatSidebar />
+          </SidebarProvider>
+          <KeyedChatHost />
+        </ExpertChatWrapper>,
+      );
+
+      await openDeleteDialogFor("Active chat");
+      fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+      await vi.waitFor(() => {
+        expect(screen.getByTestId("open-session").textContent).toBe("none");
+      });
+
+      if (answerExpertLookup === "pending") {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        expect(deleted).toBe(false);
+        expect(screen.getByTestId("open-session").textContent).toBe("none");
+        fireEvent.click(screen.getByRole("button", { name: "Send" }));
+        await vi.waitFor(() => expect(createSession).toHaveBeenCalled());
+      }
+
+      releaseDelete();
+      await vi.waitFor(() => expect(deleted).toBe(true));
+      releaseExpertLookup();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      expect(screen.getByTestId("open-session").textContent).toBe("none");
+      expect(screen.queryByText("Active chat")).toBeNull();
+      expect(sent).not.toContain("s1");
+    },
+  );
 
   it("puts the chat back and toasts when the delete fails, without waiting for a refetch", async () => {
     let holdListRequests = false;
