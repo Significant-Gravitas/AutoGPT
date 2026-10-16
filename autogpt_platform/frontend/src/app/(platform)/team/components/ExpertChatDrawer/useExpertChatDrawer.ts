@@ -208,7 +208,7 @@ export function useExpertChatDrawer({
       refetchSession: sessionQuery.refetch,
       copilotModel: undefined,
     });
-  const { pendingSend, hold, release, sendNow, sendAfterReply } =
+  const { pendingSend, hold, release, reset, sendNow, sendAfterReply } =
     useExpertChatSend({ sessionId, status, sendMessage });
 
   const hasAssistantReply = messages.some(
@@ -266,11 +266,11 @@ export function useExpertChatDrawer({
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
     takeQueued()?.reject(new Error("The chat was reset"));
-    release();
+    reset();
     kickoffAttemptRef.current = null;
     setSeedToSend(seedPrompt);
     setSuppressOnboarding(!!seedPrompt);
-  }, [threadKey, seedPrompt, setMessages, release]);
+  }, [threadKey, seedPrompt, setMessages, reset]);
 
   useEffect(() => {
     if (!seedToSend) return;
@@ -300,7 +300,7 @@ export function useExpertChatDrawer({
     setKickoffCheckedFor(null);
     pendingPromptRef.current = null;
     takeQueued()?.reject(new Error("The chat was reset"));
-    release();
+    reset();
     kickoffAttemptRef.current = null;
   }
 
@@ -444,12 +444,9 @@ export function useExpertChatDrawer({
     }
     const isInFlight = status === "streaming" || status === "submitted";
     if (isInFlight && hasAttachments(message)) {
-      const generation = generationRef.current;
-      void sendAfterReply(
-        sessionId,
-        message,
-        () => generation === generationRef.current,
-      ).catch((err: unknown) => recoverUnsentMessage(message, err));
+      void sendAfterReply(sessionId, message).catch((err: unknown) =>
+        recoverUnsentMessage(message, err),
+      );
       return;
     }
     if (isInFlight) {

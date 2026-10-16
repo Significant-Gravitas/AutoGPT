@@ -77,7 +77,8 @@ export function validateAttachments(message: OutgoingMessage): boolean {
  * with every attachment as a file part. While that runs, the session's
  * placeholder bubble shows the message with each file's own upload status.
  * A file that fails to upload holds the send until the user retries it or
- * removes it (`retryPendingUpload` / `removePendingUpload`).
+ * removes it (`retryPendingUpload` / `removePendingUpload`). Clearing the
+ * placeholder cancels the send: once it is gone the message never goes out.
  */
 export async function sendWithAttachments({
   sessionId,
@@ -112,13 +113,14 @@ export async function sendWithAttachments({
         uploadUntilSettled(sessionId, pending, localAttachments[i].id, file),
       ),
     );
-    if (uploads.includes(ABANDONED)) return;
+    if (uploads.includes(ABANDONED) || !isPending(sessionId, pending)) return;
     const sentParts = [
       ...parts,
       ...uploads.filter((part): part is FileUIPart => part !== null),
     ];
     if (!text && sentParts.length === 0) return;
     if (waitUntilReady && !(await waitUntilReady())) return;
+    if (!isPending(sessionId, pending)) return;
     send = sendMessage(messageInput(text, sentParts, metadata));
   } finally {
     // `sendMessage` pushes the user bubble into `messages` synchronously,
@@ -227,13 +229,10 @@ function waitForChoice(
   pending: PendingUploadSend,
   attachmentId: string,
 ) {
-  const isShown = () =>
-    useCopilotStreamStore.getState().pendingUploadSends[sessionId]?.id ===
-    pending.id;
-  if (!isShown()) return Promise.resolve(ABANDONED);
+  if (!isPending(sessionId, pending)) return Promise.resolve(ABANDONED);
   return new Promise<FailedUploadChoice | typeof ABANDONED>((resolve) => {
     const unsubscribe = useCopilotStreamStore.subscribe(() => {
-      if (!isShown()) settle(ABANDONED);
+      if (!isPending(sessionId, pending)) settle(ABANDONED);
     });
     function settle(choice: FailedUploadChoice | typeof ABANDONED) {
       failedUploads.delete(attachmentId);
@@ -242,6 +241,13 @@ function waitForChoice(
     }
     failedUploads.set(attachmentId, settle);
   });
+}
+
+function isPending(sessionId: string, pending: PendingUploadSend) {
+  return (
+    useCopilotStreamStore.getState().pendingUploadSends[sessionId]?.id ===
+    pending.id
+  );
 }
 
 async function uploadFile(file: File, sessionId: string) {

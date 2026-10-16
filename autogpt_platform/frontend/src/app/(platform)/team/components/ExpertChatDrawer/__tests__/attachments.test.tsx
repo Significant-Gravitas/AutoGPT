@@ -41,6 +41,8 @@ const KICKOFF_SESSION_ID = "session-zara-kickoff";
 const RESET_SESSION_ID = "session-zara-reset";
 const RETRY_SESSION_ID = "session-zara-retry";
 const REMOVE_SESSION_ID = "session-zara-remove";
+const LEFT_SESSION_ID = "session-zara-left";
+const NEW_SESSION_ID = "session-zara-new";
 const UPLOADED_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000aa";
 const WORKSPACE_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000bb";
 
@@ -79,6 +81,22 @@ vi.mock("@/services/feature-flags/use-get-flag", async (importActual) => {
     useGetFlag: (flag: Parameters<typeof actual.useGetFlag>[0]) => {
       const value = actual.useGetFlag(flag);
       return flag === actual.Flag.CHAT_WORKSPACE_FILES ? true : value;
+    },
+  };
+});
+
+const toastTitles = vi.hoisted(() => [] as unknown[]);
+
+vi.mock("@/components/molecules/Toast/use-toast", async (importActual) => {
+  const actual =
+    await importActual<
+      typeof import("@/components/molecules/Toast/use-toast")
+    >();
+  return {
+    ...actual,
+    toast: (...args: Parameters<typeof actual.toast>) => {
+      toastTitles.push(args[0].title);
+      return actual.toast(...args);
     },
   };
 });
@@ -130,8 +148,12 @@ function uploadHandler(recorder: Recorder) {
 
 const NOTES_FILE_ID = "7a1c0f7e-9f30-4a3b-a6a1-0000000000cc";
 
-/** Fails the first upload of `notes.pdf`; every other upload lands. */
-function uploadFailingNotesOnce(uploadedNames: string[]) {
+/** Fails the first upload of `notes.pdf`; every other upload lands, the
+ *  retried `notes.pdf` once `retryLands` resolves. */
+function uploadFailingNotesOnce(
+  uploadedNames: string[],
+  retryLands?: Promise<void>,
+) {
   let hasFailed = false;
   return http.post(
     `${TEST_BACKEND_BASE_URL}/api/workspace/files/upload`,
@@ -142,6 +164,7 @@ function uploadFailingNotesOnce(uploadedNames: string[]) {
         hasFailed = true;
         return HttpResponse.json({ detail: "Upload failed" }, { status: 500 });
       }
+      if (file.name === "notes.pdf") await retryLands;
       return HttpResponse.json({
         file_id: file.name === "notes.pdf" ? NOTES_FILE_ID : UPLOADED_FILE_ID,
         name: file.name,
@@ -233,6 +256,7 @@ function pendingBubble() {
 }
 
 beforeEach(() => {
+  toastTitles.length = 0;
   window.localStorage.clear();
   useCopilotStreamStore.getState().resetAll();
   server.use(backendSocket.addEventListener("connection", () => {}));
@@ -474,12 +498,13 @@ describe("ExpertChatDrawer failed uploads", () => {
     sessionId: string,
     recorder: Recorder,
     uploadedNames: string[],
+    retryLands?: Promise<void>,
   ) {
     const user = userEvent.setup();
     server.use(
       existingThreadList(sessionId),
       sessionHandler(sessionId),
-      uploadFailingNotesOnce(uploadedNames),
+      uploadFailingNotesOnce(uploadedNames, retryLands),
       streamHandler(recorder, sessionId),
     );
     render(<ExpertChatDrawer target={ZARA} onClose={() => {}} />);
@@ -563,5 +588,91 @@ describe("ExpertChatDrawer failed uploads", () => {
     expect(uploadedNames.filter((name) => name === "notes.pdf")).toEqual([
       "notes.pdf",
     ]);
+  });
+
+  function startNewTaskIn(sessionId: string, recorder: Recorder) {
+    server.use(
+      http.post("/api/proxy/api/chat/sessions", () =>
+        HttpResponse.json(
+          getPostV2CreateSessionResponseMock200({ id: sessionId }),
+        ),
+      ),
+      sessionHandler(sessionId),
+      streamHandler(recorder, sessionId),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New task" }));
+  }
+
+  test("cancels a failed message when the user starts a new task, so it never reaches the new thread", async () => {
+    const leftRecorder = newRecorder();
+    const newRecorderForThread = newRecorder();
+    const uploadedNames: string[] = [];
+    const { user } = await sendPhotoAndNotes(
+      LEFT_SESSION_ID,
+      leftRecorder,
+      uploadedNames,
+    );
+
+    startNewTaskIn(NEW_SESSION_ID, newRecorderForThread);
+
+    const input = await enabledComposer();
+    await waitFor(() => expect(input.value).toBe("compare these"));
+    expect(screen.queryByTestId("pending-upload-message")).toBeNull();
+    expect(
+      useCopilotStreamStore.getState().pendingUploadSends[LEFT_SESSION_ID],
+    ).toBeUndefined();
+
+    await user.clear(input);
+    await user.type(input, "new thread message{Enter}");
+    await waitFor(() =>
+      expect(newRecorderForThread.streamBodies.length).toBe(1),
+    );
+    await screen.findByText("Reply 1");
+
+    expect(
+      newRecorderForThread.streamBodies.map((body) => body.message),
+    ).toEqual(["new thread message"]);
+    expect(leftRecorder.streamBodies).toEqual([]);
+    expect(uploadedNames.filter((name) => name === "notes.pdf")).toEqual([
+      "notes.pdf",
+    ]);
+    expect(toastTitles).toEqual(["Message not sent"]);
+  });
+
+  test("drops a retry still uploading when the user starts a new task", async () => {
+    const leftRecorder = newRecorder();
+    const newRecorderForThread = newRecorder();
+    const uploadedNames: string[] = [];
+    const retryLands = deferred();
+    const { user, failedCard } = await sendPhotoAndNotes(
+      LEFT_SESSION_ID,
+      leftRecorder,
+      uploadedNames,
+      retryLands.promise,
+    );
+
+    await user.click(
+      within(failedCard).getByRole("button", { name: "Retry notes.pdf" }),
+    );
+    await waitFor(() =>
+      expect(uploadedNames.filter((name) => name === "notes.pdf").length).toBe(
+        2,
+      ),
+    );
+    startNewTaskIn(NEW_SESSION_ID, newRecorderForThread);
+    const input = await enabledComposer();
+    await waitFor(() => expect(input.value).toBe("compare these"));
+
+    retryLands.resolve();
+
+    await waitFor(() =>
+      expect(
+        useCopilotStreamStore.getState().pendingUploadSends[LEFT_SESSION_ID],
+      ).toBeUndefined(),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(leftRecorder.streamBodies).toEqual([]);
+    expect(newRecorderForThread.streamBodies).toEqual([]);
+    expect(toastTitles).toEqual(["Message not sent"]);
   });
 });

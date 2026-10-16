@@ -36,6 +36,8 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
   } | null>(null);
   const sendMessageRef = useRef(sendMessage);
   sendMessageRef.current = sendMessage;
+  const sessionIdRef = useRef(sessionId);
+  sessionIdRef.current = sessionId;
   const { waitUntilSettled } = useSettleGate(
     status === "ready" || status === "error",
   );
@@ -50,15 +52,35 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
     );
   }
 
-  /** Without a message, drops whatever is held (the thread was reset). */
-  function release(message?: OutgoingMessage) {
-    setHeld((current) =>
-      !message || current?.message === message ? null : current,
-    );
+  function release(message: OutgoingMessage) {
+    setHeld((current) => (current?.message === message ? null : current));
   }
 
-  function latestSendMessage(input: SendInput) {
-    return sendMessageRef.current(input);
+  /**
+   * The thread was reset: drops the held message and cancels the one still
+   * on its way out of the thread being left, so it can never go out later,
+   * from a Retry or a finished upload, into whichever thread shows by then.
+   */
+  function reset() {
+    setHeld(null);
+    const leftSessionId = sessionIdRef.current;
+    if (!leftSessionId) return;
+    const store = useCopilotStreamStore.getState();
+    const unsent = store.pendingUploadSends[leftSessionId];
+    if (!unsent) return;
+    store.clearPendingUploadSend(leftSessionId, unsent);
+    returnToComposer(unsent.text);
+  }
+
+  /** Sends through the drawer's chat, but only while it still shows the
+   *  session the message was sent from. */
+  function sendInSession(targetSessionId: string) {
+    return async (input: SendInput) => {
+      if (sessionIdRef.current !== targetSessionId) {
+        throw new Error("The chat moved to another thread");
+      }
+      await sendMessageRef.current(input);
+    };
   }
 
   /** Resolves once the reply to the message has streamed. */
@@ -66,7 +88,7 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
     const sent = sendWithAttachments({
       sessionId: targetSessionId,
       message,
-      sendMessage: latestSendMessage,
+      sendMessage: sendInSession(targetSessionId),
     });
     // The send above put the message on screen in this same tick, as the
     // placeholder or as the user's bubble, so the held copy can go.
@@ -79,21 +101,12 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
    * transcript could not show them: a follow-up with files uploads them now
    * and goes out as the next turn once the reply in flight has ended.
    */
-  function sendAfterReply(
-    targetSessionId: string,
-    message: OutgoingMessage,
-    isStillCurrent: () => boolean,
-  ) {
+  function sendAfterReply(targetSessionId: string, message: OutgoingMessage) {
     return sendWithAttachments({
       sessionId: targetSessionId,
       message,
-      sendMessage: latestSendMessage,
-      waitUntilReady: async () => {
-        if (!(await waitUntilSettled())) return false;
-        if (isStillCurrent()) return true;
-        returnToComposer(message);
-        return false;
-      },
+      sendMessage: sendInSession(targetSessionId),
+      waitUntilReady: waitUntilSettled,
     });
   }
 
@@ -101,19 +114,21 @@ export function useExpertChatSend({ sessionId, status, sendMessage }: Args) {
     pendingSend: placeholder ?? held?.pending ?? null,
     hold,
     release,
+    reset,
     sendNow,
     sendAfterReply,
   };
 }
 
-/** The user started a new task while the message waited on the reply. */
-function returnToComposer(message: OutgoingMessage) {
-  if (message.text) useCopilotUIStore.getState().setInitialPrompt(message.text);
+/** Every message held in the drawer carries files, which cannot be put back
+ *  in the composer, so only its text comes back. */
+function returnToComposer(text: string) {
+  if (text) useCopilotUIStore.getState().setInitialPrompt(text);
   toast({
-    title: "Follow-up not sent",
-    description: message.text
-      ? "You started a new task before it could go out. It's back in the composer."
-      : "You started a new task before it could go out, so its files weren't sent.",
+    title: "Message not sent",
+    description: text
+      ? "You started a new task before it went out. Its text is back in the composer; attach the files again."
+      : "You started a new task before it went out, so its files weren't sent.",
   });
 }
 
