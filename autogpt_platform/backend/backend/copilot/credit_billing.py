@@ -16,9 +16,16 @@ A credit-billed turn:
   so its CLI backstop sits exactly on it;
 - runs on the SDK engine, the one that enforces a budget;
 - records its cost here rather than in the plan's daily and weekly windows;
-- is charged once when it ends: the cost it recorded, rounded up to whole
-  credits, never past its cap. A turn that ended without a result is charged
-  what it recorded too, through the same accounting as any other turn.
+- is charged as its cost lands: each whole credit as soon as the cost it
+  recorded reaches it, and the rest, rounded up to a whole credit, when the
+  turn ends. In all it pays the cost it recorded, rounded up, never past its
+  cap, and a process that dies mid-turn leaves under a credit of what it
+  recorded unpaid. A turn that ended without a result is charged what it
+  recorded too, through the same accounting as any other turn;
+- still owes what a debit failed to take for a reason other than the balance:
+  the next charge takes it up, and the turn's last charge retries it a few
+  times before it gives up and logs the leak. When other runs spent the
+  balance meanwhile, the turn takes what is left and never overdraws it.
 """
 
 import asyncio
@@ -52,6 +59,8 @@ CREDITS_PER_USD = 100
 # stream ends (see ``sdk.openrouter_cost``). The charge waits that long for it;
 # a cost recorded later still is charged when it lands.
 _COST_SETTLE_TIMEOUT_SECONDS = 45.0
+# The turn's last charge tries a failed debit again after each of these.
+_DEBIT_RETRY_DELAYS_SECONDS = (0.2, 0.5, 1.0)
 _BUDGET_WINDOW: dict[PauseReason, BudgetWindow] = {
     "daily": "daily",
     "weekly": "weekly",
@@ -109,13 +118,16 @@ class CreditBilledTurn:
         self._recordings.add(recording)
 
     async def record(self, cost_microdollars: int) -> None:
+        """Put a cost on the turn and charge what it completes: whole credits
+        while the turn runs, the rest rounded up once it has ended. Shielded
+        like the end's charge, so a debit already sent is counted even if the
+        caller is cancelled, and no later charge takes it again."""
         self.spent_microdollars += cost_microdollars
-        if self._ended:
-            # Recorded after the turn was charged: charged as it lands.
-            await self._charge_due()
+        await asyncio.shield(self._charge_due())
 
     async def end(self) -> None:
-        """Charge what the turn recorded, once its late recordings are in.
+        """Charge the rest of what the turn recorded, rounded up, once its
+        late recordings are in.
 
         A cancel during the wait doesn't skip the charge: the turn still pays
         for what it spent, and cost recorded later is charged as it lands.
@@ -131,38 +143,78 @@ class CreditBilledTurn:
 
     async def _charge_due(self) -> None:
         async with self._charging:
-            owed = min(credits_for(self.spent_microdollars), self.cap_credits)
-            due = owed - self.charged_credits
+            final = self._ended
+            due = self._owed_credits(final) - self.charged_credits
             if due <= 0:
                 return
-            self.charged_credits += await self._spend(due)
+            self.charged_credits += await self._spend(due, final=final)
 
-    async def _spend(self, credits: int) -> int:
-        """Debit up to ``credits``, never below zero; returns what was debited."""
+    def _owed_credits(self, final: bool) -> int:
+        """Whole credits while the turn runs, the part credit too once it has
+        ended; never past the cap."""
+        spent = self.spent_microdollars
+        owed = credits_for(spent) if final else spent // MICRODOLLARS_PER_CREDIT
+        return min(owed, self.cap_credits)
+
+    async def _spend(self, credits: int, *, final: bool) -> int:
+        """Debit up to ``credits``, never below zero; returns what was debited.
+
+        What a failed debit didn't take stays due: mid-turn the next charge
+        takes it up, and the turn's last charge retries it before giving up.
+        """
         try:
-            await self._debit(credits)
+            await self._debit_retrying(credits, final=final)
             return credits
         except InsufficientBalanceError:
-            # Other runs spent the balance while this turn ran: it takes what
-            # is left rather than overdrawing the account.
-            try:
-                left = min(credits, await _balance(self.user_id, self.organization_id))
-                if left > 0:
-                    await self._debit(left)
-            except Exception:
-                left = 0
-            logger.warning(
-                f"Credit-billed turn in session {self.session_id[:12]} owed "
-                f"{credits} credits; the balance covered {max(left, 0)}"
-            )
-            return max(left, 0)
-        except Exception:
+            return await self._spend_what_is_left(credits)
+        except Exception as exc:
+            if not final:
+                logger.warning(
+                    f"Could not charge {credits} credits yet for the credit-billed "
+                    f"turn in session {self.session_id[:12]} ({exc!r}); its next "
+                    "charge takes them up"
+                )
+                return 0
             logger.error(
                 f"Billing leak: could not charge {credits} credits for the "
                 f"credit-billed turn in session {self.session_id[:12]}",
                 exc_info=True,
             )
             return 0
+
+    async def _debit_retrying(self, credits: int, *, final: bool) -> None:
+        """Debit ``credits``; the turn's last charge tries a debit that failed
+        for a reason other than the balance again after each retry delay."""
+        delays = _DEBIT_RETRY_DELAYS_SECONDS if final else ()
+        for delay in delays:
+            try:
+                await self._debit(credits)
+                return
+            except InsufficientBalanceError:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    f"Charging {credits} credits for the credit-billed turn in "
+                    f"session {self.session_id[:12]} failed ({exc!r}); trying "
+                    f"again in {delay}s"
+                )
+            await asyncio.sleep(delay)
+        await self._debit(credits)
+
+    async def _spend_what_is_left(self, credits: int) -> int:
+        # Other runs spent the balance while this turn ran: it takes what is
+        # left rather than overdrawing the account.
+        try:
+            left = min(credits, await _balance(self.user_id, self.organization_id))
+            if left > 0:
+                await self._debit(left)
+        except Exception:
+            left = 0
+        logger.warning(
+            f"Credit-billed turn in session {self.session_id[:12]} owed "
+            f"{credits} credits; the balance covered {max(left, 0)}"
+        )
+        return max(left, 0)
 
     async def _debit(self, credits: int) -> None:
         metadata = UsageTransactionMetadata(
@@ -238,7 +290,7 @@ async def _balance(user_id: str, organization_id: str | None) -> int:
 
 @asynccontextmanager
 async def credit_billing(turn: CreditBilledTurn) -> AsyncIterator[None]:
-    """Run what's inside billed to credits, and charge it when it ends."""
+    """Run what's inside billed to credits, and charge the rest when it ends."""
     token = _credit_billed_turn.set(turn)
     try:
         yield
