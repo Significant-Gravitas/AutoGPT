@@ -1073,17 +1073,15 @@ async def delete_session(
             detail=f"Session {session_id} not found or access denied",
         )
 
-    # Best-effort cleanup of the E2B sandbox (if any).
+    # Best-effort cleanup of the E2B sandbox (if any), after the response.
     # sandbox_id is in Redis; kill_sandbox() fetches it from there.
     e2b_cfg = ChatConfig()
     if e2b_cfg.e2b_active:
         assert e2b_cfg.e2b_api_key  # guaranteed by e2b_active check
-        try:
-            await kill_sandbox(session_id, e2b_cfg.e2b_api_key)
-        except Exception:
-            logger.warning(
-                "[E2B] Failed to kill sandbox for session %s", session_id[:12]
-            )
+        spawn_background_task(
+            kill_sandbox(session_id, e2b_cfg.e2b_api_key),
+            name=f"e2b-session-kill-{session_id[:12]}",
+        )
 
     return Response(status_code=204)
 
