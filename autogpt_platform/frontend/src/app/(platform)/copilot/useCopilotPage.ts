@@ -133,6 +133,7 @@ export function useCopilotPage({
     sessionView,
     sessionLlmAuthProvider,
     sessionLlmCredentialId,
+    chatLlmAuthProvider,
     sessionExpertId,
     isAdoptingExpertSession,
     hydratedMessages,
@@ -186,6 +187,7 @@ export function useCopilotPage({
     sessionAuthProvider: sessionLlmAuthProvider,
     sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
@@ -549,6 +551,7 @@ export function useCopilotPage({
     sessionChatStatus,
     sessionSentFrom,
     sessionAutopilotMode,
+    chatLlmAuthProvider,
     expertIdentity,
     isResolvingExpertIdentity,
     isAdoptingExpertSession,

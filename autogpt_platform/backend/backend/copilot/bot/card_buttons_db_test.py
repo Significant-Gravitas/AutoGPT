@@ -833,7 +833,7 @@ async def test_a_channel_click_wakes_a_turn_judged_on_the_request_and_answered_h
             "pause_schedule", {"schedule_id": "weekly"}, test_user_id, woken
         )
 
-    assert supervise.await_args.kwargs["user_message"] == request
+    assert supervise.await_args.kwargs["user_messages"][-1] == request
     said = [c.args[:2] for c in bot.adapter.send_message.await_args_list]
     assert said == [(thread, executor.reply)]
 

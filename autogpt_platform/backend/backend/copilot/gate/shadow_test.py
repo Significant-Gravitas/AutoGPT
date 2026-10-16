@@ -22,6 +22,7 @@ from backend.copilot.gate import shadow
 from backend.copilot.gate.content import ContentVerdict
 from backend.copilot.gate.reads_test import _Fetch, _plain_output, _Rows
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.util.feature_flag import Flag
 from backend.util.posthog_events import PostHogEvent
 
@@ -82,6 +83,10 @@ def _flags(screen: Any, auto_mode: Any = False):
 def rows():
     fake = _Rows()
     with (
+        patch(
+            f"{_READS}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
         patch.object(review_store, "find_review", fake.find_review),
         patch.object(review_store, "consume", fake.consume),
         patch.object(held, "remember", fake.remember),

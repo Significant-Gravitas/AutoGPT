@@ -87,6 +87,7 @@ still refused.
 | Paused (learning)        | Future automated changes are off for the skill or Expert     |
 | Paused (not in use)      | The owner stopped using the skill; history is kept           |
 | Archived                 | Superseded, stale, or invalidated by a revoked source        |
+| Deleted                  | The owner deleted the skill; its history is kept, archived   |
 
 ## Controls
 
@@ -143,6 +144,13 @@ pauses the skill with an explanation. That fallback restore leaves automatic
 improvements off but does not suppress the behavior: independent valid evidence
 can support a new proposal for the owner to decide. A source the viewer can no longer
 open shows **Evidence not visible to you** without a title or link.
+
+Deleting a skill ends its history. Its versions stay in History, archived,
+after a *Deleted* entry, and excluding one of their sources later restores
+nothing. The deleted behaviour is suppressed as an undone change is, so
+learning never reapplies it and a near-identical proposal becomes a decision.
+A genuinely different skill can still be learned under the same name; it
+starts a new history with the default controls.
 
 ## Adapters
 

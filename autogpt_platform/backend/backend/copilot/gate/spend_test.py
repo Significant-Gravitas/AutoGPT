@@ -43,6 +43,7 @@ from backend.copilot.tree import (
     root_envelope,
 )
 from backend.copilot.tree_test import BrokenRedis, FakeRedis
+from backend.copilot.trial_cost_context import TrialCostContext
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
@@ -119,6 +120,10 @@ def gate(redis):
         consume=AsyncMock(return_value=True),
     )
     with (
+        patch(
+            f"{_GATE}.capture_cost_context",
+            AsyncMock(return_value=TrialCostContext(user_id="user-1", trial_id=None)),
+        ),
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
         patch.object(tree, "is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.find_review", store.find_review),
@@ -346,6 +351,9 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
     )
     agent = SimpleNamespace(id="lib-1", graph_id="main", name="Digest")
     execution = SimpleNamespace(id="exec-1", status=ExecutionStatus.RUNNING)
+    session = _session()
+    session.organization_id = "org-1"
+    session.team_id = "team-1"
     with (
         patch(f"{_RUN}.get_or_create_library_agent", AsyncMock(return_value=agent)),
         patch(
@@ -353,10 +361,9 @@ async def test_a_workflow_run_charges_its_pre_flight_estimate(gate, chat):
             AsyncMock(return_value=execution),
         ),
         patch(f"{_RUN}.track_chat_outcome"),
+        patch(f"{_RUN}._safe_link_to_chat_share", AsyncMock()),
     ):
-        await RunAgentTool()._run_agent(
-            "user-1", _session(), graph, {}, {}, dry_run=False
-        )
+        await RunAgentTool()._run_agent("user-1", session, graph, {}, {}, dry_run=False)
     assert (await chat.snapshot(_ledger_id()))["spent"] == 20_000
 
 
