@@ -1,4 +1,7 @@
-import { useOptionalSidebar } from "@/components/ui/sidebar";
+import {
+  getPersistedSidebarOpen,
+  useOptionalSidebar,
+} from "@/components/ui/sidebar";
 import { useEffect, useLayoutEffect, useRef } from "react";
 
 export function usePanelSidebarCollapse(isPanelOpen: boolean) {
@@ -18,8 +21,9 @@ export function usePanelSidebarCollapse(isPanelOpen: boolean) {
 
     return () => {
       const latest = sidebarRef.current;
+      // A toggle made while the panel was up is remembered, and wins.
       if (wasOpen && latest && !latest.open)
-        latest.setOpen(true, { persist: false });
+        latest.setOpen(getPersistedSidebarOpen() ?? true, { persist: false });
     };
   }, [isPanelOpen, hasSidebar]);
 }

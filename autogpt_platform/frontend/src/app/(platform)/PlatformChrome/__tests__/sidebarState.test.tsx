@@ -1,13 +1,21 @@
-import { fireEvent, render, screen } from "@/tests/integrations/test-utils";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+} from "@/tests/integrations/test-utils";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
+import { usePanelSidebarCollapse } from "@/app/(platform)/team/components/ExpertSidePanel/usePanelSidebarCollapse";
 import { Sidebar, useSidebar } from "@/components/ui/sidebar";
 import { SIDEBAR_COOKIE_NAME } from "@/components/ui/sidebar-cookie";
 import { PlatformChrome } from "../PlatformChrome";
 
 let pathname = "/home";
 let isBrainDumpEnabled = false;
+let isSoulPanelOpen = false;
 
 vi.mock("next/navigation", () => ({
   usePathname: () => pathname,
@@ -65,10 +73,15 @@ function load(persistedSidebarOpen?: boolean) {
     paintedStates.push(useSidebar().state);
     return null;
   }
+  function SoulPanel() {
+    usePanelSidebarCollapse(isSoulPanelOpen);
+    return null;
+  }
   function tree() {
     return (
       <PlatformChrome persistedSidebarOpen={persistedSidebarOpen}>
         <StateLog />
+        <SoulPanel />
       </PlatformChrome>
     );
   }
@@ -77,7 +90,24 @@ function load(persistedSidebarOpen?: boolean) {
     pathname = to;
     view.rerender(tree());
   }
-  return { ...view, paintedStates, navigate };
+  function setSoulPanelOpen(isOpen: boolean) {
+    isSoulPanelOpen = isOpen;
+    view.rerender(tree());
+  }
+  return { ...view, paintedStates, navigate, setSoulPanelOpen };
+}
+
+function setArtifactsPanelOpen(isOpen: boolean) {
+  act(() =>
+    useCopilotUIStore.setState((s) => ({
+      artifactPanel: {
+        ...s.artifactPanel,
+        isOpen,
+        activeTab: isOpen ? "artifacts" : s.artifactPanel.activeTab,
+        activeArtifact: null,
+      },
+    })),
+  );
 }
 
 function sidebarState() {
@@ -93,6 +123,8 @@ function rememberSidebar(open: boolean) {
 beforeEach(() => {
   pathname = "/home";
   isBrainDumpEnabled = false;
+  isSoulPanelOpen = false;
+  setArtifactsPanelOpen(false);
   document.cookie = `${SIDEBAR_COOKIE_NAME}=; path=/; max-age=0`;
 });
 
@@ -184,6 +216,59 @@ describe("the app sidebar across reloads", () => {
 
       expect(sidebarState()).toBe(expected);
       view.unmount();
+      load();
+      expect(sidebarState()).toBe(expected);
+    },
+  );
+
+  it.each([
+    {
+      panel: "artifacts",
+      before: "closed",
+      remembered: false,
+      toggles: 1,
+      expected: "expanded",
+    },
+    {
+      panel: "artifacts",
+      before: "open",
+      remembered: true,
+      toggles: 2,
+      expected: "collapsed",
+    },
+    {
+      panel: "Soul",
+      before: "closed",
+      remembered: false,
+      toggles: 1,
+      expected: "expanded",
+    },
+    {
+      panel: "Soul",
+      before: "open",
+      remembered: true,
+      toggles: 2,
+      expected: "collapsed",
+    },
+  ])(
+    "closing the $panel panel after toggling under it ($before before, $toggles toggles) shows what a reload would",
+    ({ panel, remembered, toggles, expected }) => {
+      rememberSidebar(remembered);
+      const view = load();
+      const setPanelOpen =
+        panel === "Soul" ? view.setSoulPanelOpen : setArtifactsPanelOpen;
+      setPanelOpen(true);
+      expect(sidebarState()).toBe("collapsed");
+      for (let i = 0; i < toggles; i++) {
+        fireEvent.click(screen.getByRole("button", { name: "Toggle Sidebar" }));
+      }
+
+      setPanelOpen(false);
+
+      expect(sidebarState()).toBe(expected);
+      view.unmount();
+      isSoulPanelOpen = false;
+      setArtifactsPanelOpen(false);
       load();
       expect(sidebarState()).toBe(expected);
     },

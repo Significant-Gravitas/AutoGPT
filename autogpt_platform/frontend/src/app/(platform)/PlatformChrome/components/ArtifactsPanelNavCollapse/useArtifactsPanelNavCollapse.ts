@@ -1,5 +1,5 @@
 import { useCopilotUIStore } from "@/app/(platform)/copilot/store";
-import { useSidebar } from "@/components/ui/sidebar";
+import { getPersistedSidebarOpen, useSidebar } from "@/components/ui/sidebar";
 import { matchesRoute } from "@/lib/utils";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -37,11 +37,12 @@ export function useArtifactsPanelNavCollapse() {
       setOpen(false, { persist: false });
       return;
     }
-    // Restore only what this hook collapsed. If the user re-opened the nav
-    // by hand while the panel was up, that is a deliberate choice and closing
-    // it again on panel-close would undo it in front of them.
+    // Restore only what this hook collapsed, and prefer the remembered choice:
+    // a toggle made while the panel was up is the user's, and a reload shows it.
     if (openBeforePanelRef.current !== null && openRef.current === false) {
-      setOpen(openBeforePanelRef.current, { persist: false });
+      setOpen(getPersistedSidebarOpen() ?? openBeforePanelRef.current, {
+        persist: false,
+      });
     }
     openBeforePanelRef.current = null;
   }, [collapsesNav, setOpen]);
