@@ -1,4 +1,4 @@
-"""Backend selection: launchdarkly (default), posthog, and the dual diff run."""
+"""Backend selection: posthog (default), launchdarkly, and the dual diff run."""
 
 import asyncio
 import json
@@ -128,16 +128,21 @@ class TestPostHogWithoutAKey:
         monkeypatch.setattr(ph, "_shut_down", False)
 
     @pytest.mark.asyncio
-    async def test_a_read_serves_its_default_without_a_user_lookup(self, mocker):
+    @pytest.mark.parametrize("attributes", [None, {"country": "US"}])
+    async def test_a_read_serves_its_default_without_a_user_lookup(
+        self, mocker, attributes
+    ):
         user_id = str(uuid.uuid4())
         lookup = mocker.patch(
             "backend.util.feature_flag._fetch_user_context_status",
             return_value=(Context.create(user_id), True),
         )
 
-        result = await evaluate_feature_flag(Flag.HIRE_EXPERTS, user_id, True)
+        value = await ff.get_feature_flag_value(
+            Flag.HIRE_EXPERTS.value, user_id, True, attributes=attributes
+        )
 
-        assert result == (True, False)
+        assert value is True
         lookup.assert_not_called()
 
     def test_startup_warns_once_and_logs_no_error(self, caplog):

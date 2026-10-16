@@ -517,20 +517,28 @@ async def _evaluate_flag_value(
     ``evaluated`` is False whenever *default* is standing in for an answer the
     vendor could not give.
     """
-    context = None
-    if attributes:
-        # Layered once, so every vendor evaluates the same per-request facts.
-        user_context, context_resolved = await _fetch_user_context_status(user_id)
-        context = (_with_request_attributes(user_context, attributes), context_resolved)
     backend = settings.config.feature_flag_backend
-    if backend is FeatureFlagBackend.POSTHOG:
-        result = await _evaluate_posthog(
-            flag_key, user_id, default, context, exposure=flag_key in EXPERIMENT_FLAGS
-        )
-    elif backend is FeatureFlagBackend.DUAL:
-        result = await _evaluate_dual(flag_key, user_id, default, context)
+    if backend is FeatureFlagBackend.POSTHOG and posthog.get_flag_client() is None:
+        # As on LaunchDarkly: no client means the default, without a user lookup.
+        result = (default, False)
     else:
-        result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
+        context = None
+        if attributes:
+            # Layered once, so every vendor evaluates the same per-request facts.
+            user_context, resolved = await _fetch_user_context_status(user_id)
+            context = (_with_request_attributes(user_context, attributes), resolved)
+        if backend is FeatureFlagBackend.POSTHOG:
+            result = await _evaluate_posthog(
+                flag_key,
+                user_id,
+                default,
+                context,
+                exposure=flag_key in EXPERIMENT_FLAGS,
+            )
+        elif backend is FeatureFlagBackend.DUAL:
+            result = await _evaluate_dual(flag_key, user_id, default, context)
+        else:
+            result = await _evaluate_launchdarkly(flag_key, user_id, default, context)
     _record_flag_for_sentry(flag_key, *result)
     return result
 
@@ -656,12 +664,9 @@ async def _evaluate_posthog(
     for a user without the targeted attributes. Only a served *exposure*
     sends the experiment's event; dual mode's shadow read never does.
     """
-    if context is None:
-        # As on LaunchDarkly: no client means the default, without a user lookup.
-        if posthog.get_flag_client() is None:
-            return default, False
-        context = await _fetch_user_context_status(user_id)
-    user_context, context_resolved = context
+    user_context, context_resolved = context or await _fetch_user_context_status(
+        user_id
+    )
     value, evaluated = await posthog.evaluate_flag(
         flag_key,
         user_id,
