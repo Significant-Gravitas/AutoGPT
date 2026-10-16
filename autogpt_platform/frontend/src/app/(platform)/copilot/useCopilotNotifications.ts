@@ -57,6 +57,14 @@ export function useCopilotNotifications(activeSessionID: string | null) {
   const activeSessionRef = useRef(activeSessionID);
   activeSessionRef.current = activeSessionID;
   const windowFocusedRef = useRef(true);
+  const completedSessionIDs = useCopilotUIStore((s) => s.completedSessionIDs);
+
+  // Opening a finished chat takes it off the list. The handler below skips
+  // chats already on it, so a chat left there never notifies again.
+  useEffect(() => {
+    if (!activeSessionID || !completedSessionIDs.has(activeSessionID)) return;
+    useCopilotUIStore.getState().clearCompletedSession(activeSessionID);
+  }, [activeSessionID, completedSessionIDs]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
