@@ -46,7 +46,7 @@ ANTHROPIC_OPENAI_COMPAT_BASE_URL = "https://api.anthropic.com/v1/"
 # auto-overrides them when left at default — see ``_apply_local_aux_models``
 # below. Kept as module constants so the validator and the field defaults
 # can't drift.
-_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-4-5"
+_DEFAULT_TITLE_MODEL = "anthropic/claude-haiku-5.5"
 _DEFAULT_SIMULATION_MODEL = "google/gemini-2.5-flash-lite"
 # Default for ``fast_advanced_model`` — kept in sync with the field default
 # below. ``_apply_local_aux_models`` reads this to detect "operator left it

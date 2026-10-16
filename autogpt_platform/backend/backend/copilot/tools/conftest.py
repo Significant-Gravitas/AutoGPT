@@ -80,6 +80,7 @@ def stub_learning_registry(monkeypatch):
         "backend.copilot.learning.history.skill_versions_db",
         "backend.copilot.learning.history.skill_publication_db",
         "backend.copilot.tools.skills.skill_versions_db",
+        "backend.copilot.tools.skills.skill_deletion_db",
     ):
         monkeypatch.setattr(target, lambda: store)
     return store
