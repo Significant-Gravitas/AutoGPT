@@ -167,3 +167,19 @@ body[data-google-picker-open="true"] [data-dialog-content] {
 [data-streamdown="table-wrapper"] td {
   padding: 0.875rem 1rem; /* py-3.5 px-4 */
 }
+
+/* KaTeX sets .katex to 1.21em, which makes inline formulas outgrow the prose
+   around them; display blocks keep KaTeX's size. */
+:not(.katex-display) > .katex {
+  font-size: 1.1em;
+}
+
+/* Expert and Otto profile tabs: body copy inside a tab panel reads at the
+   Overview intro's 15px instead of the default 14px. Scoped to the panels so
+   the tab labels, cards' small captions and the rest of the app keep their
+   sizes. */
+[data-profile-tabs] [role="tabpanel"] .text-sm,
+[data-profile-tabs] [role="tabpanel"] [class*="text-[0.875rem]"] {
+  font-size: 15px;
+  line-height: 1.5rem;
+}

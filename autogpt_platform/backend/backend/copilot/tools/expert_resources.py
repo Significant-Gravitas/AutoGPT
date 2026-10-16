@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 _EXPERT_ID_PARAM = {
     "type": "string",
     "description": "Target expert (AutoPilot only; experts act on themselves).",
+    "entity": "expert",
 }
 
 
@@ -61,14 +62,21 @@ class InstallExpertWorkflowTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "library_agent_id": {"type": "string", "description": "Library agent."},
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent.",
+                    "entity": "library_agent",
+                },
                 "username_agent_slug": {
                     "type": "string",
                     "description": "Marketplace 'creator/slug'.",
+                    "title": "Marketplace workflow",
                 },
                 "store_listing_version_id": {
                     "type": "string",
                     "description": "Marketplace listing version.",
+                    "title": "Marketplace workflow",
+                    "entity": "store_listing",
                 },
                 "expert_id": _EXPERT_ID_PARAM,
             },
@@ -116,7 +124,7 @@ class InstallExpertWorkflowTool(BaseTool):
                 listing_id = await _listing_id_from_slug(username_agent_slug)
                 if listing_id is None:
                     return ErrorResponse(
-                        message=f"Marketplace agent '{username_agent_slug}' not found",
+                        message=f"Marketplace workflow '{username_agent_slug}' not found",
                         session_id=session_id,
                     )
             await settle_expert_grants(user_id, session)
@@ -170,8 +178,16 @@ class RemoveExpertWorkflowTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string", "description": "Installed workflow."},
-                "library_agent_id": {"type": "string", "description": "Library agent."},
+                "workflow_id": {
+                    "type": "string",
+                    "description": "Installed workflow.",
+                    "entity": "expert_workflow",
+                },
+                "library_agent_id": {
+                    "type": "string",
+                    "description": "Library agent.",
+                    "entity": "library_agent",
+                },
                 "expert_id": _EXPERT_ID_PARAM,
             },
             "required": [],
@@ -261,8 +277,16 @@ class GrantExpertCredentialTool(BaseTool):
         return {
             "type": "object",
             "properties": {
-                "expert_id": {"type": "string", "description": "Expert to grant to."},
-                "credential_id": {"type": "string", "description": "Credential id."},
+                "expert_id": {
+                    "type": "string",
+                    "description": "Expert to grant to.",
+                    "entity": "expert",
+                },
+                "credential_id": {
+                    "type": "string",
+                    "description": "Credential id.",
+                    "entity": "credential",
+                },
             },
             "required": ["expert_id", "credential_id"],
         }
@@ -301,8 +325,13 @@ class RevokeExpertCredentialTool(BaseTool):
                 "expert_id": {
                     "type": "string",
                     "description": "Expert to revoke from.",
+                    "entity": "expert",
                 },
-                "credential_id": {"type": "string", "description": "Credential id."},
+                "credential_id": {
+                    "type": "string",
+                    "description": "Credential id.",
+                    "entity": "credential",
+                },
             },
             "required": ["expert_id", "credential_id"],
         }
@@ -339,7 +368,7 @@ async def _change_grant(
         return ErrorResponse(
             message=(
                 "An expert cannot change credential grants. Use "
-                "request_credential_grant to ask the user for access."
+                "tool:request_credential_grant to ask the user for access."
             ),
             error="access_denied",
             session_id=session_id,
@@ -437,7 +466,7 @@ class ListExpertWorkflowsTool(BaseTool):
             workflows=expert.workflows,
             message=(
                 f"{len(expert.workflows)} workflow(s) installed on {expert.name}: "
-                f"{lines or 'none'}. Add more with install_expert_workflow."
+                f"{lines or 'none'}. Add more with tool:install_expert_workflow."
             ),
             session_id=session_id,
         )
@@ -585,7 +614,7 @@ class RequestCredentialGrantTool(BaseTool):
             return ErrorResponse(
                 message=(
                     "Personal AutoPilot already holds every credential; use "
-                    "grant_expert_credential to give one to an expert."
+                    "tool:grant_expert_credential to give one to an expert."
                 ),
                 error="not_an_expert_session",
                 session_id=session_id,
@@ -602,7 +631,7 @@ class RequestCredentialGrantTool(BaseTool):
             f"(credential_id={credential_id})"
             + (f" so I can {reason}" if reason else "")
             + ". Approve it on my Integrations page, or tell personal AutoPilot "
-            f"to run grant_expert_credential for expert {session.expert_id}."
+            f"to run tool:grant_expert_credential for expert {session.expert_id}."
         )
         asked_at = datetime.now(timezone.utc)
         try:

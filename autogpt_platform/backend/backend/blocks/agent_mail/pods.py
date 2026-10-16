@@ -11,6 +11,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -133,6 +134,7 @@ class AgentMailGetPodBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -212,6 +214,7 @@ class AgentMailListPodsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -266,13 +269,14 @@ class AgentMailDeletePodBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
+            is_irreversible_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "pod_id": "test-pod"},
             test_output=[("success", True)],
             test_mock={
                 "delete_pod": lambda *a, **kw: None,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -350,6 +354,7 @@ class AgentMailListPodInboxesBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -443,6 +448,7 @@ class AgentMailListPodThreadsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -532,6 +538,7 @@ class AgentMailListPodDraftsBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod

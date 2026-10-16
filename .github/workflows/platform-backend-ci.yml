@@ -16,6 +16,7 @@ on:
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
+      - "autogpt_platform/frontend/public/integrations/**"
   pull_request:
     branches: [master, dev, release-*]
     paths:
@@ -31,6 +32,7 @@ on:
       - ".github/scripts/backend-allowed-skips.json"
       - "autogpt_platform/backend/**"
       - "autogpt_platform/autogpt_libs/**"
+      - "autogpt_platform/frontend/public/integrations/**"
   merge_group:
   # On-demand run of the full backend test + coverage suite for any branch.
   # Useful when a branch's changes don't match the paths filter above (so the
@@ -213,6 +215,10 @@ jobs:
 
       - name: Run Pyright
         run: poetry run pyright --pythonversion ${{ matrix.python-version }}
+        env:
+          # Pyright 1.1.414 sits at Node's default heap limit on this codebase
+          # and dies with "heap out of memory" on some runs.
+          NODE_OPTIONS: --max-old-space-size=8192
 
     env:
       CI: true
@@ -317,6 +323,16 @@ jobs:
           fetch-depth: 0
           filter: blob:none
           submodules: true
+
+      - name: Checkout skills catalog
+        # The expert roster and the marketplace skills live in a separate
+        # repo. The shards read it from SKILLS_CATALOG_PATH so no test
+        # resolves `main` through the GitHub API: runners share one
+        # unauthenticated rate limit and hit 403s under load.
+        uses: actions/checkout@v6
+        with:
+          repository: Significant-Gravitas/skills-catalog
+          path: skills-catalog
 
       - name: Configure test shard
         shell: bash
@@ -634,6 +650,8 @@ jobs:
       RUN_ENV: local
       PORT: 8080
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SKILLS_CATALOG_PATH: ${{ github.workspace }}/skills-catalog
+      SKILLS_CATALOG_TOKEN: ${{ github.token }}
       # We know these are here, don't report this as a security vulnerability
       # This is used as the default credential for the entire system's RabbitMQ instance
       # If you want to replace this, you can do so by making our entire system generate
@@ -662,7 +680,7 @@ jobs:
           persist-credentials: false
 
       - name: Download backend shard reports
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: backend-test-reports-py*
           path: backend-shard-reports

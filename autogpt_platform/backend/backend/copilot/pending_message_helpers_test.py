@@ -1,8 +1,9 @@
 """Unit tests for pending_message_helpers."""
 
+import asyncio
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
@@ -204,6 +205,7 @@ async def test_queue_pending_does_not_charge_rate_on_toctou_409(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 409
@@ -235,6 +237,7 @@ async def test_queue_pending_charges_rate_only_after_successful_push(
         message="hi",
         context=None,
         file_ids=None,
+        folder_ids=None,
         expert_id=None,
     )
 
@@ -275,10 +278,246 @@ async def test_queue_pending_429_after_push_when_limit_exceeded(
             message="hi",
             context=None,
             file_ids=None,
+            folder_ids=None,
             expert_id=None,
         )
     assert exc_info.value.status_code == 429
     queue_mock.assert_awaited_once()
+
+
+# ── queue_pending_for_http: client message id (SECRT-2695) ──────────
+
+
+def _mock_queue_claims(
+    monkeypatch: pytest.MonkeyPatch, *, claim_result: str
+) -> tuple[AsyncMock, AsyncMock, AsyncMock]:
+    claim = AsyncMock(return_value=claim_result)
+    accept = AsyncMock()
+    release = AsyncMock()
+    monkeypatch.setattr(helpers_module, "claim_client_message", claim)
+    monkeypatch.setattr(helpers_module, "accept_client_message", accept)
+    monkeypatch.setattr(helpers_module, "release_client_message", release)
+    monkeypatch.setattr(helpers_module, "peek_pending_count", AsyncMock(return_value=1))
+    return claim, accept, release
+
+
+async def _queue_with_client_id() -> QueuePendingMessageResponse:
+    return await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+        folder_ids=None,
+        expert_id=None,
+        client_message_id="scoped-msg-1",
+    )
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_skips_retransmit_of_an_accepted_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retransmit is answered as accepted without a second push or a
+    rate tick, and says the turn is in flight so the client does not fall
+    back to POST /stream."""
+    _mock_queue_claims(monkeypatch, claim_result="accepted")
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    rate_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "check_pending_call_rate", rate_mock)
+
+    result = await _queue_with_client_id()
+
+    assert result.turn_in_flight is True
+    assert result.buffer_length == 1
+    queue_mock.assert_not_awaited()
+    rate_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_keeps_the_claim_once_the_push_lands(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    claim, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(
+            return_value=QueuePendingMessageResponse(
+                buffer_length=1,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=True,
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+
+    await _queue_with_client_id()
+
+    claim.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_releases_the_claim_when_the_push_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The turn ended before the push: the route falls through to start a
+    turn with the same id, which needs the claim back."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(
+            return_value=QueuePendingMessageResponse(
+                buffer_length=0,
+                max_buffer_length=MAX_PENDING_MESSAGES,
+                turn_in_flight=False,
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _queue_with_client_id()
+
+    assert exc_info.value.status_code == 409
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_releases_the_claim_when_the_push_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    monkeypatch.setattr(
+        helpers_module,
+        "queue_user_message",
+        AsyncMock(side_effect=ConnectionError("down")),
+    )
+
+    with pytest.raises(ConnectionError):
+        await _queue_with_client_id()
+
+    release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("landed", [True, False])
+async def test_queue_pending_settles_the_claim_by_the_push_when_cancelled(
+    monkeypatch: pytest.MonkeyPatch, landed: bool
+) -> None:
+    """The request is cancelled after the append, while the push still awaits
+    its SPUBLISH: the push finishes and the claim follows its real outcome,
+    so a retry of a message that is already queued is not pushed again."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    appended = asyncio.Event()
+    published = asyncio.Event()
+
+    async def push(**_: Any) -> QueuePendingMessageResponse:
+        appended.set()
+        await published.wait()
+        return QueuePendingMessageResponse(
+            buffer_length=1 if landed else 0,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=landed,
+        )
+
+    monkeypatch.setattr(helpers_module, "queue_user_message", push)
+    request = asyncio.create_task(_queue_with_client_id())
+    await appended.wait()
+    request.cancel()
+    await asyncio.sleep(0)
+    published.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    if landed:
+        accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+        release.assert_not_awaited()
+    else:
+        release.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+        accept.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_settles_the_claim_when_cancelled_again_while_settling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A second cancellation while the claim is being settled must not cut the
+    push or the settle short, or the reservation is left to lapse."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="claimed")
+    appended = asyncio.Event()
+    published = asyncio.Event()
+
+    async def push(**_: Any) -> QueuePendingMessageResponse:
+        appended.set()
+        await published.wait()
+        return QueuePendingMessageResponse(
+            buffer_length=1,
+            max_buffer_length=MAX_PENDING_MESSAGES,
+            turn_in_flight=True,
+        )
+
+    monkeypatch.setattr(helpers_module, "queue_user_message", push)
+    request = asyncio.create_task(_queue_with_client_id())
+    await appended.wait()
+    request.cancel()
+    await asyncio.sleep(0)
+    await asyncio.sleep(0)
+    request.cancel()
+    await asyncio.sleep(0)
+    published.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await request
+
+    accept.assert_awaited_once_with("sess-1", "scoped-msg-1", ANY)
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_tells_a_copy_to_retry_while_the_first_is_unsettled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first copy is still being pushed, so this one can be told neither
+    that the message was taken nor that it was refused."""
+    _, accept, release = _mock_queue_claims(monkeypatch, claim_result="reserved")
+    queue_mock = AsyncMock()
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await _queue_with_client_id()
+
+    assert exc_info.value.status_code == 503
+    queue_mock.assert_not_awaited()
+    accept.assert_not_awaited()
+    release.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_retransmit_is_accepted_when_the_count_lookup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The buffer length is informational, so a Redis error reading it still
+    answers the copy as accepted rather than failing it."""
+    _mock_queue_claims(monkeypatch, claim_result="accepted")
+    monkeypatch.setattr(
+        helpers_module,
+        "peek_pending_count",
+        AsyncMock(side_effect=ConnectionError("down")),
+    )
+
+    result = await _queue_with_client_id()
+
+    assert result.turn_in_flight is True
+    assert result.buffer_length == 0
 
 
 @pytest.mark.asyncio
@@ -511,9 +750,12 @@ def _make_chat_message_class(
     """Return a simple ChatMessage stand-in that tracks sequence."""
 
     class _Msg:
-        def __init__(self, role: str, content: str) -> None:
+        def __init__(
+            self, role: str, content: str, metadata: dict[str, Any] | None = None
+        ) -> None:
             self.role = role
             self.content = content
+            self.metadata = metadata
             self.sequence: int | None = None
 
     monkeypatch.setattr(helpers_module, "ChatMessage", _Msg)
@@ -568,6 +810,77 @@ async def test_persist_pending_happy_path_appends_and_returns_true(
     assert [m.content for m in session.messages] == ["a", "b"]
     assert tb.entries == ["a", "b"]
     push_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_persist_pending_copies_metadata_onto_the_user_row(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A session-to-session message keeps its sender on the persisted row;
+    a human follow-up gets no metadata at all."""
+    from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
+    from backend.copilot.pending_messages import PendingMessage as PM
+
+    _make_chat_message_class(monkeypatch)
+    session = MagicMock()
+    session.session_id = "sess"
+    session.messages = []
+
+    async def _fake_upsert(sess: Any) -> Any:
+        for i, m in enumerate(sess.messages):
+            m.sequence = i
+        return sess
+
+    monkeypatch.setattr(helpers_module, "upsert_chat_session", _fake_upsert)
+    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": "expert-a"}
+    pending = [PM(content="from a teammate", metadata=provenance), PM(content="me")]
+    ok = await persist_pending_as_user_rows(session, None, pending, log_prefix="[T]")
+    assert ok is True
+    assert [m.metadata for m in session.messages] == [provenance, None]
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_stamps_metadata_on_the_pending_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    push_mock = AsyncMock(return_value=1)
+    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+    monkeypatch.setattr(
+        helpers_module, "is_turn_in_flight", AsyncMock(return_value=False)
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    await queue_user_message(session_id="sess", message="hi", metadata=provenance)
+    assert push_mock.await_args.args[1].metadata == provenance
+
+    await queue_user_message(session_id="sess", message="typed")
+    assert push_mock.await_args.args[1].metadata is None
+
+
+@pytest.mark.asyncio
+async def test_queue_user_message_in_flight_gate_keeps_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from backend.copilot.pending_message_helpers import queue_user_message
+
+    gated_push = AsyncMock(return_value=2)
+    monkeypatch.setattr(
+        helpers_module, "push_pending_message_if_session_running", gated_push
+    )
+
+    provenance = {"from_session_id": "sess-parent", "from_expert_id": None}
+    state = await queue_user_message(
+        session_id="sess",
+        message="hi",
+        require_turn_in_flight=True,
+        metadata=provenance,
+    )
+    assert state.turn_in_flight is True
+    assert gated_push.await_args.args[1].metadata == provenance
 
 
 @pytest.mark.asyncio
@@ -873,6 +1186,7 @@ async def test_queue_pending_rejects_file_outside_expert_scope(
             message="hi",
             context=None,
             file_ids=["aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"],
+            folder_ids=None,
             expert_id="expert-a",
         )
     assert exc_info.value.status_code == 400
@@ -906,9 +1220,44 @@ async def test_queue_pending_resolves_files_against_the_session_expert(
         message="hi",
         context=None,
         file_ids=["file-1"],
+        folder_ids=None,
         expert_id="expert-a",
     )
 
     resolve_mock.assert_awaited_once_with(
         "user-1", ["file-1"], session_id="sess-1", expert_id="expert-a"
     )
+
+
+@pytest.mark.asyncio
+async def test_queue_pending_names_attached_folders_in_the_message(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = QueuePendingMessageResponse(
+        buffer_length=1,
+        max_buffer_length=MAX_PENDING_MESSAGES,
+        turn_in_flight=True,
+    )
+    queue_mock = AsyncMock(return_value=response)
+    monkeypatch.setattr(helpers_module, "queue_user_message", queue_mock)
+    monkeypatch.setattr(
+        helpers_module, "check_pending_call_rate", AsyncMock(return_value=1)
+    )
+    folder = SimpleNamespace(id="folder-1", name="Invoices", file_count=3)
+    resolve_mock = AsyncMock(return_value=[folder])
+    monkeypatch.setattr(
+        helpers_module, "resolve_attachable_workspace_folders", resolve_mock
+    )
+
+    await queue_pending_for_http(
+        session_id="sess-1",
+        user_id="user-1",
+        message="hi",
+        context=None,
+        file_ids=None,
+        folder_ids=["folder-1"],
+        expert_id="expert-a",
+    )
+
+    resolve_mock.assert_awaited_once_with("user-1", ["folder-1"], expert_id="expert-a")
+    assert "Invoices" in queue_mock.call_args.kwargs["message"]

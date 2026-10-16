@@ -1,7 +1,9 @@
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
 import {
   type ClarifyingQuestion,
+  type QuestionAnswer,
   extractClarifyingQuestions,
+  formatAnswer,
   normalizeClarifyingQuestions,
 } from "../../tools/clarifying-questions";
 
@@ -64,10 +66,10 @@ export function getPendingQuestions(
 
 export function buildAnswersMessage(
   questions: ClarifyingQuestion[],
-  answers: Record<string, string>,
+  answers: Record<string, QuestionAnswer>,
 ): string {
   const body = questions
-    .map((q) => `> ${q.question}\n\n${answers[q.keyword].trim()}`)
+    .map((q) => `> ${q.question}\n\n${formatAnswer(answers[q.keyword])}`)
     .join("\n\n");
   return `**Here are my answers:**\n\n${body}\n\nPlease proceed.`;
 }

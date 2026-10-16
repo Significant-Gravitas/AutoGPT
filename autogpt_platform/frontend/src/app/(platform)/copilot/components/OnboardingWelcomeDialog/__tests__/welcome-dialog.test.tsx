@@ -300,7 +300,7 @@ describe("OnboardingWelcomeDialog — the team deck", () => {
 
     const user = await advanceToCard(1);
     expect(
-      await screen.findByText("Hire an expert, or raise your own."),
+      await screen.findByText("Hire an expert, or create your own."),
     ).toBeDefined();
 
     await user.click(screen.getByRole("button", { name: "Next" }));

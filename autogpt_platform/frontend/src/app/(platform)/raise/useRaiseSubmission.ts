@@ -2,8 +2,11 @@ import { useCreateRaisedExpert } from "@/app/api/__generated__/endpoints/experts
 import type { RaiseResult } from "@/app/api/__generated__/models/raiseResult";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { ApiError } from "@/lib/autogpt-server-api/helpers";
+import { invalidateExpertRosterQueries } from "@/services/experts/invalidate-experts";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
+import { roleFor } from "./components/CategoryStep/helpers";
 import {
   failedAttachmentMessage,
   toRaiseAttachments,
@@ -16,6 +19,7 @@ import {
 } from "./helpers";
 
 export function useRaiseSubmission() {
+  const queryClient = useQueryClient();
   const router = useRouter();
   const { mutateAsync: createRaisedExpert, isPending } =
     useCreateRaisedExpert();
@@ -33,7 +37,7 @@ export function useRaiseSubmission() {
       const response = await createRaisedExpert({
         data: {
           name: draft.name,
-          role: draft.role,
+          role: draft.legacyRole ?? roleFor(draft.category),
           job_title: draft.jobTitle || null,
           color: draft.color,
           avatar_url: draft.avatarUrl || null,
@@ -46,7 +50,7 @@ export function useRaiseSubmission() {
       const result = response.data as RaiseResult;
       if (result.failed_attachments?.length) {
         toast({
-          title: `Raised ${draft.name || "your expert"}, but some tools didn't attach`,
+          title: `Created ${draft.name || "your expert"}, but some tools didn't attach`,
           description: failedAttachmentMessage(
             result.failed_attachments,
             kit.attachments,
@@ -54,6 +58,11 @@ export function useRaiseSubmission() {
         });
       }
       clearDraft();
+      // The copilot page only fires the kickoff for an expert it finds in the
+      // roster, and the sidebar keeps that roster cached, so refresh it before
+      // handing over or the new expert is treated as unknown and the kickoff
+      // param is dropped.
+      await invalidateExpertRosterQueries(queryClient);
       // kickoff=1 has the expert open the thread itself: introduce who it is,
       // say what it can take on, and start or ask for its first job.
       router.push(
@@ -75,7 +84,7 @@ function reportFailure(error: unknown, name: string) {
       toast({
         title: "Expert creation limit reached",
         description:
-          "This account has reached its lifetime raised-expert limit. Contact support if you need more capacity.",
+          "This account has reached its lifetime limit for created Experts. Contact support if you need more capacity.",
         variant: "destructive",
       });
       return;
@@ -83,14 +92,17 @@ function reportFailure(error: unknown, name: string) {
     toast({
       title: "Your team is full",
       description:
-        "You've reached the limit of active experts. Archive one from your team page to raise another.",
+        "You've reached the limit of active experts. Archive one from your team page to create another.",
       variant: "destructive",
     });
     return;
   }
   toast({
-    title: `Couldn't raise ${name || "your expert"}`,
-    description: "Something went wrong. Please try again.",
+    title: `Couldn't create ${name || "your expert"}`,
+    description:
+      error instanceof ApiError && [400, 422, 503].includes(error.status)
+        ? error.message
+        : "Something went wrong. Please try again.",
     variant: "destructive",
   });
 }

@@ -20,6 +20,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -421,6 +422,7 @@ class ExaListImportsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaListImportsBlock.Input,
             output_schema=ExaListImportsBlock.Output,
+            effect=BlockEffect.READ,
         )
 
     async def run(
@@ -470,6 +472,8 @@ class ExaDeleteImportBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=ExaDeleteImportBlock.Input,
             output_schema=ExaDeleteImportBlock.Output,
+            is_irreversible_action=True,
+            effect=BlockEffect.EXTERNAL,
         )
 
     async def run(

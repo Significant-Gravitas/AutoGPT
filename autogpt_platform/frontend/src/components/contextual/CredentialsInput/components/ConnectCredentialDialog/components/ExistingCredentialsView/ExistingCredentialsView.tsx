@@ -13,8 +13,23 @@ interface Props {
   credentials: ExistingCredential[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  purpose?: "grant" | "choose";
+  purpose?: "grant" | "choose" | "update";
 }
+
+const TITLES = {
+  grant: (name: string) => `Give this expert access to ${name}`,
+  choose: (name: string) => `Choose a ${name} account`,
+  update: (name: string) => `Update a ${name} account`,
+};
+
+const DESCRIPTIONS = {
+  grant:
+    "Your account is already connected, but this expert can't use it yet. Pick an account to share, or add a new one.",
+  choose:
+    "You have more than one account connected. Pick the one this chat should use, or add a new one.",
+  update:
+    "None of your connected accounts has the access this needs. Pick the one to sign in to again, or add a new one.",
+};
 
 // The step before the connect methods when the account already has a
 // credential the expert lacks: pick which one to hand over. Mirrors the
@@ -48,14 +63,10 @@ export function ExistingCredentialsView({
 
       <div className="flex flex-col gap-1.5 text-center">
         <Text variant="h3" className="!text-[1.25rem] text-zinc-900">
-          {purpose === "choose"
-            ? `Choose a ${displayName} account`
-            : `Give this expert access to ${displayName}`}
+          {TITLES[purpose](displayName)}
         </Text>
         <Text variant="body" className="!text-zinc-500">
-          {purpose === "choose"
-            ? "You have more than one account connected. Pick the one this chat should use, or add a new one."
-            : "Your account is already connected, but this expert can't use it yet. Pick an account to share, or add a new one."}
+          {DESCRIPTIONS[purpose]}
         </Text>
       </div>
 

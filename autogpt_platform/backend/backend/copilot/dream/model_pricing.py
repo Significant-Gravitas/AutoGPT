@@ -10,18 +10,18 @@ file; we'd rather fail loud on an unknown model than silently bill at
 zero. The OpenRouter path bypasses this entirely because OpenRouter
 already returns the real spot price as ``usage.cost``.
 
-When the Anthropic + OpenAI direct batch paths land (P0.1), the
-``batch_discount`` factor in ``ExecutionPathDiscount`` is multiplied
-into the computed cost so the savings flow through to the user via the
-shared cost ledger.
+On the Anthropic batch path the 50% discount from
+``execution_path_discount`` is multiplied into the computed cost so the
+savings flow through to the user via the shared cost ledger.
 """
 
 from __future__ import annotations
 
 import logging
-from typing import Literal
 
 from pydantic.dataclasses import dataclass
+
+from .routing import ExecutionPath
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,23 @@ _RATES: dict[str, ModelRate] = {
         cache_read_per_mtok=1.5,
         cache_write_per_mtok=18.75,
     ),
+    # Claude Opus 4.8 — published at $5/$25 per Mtok in/out (Anthropic's
+    # official price list, verified 2026-09-26), matching catalog.py's
+    # claude-opus-4-8 credits (750/3750 -> /150 margin divisor = $5/$25).
+    # cache_write_per_mtok uses the 5-min-TTL rate ($6.25); the 1-hour-TTL
+    # rate is $10.00 but this table has no per-TTL granularity yet.
+    "claude-opus-4-8": ModelRate(
+        input_per_mtok=5.0,
+        output_per_mtok=25.0,
+        cache_read_per_mtok=0.50,
+        cache_write_per_mtok=6.25,
+    ),
+    "anthropic/claude-opus-4.8": ModelRate(
+        input_per_mtok=5.0,
+        output_per_mtok=25.0,
+        cache_read_per_mtok=0.50,
+        cache_write_per_mtok=6.25,
+    ),
     # Claude Sonnet 4.6
     "claude-sonnet-4-6": ModelRate(
         input_per_mtok=3.0,
@@ -87,17 +104,12 @@ _RATES: dict[str, ModelRate] = {
 }
 
 
-ExecutionPath = Literal["sync_baseline", "anthropic_batch", "openai_batch"]
-
-
-# Both Anthropic and OpenAI batch APIs offer a 50% discount on the
-# normal rate for asynchronous batch processing. We pass that savings
-# through to the user — recorded in the cost ledger so the discount is
-# auditable.
+# Anthropic's Message Batches API offers a 50% discount on the normal
+# rate for asynchronous batch processing. We pass that savings through
+# to the user — recorded in the cost ledger so the discount is auditable.
 _BATCH_DISCOUNTS: dict[ExecutionPath, float] = {
     "sync_baseline": 0.0,
     "anthropic_batch": 0.5,
-    "openai_batch": 0.5,
 }
 
 

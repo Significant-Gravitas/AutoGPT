@@ -1,4 +1,5 @@
 "use client";
+import { ProgressError } from "./components/ProgressError";
 import { ProgressBar } from "./components/ProgressBar";
 import { StepIndicator } from "./components/StepIndicator";
 import { BrainDumpStep } from "./steps/BrainDumpStep/BrainDumpStep";
@@ -15,6 +16,7 @@ import { ArrowLeft01Icon, Logout03Icon } from "@hugeicons/core-free-icons";
 import { Button } from "@/components/atoms/Button/Button";
 import { Text } from "@/components/atoms/Text/Text";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
+import { cn } from "@/lib/utils";
 
 export default function OnboardingPage() {
   const {
@@ -28,21 +30,50 @@ export default function OnboardingPage() {
     preparingStep,
     totalSteps,
     trialConfirmation,
+    paidConfirmation,
+    progressError,
+    progressConflict,
+    retryProgress,
+    completionError,
   } = useOnboardingPage();
   const prevStep = useOnboardingWizardStore((s) => s.prevStep);
   const isStepBusy = useOnboardingWizardStore((s) => s.isStepBusy);
 
+  if (isLoading && paidConfirmation.error)
+    return (
+      <ErrorCard
+        context="your payment"
+        responseError={{ message: paidConfirmation.error }}
+        onRetry={paidConfirmation.retry}
+      />
+    );
+  if (isLoading && paidConfirmation.pending)
+    return (
+      <Text variant="body" role="status">
+        Confirming your subscription…
+      </Text>
+    );
   if (isLoading)
     return !trialConfirmation.ready ? (
       <Text variant="body" role="status">
         Confirming your trial and card setup…
       </Text>
-    ) : null;
+    ) : progressError ? (
+      <ProgressError
+        message={progressError}
+        conflict={progressConflict}
+        retry={retryProgress}
+      />
+    ) : (
+      <Text variant="body" role="status">
+        Loading your setup…
+      </Text>
+    );
 
   // ProgressBar + StepIndicator track only the user-interactive steps.
   // PreparingStep is a transition view that hides both indicators.
   const showDots = currentStep <= totalSteps;
-  // Back is hidden on the first content step (never back into the paywall)
+  // Back is hidden on the first content step
   // and while the current step is mid-flight (brain dump processing) — there
   // is nothing coherent to go back to. Read from the layout so it tracks
   // buildStepLayout rather than a hardcoded position.
@@ -54,6 +85,20 @@ export default function OnboardingPage() {
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center">
+      {progressError && (
+        <ProgressError
+          message={progressError}
+          conflict={progressConflict}
+          retry={retryProgress}
+        />
+      )}
+      {completionError && (
+        <ErrorCard
+          context="your account setup"
+          responseError={{ message: completionError }}
+          onRetry={handlePreparingComplete}
+        />
+      )}
       {trialConfirmation.error ? (
         <ErrorCard
           context="your trial"
@@ -78,7 +123,14 @@ export default function OnboardingPage() {
         </Button>
       )}
 
-      <div className="flex w-full min-w-0 flex-1 items-center justify-center pb-8 pt-16">
+      <div
+        className={cn(
+          "flex w-full min-w-0 flex-1 items-center justify-center",
+          currentStep === steps.subscription
+            ? "pb-8 pt-3 lg:pb-2"
+            : "pb-8 pt-16",
+        )}
+      >
         {currentStep === steps.team && <IntroStep slide="team" />}
         {currentStep === steps.autopilot && <IntroStep slide="autopilot" />}
         {currentStep === steps.role && <RoleStep />}
@@ -100,7 +152,11 @@ export default function OnboardingPage() {
       </div>
 
       {showDots && (
-        <div className="pb-8">
+        <div
+          className={
+            currentStep === steps.subscription ? "pb-8 lg:pb-4" : "pb-8"
+          }
+        >
           <StepIndicator totalSteps={totalSteps} currentStep={currentStep} />
         </div>
       )}

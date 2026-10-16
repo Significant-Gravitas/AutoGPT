@@ -1,4 +1,5 @@
 import type { UIDataTypes, UIMessage, UITools } from "ai";
+import { isHeldCallRow } from "../ChatMessagesContainer/heldCallRows";
 
 export interface MinimapEntry {
   id: string;
@@ -16,7 +17,7 @@ export function toMinimapEntries(
   messages: UIMessage<unknown, UIDataTypes, UITools>[],
 ): MinimapEntry[] {
   return messages
-    .filter((message) => message.role === "user")
+    .filter((message) => message.role === "user" && !isHeldCallRow(message))
     .map((message) => {
       const [title, body] = splitPreview(messageText(message));
       return {

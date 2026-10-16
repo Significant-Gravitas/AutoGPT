@@ -199,6 +199,14 @@ If you prefer, you can manually download and run the installer scripts:
 
 These scripts are located in the `autogpt_platform/installer/` directory.
 
+Both create the three `.env` files if they are missing and generate the
+secrets `.env.default` leaves blank (`ENCRYPTION_KEY`,
+`UNSUBSCRIBE_SECRET_KEY`, `BETTER_AUTH_SECRET`), the same as `make init-env`.
+Running a script again never changes a value that is already set. If you are
+upgrading an install that ran without its own `ENCRYPTION_KEY`, read
+[Upgrading: secrets are generated per install](getting-started.md#upgrading-secrets-are-generated-per-install)
+first so your connected integrations move to the new key.
+
 ### Running fully offline with a local LLM (Ollama)
 
 Both installer scripts accept an opt-in flag that installs

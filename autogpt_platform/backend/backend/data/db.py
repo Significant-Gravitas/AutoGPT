@@ -78,12 +78,22 @@ async def connect():
     #     raise ConnectionError("Failed to connect to Prisma.") from e
 
 
+# Prisma shuts the query engine down by sending it SIGINT and then calling
+# ``subprocess.wait(timeout=...)``. Passing no timeout makes that wait
+# unbounded, so an engine that does not act on the SIGINT wedges the caller
+# forever — and because the wait is a blocking call inside an async function,
+# it takes the event loop with it. The visible symptom is a test session that
+# runs every test and then never prints its summary line. Bound the wait so
+# an unresponsive engine is SIGKILLed instead of hung on.
+DISCONNECT_TIMEOUT = timedelta(seconds=10)
+
+
 @conn_retry("Prisma", "Releasing connection")
 async def disconnect():
     if not prisma.is_connected():
         return
 
-    await prisma.disconnect()
+    await prisma.disconnect(DISCONNECT_TIMEOUT)
 
     if prisma.is_connected():
         raise ConnectionError("Failed to disconnect from Prisma.")

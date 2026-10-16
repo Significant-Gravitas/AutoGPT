@@ -1,11 +1,18 @@
+export type ConnectionState = boolean | "needs_expert_grant" | null;
+
 export interface CapabilityListing {
   id: string;
   name: string;
   purpose: string;
   kind: string;
   class?: string;
-  connected?: boolean | null;
+  connected?: ConnectionState;
   eager?: boolean;
+}
+
+export interface ConnectionBadge {
+  label: string;
+  className: string;
 }
 
 export interface CapabilityListOutput {
@@ -83,8 +90,22 @@ export function getAnimationText(part: FindCapabilityToolPart): string {
   }
 }
 
+export function connectionBadge(
+  item: CapabilityListing,
+): ConnectionBadge | null {
+  if (item.connected === undefined || item.connected === null) return null;
+  if (item.connected === "needs_expert_grant") {
+    return { label: "grant needed", className: "bg-amber-100 text-amber-800" };
+  }
+  if (item.connected) {
+    return { label: "connected", className: "bg-green-100 text-green-800" };
+  }
+  return { label: "sign in", className: "bg-zinc-100 text-zinc-500" };
+}
+
 export function kindLabel(item: CapabilityListing): string {
   if (item.kind === "mcp_server") return "integration";
+  if (item.kind === "skill") return "skill";
   if (item.class === "primitive") return "building block";
   if (item.kind === "tool") return "tool";
   return "action";

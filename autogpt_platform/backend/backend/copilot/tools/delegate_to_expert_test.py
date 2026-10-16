@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 
 from .delegate_to_expert import DelegateToExpertTool
@@ -441,6 +442,25 @@ class TestDelegation:
         )
         assert "Otto" in mock_turn.await_args.kwargs["message"]
         assert mock_sessions[0].metadata.delegated_by_expert_id is None
+
+    @pytest.mark.asyncio
+    async def test_delegated_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        """The teammate's thread renders a "Sent from" badge off the message
+        row, so the delegating session and expert ride its metadata."""
+        await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="hi",
+            wait_for_result=0,
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
 
     @pytest.mark.asyncio
     async def test_response_carries_target_identity(
@@ -904,6 +924,26 @@ class TestRefusedDelegationCleanup:
 
         assert isinstance(result, ErrorResponse)
         assert "inner-1" not in result.model_dump_json()
+
+    async def test_a_delegation_refused_at_the_inflight_cap_says_to_wait(
+        self, roster, mock_turn, mock_sessions, monkeypatch
+    ):
+        """The thread is discarded, but the model still learns the user is at
+        their task limit and to wait, as the other spawn tools say."""
+        monkeypatch.setattr(
+            "backend.copilot.tools.run_sub_session.delete_chat_session", AsyncMock()
+        )
+        mock_turn.return_value = ("rejected_concurrent_turn_cap", SessionResult())
+
+        result = await DelegateToExpertTool()._execute(
+            user_id="alice",
+            session=_session(expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="draft the ops update",
+        )
+
+        assert isinstance(result, ErrorResponse)
+        assert result.message == spawn_limit_message()
 
     async def test_a_refused_resume_keeps_the_prior_thread(
         self, roster, mock_turn, mock_sessions, monkeypatch

@@ -17,13 +17,20 @@ WEIGHT_PRIMITIVE = 0.75
 
 
 class ConnectionState(BaseModel):
-    """The user's credentials, keyed the three ways capabilities need them."""
+    """The credentials this session can run on, keyed the three ways
+    capabilities need them.
+
+    For an expert session the top-level sets hold only what the expert was
+    granted; ``ungranted`` holds what the account owns but the expert may not
+    use, so search can say "ask for a grant" instead of "sign in".
+    """
 
     model_config = ConfigDict(frozen=True)
 
     providers: frozenset[str] = Field(default_factory=frozenset)
     server_urls: frozenset[str] = Field(default_factory=frozenset)
     hosts: frozenset[str] = Field(default_factory=frozenset)
+    ungranted: "ConnectionState | None" = None
 
 
 def resolve_connected(
@@ -47,8 +54,24 @@ def resolve_connected(
     return None
 
 
+def resolve_needs_expert_grant(
+    entry: CapabilityEntry, state: ConnectionState | None
+) -> bool:
+    """Whether *entry* would run on an account credential this expert session
+    has not been granted — owned, but not usable until the user grants it."""
+    if state is None or state.ungranted is None:
+        return False
+    if resolve_connected(entry, state) is not False:
+        return False
+    return resolve_connected(entry, state.ungranted) is True
+
+
 def tier(entry: CapabilityEntry, connected: bool | None) -> int:
     """0 = connected service ... 3 = bare primitive; used for tie-breaks."""
+    if entry.kind == "skill":
+        # The owner's own procedure: nothing to connect, written for this
+        # user, so it ranks with the services they have connected.
+        return 0
     if entry.klass == "service":
         return 0 if connected else 1
     # A host-keyed primitive resolves its credential from the request URL at

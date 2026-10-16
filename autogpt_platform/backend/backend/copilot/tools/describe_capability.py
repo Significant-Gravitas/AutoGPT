@@ -4,10 +4,10 @@ search index never carries schemas."""
 import logging
 from typing import Any
 
-from backend.copilot.capabilities.models import CapabilityEntry
-from backend.copilot.capabilities.registry import configured_tool, get_registry
-from backend.copilot.capabilities.resolve import resolve_entry
+from backend.copilot.capabilities.models import SKILL_TOOL, CapabilityEntry
+from backend.copilot.capabilities.registry import configured_tool
 from backend.copilot.capabilities.schema_trim import collapse_large_enums
+from backend.copilot.capabilities.sources import expert_dispatch
 from backend.copilot.capabilities.sources.mcp_catalog import setup_hint
 from backend.copilot.model import ChatSession
 from backend.copilot.permissions import BLOCK_GATE, MCP_GATE
@@ -23,13 +23,17 @@ from .models import (
 )
 from .run_block import RunBlockTool
 from .run_mcp_tool import RunMCPToolTool
+from .session_registry import resolve_session_entry
 
 logger = logging.getLogger(__name__)
 
 UNKNOWN_ID_HINT = (
     "Unknown capability id. Use the exact 'id' from a find_capability result "
-    "(tool:<name>, block:<uuid>, mcp:<host>)."
+    "(tool:<name>, block:<uuid>, mcp:<host>, skill:<name>, expert:<id>)."
 )
+
+# A skill takes no input: running it is loading it.
+NO_INPUT: dict[str, Any] = {"type": "object", "properties": {}}
 
 # Input shape for run_capability on an MCP server entry.
 MCP_RUN_PARAMETERS: dict[str, Any] = {
@@ -57,6 +61,8 @@ class DescribeCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Inputs and outputs of one capability by id, before its first use. "
+            "Skip ids listed in the <seen_capabilities> block of the current "
+            "user message: those were already described this session. "
             "Blocks return their schema; MCP servers list their tools; platform "
             "tools return their parameters. Large enums are sampled unless "
             "expand=true."
@@ -97,7 +103,7 @@ class DescribeCapabilityTool(BaseTool):
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
             )
-        entry = resolve_entry(get_registry(), id)
+        entry = await resolve_session_entry(user_id, session, id)
         if entry is None:
             return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
         # Describing answers to the gate that running does. An MCP
@@ -108,6 +114,12 @@ class DescribeCapabilityTool(BaseTool):
             if gate_denied(BLOCK_GATE):
                 return gate_denied_error("blocks", session_id)
             return await _describe_block(entry, user_id, session, expand)
+        if entry.kind == "skill":
+            if gate_denied(SKILL_TOOL):
+                return gate_denied_error(SKILL_TOOL, session_id)
+            return describe_skill(entry, session_id)
+        if entry.kind == "expert":
+            return describe_expert(entry, session_id)
         if entry.kind == "tool":
             name = entry.implementations[0].ref
             if gate_denied(name):
@@ -141,13 +153,66 @@ async def _describe_block(
     return result
 
 
+def describe_skill(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
+    """What a skill is for.  Its body is not repeated here: running the
+    capability loads it, package files included."""
+    return CapabilityDetailsResponse(
+        message=(
+            f"Skill '{entry.name}': {entry.description} Load it with "
+            f"run_capability(id='{entry.id}', input={{}}) and read the body "
+            "before acting on the task it covers."
+        ),
+        capability=entry.listing(),
+        parameters=NO_INPUT,
+        session_id=session_id,
+    ).from_outside()
+
+
+def describe_expert(entry: CapabilityEntry, session_id: str) -> ToolResponseBase:
+    """What running an expert id does: propose hiring a roster template, or
+    hand a teammate a task.  The id carries the expert, so the input is the
+    rest of that tool's parameters."""
+    dispatch = expert_dispatch(entry.id)
+    tool = configured_tool(dispatch[0]) if dispatch else None
+    if dispatch is None or tool is None:
+        return ErrorResponse(
+            message=UNKNOWN_ID_HINT, session_id=session_id
+        ).from_outside()
+    name, bound = dispatch
+    if gate_denied(name):
+        return gate_denied_error(name, session_id)
+    action = "On the user's team" if entry.hired else "On the roster, not yet hired"
+    return CapabilityDetailsResponse(
+        message=(
+            f"{entry.name} — {entry.purpose} {action}: run_capability("
+            f"id='{entry.id}', input={{...}}) calls {name}. {tool.description}"
+        ),
+        capability=entry.listing(),
+        parameters=_without_properties(tool.model_parameters, set(bound)),
+        session_id=session_id,
+    ).from_outside()
+
+
+def _without_properties(schema: dict[str, Any], names: set[str]) -> dict[str, Any]:
+    return {
+        **schema,
+        "properties": {
+            key: value
+            for key, value in (schema.get("properties") or {}).items()
+            if key not in names
+        },
+        "required": [key for key in schema.get("required") or [] if key not in names],
+    }
+
+
 def _describe_tool(
     entry: CapabilityEntry, session_id: str, expand: bool
 ) -> ToolResponseBase:
     tool = configured_tool(entry.implementations[0].ref)
     if tool is None:
         return ErrorResponse(message=UNKNOWN_ID_HINT, session_id=session_id)
-    parameters = tool.parameters if expand else collapse_large_enums(tool.parameters)
+    parameters = tool.model_parameters
+    parameters = parameters if expand else collapse_large_enums(parameters)
     return CapabilityDetailsResponse(
         message=(
             f"{tool.description} Run it with run_capability(id='{entry.id}', "

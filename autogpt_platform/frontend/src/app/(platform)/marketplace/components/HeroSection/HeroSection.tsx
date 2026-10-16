@@ -12,17 +12,17 @@ export const HeroSection = () => {
   return (
     <div className="mb-16 mt-10 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-3xl">
-        <h1 className="mb-3 text-center text-3xl font-semibold tracking-[-0.02em] text-zinc-900 md:text-4xl">
+        <h1 className="mb-3 text-center text-3xl font-semibold leading-[1.05] tracking-[-0.02em] text-zinc-900 md:text-[3rem]">
           {isHireExpertsEnabled ? (
             <>
-              AI experts and workflows,
+              Hire an AI expert
               <span className="block">
-                built for <span className="text-violet-600">your team</span>
+                for <span className="text-violet-600">your team</span>
               </span>
             </>
           ) : (
             <>
-              Explore AI agents built for{" "}
+              Explore AI workflows built for{" "}
               <span className="text-violet-600">you</span>
               <span className="block">by the community</span>
             </>
@@ -31,12 +31,11 @@ export const HeroSection = () => {
         <p className="mb-8 text-center text-[15px] text-zinc-500 md:text-lg">
           {isHireExpertsEnabled ? (
             <>
-              Hire a ready-made specialist, or install automations from the
-              community
+              Ready-made specialists who bring their own skills and workflows
               <span className="block">— working in minutes.</span>
             </>
           ) : (
-            "Bringing you AI agents designed by thinkers from around the world"
+            "Bringing you AI workflows designed by thinkers from around the world"
           )}
         </p>
         <div className="mb-4 flex w-full justify-center">

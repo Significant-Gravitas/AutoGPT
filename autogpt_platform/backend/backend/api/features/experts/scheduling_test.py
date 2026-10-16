@@ -35,9 +35,16 @@ async def test_reattach_rehomes_presets_to_current_personal_tenancy(mocker) -> N
     mocker.patch.object(
         scheduling, "get_scheduler_client", return_value=scheduler_client
     )
+    # Re-hire also resumes the routines archiving paused, which reads its own
+    # rows. This test is about where presets land, so the routine pass is
+    # stubbed rather than given a database.
+    resume_routines = mocker.patch.object(
+        scheduling.routine_jobs, "resume_routines_after_revive", new=AsyncMock()
+    )
 
     await scheduling.reattach_expert_triggers("owner", "expert-1")
 
+    resume_routines.assert_awaited_once_with("owner", "expert-1")
     resolve_tenancy.assert_awaited_once_with("owner", "expert-1")
     preset_client.update_many.assert_awaited_once_with(
         where={

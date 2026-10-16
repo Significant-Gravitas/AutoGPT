@@ -56,7 +56,7 @@ class HireExpertTool(BaseTool):
             "The user sees who would join on a card with Approve and Decline "
             "buttons, so do not describe them in text — one short line at "
             "most, then wait. Only after they approve, call "
-            "confirm_expert_change with that id. Use raise_expert when no "
+            "tool:confirm_expert_change with that id. Use tool:raise_expert when no "
             "template fits."
         )
 
@@ -68,6 +68,7 @@ class HireExpertTool(BaseTool):
                 "template_id": {
                     "type": "string",
                     "description": ("Roster template to hire; never invent an id."),
+                    "entity": "expert_template",
                 },
                 "name": {
                     "type": "string",
@@ -109,7 +110,7 @@ class HireExpertTool(BaseTool):
             return ErrorResponse(
                 message=(
                     f"No expert template with id {template_id.strip()} is on "
-                    "the roster. List the roster and pick a current one."
+                    'the roster. Find one with find_capability(kind="expert").'
                 ),
                 session_id=session_id,
             )
@@ -145,7 +146,7 @@ class HireExpertTool(BaseTool):
                 "card with Approve and Decline buttons — do not describe "
                 "them in text. Reply with one short line at most and wait. "
                 "Only after they explicitly approve, call "
-                "confirm_expert_change with this confirmation_id."
+                "tool:confirm_expert_change with this confirmation_id."
             ),
             session_id=session_id,
             preview=preview,

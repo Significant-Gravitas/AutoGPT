@@ -66,7 +66,9 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
             <div className="flex flex-col gap-1">
               <Text variant="small-medium">Webhook URL:</Text>
               <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                <code className="flex-1 select-all text-sm">{webhook.url}</code>
+                <code className="ph-no-capture flex-1 select-all text-sm">
+                  {webhook.url}
+                </code>
                 <Button
                   variant="outline"
                   size="icon"
@@ -81,7 +83,7 @@ export function WebhookTriggerSection({ preset, triggerSetupInfo }: Props) {
           </div>
         ) : (
           <Text variant="body" className="text-muted-foreground">
-            This agent trigger is{" "}
+            This workflow trigger is{" "}
             {preset.is_active
               ? "ready. When a trigger is received, it will run with the provided settings."
               : "disabled. It will not respond to triggers until you enable it."}

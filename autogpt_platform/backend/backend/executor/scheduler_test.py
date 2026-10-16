@@ -8,14 +8,18 @@ from apscheduler.triggers.cron import CronTrigger
 
 from backend.api.model import CreateGraph
 from backend.data import db
+from backend.data.execution import get_graph_executions
 from backend.executor.scheduler import (
+    GraphExecutionJobArgs,
     Jobstores,
     Scheduler,
     _build_trigger,
+    _execute_graph,
     _normalize_cron_day_of_week,
 )
 from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.clients import get_scheduler_client
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.test import SpinTestServer
 
 
@@ -97,6 +101,121 @@ async def test_paused_schedule_excluded_unless_include_paused(server: SpinTestSe
     assert [s.id for s in active_after_resume] == [schedule.id]
 
 
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_schedule_changes_timing_and_inputs_in_place(
+    server: SpinTestServer,
+):
+    """#15281: editing a schedule rewrites its cron, timezone, inputs and name
+    on the same job, and the next run moves to the new time."""
+    await db.connect()
+    test_user = await create_test_user()
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=test_user.id,
+    )
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=test_user.id,
+        graph_version=1,
+        cron="0 9 * * 1-5",
+        input_data={"input": "data"},
+        input_credentials={},
+        name="Weekday report",
+        user_timezone="UTC",
+    )
+
+    try:
+        await scheduler.update_execution_schedule(
+            schedule_id=schedule.id,
+            user_id=test_user.id,
+            name="Evening report",
+            cron="30 18 * * 1-5",
+            user_timezone="America/New_York",
+            input_data={"input": "changed"},
+        )
+
+        [stored] = await scheduler.get_execution_schedules(test_graph.id, test_user.id)
+        assert stored.id == schedule.id
+        assert (stored.name, stored.cron, stored.timezone) == (
+            "Evening report",
+            "30 18 * * 1-5",
+            "America/New_York",
+        )
+        assert stored.input_data == {"input": "changed"}
+        next_run = datetime.fromisoformat(stored.next_run_time).astimezone(
+            pytz.timezone("America/New_York")
+        )
+        assert (next_run.hour, next_run.minute) == (18, 30)
+        assert next_run.weekday() < 5
+
+        # Fire the stored job the way APScheduler does: the run it starts
+        # must carry the edited inputs and point back at this schedule.
+        await _execute_graph(
+            **stored.model_dump(include=set(GraphExecutionJobArgs.model_fields))
+        )
+        [fired] = await get_graph_executions(
+            graph_id=test_graph.id, user_id=test_user.id
+        )
+        assert fired.trigger_ref == schedule.id
+        assert fired.inputs == {"input": "changed"}
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=test_user.id)
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_update_schedule_is_owner_only_and_all_or_nothing(
+    server: SpinTestServer,
+):
+    """Another user can't edit the schedule, a bad cron changes nothing (not
+    even the name sent with it), and editing a paused schedule keeps it
+    paused instead of silently re-arming it."""
+    await db.connect()
+    owner = await create_test_user()
+    other = await create_test_user(alt_user=True)
+    test_graph = await server.agent_server.test_create_graph(
+        create_graph=CreateGraph(graph=create_test_graph()),
+        user_id=owner.id,
+    )
+    scheduler = get_scheduler_client()
+    schedule = await scheduler.add_execution_schedule(
+        graph_id=test_graph.id,
+        user_id=owner.id,
+        graph_version=1,
+        cron="0 9 * * 1-5",
+        input_data={"input": "data"},
+        input_credentials={},
+        name="Weekday report",
+        user_timezone="UTC",
+    )
+
+    try:
+        with pytest.raises(NotAuthorizedError):
+            await scheduler.update_execution_schedule(
+                schedule_id=schedule.id, user_id=other.id, cron="0 1 * * *"
+            )
+        with pytest.raises(ValueError):
+            await scheduler.update_execution_schedule(
+                schedule_id=schedule.id,
+                user_id=owner.id,
+                name="Renamed",
+                cron="not a cron",
+            )
+        [stored] = await scheduler.get_execution_schedules(test_graph.id, owner.id)
+        assert (stored.name, stored.cron) == ("Weekday report", "0 9 * * 1-5")
+
+        assert await scheduler.pause_schedule(schedule.id, user_id=owner.id)
+        await scheduler.update_execution_schedule(
+            schedule_id=schedule.id, user_id=owner.id, cron="0 7 * * *"
+        )
+        [paused] = await scheduler.get_execution_schedules(
+            test_graph.id, owner.id, include_paused=True
+        )
+        assert (paused.cron, paused.next_run_time) == ("0 7 * * *", "")
+    finally:
+        await scheduler.delete_schedule(schedule.id, user_id=owner.id)
+
+
 # ---------------------------------------------------------------------------
 # Community rebuild @expose methods — lightweight unit tests
 #
@@ -166,6 +285,104 @@ class TestAddCopilotTurnScheduleExpertAttribution:
 
     def test_plain_session_persists_no_expert(self) -> None:
         assert self._persisted_args().expert_id is None
+
+
+def test_build_trigger_reports_an_unknown_timezone_as_bad_input():
+    """APScheduler raises ZoneInfoNotFoundError (a KeyError) for an unknown
+    zone. Creating or editing a schedule with one must be a 400, not a 500."""
+    with pytest.raises(ValueError, match="Unknown timezone"):
+        _build_trigger(cron="0 9 * * *", run_at=None, user_timezone="Mars/Olympus")
+
+
+class TestUpdateGraphExecutionSchedule:
+    """In-process checks of the change set ``update_graph_execution_schedule``
+    hands APScheduler. The end-to-end behavior is covered against the real
+    scheduler service above; these pin the branches that matter for a
+    single, minimal ``modify_job`` write."""
+
+    @staticmethod
+    def _job(*, paused: bool = False, kind: str = "graph") -> MagicMock:
+        job = MagicMock(id="sched-1")
+        job.name = "Weekday report"
+        job.trigger = _build_trigger(
+            cron="0 9 * * 1,2,3,4,5", run_at=None, user_timezone="UTC"
+        )
+        job.next_run_time = None if paused else datetime.now(timezone.utc)
+        if kind == "graph":
+            job.kwargs = GraphExecutionJobArgs(
+                schedule_id="sched-1",
+                user_id="user-1",
+                graph_id="graph-1",
+                graph_version=1,
+                agent_name="Weekday report",
+                cron="0 9 * * 1,2,3,4,5",
+                input_data={"input": "data"},
+            ).model_dump(mode="json")
+        else:
+            job.kwargs = {
+                "kind": "copilot_turn",
+                "schedule_id": "sched-1",
+                "user_id": "user-1",
+                "message": "hi",
+                "cron": "0 9 * * *",
+            }
+        return job
+
+    def _update(self, job: MagicMock, **fields):
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = job
+        s.scheduler.modify_job.return_value = job
+        with (
+            patch.object(s, "_invalidate_jobs_cache"),
+            patch("backend.executor.scheduler.run_async") as run_async,
+        ):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", **fields
+            )
+        return s.scheduler.modify_job.call_args.kwargs, run_async
+
+    def test_new_time_and_timezone_move_the_next_run(self) -> None:
+        changes, run_async = self._update(
+            self._job(), cron="30 18 * * 1,2,3,4,5", user_timezone="America/New_York"
+        )
+        assert str(changes["trigger"].timezone) == "America/New_York"
+        assert changes["kwargs"]["cron"] == "30 18 * * 1,2,3,4,5"
+        next_run = changes["next_run_time"].astimezone(
+            pytz.timezone("America/New_York")
+        )
+        assert (next_run.hour, next_run.minute, next_run.weekday() < 5) == (
+            18,
+            30,
+            True,
+        )
+        assert "name" not in changes
+        run_async.assert_not_called()
+
+    def test_a_paused_schedule_stays_paused(self) -> None:
+        changes, _ = self._update(self._job(paused=True), cron="0 7 * * *")
+        assert "trigger" in changes
+        assert "next_run_time" not in changes
+
+    def test_a_rename_leaves_the_timing_alone(self) -> None:
+        changes, _ = self._update(self._job(), name="  Evening report  ")
+        assert changes["name"] == "Evening report"
+        assert changes["kwargs"]["agent_name"] == "Evening report"
+        assert changes["kwargs"]["input_data"] == {"input": "data"}
+        assert "trigger" not in changes
+
+    def test_new_inputs_are_validated_against_the_graph(self) -> None:
+        changes, run_async = self._update(self._job(), input_data={"input": "new"})
+        assert changes["kwargs"]["input_data"] == {"input": "new"}
+        run_async.assert_called_once()
+
+    def test_a_copilot_follow_up_is_not_an_agent_schedule(self) -> None:
+        s = _stub_scheduler()
+        s.scheduler.get_job.return_value = self._job(kind="copilot_turn")
+        with pytest.raises(NotFoundError):
+            s.update_graph_execution_schedule(
+                schedule_id="sched-1", user_id="user-1", cron="0 7 * * *"
+            )
+        s.scheduler.modify_job.assert_not_called()
 
 
 class TestAddCommunityRebuildSchedule:
@@ -839,60 +1056,6 @@ def test_build_trigger_unix_dow_various_cases(
     assert nxt.strftime("%A") == expected_dow
 
 
-# ---------------------------------------------------------------------------
-# LaunchDarkly lifecycle — the scheduler eagerly inits LD in run_service (so
-# @expose flag gates don't fail-closed right after a pod restart) and tears
-# it down in cleanup, both gated on the non-LOCAL app env. Test the gate at
-# the boundary where the LD symbols are used (the scheduler module).
-# ---------------------------------------------------------------------------
-
-
-class TestLaunchDarklyLifecycle:
-    def test_init_runs_when_app_env_not_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "initialize_launchdarkly") as init,
-        ):
-            sched._init_launchdarkly_for_scheduler()
-        init.assert_called_once()
-
-    def test_init_skipped_when_app_env_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "initialize_launchdarkly") as init,
-        ):
-            sched._init_launchdarkly_for_scheduler()
-        init.assert_not_called()
-
-    def test_shutdown_runs_when_app_env_not_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.PRODUCTION),
-            patch.object(sched, "shutdown_launchdarkly") as shutdown,
-        ):
-            sched._shutdown_launchdarkly_for_scheduler()
-        shutdown.assert_called_once()
-
-    def test_shutdown_skipped_when_app_env_local(self) -> None:
-        from backend.executor import scheduler as sched
-        from backend.util.settings import AppEnvironment
-
-        with (
-            patch.object(sched.config, "app_env", AppEnvironment.LOCAL),
-            patch.object(sched, "shutdown_launchdarkly") as shutdown,
-        ):
-            sched._shutdown_launchdarkly_for_scheduler()
-        shutdown.assert_not_called()
-
-
 def _counter(name: str, **labels) -> float:
     from prometheus_client import REGISTRY
 
@@ -906,9 +1069,6 @@ def test_get_active_jobs_cached_sets_the_scheduler_jobs_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
     s._execution_jobstore._get_jobs.return_value = [object(), object(), object()]
 
@@ -928,9 +1088,6 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
     from backend.executor.scheduler import Scheduler
 
     s = Scheduler.__new__(Scheduler)
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
-    s._jobs_cache_version = 0
     s._execution_jobstore = MagicMock()
 
     # A fresh, accepted read publishes 5.
@@ -946,8 +1103,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     # Now a read whose query is interrupted by an invalidation: it returns a
     # different count, but the version moved, so the cache write is skipped.
-    s._active_jobs_cache = None
-    s._active_jobs_cache_expires_at = 0.0
+    s._invalidate_jobs_cache()
 
     def _slow_query_then_invalidated(*_args, **_kwargs):
         s._invalidate_jobs_cache()
@@ -955,5 +1111,7 @@ def test_stale_read_invalidated_mid_query_does_not_overwrite_the_gauge():
 
     s._execution_jobstore._get_jobs.side_effect = _slow_query_then_invalidated
     assert len(s._get_active_jobs_cached()) == 2  # caller still gets the list
-    assert s._active_jobs_cache is None  # write-back was rejected
-    assert gauge() == 5  # and so was the gauge update
+    assert gauge() == 5  # but the gauge update was rejected
+    s._execution_jobstore._get_jobs.side_effect = None
+    s._execution_jobstore._get_jobs.return_value = [object()] * 7
+    assert len(s._get_active_jobs_cached()) == 7  # and so was the cache write

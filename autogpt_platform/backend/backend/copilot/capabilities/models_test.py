@@ -1,4 +1,4 @@
-from .models import CapabilityEntry, Connection, clip_purpose
+from .models import CapabilityEntry, Connection, clip_purpose, normalize_text
 
 
 def test_clip_purpose_keeps_short_text_verbatim():
@@ -16,9 +16,21 @@ def test_clip_purpose_falls_back_to_word_boundary_with_ellipsis():
     assert clipped.endswith("…") and len(clipped) <= 160
 
 
+def test_normalize_text_collapses_whitespace_and_bounds_the_index_text():
+    assert normalize_text("  Send   an\nemail. ") == "Send an email."
+    text = "word " * 3000
+    bounded = normalize_text(text)
+    assert len(bounded) <= 4000 and bounded.endswith("word")
+    assert normalize_text("alpha beta gamma", limit=10) == "alpha beta"
+
+
 def test_listing_is_compact_and_only_shows_connection_when_required():
     entry = CapabilityEntry(
-        id="tool:web_search", kind="tool", name="web_search", purpose="Search."
+        id="tool:web_search",
+        kind="tool",
+        name="web_search",
+        purpose="Search.",
+        description="Search. Returns the top results for a query.",
     )
     assert entry.listing() == {
         "id": "tool:web_search",

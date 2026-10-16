@@ -22,6 +22,7 @@ from backend.copilot.bot.adapters.shared import (
     should_ignore,
 )
 from backend.copilot.bot.bot_backend import BotBackend
+from backend.copilot.bot.choices import QUESTION_KIND, ButtonKind
 from backend.copilot.bot.config import MAX_INBOUND_ATTACHMENTS
 from backend.copilot.bot.text import iter_chunks, resolve_mentions
 
@@ -143,7 +144,7 @@ class DiscordAdapter(SocketAdapter):
         self._on_message_callback = callback
         # Choice buttons are stateless and outlive this process, so their
         # click handler is registered once here rather than per sent message.
-        choice_ui.register_choice_handler(self._client, self, callback)
+        choice_ui.register_choice_handler(self._client, self, callback, self._api)
 
     async def start(self) -> None:
         await self._client.start(config.get_bot_token())
@@ -220,13 +221,14 @@ class DiscordAdapter(SocketAdapter):
         options: list[str],
         token: str,
         mentionable_users: tuple[tuple[str, str], ...] = (),
+        kind: ButtonKind = QUESTION_KIND,
     ) -> bool:
         channel = await self._resolve_channel(channel_id)
         if channel is None or not isinstance(channel, discord.abc.Messageable):
             return False
         if self._on_message_callback is None:
             return False
-        view = choice_ui.build_choice_view(token, options)
+        view = choice_ui.build_choice_view(token, options, kind)
         await channel.send(text, view=view, tts=False)
         return True
 

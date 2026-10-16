@@ -96,16 +96,32 @@ def sanitize_filename(filename: str) -> str:
 def get_exec_file_path(graph_exec_id: str, path: str) -> str:
     """
     Utility to build an absolute path in the {temp}/exec_file/{exec_id}/... folder.
+
+    *path* is interpreted relative to that folder, and the result has to stay
+    inside it: an absolute path, a ``..`` segment or a symlink inside the folder
+    that points out of it is rejected rather than silently escaping.
     """
+    exec_file_root = (TEMP_DIR / "exec_file").resolve()
+    base = exec_file_root / graph_exec_id
     try:
-        full_path = TEMP_DIR / "exec_file" / graph_exec_id / path
-        return str(full_path)
+        # Resolve before comparing so symlinked components are followed first.
+        resolved_base = base.resolve()
+        full_path = (base / path).resolve()
     except OSError as e:
         if "File name too long" in str(e):
             raise ValueError(
                 f"File path too long: {len(path)} characters. Maximum path length exceeded."
             ) from e
         raise ValueError(f"Invalid file path: {e}") from e
+
+    # is_relative_to() compares path components rather than string prefixes, so
+    # a sibling folder whose name merely starts with the base name is excluded.
+    if not resolved_base.is_relative_to(exec_file_root):
+        raise ValueError("Invalid execution ID: resolves outside the exec_file folder")
+    if not full_path.is_relative_to(resolved_base):
+        raise ValueError("Invalid file path: resolves outside the execution folder")
+
+    return str(full_path)
 
 
 def clean_exec_files(graph_exec_id: str, file: str = "") -> None:

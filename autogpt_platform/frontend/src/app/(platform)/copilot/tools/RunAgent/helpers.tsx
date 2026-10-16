@@ -122,7 +122,7 @@ function getAgentIdentifierText(
   const slug = input.username_agent_slug?.trim();
   if (slug) return slug;
   const libraryId = input.library_agent_id?.trim();
-  if (libraryId) return `Library agent ${libraryId}`;
+  if (libraryId) return `Library workflow ${libraryId}`;
   return null;
 }
 
@@ -137,8 +137,8 @@ export function getAnimationText(part: {
     input?.schedule_name?.trim() || input?.cron?.trim(),
   );
   const actionPhrase = isSchedule
-    ? "Scheduling the agent to run"
-    : "Running the agent";
+    ? "Scheduling the workflow to run"
+    : "Running the workflow";
   const identifierText = agentIdentifier ? ` "${agentIdentifier}"` : "";
 
   switch (part.state) {
@@ -155,13 +155,13 @@ export function getAnimationText(part: {
         if (output.agent.trigger_info) {
           return `Webhook trigger setup for "${output.agent.name}"`;
         }
-        return `Agent inputs needed for "${output.agent.name}"`;
+        return `Workflow inputs needed for "${output.agent.name}"`;
       }
       if (isRunAgentSetupRequirementsOutput(output)) {
         return `Setup needed for "${output.setup_info.agent_name}"`;
       }
       if (isRunAgentNeedLoginOutput(output))
-        return "Sign in required to run agent";
+        return "Sign in required to run workflow";
       return "Something went wrong";
     }
     case "output-error":
@@ -177,8 +177,8 @@ export function getStreamingLoadingText(part: { input?: unknown }): string {
     input?.schedule_name?.trim() || input?.cron?.trim(),
   );
   return isSchedule
-    ? "Scheduling agent, this might take a minute"
-    : "Running agent, this might take a minute";
+    ? "Scheduling workflow, this might take a minute"
+    : "Running workflow, this might take a minute";
 }
 
 export function ToolIcon({

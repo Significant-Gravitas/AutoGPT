@@ -9,6 +9,11 @@ import { getSystemHeaders } from "@/lib/impersonation";
 import { getDatafastAttribution } from "@/services/analytics/datafast-attribution";
 import { environment } from "@/services/environment";
 import { transformDates } from "./date-transformer";
+import {
+  fetchWithFailureLog,
+  logClientRequestFailure,
+  logServerRequestFailure,
+} from "./request-failure-log";
 
 function getBaseURL(): string {
   if (!environment.isServerSide()) {
@@ -108,7 +113,7 @@ export const customMutator = async <
     }
   }
 
-  const response = await fetch(fullUrl, {
+  const response = await fetchWithFailureLog(fullUrl, {
     ...requestOptions,
     method,
     headers,
@@ -148,9 +153,11 @@ export const customMutator = async <
           .join("; ")
       : typeof rawDetail === "string"
         ? rawDetail
-        : rawDetail != null
-          ? JSON.stringify(rawDetail)
-          : undefined;
+        : typeof rawDetail?.message === "string"
+          ? rawDetail.message
+          : rawDetail != null
+            ? JSON.stringify(rawDetail)
+            : undefined;
 
     const errorMessage =
       detail ||
@@ -158,16 +165,19 @@ export const customMutator = async <
       response.statusText ||
       `HTTP ${response.status}`;
 
-    console.error(
-      `Request failed ${environment.isServerSide() ? "on server" : "on client"}`,
-      {
-        status: response.status,
-        method,
-        url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
-        errorMessage,
-        responseData: responseData || "No response data",
-      },
-    );
+    const failure = {
+      status: response.status,
+      method,
+      url: fullUrl.replace(baseUrl, ""), // Show relative URL for cleaner logs
+      errorMessage,
+      responseData,
+    };
+
+    if (environment.isServerSide()) {
+      logServerRequestFailure(failure);
+    } else {
+      logClientRequestFailure(failure);
+    }
 
     throw new ApiError(errorMessage, response.status, responseData);
   }

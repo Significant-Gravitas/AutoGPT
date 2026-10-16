@@ -3,11 +3,12 @@ from typing import Any, Optional
 import pydantic
 
 from backend.data.model import CredentialsMetaInput
+from backend.data.schedule import ScheduleName
 
 
 class ScheduleCreationRequest(pydantic.BaseModel):
     graph_version: Optional[int] = None
-    name: str
+    name: ScheduleName
     cron: str
     inputs: dict[str, Any]
     credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
@@ -18,4 +19,18 @@ class ScheduleCreationRequest(pydantic.BaseModel):
     expert_id: Optional[str] = pydantic.Field(
         default=None,
         description="Attribute this schedule (and every run it fires) to a hired expert owned by the caller. If omitted, resolved automatically when exactly one active hired expert has this graph installed as a workflow.",
+    )
+
+
+class ScheduleUpdateRequest(pydantic.BaseModel):
+    """Fields to change on an existing schedule; omitted fields keep their value."""
+
+    name: Optional[ScheduleName] = None
+    cron: Optional[str] = None
+    inputs: Optional[dict[str, Any]] = None
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None
+    timezone: Optional[str] = pydantic.Field(
+        default=None,
+        min_length=1,
+        description="Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone.",
     )

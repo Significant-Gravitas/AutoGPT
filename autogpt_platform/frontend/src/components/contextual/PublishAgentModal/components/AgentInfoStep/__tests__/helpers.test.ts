@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { publishAgentSchemaFactory } from "../helpers";
+import { SUB_HEADING_MAX, publishAgentSchemaFactory } from "../helpers";
 
 const validBase = {
   title: "My Agent",
@@ -76,14 +76,54 @@ describe("publishAgentSchemaFactory", () => {
     expect(result.success).toBe(true);
   });
 
-  it("treats title and subheader as optional on updates", () => {
+  it("treats the title as optional on updates", () => {
     const result = publishAgentSchemaFactory(true).safeParse({
       ...validBase,
       title: "",
-      subheader: "",
       changesSummary: "Refreshed copy",
     });
     expect(result.success).toBe(true);
+  });
+
+  it.each([false, true])(
+    "requires a non-blank tagline (isMarketplaceUpdate=%s)",
+    (isUpdate) => {
+      for (const subheader of ["", "   ", "\t\n "]) {
+        const result = publishAgentSchemaFactory(isUpdate).safeParse({
+          ...validBase,
+          subheader,
+          changesSummary: "Refreshed copy",
+        });
+        expect(result.success).toBe(false);
+      }
+    },
+  );
+
+  it("accepts a CTA-shaped tagline and trims it", () => {
+    const result = publishAgentSchemaFactory(false).safeParse({
+      ...validBase,
+      subheader: "  Find decision-makers at any company in seconds  ",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.subheader).toBe(
+        "Find decision-makers at any company in seconds",
+      );
+    }
+  });
+
+  it("caps the tagline at the shared length ceiling", () => {
+    const atLimit = publishAgentSchemaFactory(false).safeParse({
+      ...validBase,
+      subheader: "x".repeat(SUB_HEADING_MAX),
+    });
+    expect(atLimit.success).toBe(true);
+
+    const overLimit = publishAgentSchemaFactory(false).safeParse({
+      ...validBase,
+      subheader: "x".repeat(SUB_HEADING_MAX + 1),
+    });
+    expect(overLimit.success).toBe(false);
   });
 
   it("still requires a category on updates, which overwrite the stored ones", () => {

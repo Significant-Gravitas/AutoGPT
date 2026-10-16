@@ -1,7 +1,7 @@
 """Background service that polls submitted LLM batches and dispatches results.
 
 The dream-pass orchestrator (and any future server-side batch caller)
-submits requests to Anthropic / OpenAI batch APIs via
+submits requests to the Anthropic batch API via
 ``backend/util/llm/providers.call_provider(execution_mode="batch")``.
 Submissions return immediately with a ``BatchSubmissionRef``; results
 arrive asynchronously up to ~24h later. This service owns:
@@ -424,6 +424,7 @@ class BatchExecutor(AppService):
     Health check just confirms the loop thread is alive.
     """
 
+    reads_feature_flags = False
     _loop_thread: threading.Thread | None = None
     _shutdown_event: threading.Event
 

@@ -69,6 +69,7 @@ _SECRET_KEY_RE = re.compile(
     + r")(?![a-z0-9])",
     re.IGNORECASE,
 )
+_CAMEL_CASE_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 class SharedChatLinkedExecution(BaseModel):
@@ -233,7 +234,10 @@ def _redact_secret_keys(value: Any) -> Any:
 
 
 def _is_secret_key(key: str) -> bool:
-    return _SECRET_KEY_RE.search(key) is not None
+    # Normalize camelCase/PascalCase transitions to the same explicit
+    # boundaries already used by snake_case and kebab-case payloads.
+    normalized_key = _CAMEL_CASE_BOUNDARY_RE.sub("_", key)
+    return _SECRET_KEY_RE.search(normalized_key) is not None
 
 
 def _redact_secret_keys_in_json_string(value: str) -> str:

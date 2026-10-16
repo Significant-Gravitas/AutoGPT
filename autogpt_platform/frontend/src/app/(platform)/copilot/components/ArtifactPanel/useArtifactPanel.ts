@@ -9,6 +9,7 @@ import { classifyArtifactRef } from "./helpers";
 
 export function useArtifactPanel() {
   const artifactPanel = useCopilotUIStore((s) => s.artifactPanel);
+  const closeArtifactPanel = useCopilotUIStore((s) => s.closeArtifactPanel);
   const clearArtifactPreview = useCopilotUIStore((s) => s.clearArtifactPreview);
   const goBackArtifact = useCopilotUIStore((s) => s.goBackArtifact);
   const showFilesTab = useCopilotUIStore((s) => s.showFilesTab);
@@ -85,6 +86,7 @@ export function useArtifactPanel() {
     isSourceView,
     classification,
     setIsSourceView,
+    closeArtifactPanel,
     clearArtifactPreview,
     goBackArtifact,
     showFilesTab,

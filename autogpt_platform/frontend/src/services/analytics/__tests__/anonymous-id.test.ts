@@ -1,7 +1,13 @@
-import { consent } from "@/services/consent/cookies";
+import {
+  answerCookiebot,
+  configureCookiebot,
+  installCookiebot,
+  removeCookiebot,
+} from "@/tests/integrations/cookiebot";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   captureFirstLanding,
+  followAnalyticsConsentForIdentity,
   getAnonymousID,
   getPostHogDeviceID,
   readFirstLanding,
@@ -10,13 +16,8 @@ import {
 } from "../anonymous-id";
 
 function setAnalyticsConsent(analytics: boolean): void {
-  consent.save({
-    hasConsented: true,
-    timestamp: Date.now(),
-    analytics,
-    monitoring: false,
-    advertising: false,
-  });
+  configureCookiebot();
+  installCookiebot({ statistics: analytics });
 }
 
 function landOn(path: string, referrer = ""): void {
@@ -39,6 +40,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  removeCookiebot();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
@@ -191,26 +193,112 @@ describe("first landing redaction", () => {
   });
 });
 
-describe("analytics consent", () => {
-  // Attribution is collected under legitimate interest, not the analytics
-  // consent category. Pinned so re-gating it is a deliberate change, not a
-  // drive-by one; see the follow-up issue on revisiting this after GTM.
-  it("still records the landing when analytics consent is refused", () => {
+describe("without analytics consent", () => {
+  beforeEach(() => {
     setAnalyticsConsent(false);
+  });
+
+  it("mints a fresh id per page load and never stores it", () => {
+    const first = getAnonymousID();
+
+    expect(first).toBeTruthy();
+    expect(getAnonymousID()).toBe(first);
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+
+    resetAnonymousIDForTests();
+    expect(getAnonymousID()).not.toBe(first);
+  });
+
+  it("neither reads a stored id nor adopts a leftover PostHog device id", () => {
+    const getItem = vi.spyOn(Storage.prototype, "getItem");
+    window.localStorage.setItem(ANONYMOUS_ID_KEY, "stored-id");
+    window.localStorage.setItem(
+      "ph_phc_test_posthog",
+      JSON.stringify({ $device_id: "device-123" }),
+    );
+    document.cookie = `ph_phc_test_posthog=${encodeURIComponent(
+      JSON.stringify({ $device_id: "cookie-device" }),
+    )}; Path=/`;
+
+    const id = getAnonymousID();
+
+    expect(["stored-id", "device-123", "cookie-device"]).not.toContain(id);
+    expect(getPostHogDeviceID()).toBeNull();
+    expect(getItem).not.toHaveBeenCalled();
+    document.cookie = "ph_phc_test_posthog=; Path=/; Max-Age=0";
+  });
+
+  it("keeps the landing in memory instead of storing it", () => {
+    window.localStorage.setItem(
+      FIRST_LANDING_KEY,
+      JSON.stringify({ path: "/stored" }),
+    );
     landOn("/pricing?utm_source=newsletter");
 
     captureFirstLanding();
 
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBe(
+      JSON.stringify({ path: "/stored" }),
+    );
     expect(readFirstLanding()?.path).toBe("/pricing?utm_source=newsletter");
     expect(readFirstLanding()?.utm_source).toBe("newsletter");
   });
 
-  it("keeps the visitor identity when analytics consent is refused", () => {
-    const id = getAnonymousID();
+  it("deletes what a visit with consent stored", () => {
+    window.localStorage.setItem(ANONYMOUS_ID_KEY, "stored-id");
+    window.localStorage.setItem(FIRST_LANDING_KEY, "{}");
 
-    setAnalyticsConsent(false);
+    followAnalyticsConsentForIdentity()();
+
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBeNull();
+  });
+});
+
+describe("following analytics consent", () => {
+  it("persists this page's id and landing on a grant, without a reload", () => {
+    configureCookiebot();
+    installCookiebot();
+    landOn("/pricing?utm_source=newsletter");
+    const id = getAnonymousID();
+    captureFirstLanding();
+    const unfollow = followAnalyticsConsentForIdentity();
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+
+    answerCookiebot({ statistics: true });
 
     expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(id);
     expect(getAnonymousID()).toBe(id);
+    expect(
+      JSON.parse(window.localStorage.getItem(FIRST_LANDING_KEY) ?? "{}").path,
+    ).toBe("/pricing?utm_source=newsletter");
+    unfollow();
+  });
+
+  it("deletes the stored id and landing when consent is withdrawn", () => {
+    const id = getAnonymousID();
+    captureFirstLanding();
+    const unfollow = followAnalyticsConsentForIdentity();
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBe(id);
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).not.toBeNull();
+
+    answerCookiebot({});
+
+    expect(window.localStorage.getItem(ANONYMOUS_ID_KEY)).toBeNull();
+    expect(window.localStorage.getItem(FIRST_LANDING_KEY)).toBeNull();
+    unfollow();
+  });
+
+  it("keeps a first landing stored on an earlier visit", () => {
+    window.localStorage.setItem(
+      FIRST_LANDING_KEY,
+      JSON.stringify({ path: "/earlier" }),
+    );
+    landOn("/later");
+
+    captureFirstLanding();
+    followAnalyticsConsentForIdentity()();
+
+    expect(readFirstLanding()?.path).toBe("/earlier");
   });
 });

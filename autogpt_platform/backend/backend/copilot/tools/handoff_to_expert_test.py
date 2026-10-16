@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.copilot.active_turns import spawn_limit_message
 from backend.copilot.sdk.session_waiter import SessionResult
 from backend.copilot.tools import (
     TOOL_GROUPS,
@@ -461,6 +462,22 @@ class TestTransfer:
         assert mock_turn.await_args.kwargs["timeout"] == 0
 
     @pytest.mark.asyncio
+    async def test_handed_off_message_carries_sender_provenance(
+        self, roster, mock_turn, mock_sessions
+    ):
+        await HandoffToExpertTool()._execute(
+            user_id="alice",
+            session=_session(session_id="s-parent", expert_id="expert-a"),
+            expert_id="expert-b",
+            prompt="own the weekly summary",
+        )
+        assert mock_turn.await_args.kwargs["message_metadata"] == {
+            "from_session_id": "s-parent",
+            "from_expert_id": "expert-a",
+            "from_expert_name": "Ari",
+        }
+
+    @pytest.mark.asyncio
     async def test_framing_transfers_ownership(self, roster, mock_turn, mock_sessions):
         await HandoffToExpertTool()._execute(
             user_id="alice",
@@ -610,7 +627,19 @@ class TestFailedTransfer:
         self, roster, mock_turn, mock_sessions
     ):
         r = await self._handoff(mock_turn, "rejected_concurrent_turn_cap")
-        assert "already running" in r.message
+        assert spawn_limit_message() in r.message
+
+    @pytest.mark.asyncio
+    async def test_a_handoff_waiting_for_a_slot_has_still_moved(
+        self, roster, mock_turn, mock_sessions, deleted_sessions
+    ):
+        """Its turn is queued in the target's own session, so the target owns
+        it now and the thread stays."""
+        r = await self._handoff(mock_turn, "queued_for_slot")
+        assert isinstance(r, SubSessionStatusResponse)
+        assert r.status == "transferred"
+        assert "starting when one of their task slots frees" in r.message
+        assert deleted_sessions == []
 
     @pytest.mark.parametrize("outcome", ["rejected_concurrent_turn_cap", "failed"])
     @pytest.mark.asyncio

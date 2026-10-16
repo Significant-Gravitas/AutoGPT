@@ -12,7 +12,10 @@ from backend.api.features.chat import speech as speech_routes
 from backend.api.rest_api import handle_internal_http_error
 from backend.copilot import speech as speech_module
 from backend.copilot.rate_limit import RateLimitExceeded, RateLimitUnavailable
+from backend.copilot.usage_activation_fixtures import usage_snapshot
 from backend.util.exceptions import UserPaywalledError
+
+_usage_snapshot = usage_snapshot
 
 app = fastapi.FastAPI()
 app.include_router(speech_routes.router)
@@ -39,7 +42,7 @@ def test_speech_meters_the_synthesis_against_the_users_plan(
     assert kwargs["user_id"] == test_user_id
     assert kwargs["provider"] == "openai"
     assert kwargs["block_name_override"] == speech_module.TTS_BLOCK_NAME
-    assert kwargs["graph_exec_id_override"] == "sess-1"
+    assert kwargs["chat_session_id_override"] == "sess-1"
     assert kwargs["cost_usd"] == speech_module.speech_cost_usd(
         len("Two sentences here.")
     )

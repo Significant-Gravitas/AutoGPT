@@ -1,7 +1,7 @@
 import type { ExpertOnboardingStep as ExpertOnboardingStepPayload } from "@/app/api/__generated__/models/expertOnboardingStep";
 import { ResponseType } from "@/app/api/__generated__/models/responseType";
 import type { ToolUIPart, UIDataTypes, UIMessage, UITools } from "ai";
-import type { ClarifyingQuestion } from "../../tools/clarifying-questions";
+import type { KeyboardEvent } from "react";
 
 export const EXPERT_ONBOARDING_PART_TYPE = "tool-expert_onboarding";
 
@@ -64,16 +64,16 @@ export function parseExpertOnboarding(
   };
 }
 
-/** The card reuses the tool chain's answer field, which speaks
- *  `ClarifyingQuestion`. `example` stays empty: the field only shows it when
- *  a question has no options, and an onboarding step without options is an
- *  open "anything else?" that reads better with the plain placeholder. */
-export function toClarifyingQuestion(
-  step: ExpertOnboardingStep,
-): ClarifyingQuestion {
-  return step.options.length > 0
-    ? { question: step.question, keyword: step.keyword, options: step.options }
-    : { question: step.question, keyword: step.keyword };
+export function getOptionLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+/** The option a bare letter key picks, Typeform style: A is the first. */
+export function getLetterIndex(event: KeyboardEvent): number | null {
+  if (event.metaKey || event.ctrlKey || event.altKey) return null;
+  if (event.key.length !== 1) return null;
+  const index = event.key.toUpperCase().charCodeAt(0) - 65;
+  return index >= 0 && index < 26 ? index : null;
 }
 
 export function buildOnboardingAnswersMessage(

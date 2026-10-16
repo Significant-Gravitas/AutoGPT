@@ -1,3 +1,4 @@
+import { setTrialUser } from "@/tests/integrations/trial-fixtures";
 /**
  * Card-by-card integration tests for the Settings v2 billing page.
  *
@@ -13,7 +14,7 @@
 
 import { fireEvent } from "@testing-library/react";
 import { http, HttpResponse, type JsonBodyType } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
 import {
@@ -31,6 +32,24 @@ import { AutopilotUsageCard } from "../components/SubscriptionTab/AutopilotUsage
 import { InvoicesCard } from "../components/SubscriptionTab/InvoicesCard/InvoicesCard";
 import { PaymentMethodCard } from "../components/SubscriptionTab/PaymentMethodCard/PaymentMethodCard";
 import { YourPlanCard } from "../components/SubscriptionTab/YourPlanCard/YourPlanCard";
+
+import { maxUpgradePreview } from "./max-upgrade.fixture";
+
+afterEach(() => setTrialUser(null));
+
+beforeEach(() => {
+  setTrialUser("billing-user");
+  server.use(
+    http.post("*/api/credits/subscription/preview", async ({ request }) => {
+      const body = (await request.json()) as {
+        billing_cycle: "monthly" | "yearly";
+      };
+      return HttpResponse.json(
+        maxUpgradePreview({ billing_cycle: body.billing_cycle }),
+      );
+    }),
+  );
+});
 
 function jsonHandler(method: "get" | "post", path: string, body: JsonBodyType) {
   return http[method](`*${path}`, () => HttpResponse.json(body));
@@ -156,7 +175,7 @@ describe("YourPlanCard", () => {
     render(<YourPlanCard />);
 
     expect(await screen.findByText("No active subscription")).toBeDefined();
-    expect(screen.getByRole("button", { name: /get pro/i })).toBeDefined();
+    expect(screen.getByRole("button", { name: /start pro/i })).toBeDefined();
     expect(screen.queryByRole("button", { name: /cancel plan/i })).toBeNull();
     expect(
       screen.queryByRole("button", { name: /manage subscription/i }),
@@ -471,12 +490,10 @@ describe("YourPlanCard cycle toggle", () => {
       await screen.findByRole("button", { name: /upgrade to max/i }),
     );
 
-    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
     expect(
-      screen.getByText(
-        /charged the prorated difference immediately for the rest of your monthly period/i,
-      ),
+      await screen.findByRole("dialog", { name: /Upgrade to Max/i }),
     ).toBeDefined();
+    expect(await screen.findByText("Due today")).toBeDefined();
     expect(mutationFired).toBe(false);
   });
 
@@ -507,12 +524,9 @@ describe("YourPlanCard cycle toggle", () => {
       await screen.findByRole("button", { name: /upgrade to max/i }),
     );
 
-    const confirmInDialog = await screen.findAllByRole("button", {
-      name: /upgrade to max/i,
-    });
-    // Two buttons share the label: the card's trigger + the dialog's confirm.
-    // The confirm is the second one in DOM order.
-    fireEvent.click(confirmInDialog[confirmInDialog.length - 1]);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Pay $272.78 and upgrade" }),
+    );
 
     await waitFor(() => {
       expect(capturedBody).not.toBeNull();
@@ -547,11 +561,15 @@ describe("YourPlanCard cycle toggle", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /upgrade to max/i }),
     );
-    expect(await screen.findByText(/Upgrade to Max\?/i)).toBeDefined();
-    fireEvent.click(await screen.findByRole("button", { name: /^cancel$/i }));
+    expect(
+      await screen.findByRole("dialog", { name: /Upgrade to Max/i }),
+    ).toBeDefined();
+    fireEvent.click(await screen.findByRole("button", { name: "Keep Pro" }));
 
     await waitFor(() =>
-      expect(screen.queryByText(/Upgrade to Max\?/i)).toBeNull(),
+      expect(
+        screen.queryByRole("dialog", { name: /Upgrade to Max/i }),
+      ).toBeNull(),
     );
     expect(mutationFired).toBe(false);
   });
@@ -666,7 +684,7 @@ describe("YourPlanCard cycle toggle", () => {
     expect(mutationFired).toBe(false);
   });
 
-  it("NO_TIER user clicking Get Pro skips the confirmation dialog (Stripe Checkout flow)", async () => {
+  it("NO_TIER user clicking Start Pro skips the confirmation dialog (Stripe Checkout flow)", async () => {
     let mutationFired = false;
     server.use(
       jsonHandler("get", "/api/credits/subscription", {
@@ -684,7 +702,7 @@ describe("YourPlanCard cycle toggle", () => {
 
     render(<YourPlanCard />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /start pro/i }));
 
     // No SwitchTierDialog rendered for free→paid (Checkout success_url path).
     await waitFor(() => expect(mutationFired).toBe(true));
@@ -706,6 +724,62 @@ describe("YourPlanCard cycle toggle", () => {
     render(<YourPlanCard />);
 
     await waitFor(() => expect(screen.queryAllByRole("radio").length).toBe(0));
+  });
+
+  it("ENTERPRISE account sees the Enterprise label, the managed-by line and a contact link, with no plan controls", async () => {
+    // The backend rejects every self-service change from ENTERPRISE with
+    // 403, so the card must not offer upgrade/downgrade/resume or the
+    // Stripe "Manage subscription" portal — even when a stray schedule is
+    // attached to the account.
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "ENTERPRISE",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: true,
+        status: "active",
+        pending_tier: "NO_TIER",
+        pending_tier_effective_at: "2026-05-30T00:00:00Z",
+      }),
+      jsonHandler("get", "/api/credits/manage", {
+        url: "https://billing.stripe.com/p/test",
+      }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Enterprise")).toBeDefined();
+    expect(screen.queryByText("ENTERPRISE")).toBeNull();
+    expect(screen.getByText("Active")).toBeDefined();
+    expect(
+      screen.getByText(/Managed by your AutoGPT account team/i),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: /contact us/i }).getAttribute("href"),
+    ).toBe("mailto:contact@agpt.co");
+    expect(screen.queryByText(/\$0\.00/)).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+
+  it("BASIC account still sees Upgrade to Pro (backend accepts BASIC → PRO)", async () => {
+    server.use(
+      jsonHandler("get", "/api/credits/subscription", {
+        tier: "BASIC",
+        monthly_cost: 0,
+        billing_cycle: "monthly",
+        has_active_stripe_subscription: false,
+        status: "inactive",
+      }),
+      jsonHandler("get", "/api/credits/manage", { url: null }),
+    );
+
+    render(<YourPlanCard />);
+
+    expect(await screen.findByText("Basic")).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /upgrade to pro/i }),
+    ).toBeDefined();
+    expect(screen.queryByRole("button", { name: /downgrade to/i })).toBeNull();
   });
 
   it("hides the cycle toggle entirely for BASIC tier", async () => {
@@ -935,7 +1009,7 @@ describe("AutopilotUsageCard", () => {
     render(<AutopilotUsageCard />);
 
     expect(await screen.findByText("Today")).toBeDefined();
-    expect(screen.getByText("This Week")).toBeDefined();
+    expect(screen.getByText("This week")).toBeDefined();
     expect(screen.getByText("12% used")).toBeDefined();
     expect(screen.getByText("35% used")).toBeDefined();
   });
@@ -1089,7 +1163,7 @@ describe("TransactionHistoryCard", () => {
 
     expect(await screen.findByText("Credits added")).toBeDefined();
     expect(screen.getByText("Morning briefing")).toBeDefined();
-    expect(screen.getByText("Agent run")).toBeDefined();
+    expect(screen.getByText("Workflow run")).toBeDefined();
     expect(screen.getByText("+$50.00")).toBeDefined();
     expect(screen.getByText("−$2.50")).toBeDefined();
     expect(screen.queryByText(/^Balance$/)).toBeNull();
@@ -1297,16 +1371,45 @@ describe("YourPlanCard begin_checkout", () => {
     freeAccount("https://checkout.stripe.com/pay/cs_test");
 
     render(<YourPlanCard />);
-    fireEvent.click(await screen.findByRole("button", { name: /get pro/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /start pro/i }));
 
     await waitFor(() => {
       expect(gtagCalls).toContainEqual([
         "event",
         "conversion",
-        { send_to: "AW-123/BC", value: 49, currency: "USD" },
+        {
+          send_to: "AW-123/BC",
+          value: 49,
+          currency: "USD",
+          event_callback: expect.any(Function),
+        },
       ]);
     });
-    expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test");
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+  });
+
+  it("stays busy while the conversion goes out, so a second click starts no second checkout", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
+    vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
+    const gtagCalls = installGtagShim();
+    const location = stubLocation();
+    const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    const upgrade = await screen.findByRole("button", { name: /start pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(gtagCalls.some((call) => call[1] === "conversion")).toBe(true),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(hits.post).toBe(1);
   });
 
   it("reports no begin_checkout when the tier changes in place", async () => {
@@ -1318,7 +1421,7 @@ describe("YourPlanCard begin_checkout", () => {
 
     render(<YourPlanCard />);
     await waitFor(() => expect(hits.get).toBe(1));
-    fireEvent.click(screen.getByRole("button", { name: /get pro/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start pro/i }));
 
     // The in-place branch refetches the subscription after the POST resolves,
     // so a second GET is proof the whole path ran — not just that the request

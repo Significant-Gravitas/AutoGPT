@@ -1,12 +1,22 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, renderHook, waitFor } from "@testing-library/react";
-import React, { type ReactNode } from "react";
+import {
+  act,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import React, { useState, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { connectedIntegrationsFromCredentials } from "../helpers";
 import { useChatMentions } from "../useChatMentions";
 
 const mockListWorkspaceFiles = vi.fn();
+const mockFolders = vi.fn(() => ({ data: { folders: [] } }));
 vi.mock("@/app/api/__generated__/endpoints/workspace/workspace", () => ({
   listWorkspaceFiles: (...args: unknown[]) => mockListWorkspaceFiles(...args),
+  useListWorkspaceFolders: () => mockFolders(),
 }));
 
 const FILE = {
@@ -44,6 +54,23 @@ function keyEvent(key: string, composing: boolean | "keyCode229" = false) {
   } as unknown as React.KeyboardEvent<HTMLTextAreaElement>;
 }
 
+const GOOGLE = {
+  credentialId: "google-1",
+  providerName: "Google",
+  username: null,
+  provider: "google",
+  name: "Google",
+  token: "@Google",
+};
+const GITHUB = {
+  credentialId: "github-1",
+  providerName: "GitHub",
+  username: null,
+  provider: "github",
+  name: "GitHub",
+  token: "@GitHub",
+};
+
 afterEach(() => {
   vi.clearAllMocks();
 });
@@ -62,6 +89,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -69,7 +97,7 @@ describe("useChatMentions", () => {
     act(() => result.current.detect(fakeTextarea("hi @al")));
     expect(result.current.isOpen).toBe(true);
 
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
     await waitFor(() =>
       expect(mockListWorkspaceFiles).toHaveBeenCalledWith({
         limit: 8,
@@ -86,6 +114,7 @@ describe("useChatMentions", () => {
           value: "hello world",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -102,6 +131,7 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
@@ -125,12 +155,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     let handled = false;
     act(() => {
@@ -157,12 +188,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue: vi.fn(),
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     act(() => {
       result.current.onKeyDown(keyEvent("Escape"));
@@ -188,12 +220,13 @@ describe("useChatMentions", () => {
           value: "hi @",
           setValue: vi.fn(),
           addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @")));
-    await waitFor(() => expect(result.current.files).toHaveLength(2));
+    await waitFor(() => expect(result.current.options).toHaveLength(2));
 
     act(() => {
       expect(result.current.onKeyDown(keyEvent("ArrowDown"))).toBe(true);
@@ -226,12 +259,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     for (const event of [
       keyEvent("Enter", true),
@@ -264,12 +298,13 @@ describe("useChatMentions", () => {
           value: "hi @al",
           setValue,
           addWorkspaceFile,
+          addWorkspaceFolder: vi.fn(),
         }),
       { wrapper: Wrapper },
     );
 
     act(() => result.current.detect(fakeTextarea("hi @al")));
-    await waitFor(() => expect(result.current.files).toHaveLength(1));
+    await waitFor(() => expect(result.current.options).toHaveLength(1));
 
     // A shrinking result list can leave the highlighted index pointing past
     // the end before the clamp effect runs — accepting that must be a no-op,
@@ -278,5 +313,216 @@ describe("useChatMentions", () => {
 
     expect(setValue).not.toHaveBeenCalled();
     expect(addWorkspaceFile).not.toHaveBeenCalled();
+  });
+
+  it("lists matching integrations above the file results", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [FILE], has_more: false },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @g",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          integrations: [GITHUB, GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @g")));
+    expect(result.current.hasIntegrations).toBe(true);
+    expect(result.current.options).toEqual([
+      { kind: "integration", integration: GITHUB },
+      { kind: "integration", integration: GOOGLE },
+    ]);
+
+    await waitFor(() => expect(result.current.options).toHaveLength(3));
+    expect(result.current.options[2]).toEqual({ kind: "file", file: FILE });
+  });
+
+  it("narrows integrations by the typed query without waiting on the debounce", () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [], has_more: false },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @goo",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          integrations: [GITHUB, GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @goo")));
+    expect(result.current.options).toEqual([
+      { kind: "integration", integration: GOOGLE },
+    ]);
+  });
+
+  it("inserts the integration token into the prompt and moves the caret after it", async () => {
+    mockListWorkspaceFiles.mockResolvedValue({
+      status: 200,
+      data: { files: [], has_more: false },
+    });
+    const addWorkspaceFile = vi.fn();
+
+    function Harness() {
+      const [value, setValue] = useState("check ");
+      const mentions = useChatMentions({
+        enabled: true,
+        value,
+        setValue,
+        addWorkspaceFile,
+        addWorkspaceFolder: vi.fn(),
+        integrations: [GOOGLE],
+      });
+      return (
+        <textarea
+          aria-label="composer"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            mentions.detect(e.currentTarget);
+          }}
+          onKeyDown={(e) => mentions.onKeyDown(e)}
+        />
+      );
+    }
+
+    render(<Harness />, { wrapper: Wrapper });
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>("composer");
+
+    // Caret sits right after "@goo", with more text following it.
+    fireEvent.change(textarea, {
+      target: {
+        value: "check @goo for me",
+        selectionStart: "check @goo".length,
+        selectionEnd: "check @goo".length,
+      },
+    });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    expect(textarea.value).toBe("check @Google for me");
+    expect(addWorkspaceFile).not.toHaveBeenCalled();
+    // The browser would leave the caret at the end after the value swap; the
+    // hook parks it right after the inserted mention instead.
+    await waitFor(() =>
+      expect(textarea.selectionStart).toBe("check @Google ".length),
+    );
+  });
+
+  it("accepts two named accounts from one provider, including a query with spaces", () => {
+    const integrations = connectedIntegrationsFromCredentials([
+      {
+        id: "work",
+        provider: "google",
+        type: "oauth2",
+        title: "Work Gmail",
+        username: "work@example.com",
+        scopes: null,
+      },
+      {
+        id: "personal",
+        provider: "google",
+        type: "oauth2",
+        title: "Personal Gmail",
+        username: "me@example.com",
+        scopes: null,
+      },
+    ]);
+    function Harness() {
+      const [value, setValue] = useState("");
+      const mentions = useChatMentions({
+        enabled: true,
+        value,
+        setValue,
+        integrations,
+        includeWorkspaceFiles: false,
+        addWorkspaceFile: vi.fn(),
+        addWorkspaceFolder: vi.fn(),
+      });
+      return (
+        <textarea
+          aria-label="accounts"
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value);
+            mentions.detect(e.currentTarget);
+          }}
+          onKeyDown={(e) => mentions.onKeyDown(e)}
+        />
+      );
+    }
+    render(<Harness />, { wrapper: Wrapper });
+    const input = screen.getByLabelText<HTMLTextAreaElement>("accounts");
+    fireEvent.change(input, { target: { value: "Check my @Work G" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe(
+      "Check my [Work Gmail](credential://google/work) ",
+    );
+    fireEvent.change(input, {
+      target: { value: `${input.value}for new TODOs, and @Personal` },
+    });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input.value).toBe(
+      "Check my [Work Gmail](credential://google/work) for new TODOs, and [Personal Gmail](credential://google/personal) ",
+    );
+  });
+
+  it("never opens when workspace files are off and nothing is connected", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @")));
+    expect(result.current.isOpen).toBe(false);
+    expect(result.current.options).toEqual([]);
+    expect(mockListWorkspaceFiles).not.toHaveBeenCalled();
+  });
+
+  it("offers only integrations and never queries files when workspace files are off", () => {
+    const { result } = renderHook(
+      () =>
+        useChatMentions({
+          enabled: true,
+          value: "hi @",
+          setValue: vi.fn(),
+          addWorkspaceFile: vi.fn(),
+          addWorkspaceFolder: vi.fn(),
+          includeWorkspaceFiles: false,
+          integrations: [GOOGLE],
+        }),
+      { wrapper: Wrapper },
+    );
+
+    act(() => result.current.detect(fakeTextarea("hi @")));
+    expect(result.current.isOpen).toBe(true);
+    expect(result.current.showFiles).toBe(false);
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.options).toEqual([
+      { kind: "integration", integration: GOOGLE },
+    ]);
+    expect(mockListWorkspaceFiles).not.toHaveBeenCalled();
   });
 });

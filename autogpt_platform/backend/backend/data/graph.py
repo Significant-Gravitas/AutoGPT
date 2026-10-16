@@ -2,8 +2,19 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from collections.abc import Container, Mapping
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Annotated, Any, Final, Literal, Optional, Self, cast
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Final,
+    Literal,
+    Optional,
+    Self,
+    cast,
+    get_args,
+)
 
 from prisma.enums import SubmissionStatus
 from prisma.models import (
@@ -31,10 +42,15 @@ from backend.blocks.llm import LEGACY_MODEL_MAPPINGS, LLMModel
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
-from backend.util.exceptions import GraphNotAccessibleError, GraphNotInLibraryError
+from backend.util.exceptions import (
+    GraphNotAccessibleError,
+    GraphNotInLibraryError,
+    GraphValidationError,
+)
 from backend.util.json import SafeJson
 from backend.util.models import Pagination
 from backend.util.request import parse_url
+from backend.util.text import split_camelcase
 
 from .block import BlockInput
 from .db import BaseDbModel, execute_raw_with_schema, query_raw_with_schema, transaction
@@ -168,6 +184,10 @@ class NodeModel(Node):
           wire up their own)
         - fields the block schema marks with `secret: true` via
           `SchemaField(secret=True)` (block-author-declared sensitive values)
+        - files picked with an auto-credentials picker (e.g. a GoogleDriveFile),
+          which name the owner's file and embed their `_credentials_id`. These
+          are nulled rather than removed: an explicit None tells the executor the
+          file was cleared, so importers and forks pick their own.
         - `webhook_id` (points at the original owner's webhook subscription)
         """
         stripped_node = self.model_copy(deep=True)
@@ -184,9 +204,54 @@ class NodeModel(Node):
                 ):
                     stripped_node.input_default.pop(field_name, None)
 
+            for field_name in _auto_credentials_field_names(self):
+                if field_name in stripped_node.input_default:
+                    stripped_node.input_default[field_name] = None
+
         stripped_node.webhook_id = None
 
         return stripped_node
+
+
+def _auto_credentials_field_names(node: Node) -> list[str]:
+    """Inputs of the node's block that hold a picked file: the auto-credentials
+    picker fields its schema declares, plus any input typed as a file carrying
+    `_credentials_id`. The second covers the default of an agent's Google Drive
+    file input, whose picker is only declared per node."""
+    if get_block(node.block_id) is None:
+        # The block was removed, so no schema says which inputs are pickers.
+        # Treat any value that embeds a `_credentials_id` as one, so a picked
+        # file doesn't slip through exports and non-owner reads.
+        return [
+            field_name
+            for field_name, value in node.input_default.items()
+            if isinstance(value, dict) and "_credentials_id" in value
+        ]
+    input_schema = node.block.input_schema
+    declared = [
+        info["field_name"]
+        for info in input_schema.get_auto_credentials_fields().values()
+    ]
+    typed = [
+        field_name
+        for field_name, field in input_schema.model_fields.items()
+        if field_name not in declared and _holds_picked_file(field.annotation)
+    ]
+    return declared + typed
+
+
+def _holds_picked_file(annotation: Any) -> bool:
+    """Whether a field of this type holds a picked file: a model with a
+    `_credentials_id` field, like GoogleDriveFile, or an Optional of one."""
+    return any(
+        isinstance(candidate, type)
+        and issubclass(candidate, BaseModel)
+        and any(
+            field.alias == "_credentials_id"
+            for field in candidate.model_fields.values()
+        )
+        for candidate in (annotation, *get_args(annotation))
+    )
 
 
 class GraphBaseMeta(BaseDbModel):
@@ -258,7 +323,7 @@ class BaseGraph(GraphBaseMeta):
     @property
     def has_sensitive_action(self) -> bool:
         return any(
-            node.block_id for node in self.nodes if node.block.is_sensitive_action
+            node.block_id for node in self.nodes if node.block.is_irreversible_action
         )
 
     @property
@@ -308,6 +373,10 @@ class BaseGraph(GraphBaseMeta):
     ) -> dict[str, Any]:
         schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
+            # An input or output without a name isn't part of the graph's
+            # interface yet; validate_graph reports the missing name.
+            if not str(input_default.get("name") or "").strip():
+                continue
             try:
                 schema_fields.append(type_class.model_construct(**input_default))
             except Exception as e:
@@ -585,17 +654,10 @@ class GraphModel(Graph, GraphMeta):
             }
 
             for node in graph.nodes:
-                # A node's credentials are optional if either:
-                # 1. The node metadata says so (credentials_optional=True), or
-                # 2. All credential fields on the block have defaults (not required by schema)
+                # Conditional credential fields can have a schema default while
+                # still requiring credentials for the currently selected route.
                 block_required = node.block.input_schema.get_required_fields()
-                creds_required_by_schema = any(
-                    fname in block_required
-                    for fname in node.block.input_schema.get_credentials_fields()
-                )
-                node_required_map[node.id] = (
-                    not node.credentials_optional and creds_required_by_schema
-                )
+                node_required_map[node.id] = False
 
                 for (
                     field_name,
@@ -603,6 +665,11 @@ class GraphModel(Graph, GraphMeta):
                 ) in node.block.input_schema.get_credentials_fields_info().items():
                     discriminator = field_info.discriminator
                     if not discriminator:
+                        if (
+                            not node.credentials_optional
+                            and field_name in block_required
+                        ):
+                            node_required_map[node.id] = True
                         node_credential_data.append((field_info, (node.id, field_name)))
                         continue
 
@@ -637,6 +704,35 @@ class GraphModel(Graph, GraphMeta):
                         discriminator_value = _mappable_discriminator_default(
                             node.block.input_schema, field_info
                         )
+
+                    required_discriminator_value = discriminator_value
+                    if (
+                        required_discriminator_value is None
+                        and not discriminator_is_linked
+                    ):
+                        required_discriminator_value = (
+                            node.block.input_schema.get_field_schema(discriminator).get(
+                                "default"
+                            )
+                        )
+                    if not node.credentials_optional and (
+                        field_name in block_required
+                        or (
+                            discriminator_is_linked
+                            and bool(field_info.credential_free_discriminator_values)
+                            and any(
+                                field_info.requires_credentials(value)
+                                for value in field_info.discriminator_mapping or {}
+                            )
+                        )
+                        or (
+                            required_discriminator_value is not None
+                            and field_info.requires_credentials(
+                                required_discriminator_value
+                            )
+                        )
+                    ):
+                        node_required_map[node.id] = True
 
                     if discriminator_value is None:
                         node_credential_data.append((field_info, (node.id, field_name)))
@@ -705,10 +801,13 @@ class GraphModel(Graph, GraphMeta):
             if v[0].is_auto_credential
         }
 
-    def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
+    def reassign_ids(
+        self, user_id: str, reassign_graph_id: bool = False
+    ) -> dict[str, str]:
         """
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
+        Returns each new node ID mapped to the node ID it replaced.
         """
         if reassign_graph_id:
             graph_id_map = {
@@ -718,16 +817,17 @@ class GraphModel(Graph, GraphMeta):
         else:
             graph_id_map = {}
 
-        self._reassign_ids(self, user_id, graph_id_map)
+        replaced_node_ids = self._reassign_ids(self, user_id, graph_id_map)
         for sub_graph in self.sub_graphs:
-            self._reassign_ids(sub_graph, user_id, graph_id_map)
+            replaced_node_ids |= self._reassign_ids(sub_graph, user_id, graph_id_map)
+        return replaced_node_ids
 
     @staticmethod
     def _reassign_ids(
         graph: BaseGraph,
         user_id: str,
         graph_id_map: dict[str, str],
-    ):
+    ) -> dict[str, str]:
         # Reassign Graph ID
         if graph.id in graph_id_map:
             graph.id = graph_id_map[graph.id]
@@ -755,20 +855,45 @@ class GraphModel(Graph, GraphMeta):
             ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-        # Clear auto-credentials references (e.g., _credentials_id in
-        # GoogleDriveFile fields) so the new user must re-authenticate
-        # with their own account. We null the entire field rather than
-        # just the _credentials_id key — a partial object (e.g. a bare
-        # {"id": "...", "name": "..."} left over after stripping) would
-        # be rejected by the auto-credentials validator added below,
-        # breaking fork_graph() for agents that previously had a
-        # picker-selected Drive file.
-        for node in graph.nodes:
-            if not node.input_default:
-                continue
-            for key, value in list(node.input_default.items()):
-                if isinstance(value, dict) and "_credentials_id" in value:
-                    node.input_default[key] = None
+        return {new_id: old_id for old_id, new_id in id_map.items()}
+
+    def clear_auto_credentials(
+        self, keep_ids: Container[str] = frozenset()
+    ) -> list[tuple[Node, str, Any]]:
+        """
+        Null every picked file (see `auto_credentials_refs`) whose embedded
+        `_credentials_id` is not in `keep_ids`, in this graph and its sub-graphs,
+        and return the cleared ones in the shape `auto_credentials_refs` uses.
+
+        A save keeps the saving user's own (see `before_graph_activate`), and a
+        read by someone who doesn't own the graph keeps none (see `get_graph`).
+        Exports, forks and copies strip picked files in
+        `NodeModel.stripped_for_export`. The whole field is nulled, not just the
+        key, because a file object without a `_credentials_id` is rejected by
+        the auto-credentials check in `_validate_graph`.
+        """
+        cleared = [
+            (node, field_name, credentials_id)
+            for node, field_name, credentials_id in self.auto_credentials_refs()
+            if not (isinstance(credentials_id, str) and credentials_id in keep_ids)
+        ]
+        for node, field_name, _ in cleared:
+            node.input_default[field_name] = None
+        return cleared
+
+    def auto_credentials_refs(self) -> list[tuple[Node, str, Any]]:
+        """Files picked into auto-credentials inputs (e.g. a GoogleDriveFile), in
+        this graph and its sub-graphs, as (node, input name, embedded
+        `_credentials_id`). Other inputs are left alone even when they happen to
+        hold a `_credentials_id` key."""
+        return [
+            (node, field_name, value["_credentials_id"])
+            for graph in (self, *self.sub_graphs)
+            for node in graph.nodes
+            for field_name in _auto_credentials_field_names(node)
+            if isinstance(value := node.input_default.get(field_name), dict)
+            and "_credentials_id" in value
+        ]
 
     def validate_graph(
         self,
@@ -793,10 +918,9 @@ class GraphModel(Graph, GraphMeta):
             graph, for_run, nodes_input_masks
         )
         if errors:
-            # Just raise the first error for backward compatibility
-            first_error = next(iter(errors.values()))
-            first_field_error = next(iter(first_error.values()))
-            raise ValueError(first_field_error)
+            raise GraphValidationError(
+                _describe_node_errors(graph, errors), node_errors=errors
+            )
 
     def validate_graph_get_errors(
         self,
@@ -861,14 +985,18 @@ class GraphModel(Graph, GraphMeta):
 
             if block.disabled:
                 raise ValueError(
-                    f"Block {node.block_id} is disabled and cannot be used in graphs"
+                    f"Block {node.block_id} is disabled and cannot be used in workflows"
                 )
 
             node_input_mask = (
                 nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
             )
             provided_inputs = set(
-                [sanitize_pin_name(name) for name in node.input_default]
+                [
+                    sanitize_pin_name(name)
+                    for name, value in node.input_default.items()
+                    if not _is_blank_io_name(block, name, value)
+                ]
                 + [
                     sanitize_pin_name(link.sink_name)
                     for link in input_links.get(node.id, [])
@@ -996,10 +1124,10 @@ class GraphModel(Graph, GraphMeta):
                 if picker_format == "google-drive-picker":
                     remediation = (
                         f"Add an AgentGoogleDriveFileInputBlock node to the "
-                        f"graph and link its 'result' output to "
+                        f"workflow and link its 'result' output to "
                         f"{field_name!r} instead. That block renders a "
                         f"Google Drive picker at run time so whoever runs "
-                        f"the agent supplies their own credentials via the "
+                        f"the workflow supplies their own credentials via the "
                         f"picked file."
                     )
                 else:
@@ -1009,7 +1137,7 @@ class GraphModel(Graph, GraphMeta):
                         f"This field expects a picker-populated object "
                         f"containing a '_credentials_id'. Wire the matching "
                         f"input block for this provider into {field_name!r} "
-                        f"so whoever runs the agent supplies their own "
+                        f"so whoever runs the workflow supplies their own "
                         f"credentials at run time."
                     )
 
@@ -1187,6 +1315,44 @@ class GraphModel(Graph, GraphMeta):
         so all computed fields (e.g. `credentials_input_schema`) still work.
         """
         return GraphModelWithoutNodes.model_validate(self, from_attributes=True)
+
+
+def _describe_node_errors(
+    graph: BaseGraph, node_errors: Mapping[str, Mapping[str, str]]
+) -> str:
+    """The first problem in the builder's words, e.g. "Agent Output › Name:
+    This field is required", and how many more there are."""
+    nodes = {node.id: node for node in graph.nodes}
+    problems = [
+        f"{_node_title(nodes[node_id])} › {_field_title(nodes[node_id], field)}: "
+        f"{error}"
+        for node_id, field_errors in node_errors.items()
+        for field, error in field_errors.items()
+    ]
+    if len(problems) > 1:
+        return f"{problems[0]} (and {len(problems) - 1} more)"
+    return problems[0]
+
+
+def _is_blank_io_name(block: "AnyBlockSchema", field: str, value: Any) -> bool:
+    """An input or output named "" has no name, and the graph's interface needs
+    one; one wired in from a link still counts."""
+    return (
+        field == "name"
+        and block.block_type in (BlockType.INPUT, BlockType.OUTPUT)
+        and not str(value or "").strip()
+    )
+
+
+def _node_title(node: Node) -> str:
+    if customized_name := node.metadata.get("customized_name"):
+        return str(customized_name)
+    return split_camelcase(node.block.name.removesuffix("Block"))
+
+
+def _field_title(node: Node, field: str) -> str:
+    properties = node.block.input_schema.jsonschema().get("properties", {})
+    return properties.get(field, {}).get("title") or field
 
 
 class GraphModelWithoutNodes(GraphModel):
@@ -1407,13 +1573,19 @@ async def get_graph(
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
-        return GraphModel.from_db(
+        graph_model = GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
             for_export=for_export,
         )
+    else:
+        graph_model = GraphModel.from_db(graph, for_export)
 
-    return GraphModel.from_db(graph, for_export)
+    if user_id is not None and not skip_access_check and graph.userId != user_id:
+        # Only the owner sees the files they picked and the credentials
+        # embedded in them. Marketplace readers and teammates pick their own.
+        graph_model.clear_auto_credentials()
+    return graph_model
 
 
 # PENDING is included so admin review can open a not-yet-approved submission
@@ -1486,11 +1658,15 @@ async def get_store_listed_graphs(graph_ids: list[str]) -> dict[str, GraphModel]
         order={"agentGraphVersion": "desc"},
     )
 
-    return {
+    graphs = {
         listing.agentGraphId: GraphModel.from_db(listing.AgentGraph)
         for listing in store_listings
         if listing.AgentGraph
     }
+    for graph in graphs.values():
+        # Public reads never carry the publisher's picked files.
+        graph.clear_auto_credentials()
+    return graphs
 
 
 async def get_graph_as_admin(
@@ -1656,7 +1832,13 @@ async def get_graph_all_versions(
     if not graph_versions:
         return []
 
-    return [GraphModel.from_db(graph) for graph in graph_versions]
+    versions = [GraphModel.from_db(graph) for graph in graph_versions]
+    for version in versions:
+        if version.user_id != user_id:
+            # A teammate reading the history: only the owner sees the files
+            # they picked and the credentials embedded in them.
+            version.clear_auto_credentials()
+    return versions
 
 
 async def delete_graph(
@@ -1795,14 +1977,14 @@ async def validate_graph_execution_permissions(
         or await is_graph_published_in_marketplace(graph_id, graph_version)
     ):
         raise GraphNotAccessibleError(
-            f"You do not have access to graph #{graph_id} v{graph_version}: "
+            f"You do not have access to workflow #{graph_id} v{graph_version}: "
             "it is not owned by you, not in your library as a submitted "
             "version, and not available in the Marketplace"
         )
     elif not (
         version_readable_from_library or owner_has_live_library_entry or is_sub_graph
     ):
-        raise GraphNotInLibraryError(f"Graph #{graph_id} is not in your library")
+        raise GraphNotInLibraryError(f"Workflow #{graph_id} is not in your library")
 
     # Step 4: Check execution-specific permissions (raises generic NotAuthorizedError)
     # Additional authorization checks beyond the above:

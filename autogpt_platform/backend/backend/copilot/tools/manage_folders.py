@@ -106,10 +106,13 @@ class CreateFolderTool(BaseTool):
                 "parent_id": {
                     "type": "string",
                     "description": "Parent folder ID (omit for root).",
+                    "title": "Inside folder",
+                    "entity": "library_folder",
                 },
                 "icon": {
                     "type": "string",
                     "description": "Icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -282,6 +285,7 @@ class UpdateFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to update.",
+                    "entity": "library_folder",
                 },
                 "name": {
                     "type": "string",
@@ -290,6 +294,7 @@ class UpdateFolderTool(BaseTool):
                 "icon": {
                     "type": "string",
                     "description": "New icon identifier.",
+                    "entity": None,
                 },
                 "color": {
                     "type": "string",
@@ -366,10 +371,13 @@ class MoveFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "Folder ID.",
+                    "entity": "library_folder",
                 },
                 "target_parent_id": {
                     "type": ["string", "null"],
                     "description": "New parent folder ID (null for root).",
+                    "title": "Into folder",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -440,6 +448,7 @@ class DeleteFolderTool(BaseTool):
                 "folder_id": {
                     "type": "string",
                     "description": "ID of the folder to delete.",
+                    "entity": "library_folder",
                 },
             },
             "required": ["folder_id"],
@@ -478,7 +487,7 @@ class DeleteFolderTool(BaseTool):
             )
 
         return FolderDeletedResponse(
-            message="Folder deleted. Any agents inside were moved to root level.",
+            message="Folder deleted. Any workflows inside were moved to root level.",
             folder_id=folder_id,
             session_id=session_id,
         )
@@ -508,10 +517,12 @@ class MoveAgentsToFolderTool(BaseTool):
                     "type": "array",
                     "items": {"type": "string"},
                     "description": "Library agent IDs to move.",
+                    "entity": "library_agent",
                 },
                 "folder_id": {
                     "type": ["string", "null"],
                     "description": "Target folder ID (null for root).",
+                    "entity": "library_folder",
                 },
             },
             "required": ["agent_ids"],
@@ -533,7 +544,7 @@ class MoveAgentsToFolderTool(BaseTool):
 
         if not agent_ids:
             return ErrorResponse(
-                message="Please provide at least one agent ID.",
+                message="Please provide at least one workflow ID.",
                 error="missing_agent_ids",
                 session_id=session_id,
             )
@@ -546,7 +557,7 @@ class MoveAgentsToFolderTool(BaseTool):
             )
         except Exception as e:
             return ErrorResponse(
-                message=f"Failed to move agents: {e}",
+                message=f"Failed to move workflows: {e}",
                 error="move_agents_failed",
                 session_id=session_id,
             )
@@ -555,7 +566,7 @@ class MoveAgentsToFolderTool(BaseTool):
         agent_names = [a.name for a in moved]
         dest = "the folder" if folder_id else "root level"
         names_str = (
-            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} agent(s)"
+            ", ".join(agent_names) if agent_names else f"{len(agent_ids)} workflow(s)"
         )
         return AgentsMovedToFolderResponse(
             message=f"Moved {names_str} to {dest}.",

@@ -259,9 +259,9 @@ export default function CreditsPage() {
 
             <p className="text-sm">
               <b>Note:</b> For your safety, we will top up your balance{" "}
-              <b>at most once</b> per agent execution to prevent unintended
+              <b>at most once</b> per workflow execution to prevent unintended
               excessive charges. Therefore, ensure that the automatic top-up
-              amount is sufficient for your agent&apos;s operation.
+              amount is sufficient for your workflow&apos;s operation.
             </p>
 
             {autoTopUpConfig?.amount ? (

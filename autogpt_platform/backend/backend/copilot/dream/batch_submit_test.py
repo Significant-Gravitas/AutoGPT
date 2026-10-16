@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from backend.copilot import usage_activation_fixtures
 from backend.copilot.dream.batch_submit import (
     INPUT_TTL_SECONDS,
     input_bundle_key,
@@ -23,7 +24,7 @@ from backend.copilot.dream.batch_submit import (
     submit_phase,
 )
 from backend.copilot.dream.fetch import DreamInput
-from backend.copilot.dream.locks import DREAM_LOCK_KEY_PREFIX
+from backend.copilot.graphiti.scope import DREAM_LOCK_KEY_PREFIX, MemoryScope
 from backend.util.llm.providers import BatchSubmissionRef
 
 
@@ -173,7 +174,7 @@ async def test_expert_scope_round_trips_and_routes_live_lock_lookup(fake_redis):
     ):
         await persist_input_bundle("p-expert", _bundle("expert-1"))
 
-    read_live_token.assert_awaited_once_with("u1", "expert-1")
+    read_live_token.assert_awaited_once_with(MemoryScope.for_expert("u1", "expert-1"))
     bundle = await read_input_bundle("p-expert")
     assert bundle is not None
     assert bundle.expert_id == "expert-1"
@@ -246,3 +247,6 @@ async def test_read_lock_token_none_when_bundle_corrupted(fake_redis):
     string_store[input_bundle_key("p3")] = "not json {{{"
 
     assert await read_lock_token("p3") is None
+
+
+usage_snapshot = usage_activation_fixtures.usage_snapshot

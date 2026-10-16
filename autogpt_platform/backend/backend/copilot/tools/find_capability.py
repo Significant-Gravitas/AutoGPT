@@ -1,12 +1,16 @@
-"""Search the capability registry: integrations, blocks, MCP servers and
-platform tools behind one query."""
+"""Search the capability registry: integrations, blocks, MCP servers,
+platform tools, the session owner's skills and experts behind one query."""
 
+import asyncio
 import logging
 from typing import Any
 
 from backend.copilot.capabilities.index import SearchHit
 from backend.copilot.capabilities.models import CapabilityKindName
-from backend.copilot.capabilities.registry import get_registry
+from backend.copilot.capabilities.ranking import (
+    ConnectionState,
+    resolve_needs_expert_grant,
+)
 from backend.copilot.capabilities.resolve import load_connection_state
 from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
@@ -18,16 +22,22 @@ from .models import (
     NoResultsResponse,
     ToolResponseBase,
 )
+from .session_registry import session_registry
 
 logger = logging.getLogger(__name__)
 
 CONTEXTS = ("direct", "graph")
-KINDS = ("tool", "block", "mcp_server")
+KINDS = ("tool", "block", "mcp_server", "skill", "expert")
 _KIND_ARG: dict[str, CapabilityKindName] = {
     "tool": "tool",
     "block": "block",
     "mcp_server": "mcp_server",
+    "skill": "skill",
+    "expert": "expert",
 }
+
+
+NEEDS_EXPERT_GRANT = "needs_expert_grant"
 
 
 class FindCapabilityTool(BaseTool):
@@ -41,10 +51,12 @@ class FindCapabilityTool(BaseTool):
     def description(self) -> str:
         return (
             "Search everything the platform can do: integrations, blocks, MCP "
-            "servers and platform tools, by service name or action. Results are "
-            "ranked and show whether the user has connected each one. Call this "
-            "before saying something is not possible. Then describe_capability(id) "
-            "to see inputs, and run_capability(id, input) to act."
+            "servers, platform tools, skills and experts to hire, by service, "
+            "action or role. "
+            "Results are ranked and show whether the user has connected each "
+            "one. Call this before saying something is not possible. Then "
+            "describe_capability(id) to see inputs, and run_capability(id, "
+            "input) to act."
         )
 
     @property
@@ -109,13 +121,17 @@ class FindCapabilityTool(BaseTool):
                 message="Authentication required", session_id=session_id
             )
 
-        connections = await load_connection_state(user_id)
-        result = get_registry().search(
+        connections, index = await asyncio.gather(
+            load_connection_state(user_id, session.expert_id),
+            session_registry(user_id, session),
+        )
+        result = index.search(
             query,
             context="graph" if context == "graph" else "direct",
             kind=_KIND_ARG.get(kind or ""),
             connections=connections,
             permissions=get_current_permissions(),
+            prefer_mcp=session.expert_id is not None and context != "graph",
         )
         if not result.hits and not result.fallback:
             return NoResultsResponse(
@@ -127,33 +143,78 @@ class FindCapabilityTool(BaseTool):
                 ],
                 session_id=session_id,
             )
+        capabilities = [_listing(hit, connections) for hit in result.hits]
+        fallback = [_listing(hit, connections) for hit in result.fallback]
         return CapabilityListResponse(
-            message=_message(result.service, len(result.hits), len(result.fallback)),
+            message=_message(
+                result.service,
+                len(result.hits),
+                len(result.fallback),
+                skills=any(hit.entry.kind == "skill" for hit in result.hits),
+                experts=any(hit.entry.kind == "expert" for hit in result.hits),
+                needs_grant=any(
+                    c.get("connected") == NEEDS_EXPERT_GRANT
+                    for c in capabilities + fallback
+                ),
+            ),
             query=query,
-            capabilities=[_listing(hit) for hit in result.hits],
+            capabilities=capabilities,
             count=len(result.hits),
-            fallback=[_listing(hit) for hit in result.fallback],
+            fallback=fallback,
             service=result.service,
             session_id=session_id,
         )
 
 
-def _listing(hit: SearchHit) -> dict[str, Any]:
+def _listing(hit: SearchHit, connections: ConnectionState) -> dict[str, Any]:
     listing = hit.entry.listing()
     if hit.entry.connection.required:
-        listing["connected"] = hit.connected
+        listing["connected"] = (
+            NEEDS_EXPERT_GRANT
+            if resolve_needs_expert_grant(hit.entry, connections)
+            else hit.connected
+        )
     return listing
 
 
-def _message(service: str | None, hits: int, fallback: int) -> str:
+def _message(
+    service: str | None,
+    hits: int,
+    fallback: int,
+    *,
+    skills: bool = False,
+    experts: bool = False,
+    needs_grant: bool = False,
+) -> str:
     parts = [f"Found {hits} capabilit{'y' if hits == 1 else 'ies'}"]
     if service:
         parts.append(f"for {service}")
     text = " ".join(parts) + "."
     if fallback:
         text += f" {fallback} generic fallback(s) listed separately."
-    return (
-        f"{text} Call describe_capability(id) before first use, then "
+    text += (
+        " Call describe_capability(id) before first use, then "
         "run_capability(id, input). connected=false means the user must sign in "
         "first: run_capability returns the sign-in card."
     )
+    if needs_grant:
+        text += (
+            f" connected='{NEEDS_EXPERT_GRANT}' means the account already has "
+            "this integration but this expert has not been granted it: do not "
+            "ask the user to sign in. run_capability returns the setup card "
+            "with a Grant button for the existing credential; surface it and "
+            "ask the user to grant access."
+        )
+    if skills:
+        text += (
+            " A kind=skill result is a saved procedure: "
+            "run_capability(id, input={}) loads its body and package files; "
+            "read it before acting."
+        )
+    if experts:
+        text += (
+            " A kind=expert result is an AI expert: hired=false is on the "
+            "roster and running it proposes the hire on an approval card; "
+            "hired=true is on the user's team and running it delegates a task."
+        )
+    return text

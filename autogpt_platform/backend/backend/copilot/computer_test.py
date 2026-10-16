@@ -31,7 +31,7 @@ def _info(sandbox_id: str, state: SandboxState, mounts: str = "attached"):
         started_at=datetime(2026, 9, 5, 12, 0, tzinfo=timezone.utc),
         cpu_count=1,
         memory_mb=2048,
-        template_id="agpt-desktop-1x2",
+        template_id="agpt-desktop-1x2-004d6e73",
         metadata={"autogpt_kind": "shell", "autogpt_mounts": mounts},
     )
 
@@ -189,7 +189,7 @@ class TestOpenDesktop:
         redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
         with redis_p, get_p as get_mock, cls_p as desktop_cls, cfg_p as cfg:
             cfg.e2b_sandbox_timeout = 420
-            cfg.e2b_sandbox_template = "agpt-desktop-1x2"
+            cfg.e2b_sandbox_template = "agpt-desktop-1x2-004d6e73"
             cfg.e2b_sandbox_on_timeout = "pause"
             stream, first_time, shared = await open_desktop(
                 owner, mounts, "k", user_id=_USER, session_id=_SESSION
@@ -202,7 +202,7 @@ class TestOpenDesktop:
             owner,
             "k",
             timeout=420,
-            template="agpt-desktop-1x2",
+            template="agpt-desktop-1x2-004d6e73",
             on_timeout="pause",
             volume_mounts=mounts,
             user_id=_USER,
@@ -261,6 +261,18 @@ class TestOpenDesktop:
         with redis_p, get_p, cls_p, cfg_p:
             await open_desktop(owner, {}, "k", user_id=_USER)
         desktop.start_stream.assert_awaited_once_with("issued-before")
+
+    @pytest.mark.asyncio
+    async def test_a_stream_stopped_at_the_pause_reopens_under_a_new_password(self):
+        """The pause leaves an empty marker where the password was: to an open
+        that is no password, so the stack restarts under a fresh one."""
+        owner = SandboxOwner(kind="session", id=_SESSION)
+        redis = _redis("sb-1", stream="")
+        sandbox, desktop = _sandbox("sb-1"), _desktop("sb-1")
+        redis_p, get_p, cls_p, cfg_p = self._patches(redis, sandbox, desktop)
+        with redis_p, get_p, cls_p, cfg_p:
+            await open_desktop(owner, {}, "k", user_id=_USER)
+        desktop.start_stream.assert_awaited_once_with(None)
 
     @pytest.mark.asyncio
     async def test_a_password_left_over_from_a_replaced_box_is_not_reused(self):

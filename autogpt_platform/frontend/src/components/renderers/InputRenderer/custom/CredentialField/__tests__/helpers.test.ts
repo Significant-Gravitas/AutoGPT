@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { BlockIOCredentialsSubSchema } from "@/lib/autogpt-server-api";
 import {
   credentialNotApplicable,
+  credentialRequiredForSelection,
   getCredentialProviderFromSchema,
 } from "../helpers";
 
@@ -14,6 +15,7 @@ const autopilotSchema: BlockIOCredentialsSubSchema = {
   credentials_types: ["oauth2"],
   discriminator: "transport",
   discriminator_mapping: { codex_app_server: "codex" },
+  credential_free_discriminator_values: ["platform"],
 };
 
 // A plain single-provider field with no discriminator at all.
@@ -119,4 +121,43 @@ describe("credentialNotApplicable", () => {
   it("is false for a field with no discriminator at all", () => {
     expect(credentialNotApplicable({}, githubSchema)).toBe(false);
   });
+});
+
+describe("explicit credential-free selections", () => {
+  it("keeps unknown routes visible instead of treating them as free", () => {
+    expect(
+      credentialNotApplicable(
+        { transport: "retired-transport" },
+        autopilotSchema,
+      ),
+    ).toBe(false);
+  });
+
+  it("does not silently exempt an unmapped model without an explicit free route", () => {
+    expect(
+      credentialNotApplicable(
+        { transport: "typo" },
+        {
+          ...autopilotSchema,
+          credential_free_discriminator_values: undefined,
+        },
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("conditional credential requirements", () => {
+  it.each([
+    ["platform", false],
+    ["codex_app_server", true],
+    ["retired-transport", true],
+    [undefined, false],
+  ])(
+    "marks %s required only when a credential is needed",
+    (transport, expected) => {
+      expect(
+        credentialRequiredForSelection({ transport }, autopilotSchema),
+      ).toBe(expected);
+    },
+  );
 });

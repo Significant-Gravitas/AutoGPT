@@ -5,7 +5,7 @@ import fastapi
 from fastapi import Depends, Path, Query, Security
 
 from backend.api.features.experts import experts_db
-from backend.copilot.tools.skills import SkillLimitError
+from backend.copilot.tools.skills import SkillLimitError, SkillOwnedError
 from backend.util.feature_flag import Flag, is_feature_enabled
 
 from . import skill_db, skill_model, skill_submission_db
@@ -229,7 +229,12 @@ _TEXT_APPLICATION_TYPES = frozenset(
     tags=["store", "private"],
     responses={
         404: {"description": "Skill or expert not found"},
-        409: {"description": "Per-user skill limit reached"},
+        409: {
+            "description": (
+                "Skill limit reached, or the skill name is already used by an "
+                "owner-saved skill"
+            )
+        },
     },
     dependencies=[Security(autogpt_libs.auth.requires_user)],
 )
@@ -247,7 +252,7 @@ async def install_marketplace_skill(
         return await skill_db.install_marketplace_skill(
             user_id, slug, expert_id=expert_id
         )
-    except SkillLimitError as exc:
+    except (SkillLimitError, SkillOwnedError) as exc:
         raise fastapi.HTTPException(status_code=409, detail=str(exc))
     except ValueError as exc:
         raise fastapi.HTTPException(status_code=400, detail=str(exc))

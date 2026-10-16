@@ -17,12 +17,10 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ExpertAvatar } from "@/components/molecules/ExpertAvatar/ExpertAvatar";
-import { toast } from "@/components/molecules/Toast/use-toast";
 import { cn } from "@/lib/utils";
-import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { GenericTool } from "../../tools/GenericTool/GenericTool";
 import { type ArtifactRef, useCopilotUIStore } from "../../store";
-import { describeSendFailure } from "../ChatInput/helpers";
+import { toastSendFailure } from "../../helpers/sendFailureToast";
 import { CopilotChatActionsContext } from "../CopilotChatActionsProvider/useCopilotChatActions";
 import { asObject, str } from "./resultHelpers";
 
@@ -81,7 +79,7 @@ function headerFor(
           ? "Expert hired"
           : kind === "update"
             ? "Expert updated"
-            : "Expert raised",
+            : "Expert created",
     };
   }
   return {
@@ -91,7 +89,7 @@ function headerFor(
         ? "Hire an expert"
         : kind === "update"
           ? "Update an expert"
-          : "Raise an expert",
+          : "Create an Expert",
   };
 }
 
@@ -179,7 +177,7 @@ export function ExpertChangeCard({
 }: Props) {
   const [showCharter, setShowCharter] = useState(false);
   const openArtifact = useCopilotUIStore((s) => s.openArtifact);
-  const panelAvailable = useGetFlag(Flag.ARTIFACTS) && !!artifactId;
+  const panelAvailable = !!artifactId;
   const expert = asObject(output.expert) ?? asObject(output.preview);
   if (!expert) return null;
 
@@ -322,7 +320,7 @@ export function ExpertChangeCardSkeleton() {
       <div className={HEADER}>
         <Icon icon={UserAdd01Icon} size={18} className="text-zinc-400" />
         <span className="text-sm font-medium text-zinc-900">
-          Raise an expert
+          Create an Expert
         </span>
       </div>
       <div className="px-4 py-3">
@@ -461,13 +459,12 @@ export function ExpertChangeGroup({
     // The card stays marked sent because the message is already in the
     // thread for Retry — the failure only needs saying.
     void Promise.resolve(actions.onSend(message)).catch((error: unknown) =>
-      toast({
+      toastSendFailure({
         title: "Couldn't send message",
-        description: describeSendFailure(
-          error,
-          "it is still in the thread, use Retry to send it again",
-        ),
-        variant: "destructive",
+        error,
+        recovery: "it is still in the thread, use Retry to send it again",
+        paywallRecovery:
+          "it is still in the thread, use Retry once you have a plan",
       }),
     );
     setSent(true);

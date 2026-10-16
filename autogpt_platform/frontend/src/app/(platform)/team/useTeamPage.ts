@@ -8,7 +8,12 @@ import {
   ChatTarget,
   expertToChatTarget,
 } from "./components/ExpertChatDrawer/helpers";
-import { getExpertSchedules, getHiredExperts } from "./helpers";
+import {
+  getExpertSchedules,
+  getHiredExperts,
+  isSettingUp,
+  SETUP_POLL_MS,
+} from "./helpers";
 
 interface Args {
   enabled: boolean;
@@ -22,7 +27,15 @@ export function useTeamPage({ enabled }: Args) {
   const [chatDrawerKey, setChatDrawerKey] = useState(0);
 
   const expertsQuery = useListExperts({
-    query: { select: (res) => (okData(res) ?? []) as Expert[], enabled },
+    query: {
+      select: (res) => (okData(res) ?? []) as Expert[],
+      enabled,
+      // A fresh hire's skills land after the hire returns; follow them in.
+      refetchInterval: (query) =>
+        isSettingUp((okData(query.state.data) ?? []) as Expert[])
+          ? SETUP_POLL_MS
+          : false,
+    },
   });
   const schedulesQuery = useGetV1ListExecutionSchedulesForAUser({
     query: { select: (res) => okData(res) ?? [], enabled },

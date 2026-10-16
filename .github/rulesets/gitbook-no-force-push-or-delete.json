@@ -1,0 +1,13 @@
+{
+  "name": "gitbook: no force-push or delete",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/gitbook"],
+      "exclude": []
+    }
+  },
+  "rules": [{ "type": "deletion" }, { "type": "non_fast_forward" }],
+  "bypass_actors": []
+}

@@ -84,7 +84,7 @@ async def _run(tool, box: _Box, *, user_id, session):
     with redis_p, get_p, cls_p, computer_cfg as ccfg, tool_cfg as tcfg:
         tcfg.active_e2b_api_key = "e2b_test_key"
         ccfg.e2b_sandbox_timeout = 420
-        ccfg.e2b_sandbox_template = "agpt-desktop-1x2"
+        ccfg.e2b_sandbox_template = "agpt-desktop-1x2-004d6e73"
         ccfg.e2b_sandbox_on_timeout = "pause"
         return await tool._execute(user_id=user_id, session=session)
 
@@ -126,7 +126,7 @@ class TestStartDesktop:
             f"copilot:e2b:sandbox:{session.session_id}"
         )
         assert kwargs["volume_mounts"] == {WORKSPACE_PATH: user_volume_name(_USER)}
-        assert kwargs["template"] == "agpt-desktop-1x2"
+        assert kwargs["template"] == "agpt-desktop-1x2-004d6e73"
         assert kwargs["count_turn"] is False
         assert kwargs["user_id"] == _USER
         assert kwargs["session_id"] == session.session_id
@@ -140,6 +140,9 @@ class TestStartDesktop:
         assert "Screen is on" in result.message
         assert "same machine" in result.message
         assert WORKSPACE_PATH in result.message
+        # browser_* runs outside the box, so it is never on this screen.
+        assert "DISPLAY=:0" in result.message
+        assert "browser_* tools run elsewhere" in result.message
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_stored_result_carries_the_owner_link_not_the_password(self):

@@ -5,7 +5,7 @@ networks:
     name: shared-network
 
 volumes:
-  supabase-config:
+  test-db-data:
   clamav-data:
 
 x-agpt-services:
@@ -14,39 +14,61 @@ x-agpt-services:
     - app-network
     - shared-network
 
-x-supabase-services:
-  &supabase-services
-  networks:
-    - app-network
-    - shared-network
-
 services:
    
   db:
-    <<: *supabase-services
-    extends:
-      file: ../db/docker/docker-compose.yml
-      service: db
-    ports:
-      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
-
-  vector:
-    <<: *supabase-services
-    extends:
-      file: ../db/docker/docker-compose.yml
-      service: vector
-
-  redis:
     <<: *agpt-services
-    image: redis:latest
-    command: redis-server --requirepass password
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: agpt_test
     ports:
-      - "6379:6379"
+      - ${POSTGRES_PORT:-5432}:5432
+    volumes:
+      - ../db/init/00-init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
+      - test-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  # The backend's Redis client is cluster-only (`RedisClient = RedisCluster`),
+  # and every other environment — `backend/.env.default`, the dev
+  # `docker-compose.yml` and backend CI — serves a 3-shard cluster on
+  # 17000/17001/17002. Reuse the dev stack's shards rather than a single-node
+  # `redis:latest` on 6379: no supported client can talk to that, and no
+  # config in the repo points at it.
+  redis-0:
+    <<: *agpt-services
+    extends:
+      file: ../docker-compose.platform.yml
+      service: redis-0
+
+  redis-1:
+    <<: *agpt-services
+    extends:
+      file: ../docker-compose.platform.yml
+      service: redis-1
+
+  redis-2:
+    <<: *agpt-services
+    extends:
+      file: ../docker-compose.platform.yml
+      service: redis-2
+
+  # `extends` deliberately drops `depends_on`, so the shard ordering the dev
+  # stack relies on has to be restated here.
+  redis-init:
+    <<: *agpt-services
+    extends:
+      file: ../docker-compose.platform.yml
+      service: redis-init
+    depends_on:
+      - redis-0
+      - redis-1
+      - redis-2
 
   rabbitmq:
     <<: *agpt-services

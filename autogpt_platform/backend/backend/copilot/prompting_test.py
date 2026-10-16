@@ -2,6 +2,9 @@
 
 import importlib
 
+import pytest
+
+from backend.blocks.desktop._api import DISPLAY
 from backend.copilot import prompting
 
 
@@ -32,6 +35,49 @@ class TestGetSdkSupplementStaticPlaceholder:
         assert "<session-id>" not in result
 
 
+class TestComputerNote:
+    """A plain chat on E2B is told it has a screen; an expert session is told
+    by its own ``<expert_computer>`` block instead, and a local session has no
+    computer at all."""
+
+    def test_plain_e2b_session_learns_about_the_screen(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert result.count("### Your computer") == 1
+        assert "`start_desktop`" in result
+        assert "lost when the session expires" in result
+        assert "sign into personal accounts" in result
+
+    def test_screen_shows_only_what_runs_in_the_sandbox(self):
+        """``browser_*`` drives a browser outside the sandbox, so the model
+        must not offer the user a takeover of something the screen never
+        shows."""
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert f"DISPLAY={DISPLAY}" in result
+        assert "`browser_*` tools run elsewhere" in result
+
+    def test_no_computer_note_without_e2b(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Your computer" not in result
+        assert "start_desktop" not in result
+        assert (
+            prompting.get_sdk_supplement(use_e2b=False, expert_session=True) == result
+        )
+
+    def test_expert_session_differs_only_by_the_computer_note(self):
+        plain = prompting.get_sdk_supplement(use_e2b=True)
+        expert = prompting.get_sdk_supplement(use_e2b=True, expert_session=True)
+        assert "### Your computer" not in expert
+        assert plain.replace(prompting._COMPUTER_NOTE, "") == expert
+
+    def test_note_sits_inside_the_tool_notes_before_the_follow_up_rules(self):
+        result = prompting.get_sdk_supplement(use_e2b=True)
+        assert (
+            result.index("## Tool notes")
+            < result.index("### Your computer")
+            < result.index("# `<user_follow_up>` blocks")
+        )
+
+
 class TestCredentialsSurfacingGuardrails:
     """The system prompt must instruct the model to (a) surface sign-in cards
     eagerly via tool calls and (b) never claim a card has appeared unless one
@@ -52,6 +98,17 @@ class TestCredentialsSurfacingGuardrails:
         assert "NEVER claim a card has appeared" in result
         assert "call the tool first" in result
 
+    def test_prompt_distinguishes_an_expert_grant_from_a_sign_in(self):
+        """An expert session's ``find_capability`` reports an account-owned
+        credential the expert lacks as ``needs_expert_grant``; the model must
+        ask for a grant, not send the user back through sign-in."""
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        step = result[result.index('`connected: "needs_expert_grant"`') :]
+        step = " ".join(step[: step.index("4. `review_required`")].split())
+        assert "Do NOT ask the user to sign in" in step
+        assert "Grant button" in step
+        assert "ask the user to grant access" in step
+
     def test_prompt_contains_rejection_rule(self):
         """This section collects rules from several PRs at once, so a merge
         that takes one side drops a rule silently."""
@@ -59,6 +116,16 @@ class TestCredentialsSurfacingGuardrails:
         assert "refused a credential the user already has" in result
         assert "Connecting is not running" in result
         assert "The card asks for credentials, not inputs" in result
+
+    def test_prompt_states_the_one_connect_convention(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert 'input={"connect": true}' in result
+        assert "for any capability" in result
+
+    def test_prompt_tells_experts_the_vendor_integration_comes_first(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "own integration is listed first" in result
+        assert "only for an action it does not offer" in result
 
 
 class TestToolDiscoveryPriorityAntiPattern:
@@ -200,17 +267,32 @@ class TestSchedulingGuidance:
     told not to promise monitoring it never scheduled.
     """
 
-    def test_supplement_names_schedule_followup_as_the_only_primitive(self):
+    def test_supplement_names_the_building_gate_before_it_refuses(self):
+        # The gate's refusal used to be the only text naming the tool, so the
+        # model met it by being refused and then stalled retrying the entry.
         result = prompting.get_sdk_supplement(use_e2b=False)
-        assert "### Scheduling future work — use `schedule_followup`" in result
-        assert "ONLY way to schedule a future copilot turn" in result
+        assert "call `enter_agent_building_mode` first" in result
+        assert "tool:enter_agent_building_mode" not in result
+
+    def test_supplement_names_schedule_followup_by_capability_id(self):
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "### Scheduling future work — use `tool:schedule_followup`" in result
+        assert "`tool:schedule_followup` schedules a future copilot turn" in result
+
+    def test_supplement_sends_standing_work_to_a_routine_without_naming_it(self):
+        # Routines ride the flag-gated ``expert_resources`` group, so this
+        # ungated supplement points at the block that appears alongside them
+        # rather than at a tool the session may not be able to call.
+        result = prompting.get_sdk_supplement(use_e2b=False)
+        assert "set up a routine for it rather than a" in result
+        assert "schedule_routine" not in result
 
     def test_supplement_keeps_agent_schedules_on_run_agent(self):
         # "Run my report agent every morning" must stay a graph schedule, not
         # become a recurring copilot turn that re-decides what to run.
         result = prompting.get_sdk_supplement(use_e2b=False)
         assert "use `run_agent` with `schedule_name` +" in result
-        assert "use `setup_agent_webhook_trigger`" in result
+        assert "use `tool:setup_agent_webhook_trigger`" in result
 
     def test_supplement_rejects_the_confirmed_but_dead_alternative(self):
         result = prompting.get_sdk_supplement(use_e2b=False)
@@ -231,3 +313,31 @@ class TestSchedulingGuidance:
         # SHARED_TOOL_NOTES feeds both the SDK supplement and baseline's
         # system prompt; the rule is useless if it only reaches one mode.
         assert "### Scheduling future work" in prompting.SHARED_TOOL_NOTES
+
+
+class TestReplyStyle:
+    # The base prompt comes from Langfuse in production, so the style rules
+    # ride SHARED_TOOL_NOTES, which both engines append for Otto and experts.
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_carries_the_reply_style_rules(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "### Reply style" in result
+        assert "Default to 1 to 3 sentences." in result
+        assert "Never write an em dash or an en dash" in result
+
+    def test_baseline_mode_gets_the_same_rules(self):
+        assert "### Reply style" in prompting.SHARED_TOOL_NOTES
+        assert "never its length" in prompting.SHARED_TOOL_NOTES
+
+    def test_the_rules_do_not_model_the_dashes_they_forbid(self):
+        start = prompting.SHARED_TOOL_NOTES.index("### Reply style")
+        end = prompting.SHARED_TOOL_NOTES.index("### Math")
+        section = prompting.SHARED_TOOL_NOTES[start:end]
+        assert "—" not in section and "–" not in section
+
+
+class TestMathGuidance:
+    @pytest.mark.parametrize("use_e2b", [False, True])
+    def test_sdk_supplement_tells_the_model_formulas_render(self, use_e2b):
+        result = prompting.get_sdk_supplement(use_e2b=use_e2b)
+        assert "`$…$` inline, `$$…$$` for display" in result
