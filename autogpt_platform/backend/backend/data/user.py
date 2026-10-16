@@ -3,25 +3,18 @@ import base64
 import hashlib
 import hmac
 import logging
-import random
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional, cast
 from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
+from prisma import Prisma
 from prisma.enums import BriefingFrequency, SubscriptionTier
 from prisma.errors import RecordNotFoundError, UniqueViolationError
 from prisma.models import AuthAccount, AuthUser
 from prisma.models import User as PrismaUser
-from prisma.types import (
-    JsonFilter,
-    ProfileCreateInput,
-    UserCreateInput,
-    UserUpdateInput,
-    UserWhereInput,
-)
+from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput, UserWhereInput
 from pydantic import BaseModel, ConfigDict
 
 from backend.data.db import prisma, query_raw_with_schema, transaction
@@ -39,7 +32,10 @@ from backend.data.notifications import (
 )
 from backend.data.org_migration import ensure_personal_org
 from backend.data.posthog_lifecycle_sync import schedule_posthog_lifecycle_sync
+from backend.data.profile import ensure_profile
 from backend.data.subscription_trial import get_subscription_trial
+from backend.notifications.audience_enrichment import points_at_excluded_country
+from backend.notifications.posthog_audience import set_account_properties
 from backend.notifications.queue import queue_audience_change
 from backend.notifications.subscriber_fields import audience_event
 from backend.util.cache import cached
@@ -113,7 +109,7 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # agents). Best-effort: a failure must not block user resolution — the
         # user self-heals on their next request or via the profile settings page.
         try:
-            await _ensure_user_profile(user.id, user.email)
+            await ensure_profile(user.id, user.email)
         except Exception:
             logger.warning(
                 "Failed to ensure marketplace profile for user %s",
@@ -134,9 +130,9 @@ async def _get_or_create_user(user_data: dict) -> UserCreationResult:
         # new account: the personal org this call bootstraps does.
         was_created = row_created or org_created
         if was_created:
-            track_signup_completed(
-                user_id=user.id, signup_method=await _signup_method(user.id, user_data)
-            )
+            signup_method = await _signup_method(user.id, user_data)
+            track_signup_completed(user_id=user.id, signup_method=signup_method)
+            set_account_properties(user.id, user.email, signup_method)
             schedule_posthog_lifecycle_sync(user.id)
 
         return UserCreationResult(user=User.from_db(user), was_created=was_created)
@@ -184,94 +180,6 @@ def _legacy_signup_method(user_data: dict) -> str | None:
         return None
     provider = app_metadata.get("provider")
     return provider if isinstance(provider, str) and provider else None
-
-
-# Word lists mirror the legacy generate_username() SQL function so that app-
-# and DB-generated handles look consistent.
-_PROFILE_USERNAME_ADJECTIVES = (
-    "happy",
-    "clever",
-    "swift",
-    "bright",
-    "wise",
-    "funny",
-    "cool",
-    "awesome",
-    "amazing",
-    "fantastic",
-    "wonderful",
-)
-_PROFILE_USERNAME_ANIMALS = (
-    "fox",
-    "wolf",
-    "bear",
-    "eagle",
-    "owl",
-    "tiger",
-    "lion",
-    "elephant",
-    "giraffe",
-    "zebra",
-)
-
-
-async def _ensure_user_profile(user_id: str, email: Optional[str]) -> None:
-    """Create a default marketplace Profile for *user_id* if none exists.
-
-    Idempotent and race-safe. A UniqueViolationError has two possible sources:
-    a concurrent request that already created this user's Profile (done), or a
-    collision on the unique username with *another* user (retry with a fresh
-    handle — otherwise the user would be left without a Profile).
-    """
-    if await prisma.profile.find_unique(where={"userId": user_id}):
-        return
-
-    name = (email or "").split("@", 1)[0] or "user"
-    for _ in range(3):
-        try:
-            await prisma.profile.create(
-                data=ProfileCreateInput(
-                    userId=user_id,
-                    name=name,
-                    username=await _generate_profile_username(),
-                    description="I'm new here",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return
-        except UniqueViolationError:
-            if await prisma.profile.find_unique(where={"userId": user_id}):
-                # Another in-flight request (or the legacy auth.users trigger)
-                # created this user's Profile — nothing to do.
-                logger.debug(
-                    "Profile for user %s already created concurrently", user_id
-                )
-                return
-            # The generated username collided with another user — loop and
-            # retry with a fresh handle.
-    logger.warning(
-        "Failed to create a unique profile handle for user %s after retries",
-        user_id,
-    )
-
-
-async def _generate_profile_username() -> str:
-    """Generate a human-friendly profile handle, avoiding obvious collisions.
-
-    The unique constraint on Profile.username is the real guarantee; this
-    pre-check just avoids retrying a create in the common case. Falls back to a
-    UUID-based handle if we can't find a free friendly name.
-    """
-    for _ in range(10):
-        candidate = (
-            f"{random.choice(_PROFILE_USERNAME_ADJECTIVES)}-"
-            f"{random.choice(_PROFILE_USERNAME_ANIMALS)}-"
-            f"{random.randint(10000, 99999)}"
-        )
-        if not await prisma.profile.find_unique(where={"username": candidate}):
-            return candidate
-    return f"user-{uuid.uuid4().hex[:12]}"
 
 
 @cache_user_lookup
@@ -561,61 +469,86 @@ async def set_user_credentials(user_id: str, credentials: list[Credentials]) -> 
     around: rows missing from ``credentials`` are revoked (soft delete),
     new ids are created, existing ids get their payload refreshed
     (OAuth token rotation runs through here constantly).
+
+    Runs as one transaction. Credential reads take no lock, so a reader must
+    see the old list or the new one: committed row by row, it could see a
+    replacement next to the credential it supersedes, and offer or pick the
+    one about to be revoked.
     """
     cryptor = JSONCryptor()
-    existing_rows = await prisma.integrationcredential.find_many(
-        where={"ownerType": "USER", "ownerId": user_id},
-    )
-    existing_by_id = {row.id: row for row in existing_rows}
     incoming_ids = {c.id for c in credentials}
+    async with transaction() as tx:
+        await _lock_user_credentials(tx, user_id)
+        existing_rows = await tx.integrationcredential.find_many(
+            where={"ownerType": "USER", "ownerId": user_id},
+        )
+        existing_ids = {row.id for row in existing_rows}
 
-    org_id: str | None = None
-    for cred in credentials:
-        row = existing_by_id.get(cred.id)
-        encrypted = cryptor.encrypt(cred.model_dump())
-        if row is not None:
-            await prisma.integrationcredential.update(
-                where={"id": cred.id},
+        org_id: str | None = None
+        for cred in credentials:
+            encrypted = cryptor.encrypt(cred.model_dump())
+            if cred.id in existing_ids:
+                await tx.integrationcredential.update(
+                    where={"id": cred.id},
+                    data={
+                        "encryptedPayload": encrypted,
+                        "displayName": cred.title or cred.provider,
+                        "status": "active",
+                    },
+                )
+                continue
+            if org_id is None:
+                org_id = await _personal_org_id(tx, user_id)
+            await tx.integrationcredential.create(
                 data={
-                    "encryptedPayload": encrypted,
+                    "id": cred.id,
+                    "organizationId": org_id,
+                    "ownerType": "USER",
+                    "ownerId": user_id,
+                    "provider": cred.provider,
+                    "credentialType": cred.type,
                     "displayName": cred.title or cred.provider,
-                    "status": "active",
-                },
-            )
-            continue
-        if org_id is None:
-            org_row = await prisma.organization.find_first(
-                where={
-                    "isPersonal": True,
-                    "Members": {"some": {"userId": user_id, "isOwner": True}},
+                    "encryptedPayload": encrypted,
+                    "createdByUserId": user_id,
                 }
             )
-            if org_row is None:
-                raise DatabaseError(
-                    f"Cannot store credentials for user {user_id}: "
-                    "personal org not bootstrapped"
-                )
-            org_id = org_row.id
-        await prisma.integrationcredential.create(
-            data={
-                "id": cred.id,
-                "organizationId": org_id,
-                "ownerType": "USER",
-                "ownerId": user_id,
-                "provider": cred.provider,
-                "credentialType": cred.type,
-                "displayName": cred.title or cred.provider,
-                "encryptedPayload": encrypted,
-                "createdByUserId": user_id,
-            }
-        )
 
-    for row in existing_rows:
-        if row.id not in incoming_ids and row.status == "active":
-            await prisma.integrationcredential.update(
-                where={"id": row.id},
-                data={"status": "revoked"},
-            )
+        for row in existing_rows:
+            if row.id not in incoming_ids and row.status == "active":
+                await tx.integrationcredential.update(
+                    where={"id": row.id},
+                    data={"status": "revoked"},
+                )
+
+
+async def _lock_user_credentials(tx: Prisma, user_id: str) -> None:
+    """Serialize full-list replaces for one user until the transaction ends.
+
+    The credential store's Redis lock already does this; this keeps two
+    replaces from interleaving row locks, and deadlocking, if that lock lapses.
+
+    execute_raw, not query_raw: pg_advisory_xact_lock returns void, which
+    Prisma cannot deserialize as a result column.
+    """
+    await tx.execute_raw(
+        "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
+        f"integration-credentials:{user_id}",
+    )
+
+
+async def _personal_org_id(tx: Prisma, user_id: str) -> str:
+    org_row = await tx.organization.find_first(
+        where={
+            "isPersonal": True,
+            "Members": {"some": {"userId": user_id, "isOwner": True}},
+        }
+    )
+    if org_row is None:
+        raise DatabaseError(
+            f"Cannot store credentials for user {user_id}: "
+            "personal org not bootstrapped"
+        )
+    return org_row.id
 
 
 async def migrate_and_encrypt_user_integrations():
@@ -850,7 +783,7 @@ async def unsubscribe_user_by_token(token: str) -> None:
             ),
         )
     except Exception as e:
-        raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e
+        raise DatabaseError(f"Failed to unsubscribe user by token: {e}") from e
 
 
 async def cleanup_user_managed_credentials(
@@ -1132,17 +1065,37 @@ async def record_marketing_opt_out_by_email(email: str, source: str) -> str | No
 
 
 async def is_marketing_opted_out(user_id: str) -> bool:
-    """Whether the account refused marketing, read from the database rather
-    than the user cache, for the last check before a MailerLite write. An
-    account that no longer exists counts as opted out: nothing about it should
-    reach MailerLite either."""
+    """Whether nothing about the account may reach MailerLite, read from the
+    database rather than the user cache, for the last check before a
+    MailerLite write: it refused marketing, or a signal places it in Iran or
+    Russia, the country a checkout recorded included (`consent.py`). An
+    account that no longer exists counts too.
+
+    It is named for the opt-out it was first written for. The audience
+    consumer calls it over the RPC, so a new name would fail every call made
+    while a rolling deploy runs one side ahead of the other."""
     try:
         row = await PrismaUser.prisma().find_unique(where={"id": user_id})
     except Exception as e:
         raise DatabaseError(
             f"Failed to read the marketing opt-out for user {user_id}: {e}"
         ) from e
-    return row is None or row.marketingOptOutAt is not None
+    if row is None or row.marketingOptOutAt is not None:
+        return True
+    return points_at_excluded_country(
+        email=row.email,
+        timezone=row.timezone,
+        countries=(row.marketingExcludedCountry,),
+    )
+
+
+async def record_excluded_country(user_id: str, country: str) -> None:
+    """Keep the account out of MailerLite for good: a checkout saw it in a
+    country MailerLite must never hold. The first country seen is kept."""
+    await PrismaUser.prisma().update_many(
+        where={"id": user_id, "marketingExcludedCountry": None},
+        data={"marketingExcludedCountry": country},
+    )
 
 
 def _invalidate_user_caches(user_id: str, email: str | None) -> None:
@@ -1252,6 +1205,8 @@ class BillingEmailRecipient(BaseModel):
     # Set when the customer refused marketing: billing emails still go out,
     # MailerLite never hears of them (notifications/consent.py).
     marketing_opt_out_at: datetime | None = None
+    # The browser's IANA timezone, one of the signals consent.py reads.
+    timezone: str | None = None
 
 
 async def get_billing_email_recipient(
@@ -1271,6 +1226,7 @@ async def get_billing_email_recipient(
             name=row.name,
             welcome_email_sent_at=row.welcomeEmailSentAt,
             marketing_opt_out_at=row.marketingOptOutAt,
+            timezone=row.timezone,
         )
     except Exception as e:
         raise DatabaseError(

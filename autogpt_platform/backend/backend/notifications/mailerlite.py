@@ -19,13 +19,13 @@ transition:
    checkout joins it, and nobody else enters MailerLite through us: a signup
    alone does not create a subscriber. GTM segments it for outreach.
 
-Someone who opted out of marketing enters none of these. Every write below
-upserts the subscriber, a removal or a field update included, so nothing is
-queued for them at all (`consent.py`), the backfills leave them out, and the
-consumer re-reads the opt-out right before each write, which drops a change
-queued just before the refusal. The one exception is `unsubscribe`, which
-carries the refusal itself to someone MailerLite already has, and never
-creates a subscriber.
+Someone who opted out of marketing, or whom a signal places in Iran or Russia,
+enters none of these. Every write below upserts the subscriber, a removal or a
+field update included, so nothing is queued for them at all (`consent.py`) and
+the backfills leave them out. The consumer also re-reads the opt-out right
+before each write, which drops a change queued just before the refusal. The
+one exception is `unsubscribe`, which carries the refusal itself to someone
+MailerLite already has, and never creates a subscriber.
 
 Subscriber fields (`SubscriberField`) are the backend's alone: every write
 comes from here, and MailerLite automations only read them.
@@ -81,6 +81,8 @@ FIELD_TYPES: dict[SubscriberField, str] = {
     SubscriberField.CHECKOUT_OPENED: "date",
     SubscriberField.EMAIL_TYPE: "text",
     SubscriberField.SIGNIN_METHOD: "text",
+    SubscriberField.ROLE: "text",
+    SubscriberField.ROLE_OTHER: "text",
     SubscriberField.COUNTRY_CODE: "text",
     SubscriberField.COUNTRY_SOURCE: "text",
     SubscriberField.EXCLUDE_DE_AT: "text",
@@ -92,6 +94,15 @@ BUILT_IN_FIELD_TYPES: dict[SubscriberField, str] = {SubscriberField.COUNTRY: "te
 
 def field_type(field: SubscriberField) -> str:
     return FIELD_TYPES.get(field) or BUILT_IN_FIELD_TYPES[field]
+
+
+def held_value(field: SubscriberField, value: object) -> str | None:
+    """A field as MailerLite handed it back, in the form we write it: empty
+    is None, and a date loses the time part it may come back with."""
+    if value is None or value == "":
+        return None
+    text = str(value)
+    return text[:10] if field_type(field) == "date" else text
 
 
 Fields = Mapping[SubscriberField, str | None]
@@ -191,6 +202,53 @@ async def record_signup(email: str, fields: Fields | None = None) -> None:
     if (subscriber.get("fields") or {}).get(SubscriberField.STATUS.value):
         fields = {k: v for k, v in fields.items() if k != SubscriberField.STATUS}
     await update_fields(email, fields)
+
+
+async def record_onboarding_profile(email: str, fields: Fields | None = None) -> None:
+    """The onboarding answers. On cloud the paywall comes first, so they are
+    given once the person is a checkout opener: they fill in someone MailerLite
+    already has and never create a subscriber, since only checkout openers
+    belong in MailerLite. Anyone who answers before opening checkout gets their
+    role with the checkout event instead (`checkout_audience`), and
+    onboarding-role-backfill fills in anyone missed."""
+    if not fields:
+        return
+    _require_token()
+    if await _find_subscriber(email) is None:
+        logger.info(
+            "No MailerLite subscriber for %s; onboarding profile not written",
+            pseudonym(email),
+        )
+        return
+    await update_fields(email, fields)
+    logger.info(f"Wrote the onboarding profile of {pseudonym(email)} to MailerLite")
+
+
+async def record_lifecycle(email: str, fields: Fields | None = None) -> None:
+    """The subscription status and its dates, from the lifecycle snapshot
+    (`lifecycle_audience`). They fill in someone MailerLite already has and
+    never create a subscriber: MailerLite holds checkout openers, and having
+    a subscription does not make someone one. Only the fields that differ
+    from MailerLite's are written, so a sync that changed nothing costs one
+    read. The audience queue is worked one message at a time, so nothing of
+    ours writes between the read and the write."""
+    if not fields:
+        return
+    _require_token()
+    subscriber = await _find_subscriber(email)
+    if subscriber is None:
+        logger.info(
+            f"No MailerLite subscriber for {pseudonym(email)}; "
+            "subscription status not written"
+        )
+        return
+    held = subscriber.get("fields") or {}
+    changed = {
+        field: value
+        for field, value in fields.items()
+        if held_value(field, held.get(field.value)) != value
+    }
+    await update_fields(email, changed)
 
 
 async def record_checkout_opened(email: str, fields: Fields | None = None) -> None:

@@ -17,9 +17,7 @@ from backend.data.credit import PAYMENT_FAILURE_CANCELLATION_COMMENT
 from backend.data.notifications import (
     AudienceAction,
     NotificationResult,
-    SubscriberField,
     SubscriptionPlan,
-    SubscriptionStatus,
 )
 from backend.notifications import lifecycle, lifecycle_plan, subscriber_fields
 from backend.notifications.lifecycle_plan import card_from_invoice
@@ -33,12 +31,13 @@ INVOICE_PLAN_PATCH = "backend.notifications.lifecycle.plan_from_invoice"
 class _User:
     """Shaped like `BillingEmailRecipient`, which is what the RPC returns."""
 
-    def __init__(self, welcome_sent_at=None, opted_out_at=None):
+    def __init__(self, welcome_sent_at=None, opted_out_at=None, timezone=None):
         self.id = "user-1"
         self.email = "sam@example.com"
         self.name = "Sam Carter"
         self.welcome_email_sent_at = welcome_sent_at
         self.marketing_opt_out_at = opted_out_at
+        self.timezone = timezone
 
 
 def _subscription(**over) -> dict:
@@ -545,6 +544,10 @@ async def test_a_failed_welcome_publish_gives_the_claim_back():
 
 
 # ── subscriber fields ──────────────────────────────────────────────────────
+#
+# The status and dates are not written from these events: the lifecycle sync
+# each subscription webhook triggers writes them, by PostHog's rules
+# (`lifecycle_audience.py`), so a 100% coupon checkout is not `subscribed`.
 
 
 @pytest.fixture
@@ -554,14 +557,10 @@ def fields_on(monkeypatch):
     return queued
 
 
-def _day(timestamp: int) -> str:
-    return datetime.fromtimestamp(timestamp, timezone.utc).strftime("%Y-%m-%d")
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("welcomed", [False, True])
-async def test_a_checkout_marks_them_subscribed_from_stripes_start_date(
-    fields_on, welcomed
+async def test_a_checkout_joins_its_group_without_a_status(
+    fields_on, lifecycle_resync, welcomed
 ):
     user = _User(welcome_sent_at=datetime(2026, 1, 1) if welcomed else None)
     with patch(
@@ -574,88 +573,51 @@ async def test_a_checkout_marks_them_subscribed_from_stripes_start_date(
             ),
             user,
         )
-    assert calls["audience"].await_args.args[0].fields == {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
-        SubscriberField.SUBSCRIPTION_STARTED: _day(1788000000),
-        SubscriberField.SUBSCRIPTION_CANCELED: None,
-        SubscriberField.SUBSCRIPTION_ENDED: None,
-    }
+    event = calls["audience"].await_args.args[0]
+    assert event.action in (AudienceAction.ENROLL_TOUR, AudienceAction.ADD_CHANGELOG)
+    assert event.fields == {}
+    # The join may create the subscriber, so the status follows it.
+    lifecycle_resync.assert_awaited_once_with(user.id)
 
 
 @pytest.mark.asyncio
-async def test_a_paid_cancellation_sets_the_status_and_stripes_cancel_date(
-    fields_on,
-):
-    await _run(
-        lambda: lifecycle.on_subscription_updated(
-            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
+@pytest.mark.parametrize(
+    "subscription, previous",
+    [
+        (
+            {"cancel_at_period_end": True, "canceled_at": 1789100000},
             {"cancel_at_period_end": False},
         ),
-        _User(),
-    )
-    event = fields_on.await_args.args[0]
-    assert event.action is AudienceAction.UPDATE_FIELDS
-    assert event.fields == {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_CANCELED.value,
-        SubscriberField.SUBSCRIPTION_CANCELED: _day(1789100000),
-    }
-
-
-@pytest.mark.asyncio
-async def test_resuming_a_paid_subscription_clears_the_cancel_date(fields_on):
-    await _run(
-        lambda: lifecycle.on_subscription_updated(
-            _subscription(cancel_at_period_end=False),
+        (
+            {"cancel_at_period_end": False},
             {"cancel_at_period_end": True, "canceled_at": 1789100000},
         ),
-        _User(),
-    )
-    assert fields_on.await_args.args[0].fields == {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIBED.value,
-        SubscriberField.SUBSCRIPTION_CANCELED: None,
-    }
-
-
-@pytest.mark.asyncio
-async def test_a_replayed_cancellation_writes_no_fields(fields_on):
-    await _run(
+    ],
+)
+async def test_a_cancel_or_resume_writes_no_fields(fields_on, subscription, previous):
+    calls = await _run(
         lambda: lifecycle.on_subscription_updated(
-            _subscription(cancel_at_period_end=True, canceled_at=1789100000),
-            {"cancel_at_period_end": False},
+            _subscription(**subscription), previous
         ),
         _User(),
-        claim=False,
     )
+    calls["notify"].assert_awaited_once()
     fields_on.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_a_failed_field_update_never_fails_the_cancellation(fields_on, caplog):
-    fields_on.return_value = NotificationResult(success=False, message="down")
-    with caplog.at_level(logging.ERROR):
-        calls = await _run(
-            lambda: lifecycle.on_subscription_updated(
-                _subscription(cancel_at_period_end=True, canceled_at=1789100000),
-                {"cancel_at_period_end": False},
-            ),
-            _User(),
-        )
-    calls["notify"].assert_awaited_once()
-    assert "MailerLite fields" in caplog.text
-
-
-@pytest.mark.asyncio
-async def test_an_ended_subscription_sets_stripes_end_date_on_the_churn(fields_on):
+async def test_an_ended_subscription_leaves_the_changelog_without_a_status(
+    fields_on, lifecycle_resync
+):
     calls = await _run(
         lambda: lifecycle.on_subscription_deleted(_subscription(ended_at=1789200000)),
         _User(),
     )
     event = calls["audience"].await_args.args[0]
     assert event.action is AudienceAction.REMOVE_CHANGELOG
-    assert event.fields == {
-        SubscriberField.STATUS: SubscriptionStatus.SUBSCRIPTION_ENDED.value,
-        SubscriberField.SUBSCRIPTION_ENDED: _day(1789200000),
-    }
+    assert event.fields == {}
+    # A removal never creates a subscriber: no extra sync.
+    lifecycle_resync.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -769,6 +731,46 @@ async def test_an_opted_out_churn_emails_but_leaves_mailerlite_alone():
     calls = await _run(
         lambda: lifecycle.on_subscription_deleted(_subscription()),
         _User(opted_out_at=OPTED_OUT),
+    )
+    queued = calls["notify"].await_args.args[0]
+    assert queued.type is NotificationType.SUBSCRIPTION_ENDED
+    calls["audience"].assert_not_called()
+
+
+# ── placed in Iran or Russia ───────────────────────────────────────────────
+#
+# Every billing email still goes out; MailerLite never hears of them.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("welcomed", [False, True], ids=["first", "returning"])
+async def test_a_checkout_billed_to_russia_is_welcomed_but_not_enrolled(welcomed):
+    user = _User(
+        welcome_sent_at=datetime(2026, 1, 1, tzinfo=timezone.utc) if welcomed else None
+    )
+    session = {
+        "customer": CUSTOMER,
+        "customer_details": {"address": {"country": "RU"}},
+    }
+    with patch(
+        "backend.notifications.lifecycle._claim_welcome",
+        AsyncMock(return_value=True),
+    ):
+        calls = await _run(
+            lambda: lifecycle.on_checkout_completed(session, _subscription()),
+            user,
+        )
+    if not welcomed:
+        queued = calls["notify"].await_args.args[0]
+        assert queued.type is NotificationType.SUBSCRIPTION_WELCOME
+    calls["audience"].assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_a_churn_in_tehran_emails_but_leaves_mailerlite_alone():
+    calls = await _run(
+        lambda: lifecycle.on_subscription_deleted(_subscription()),
+        _User(timezone="Asia/Tehran"),
     )
     queued = calls["notify"].await_args.args[0]
     assert queued.type is NotificationType.SUBSCRIPTION_ENDED

@@ -6,7 +6,6 @@ import type { UIMessage } from "ai";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { concatWithAssistantMerge } from "./helpers/convertChatSessionToUiMessages";
-import { getLatestAssistantStatusMessage } from "./messageParts";
 import type { WorkspaceAttachment } from "./helpers/workspaceAttachments";
 import {
   forgetHeldFollowUp,
@@ -187,6 +186,7 @@ export function useCopilotPage({
     sessionAuthProvider: sessionLlmAuthProvider,
     sessionCredentialId: sessionLlmCredentialId,
     activeTurnStartMessageId,
+    activeTurnStartedAt: activeStreamStartedAt,
     hasActiveStream,
     refetchSession,
     // Sent whenever the picker can set it. The tier control is not behind
@@ -338,17 +338,8 @@ export function useCopilotPage({
     () => stripReplayPrefix(cachedRawMessages),
     [cachedRawMessages],
   );
-  const latestStatusMessage = useMemo(
-    () =>
-      isRestoringActiveSession
-        ? getLatestAssistantStatusMessage(messages)
-        : null,
-    [isRestoringActiveSession, messages],
-  );
   // The runtime's restore state is a passive notice; it never trims the list.
-  const restoreStatusMessage = runtimeStream
-    ? runtimeStream.restoreStatusMessage
-    : latestStatusMessage;
+  const restoreStatusMessage = runtimeStream?.restoreStatusMessage ?? null;
   const displayMessages = useMemo(() => {
     if (!isRestoringActiveSession || runtimeStream) return messages;
     if (hasAssistantTail(cachedMessages)) return cachedMessages;

@@ -124,7 +124,7 @@ export function RecentChatItem({
             }
             onSubmitRename(session.id);
           }}
-          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+          className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm text-zinc-800 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 max-md:py-2 max-md:text-base"
         />
       </SidebarMenuItem>
     );
@@ -136,7 +136,7 @@ export function RecentChatItem({
         asChild
         isActive={isActive}
         tooltip={title}
-        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100"
+        className="font-normal data-[active=true]:!bg-zinc-100 data-[active=true]:font-normal hover:!bg-zinc-100 max-md:h-11 max-md:!pr-11 max-md:text-[15px]"
       >
         <Link href={`/home?sessionId=${session.id}`}>
           {session.is_processing ? (
@@ -154,7 +154,11 @@ export function RecentChatItem({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuAction showOnHover aria-label="Chat actions">
+          <SidebarMenuAction
+            showOnHover
+            aria-label="Chat actions"
+            className="max-md:!top-1.5 max-md:w-8 max-md:[&>svg]:size-5"
+          >
             <Icon
               icon={MoreHorizontalIcon}
               className="text-sidebar-foreground/90"
