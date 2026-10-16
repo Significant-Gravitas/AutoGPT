@@ -281,6 +281,48 @@ async def test_raise_reconciles_a_library_source_deleted_after_resolution(
         )
 
 
+async def test_raise_keeps_a_copy_when_library_attachments_share_a_name(
+    monkeypatch, skill_storage, expert_rows
+):
+    await skills.store_user_skill(
+        "owner", name="shared", description="Private skill", body="PRIVATE BODY"
+    )
+    manager = await skills._get_user_skill_manager("owner")
+    await manager.write_file(
+        b"---\nname: shared\ndescription: Legacy skill\n---\nALTERNATE BODY\n",
+        "SKILL.md",
+        path="/skills/alternate/SKILL.md",
+    )
+    copy = experts_db.copy_skill_to_expert
+    attempts = []
+
+    async def copy_with_a_repeated_lookup_failure(user_id, expert_id, slug):
+        if attempts:
+            raise OSError("Repeated storage lookup failed")
+        attempts.append(slug)
+        return await copy(user_id, expert_id, slug)
+
+    monkeypatch.setattr(
+        experts_db, "copy_skill_to_expert", copy_with_a_repeated_lookup_failure
+    )
+    result = await experts_db.create_raised_expert(
+        "owner",
+        "Nova",
+        None,
+        None,
+        attachments=[
+            RaiseAttachment(kind="skill", source="library", id="shared"),
+            RaiseAttachment(kind="skill", source="library", id="alternate"),
+        ],
+    )
+    package = await skills.read_user_skill_package(
+        "owner", "shared", expert_id="raised"
+    )
+
+    assert package is not None and "PRIVATE BODY" in package.skill_md
+    assert result.expert.skills == expert_rows["raised"].skills == ["shared"]
+
+
 @pytest.mark.parametrize(
     ("builtin_slug", "delete_custom"),
     [

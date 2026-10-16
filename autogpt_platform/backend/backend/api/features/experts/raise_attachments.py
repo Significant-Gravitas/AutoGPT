@@ -75,11 +75,13 @@ class ResolvedRaiseAttachments(BaseModel):
 
     @property
     def library_skill_names(self) -> list[str]:
-        return [
-            s.name
-            for s in self.skills
-            if s.marketplace_slug is None and not s.is_builtin
-        ]
+        return list(
+            dict.fromkeys(
+                s.name
+                for s in self.skills
+                if s.marketplace_slug is None and not s.is_builtin
+            )
+        )
 
 
 def _failed_skill_names_without_survivors(
