@@ -138,3 +138,19 @@ async def test_a_decline_without_a_message_still_says_the_card_was_declined():
             await credit._top_up_credits("user-1", 500)
 
     assert str(exc.value) == "Your card was declined."
+
+
+@pytest.mark.asyncio
+async def test_a_decline_asking_for_bank_approval_is_flagged():
+    credit = UserCredit()
+    sca = stripe.CardError(
+        "Your card was declined. This transaction requires authentication.",
+        None,
+        "authentication_required",
+        http_status=402,
+    )
+    with _stripe(credit, [_card("pm_1")], [sca]):
+        with pytest.raises(CardDeclinedError) as exc:
+            await credit._top_up_credits("user-1", 500)
+
+    assert exc.value.needs_authentication
