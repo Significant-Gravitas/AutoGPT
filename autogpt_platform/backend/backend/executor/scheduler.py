@@ -1128,7 +1128,10 @@ def _put_back_onto(
     newer: "CopilotTurnJobInfo", message: str
 ) -> tuple[str, datetime | None]:
     """A send put back after the user wrote another while it ran: both go,
-    this one first, as the newer job the user set."""
+    this one first, as the newer job the user set. One already put back there
+    (a repeated call whose first try landed) is left as it is."""
+    if newer.message.startswith(f"{message}\n\n"):
+        return newer.message, newer.created_at
     return f"{message}\n\n{newer.message}", newer.created_at
 
 
@@ -2968,6 +2971,9 @@ class Scheduler(AppService):
         if job is None:
             return False
         job.remove()
+        # Its index row stays: a row with no job is skipped on read, while the
+        # chat's next turn at reset reuses this id, so deleting the row could
+        # hide a job set again meanwhile from the chat's listing.
         self._invalidate_jobs_cache()
         logger.info(f"Removed {kind}-at-reset job for session {session_id[:12]}")
         return True

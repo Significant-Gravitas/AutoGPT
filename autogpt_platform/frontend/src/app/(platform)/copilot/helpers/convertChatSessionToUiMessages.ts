@@ -1,6 +1,11 @@
 import { getGetWorkspaceDownloadFileByIdUrl } from "@/app/api/__generated__/endpoints/workspace/workspace";
 import type { FileUIPart, UIMessage, UIDataTypes, UITools } from "ai";
 import type { LogRow, OverlayPart, TurnLog } from "../stream/turnLog";
+import {
+  TURN_PAUSED_PART_TYPE,
+  turnPauseOfMetadata,
+  type TurnPause,
+} from "../turnPause";
 import { toolDisplayName } from "./toolDisplay";
 import {
   WORKSPACE_FOLDER_PART_TYPE,
@@ -556,6 +561,12 @@ interface RowPartsContext {
 }
 
 function buildRowParts(msg: SessionChatMessage, ctx: RowPartsContext) {
+  // A pause marker draws the Paused card. The pause rides on the part rather
+  // than the message, because merged assistant bubbles drop row metadata.
+  const pause =
+    msg.role === "assistant" ? turnPauseOfMetadata(msg.metadata) : null;
+  if (pause) return [pausePart(msg, pause)];
+
   const textState = ctx.streaming ? "streaming" : "done";
   const parts: UiPart[] = [];
 
@@ -590,6 +601,17 @@ function buildRowParts(msg: SessionChatMessage, ctx: RowPartsContext) {
     parts.push({ type: "text", text: "", state: "done" });
   }
   return parts;
+}
+
+// Keyed by the row, so whatever the card remembers about itself (a "Stop
+// here") outlives the bubble id, which moves as later rows merge in.
+function pausePart(msg: SessionChatMessage, pause: TurnPause): UiPart {
+  const id = msg.sequence != null ? `seq-${msg.sequence}` : msg.id;
+  return {
+    type: TURN_PAUSED_PART_TYPE,
+    ...(id ? { id } : {}),
+    data: pause,
+  } as UiPart;
 }
 
 function toolCallPart(rawToolCall: unknown, ctx: RowPartsContext) {
