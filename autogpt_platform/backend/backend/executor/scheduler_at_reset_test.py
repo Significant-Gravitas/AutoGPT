@@ -183,8 +183,9 @@ def test_setting_it_again_replaces_the_earlier_job(live_scheduler):
     assert jobs[0].next_run_time == first + timedelta(days=1)
 
 
-def test_cancel_drops_the_jobs_schedule_index_row(live_scheduler):
-    # Otherwise the schedule list shows it until the next reconcile.
+def test_cancel_leaves_the_jobs_schedule_index_row(live_scheduler):
+    # A row with no job is skipped on read, while the chat's next turn at reset
+    # reuses the id: deleting the row could hide a job set again meanwhile.
     live_scheduler._schedule_index = MagicMock()
     live_scheduler.add_copilot_turn_schedule(
         user_id=USER,
@@ -197,9 +198,7 @@ def test_cancel_drops_the_jobs_schedule_index_row(live_scheduler):
     )
 
     assert live_scheduler.cancel_at_reset_turn(USER, SESSION, "resume") is True
-    live_scheduler._schedule_index.delete_many.assert_called_once_with(
-        [at_reset_schedule_id("resume", SESSION)]
-    )
+    live_scheduler._schedule_index.delete_many.assert_not_called()
 
 
 def test_cancel_removes_only_the_owners_job_and_is_idempotent(live_scheduler):
