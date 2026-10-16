@@ -66,6 +66,15 @@ class SkillHeadRecord(BaseModel):
     use_paused_at: datetime | None
     updated_at: datetime
 
+    @property
+    def deleted(self) -> bool:
+        """The owner deleted the skill: the head has moved but names nothing.
+
+        A head that never named a version is at 0; only a deletion clears the
+        pointer of one that has moved.
+        """
+        return self.current_version_id is None and self.current_version > 0
+
     @classmethod
     def from_db(cls, row: prisma.models.SkillHead) -> "SkillHeadRecord":
         return cls(

@@ -194,3 +194,78 @@ async def test_learning_brings_back_only_something_different(
     assert await skill.exclude_withdrawn() == [skill.learned.id]
     after = await fake_store.get_head(USER, OWNER, NAME)
     assert after.current_version_id == head.current_version_id
+
+
+def _request(body: str, **kwargs) -> publish.PublishRequest:
+    return publish.PublishRequest(
+        user_id=USER,
+        expert_id=None,
+        skill_name=NAME,
+        description="Import a CSV",
+        triggers=["csv"],
+        body=body,
+        summary="Learned again",
+        origin="saved_overnight",
+        **kwargs,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_run_that_read_the_package_before_the_delete_does_not_import_it(
+    fake_store, workspace, monkeypatch
+):
+    skill = _Skill(fake_store, monkeypatch)
+    await skill.seed()
+    await skill.delete()
+    monkeypatch.setattr(
+        publish,
+        "read_user_skill_markdown",
+        AsyncMock(return_value=_content(BODY_V2)),
+    )
+
+    outcome = await publish.publish_learned_version(
+        _request(DIFFERENT, sources=[_snapshot(skill.later)])
+    )
+
+    assert outcome.status == "conflict"
+    assert (await fake_store.get_head(USER, OWNER, NAME)).deleted
+    origins = [v.origin for v in await fake_store.list_versions(USER, OWNER, NAME)]
+    assert "imported" not in origins
+    workspace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_an_import_that_loses_to_a_deletion_records_nothing(
+    fake_store, workspace, monkeypatch
+):
+    """A skill saved before version history is imported before learning
+    changes it. A deletion landing between the run's read and the import's
+    commit wins: the stale bytes are not imported over it."""
+    monkeypatch.setattr(
+        publish,
+        "read_user_skill_markdown",
+        AsyncMock(return_value=_content(BODY_V1)),
+    )
+    commit = fake_store.commit_version_safe
+
+    async def delete_first(*args, **kwargs):
+        monkeypatch.setattr(fake_store, "commit_version_safe", commit)
+        await fake_store.record_skill_deletion(
+            USER,
+            expert_id=None,
+            skill_name=NAME,
+            expected_current_version_id=None,
+            behaviors=[],
+            actor_user_id=USER,
+        )
+        return await commit(*args, **kwargs)
+
+    monkeypatch.setattr(fake_store, "commit_version_safe", delete_first)
+
+    outcome = await publish.publish_learned_version(_request(BODY_V2))
+
+    assert outcome.status == "write_failed"
+    assert (await fake_store.get_head(USER, OWNER, NAME)).deleted
+    origins = [v.origin for v in await fake_store.list_versions(USER, OWNER, NAME)]
+    assert origins == ["deleted"]
+    workspace.assert_not_awaited()

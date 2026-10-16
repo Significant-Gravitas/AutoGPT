@@ -990,7 +990,7 @@ class FakeLearningStore:
                     reason="deleted by the owner",
                 )
         if head is None:
-            return SkillDeletion(committed=True)
+            head = await self.ensure_head(user_id, expert_id, skill_name)
         marker = await self.create_version(
             user_id,
             head=head,

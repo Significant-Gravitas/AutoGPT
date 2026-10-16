@@ -244,7 +244,7 @@ async def get_skill_detail(
         state, label = "paused", "Paused (learning)"
     elif current is not None:
         state, label = current.state, state_label(current.state)
-    elif versions and versions[0].state == DELETED_STATE:
+    elif head.deleted:
         state, label = DELETED_STATE, state_label(DELETED_STATE)
     else:
         state, label = "candidate", state_label("candidate")

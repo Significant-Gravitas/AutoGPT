@@ -314,14 +314,19 @@ async def test_deleting_a_skill_whose_head_never_named_a_version(server):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_deleting_a_skill_with_no_history_only_suppresses_it(server):
+async def test_deleting_a_skill_with_no_history_gives_it_a_deleted_head(server):
+    """A skill saved before version history has no head. Its deletion still
+    leaves one, ended by the marker, so the deletion is on record."""
     user = str(uuid4())
     await _create_user(user)
     try:
         result = await _delete(user, "never-versioned", None)
 
-        assert result.committed and result.marker is None
-        assert await versions.get_head(user, OWNER, "never-versioned") is None
+        assert result.committed
+        assert (result.marker.version, result.marker.summary) == (1, "Deleted")
+        head = await versions.get_head(user, OWNER, "never-versioned")
+        assert head.deleted
+        assert head.current_version == 1
         assert len(await use.list_suppressions(user, OWNER, "never-versioned")) == 1
     finally:
         await _cleanup(user)

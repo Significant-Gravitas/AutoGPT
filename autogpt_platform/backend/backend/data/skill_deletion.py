@@ -72,10 +72,10 @@ async def record_skill_deletion(
     row and then the head, so the two never deadlock. Whichever moves the
     head first wins. The loser finds the head changed, or its version number
     taken, and rolls back: a publication reports a conflict, and a deletion
-    returns ``committed=False``. A skill with no head has no history to end;
-    only its suppressions are recorded. The next version under the name
-    starts a new chain: the head names no version, and the marker links to
-    none, so revoking a source of the deleted history can never reach it.
+    returns ``committed=False``. A skill with no head gets one, so every
+    deletion leaves a marker. The next version under the name starts a new
+    chain: the head names no version, and the marker links to none, so
+    revoking a source of the deleted history can never reach it.
     """
     try:
         async with transaction() as tx:
@@ -118,7 +118,17 @@ async def _record(
     if behaviors:
         await _suppress(tx, user_id, expert_id, skill_name, behaviors, actor_user_id)
     if head is None:
-        return SkillDeletion(committed=True)
+        # A skill saved before version history has no head. It gets one, so
+        # the deletion is on record and a learning run that read the package
+        # earlier cannot import it as an existing skill afterwards.
+        head = await tx.skillhead.create(
+            data={
+                "userId": user_id,
+                "expertId": expert_id,
+                "ownerKey": owner_key,
+                "skillName": skill_name,
+            }
+        )
     marker = await _append_marker(tx, head, actor_user_id)
     ended = await tx.skillhead.update_many(
         where={
