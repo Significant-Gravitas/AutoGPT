@@ -80,6 +80,17 @@ dev-only conditions like `environment = dev`. A condition like
 `environment = prod` or "`environment` is not `dev`" would turn on in prod's
 backend reads but stay off in prod's browser until prod runs `server` mode.
 
+**Splitting signed-out visitors.** A visitor who allowed analytics is bucketed
+under `visitor:<their PostHog id>`, but only by conditions their read can
+decide: a rollout percentage, `environment` and `is_anonymous`, with no email.
+A condition group on another person property or a cohort (the migrated
+"email in employees", for one) can't be decided for a visitor, so a visitor
+whom no decidable group matches gets the shared signed-out answer instead.
+"Employees OR 20%" is then all or nothing for visitors, whichever side the
+shared `anonymous` key lands on. For a real 20% of visitors, add
+`is_anonymous` is not `true` to the rollout group: the shared answer is then
+off, and only each visitor's own bucket turns the flag on.
+
 ## Sharing PostHog's flag definitions
 
 PostHog evaluates flags locally, in the process, from a set of flag definitions

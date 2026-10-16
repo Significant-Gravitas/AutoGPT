@@ -221,7 +221,7 @@ class TestRecordTitleGenerationCost:
         persist.assert_awaited_once()
         kwargs = persist.await_args.kwargs
         assert kwargs["provider"] == "open_router"
-        assert kwargs["model"] == "anthropic/claude-haiku-4-5"
+        assert kwargs["model"] == "anthropic/claude-haiku-5.5"
         assert kwargs["prompt_tokens"] == 12
         assert kwargs["completion_tokens"] == 3
         assert kwargs["cost_usd"] == pytest.approx(0.0002)
@@ -537,7 +537,12 @@ class TestGenerateSessionTitle:
             yield
 
     @pytest.mark.asyncio
-    async def test_no_platform_route_means_no_title_call(self):
+    @pytest.mark.parametrize("route", ["disabled", "subscription"])
+    async def test_without_a_platform_api_the_title_is_the_first_message(
+        self, route: str
+    ):
+        """A disabled route and a Claude login have no model API of the
+        platform's own, so no title call goes out."""
         helper = AsyncMock()
         with (
             patch(
@@ -546,7 +551,7 @@ class TestGenerateSessionTitle:
             ),
             patch(
                 "backend.copilot.service.config",
-                ChatConfig(platform_route="disabled"),
+                ChatConfig(platform_route=route),
             ),
         ):
             title, response = await _generate_session_title("plan a trip")
@@ -739,7 +744,7 @@ class TestGenerateSessionTitle:
             await _generate_session_title("hello", user_id=None, session_id=None)
         helper.assert_awaited_once()
         kwargs = helper.await_args.kwargs
-        assert kwargs["model"] == "claude-haiku-4-5"
+        assert kwargs["model"] == "claude-haiku-5-5"
 
     @pytest.mark.asyncio
     async def test_title_model_unchanged_when_aux_is_openrouter(self):
@@ -760,7 +765,7 @@ class TestGenerateSessionTitle:
             await _generate_session_title("hello", user_id=None, session_id=None)
         helper.assert_awaited_once()
         kwargs = helper.await_args.kwargs
-        assert kwargs["model"] == "anthropic/claude-haiku-4-5"
+        assert kwargs["model"] == "anthropic/claude-haiku-5.5"
 
     @pytest.mark.asyncio
     async def test_create_omits_extra_body_when_aux_not_openrouter(self):
