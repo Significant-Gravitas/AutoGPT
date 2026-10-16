@@ -63,9 +63,11 @@ export function usagePresentation(
         : "Choose your next plan to continue. Your chats, agents and results are saved."
       : isTopTier
         ? "Your chats, agents and results are saved."
-        : tier === "PRO"
-          ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
-          : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
+        : !experience.resetsAt
+          ? "Choose a plan to continue. Your chats, agents and results are saved."
+          : tier === "PRO"
+            ? `${resume}, or upgrade to Max for ${usageMultiplier ? `${usageMultiplier} times the usage` : "more usage"}.`
+            : `${resume}, or ${tier === "BASIC" ? "upgrade to Pro" : "start Pro"}.`,
     supportLabel:
       tier === "ENTERPRISE"
         ? "Contact your account team"
@@ -76,7 +78,9 @@ export function usagePresentation(
       ? experience.freshProUsage && trialDate
         ? `Wait until ${trialDate}`
         : "Back to my work"
-      : "Wait for reset",
+      : experience.resetsAt
+        ? "Wait for reset"
+        : "Back to my work",
     trialSpent,
   };
 }

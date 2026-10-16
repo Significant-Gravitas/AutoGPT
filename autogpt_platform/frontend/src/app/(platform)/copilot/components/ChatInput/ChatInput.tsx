@@ -28,6 +28,7 @@ import {
   workspaceItemToAttachment,
 } from "../../helpers/workspaceAttachments";
 import type { PickedItem } from "./components/WorkspaceFilePicker/useWorkspaceFilePicker";
+import { AtResetFilesNotice } from "./components/AtResetFilesNotice";
 import { AttachmentCapNotice } from "./components/AttachmentCapNotice";
 import {
   ComposerPlusMenu,
@@ -46,6 +47,10 @@ import { WorkspaceFilePicker } from "./components/WorkspaceFilePicker/WorkspaceF
 import { useCopilotUIStore } from "../../store";
 import { isTokenDevtoolEnabled } from "../../tokenDevtool/gate";
 import { TokenDevtoolBadge } from "../TokenDevtoolBadge/TokenDevtoolBadge";
+import {
+  sendAtResetFailureTitle,
+  SEND_AT_RESET_LABEL,
+} from "../SendAtReset/helpers";
 import {
   CARD_ICON_BUTTON_CLASS,
   CARD_SEND_BUTTON_CLASS,
@@ -118,6 +123,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Out of AutoPilot budget with a reset ahead: the text stays editable and
+   *  submitting sets it to send at the reset. Text only. */
+  atReset?: { onSchedule: (message: string) => Promise<void> };
 }
 
 export function ChatInput({
@@ -146,6 +154,7 @@ export function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  atReset,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -189,35 +198,39 @@ export function ChatInput({
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
 
+  async function sendWithAttachments(message: string) {
+    const { localFiles, workspaceAttachments } =
+      partitionAttachments(attachments);
+    // Chips clear eagerly for the same reason the text does (see
+    // useChatInput.handleSend); a failed send restores them unless the
+    // user already attached new ones in the meantime.
+    const sent = attachments;
+    setAttachments([]);
+    setRefusedCount(0);
+    try {
+      await onSend(
+        message,
+        localFiles.length > 0 ? localFiles : undefined,
+        workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
+      );
+    } catch (error) {
+      setAttachments((prev) => (prev.length > 0 ? prev : sent));
+      throw error;
+    }
+  }
+
   const { value, setValue, handleSubmit, handleEnqueue, isEnqueueing } =
     useChatInput({
-      onSend: async (message: string) => {
-        const { localFiles, workspaceAttachments } =
-          partitionAttachments(attachments);
-        // Chips clear eagerly for the same reason the text does (see
-        // useChatInput.handleSend); a failed send restores them unless the
-        // user already attached new ones in the meantime.
-        const sent = attachments;
-        setAttachments([]);
-        setRefusedCount(0);
-        try {
-          await onSend(
-            message,
-            localFiles.length > 0 ? localFiles : undefined,
-            workspaceAttachments.length > 0 ? workspaceAttachments : undefined,
-          );
-        } catch (error) {
-          setAttachments((prev) => (prev.length > 0 ? prev : sent));
-          throw error;
-        }
-      },
+      onSend: atReset?.onSchedule ?? sendWithAttachments,
       onEnqueue,
       isStreaming,
       hasAttachments,
-      disabled: isTextareaDisabled || sendDisabled,
-      canSendEmpty: hasAttachments,
+      // A scheduled send carries text only, so attachments hold it back.
+      disabled: isTextareaDisabled || (atReset ? hasAttachments : sendDisabled),
+      canSendEmpty: hasAttachments && !atReset,
       inputId,
       draftKey,
+      failureTitle: atReset ? sendAtResetFailureTitle : undefined,
     });
 
   const integrations = useConnectedIntegrations(expertId);
@@ -274,7 +287,7 @@ export function ChatInput({
   }
 
   function handlePaste(e: ClipboardEvent<HTMLElement>) {
-    if (isBusy) return;
+    if (isBusy || atReset) return;
     const files = getFilesFromClipboard(e.clipboardData);
     if (files.length === 0) return;
     e.preventDefault();
@@ -291,8 +304,9 @@ export function ChatInput({
   const devtoolSessionId = isTokenDevtoolEnabled() ? sessionId : null;
   const canSend =
     !disabled &&
-    !sendDisabled &&
-    (!!value.trim() || hasAttachments) &&
+    (atReset
+      ? !!value.trim() && !hasAttachments
+      : !sendDisabled && (!!value.trim() || hasAttachments)) &&
     !isRecording &&
     !isTranscribing;
 
@@ -437,6 +451,9 @@ export function ChatInput({
             className={stacked ? undefined : "mt-1.5"}
           />
         )}
+        {atReset && hasAttachments && (
+          <AtResetFilesNotice className={stacked ? undefined : "mt-1.5"} />
+        )}
         <FileChips
           attachments={attachments}
           onRemove={handleRemoveAttachment}
@@ -464,7 +481,7 @@ export function ChatInput({
               onFilesSelected={handleFilesSelected}
               onUseWorkspaceFile={() => setIsPickerOpen(true)}
               onClearGuidedPrompt={handleClearGuidedPrompt}
-              disabled={isBusy}
+              disabled={isBusy || !!atReset}
               isAtCap={isAtCap}
               extraItems={plusMenuItems}
               className={
@@ -583,6 +600,14 @@ export function ChatInput({
               />
             ) : isStreaming ? (
               <StopButton onStop={onStop} className={sendButtonClass} />
+            ) : atReset ? (
+              <PromptInputSubmit
+                disabled={!canSend}
+                aria-label={SEND_AT_RESET_LABEL}
+                className={cn(sendButtonClass, "!w-auto px-4 font-medium")}
+              >
+                {SEND_AT_RESET_LABEL}
+              </PromptInputSubmit>
             ) : hideSubmitWhenEmpty && !canSend ? null : (
               <PromptInputSubmit
                 disabled={!canSend}
