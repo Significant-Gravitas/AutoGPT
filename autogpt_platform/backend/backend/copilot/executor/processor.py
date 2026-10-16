@@ -839,7 +839,7 @@ class CoPilotProcessor:
             set_turn_unattended(session, scheduled=entry.unattended)
             set_turn_impersonated(entry.impersonated)
             # A subtask's calls join the trace of the reply it works for.
-            set_turn_trace_id(trace_id_for(entry.turn_id, entry.envelope))
+            set_turn_trace_id(trace_id_for(entry))
             set_turn_span(entry.turn_id)
             set_turn_credential_pins(entry.credential_pins)
             turn.engine_started(engine)

@@ -326,6 +326,7 @@ class TestExecuteAsyncScheduledTurnContext:
             update={
                 "turn_id": "child-turn",
                 "envelope": TurnEnvelope(tree_id="root-turn", depth=1),
+                "ai_trace_id": "root-turn",
             }
         )
 

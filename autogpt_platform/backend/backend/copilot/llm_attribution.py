@@ -12,7 +12,7 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   model call behind one AutoPilot reply (the main loop, sub-agents,
   compaction, the chat title, and the expert subtasks it spawns) groups into
   one trace. It is the id of the turn that made the call, or for a subtask
-  the id of the reply at the root of its tree (``ai_spans.trace_id_for``);
+  the trace of the turn that spawned it (``ai_spans.trace_id_for``);
   ``ai_spans`` sends the trace's tool spans and root from the backend.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,

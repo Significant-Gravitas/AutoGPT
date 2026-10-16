@@ -9,8 +9,8 @@ backend sends the rest of that trace itself (SECRT-2979):
 - ``$ai_span`` per tool call: the tool's name, latency and whether it failed,
   under the turn that ran it (or under the tool that called it).
 - ``$ai_span`` per expert subtask: a turn another turn spawned joins the
-  trace of the reply at the root of its tree, under the tool call that
-  started it, and its own tool calls nest under it.
+  trace of the reply that spawned it, under the tool call that started it,
+  and its own tool calls nest under it.
 
 No event carries a tool's input or output, or an error's message: those can
 hold Gmail or Drive content, which Google's Limited Use terms keep out of
@@ -44,7 +44,6 @@ from backend.util.posthog_events import PostHogEvent
 if TYPE_CHECKING:
     from backend.copilot.executor.utils import CoPilotExecutionEntry
     from backend.copilot.model import ChatMessage
-    from backend.copilot.tree import TurnEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -61,16 +60,22 @@ _current_outcome: ContextVar["SpanOutcome | None"] = ContextVar(
 )
 
 
-def trace_id_for(turn_id: str, envelope: "TurnEnvelope | None") -> str:
+def trace_id_for(entry: "CoPilotExecutionEntry") -> str:
     """The trace a turn's events join.
 
-    A spawned turn (an expert subtask, a sub-session) works for the reply at
-    the root of its tree, whose turn id is the tree's id, so it joins that
-    reply's trace. Every other turn is a reply of its own.
+    A spawned turn (an expert subtask, a sub-session) joins the trace of the
+    turn that spawned it, recorded at dispatch (``ai_trace_id``). That is not
+    always its tree's root: an approval wake is a reply of its own under the
+    tree it was held in. A spawn promoted from the turn queue has no record,
+    so it falls back to its tree's root. Every other turn is a reply of its
+    own.
     """
+    if entry.ai_trace_id:
+        return entry.ai_trace_id
+    envelope = entry.envelope
     if envelope is not None and envelope.depth > 0 and envelope.tree_id:
         return envelope.tree_id
-    return turn_id
+    return entry.turn_id
 
 
 def set_turn_span(span_id: str | None) -> None:
@@ -215,7 +220,7 @@ def capture_turn(
     *outcome* is ``completed``, ``cancelled`` or ``failed``; only ``failed``
     is an error, and *error_code* (a code, never a message) says which."""
     try:
-        trace_id = trace_id_for(entry.turn_id, entry.envelope)
+        trace_id = trace_id_for(entry)
         failed = outcome == "failed"
         properties: dict[str, Any] = {
             "$ai_trace_id": trace_id,

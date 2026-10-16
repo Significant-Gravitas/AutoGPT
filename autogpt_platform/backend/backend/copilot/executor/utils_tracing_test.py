@@ -160,5 +160,9 @@ async def test_a_spawned_turn_nests_under_the_tool_call_that_started_it(
             set_turn_span(None)
 
     entry = _published_entry(copilot_queue.publish_message)
-    expected = spawning_tool if nests_under_the_caller else None
-    assert entry.ai_parent_span_id == expected
+    if nests_under_the_caller:
+        assert entry.ai_trace_id == "parent-turn"
+        assert entry.ai_parent_span_id == spawning_tool
+    else:
+        assert entry.ai_trace_id is None
+        assert entry.ai_parent_span_id is None

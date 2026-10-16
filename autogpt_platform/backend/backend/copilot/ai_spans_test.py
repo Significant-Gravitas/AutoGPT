@@ -46,6 +46,18 @@ def capture(mocker: pytest_mock.MockerFixture) -> MagicMock:
     return mocker.patch.object(ai_spans.posthog_client, "capture")
 
 
+def _entry(**overrides) -> CoPilotExecutionEntry:
+    fields = {
+        "session_id": SESSION_ID,
+        "turn_id": TURN_ID,
+        "user_id": USER_ID,
+        "message": "hi",
+        "envelope": TurnEnvelope(tree_id=TURN_ID),
+        **overrides,
+    }
+    return CoPilotExecutionEntry(**fields)
+
+
 def _in_a_turn(turn_id: str = TURN_ID, trace_id: str = TURN_ID) -> None:
     set_turn_trace_id(trace_id)
     set_turn_span(turn_id)
@@ -59,20 +71,45 @@ def _sent(capture: MagicMock) -> list[tuple[PostHogEvent, dict]]:
 
 
 def test_a_reply_is_its_own_trace():
-    assert trace_id_for(TURN_ID, None) == TURN_ID
-    assert trace_id_for(TURN_ID, TurnEnvelope(tree_id=TURN_ID)) == TURN_ID
+    assert trace_id_for(_entry(envelope=None)) == TURN_ID
+    assert trace_id_for(_entry()) == TURN_ID
 
 
-def test_a_subtask_joins_the_trace_of_the_reply_at_its_root():
-    envelope = TurnEnvelope(tree_id="root-turn", depth=1)
+def test_a_subtask_joins_the_trace_of_the_turn_that_spawned_it():
+    entry = _entry(
+        turn_id="child-turn",
+        envelope=TurnEnvelope(tree_id="root-turn", depth=1),
+        ai_trace_id="root-turn",
+    )
 
-    assert trace_id_for("child-turn", envelope) == "root-turn"
+    assert trace_id_for(entry) == "root-turn"
+
+
+def test_a_subtask_of_a_woken_reply_joins_that_reply_not_its_tree_root():
+    """An approval wake is a reply of its own (B) under the tree it was held
+    in (A), so its subtasks belong to B's trace."""
+    entry = _entry(
+        turn_id="child-turn",
+        envelope=TurnEnvelope(tree_id="held-turn-a", depth=1),
+        ai_trace_id="woken-turn-b",
+    )
+
+    assert trace_id_for(entry) == "woken-turn-b"
+
+
+def test_a_queued_subtask_falls_back_to_its_tree_root():
+    """The turn queue does not keep the spawner's trace."""
+    entry = _entry(
+        turn_id="child-turn", envelope=TurnEnvelope(tree_id="root-turn", depth=1)
+    )
+
+    assert trace_id_for(entry) == "root-turn"
 
 
 def test_a_root_re_admitted_under_an_older_tree_is_still_its_own_trace():
     """An approval wake re-admits the envelope its call was held under, so
     a depth-0 tree id can name an earlier turn."""
-    assert trace_id_for(TURN_ID, TurnEnvelope(tree_id="earlier")) == TURN_ID
+    assert trace_id_for(_entry(envelope=TurnEnvelope(tree_id="earlier"))) == TURN_ID
 
 
 # -- tool_span ----------------------------------------------------------------
@@ -304,18 +341,6 @@ def test_a_builtin_tool_outside_a_turn_sends_nothing(capture: MagicMock):
 # -- capture_turn -------------------------------------------------------------
 
 
-def _entry(**overrides) -> CoPilotExecutionEntry:
-    fields = {
-        "session_id": SESSION_ID,
-        "turn_id": TURN_ID,
-        "user_id": USER_ID,
-        "message": "hi",
-        "envelope": TurnEnvelope(tree_id=TURN_ID),
-        **overrides,
-    }
-    return CoPilotExecutionEntry(**fields)
-
-
 def _end(entry: CoPilotExecutionEntry, **overrides) -> None:
     kwargs = {
         "latency_seconds": 12.5,
@@ -376,6 +401,7 @@ def test_a_subtask_is_a_span_under_the_tool_call_that_started_it(capture: MagicM
         turn_id="child-turn",
         session_id="expert-sess",
         envelope=TurnEnvelope(tree_id="root-turn", depth=1),
+        ai_trace_id="root-turn",
         ai_parent_span_id="spawn-tool-span",
     )
 
