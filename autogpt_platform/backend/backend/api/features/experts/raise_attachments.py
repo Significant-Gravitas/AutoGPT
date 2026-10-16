@@ -55,12 +55,14 @@ class ResolvedSkill(BaseModel):
 
     ``name`` is what goes on ``Expert.skills``. ``marketplace_slug`` is set for
     a Hub listing, whose SKILL.md is installed into the expert's folder; a
-    library skill is copied from the user's own folder instead.
+    custom library skill is copied from the user's own folder instead.
+    Confirmed builtins need no copy, even when their name differs from the slug.
     """
 
     attachment: RaiseAttachment
     name: str
     marketplace_slug: str | None = None
+    is_builtin: bool = False
 
 
 class ResolvedRaiseAttachments(BaseModel):
@@ -73,7 +75,11 @@ class ResolvedRaiseAttachments(BaseModel):
 
     @property
     def library_skill_names(self) -> list[str]:
-        return [s.name for s in self.skills if s.marketplace_slug is None]
+        return [
+            s.name
+            for s in self.skills
+            if s.marketplace_slug is None and not s.is_builtin
+        ]
 
 
 def _failed_skill_names_without_survivors(
@@ -90,7 +96,8 @@ def _failed_skill_names_without_survivors(
     surviving_names = {
         skill.name
         for skill in skills
-        if (skill.marketplace_slug is None and skill.name not in failed_library_copies)
+        if skill.is_builtin
+        or (skill.marketplace_slug is None and skill.name not in failed_library_copies)
         or (
             skill.marketplace_slug is not None
             and _attachment_key(skill.attachment) not in uninstalled
@@ -270,7 +277,7 @@ async def _resolve_skill(user_id: str, attachment: RaiseAttachment) -> ResolvedS
         return ResolvedSkill(attachment=attachment, name=slug, marketplace_slug=slug)
     default = get_default_skill_with_body(slug)
     if default is not None:
-        return ResolvedSkill(attachment=attachment, name=default.name)
+        return ResolvedSkill(attachment=attachment, name=default.name, is_builtin=True)
     stored = await read_user_skill_with_body(user_id, slug)
     if stored is None:
         raise RaiseAttachmentUnavailableError("skill", "library", slug)

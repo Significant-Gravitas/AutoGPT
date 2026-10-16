@@ -102,10 +102,17 @@ def _failed_hub_skill(slug: str) -> RaiseAttachmentFailure:
 
 def test_skill_names_deduplicate_matching_hub_and_library_names():
     resolved = raise_attachments.ResolvedRaiseAttachments(
-        workflows=[], skills=[_hub_skill("shared"), _library_skill("shared")]
+        workflows=[],
+        skills=[
+            _library_skill("first"),
+            _hub_skill("shared"),
+            _library_skill("shared"),
+            _library_skill("last"),
+            _hub_skill("first"),
+        ],
     )
 
-    assert resolved.skill_names == ["shared"]
+    assert resolved.skill_names == ["first", "shared", "last"]
 
 
 def test_a_failed_hub_skill_keeps_a_successful_library_copy_of_the_same_name():

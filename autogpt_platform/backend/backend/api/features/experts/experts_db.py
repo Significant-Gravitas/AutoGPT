@@ -1377,23 +1377,16 @@ async def create_raised_expert(
 async def _copy_library_skills(
     user_id: str, expert_id: str, names: list[str]
 ) -> list[str]:
-    """Give a freshly raised expert its own copies of the library skills it
-    was raised with. Defaults have nothing to copy; marketplace skills are
-    installed from their listing instead and never reach here.
-    Returns the names whose copy failed so the caller can drop them from the
-    expert's row rather than list a skill the expert cannot read."""
-    candidates = [
-        name
-        for name in names
-        if get_default_skill_with_body(name.strip().lower()) is None
-    ]
-    folders = await find_user_skill_slugs(user_id, candidates)
+    """Copy custom library skills; confirmed builtins and Hub listings are
+    excluded by resolution. Return names whose sources disappeared or whose
+    copy failed, so reconciliation cannot count an unreadable skill as a survivor.
+    """
+    folders = await find_user_skill_slugs(user_id, names)
     failed: list[str] = []
-    for name in candidates:
+    for name in names:
         folder = folders.get(name.strip().lower())
         if folder is None:
-            # A default listed under a name that differs from its slug: no
-            # folder to copy, and the name is legitimate, so it stays.
+            failed.append(name)
             continue
         try:
             if await copy_skill_to_expert(user_id, expert_id, folder) is None:
