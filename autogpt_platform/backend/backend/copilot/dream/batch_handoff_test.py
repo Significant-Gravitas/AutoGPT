@@ -405,14 +405,15 @@ async def test_a_batch_neither_stopped_nor_recorded_stays_on_the_executors_queue
     assert _LOCK_KEY not in fake_dream_redis.store
 
 
-async def test_a_take_back_racing_a_cancel_leaves_the_batch_to_the_reaper(
+async def test_a_take_back_racing_a_cancel_leaves_the_batch_to_its_expiry(
     fake_dream_db, fake_dream_redis, gather, provider, mocker
 ):
-    """A cancel closes the row while the batch is submitted, and the provider
-    does not confirm the take-back's stop: the closed row takes the batch and
-    a cleanup mark, and stays how the cancel closed it. The executor's drop
-    of the batch cannot stop it either; the reaper's next attempt stops it by
-    the id the row recorded, and clears the mark."""
+    """The known limit at ``_take_back``: a cancel closes the row while the
+    batch is submitted, and the provider confirms neither the take-back's
+    stop nor the executor's drop's. The closed row does not take the batch,
+    so nothing asks again and the batch is left to the provider's expiry:
+    nothing raises, nothing is charged, and the row stays how the cancel
+    closed it."""
 
     async def submitted_then_cancelled(**_kwargs) -> MagicMock:
         await _cancel_the_pass(fake_dream_db)
@@ -424,24 +425,26 @@ async def test_a_take_back_racing_a_cancel_leaves_the_batch_to_the_reaper(
         "backend.copilot.dream.cleanup.provider_batch_stopped",
         AsyncMock(return_value=False),
     )
+    charge = mocker.patch(
+        "backend.copilot.dream.batch_costs.record_phase_cost", AsyncMock()
+    )
 
     result = await orchestrator_mod.execute_dream_pass("u")
 
-    row = fake_dream_db.rows[result.pass_id]
     _assert_cancelled(fake_dream_db, result.pass_id)
-    assert row["provider_batch_id"] == "batch-1"
-    assert row["cleanup_pending_at"] is not None
+    assert fake_dream_db.rows[result.pass_id].get("provider_batch_id") is None
 
     await drop_closed(_batch_entry(result.pass_id))
-    stop.return_value = True
+    asked = stop.await_count
     mocker.patch.object(reaper_mod, "phase_models_for_config", return_value={})
-    run = await reap_expired_passes(
+    await reap_expired_passes(
         now=datetime.now(timezone.utc) + timedelta(seconds=REAP_GRACE_SECONDS + 60)
     )
 
-    assert run.outcomes == {"cleaned": 1}
-    assert stop.await_args_list[-1].args == ("batch-1",)
-    assert row["cleanup_pending_at"] is None
+    _assert_cancelled(fake_dream_db, result.pass_id)
+    assert fake_dream_db.rows[result.pass_id].get("provider_batch_id") is None
+    assert stop.await_count == asked, "nothing asks the provider again"
+    charge.assert_not_awaited()
 
 
 def _batch_entry(pass_id: str) -> PendingEntry:

@@ -25,7 +25,6 @@ from prisma.models import User
 
 from backend.copilot.dream.fetch import DreamInput
 from backend.copilot.dream.pass_record import (
-    batch_left_running,
     cancelled,
     cleanup_finished,
     expired,
@@ -112,30 +111,6 @@ async def test_a_renewal_written_late_never_shortens_the_lease(owner):
         DreamPassUpdate(error="moving on", clear=frozenset({"lease_expires_at"})),
     )
     assert (await _row(pass_id)).lease_expires_at is None
-
-
-async def test_a_closed_row_takes_the_batch_a_take_back_left_running(owner):
-    """A cancel closed the row before the submit was recorded, and its
-    cleanup finished; the take-back's unconfirmed stop leaves the closed row
-    the batch and a new cleanup mark, and nothing else about how it closed
-    moves. An open row refuses that write."""
-    pass_id = await _new_pass(owner, lease_expires_at=_NOW)
-    assert await update_dream_pass(pass_id, cancelled("testing", owner_user_id=owner))
-    assert await update_dream_pass(pass_id, cleanup_finished())
-
-    assert await update_dream_pass(pass_id, batch_left_running("batch-1"))
-
-    row = await _row(pass_id)
-    assert (row.status, row.error, row.provider_batch_id) == (
-        DreamPassStatus.CANCELLED,
-        "testing",
-        "batch-1",
-    )
-    assert row.cleanup_pending_at is not None
-    assert row.cancel_generation == 1
-    still_open = await _new_pass(owner, lease_expires_at=_NOW)
-    assert not await update_dream_pass(still_open, batch_left_running("batch-2"))
-    assert (await _row(still_open)).provider_batch_id is None
 
 
 async def test_a_closing_transition_empties_the_lease_and_the_bundle(owner):
