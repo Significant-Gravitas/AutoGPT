@@ -11,18 +11,15 @@ import {
 import { okData } from "@/app/api/helpers";
 import { Button } from "@/components/atoms/Button/Button";
 import { toast } from "@/components/molecules/Toast/use-toast";
-import { Key, storage } from "@/services/storage/local-storage";
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import {
-  type BoardState,
   buildScheduleCards,
   getNextFollowupBySession,
   groupSessionsIntoColumns,
   isDefaultColumn,
   makeColumnId,
-  parseBoardState,
 } from "./helpers";
+import { useBoardState } from "./useBoardState";
 
 const SCHEDULES_REFETCH_INTERVAL_MS = 60_000;
 
@@ -45,17 +42,7 @@ export function useTaskBoard() {
   const queryClient = useQueryClient();
   const { mutateAsync: setArchived, isPending: isClearing } =
     usePostV2ArchiveSessions();
-  const [board, setBoard] = useState(() =>
-    parseBoardState(storage.get(Key.EXPERT_TASK_BOARD)),
-  );
-
-  function updateBoard(update: (prev: BoardState) => BoardState) {
-    setBoard((prev) => {
-      const next = update(prev);
-      storage.set(Key.EXPERT_TASK_BOARD, JSON.stringify(next));
-      return next;
-    });
-  }
+  const { board, updateBoard } = useBoardState();
 
   function moveCard(sessionId: string, columnId: string) {
     const session = sessions.find((s) => s.id === sessionId);
@@ -64,7 +51,10 @@ export function useTaskBoard() {
       ...prev,
       placements: {
         ...prev.placements,
-        [sessionId]: { columnId, updatedAt: session.updated_at },
+        [sessionId]: {
+          columnId,
+          updatedAt: new Date(session.updated_at).toISOString(),
+        },
       },
     }));
   }
@@ -87,9 +77,13 @@ export function useTaskBoard() {
   }
 
   async function archiveSessions(sessionIds: string[], archived: boolean) {
+    const completed: string[] = [];
     try {
-      await setArchived({ data: { session_ids: sessionIds, archived } });
-      return true;
+      for (let offset = 0; offset < sessionIds.length; offset += 100) {
+        const batch = sessionIds.slice(offset, offset + 100);
+        await setArchived({ data: { session_ids: batch, archived } });
+        completed.push(...batch);
+      }
     } catch {
       toast({
         title: archived
@@ -97,17 +91,17 @@ export function useTaskBoard() {
           : "Could not restore these chats",
         variant: "destructive",
       });
-      return false;
     } finally {
       queryClient.invalidateQueries({ queryKey: SESSION_LIST_QUERY_KEY });
     }
+    return completed;
   }
 
   async function clearColumn(sessionIds: string[]) {
-    if (!sessionIds.length || !(await archiveSessions(sessionIds, true))) {
-      return;
-    }
-    const count = sessionIds.length;
+    if (!sessionIds.length) return;
+    const archivedIds = await archiveSessions(sessionIds, true);
+    const count = archivedIds.length;
+    if (!count) return;
     const shown = toast({
       title: `${count} ${count === 1 ? "chat" : "chats"} archived`,
       duration: 8000,
@@ -118,7 +112,7 @@ export function useTaskBoard() {
           className="ml-auto"
           onClick={() => {
             shown.dismiss();
-            void archiveSessions(sessionIds, false);
+            void archiveSessions(archivedIds, false);
           }}
         >
           Undo

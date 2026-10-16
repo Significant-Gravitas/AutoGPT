@@ -70,7 +70,8 @@ export function getCardColumnId(
   if (
     placement &&
     columnIds.has(placement.columnId) &&
-    placement.updatedAt === session.updated_at
+    new Date(placement.updatedAt).getTime() ===
+      new Date(session.updated_at).getTime()
   ) {
     return placement.columnId;
   }
