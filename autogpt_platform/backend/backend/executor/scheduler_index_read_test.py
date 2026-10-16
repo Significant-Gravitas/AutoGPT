@@ -170,6 +170,29 @@ def test_get_schedule_jobs_keeps_the_row_of_a_turn_set_again_under_its_id():
     assert index.all_job_ids() == {args.schedule_id}
 
 
+def test_get_schedule_jobs_leaves_a_row_dropped_when_its_job_cant_be_read_again():
+    # Nothing shows a turn was set again, so the listing still answers and the
+    # next reconcile restores the row if one was.
+    scheduler = _scheduler_with_index()
+    index = scheduler._schedule_index
+    assert index is not None
+    args = _at_reset_send()
+    index.upsert(_index_entry(args.schedule_id, args))
+    scheduler.scheduler.get_job.side_effect = [None, RuntimeError("store down")]
+
+    with patch.object(scheduler, "_get_active_jobs_cached"):
+        jobs = scheduler._get_schedule_jobs(
+            user_id="u1",
+            graph_id=None,
+            session_id="sess-1",
+            kind=None,
+            organization_id=None,
+        )
+
+    assert jobs == []
+    assert index.all_job_ids() == set()
+
+
 def test_get_schedule_jobs_index_error_falls_back_to_full_scan():
     scheduler = _scheduler_with_index()
     full_scan = [MagicMock()]
