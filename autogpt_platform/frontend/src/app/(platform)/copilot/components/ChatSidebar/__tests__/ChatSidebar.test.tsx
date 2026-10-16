@@ -137,31 +137,49 @@ describe("ChatSidebar — delete flow", () => {
     expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
   });
 
-  it("closes the dialog after a successful delete", async () => {
-    server.use(getDeleteV2DeleteSessionMockHandler());
+  it("removes the chat from the list as soon as Delete is confirmed", async () => {
+    let deleted = false;
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    server.use(
+      getGetV2ListSessionsMockHandler200(() => {
+        const remaining = deleted
+          ? sessions.filter((session) => session.id !== "s2")
+          : sessions;
+        return { sessions: remaining, total: remaining.length };
+      }),
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+        deleted = true;
+      }),
+    );
     renderSidebar();
 
     await openDeleteDialogFor("Other chat");
-    expect(
-      await screen.findByRole("heading", { name: /delete chat/i }),
-    ).toBeDefined();
     const confirmButton = await screen.findByRole("button", {
       name: /^delete$/i,
     });
     fireEvent.click(confirmButton);
 
     await vi.waitFor(() => {
-      expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
+      expect(screen.queryByText("Other chat")).toBeNull();
     });
+    expect(screen.queryByRole("heading", { name: /delete chat/i })).toBeNull();
+    expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
+    expect(screen.getByText("Active chat")).toBeDefined();
+
+    releaseDelete();
+
     await vi.waitFor(() => {
-      expect(
-        screen.queryByRole("heading", { name: /delete chat/i }),
-      ).toBeNull();
+      expect(deleted).toBe(true);
     });
+    expect(screen.queryByText("Other chat")).toBeNull();
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it("toasts on delete failure and clears the staged session", async () => {
+  it("puts the chat back and toasts when the delete fails", async () => {
     server.use(getDeleteV2DeleteSessionMockHandler422());
     renderSidebar();
 
@@ -178,6 +196,7 @@ describe("ChatSidebar — delete flow", () => {
       title: "Failed to delete chat",
       variant: "destructive",
     });
+    expect(await screen.findByText("Active chat")).toBeDefined();
     expect(useCopilotUIStore.getState().sessionToDelete).toBeNull();
   });
 });
