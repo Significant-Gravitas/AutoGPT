@@ -1231,6 +1231,24 @@ describe("ChatMessagesContainer — user attachments", () => {
     expect(screen.getByText("report.pdf")).toBeDefined();
     expect(userBubble(container)).toBeNull();
   });
+
+  it("draws no empty bubble for a live file-only message with an empty text part", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "user-1",
+            role: "user",
+            parts: [filePart, { type: "text", text: "" }],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("report.pdf")).toBeDefined();
+    expect(userBubble(container)).toBeNull();
+  });
 });
 
 // ── pending upload placeholder ────────────────────────────────────────────

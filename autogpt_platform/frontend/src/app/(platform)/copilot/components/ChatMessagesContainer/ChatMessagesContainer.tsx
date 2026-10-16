@@ -644,9 +644,10 @@ export function ChatMessagesContainer({
             // only carries files has no bubble at all.
             const hasBubble =
               isAssistant ||
-              renderableParts.some(
-                (p) =>
-                  p.type !== "file" && p.type !== WORKSPACE_FOLDER_PART_TYPE,
+              renderableParts.some((p) =>
+                p.type === "text"
+                  ? p.text.trim() !== ""
+                  : p.type !== "file" && p.type !== WORKSPACE_FOLDER_PART_TYPE,
               );
 
             const sentFrom = readOnly
