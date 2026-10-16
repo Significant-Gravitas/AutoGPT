@@ -121,5 +121,49 @@ describe("useScheduledSend", () => {
       expect(composer.result.current[0]).toBe("");
       await waitFor(() => expect(result.current.pending).toBeNull());
     });
+
+    // Cancelling on the copy this tab last read could drop text the server
+    // holds, so a failed read changes nothing.
+    it("changes nothing when it can't read the server's copy", async () => {
+      let reads = 0;
+      let cancelled = 0;
+      server.use(
+        http.get("*/api/chat/sessions/:sessionId/at-reset", () => {
+          reads += 1;
+          return reads === 1
+            ? HttpResponse.json({
+                jobs: [
+                  {
+                    kind: "send",
+                    run_at: RUN_AT,
+                    message: "Draft the launch post",
+                  },
+                ],
+              })
+            : HttpResponse.json(
+                { detail: "Scheduler unavailable" },
+                { status: 503 },
+              );
+        }),
+        http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
+          cancelled += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      const { result } = renderHook(
+        () => useScheduledSend({ sessionId: "chat-unread" }),
+        { wrapper: withQueryClient() },
+      );
+      await waitFor(() => expect(result.current.pending).not.toBeNull());
+      const composer = renderHook(() =>
+        useChatDraft(sessionDraftKey("chat-unread")),
+      );
+
+      await act(() => result.current.edit());
+
+      expect(reads).toBe(2);
+      expect(cancelled).toBe(0);
+      expect(composer.result.current[0]).toBe("");
+    });
   });
 });

@@ -96,11 +96,7 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     try {
       await cancelSend.mutateAsync({ sessionId, kind: "send" });
     } catch (error) {
-      toast({
-        title: "Couldn’t change your scheduled message",
-        description: describeSendFailure(error, "it still sends at the reset"),
-        variant: "destructive",
-      });
+      toastChangeFailure(error);
       return false;
     }
     await writeJobs((all) => all.filter((job) => job.kind !== "send"));
@@ -108,7 +104,13 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   }
 
   async function edit() {
-    const send = await readSend();
+    const read = await readSend();
+    // Without the server's copy, cancelling could drop text it holds.
+    if ("error" in read) {
+      toastChangeFailure(read.error);
+      return;
+    }
+    const { send } = read;
     // Already sent, or cancelled elsewhere: the read has updated the list.
     if (!send) return;
     if (!(await unschedule())) return;
@@ -117,10 +119,9 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   }
 
   /** The send as the server holds it now, since another tab or client may
-   *  have added to it after this one last read the list. Falls back to that
-   *  last read when the server can't be asked. */
+   *  have added to it after this one last read the list. */
   async function readSend() {
-    if (!sessionId) return pending;
+    if (!sessionId) return { send: pending };
     try {
       const response = await queryClient.fetchQuery({
         queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
@@ -128,11 +129,21 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
           getV2ListTurnsAtBudgetReset(sessionId, { signal }),
         staleTime: 0,
       });
-      if (response.status !== 200) return pending;
-      return response.data.jobs.find((job) => job.kind === "send") ?? null;
-    } catch {
-      return pending;
+      if (response.status !== 200) return { error: response };
+      return {
+        send: response.data.jobs.find((job) => job.kind === "send") ?? null,
+      };
+    } catch (error) {
+      return { error };
     }
+  }
+
+  function toastChangeFailure(error: unknown) {
+    toast({
+      title: "Couldn’t change your scheduled message",
+      description: describeSendFailure(error, "it still sends at the reset"),
+      variant: "destructive",
+    });
   }
 
   return {
