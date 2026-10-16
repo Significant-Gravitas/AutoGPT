@@ -1,6 +1,7 @@
 import base64
 import json
 import logging
+import re
 from time import perf_counter
 from typing import Any
 
@@ -22,6 +23,7 @@ from ._wire import WireCapture, capture_wire
 logger = logging.getLogger(__name__)
 # Pins TypeSafe has answered "Unknown model" for; later calls skip straight to the alias.
 _retired_models: set[str] = set()
+_PINNED_VERSION = re.compile(r"jev-\d+\.\d+\.\d+")
 
 
 class JevCallResult(BaseModel):
@@ -52,11 +54,12 @@ async def call_jev(
     try:
         return await _call_jev(api_key, state, questions, model, timeout)
     except _RetiredModel as retired:
-        _retired_models.add(retired.model)
-        logger.error(
-            f"TypeSafe no longer serves Jev model {retired.model}; calls pinned to "
-            f"it now run on {DEFAULT_MODEL}. Pin a current Jev version."
-        )
+        if retired.model not in _retired_models:
+            _retired_models.add(retired.model)
+            logger.error(
+                f"TypeSafe no longer serves Jev model {retired.model}; calls pinned "
+                f"to it now run on {DEFAULT_MODEL}. Pin a current Jev version."
+            )
         return await _call_jev(api_key, state, questions, DEFAULT_MODEL, timeout)
 
 
@@ -89,7 +92,7 @@ async def _call_jev(
                     error.request_id or "",
                 )
             except TypeSafeAPIError as error:
-                if model and model != DEFAULT_MODEL and _unknown_model(error):
+                if model and _is_retired(model, error):
                     raise _RetiredModel(model) from error
                 return _failure(
                     wire,
@@ -124,9 +127,13 @@ class _RetiredModel(Exception):
         self.model = model
 
 
-def _unknown_model(error: TypeSafeAPIError) -> bool:
-    message = extract_message(error.body) or ""
-    return error.status == 400 and message.startswith("Unknown model")
+def _is_retired(model: str, error: TypeSafeAPIError) -> bool:
+    # A concrete version only: an alias such as jev-preview fails as before.
+    return (
+        _PINNED_VERSION.fullmatch(model) is not None
+        and error.status == 400
+        and extract_message(error.body) == f"Unknown model: {model}"
+    )
 
 
 def _success(
