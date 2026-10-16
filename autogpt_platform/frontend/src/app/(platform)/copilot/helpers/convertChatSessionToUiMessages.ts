@@ -167,12 +167,14 @@ function extractFileParts(
     const m = trimmed.match(FILE_LINE_RE);
     if (!m) continue;
     const [, filename, mimeType, sizeKB, fileId] = m;
+    const sizeInKB = Number(sizeKB);
     fileParts.push({
       type: "file",
       filename,
       mediaType: mimeType,
       url: fileUrlBuilder(fileId),
-      sizeBytes: Math.round(Number(sizeKB) * 1024),
+      // The transcript rounds to 0.1 KB, too coarse to show a small file's size.
+      ...(sizeInKB >= 1 && { sizeBytes: Math.round(sizeInKB * 1024) }),
     });
   }
 

@@ -697,6 +697,15 @@ describe("the [Attached files] block", () => {
     });
   });
 
+  it("leaves out a size the transcript rounded below 1 KB", () => {
+    const parts = userParts(
+      `Here.\n\n[Attached files]\n- notes.txt (text/plain, 0.1 KB), file_id=0f11eeee-1111-4222-8333-444455556666\n${FILE_HINT}`,
+    );
+    const file = parts.find((p) => p.type === "file");
+    expect(file).toMatchObject({ filename: "notes.txt" });
+    expect(file).not.toHaveProperty("sizeBytes");
+  });
+
   it("leaves a message with no block alone", () => {
     expect(userParts("just text")).toEqual([
       { type: "text", text: "just text", state: "done" },
