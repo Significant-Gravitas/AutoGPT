@@ -8,7 +8,7 @@ The hosted-web shell in [#15495](https://github.com/Significant-Gravitas/AutoGPT
 
 - Better Auth accepts signed session bearers and issues access JWTs containing `sid`.
 - Backend REST requests and new WebSocket connections validate that session's owner, expiry, revocation and account ban. The production REST validator survives test dependency-override cleanup.
-- Pending messages retain their scoped client ID through queue admission and database persistence. Full queues reject new messages without evicting accepted ones. Receipt recovery and persisted-row reconciliation prevent the covered duplicate retry cases.
+- Pending messages retain their scoped client ID through queue admission and database persistence. Full queues reject new messages without evicting accepted ones. Persistence rollback restores the drained batch ahead of newer arrivals, even after the buffer refills. Receipt recovery and persisted-row reconciliation prevent the covered duplicate retry cases.
 - The dedicated Ubuntu lane exercises production auth over HTTP and real Redis/PostgreSQL retry boundaries. It requires no mobile build, live model account, push key or payment account.
 
 Server-side Better Auth code lives under `autogpt_platform/frontend/`; it belongs to this foundation even when the native UI is handed off separately. No application-data migration or new production secret is required.
@@ -28,13 +28,13 @@ The foundation targets `dev` directly. Landing requires current-base checks and 
 | Accepted retry           | A successful repeated admission is an acknowledgement, not proof that the message is still in the queue or that a turn is currently running. Refresh persisted history and stream state.                                                                   |
 | Ownership                | Continue using the selected server, authenticated account and conversation together. Server authorization remains authoritative; a client ID does not grant access to a conversation.                                                                      |
 
-**Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and rollback requeue can fail after concurrent buffer refill. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
+**Keep automatic outbox replay disabled.** Redis receipts expire, cancellation is not durably fenced after receipt expiry or Redis loss, and a Redis outage can still interrupt rollback recovery. Do not promise durable offline delivery or replay an old send automatically on relaunch/account switching. A later backend slice must prove cancellation remains effective when a delayed request crosses cancellation and a subsequent turn, including database failures and Redis loss.
 
 ## Remaining backend slices
 
 | Slice                         | Required contract and evidence                                                                                                                                  |
 | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Durable send/cancellation     | Durable admission/cancellation authority, rollback recovery, delayed-request races and persistence failures; required before automatic outbox replay.           |
+| Durable send/cancellation     | Durable admission/cancellation authority, recovery after Redis loss, delayed-request races and persistence failures; required before automatic outbox replay.   |
 | Discovery and card actions    | Versioned capabilities, complete card/event fixtures, stable question/review identity, stale/two-device rejection and exactly one accepted continuation.        |
 | Google and connection handoff | Registered browser return destinations, account/server binding, cancellation and reconnect behavior; credential edits preserve identity, grants and references. |
 | Push                          | Authoritative session/device registration, revocation and minimal notification content; real provider delivery remains a separate test.                         |

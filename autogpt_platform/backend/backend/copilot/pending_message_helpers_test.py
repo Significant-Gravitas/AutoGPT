@@ -1084,7 +1084,7 @@ async def test_persist_pending_rollback_when_sequence_missing(
         helpers_module, "upsert_chat_session", _fake_upsert_fails_silently
     )
     push_mock = AsyncMock()
-    monkeypatch.setattr(helpers_module, "push_pending_message", push_mock)
+    monkeypatch.setattr(helpers_module, "restore_pending_messages", push_mock)
 
     pending = [PM(content="a"), PM(content="b")]
     ok = await persist_pending_as_user_rows(session, tb, pending, log_prefix="[T]")
@@ -1094,9 +1094,7 @@ async def test_persist_pending_rollback_when_sequence_missing(
     assert session.messages == []
     assert tb.entries == ["earlier-entry"]
     # Both pending messages re-queued.
-    assert push_mock.await_count == 2
-    assert push_mock.await_args_list[0].args[1] is pending[0]
-    assert push_mock.await_args_list[1].args[1] is pending[1]
+    push_mock.assert_awaited_once_with("sess", pending)
 
 
 @pytest.mark.asyncio
@@ -1117,7 +1115,7 @@ async def test_persist_pending_rollback_calls_on_rollback_hook(
         return sess
 
     monkeypatch.setattr(helpers_module, "upsert_chat_session", _fails)
-    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+    monkeypatch.setattr(helpers_module, "restore_pending_messages", AsyncMock())
 
     on_rollback_calls: list[int] = []
 
@@ -1153,7 +1151,7 @@ async def test_persist_pending_uses_custom_content_of(
         return sess
 
     monkeypatch.setattr(helpers_module, "upsert_chat_session", _ok)
-    monkeypatch.setattr(helpers_module, "push_pending_message", AsyncMock())
+    monkeypatch.setattr(helpers_module, "restore_pending_messages", AsyncMock())
 
     await persist_pending_as_user_rows(
         session,
@@ -1170,7 +1168,7 @@ async def test_persist_pending_uses_custom_content_of(
 async def test_persist_pending_swallows_requeue_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A broken push_pending_message on rollback must not raise upward —
+    """A broken restore_pending_messages on rollback must not raise upward —
     the rollback still needs to trim state even if re-queue fails."""
     from backend.copilot.pending_message_helpers import persist_pending_as_user_rows
     from backend.copilot.pending_messages import PendingMessage as PM
@@ -1187,7 +1185,7 @@ async def test_persist_pending_swallows_requeue_errors(
     monkeypatch.setattr(helpers_module, "upsert_chat_session", _fails)
     monkeypatch.setattr(
         helpers_module,
-        "push_pending_message",
+        "restore_pending_messages",
         AsyncMock(side_effect=RuntimeError("redis down")),
     )
 

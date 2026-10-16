@@ -17,8 +17,9 @@ The Redis list is an expiring buffer; the pub/sub channel is a fast
 wake-up hint for long-idle consumers (not used by default, but available
 for future blocking-wait semantics).
 
-A hard cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse.  The
-full buffer rejects new messages without evicting accepted messages.
+An admission cap of ``MAX_PENDING_MESSAGES`` per session prevents abuse. The
+full buffer rejects new messages without evicting accepted messages. Recovery
+may restore a drained batch above that cap; new admission stays blocked.
 """
 
 import asyncio
@@ -393,7 +394,7 @@ async def push_pending_message_if_session_running(
 
 
 async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
-    """Atomically pop all pending messages for *session_id*.
+    """Atomically pop one batch of pending messages for *session_id*.
 
     Returns them in enqueue order (oldest first).  Uses ``LPOP`` with a
     count so the read+delete is a single Redis round trip.  If the list
@@ -402,8 +403,8 @@ async def drain_pending_messages(session_id: str) -> list[PendingMessage]:
     redis = await get_redis_async()
     key = _buffer_key(session_id)
 
-    # LPOP with count drains everything in one round-trip; the push side
-    # caps the list at MAX_PENDING_MESSAGES so nothing is left behind.
+    # Keep recovery batches bounded even when rollback restored an older batch
+    # ahead of a full buffer. Later drains pick up the remaining messages.
     lpop_result = await redis.lpop(key, MAX_PENDING_MESSAGES)  # type: ignore[assignment]
     if not lpop_result:
         return []

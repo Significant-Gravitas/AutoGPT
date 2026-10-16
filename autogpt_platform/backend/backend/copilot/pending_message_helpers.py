@@ -24,6 +24,7 @@ from backend.copilot.model import (
     upsert_chat_session,
 )
 from backend.copilot.pending_message_reconciliation import reconcile_pending_rows
+from backend.copilot.pending_message_recovery import restore_pending_messages
 from backend.copilot.pending_messages import (
     MAX_PENDING_MESSAGES,
     PendingMessage,
@@ -589,8 +590,8 @@ async def persist_pending_as_user_rows(
       4. If any newly-appended row has ``sequence is None`` → rollback:
          delete the appended rows, restore the transcript snapshot (if
          any), call ``on_rollback(anchor)`` for the caller's own state,
-         then re-push each ``PendingMessage`` into the primary pending
-         buffer so the next turn-start drain picks them up.
+         then restore the drained batch ahead of newer arrivals without
+         applying the admission cap to already accepted messages.
 
     Returns ``True`` when the rows were persisted with sequences, ``False``
     when the rollback path fired.  Callers can use this to decide whether
@@ -647,14 +648,12 @@ async def persist_pending_as_user_rows(
             transcript_builder.restore(transcript_snapshot)
         if on_rollback is not None:
             on_rollback(session_anchor)
-        for pm in {message.id: message for message in pending}.values():
-            try:
-                await push_pending_message(session.session_id, pm)
-            except Exception:
-                logger.exception(
-                    "%s Failed to re-queue mid-turn follow-up on rollback",
-                    log_prefix,
-                )
+        try:
+            await restore_pending_messages(session.session_id, pending)
+        except Exception:
+            logger.exception(
+                "%s Failed to re-queue mid-turn follow-up on rollback", log_prefix
+            )
         return False
 
     logger.info(

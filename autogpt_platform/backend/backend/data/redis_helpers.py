@@ -77,7 +77,8 @@ return 1
 """
 
 # Push to a capped list only when a hash field currently matches the expected
-# value. Returns the new list length, or -1 when the guard fails.
+# value. Returns the list length, -1 on a failed guard, or -2 at capacity.
+# A queued ID with an expired receipt restores that receipt from the list's PTTL.
 #
 #   KEYS[1]  hash key
 #   KEYS[2]  list key
@@ -87,6 +88,7 @@ return 1
 #   ARGV[3]  list value
 #   ARGV[4]  max list length
 #   ARGV[5]  list TTL seconds
+#   ARGV[6]  message ID used to recover an expired receipt
 _GATED_CAPPED_RPUSH_LUA = """
 if #KEYS == 3 and redis.call('EXISTS', KEYS[3]) == 1 then
     return redis.call('LLEN', KEYS[2])
