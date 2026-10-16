@@ -17,6 +17,7 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
+    BlockEffect,
     BlockOutput,
     BlockSchemaInput,
     BlockSchemaOutput,
@@ -107,6 +108,7 @@ class AgentMailListEntriesBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -181,7 +183,6 @@ class AgentMailCreateListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -202,6 +203,7 @@ class AgentMailCreateListEntryBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod
@@ -287,6 +289,7 @@ class AgentMailGetListEntryBlock(Block):
                     },
                 )(),
             },
+            effect=BlockEffect.READ,
         )
 
     @staticmethod
@@ -348,7 +351,6 @@ class AgentMailDeleteListEntryBlock(Block):
             categories={BlockCategory.COMMUNICATION},
             input_schema=self.Input,
             output_schema=self.Output,
-            is_sensitive_action=True,
             test_credentials=TEST_CREDENTIALS,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -360,6 +362,7 @@ class AgentMailDeleteListEntryBlock(Block):
             test_mock={
                 "delete_entry": lambda *a, **kw: None,
             },
+            effect=BlockEffect.EXTERNAL,
         )
 
     @staticmethod

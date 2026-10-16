@@ -78,10 +78,6 @@ class TestRunBlockToolSessionDryRun:
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
             patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
-            patch(
-                "backend.copilot.tools.run_block.get_current_permissions",
-                return_value=None,
-            ),
         ):
             # Set up prepare_block_for_execution to return a mock prep
             mock_prep_result = MagicMock()
@@ -123,10 +119,6 @@ class TestRunBlockToolSessionDryRun:
                 "backend.copilot.tools.run_block.prepare_block_for_execution"
             ) as mock_prep,
             patch("backend.copilot.tools.run_block.execute_block") as mock_exec,
-            patch(
-                "backend.copilot.tools.run_block.get_current_permissions",
-                return_value=None,
-            ),
             patch("backend.copilot.tools.run_block.check_hitl_review") as mock_hitl,
         ):
             mock_prep_result = MagicMock()
@@ -207,11 +199,12 @@ class TestRunAgentToolSessionDryRun:
                 return_value=mock_library_agent,
             ),
             patch(
-                "backend.api.features.orgs.db.get_user_default_team",
-                new=AsyncMock(return_value=(None, None)),
+                "backend.copilot.tools.run_agent.orgs_db",
+                return_value=MagicMock(
+                    get_user_default_team=AsyncMock(return_value=(None, None))
+                ),
             ),
             patch("backend.copilot.tools.run_agent.execution_utils") as mock_exec_utils,
-            patch("backend.copilot.tools.run_agent.track_agent_run_success"),
         ):
             mock_exec_utils.add_graph_execution = AsyncMock(return_value=mock_execution)
 

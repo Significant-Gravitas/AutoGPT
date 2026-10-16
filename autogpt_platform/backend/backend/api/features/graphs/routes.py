@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Sequence
+from typing import Annotated, Any, Mapping, Sequence
 
 from autogpt_libs.auth import get_request_context, get_user_id, requires_user
 from autogpt_libs.auth.models import RequestContext
@@ -23,6 +23,7 @@ from backend.data.onboarding import OnboardingStep, complete_onboarding_step
 from backend.executor import utils as execution_utils
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     before_graph_activate,
+    clear_unowned_auto_credentials,
     on_graph_deactivate,
 )
 from backend.monitoring.instrumentation import record_graph_operation
@@ -75,7 +76,7 @@ async def get_graph(
         organization_id=ctx.org_id,
     )
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
     return graph
 
 
@@ -92,7 +93,7 @@ async def get_graph_all_versions(
         graph_id, user_id=user_id, organization_id=ctx.org_id
     )
     if not graphs:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Workflow #{graph_id} not found.")
     return graphs
 
 
@@ -106,8 +107,8 @@ async def create_new_graph(
     ctx: Annotated[RequestContext, Security(get_request_context)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
-    graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
-    graph.validate_graph(for_run=False)
+    submitted_node_ids = graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    _validate_graph_to_save(graph, submitted_node_ids)
 
     # Validate node credentials (and clear stale optional ones) BEFORE
     # persisting, so a credential issue can't leave the graph/library agent
@@ -164,14 +165,14 @@ async def update_graph(
 
     existing_versions = await graph_db.get_graph_all_versions(graph_id, user_id=user_id)
     if not existing_versions:
-        raise HTTPException(404, detail=f"Graph #{graph_id} not found")
+        raise HTTPException(404, detail=f"Workflow #{graph_id} not found")
 
     graph.version = max(g.version for g in existing_versions) + 1
     current_active_version = next((v for v in existing_versions if v.is_active), None)
 
     graph = graph_db.make_graph_model(graph, user_id)
-    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
-    graph.validate_graph(for_run=False)
+    submitted_node_ids = graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    _validate_graph_to_save(graph, submitted_node_ids)
 
     # If this new version is going to be active, validate node credentials
     # BEFORE persisting so a credential issue can't leave a half-saved version
@@ -179,6 +180,8 @@ async def update_graph(
     # those edits must be persisted, hence the pre-save call.
     if graph.is_active:
         graph = await before_graph_activate(graph, user_id=user_id)
+    else:
+        await clear_unowned_auto_credentials(graph, user_id)
 
     new_graph_version = await graph_db.create_graph(
         graph,
@@ -235,7 +238,9 @@ async def set_graph_active_version(
         graph_id, new_active_version, user_id=user_id
     )
     if not new_active_graph:
-        raise HTTPException(404, f"Graph #{graph_id} v{new_active_version} not found")
+        raise HTTPException(
+            404, f"Workflow #{graph_id} v{new_active_version} not found"
+        )
 
     current_active_graph = await graph_db.get_graph(
         graph_id=graph_id,
@@ -294,7 +299,7 @@ async def update_graph_settings(
         graph_id=graph_id, user_id=user_id
     )
     if not library_agent:
-        raise HTTPException(404, f"Graph #{graph_id} not found in user's library")
+        raise HTTPException(404, f"Workflow #{graph_id} not found in user's library")
 
     updated_agent = await library_db.update_library_agent(
         library_agent_id=library_agent.id,
@@ -341,7 +346,7 @@ async def execute_graph(
         if current_balance <= 0:
             raise HTTPException(
                 status_code=402,
-                detail="Insufficient balance to execute the agent. Please top up your account.",
+                detail="Insufficient balance to execute the workflow. Please top up your account.",
             )
 
     try:
@@ -367,15 +372,36 @@ async def execute_graph(
     except GraphValidationError as e:
         record_graph_operation(operation="execute", status="validation_error")
         # Return structured validation errors that the frontend can parse
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "validation_error",
-                "message": e.message,
-                # TODO: only return node-specific errors if user has access to graph
-                "node_errors": e.node_errors,
-            },
-        )
+        # TODO: only return node-specific errors if user has access to graph
+        raise HTTPException(status_code=400, detail=_validation_error_detail(e))
     except Exception:
         record_graph_operation(operation="execute", status="error")
         raise
+
+
+def _validate_graph_to_save(
+    graph: graph_db.GraphModel, submitted_node_ids: Mapping[str, str]
+) -> None:
+    """Refuse an invalid graph with errors keyed by the node IDs the caller
+    sent, not the fresh ones `reassign_ids` gave it, so the builder can mark
+    the fields on its own nodes."""
+    try:
+        graph.validate_graph(for_run=False)
+    except GraphValidationError as e:
+        raise HTTPException(
+            status_code=400, detail=_validation_error_detail(e, submitted_node_ids)
+        ) from e
+
+
+def _validation_error_detail(
+    error: GraphValidationError, node_ids: Mapping[str, str] | None = None
+) -> dict[str, Any]:
+    node_ids = node_ids or {}
+    return {
+        "type": "validation_error",
+        "message": error.message,
+        "node_errors": {
+            node_ids.get(node_id, node_id): field_errors
+            for node_id, field_errors in error.node_errors.items()
+        },
+    }

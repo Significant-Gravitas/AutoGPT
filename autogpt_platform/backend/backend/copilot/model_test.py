@@ -15,6 +15,8 @@ from openai.types.chat.chat_completion_message_tool_call_param import (
 from prisma.models import Expert
 from pytest_mock import MockerFixture
 
+from backend.copilot.constants import COPILOT_SYSTEM_PREFIX
+from backend.copilot.continuation import KEEP_GOING_NOTE
 from backend.data.redis_client import get_redis_async
 from backend.util.exceptions import NotFoundError, RedisError
 
@@ -27,6 +29,7 @@ from .model import (
     create_chat_session,
     get_chat_session,
     get_or_create_builder_session,
+    invalidate_session_cache,
     is_message_duplicate,
     maybe_append_user_message,
     update_session_llm_route,
@@ -190,6 +193,83 @@ async def test_upsert_preserves_pinned_set_concurrently(setup_test_user, test_us
     reloaded = await get_chat_session(s.session_id, test_user_id)
     assert reloaded is not None
     assert reloaded.is_pinned is True
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_upsert_keeps_an_approval_mode_changed_mid_turn(
+    setup_test_user, test_user_id
+):
+    """A turn that started under one mode must not put it back in the cache
+    after the user switched mode while it ran."""
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    assert await update_session_autopilot_mode(s.session_id, test_user_id, "ask_first")
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+    await invalidate_session_cache(s.session_id)
+    from_db = await get_chat_session(s.session_id, test_user_id)
+    assert from_db is not None
+    assert from_db.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_a_mode_whose_cache_write_failed_is_not_undone_by_a_stale_turn(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from .model import update_session_autopilot_mode
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    s.metadata.autopilot_mode = "unsupervised"
+
+    with patch(
+        "backend.copilot.model.cache_chat_session",
+        AsyncMock(side_effect=RuntimeError("redis down")),
+    ):
+        assert await update_session_autopilot_mode(
+            s.session_id, test_user_id, "ask_first"
+        )
+    await upsert_chat_session(s)
+
+    reloaded = await get_chat_session(s.session_id, test_user_id)
+    assert reloaded is not None
+    assert reloaded.metadata.autopilot_mode == "ask_first"
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_an_unreadable_stored_mode_leaves_the_cache_empty(
+    setup_test_user, test_user_id
+):
+    from unittest.mock import AsyncMock, patch
+
+    from backend.copilot import db as chat_db_module
+
+    from .model import _get_session_from_cache
+
+    s = ChatSession.new(user_id=test_user_id, dry_run=False)
+    s.messages = messages
+    s = await upsert_chat_session(s)
+    await invalidate_session_cache(s.session_id)
+
+    with patch.object(
+        chat_db_module,
+        "get_chat_session_metadata",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    ):
+        await upsert_chat_session(s)
+
+    assert await _get_session_from_cache(s.session_id) is None
 
 
 @pytest.mark.asyncio(loop_scope="session")
@@ -789,6 +869,111 @@ async def test_append_and_save_message_returns_none_for_duplicate(
     result = await append_and_save_message(
         session.session_id, ChatMessage(role="user", content="hello")
     )
+    assert result is None
+
+
+_PAUSE = f"{COPILOT_SYSTEM_PREFIX} Paused: checking in after a long run."
+
+# Keep going was pressed once already, and that continuation wrote only
+# assistant rows, or nothing at all: the earlier note is still in the chat's
+# trailing assistant run.
+_KEPT_GOING_ONCE = pytest.mark.parametrize(
+    "rows_after_the_note",
+    [
+        pytest.param(["Two of three sections done.", _PAUSE], id="assistant-rows"),
+        pytest.param([], id="nothing"),
+    ],
+)
+
+
+def _kept_going_once(rows_after_the_note: list[str]) -> ChatSession:
+    return _make_session_with_messages(
+        ChatMessage(role="user", content="Build the report"),
+        ChatMessage(role="assistant", content=_PAUSE),
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        *(ChatMessage(role="assistant", content=row) for row in rows_after_the_note),
+    )
+
+
+def _mock_session_store(mocker: MockerFixture, session: ChatSession) -> None:
+    """The lock is taken, the session comes from cache, and writes succeed."""
+    lock = mocker.AsyncMock()
+    lock.acquire = mocker.AsyncMock(return_value=True)
+    lock.release = mocker.AsyncMock()
+    redis = mocker.MagicMock()
+    redis.lock = mocker.MagicMock(return_value=lock)
+    mocker.patch(
+        "backend.copilot.model.get_redis_async",
+        new_callable=mocker.AsyncMock,
+        return_value=redis,
+    )
+    mocker.patch(
+        "backend.copilot.model.get_chat_session",
+        new_callable=mocker.AsyncMock,
+        return_value=session,
+    )
+    mocker.patch(
+        "backend.copilot.model._save_session_to_db", new_callable=mocker.AsyncMock
+    )
+    mocker.patch(
+        "backend.copilot.model.chat_db",
+        return_value=mocker.MagicMock(
+            get_next_sequence=mocker.AsyncMock(return_value=len(session.messages))
+        ),
+    )
+    mocker.patch(
+        "backend.copilot.model.cache_chat_session", new_callable=mocker.AsyncMock
+    )
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_collapses_a_repeated_note_by_default(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id, ChatMessage(role="assistant", content=KEEP_GOING_NOTE)
+    )
+
+    assert result is None
+
+
+@pytest.mark.asyncio(loop_scope="session")
+@_KEPT_GOING_ONCE
+async def test_append_and_save_message_saves_a_repeated_note_with_content_dedupe_off(
+    mocker: MockerFixture, rows_after_the_note: list[str]
+) -> None:
+    session = _kept_going_once(rows_after_the_note)
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
+    assert result is not None
+    assert result.messages[-1].content == KEEP_GOING_NOTE
+    assert [m.content for m in result.messages].count(KEEP_GOING_NOTE) == 2
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_append_and_save_message_keeps_the_id_check_with_content_dedupe_off(
+    mocker: MockerFixture,
+) -> None:
+    session = _kept_going_once([])
+    session.messages[-1].id = "click-1"
+    _mock_session_store(mocker, session)
+
+    result = await append_and_save_message(
+        session.session_id,
+        ChatMessage(id="click-1", role="assistant", content=KEEP_GOING_NOTE),
+        dedupe_content=False,
+    )
+
     assert result is None
 
 
@@ -2004,8 +2189,51 @@ async def test_save_session_to_db_backfills_stamps_on_flushed_rows(
         routing_source="env",
         llm_auth_provider=None,
         llm_credential_id=None,
+        langfuse_trace_id=None,
     )
     assert flushed.stamps_pending_save is False
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_save_session_to_db_persists_the_turn_trace(
+    mocker: MockerFixture,
+) -> None:
+    """The Langfuse trace stamped at end of turn reaches the DB both on rows
+    flushed mid-turn (back-fill) and on rows inserted by this save."""
+    trace_id = "1edf31f11b1693cc6103f358c1481694"
+    flushed = ChatMessage(
+        role="assistant",
+        content="working on it",
+        sequence=7,
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        langfuse_trace_id=trace_id,
+        stamps_pending_save=True,
+    )
+    unsaved = ChatMessage(
+        role="assistant",
+        content="done",
+        model="claude-sonnet-4-6",
+        routing_source="env",
+        langfuse_trace_id=trace_id,
+    )
+    session = _make_session_with_messages(flushed, unsaved)
+
+    mock_db = mocker.MagicMock()
+    mock_db.update_chat_session = mocker.AsyncMock()
+    mock_db.add_chat_messages_batch = mocker.AsyncMock(return_value=8)
+    mock_db.update_chat_message_stamps = mocker.AsyncMock(return_value=True)
+    mocker.patch("backend.copilot.model.chat_db", return_value=mock_db)
+
+    await _save_session_to_db(
+        session, existing_message_count=8, skip_existence_check=True
+    )
+
+    backfill = mock_db.update_chat_message_stamps.await_args
+    assert backfill.kwargs["sequence"] == 7
+    assert backfill.kwargs["langfuse_trace_id"] == trace_id
+    (inserted,) = mock_db.add_chat_messages_batch.await_args.kwargs["messages"]
+    assert inserted["langfuse_trace_id"] == trace_id
 
 
 @pytest.mark.asyncio(loop_scope="session")

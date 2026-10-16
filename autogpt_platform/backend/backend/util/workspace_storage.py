@@ -23,6 +23,7 @@ from backend.util.gcs_utils import (
     download_range,
     download_with_fresh_session,
     generate_signed_url,
+    is_not_found_error,
     parse_gcs_path,
 )
 from backend.util.settings import Config
@@ -178,9 +179,11 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
             blob_name,
             content,
             metadata={
-                "uploaded_at": upload_time.isoformat(),
-                "workspace_id": workspace_id,
-                "file_id": file_id,
+                "metadata": {
+                    "uploaded_at": upload_time.isoformat(),
+                    "workspace_id": workspace_id,
+                    "file_id": file_id,
+                }
             },
         )
 
@@ -188,23 +191,23 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
 
     async def retrieve(self, storage_path: str) -> bytes:
         """Retrieve file from GCS."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
-        return await download_with_fresh_session(bucket_name, blob_name)
+        blob_name = self._parse_storage_path(storage_path)
+        return await download_with_fresh_session(self.bucket_name, blob_name)
 
     async def retrieve_partial(self, storage_path: str, max_bytes: int) -> bytes:
         """Retrieve the first ``max_bytes`` of a GCS file via a Range request."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
-        return await download_range(bucket_name, blob_name, max_bytes)
+        blob_name = self._parse_storage_path(storage_path)
+        return await download_range(self.bucket_name, blob_name, max_bytes)
 
     async def delete(self, storage_path: str) -> None:
         """Delete file from GCS."""
-        bucket_name, blob_name = parse_gcs_path(storage_path)
+        blob_name = self._parse_storage_path(storage_path)
         client = await self._get_async_client()
 
         try:
-            await client.delete(bucket_name, blob_name)
+            await client.delete(self.bucket_name, blob_name)
         except Exception as e:
-            if "404" not in str(e) and "Not Found" not in str(e):
+            if not is_not_found_error(e):
                 raise
             # File already deleted, that's fine
 
@@ -216,7 +219,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         Falls back to an API proxy endpoint if signed URL generation fails
         (e.g., when running locally with user OAuth credentials).
         """
-        bucket_name, blob_name = parse_gcs_path(storage_path)
+        blob_name = self._parse_storage_path(storage_path)
 
         # Extract file_id from blob_name for fallback: workspaces/{workspace_id}/{file_id}/{filename}
         blob_parts = blob_name.split("/")
@@ -226,7 +229,7 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
         try:
             sync_client = self._get_sync_client()
             return await generate_signed_url(
-                sync_client, bucket_name, blob_name, expires_in
+                sync_client, self.bucket_name, blob_name, expires_in
             )
         except AttributeError as e:
             # Signed URL generation requires service account with private key.
@@ -238,6 +241,12 @@ class GCSWorkspaceStorage(WorkspaceStorageBackend):
                 )
                 return f"/api/workspace/files/{file_id}/download"
             raise
+
+    def _parse_storage_path(self, storage_path: str) -> str:
+        bucket_name, blob_name = parse_gcs_path(storage_path)
+        if bucket_name != self.bucket_name:
+            raise PermissionError("Access denied: not the configured private bucket")
+        return blob_name
 
 
 class LocalWorkspaceStorage(WorkspaceStorageBackend):
@@ -405,7 +414,9 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     config = Config()
 
     # --- Local storage (shared) ---
-    if not config.media_gcs_bucket_name:
+    bucket_name = config.resolved_private_user_data_bucket
+
+    if not bucket_name:
         if _local_storage is None:
             storage_dir = (
                 config.workspace_storage_dir if config.workspace_storage_dir else None
@@ -417,11 +428,8 @@ async def get_workspace_storage() -> WorkspaceStorageBackend:
     # --- GCS storage (per event loop) ---
     loop_id = id(asyncio.get_running_loop())
     if loop_id not in _gcs_storages:
-        logger.info(
-            f"Creating GCS workspace storage for loop {loop_id}: "
-            f"{config.media_gcs_bucket_name}"
-        )
-        _gcs_storages[loop_id] = GCSWorkspaceStorage(config.media_gcs_bucket_name)
+        logger.info(f"Creating GCS workspace storage for loop {loop_id}: {bucket_name}")
+        _gcs_storages[loop_id] = GCSWorkspaceStorage(bucket_name)
     return _gcs_storages[loop_id]
 
 

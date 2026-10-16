@@ -1,40 +1,54 @@
-import type { ConsentPreferences } from "@/services/consent/cookies";
+import type { ConsentState } from "@/services/consent/consent";
+
+export const DATAFAST_SCRIPT_SRC = "https://datafa.st/js/script.js";
 
 interface LoadingArgs {
   host: string;
   pathname: string | null;
   isLocal: boolean;
-  preferences: ConsentPreferences | null;
+  isConsentManaged: boolean;
+  consent: ConsentState;
 }
 
 export function resolveAnalyticsLoading({
   host,
   pathname,
   isLocal,
-  preferences,
+  isConsentManaged,
+  consent,
 }: LoadingArgs) {
-  // Stored consent is only readable in the browser; nothing loads until it is.
-  if (!preferences) return { googleTag: false, dataFast: false };
-
   const isProductionDomain = isProductionHost(host);
-  const hasAnalyticsConsent = preferences.hasConsented && preferences.analytics;
 
   return {
     // Production loads the Google tag before the visitor answers: Consent Mode
-    // keeps it cookieless where consent is required (see consent-mode.ts).
-    // Open-source developers running locally only send analytics after opting in.
-    googleTag: isProductionDomain || (isLocal && hasAnalyticsConsent),
-    // The public tour hides the cookie banner, so DataFast loads there without
-    // the consent gate — otherwise tour funnel events would never fire for
-    // first-touch visitors.
+    // keeps it cookieless where consent is required (see consent-mode.ts) and
+    // Cookiebot sends the answer once there is one. Without a banner nothing
+    // could ever answer, so the tag stays off. Open-source developers running
+    // locally only send analytics after opting in.
+    googleTag:
+      (isProductionDomain && isConsentManaged) ||
+      (isLocal && consent.analytics),
     dataFast:
-      isProductionDomain && (hasAnalyticsConsent || isTourPath(pathname)),
+      isProductionDomain &&
+      (consent.analytics ||
+        isDataFastConsentExempt(pathname, isConsentManaged)),
   };
+}
+
+// TODO(SECRT-2713): the public tour loads DataFast without the consent gate
+// so tour funnel events fire for first-touch visitors. The old banner stayed
+// hidden on /tour; Cookiebot's does not, so revisit this exemption there.
+// Without a banner nothing optional loads, the tour included.
+export function isDataFastConsentExempt(
+  pathname: string | null,
+  isConsentManaged: boolean,
+): boolean {
+  return isConsentManaged && isTourPath(pathname);
 }
 
 // Segment-boundary match: /tourism must not inherit the tour's consent
 // exemption.
-export function isTourPath(pathname: string | null): boolean {
+function isTourPath(pathname: string | null): boolean {
   if (!pathname) return false;
   return pathname === "/tour" || pathname.startsWith("/tour/");
 }

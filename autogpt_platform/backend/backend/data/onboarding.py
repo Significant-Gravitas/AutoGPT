@@ -11,6 +11,7 @@ from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 from backend.api.features.store.model import StoreAgentDetails
 from backend.api.model import OnboardingNotificationPayload
 from backend.data.credit import get_user_credit_model
+from backend.data.db import transaction
 from backend.data.notification_bus import (
     AsyncRedisNotificationEventBus,
     NotificationEvent,
@@ -19,10 +20,15 @@ from backend.data.onboarding_steps import (
     FrontendOnboardingStep as FrontendOnboardingStep,
 )
 from backend.data.onboarding_steps import OnboardingStep
+from backend.data.onboarding_wizard import (
+    OnboardingWizardConflict,
+    OnboardingWizardProgress,
+)
 from backend.data.subscription_trial import get_subscription_trial
 from backend.data.user import get_user_by_id
 from backend.util.cache import cached
 from backend.util.json import SafeJson
+from backend.util.product_analytics import track_onboarding_completed
 from backend.util.timezone_utils import get_user_timezone_or_utc
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -42,6 +48,11 @@ MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
+    wizardProgress: OnboardingWizardProgress | None = None
+    wizardRevision: int | None = pydantic.Field(default=None, ge=0, strict=True)
+    wizardUserId: str | None = pydantic.Field(
+        default=None, min_length=1, max_length=128, strict=True
+    )
     walletShown: Optional[bool] = None
     # Typed enum so the PATCH endpoint validates step names at the boundary
     # (invalid values get a 422 instead of being stored and then 500-ing reads,
@@ -55,14 +66,60 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
 
+    @pydantic.model_validator(mode="after")
+    def require_wizard_revision(self) -> "UserOnboardingUpdate":
+        if "wizardProgress" in self.model_fields_set and self.wizardRevision is None:
+            raise ValueError("wizardRevision is required when saving wizardProgress")
+        if "wizardProgress" in self.model_fields_set and self.wizardUserId is None:
+            raise ValueError("wizardUserId is required when saving wizardProgress")
+        return self
 
-async def get_user_onboarding(user_id: str):
+
+async def get_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating nothing.
+
+    A user with no row yet gets an unsaved all-defaults one, so this works
+    before the ``User`` row exists. Write paths use ``ensure_user_onboarding``.
+    """
+    onboarding = await UserOnboarding.prisma().find_unique(where={"userId": user_id})
+    return onboarding or _default_user_onboarding(user_id)
+
+
+async def ensure_user_onboarding(user_id: str) -> UserOnboarding:
+    """Read a user's onboarding state, creating the row if it is missing.
+
+    For write paths, which follow up with an ``update`` that has nothing to
+    target otherwise. Unlike the read above this does require a provisioned
+    ``User``, which is correct: there is no onboarding progress to record for
+    an account the platform does not have.
+    """
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {},
         },
+    )
+
+
+def _default_user_onboarding(user_id: str) -> UserOnboarding:
+    """An unsaved row mirroring the column defaults in ``schema.prisma``.
+
+    ``id``/``createdAt`` are placeholders: the API model this is serialized
+    through exposes neither, so they never reach a client.
+    """
+    return UserOnboarding(
+        id="",
+        createdAt=datetime.now(timezone.utc),
+        completedSteps=[],
+        walletShown=False,
+        notified=[],
+        rewardedFor=[],
+        integrations=[],
+        agentRuns=0,
+        consecutiveRunDays=0,
+        wizardRevision=0,
+        userId=user_id,
     )
 
 
@@ -73,6 +130,8 @@ async def reset_user_onboarding(user_id: str):
             "create": UserOnboardingCreateInput(userId=user_id),
             "update": {
                 "completedSteps": [],
+                "wizardProgress": None,
+                "wizardRevision": {"increment": 1},
                 "walletShown": False,
                 "notified": [],
                 "usageReason": None,
@@ -90,8 +149,12 @@ async def reset_user_onboarding(user_id: str):
 
 
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
+    if "wizardProgress" in data.model_fields_set and data.wizardUserId != user_id:
+        raise OnboardingWizardConflict()
     update: UserOnboardingUpdateInput = {}
-    onboarding = await get_user_onboarding(user_id)
+    # A write path: the draft save below is a conditional update, which has no
+    # row to match for a user whose first write this is.
+    onboarding = await ensure_user_onboarding(user_id)
     if data.walletShown:
         update["walletShown"] = data.walletShown
     if data.notified is not None:
@@ -113,6 +176,15 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = SafeJson(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
+    if "wizardProgress" in data.model_fields_set:
+        update["wizardProgress"] = (
+            SafeJson(data.wizardProgress.model_dump(mode="json"))
+            if data.wizardProgress is not None
+            else None
+        )
+        if data.wizardRevision is None:
+            raise ValueError("wizardRevision is required when saving wizardProgress")
+        return await _save_wizard_progress(user_id, data.wizardRevision, update)
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
@@ -121,6 +193,19 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             "update": update,
         },
     )
+
+
+async def _save_wizard_progress(
+    user_id: str, revision: int, update: UserOnboardingUpdateInput
+) -> UserOnboarding:
+    async with transaction() as tx:
+        changed = await tx.useronboarding.update_many(
+            where={"userId": user_id, "wizardRevision": revision},
+            data={**update, "wizardRevision": {"increment": 1}},
+        )
+        if changed != 1:
+            raise OnboardingWizardConflict()
+        return await tx.useronboarding.find_unique_or_raise(where={"userId": user_id})
 
 
 async def _reward_user(user_id: str, onboarding: UserOnboarding, step: OnboardingStep):
@@ -175,7 +260,7 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
     """
     Completes the specified onboarding step for the user if not already completed.
     """
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     if step not in onboarding.completedSteps:
         await UserOnboarding.prisma().update(
             where={"userId": user_id},
@@ -185,6 +270,8 @@ async def complete_onboarding_step(user_id: str, step: OnboardingStep):
                 "completedSteps": list(set(onboarding.completedSteps + [str(step)])),
             },
         )
+        if step == OnboardingStep.ONBOARDING_COMPLETE:
+            track_onboarding_completed(user_id=user_id)
         await _reward_user(user_id, onboarding, step)
         await _send_onboarding_notification(user_id, step)
 
@@ -329,7 +416,7 @@ async def increment_onboarding_runs(user_id: str):
     Increment a user's run counters and trigger any onboarding milestones.
     """
     user_timezone = await _get_user_timezone(user_id)
-    onboarding = await get_user_onboarding(user_id)
+    onboarding = await ensure_user_onboarding(user_id)
     new_run_count = onboarding.agentRuns + 1
     last_run_at, consecutive_run_days = _calculate_consecutive_run_days(
         onboarding.lastRunAt, onboarding.consecutiveRunDays, user_timezone

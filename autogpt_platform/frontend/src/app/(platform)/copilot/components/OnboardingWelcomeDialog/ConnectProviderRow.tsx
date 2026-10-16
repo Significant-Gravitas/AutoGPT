@@ -27,7 +27,7 @@ export function ConnectProviderRow({
   description,
   className,
 }: Props) {
-  const src = `/integrations/${provider.id}.png`;
+  const src = `/integrations/${provider.iconId ?? provider.id}.png`;
   const [brokenSrc, setBrokenSrc] = useState<string | null>(null);
   const broken = brokenSrc === src;
 

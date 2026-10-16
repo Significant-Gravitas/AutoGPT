@@ -132,7 +132,7 @@ describe("PublishToMarketplace (builder)", () => {
     expect(await screen.findByTestId("publish-agent-modal")).toBeDefined();
     expect(await screen.findByText("Build the store listing")).toBeDefined();
 
-    expect(screen.queryByText(/choose an agent/i)).toBeNull();
+    expect(screen.queryByText(/choose a workflow/i)).toBeNull();
 
     expect(await screen.findByDisplayValue(AGENT_NAME)).toBeDefined();
   });

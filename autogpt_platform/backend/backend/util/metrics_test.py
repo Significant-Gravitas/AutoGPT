@@ -12,14 +12,18 @@ from __future__ import annotations
 import json
 import sys
 
+import pytest
 import sentry_sdk
+from ldclient.client import LDClient
 from sentry_sdk.consts import DEFAULT_OPTIONS
-from sentry_sdk.utils import event_from_exception
+from sentry_sdk.serializer import serialize
+from sentry_sdk.transport import Transport
+from sentry_sdk.utils import event_from_exception, json_dumps
 
 # Imported at module scope on purpose: AppProcess calls sentry_init() in its
 # class body, so the guard has to hold at collection time, not just in a test.
 import backend.util.process
-from backend.util import metrics
+from backend.util import feature_flag, metrics, tracing
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.metrics import (
     _FALKORDB_DRIVER_LOGGER,
@@ -28,6 +32,7 @@ from backend.util.metrics import (
     _PIKA_RECONNECT_SIGNATURES,
     _before_send,
 )
+from backend.util.settings import AppEnvironment, BehaveAs, Config
 
 
 def _log_event(logger: str, message: str) -> dict:
@@ -206,6 +211,44 @@ def test_before_send_scrubs_secrets_from_actual_exception_event() -> None:
     assert "safe-context-value" in serialized
 
 
+def test_before_send_output_survives_the_sdk_transport() -> None:
+    """The SDK runs ``before_send`` on the already-serialized event and then
+    ``json_dumps`` it for the envelope. A scrubbed event that is not plain JSON
+    is dropped there as an internal SDK error, so it never reaches Sentry.
+
+    A frame local named ``session`` (as in ``download_with_fresh_session``) and
+    an ``authorization`` request header are enough to trigger that."""
+
+    def download_with_fresh_session():
+        session = "aiohttp-client-session"
+        if session:
+            raise RuntimeError("Response payload is not completed")
+
+    try:
+        download_with_fresh_session()
+    except RuntimeError:
+        event, hint = event_from_exception(
+            sys.exc_info(), client_options=DEFAULT_OPTIONS
+        )
+    event["request"] = {
+        "method": "GET",
+        "url": "http://backend/api/workspace/files/f/download",
+        "headers": {"authorization": "Bearer FAKE-TOKEN-1", "accept": "*/*"},
+    }
+
+    scrubbed = _before_send(serialize(event), hint)
+
+    assert scrubbed is not None
+    body = json.loads(json_dumps(scrubbed))
+    raising_frame = body["exception"]["values"][0]["stacktrace"]["frames"][-1]
+    assert raising_frame["vars"]["session"] == "[Filtered]"
+    assert body["request"]["headers"]["authorization"] == "[Filtered]"
+    assert body["request"]["headers"]["accept"] == "*/*"
+    assert body["exception"]["values"][0]["value"] == (
+        "Response payload is not completed"
+    )
+
+
 def test_before_send_keeps_untyped_balance_message() -> None:
     try:
         raise RuntimeError("Third-party API reported insufficient balance")
@@ -360,6 +403,30 @@ def test_sentry_init_runs_outside_pytest(monkeypatch) -> None:
     assert calls[0]["dsn"] == _FAKE_DSN
 
 
+def test_sentry_init_samples_through_the_shared_sampler(monkeypatch) -> None:
+    """Probes, scrapes and WebSocket connections are dropped by the sampler;
+    see tracing_test for its rules."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["traces_sampler"] is tracing.traces_sampler
+
+
+def test_sentry_init_sends_no_trace_headers_to_third_parties(monkeypatch) -> None:
+    """Only the RPC client attaches trace headers (service_test covers it), so a
+    block calling a user-supplied URL never hands it Sentry's trace or key."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert calls[0]["trace_propagation_targets"] == []
+
+
 def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> None:
     """A spawned service subprocess does not inherit sys.modules, but does
     inherit PYTEST_CURRENT_TEST from the environment."""
@@ -370,3 +437,143 @@ def test_sentry_init_skipped_in_subprocess_spawned_by_pytest(monkeypatch) -> Non
     metrics.sentry_init()
 
     assert calls == []
+
+
+def test_sentry_init_never_hooks_or_opens_a_launchdarkly_client(monkeypatch) -> None:
+    """Sentry once asked feature_flag.get_client() for a LaunchDarklyIntegration,
+    which initialised an LD client in every process that set up Sentry. LD bills
+    per connection, so sentry_init() must neither hook LD nor create a client
+    (SECRT-2708)."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    ld_inits: list[str] = []
+    monkeypatch.setattr(
+        feature_flag, "initialize_launchdarkly", lambda: ld_inits.append("init")
+    )
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    integration_names = {type(i).__name__ for i in calls[0]["integrations"]}
+    assert "LaunchDarklyIntegration" not in integration_names
+    assert ld_inits == []
+
+
+class _DiscardTransport(Transport):
+    def capture_envelope(self, envelope) -> None:
+        pass
+
+
+def test_sentry_sdk_setup_from_sentry_init_hooks_no_launchdarkly(monkeypatch) -> None:
+    """The test above stops at the arguments sentry_init() passes. This builds a
+    real SDK client from them, with sentry-sdk's default and auto-enabling
+    integrations, and checks that SDK setup neither enables the LaunchDarkly
+    integration nor constructs an LD client."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    monkeypatch.setattr(feature_flag.settings.secrets, "launch_darkly_sdk_key", "sdk-x")
+    monkeypatch.setattr(feature_flag, "_init_attempted", False)
+    ld_clients: list[str] = []
+
+    def _refuse_ld_client(self, *args, **kwargs) -> None:
+        ld_clients.append("created")
+        raise RuntimeError("Sentry setup constructed a LaunchDarkly client")
+
+    monkeypatch.setattr(LDClient, "__init__", _refuse_ld_client)
+
+    metrics.sentry_init()
+    client = sentry_sdk.Client(**calls[0], transport=_DiscardTransport)
+    try:
+        assert "fastapi" in client.integrations
+        assert "launchdarkly" not in client.integrations
+    finally:
+        client.close()
+    assert ld_clients == []
+
+
+# ---------- release and environment tagging ----------
+
+
+def _sentry_init_options(monkeypatch) -> dict:
+    """The options sentry_init() hands the SDK once past the pytest guard."""
+    calls = _spy_on_sentry_init(monkeypatch)
+    monkeypatch.delitem(sys.modules, "pytest")
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+
+    metrics.sentry_init()
+
+    assert len(calls) == 1
+    return calls[0]
+
+
+def test_sentry_init_reports_the_deployed_commit_as_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "0123abcd")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+def test_sentry_init_trims_the_release(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", "  0123abcd\n")
+
+    assert _sentry_init_options(monkeypatch)["release"] == "0123abcd"
+
+
+@pytest.mark.parametrize("sha", ["", "   ", "\n"])
+def test_sentry_init_reports_no_release_for_a_blank_sha(monkeypatch, sha) -> None:
+    """A build made without the SENTRY_RELEASE build arg bakes in an empty
+    value, which has to read as no release rather than a blank one."""
+    monkeypatch.setattr(metrics.settings.config, "sentry_release", sha)
+
+    assert _sentry_init_options(monkeypatch)["release"] is None
+
+
+def test_sentry_init_environment_override_wins(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "pr-123")
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+def test_sentry_init_trims_the_environment_override(monkeypatch) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", "  pr-123 ")
+
+    assert _sentry_init_options(monkeypatch)["environment"] == "pr-123"
+
+
+@pytest.mark.parametrize("override", ["", "   "])
+def test_sentry_init_computes_the_environment_without_an_override(
+    monkeypatch, override
+) -> None:
+    monkeypatch.setattr(metrics.settings.config, "sentry_environment", override)
+    monkeypatch.setattr(metrics.settings.config, "app_env", AppEnvironment.PRODUCTION)
+    monkeypatch.setattr(metrics.settings.config, "behave_as", BehaveAs.CLOUD)
+
+    environment = _sentry_init_options(monkeypatch)["environment"]
+
+    assert environment == "app:prod-behave:cloud"
+
+
+def test_sentry_settings_read_the_deployment_env_vars(monkeypatch) -> None:
+    """The names infra sets: SENTRY_RELEASE, baked into the image, and
+    SENTRY_ENVIRONMENT, set per preview."""
+    monkeypatch.setenv("SENTRY_RELEASE", "0123abcd")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "pr-123")
+
+    config = Config()
+
+    assert config.sentry_release == "0123abcd"
+    assert config.sentry_environment == "pr-123"
+
+
+def test_sentry_settings_are_empty_for_blank_deployment_env_vars(monkeypatch) -> None:
+    monkeypatch.setenv("SENTRY_RELEASE", "")
+    monkeypatch.setenv("SENTRY_ENVIRONMENT", "")
+
+    config = Config()
+
+    assert (config.sentry_release, config.sentry_environment) == ("", "")

@@ -3,6 +3,7 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { FadeIn } from "@/components/atoms/FadeIn/FadeIn";
 import { Text } from "@/components/atoms/Text/Text";
+import { cn } from "@/lib/utils";
 import { useOnboardingWizardStore } from "../../store";
 import { AutopilotScene } from "./components/AutopilotScene";
 import { TeamScene } from "./components/TeamScene";
@@ -25,14 +26,22 @@ export function IntroStep({ slide }: Props) {
   const Scene = SCENES[slide];
 
   return (
-    <FadeIn className="flex w-full max-w-lg flex-col items-center gap-8 px-4">
+    <FadeIn
+      className={cn(
+        "flex w-full flex-col items-center gap-8 px-4",
+        slide === "team" ? "max-w-2xl" : "max-w-lg",
+      )}
+    >
       <Text variant="h4" as="h1" className="text-center leading-tight">
         {title}
       </Text>
 
       <div
         data-testid="intro-stage"
-        className="relative h-[340px] w-full overflow-hidden"
+        className={cn(
+          "relative w-full overflow-hidden",
+          slide === "team" ? "h-[420px]" : "h-[340px]",
+        )}
       >
         <Scene />
       </div>

@@ -1,16 +1,10 @@
 "use client";
 
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Sidebar,
   SidebarContent,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -19,23 +13,23 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { LoadingSpinner } from "@/components/atoms/LoadingSpinner/LoadingSpinner";
 import { isEditableElement } from "@/lib/platform";
-import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { motion, useReducedMotion } from "framer-motion";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ComponentProps, ReactNode, Suspense, useEffect } from "react";
+import { ComponentProps, ReactNode, useEffect } from "react";
 import { getSidebarItemVariants, sidebarContainerVariants } from "./animations";
 import { AppSidebarHeader } from "./components/AppSidebarHeader/AppSidebarHeader";
-import { RecentChats } from "./components/RecentChats/RecentChats";
+import { ChatsNavSection } from "./components/ChatsNavSection/ChatsNavSection";
+import { CollapsibleNavGroup } from "./components/CollapsibleNavGroup/CollapsibleNavGroup";
 import { ShortcutHint } from "./components/ShortcutHint/ShortcutHint";
 import { SidebarUserActions } from "./components/SidebarUserActions/SidebarUserActions";
+import { useNavItemClassName } from "./useNavItemClassName";
 import {
-  ArrowDown01Icon,
   FlowIcon,
   Folder01Icon,
   GridViewIcon,
   Home10Icon,
-  NoteEditIcon,
   Store01Icon,
   AddTeamIcon,
 } from "@hugeicons/core-free-icons";
@@ -49,14 +43,10 @@ type NavLink = {
 };
 
 const MAIN_LINKS: NavLink[] = [
-  { name: "Agents", href: "/library", icon: GridViewIcon },
+  { name: "Workflows", href: "/library", icon: GridViewIcon },
   { name: "Marketplace", href: "/marketplace", icon: Store01Icon },
   { name: "Build", href: "/build", icon: FlowIcon },
 ];
-
-// /home 404s without the experts flag, so the entry only exists for the
-// cohort that has a home to go to.
-const HOME_LINK: NavLink = { name: "Home", href: "/home", icon: Home10Icon };
 
 const WORKSPACE_LINKS: NavLink[] = [
   { name: "Files", href: "/artifacts", icon: Folder01Icon },
@@ -82,9 +72,7 @@ function NavLinkLoader() {
   );
 }
 
-// Rendered inside the New Task <Link> — swap the sparkle for a spinner while
-// navigation to /copilot is pending, then back to the sparkle once it lands.
-function NewTaskIcon() {
+function HomeIcon() {
   const { pending } = useLinkStatus();
 
   if (pending) {
@@ -98,27 +86,13 @@ function NewTaskIcon() {
 
   return (
     <Icon
-      icon={NoteEditIcon}
+      icon={Home10Icon}
       className="size-4 text-sidebar-foreground/90 group-data-[collapsible=icon]:size-4.5"
     />
   );
 }
 
-// The stronger active state + grey shell ship with the brain-dump
-// experience; off keeps the original white sidebar.
-function useNavItemClassName() {
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
-  return cn(
-    "h-auto rounded-xl p-2 pl-3 font-normal data-[active=true]:font-normal group-data-[collapsible=icon]:!p-1.5 hover:!bg-zinc-100 [&>svg]:size-4 group-data-[collapsible=icon]:[&>svg]:size-4.5",
-    isBrainDumpEnabled
-      ? "data-[active=true]:!bg-zinc-200 data-[active=true]:hover:!bg-zinc-200"
-      : "data-[active=true]:!bg-zinc-100",
-  );
-}
-
-// New Task shares the nav-item styling with the main links so it sits in the
-// same section with a uniform gap, instead of being a standalone CTA button.
-function NewTaskItem() {
+function HomeItem() {
   const pathname = usePathname();
   const navItemClassName = useNavItemClassName();
 
@@ -126,13 +100,13 @@ function NewTaskItem() {
     <SidebarMenuItem>
       <SidebarMenuButton
         asChild
-        tooltip="New Task"
-        isActive={isLinkActive(pathname, "/copilot")}
+        tooltip="Home"
+        isActive={isLinkActive(pathname, "/home")}
         className={navItemClassName}
       >
-        <Link href="/copilot">
-          <NewTaskIcon />
-          <span className="truncate">New Task</span>
+        <Link href="/home">
+          <HomeIcon />
+          <span className="truncate">Home</span>
           <ShortcutHint letter="O" />
         </Link>
       </SidebarMenuButton>
@@ -186,75 +160,24 @@ function NavMenu({
   );
 }
 
-function CollapsibleNavGroup({
-  label,
-  children,
-  scrollable = false,
-}: {
-  label: string;
-  children: ReactNode;
-  scrollable?: boolean;
-}) {
-  return (
-    <Collapsible
-      defaultOpen
-      className={cn(
-        "group/collapsible",
-        scrollable && "flex min-h-0 flex-1 flex-col",
-      )}
-    >
-      <SidebarGroup
-        className={cn("py-1", scrollable && "flex min-h-0 flex-1 flex-col")}
-      >
-        <SidebarGroupLabel
-          asChild
-          className="text-[13px] font-medium text-zinc-500 group-data-[collapsible=icon]:hidden"
-        >
-          <CollapsibleTrigger>
-            {label}
-            <Icon
-              icon={ArrowDown01Icon}
-              className="ease-[cubic-bezier(0.33,1,0.68,1)] ml-auto size-4 text-sidebar-foreground/90 transition-transform duration-200 group-data-[collapsible=icon]:size-4.5 group-data-[state=open]/collapsible:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
-        </SidebarGroupLabel>
-        <CollapsibleContent
-          className={cn(
-            "overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down motion-reduce:animate-none",
-            scrollable && "flex min-h-0 flex-1 flex-col",
-          )}
-        >
-          <SidebarGroupContent
-            className={
-              scrollable
-                ? "min-h-0 flex-1 overflow-y-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                : undefined
-            }
-          >
-            {children}
-          </SidebarGroupContent>
-        </CollapsibleContent>
-      </SidebarGroup>
-    </Collapsible>
-  );
-}
-
 type Props = ComponentProps<typeof Sidebar>;
 
 export function AppSidebar(props: Props) {
+  const { isLoggedIn } = useAuth();
   const reduceMotion = useReducedMotion();
   const itemVariants = getSidebarItemVariants(!!reduceMotion);
   const router = useRouter();
   const isHireExpertsEnabled = useGetFlag(Flag.HIRE_EXPERTS);
-  const isBrainDumpEnabled = useGetFlag(Flag.ONBOARDING_BRAIN_DUMP);
   const mainLinks = isHireExpertsEnabled
     ? MAIN_LINKS.filter((link) => link.href !== "/library")
     : MAIN_LINKS;
-  const workspaceLinks = isHireExpertsEnabled
-    ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
-    : WORKSPACE_LINKS;
+  const filesEnabled = useGetFlag(Flag.ARTIFACTS_PAGE);
+  const workspaceLinks = (
+    isHireExpertsEnabled
+      ? [{ name: "Team", href: "/team", icon: AddTeamIcon }, ...WORKSPACE_LINKS]
+      : WORKSPACE_LINKS
+  ).filter((link) => link.href !== "/artifacts" || filesEnabled);
 
-  // New Task shortcut: Cmd/Ctrl+Shift+O opens a fresh chat on /copilot.
   useEffect(() => {
     function handleNewTaskShortcut(event: KeyboardEvent) {
       if (event.repeat) return;
@@ -263,7 +186,7 @@ export function AppSidebar(props: Props) {
       if (!event.shiftKey) return;
       if (isEditableElement(document.activeElement)) return;
       event.preventDefault();
-      router.push("/copilot");
+      router.push("/home");
     }
 
     document.addEventListener("keydown", handleNewTaskShortcut);
@@ -271,65 +194,39 @@ export function AppSidebar(props: Props) {
   }, [router]);
 
   return (
-    <Sidebar
-      collapsible="icon"
-      {...props}
-      className={
-        isBrainDumpEnabled
-          ? "[&_[data-sidebar=sidebar]]:bg-[#F4F4F4]"
-          : "[&_[data-sidebar=sidebar]]:bg-[#ffffff]"
-      }
-    >
-      <AppSidebarHeader />
+    <Sidebar collapsible="icon" {...props}>
+      <SidebarContent className="scroll-py-16 gap-0 overflow-y-auto overflow-x-hidden overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] group-data-[collapsible=icon]:scroll-pt-24 group-data-[collapsible=icon]:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+        <AppSidebarHeader />
 
-      <SidebarContent className="gap-2 overflow-hidden">
         <motion.div
           variants={sidebarContainerVariants}
           initial="hidden"
           animate="show"
-          className="flex min-h-0 flex-1 flex-col gap-2"
+          className="flex shrink-0 flex-col gap-2"
         >
           <motion.div variants={itemVariants}>
             <SidebarGroup className="mt-0 py-1">
               <SidebarGroupContent>
-                <NavMenu
-                  links={mainLinks}
-                  leading={
-                    <>
-                      {isHireExpertsEnabled && <NavItem link={HOME_LINK} />}
-                      <NewTaskItem />
-                    </>
-                  }
-                />
+                <NavMenu links={mainLinks} leading={<HomeItem />} />
               </SidebarGroupContent>
             </SidebarGroup>
           </motion.div>
 
-          <motion.div variants={itemVariants}>
-            <CollapsibleNavGroup label="Workspace">
-              <NavMenu links={workspaceLinks} />
-            </CollapsibleNavGroup>
-          </motion.div>
+          {workspaceLinks.length > 0 ? (
+            <motion.div variants={itemVariants}>
+              <CollapsibleNavGroup label="Workspace">
+                <NavMenu links={workspaceLinks} />
+              </CollapsibleNavGroup>
+            </motion.div>
+          ) : null}
 
-          <motion.div
-            variants={itemVariants}
-            className="flex min-h-0 flex-1 flex-col group-data-[collapsible=icon]:hidden"
-          >
-            <CollapsibleNavGroup label="Recent chats" scrollable>
-              {/* Suspense boundary: RecentChats reads useSearchParams(), which
-                  Next.js requires to be wrapped to avoid forcing the route to
-                  client-side rendering. */}
-              <Suspense fallback={null}>
-                <RecentChats />
-              </Suspense>
-            </CollapsibleNavGroup>
-          </motion.div>
+          {isLoggedIn && <ChatsNavSection itemVariants={itemVariants} />}
         </motion.div>
+
+        <SidebarUserActions />
       </SidebarContent>
 
-      <SidebarUserActions />
-
-      <SidebarRail />
+      <SidebarRail className="w-2 translate-x-0 after:left-0 group-data-[side=left]:-right-2 group-data-[side=right]:-left-2 group-data-[side=right]:after:left-auto group-data-[side=right]:after:right-0 sm:hidden md:flex" />
     </Sidebar>
   );
 }

@@ -6,7 +6,6 @@ from typing import Any
 
 from backend.blocks.llm import LLM_PROVIDER_NAMES
 from backend.copilot.constants import COPILOT_NODE_EXEC_ID_SEPARATOR
-from backend.copilot.context import get_current_permissions
 from backend.copilot.model import ChatSession
 from backend.data.activity_event import ActivityEventDraft
 
@@ -114,6 +113,7 @@ class RunBlockTool(BaseTool):
         block_id: str = "",
         input_data: dict | None = None,
         validate_only: bool = False,
+        gate_approved: bool = False,
         **kwargs,  # dry_run is intentionally not accepted; read from session.dry_run
     ) -> ToolResponseBase:
         """Execute a block with the given input data.
@@ -123,6 +123,8 @@ class RunBlockTool(BaseTool):
             session: Chat session
             block_id: Block UUID to execute
             input_data: Input values for the block
+            gate_approved: The user approved this exact call on a card, so the
+                irreversible-action pause would ask the same question twice.
 
         Returns:
             BlockOutputResponse: Block execution outputs
@@ -140,19 +142,19 @@ class RunBlockTool(BaseTool):
             return ErrorResponse(
                 message="Please provide a block_id",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not isinstance(input_data, dict):
             return ErrorResponse(
                 message="input_data must be an object",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         if not user_id:
             return ErrorResponse(
                 message="Authentication required",
                 session_id=session_id,
-            )
+            ).from_outside()
 
         logger.info("Preparing block %s for user %s", block_id, user_id)
 
@@ -168,27 +170,6 @@ class RunBlockTool(BaseTool):
         if isinstance(prep_or_err, ToolResponseBase):
             return prep_or_err
         prep: BlockPreparation = prep_or_err
-
-        # Check block-level permissions before execution.
-        perms = get_current_permissions()
-        if perms is not None and not perms.is_block_allowed(block_id, prep.block.name):
-            available_hint = (
-                f"Allowed identifiers: {perms.blocks!r}. "
-                if not perms.blocks_exclude and perms.blocks
-                else (
-                    f"Blocked identifiers: {perms.blocks!r}. "
-                    if perms.blocks_exclude and perms.blocks
-                    else ""
-                )
-            )
-            return ErrorResponse(
-                message=(
-                    f"Block '{prep.block.name}' ({block_id}) is not permitted "
-                    f"by the current execution permissions. {available_hint}"
-                    "Use find_capability to discover blocks that are allowed."
-                ),
-                session_id=session_id,
-            )
 
         # Dry-run fast-path: skip credential/HITL checks — simulation never calls
         # the real service so credentials and review gates are not needed.
@@ -232,7 +213,7 @@ class RunBlockTool(BaseTool):
                     message=f"Block '{prep.block.name}' has an invalid output schema",
                     error=str(e),
                     session_id=session_id,
-                )
+                ).from_outside()
 
             credentials_meta = list(prep.matched_credentials.values())
             missing = sorted(
@@ -276,23 +257,31 @@ class RunBlockTool(BaseTool):
                     credentials=credentials_meta,
                 ),
                 user_authenticated=True,
-            )
+            ).from_outside()
 
         if not dry_run:
             spend_gate = await check_spend_approval(prep, user_id, session)
             if spend_gate is not None:
                 return spend_gate
 
-        hitl_or_err = await check_hitl_review(
-            prep,
-            user_id,
-            session_id,
-            organization_id=session.organization_id,
-            team_id=session.team_id,
-        )
-        if isinstance(hitl_or_err, ToolResponseBase):
-            return hitl_or_err
-        synthetic_node_exec_id, input_data = hitl_or_err
+        if gate_approved:
+            synthetic_node_exec_id = (
+                f"{prep.synthetic_node_id}"
+                f"{COPILOT_NODE_EXEC_ID_SEPARATOR}"
+                f"{uuid.uuid4().hex[:8]}"
+            )
+            input_data = prep.input_data
+        else:
+            hitl_or_err = await check_hitl_review(
+                prep,
+                user_id,
+                session_id,
+                organization_id=session.organization_id,
+                team_id=session.team_id,
+            )
+            if isinstance(hitl_or_err, ToolResponseBase):
+                return hitl_or_err
+            synthetic_node_exec_id, input_data = hitl_or_err
 
         return await execute_block(
             block=prep.block,

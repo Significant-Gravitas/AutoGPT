@@ -205,7 +205,7 @@ async def test_chat_review_reuses_the_open_row_for_the_expert(mocker) -> None:
     )
     mocker.patch.object(
         sa.human_review,
-        "get_pending_reviews_for_execution",
+        "get_pending_reviews_for_chat_session",
         AsyncMock(return_value=[existing]),
     )
     create = mocker.patch.object(
@@ -223,7 +223,9 @@ async def test_chat_review_reuses_the_open_row_for_the_expert(mocker) -> None:
 @pytest.mark.asyncio
 async def test_chat_review_opens_on_the_session_rails(mocker) -> None:
     mocker.patch.object(
-        sa.human_review, "get_pending_reviews_for_execution", AsyncMock(return_value=[])
+        sa.human_review,
+        "get_pending_reviews_for_chat_session",
+        AsyncMock(return_value=[]),
     )
     create = mocker.patch.object(
         sa.human_review, "get_or_create_human_review", AsyncMock()
@@ -236,6 +238,7 @@ async def test_chat_review_opens_on_the_session_rails(mocker) -> None:
     kwargs = create.await_args.kwargs
     assert review_id == kwargs["node_exec_id"]
     assert review_id.startswith("copilot-node-expert-spend:e-1:")
-    assert kwargs["graph_exec_id"] == "copilot-session-s-1"
+    assert kwargs["chat_session_id"] == "s-1"
+    assert "graph_exec_id" not in kwargs
     assert kwargs["editable"] is False
     assert kwargs["input_data"]["block"] == "Send Email"

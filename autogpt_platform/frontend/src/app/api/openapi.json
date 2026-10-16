@@ -2785,74 +2785,6 @@
         "security": [{ "HTTPBearerJWT": [] }]
       }
     },
-    "/api/analytics/log_raw_analytics": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Analytics",
-        "operationId": "postAnalyticsLogRawAnalytics",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postAnalyticsLogRawAnalytics"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
-    "/api/analytics/log_raw_metric": {
-      "post": {
-        "tags": ["analytics"],
-        "summary": "Log Raw Metric",
-        "operationId": "postAnalyticsLogRawMetric",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": { "application/json": { "schema": {} } }
-          },
-          "401": {
-            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
-      }
-    },
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
@@ -3134,6 +3066,46 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/auth/user/consent": {
+      "post": {
+        "tags": ["v1", "auth"],
+        "summary": "Record user consent",
+        "description": "Record the terms version accepted at signup and, if the user refused\nmarketing email, the opt-out. Idempotent; never clears an opt-out.",
+        "operationId": "postV1Record user consent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordUserConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UserConsentResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
@@ -4226,6 +4198,141 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/at-reset": {
+      "get": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "List turns at budget reset",
+        "description": "The chat's pending resume and send at the budget reset.",
+        "operationId": "getV2List turns at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AtResetTurnsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Schedule turn at budget reset",
+        "description": "Resume the chat's paused task, or send a message, when the budget resets.\n\nIt fires just after the exhausted window that refills last. A chat has\nat most one of each: a resume set again replaces the earlier one, and a\nsend joins the message already waiting, so nothing written meanwhile is\nlost. Sending a message in the chat cancels a pending resume.",
+        "operationId": "postV2Schedule turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/AtResetRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AtResetTurn" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found, or not writable" },
+          "409": {
+            "description": "\"not_out_of_budget\": nothing to wait for, so carry on now. \"no_reset\": the allowance never refills (a trial)."
+          },
+          "413": {
+            "description": "\"message_too_long\": the message waiting plus this one would be longer than a single message may be"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Usage could not be read; retry shortly" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/at-reset/{kind}": {
+      "delete": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Cancel turn at budget reset",
+        "description": "Cancel the chat's resume or send at the budget reset; one that isn't\nset is already cancelled.",
+        "operationId": "deleteV2Cancel turn at budget reset",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": ["resume", "send"],
+              "type": "string",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "204": { "description": "Successful Response" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/cancel": {
       "post": {
         "tags": ["v2", "chat", "chat"],
@@ -4358,6 +4465,72 @@
         }
       }
     },
+    "/api/chat/sessions/{session_id}/continue": {
+      "post": {
+        "tags": ["v2", "chat"],
+        "summary": "Continue Session",
+        "description": "Continue the chat's task from the checkpoint it paused at.",
+        "operationId": "postV2ContinueSession",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  { "$ref": "#/components/schemas/ContinueSessionRequest" },
+                  { "type": "null" }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContinueSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "402": {
+            "description": "Subscription required (NO_TIER user, paywall on)"
+          },
+          "404": { "description": "Session not found or access denied" },
+          "409": {
+            "description": "A turn is already running in this chat (turn_in_progress), or the chat runs on a connection that can't continue a task (unsupported_connection)"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "429": {
+            "description": "Usage limit or concurrent-turn limit reached"
+          },
+          "503": {
+            "description": "Chat service degraded; retry after Retry-After"
+          }
+        }
+      }
+    },
     "/api/chat/sessions/{session_id}/credential-selection": {
       "put": {
         "tags": ["v2", "chat", "chat"],
@@ -4449,6 +4622,59 @@
           },
           "502": { "description": "The desktop could not be started" },
           "503": { "description": "E2B is not configured" }
+        }
+      }
+    },
+    "/api/chat/sessions/{session_id}/feedback": {
+      "post": {
+        "tags": ["v2", "chat", "chat"],
+        "summary": "Submit message feedback",
+        "description": "Rate a reply in one of the caller's chats.\n\nSaves the rating, one per reply and score name so rating again\noverwrites it, and scores it in Langfuse on the trace of the turn that\nwrote the reply, or on the chat's Langfuse session when that trace is\nnot known. It also goes to PostHog LLM analytics as an ``$ai_metric``\nevent. Langfuse or PostHog being down does not fail the request; the\nresponse says where the Langfuse score went.",
+        "operationId": "postV2Submit message feedback",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Session Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageFeedbackResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": {
+            "description": "Session or reply not found, or not the caller's"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
         }
       }
     },
@@ -4750,7 +4976,7 @@
       "get": {
         "tags": ["v2", "chat", "chat"],
         "summary": "Resume Session Stream",
-        "description": "Resume an active stream for a session.\n\nCalled by the AI SDK's ``useChat(resume: true)`` on page load.\nChecks for an active (in-progress) task on the session and either replays\nthe full SSE stream or returns 204 No Content if nothing is running.\n\nAlways replays the active turn from ``0-0``. The AI SDK UI-message parser\nkeeps text/reasoning part state inside a single parser instance; resuming\nfrom a Redis cursor can skip the ``*-start`` events required by later\n``*-delta`` chunks.",
+        "description": "Resume a session's stream.\n\nWith ``turn``, serves exactly that turn's stored entries after ``after``\n(``0-0`` for all of them) and then its live ones: 409 when entries after\nthe cursor were trimmed, 410 when the stream is gone. Every entry frame\ncarries ``id: <turn>:<entry>``.\n\nWithout ``turn``, replays the active turn from ``0-0``, or returns 204\nwhen nothing is running: the AI SDK's parser cannot continue a block it\ndid not see start.",
         "operationId": "getV2ResumeSessionStream",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -4759,6 +4985,30 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Session Id" }
+          },
+          {
+            "name": "turn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Turn to read; with it, only its stored entries",
+              "title": "Turn"
+            },
+            "description": "Turn to read; with it, only its stored entries"
+          },
+          {
+            "name": "after",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d+-\\d+$",
+              "description": "Stream entry id the client last applied",
+              "default": "0-0",
+              "title": "After"
+            },
+            "description": "Stream entry id the client last applied"
           }
         ],
         "responses": {
@@ -4768,6 +5018,22 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "Cursor was trimmed",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
+          },
+          "410": {
+            "description": "Stream expired",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/StreamResumeRefusal" }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -5746,6 +6012,7 @@
       "get": {
         "tags": ["v1", "credits"],
         "summary": "Manage payment methods",
+        "description": "Return a Stripe billing-portal URL for the caller.\n\n``url`` is ``None`` when the user has no Stripe customer yet: this route is\nrequested on every Settings > Billing load, so it must never provision a\ncustomer as a side effect (see ``create_billing_portal_session``).",
         "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
@@ -5753,7 +6020,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "additionalProperties": { "type": "string" },
+                  "additionalProperties": {
+                    "anyOf": [{ "type": "string" }, { "type": "null" }]
+                  },
                   "type": "object",
                   "title": "Response Getv1Manage Payment Methods"
                 }
@@ -5765,6 +6034,178 @@
           }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/pro-activation/current": {
+      "get": {
+        "tags": ["subscriptions"],
+        "summary": "Get Current Pro Activation",
+        "operationId": "getSubscriptionsGetCurrentProActivation",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/pro-activation/preview": {
+      "post": {
+        "tags": ["subscriptions"],
+        "summary": "Preview Pro Activation",
+        "operationId": "postSubscriptionsPreviewProActivation",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/pro-activation/{attempt_id}": {
+      "get": {
+        "tags": ["subscriptions"],
+        "summary": "Get Pro Activation",
+        "operationId": "getSubscriptionsGetProActivation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Attempt Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        }
+      }
+    },
+    "/api/credits/pro-activation/{attempt_id}/confirm": {
+      "post": {
+        "tags": ["subscriptions"],
+        "summary": "Confirm Pro Activation",
+        "operationId": "postSubscriptionsConfirmProActivation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Attempt Id" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActivationConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ActivationResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "No owned activation" },
+          "409": {
+            "description": "Review fresh terms or retry a concurrent confirmation"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "502": {
+            "description": "Preview temporarily unavailable; no payment started"
+          }
+        }
       }
     },
     "/api/credits/refunds": {
@@ -5849,6 +6290,47 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SubscriptionStatusResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/subscription/preview": {
+      "post": {
+        "tags": ["v1", "credits"],
+        "summary": "Review the prorated charge for a paid Pro-to-Max upgrade",
+        "operationId": "previewSubscriptionUpgrade",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscriptionUpgradePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubscriptionUpgradePreview"
                 }
               }
             }
@@ -5956,6 +6438,14 @@
           },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       },
@@ -6068,6 +6558,31 @@
           "502": {
             "description": "Stripe confirmation temporarily unavailable"
           }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/credits/trial/resume": {
+      "post": {
+        "tags": ["trials"],
+        "summary": "Resume Trial",
+        "operationId": "postTrialsResumeTrial",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TrialStatusResponse" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "409": {
+            "description": "No live cancel-pending trial to resume, another plan is active, or the trial is already being updated"
+          },
+          "502": { "description": "Stripe update temporarily unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
       }
@@ -6209,6 +6724,19 @@
           }
         },
         "security": [{ "APIKeyAuthenticator-X-Postmark-Webhook-Token": [] }]
+      }
+    },
+    "/api/email/mailerlite/webhook": {
+      "post": {
+        "tags": ["v1", "email"],
+        "summary": "Handle MailerLite webhooks",
+        "operationId": "postV1Handle mailerlite webhooks",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          }
+        }
       }
     },
     "/api/email/unsubscribe": {
@@ -6642,6 +7170,80 @@
           "503": { "description": "Expert workspace unavailable" }
         },
         "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations": {
+      "post": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Generate Expert Avatar",
+        "operationId": "generate_expert_avatar",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ExpertAvatarRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/experts/avatars/generations/{job_id}": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private", "experts"],
+        "summary": "Get Expert Avatar Generation",
+        "operationId": "get_expert_avatar_generation",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid", "title": "Job Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ExpertAvatarJob" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/experts/identities": {
@@ -7316,6 +7918,49 @@
         }
       }
     },
+    "/api/experts/{expert_id}/onboarding": {
+      "get": {
+        "tags": ["v2", "experts", "experts", "private"],
+        "summary": "Get Expert Onboarding",
+        "operationId": "get_expert_onboarding",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Expert Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/ExpertOnboardingResponse" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Get Expert Onboarding"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experts/{expert_id}/pod": {
       "patch": {
         "tags": ["v2", "experts", "experts", "private"],
@@ -7475,6 +8120,9 @@
               }
             }
           },
+          "400": {
+            "description": "A marketplace skill is both attached and removed"
+          },
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
@@ -7620,6 +8268,46 @@
           },
           "503": {
             "description": "Workflow schedule cleanup temporarily unavailable"
+          }
+        }
+      }
+    },
+    "/api/feature-flags": {
+      "get": {
+        "tags": ["feature-flags"],
+        "summary": "Get Feature Flags",
+        "description": "The frontend's flags for the caller, evaluated as the backend's own reads are.",
+        "operationId": "get_feature_flags",
+        "security": [{ "HTTPBearer": [] }],
+        "parameters": [
+          {
+            "name": "visitor_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed.",
+              "title": "Visitor Id"
+            },
+            "description": "A signed-out visitor's analytics id, sent only with their analytics consent; ignored for a signed-in caller or when malformed."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/FrontendFlagValues" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
           }
         }
       }
@@ -9566,6 +10254,56 @@
         }
       }
     },
+    "/api/library/agents/batch": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agents By Ids",
+        "description": "Get several library agents at once, as `GET /agents/{id}` would return each.",
+        "operationId": "getV2Get library agents by ids",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": { "type": "string" },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Library agent IDs; unknown or inaccessible ones are omitted",
+              "title": "Ids"
+            },
+            "description": "Library agent IDs; unknown or inaccessible ones are omitted"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/LibraryAgent" },
+                  "title": "Response Getv2Get Library Agents By Ids"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/by-graph/{graph_id}": {
       "get": {
         "tags": ["v2", "library", "private"],
@@ -11470,6 +12208,9 @@
           "401": {
             "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
           },
+          "409": {
+            "description": "The wizard draft changed in another session"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -11867,7 +12608,8 @@
                 "CAPABILITY_CARDS",
                 "AGENTS_TAB_INTRO",
                 "MARKETPLACE_TAB_INTRO",
-                "BUILD_TAB_INTRO"
+                "BUILD_TAB_INTRO",
+                "WORKFLOWS_MOVED"
               ],
               "type": "string",
               "title": "Step"
@@ -13813,6 +14555,54 @@
         }
       }
     },
+    "/api/review/session/{chat_session_id}": {
+      "get": {
+        "tags": ["v2", "executions", "review", "v2", "executions", "review"],
+        "summary": "Get Pending Reviews for Chat Session",
+        "description": "Get the reviews an AutoPilot chat is waiting on, oldest first.\n\nOnly the caller's own reviews are returned, so another user's chat session\nid yields an empty list.",
+        "operationId": "getV2Get pending reviews for chat session",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "chat_session_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Chat Session Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of pending reviews for the chat session",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PendingHumanReviewModel"
+                  },
+                  "title": "Response Getv2Get Pending Reviews For Chat Session"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "500": {
+            "description": "Server error",
+            "content": { "application/json": {} }
+          }
+        }
+      }
+    },
     "/api/schedules": {
       "get": {
         "tags": ["v1", "schedules"],
@@ -13912,6 +14702,57 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": ["v1", "schedules"],
+        "summary": "Update execution schedule",
+        "description": "Change an agent schedule's name, timing or inputs. Only the schedule's\nowner can edit it; anyone else gets the same 404 as a missing schedule.",
+        "operationId": "patchV1Update execution schedule",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "schedule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the schedule to update",
+              "title": "Schedule Id"
+            },
+            "description": "ID of the schedule to update"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ScheduleUpdateRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GraphExecutionJobInfo"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
       }
     },
     "/api/search/global": {
@@ -13957,6 +14798,698 @@
                 "schema": {
                   "$ref": "#/components/schemas/GlobalSearchResponse"
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/decisions": {
+      "get": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "List Decisions",
+        "description": "One list of open proposals across every scope the caller owns.",
+        "operationId": "list_skill_learning_decisions",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OpenDecisionsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skill-learning/experts/{expert_id}/policy": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Update Expert Policy",
+        "description": "Pause or resume nightly learning for one expert (use is unaffected).",
+        "operationId": "update_expert_learning_policy",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Expert id owned by the caller",
+              "title": "Expert Id"
+            },
+            "description": "Expert id owned by the caller"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpertLearningPolicyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpertLearningPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/history": {
+      "get": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "List History",
+        "description": "Versions and review dispositions, newest first, for one scope.",
+        "operationId": "list_skill_learning_history",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          },
+          {
+            "name": "origin",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 32 },
+                { "type": "null" }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "maxLength": 32 },
+                { "type": "null" }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "default": 50,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningHistoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/run": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Run Now",
+        "description": "Run one learning pass for the caller now (same validation as nightly).",
+        "operationId": "run_skill_learning_now",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillLearningResult" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          }
+        },
+        "security": [{ "HTTPBearerJWT": [] }]
+      }
+    },
+    "/api/skill-learning/skills/{name}": {
+      "get": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Get Skill Detail",
+        "description": "Current version, evidence, limits, sources, history, policy, and reuse.",
+        "operationId": "get_skill_learning_detail",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          },
+          {
+            "name": "version_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                { "type": "string", "minLength": 1, "maxLength": 128 },
+                { "type": "null" }
+              ],
+              "title": "Version Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillLearningDetail" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/skills/{name}/decisions/{version_id}": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Decide",
+        "description": "Keep current, apply the proposal, or apply an edited alternative.",
+        "operationId": "decide_skill_learning_proposal",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "description": "Skill version id",
+              "title": "Version Id"
+            },
+            "description": "Skill version id"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/DecisionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/skills/{name}/edit": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Edit Skill",
+        "description": "Apply the owner's correction now; later automated changes become\nproposals unless ``keep_auto_improve`` is set.\n\nA content-check block is a domain outcome, not a transport error: the\nresponse is 200 with ``status == \"blocked_content\"`` and only the\npattern class and ordinal step, so the client keeps the draft and shows\nthe reason without ever echoing the blocked value.",
+        "operationId": "edit_learned_skill",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EditSkillRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/skills/{name}/outcome": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Report Outcome",
+        "description": "Attach an explicit outcome to the exact version used (evidence for a\nlater review; it does not change the skill).",
+        "operationId": "report_skill_outcome",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/OutcomeReportRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/skills/{name}/policy": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Update Policy",
+        "description": "Pause learning, stop using, or toggle automatic improvements — separately.",
+        "operationId": "update_skill_learning_policy",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SkillPolicyRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SkillLearningPolicy" }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/skills/{name}/restore": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Restore",
+        "description": "Restore prior content as a new version. Affects future use only.",
+        "operationId": "restore_learned_skill_version",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "description": "Skill slug",
+              "title": "Name"
+            },
+            "description": "Skill slug"
+          },
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RestoreVersionRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningActionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/sources/{source_kind}/{source_ref}/exclude": {
+      "post": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Exclude Source",
+        "description": "Exclude a source from learning, including queued and published work.\n\nVersions that depend on it become unavailable; a prior eligible version\nis restored where one exists, otherwise the skill is paused.",
+        "operationId": "exclude_skill_learning_source",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "source_kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "title": "Source Kind"
+            }
+          },
+          {
+            "name": "source_ref",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256,
+              "title": "Source Ref"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceExclusionResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skill-learning/status": {
+      "get": {
+        "tags": ["v2", "skill-learning", "skill-learning", "private"],
+        "summary": "Get Status",
+        "description": "Operator view: backlog, freshness, retries, cost, and pause state.",
+        "operationId": "get_skill_learning_status",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "expert_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Expert scope; omit for personal",
+              "title": "Expert Id"
+            },
+            "description": "Expert scope; omit for personal"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LearningStatus" }
               }
             }
           },
@@ -14138,7 +15671,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.  409 means the delete could not be ordered with another\nchange to the owner's skills; nothing was deleted, so try again.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -14940,6 +16473,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
@@ -15079,6 +16613,7 @@
         "summary": "Download agent file",
         "description": "Download agent graph file for a specific marketplace listing version",
         "operationId": "getV2Download agent file",
+        "security": [{ "HTTPBearer": [] }],
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -15258,7 +16793,7 @@
       "get": {
         "tags": ["v2", "store", "private"],
         "summary": "Get user profile",
-        "description": "Get the profile details for the authenticated user.",
+        "description": "Get the profile details for the authenticated user, creating their\ndefault profile if account setup hasn't yet.",
         "operationId": "getV2Get user profile",
         "responses": {
           "200": {
@@ -15920,17 +17455,31 @@
       "post": {
         "tags": ["v2", "store", "private"],
         "summary": "Upload submission media",
-        "description": "Upload media for a marketplace listing submission",
+        "description": "Upload media for a marketplace listing submission or Expert appearance.",
         "operationId": "postV2Upload submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": ["submission", "expert-avatar"],
+              "type": "string",
+              "default": "submission",
+              "title": "Purpose"
+            }
+          }
+        ],
         "requestBody": {
+          "required": true,
           "content": {
             "multipart/form-data": {
               "schema": {
                 "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -15955,8 +17504,99 @@
               }
             }
           }
-        },
-        "security": [{ "HTTPBearerJWT": [] }]
+        }
+      }
+    },
+    "/api/store/submissions/media/{owner_user_id}/{media_type}/{filename}": {
+      "get": {
+        "tags": ["v2", "store", "private"],
+        "summary": "Read private submission media",
+        "description": "Serve a user's private media to them, to members of an organization they\nshare, and to admins. Anyone else gets a 404, as if it did not exist.",
+        "operationId": "getV2Read private submission media",
+        "security": [{ "HTTPBearerJWT": [] }],
+        "parameters": [
+          {
+            "name": "owner_user_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Owner User Id" }
+          },
+          {
+            "name": "media_type",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Media Type" }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Filename" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "206": {
+            "description": "Requested byte range",
+            "content": {
+              "image/jpeg": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/png": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/gif": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "image/webp": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/mp4": {
+                "schema": { "type": "string", "format": "binary" }
+              },
+              "video/webm": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          },
+          "307": { "description": "Short-lived signed download URL" },
+          "401": {
+            "$ref": "#/components/responses/HTTP401NotAuthenticatedError"
+          },
+          "404": { "description": "Media not found" },
+          "416": { "description": "Requested range is not satisfiable" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          },
+          "503": { "description": "Private media is temporarily unavailable" }
+        }
       }
     },
     "/api/store/submissions/{store_listing_version_id}": {
@@ -17128,6 +18768,196 @@
         "title": "AccuracyTrendsResponse",
         "description": "Response model for accuracy trends and alerts."
       },
+      "ActivationConfirmRequest": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "const": true,
+            "title": "Confirmed"
+          },
+          "terms_token": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "title": "Terms Token"
+          }
+        },
+        "type": "object",
+        "required": ["confirmed", "terms_token"],
+        "title": "ActivationConfirmRequest"
+      },
+      "ActivationPreviewRequest": {
+        "properties": {
+          "plan": {
+            "anyOf": [
+              { "type": "string", "enum": ["PRO", "MAX"] },
+              { "type": "null" }
+            ],
+            "title": "Plan"
+          },
+          "return_to": {
+            "type": "string",
+            "title": "Return To",
+            "default": "/settings/billing"
+          }
+        },
+        "type": "object",
+        "title": "ActivationPreviewRequest"
+      },
+      "ActivationResponse": {
+        "properties": {
+          "id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "confirmation_required",
+              "payment_required",
+              "action_required",
+              "processing",
+              "ready",
+              "not_applicable",
+              "failed"
+            ],
+            "title": "Status"
+          },
+          "terms": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ActivationTerms" },
+              { "type": "null" }
+            ]
+          },
+          "terms_token": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Token"
+          },
+          "return_to": {
+            "type": "string",
+            "title": "Return To",
+            "default": "/settings/billing"
+          },
+          "invoice_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Invoice Id"
+          },
+          "hosted_invoice_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Hosted Invoice Url"
+          },
+          "retry_after_seconds": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Retry After Seconds"
+          },
+          "error_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error Code"
+          },
+          "usage_reset": {
+            "type": "boolean",
+            "title": "Usage Reset",
+            "default": false
+          },
+          "activation_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Activation Id"
+          }
+        },
+        "type": "object",
+        "required": ["status"],
+        "title": "ActivationResponse"
+      },
+      "ActivationTerms": {
+        "properties": {
+          "plan": {
+            "type": "string",
+            "enum": ["PRO", "MAX"],
+            "title": "Plan",
+            "default": "PRO"
+          },
+          "price_id": { "type": "string", "title": "Price Id" },
+          "accepted_offer_token": {
+            "type": "string",
+            "title": "Accepted Offer Token"
+          },
+          "amount_due": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Amount Due"
+          },
+          "currency": { "type": "string", "title": "Currency" },
+          "billing_interval": {
+            "type": "string",
+            "enum": ["month", "year"],
+            "title": "Billing Interval"
+          },
+          "billing_interval_count": {
+            "type": "integer",
+            "title": "Billing Interval Count",
+            "default": 1
+          },
+          "renewal_unit_amount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Renewal Unit Amount"
+          },
+          "renewal_discounts": {
+            "items": { "$ref": "#/components/schemas/RenewalDiscount" },
+            "type": "array",
+            "title": "Renewal Discounts"
+          },
+          "renewal_tax": { "$ref": "#/components/schemas/RenewalTax" },
+          "charge_timing": {
+            "type": "string",
+            "const": "on_confirmation",
+            "title": "Charge Timing",
+            "default": "on_confirmation"
+          },
+          "renewal_terms": { "type": "string", "title": "Renewal Terms" },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At"
+          },
+          "trial_ends_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Trial Ends At"
+          },
+          "period_starts_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Period Starts At"
+          },
+          "next_payment_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Next Payment At"
+          },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "price_id",
+          "accepted_offer_token",
+          "amount_due",
+          "currency",
+          "billing_interval",
+          "renewal_unit_amount",
+          "renewal_terms",
+          "expires_at"
+        ],
+        "title": "ActivationTerms"
+      },
       "ActiveStreamInfo": {
         "properties": {
           "turn_id": { "type": "string", "title": "Turn Id" },
@@ -17135,6 +18965,12 @@
           "started_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Started At"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -17524,7 +19360,7 @@
           "title": {
             "type": "string",
             "title": "Title",
-            "default": "Available Agents"
+            "default": "Available Workflows"
           },
           "agents": {
             "items": { "$ref": "#/components/schemas/AgentInfo" },
@@ -17568,11 +19404,73 @@
         "required": ["pod_id"],
         "title": "AssignPodRequest"
       },
+      "AtResetRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind",
+            "description": "\"resume\" picks the paused task back up; \"send\" sends ``message`` as the user's."
+          },
+          "message": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64000 },
+              { "type": "null" }
+            ],
+            "title": "Message",
+            "description": "What to send. Required for send, ignored for resume."
+          }
+        },
+        "type": "object",
+        "required": ["kind"],
+        "title": "AtResetRequest",
+        "description": "A turn to run when the budget resets."
+      },
+      "AtResetTurn": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": ["resume", "send"],
+            "title": "Kind"
+          },
+          "run_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Run At"
+          },
+          "message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": ["kind", "run_at"],
+        "title": "AtResetTurn",
+        "description": "A turn set to run when the budget resets."
+      },
+      "AtResetTurnsResponse": {
+        "properties": {
+          "jobs": {
+            "items": { "$ref": "#/components/schemas/AtResetTurn" },
+            "type": "array",
+            "title": "Jobs"
+          }
+        },
+        "type": "object",
+        "required": ["jobs"],
+        "title": "AtResetTurnsResponse",
+        "description": "The chat's turns set for the budget reset, at most one of each kind."
+      },
       "AuthEmailRequest": {
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["reset_password", "verify_email", "change_email"],
+            "enum": [
+              "reset_password",
+              "verify_email",
+              "change_email",
+              "set_password"
+            ],
             "title": "Type"
           },
           "to": { "type": "string", "format": "email", "title": "To" },
@@ -18154,25 +20052,6 @@
         "required": ["is_active"],
         "title": "Body_patchOauthUpdateAppStatus"
       },
-      "Body_postAnalyticsLogRawAnalytics": {
-        "properties": {
-          "type": { "type": "string", "title": "Type" },
-          "data": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Data",
-            "description": "The data to log"
-          },
-          "data_index": {
-            "type": "string",
-            "title": "Data Index",
-            "description": "Indexable field for any count based analytical measures like page order clicking, tutorial step completion, etc."
-          }
-        },
-        "type": "object",
-        "required": ["type", "data", "data_index"],
-        "title": "Body_postAnalyticsLogRawAnalytics"
-      },
       "Body_postOauthIntrospect": {
         "properties": {
           "token": {
@@ -18486,6 +20365,10 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Add Bot Url"
           },
+          "dm_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dm Url"
+          },
           "dm_link": {
             "anyOf": [
               { "$ref": "#/components/schemas/PlatformUserLinkInfo" },
@@ -18619,7 +20502,10 @@
       "BriefingDecisionItem": {
         "properties": {
           "node_exec_id": { "type": "string", "title": "Node Exec Id" },
-          "graph_exec_id": { "type": "string", "title": "Graph Exec Id" },
+          "graph_exec_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Graph Exec Id"
+          },
           "title": { "type": "string", "title": "Title" },
           "expert_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -18897,6 +20783,16 @@
             ],
             "title": "Origin"
           },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode"
+          },
           "kind": { "type": "string", "title": "Kind", "default": "normal" },
           "dream_pass_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -19100,6 +20996,29 @@
             "title": "Reset Cost",
             "description": "Credit cost (in cents) to reset the daily limit. 0 = feature disabled.",
             "default": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": ["ok", "low", "exhausted"],
+            "title": "State",
+            "description": "'exhausted' when a turn can't start now (a capped window or the trial allowance is used up), 'low' from 80% of the tightest window (where the meters turn amber), otherwise 'ok'.",
+            "default": "ok"
+          },
+          "limiting_window": {
+            "anyOf": [
+              { "type": "string", "enum": ["daily", "weekly", "trial"] },
+              { "type": "null" }
+            ],
+            "title": "Limiting Window",
+            "description": "The limit behind a 'low' or 'exhausted' state: the used-up window that refills last, 'trial' for the trial allowance, or the fullest window when 'low'. Null when 'ok'."
+          },
+          "resets_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Resets At",
+            "description": "When the limiting window refills. Null when 'ok', for the trial allowance, and for a window that allows nothing (no plan), none of which refill."
           }
         },
         "type": "object",
@@ -19436,6 +21355,32 @@
         ],
         "title": "ContentType"
       },
+      "ContinueSessionRequest": {
+        "properties": {
+          "model": {
+            "anyOf": [
+              { "type": "string", "enum": ["standard", "advanced"] },
+              { "type": "null" }
+            ],
+            "title": "Model",
+            "description": "Model tier the continuation runs on, as for a message."
+          }
+        },
+        "type": "object",
+        "title": "ContinueSessionRequest"
+      },
+      "ContinueSessionResponse": {
+        "properties": {
+          "turn_id": {
+            "type": "string",
+            "title": "Turn Id",
+            "description": "The continuation turn; attach to its stream."
+          }
+        },
+        "type": "object",
+        "required": ["turn_id"],
+        "title": "ContinueSessionResponse"
+      },
       "CopilotSkillDetail": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
@@ -19492,6 +21437,14 @@
             "type": "array",
             "title": "Triggers",
             "default": []
+          },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "update": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Update"
           }
         },
         "type": "object",
@@ -19538,6 +21491,16 @@
             "title": "Expert Lookup Retry Count",
             "default": 0
           },
+          "plan_lookup_retry_count": {
+            "type": "integer",
+            "title": "Plan Lookup Retry Count",
+            "default": 0
+          },
+          "limits_retry_count": {
+            "type": "integer",
+            "title": "Limits Retry Count",
+            "default": 0
+          },
           "user_timezone": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "User Timezone"
@@ -19557,6 +21520,30 @@
           "routine_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Routine Id"
+          },
+          "routine_schedule_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Routine Schedule Id"
+          },
+          "credential_pins": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialPin"
+            },
+            "type": "object",
+            "title": "Credential Pins"
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["followup", "resume", "send"],
+            "title": "Purpose",
+            "default": "followup"
+          },
+          "created_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Created At"
           },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
@@ -19655,6 +21642,10 @@
           "graph_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id"
+          },
+          "chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Chat Session Id"
           },
           "node_exec_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -20079,6 +22070,16 @@
         "required": ["creators", "pagination"],
         "title": "CreatorsResponse"
       },
+      "CredentialPin": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "title": { "type": "string", "title": "Title", "default": "" }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "CredentialPin",
+        "description": "The account a schedule runs one provider on, chosen when it was made.\n\nThe title is kept so a run can still name the account after it was\ndeleted, which is when the name matters most."
+      },
       "CredentialRejection": {
         "properties": {
           "provider": { "type": "string", "title": "Provider" },
@@ -20235,6 +22236,15 @@
             "type": "boolean",
             "title": "Is Managed",
             "default": false
+          },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -20323,6 +22333,11 @@
           "usage_execution_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Usage Execution Id"
+          },
+          "usage_chat_session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Usage Chat Session Id",
+            "description": "The AutoPilot chat the usage came from"
           },
           "usage_node_count": {
             "type": "integer",
@@ -20468,6 +22483,25 @@
           "max_window_days"
         ],
         "title": "CreditTransactionsExportResponse"
+      },
+      "DecisionRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["apply", "keep_current", "apply_edited"],
+            "title": "Action"
+          },
+          "edited_body": {
+            "anyOf": [
+              { "type": "string", "maxLength": 20000 },
+              { "type": "null" }
+            ],
+            "title": "Edited Body"
+          }
+        },
+        "type": "object",
+        "required": ["action"],
+        "title": "DecisionRequest"
       },
       "DecompositionStepModel": {
         "properties": {
@@ -20857,7 +22891,7 @@
           },
           "execution_path": {
             "type": "string",
-            "enum": ["sync_baseline", "anthropic_batch", "openai_batch"],
+            "enum": ["sync_baseline", "anthropic_batch"],
             "title": "Execution Path",
             "default": "sync_baseline"
           },
@@ -20997,6 +23031,50 @@
         },
         "type": "object",
         "title": "DumpStatusResponse"
+      },
+      "EditSkillRequest": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Description"
+          },
+          "body": {
+            "type": "string",
+            "maxLength": 20000,
+            "minLength": 1,
+            "title": "Body"
+          },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Triggers"
+          },
+          "keep_auto_improve": {
+            "type": "boolean",
+            "title": "Keep Auto Improve",
+            "default": false
+          },
+          "allowed_pattern_classes": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Allowed Pattern Classes"
+          },
+          "expected_version_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128 },
+              { "type": "null" }
+            ],
+            "title": "Expected Version Id",
+            "description": "The current version's id when editing began; null only for a skill with no tracked version. A different current version at save time is a conflict and the edit is not applied."
+          }
+        },
+        "type": "object",
+        "required": ["description", "body"],
+        "title": "EditSkillRequest"
       },
       "EnableShareRequest": {
         "properties": {
@@ -21611,9 +23689,28 @@
             ],
             "title": "Schedules Paused At"
           },
+          "learning_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Learning Paused At"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           }
         },
         "type": "object",
@@ -21661,6 +23758,102 @@
         "title": "ExpertActivityDay",
         "description": "One calendar day, in the owner's timezone, of expert activity."
       },
+      "ExpertAvatarJob": {
+        "properties": {
+          "id": { "type": "string", "format": "uuid", "title": "Id" },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "complete", "failed"],
+            "title": "Status",
+            "default": "pending"
+          },
+          "avatar_url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Avatar Url"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "created_at": { "type": "number", "title": "Created At" }
+        },
+        "type": "object",
+        "title": "ExpertAvatarJob"
+      },
+      "ExpertAvatarRequest": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "marketing",
+              "sales",
+              "finance",
+              "support",
+              "operations",
+              "research",
+              "content",
+              "development",
+              "general"
+            ],
+            "title": "Category",
+            "default": "general"
+          },
+          "shape": {
+            "type": "string",
+            "enum": [
+              "pebble",
+              "slab",
+              "wedge",
+              "dome",
+              "capsule",
+              "bean",
+              "saddle",
+              "kite",
+              "fan",
+              "arch",
+              "shield",
+              "crescent"
+            ],
+            "title": "Shape",
+            "default": "pebble"
+          },
+          "base": {
+            "type": "string",
+            "enum": ["compact", "wide", "tall"],
+            "title": "Base",
+            "default": "compact"
+          },
+          "tilt": {
+            "type": "string",
+            "enum": ["level", "left", "right"],
+            "title": "Tilt",
+            "default": "level"
+          },
+          "inlay": {
+            "type": "string",
+            "enum": [
+              "sweep",
+              "field",
+              "cloud",
+              "bank",
+              "pool",
+              "inlet",
+              "wrap"
+            ],
+            "title": "Inlay",
+            "default": "sweep"
+          },
+          "expression": {
+            "type": "string",
+            "enum": ["friendly", "curious", "focused", "pleased"],
+            "title": "Expression",
+            "default": "friendly"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ExpertAvatarRequest"
+      },
       "ExpertAvatarUpdate": {
         "properties": {
           "avatar_url": {
@@ -21706,7 +23899,16 @@
           "credential_id": { "type": "string", "title": "Credential Id" },
           "provider": { "type": "string", "title": "Provider" },
           "title": { "type": "string", "title": "Title" },
-          "type": { "type": "string", "title": "Type" }
+          "type": { "type": "string", "title": "Type" },
+          "service": { "type": "string", "title": "Service", "default": "" },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
+          }
         },
         "type": "object",
         "required": ["credential_id", "provider", "title", "type"],
@@ -21779,6 +23981,29 @@
         "type": "object",
         "required": ["id", "name", "avatar_url", "role", "is_archived"],
         "title": "ExpertIdentity"
+      },
+      "ExpertLearningPolicy": {
+        "properties": {
+          "expert_id": { "type": "string", "title": "Expert Id" },
+          "learning_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Learning Paused At"
+          }
+        },
+        "type": "object",
+        "required": ["expert_id", "learning_paused_at"],
+        "title": "ExpertLearningPolicy"
+      },
+      "ExpertLearningPolicyRequest": {
+        "properties": {
+          "learning_paused": { "type": "boolean", "title": "Learning Paused" }
+        },
+        "type": "object",
+        "required": ["learning_paused"],
+        "title": "ExpertLearningPolicyRequest"
       },
       "ExpertOnboardingResponse": {
         "properties": {
@@ -21997,6 +24222,12 @@
             "maxItems": 150,
             "title": "Skills"
           },
+          "remove": {
+            "items": { "type": "string" },
+            "type": "array",
+            "maxItems": 150,
+            "title": "Remove"
+          },
           "marketplace_listing_ids": {
             "items": { "type": "string" },
             "type": "array",
@@ -22005,9 +24236,8 @@
           }
         },
         "type": "object",
-        "required": ["skills"],
         "title": "ExpertSkillsUpdate",
-        "description": "The full list of skill names an expert should carry. Names new to the\nexpert must be library skills (default or uploaded); names already on\nthe expert are kept as-is so marketplace skills survive a round-trip."
+        "description": "Skills to attach to an expert and skills to remove from it. Names new\nto the expert must be library skills (default or uploaded); names already\non the expert are kept as-is so marketplace skills survive a round-trip.\n\nOnly names listed in ``remove`` are removed. A skill the expert carries\nthat appears in neither list is left alone, so a client holding a stale\nlist can never delete a skill it has not seen (the expert can distil new\nones at any time).\n\nA normalized name must not appear in both ``skills`` and ``remove``;\nsuch a request is rejected with a validation error. A marketplace listing\nwhose name matches a ``remove`` entry is rejected with a 400."
       },
       "ExpertSoulUpdate": {
         "properties": {
@@ -22175,9 +24405,28 @@
             ],
             "title": "Schedules Paused At"
           },
+          "learning_paused_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Learning Paused At"
+          },
           "pod_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Pod Id"
+          },
+          "setup_status": {
+            "type": "string",
+            "enum": ["installing", "ready", "failed"],
+            "title": "Setup Status",
+            "default": "ready"
+          },
+          "setup_failures": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Setup Failures",
+            "default": []
           },
           "bundled_skills": {
             "items": { "$ref": "#/components/schemas/ExpertBundledSkill" },
@@ -22553,6 +24802,84 @@
         "type": "object",
         "required": ["uuid", "forgotten"],
         "title": "ForgetFactResponse"
+      },
+      "FrontendFlag": {
+        "type": "string",
+        "enum": [
+          "marketplace-search-terms",
+          "enable-platform-payment",
+          "artifacts-page",
+          "chat-mode-option",
+          "generic-trigger-agents",
+          "chat-search",
+          "autogpt-new-layout",
+          "chat-workspace-files",
+          "chat-pinning",
+          "task-progress-bar",
+          "hire-experts",
+          "skills-hub",
+          "settings-notifications",
+          "onboarding-brain-dump",
+          "onboarding-expert-team",
+          "graphiti-memory",
+          "graphiti-communities-enabled",
+          "dream-pass-enabled",
+          "dream-pass-invalidate-entity",
+          "dream-skill-learning-enabled",
+          "copilot-bot-platforms",
+          "copilot-voice-mode",
+          "copilot-auto-mode",
+          "copilot-stream-shadow",
+          "copilot-stream-runtime"
+        ],
+        "title": "FrontendFlag",
+        "description": "Every flag the frontend reads; the frontend's `Flag` is generated from this.\n\nA key the backend reads too comes from the backend's `Flag`, so it is written once.",
+        "x-enum-varnames": [
+          "MARKETPLACE_SEARCH_TERMS",
+          "ENABLE_PLATFORM_PAYMENT",
+          "ARTIFACTS_PAGE",
+          "CHAT_MODE_OPTION",
+          "GENERIC_TRIGGER_AGENTS",
+          "CHAT_SEARCH",
+          "AUTOGPT_NEW_LAYOUT",
+          "CHAT_WORKSPACE_FILES",
+          "CHAT_PINNING",
+          "TASK_PROGRESS_BAR",
+          "HIRE_EXPERTS",
+          "SKILLS_HUB",
+          "SETTINGS_NOTIFICATIONS",
+          "ONBOARDING_BRAIN_DUMP",
+          "ONBOARDING_EXPERT_TEAM",
+          "GRAPHITI_MEMORY",
+          "GRAPHITI_COMMUNITIES_ENABLED",
+          "DREAM_PASS_ENABLED",
+          "DREAM_PASS_INVALIDATE_ENTITY",
+          "DREAM_SKILL_LEARNING_ENABLED",
+          "COPILOT_BOT_PLATFORMS",
+          "COPILOT_VOICE_MODE",
+          "COPILOT_AUTO_MODE",
+          "COPILOT_STREAM_SHADOW",
+          "COPILOT_STREAM_RUNTIME"
+        ]
+      },
+      "FrontendFlagValues": {
+        "properties": {
+          "flags": {
+            "additionalProperties": true,
+            "propertyNames": { "$ref": "#/components/schemas/FrontendFlag" },
+            "type": "object",
+            "title": "Flags",
+            "description": "Each flag the vendor answered, or null for one it has no definition of, which takes the frontend's default; one left out has no answer yet."
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "False when no flag vendor is configured or it gave up starting, so every flag is its default."
+          }
+        },
+        "type": "object",
+        "required": ["flags", "configured"],
+        "title": "FrontendFlagValues"
       },
       "GenerateTestDataRequest": {
         "properties": {
@@ -23547,6 +25874,16 @@
               { "type": "null" }
             ],
             "title": "Name"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "expert_page", "copilot"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface"
           }
         },
         "type": "object",
@@ -23554,16 +25891,9 @@
         "title": "HireRequest"
       },
       "HireResult": {
-        "properties": {
-          "expert": { "$ref": "#/components/schemas/Expert" },
-          "failed_preloads": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Failed Preloads"
-          }
-        },
+        "properties": { "expert": { "$ref": "#/components/schemas/Expert" } },
         "type": "object",
-        "required": ["expert", "failed_preloads"],
+        "required": ["expert"],
         "title": "HireResult"
       },
       "HomeAction": {
@@ -23650,6 +25980,12 @@
             "title": "Priority"
           },
           "title": { "type": "string", "title": "Title" },
+          "headline": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/HomeHeadline" },
+              { "type": "null" }
+            ]
+          },
           "description": { "type": "string", "title": "Description" },
           "why_it_matters": { "type": "string", "title": "Why It Matters" },
           "expert": {
@@ -23874,6 +26210,18 @@
         "type": "object",
         "required": ["id", "name", "role", "avatar_url"],
         "title": "HomeExpert"
+      },
+      "HomeHeadline": {
+        "properties": {
+          "ask": { "type": "string", "title": "Ask" },
+          "object": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Object"
+          }
+        },
+        "type": "object",
+        "required": ["ask"],
+        "title": "HomeHeadline"
       },
       "HomeRecentWork": {
         "properties": {
@@ -24434,6 +26782,204 @@
         "required": ["job_id", "user_id", "kind", "state", "started_at"],
         "title": "JobTriggerResponse",
         "description": "202 response from a fire-and-forget admin trigger.\n\nFrontend captures ``job_id`` and polls ``GET .../{job_id}`` for\nprogress. ``state`` is always ``\"queued\"`` at this point — the\nscheduler picks the job up within sub-second and flips it to\n``running``."
+      },
+      "LearningActionResult": {
+        "properties": {
+          "status": { "type": "string", "title": "Status" },
+          "status_label": { "type": "string", "title": "Status Label" },
+          "reason": { "type": "string", "title": "Reason", "default": "" },
+          "version": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SkillVersionSummary" },
+              { "type": "null" }
+            ]
+          },
+          "pattern_class": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Pattern Class"
+          },
+          "blocked_step": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocked Step"
+          }
+        },
+        "type": "object",
+        "required": ["status", "status_label"],
+        "title": "LearningActionResult"
+      },
+      "LearningEvidenceLabel": {
+        "properties": {
+          "kind": { "type": "string", "title": "Kind" },
+          "label": { "type": "string", "title": "Label" },
+          "ref": { "type": "string", "title": "Ref", "default": "" }
+        },
+        "type": "object",
+        "required": ["kind", "label"],
+        "title": "LearningEvidenceLabel"
+      },
+      "LearningHistoryItem": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "kind": {
+            "type": "string",
+            "enum": ["version", "review"],
+            "title": "Kind"
+          },
+          "skill_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skill Name"
+          },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "summary": { "type": "string", "title": "Summary" },
+          "origin": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin"
+          },
+          "origin_label": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Origin Label"
+          },
+          "state": { "type": "string", "title": "State" },
+          "state_label": { "type": "string", "title": "State Label" },
+          "version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Version"
+          },
+          "version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version Id"
+          },
+          "source": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LearningSourceLink" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "skill_name",
+          "expert_id",
+          "created_at",
+          "summary",
+          "state",
+          "state_label"
+        ],
+        "title": "LearningHistoryItem"
+      },
+      "LearningHistoryResponse": {
+        "properties": {
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "items": {
+            "items": { "$ref": "#/components/schemas/LearningHistoryItem" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["expert_id", "items"],
+        "title": "LearningHistoryResponse"
+      },
+      "LearningSourceLink": {
+        "properties": {
+          "source_id": { "type": "string", "title": "Source Id" },
+          "source_kind": { "type": "string", "title": "Source Kind" },
+          "revision": { "type": "string", "title": "Revision" },
+          "accessible": { "type": "boolean", "title": "Accessible" },
+          "source_ref": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Source Ref"
+          },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Url"
+          },
+          "excluded": {
+            "type": "boolean",
+            "title": "Excluded",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["source_id", "source_kind", "revision", "accessible"],
+        "title": "LearningSourceLink",
+        "description": "A contributing source, with content only when the viewer may see it."
+      },
+      "LearningStatus": {
+        "properties": {
+          "enabled": { "type": "boolean", "title": "Enabled" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "learning_paused": { "type": "boolean", "title": "Learning Paused" },
+          "pending_sources": { "type": "integer", "title": "Pending Sources" },
+          "oldest_pending_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Oldest Pending At"
+          },
+          "last_review_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Review At"
+          },
+          "last_applied_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Last Applied At"
+          },
+          "retrying_reviews": {
+            "type": "integer",
+            "title": "Retrying Reviews"
+          },
+          "cost_microdollars_30d": {
+            "type": "integer",
+            "title": "Cost Microdollars 30D"
+          },
+          "source_kinds": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Source Kinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "expert_id",
+          "learning_paused",
+          "pending_sources",
+          "oldest_pending_at",
+          "last_review_at",
+          "last_applied_at",
+          "retrying_reviews",
+          "cost_microdollars_30d",
+          "source_kinds"
+        ],
+        "title": "LearningStatus"
       },
       "LibraryAgent": {
         "properties": {
@@ -25020,24 +27566,6 @@
         "title": "ListSessionsResponse",
         "description": "Response model for listing chat sessions."
       },
-      "LogRawMetricRequest": {
-        "properties": {
-          "metric_name": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Metric Name"
-          },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Data String"
-          }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "LogRawMetricRequest"
-      },
       "LoginResponse": {
         "properties": {
           "login_url": { "type": "string", "title": "Login Url" },
@@ -25137,6 +27665,12 @@
             "items": { "$ref": "#/components/schemas/MCPServerURLPreset" },
             "type": "array",
             "title": "Server Url Options"
+          },
+          "allow_custom_url": {
+            "type": "boolean",
+            "title": "Allow Custom Url",
+            "description": "Hosted entries only: server_url stays the default, and users may replace it with their own endpoint, such as a self-hosted instance of the service.",
+            "default": false
           },
           "oauth_server_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -25671,6 +28205,62 @@
         "required": ["query", "response"],
         "title": "Message"
       },
+      "MessageFeedbackRequest": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Message Id",
+            "description": "The reply as the chat UI knows it: ``<session id>-seq-<N>`` for a reply loaded from the chat history, or the message's own id."
+          },
+          "score_name": {
+            "type": "string",
+            "enum": ["user-feedback", "copy"],
+            "title": "Score Name",
+            "description": "\"user-feedback\" for thumbs up/down, \"copy\" when the user copied the reply."
+          },
+          "score_value": {
+            "type": "integer",
+            "enum": [0, 1],
+            "title": "Score Value",
+            "description": "1 for thumbs up or a copy, 0 for thumbs down."
+          },
+          "comment": {
+            "anyOf": [
+              { "type": "string", "maxLength": 2000 },
+              { "type": "null" }
+            ],
+            "title": "Comment",
+            "description": "What the user said was wrong, from the thumbs-down form."
+          }
+        },
+        "type": "object",
+        "required": ["message_id", "score_name", "score_value"],
+        "title": "MessageFeedbackRequest",
+        "description": "One rating of one reply."
+      },
+      "MessageFeedbackResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The rating's id, which its Langfuse score shares."
+          },
+          "langfuse_target": {
+            "anyOf": [
+              { "type": "string", "enum": ["trace", "session"] },
+              { "type": "null" }
+            ],
+            "title": "Langfuse Target",
+            "description": "Where the Langfuse score went: the trace of the turn that wrote the reply, or the chat's Langfuse session when that trace is not known. Null when Langfuse is not configured or did not take the score; the rating is saved either way."
+          }
+        },
+        "type": "object",
+        "required": ["id"],
+        "title": "MessageFeedbackResponse",
+        "description": "A saved rating of an AutoPilot reply."
+      },
       "ModelInfo": {
         "properties": {
           "value": { "type": "string", "title": "Value" },
@@ -25786,6 +28376,12 @@
           "ratification": {
             "anyOf": [
               { "$ref": "#/components/schemas/RatificationResult" },
+              { "type": "null" }
+            ]
+          },
+          "learning": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SkillLearningResult" },
               { "type": "null" }
             ]
           },
@@ -26269,7 +28865,7 @@
             "title": "User Role"
           },
           "pain_points": {
-            "items": { "type": "string" },
+            "items": { "type": "string", "maxLength": 2000 },
             "type": "array",
             "maxItems": 20,
             "title": "Pain Points"
@@ -26317,10 +28913,133 @@
           "CAPABILITY_CARDS",
           "AGENTS_TAB_INTRO",
           "MARKETPLACE_TAB_INTRO",
-          "BUILD_TAB_INTRO"
+          "BUILD_TAB_INTRO",
+          "WORKFLOWS_MOVED"
         ],
         "title": "OnboardingStep",
         "description": "Application-level onboarding step identifiers."
+      },
+      "OnboardingWizardProgress": {
+        "properties": {
+          "version": { "type": "integer", "const": 1, "title": "Version" },
+          "currentStep": {
+            "type": "string",
+            "enum": [
+              "team",
+              "autopilot",
+              "role",
+              "painPoints",
+              "hire",
+              "subscription",
+              "connect",
+              "preparing"
+            ],
+            "title": "Currentstep"
+          },
+          "completedSteps": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "team",
+                "autopilot",
+                "role",
+                "painPoints",
+                "hire",
+                "subscription",
+                "connect",
+                "preparing"
+              ]
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Completedsteps"
+          },
+          "role": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Role"
+          },
+          "otherRole": {
+            "type": "string",
+            "maxLength": 100,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherrole"
+          },
+          "painPoints": {
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Painpoints"
+          },
+          "otherPainPoint": {
+            "type": "string",
+            "maxLength": 2000,
+            "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$",
+            "title": "Otherpainpoint"
+          },
+          "selectedBilling": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Selectedbilling"
+          },
+          "hasUserSelectedBilling": {
+            "type": "boolean",
+            "title": "Hasuserselectedbilling"
+          },
+          "selectedCountryCode": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Z]{2}$",
+            "title": "Selectedcountrycode"
+          },
+          "hiredTemplateIds": {
+            "items": {
+              "type": "string",
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]*$"
+            },
+            "type": "array",
+            "maxItems": 100,
+            "title": "Hiredtemplateids"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "version",
+          "currentStep",
+          "completedSteps",
+          "role",
+          "otherRole",
+          "painPoints",
+          "otherPainPoint",
+          "selectedBilling",
+          "hasUserSelectedBilling",
+          "selectedCountryCode",
+          "hiredTemplateIds"
+        ],
+        "title": "OnboardingWizardProgress",
+        "description": "Saved wizard answers and navigation, independent of completion or access."
+      },
+      "OpenDecisionsResponse": {
+        "properties": {
+          "items": {
+            "items": { "$ref": "#/components/schemas/SkillVersionSummary" },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": ["items"],
+        "title": "OpenDecisionsResponse"
       },
       "OrgAliasResponse": {
         "properties": {
@@ -26447,6 +29166,30 @@
         "title": "OrphanedSchedulesListResponse",
         "description": "Response model for list of orphaned schedules"
       },
+      "OutcomeReportRequest": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Version Id"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": ["succeeded", "failed", "unknown"],
+            "title": "Outcome"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "title": "Detail",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": ["version_id", "outcome"],
+        "title": "OutcomeReportRequest"
+      },
       "Pagination": {
         "properties": {
           "total_items": {
@@ -26511,19 +29254,24 @@
             "description": "User ID associated with the review"
           },
           "graph_exec_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Exec Id",
-            "description": "Graph execution ID"
+            "description": "Graph execution ID; None for a chat review"
           },
           "graph_id": {
-            "type": "string",
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Graph Id",
             "description": "Graph ID"
           },
           "graph_version": {
-            "type": "integer",
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
             "title": "Graph Version",
             "description": "Graph version"
+          },
+          "session_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Session Id",
+            "description": "Chat session ID; None for a graph review"
           },
           "payload": {
             "anyOf": [
@@ -26575,15 +29323,20 @@
             "title": "Agent Name",
             "description": "Display name of the agent that requested the review"
           },
+          "block_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Block Id",
+            "description": "The block awaiting approval, when a block asked"
+          },
+          "action": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Action",
+            "description": "What that block does, e.g. 'Send Discord Message'"
+          },
           "library_agent_id": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Library Agent Id",
             "description": "For run deep links"
-          },
-          "session_id": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Session Id",
-            "description": "Chat session id for copilot run_capability reviews"
           },
           "was_edited": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
@@ -26623,9 +29376,6 @@
         "required": [
           "node_exec_id",
           "user_id",
-          "graph_exec_id",
-          "graph_id",
-          "graph_version",
           "payload",
           "editable",
           "status",
@@ -27494,6 +30244,20 @@
             "type": "array",
             "title": "Supported Auth Types",
             "description": "Credential types this provider accepts. Drives which connection tabs the settings UI renders for the provider. Empty list means no auth types declared."
+          },
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Grouping key shared by a block provider and its MCP server.",
+            "default": ""
+          },
+          "service_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Name"
+          },
+          "service_icon": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Service Icon"
           }
         },
         "type": "object",
@@ -27658,6 +30422,14 @@
               { "type": "null" }
             ],
             "title": "Folder Ids"
+          },
+          "message_id": {
+            "anyOf": [
+              { "type": "string", "maxLength": 64 },
+              { "type": "null" }
+            ],
+            "title": "Message Id",
+            "description": "Optional per-send UUID, scoped like ``StreamChatRequest.message_id``. A retransmit of a follow-up already queued is answered as accepted without queueing it again."
           }
         },
         "type": "object",
@@ -27980,6 +30752,24 @@
         "required": ["experiment_key", "variant"],
         "title": "RecordAssignmentRequest"
       },
+      "RecordUserConsentRequest": {
+        "properties": {
+          "terms_version": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "pattern": "^[0-9]{4}-[0-9]{2}(-[0-9]{2})?$",
+            "title": "Terms Version"
+          },
+          "marketing_opt_out": {
+            "type": "boolean",
+            "title": "Marketing Opt Out"
+          }
+        },
+        "type": "object",
+        "required": ["terms_version", "marketing_opt_out"],
+        "title": "RecordUserConsentRequest"
+      },
       "RefundRequest": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -28029,9 +30819,84 @@
         "required": ["name"],
         "title": "RenameFileRequest"
       },
+      "RenewalDiscount": {
+        "properties": {
+          "amount_off": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Amount Off"
+          },
+          "percent_off": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Percent Off"
+          },
+          "currency": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Currency"
+          },
+          "duration": { "type": "string", "title": "Duration" },
+          "duration_in_months": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Duration In Months"
+          },
+          "ends_at": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Ends At"
+          }
+        },
+        "type": "object",
+        "required": ["duration"],
+        "title": "RenewalDiscount"
+      },
+      "RenewalTax": {
+        "properties": {
+          "automatic": {
+            "type": "boolean",
+            "title": "Automatic",
+            "default": false
+          },
+          "price_tax_behavior": {
+            "type": "string",
+            "title": "Price Tax Behavior",
+            "default": "unspecified"
+          },
+          "rates": {
+            "items": { "$ref": "#/components/schemas/RenewalTaxRate" },
+            "type": "array",
+            "title": "Rates"
+          }
+        },
+        "type": "object",
+        "title": "RenewalTax"
+      },
+      "RenewalTaxRate": {
+        "properties": {
+          "display_name": { "type": "string", "title": "Display Name" },
+          "percentage": { "type": "number", "title": "Percentage" },
+          "inclusive": { "type": "boolean", "title": "Inclusive" },
+          "country": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Country"
+          },
+          "state": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "State"
+          }
+        },
+        "type": "object",
+        "required": ["display_name", "percentage", "inclusive"],
+        "title": "RenewalTaxRate"
+      },
       "RequestTopUp": {
         "properties": {
-          "credit_amount": { "type": "integer", "title": "Credit Amount" }
+          "credit_amount": { "type": "integer", "title": "Credit Amount" },
+          "surface": {
+            "anyOf": [
+              { "type": "string", "const": "billing" },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the top-up was started; analytics only."
+          }
         },
         "type": "object",
         "required": ["credit_amount"],
@@ -28077,6 +30942,7 @@
           "block_details",
           "block_output",
           "review_required",
+          "approval_required",
           "capability_list",
           "capability_details",
           "schedule_list",
@@ -28147,6 +31013,19 @@
         "title": "ResponseType",
         "description": "Types of tool responses."
       },
+      "RestoreVersionRequest": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["version_id"],
+        "title": "RestoreVersionRequest"
+      },
       "ReviewItem": {
         "properties": {
           "node_exec_id": {
@@ -28185,6 +31064,21 @@
             "title": "Auto Approve Future",
             "description": "If true and this review is approved, future executions of this same block (node) will be automatically approved. This only affects approved reviews.",
             "default": false
+          },
+          "chat_rule": {
+            "anyOf": [
+              { "type": "string", "enum": ["allow", "judge"] },
+              { "type": "null" }
+            ],
+            "title": "Chat Rule",
+            "description": "AutoPilot cards naming a subject only: once approved, the subject runs ('allow') or goes to the supervisor ('judge') for the rest of the chat instead of asking."
+          },
+          "chat_rule_scope": {
+            "type": "string",
+            "enum": ["chat", "expert", "team"],
+            "title": "Chat Rule Scope",
+            "description": "Where chat_rule holds: this chat, every chat with this chat's Expert (or Otto), or every Expert on the user's team.",
+            "default": "chat"
           }
         },
         "type": "object",
@@ -28624,6 +31518,48 @@
         "type": "object",
         "required": ["message", "schedule_id", "paused"],
         "title": "ScheduleToggledResponse"
+      },
+      "ScheduleUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              { "type": "string", "minLength": 1, "pattern": "\\S" },
+              { "type": "null" }
+            ],
+            "title": "Name"
+          },
+          "cron": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Cron"
+          },
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credentials"
+          },
+          "timezone": {
+            "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }],
+            "title": "Timezone",
+            "description": "Timezone to evaluate the cron in (e.g., 'America/New_York'). If not provided, the schedule keeps its current timezone."
+          }
+        },
+        "type": "object",
+        "title": "ScheduleUpdateRequest",
+        "description": "Fields to change on an existing schedule; omitted fields keep their value."
       },
       "SchedulesListResponse": {
         "properties": {
@@ -29120,6 +32056,129 @@
         "title": "SharedExecutionResponse",
         "description": "Public-safe response for shared executions"
       },
+      "SkillLearningDetail": {
+        "properties": {
+          "skill_name": { "type": "string", "title": "Skill Name" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "state": { "type": "string", "title": "State" },
+          "state_label": { "type": "string", "title": "State Label" },
+          "current_version": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SkillVersionSummary" },
+              { "type": "null" }
+            ]
+          },
+          "open_decision": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/SkillVersionSummary" },
+              { "type": "null" }
+            ]
+          },
+          "versions": {
+            "items": { "$ref": "#/components/schemas/SkillVersionSummary" },
+            "type": "array",
+            "title": "Versions"
+          },
+          "policy": { "$ref": "#/components/schemas/SkillLearningPolicy" },
+          "use": { "$ref": "#/components/schemas/SkillUseSummary" }
+        },
+        "type": "object",
+        "required": [
+          "skill_name",
+          "expert_id",
+          "state",
+          "state_label",
+          "policy",
+          "use"
+        ],
+        "title": "SkillLearningDetail"
+      },
+      "SkillLearningPolicy": {
+        "properties": {
+          "auto_improve": {
+            "type": "boolean",
+            "title": "Auto Improve",
+            "default": true
+          },
+          "learning_paused": {
+            "type": "boolean",
+            "title": "Learning Paused",
+            "default": false
+          },
+          "use_paused": {
+            "type": "boolean",
+            "title": "Use Paused",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SkillLearningPolicy"
+      },
+      "SkillLearningResult": {
+        "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
+          "run_id": { "type": "string", "title": "Run Id" },
+          "trigger": { "type": "string", "title": "Trigger" },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Completed At"
+          },
+          "elapsed_seconds": {
+            "anyOf": [{ "type": "number" }, { "type": "null" }],
+            "title": "Elapsed Seconds"
+          },
+          "reviewed": { "type": "integer", "title": "Reviewed", "default": 0 },
+          "model_calls": {
+            "type": "integer",
+            "title": "Model Calls",
+            "default": 0
+          },
+          "applied": { "type": "integer", "title": "Applied", "default": 0 },
+          "proposed": { "type": "integer", "title": "Proposed", "default": 0 },
+          "dispositions": {
+            "additionalProperties": { "type": "integer" },
+            "type": "object",
+            "title": "Dispositions"
+          },
+          "reconciled_writes": {
+            "type": "integer",
+            "title": "Reconciled Writes",
+            "default": 0
+          },
+          "skipped": {
+            "type": "boolean",
+            "title": "Skipped",
+            "default": false
+          },
+          "skip_reason": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Skip Reason"
+          },
+          "error": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Error"
+          },
+          "per_source_errors": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Per Source Errors"
+          }
+        },
+        "type": "object",
+        "required": ["user_id", "run_id", "trigger", "started_at"],
+        "title": "SkillLearningResult"
+      },
       "SkillPackageFile": {
         "properties": {
           "path": { "type": "string", "title": "Path" },
@@ -29138,6 +32197,24 @@
         "required": ["path", "size_bytes"],
         "title": "SkillPackageFile",
         "description": "One file beside the published ``SKILL.md``, by its path relative to the\nskill folder. The contents are not inlined — a package runs to 20 MiB."
+      },
+      "SkillPolicyRequest": {
+        "properties": {
+          "auto_improve": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Auto Improve"
+          },
+          "learning_paused": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Learning Paused"
+          },
+          "use_paused": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Use Paused"
+          }
+        },
+        "type": "object",
+        "title": "SkillPolicyRequest"
       },
       "SkillReviewRequest": {
         "properties": {
@@ -29232,6 +32309,161 @@
         "title": "SkillSubmissionRequest",
         "description": "Publish one of the caller's own library skills as a marketplace listing."
       },
+      "SkillUseSummary": {
+        "properties": {
+          "version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Version Id"
+          },
+          "loads": { "type": "integer", "title": "Loads", "default": 0 },
+          "checks_passed": {
+            "type": "integer",
+            "title": "Checks Passed",
+            "default": 0
+          },
+          "checks_failed": {
+            "type": "integer",
+            "title": "Checks Failed",
+            "default": 0
+          },
+          "reported_working": {
+            "type": "integer",
+            "title": "Reported Working",
+            "default": 0
+          },
+          "reported_failed": {
+            "type": "integer",
+            "title": "Reported Failed",
+            "default": 0
+          },
+          "stopped_mid_use": {
+            "type": "integer",
+            "title": "Stopped Mid Use",
+            "default": 0
+          },
+          "unknown": { "type": "integer", "title": "Unknown", "default": 0 },
+          "reuse_label": {
+            "type": "string",
+            "title": "Reuse Label",
+            "default": "Not yet reused"
+          }
+        },
+        "type": "object",
+        "title": "SkillUseSummary",
+        "description": "Reuse evidence for exactly one version. Loads are loads; an owner's\nreport is a report; only a recorded check can say \"passed checks\"."
+      },
+      "SkillVersionFileSummary": {
+        "properties": {
+          "relative_path": { "type": "string", "title": "Relative Path" },
+          "size_bytes": { "type": "integer", "title": "Size Bytes" },
+          "sha256": { "type": "string", "title": "Sha256" },
+          "is_executable": { "type": "boolean", "title": "Is Executable" },
+          "content": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Content"
+          },
+          "content_truncated": {
+            "type": "boolean",
+            "title": "Content Truncated",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": ["relative_path", "size_bytes", "sha256", "is_executable"],
+        "title": "SkillVersionFileSummary"
+      },
+      "SkillVersionSummary": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "skill_name": { "type": "string", "title": "Skill Name" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
+          "version": { "type": "integer", "title": "Version" },
+          "origin": { "type": "string", "title": "Origin" },
+          "origin_label": { "type": "string", "title": "Origin Label" },
+          "summary": { "type": "string", "title": "Summary" },
+          "state": { "type": "string", "title": "State" },
+          "state_label": { "type": "string", "title": "State Label" },
+          "state_reason": { "type": "string", "title": "State Reason" },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "description": { "type": "string", "title": "Description" },
+          "triggers": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Triggers"
+          },
+          "body": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Body"
+          },
+          "files": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/SkillVersionFileSummary"
+                },
+                "type": "array"
+              },
+              { "type": "null" }
+            ],
+            "title": "Files"
+          },
+          "evidence": {
+            "items": { "$ref": "#/components/schemas/LearningEvidenceLabel" },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "limits": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Limits"
+          },
+          "sources": {
+            "items": { "$ref": "#/components/schemas/LearningSourceLink" },
+            "type": "array",
+            "title": "Sources"
+          },
+          "use": { "$ref": "#/components/schemas/SkillUseSummary" },
+          "base_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Base Version Id"
+          },
+          "restored_from_version_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Restored From Version Id"
+          },
+          "blocked_pattern_class": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocked Pattern Class"
+          },
+          "blocked_step": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Blocked Step"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "skill_name",
+          "expert_id",
+          "version",
+          "origin",
+          "origin_label",
+          "summary",
+          "state",
+          "state_label",
+          "state_reason",
+          "created_at",
+          "description"
+        ],
+        "title": "SkillVersionSummary"
+      },
       "SkippedWebhookPreset": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -29257,6 +32489,20 @@
         "required": ["field", "before", "after"],
         "title": "SoulFieldChange",
         "description": "One field's before/after values for an expert soul edit."
+      },
+      "SourceExclusionResult": {
+        "properties": {
+          "source_id": { "type": "string", "title": "Source Id" },
+          "excluded": { "type": "boolean", "title": "Excluded" },
+          "invalidated_version_ids": {
+            "items": { "type": "string" },
+            "type": "array",
+            "title": "Invalidated Version Ids"
+          }
+        },
+        "type": "object",
+        "required": ["source_id", "excluded"],
+        "title": "SourceExclusionResult"
       },
       "SpeechRequest": {
         "properties": {
@@ -29855,7 +33101,13 @@
       "StoreSubmissionEditRequest": {
         "properties": {
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -29913,7 +33165,13 @@
           },
           "slug": { "type": "string", "title": "Slug" },
           "name": { "type": "string", "title": "Name" },
-          "sub_heading": { "type": "string", "title": "Sub Heading" },
+          "sub_heading": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Sub Heading",
+            "description": "Short call-to-action line describing what the agent does for the user, e.g. 'Find decision-makers at any company in seconds'. Required; max 100 characters."
+          },
           "video_url": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Video Url"
@@ -30037,19 +33295,49 @@
               { "type": "null" }
             ],
             "title": "Message Id",
-            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, so the Postgres unique-constraint on the resulting PK is the atomic dedup primitive. A duplicate INSERT returns a subscribe-only response without creating a parallel turn. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
+            "description": "Optional per-click UUID generated by the frontend. The server scopes it to the authenticated user and session before using the result as ``ChatMessage.id``. Frontend / network / RMQ-redelivery retransmits of the same logical send reuse the key, and the server claims it once: a retransmit neither starts a parallel turn nor, while a turn is running, queues the message again, and gets a subscribe-only response. Distinct user clicks (even with identical text) MUST send different ids — the frontend's per-click ``crypto.randomUUID()`` guarantees that."
           },
           "expert_kickoff": {
             "type": "boolean",
             "title": "Expert Kickoff",
             "description": "Marks the hidden, once-per-expert day-one kickoff. The server derives its owner-scoped message ID and persistence metadata.",
             "default": false
+          },
+          "autopilot_mode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["ask_first", "auto", "unsupervised"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Autopilot Mode",
+            "description": "The chat's approval mode from this turn on; None keeps the mode it already has."
           }
         },
         "type": "object",
         "required": ["message"],
         "title": "StreamChatRequest",
         "description": "Request model for streaming chat with optional context."
+      },
+      "StreamResumeRefusal": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "enum": ["trimmed", "expired"],
+            "title": "Reason"
+          },
+          "checkpoint": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TurnCheckpoint" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "type": "object",
+        "required": ["reason"],
+        "title": "StreamResumeRefusal",
+        "description": "Why a resume at a cursor cannot be served from the stream."
       },
       "SubmissionStats": {
         "properties": {
@@ -30161,7 +33449,7 @@
           "url": {
             "type": "string",
             "title": "Url",
-            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade). Empty string in all other branches — the client redirects to this URL when non-empty.",
+            "description": "Populated only when POST /credits/subscription starts a Stripe Checkout Session (BASIC → paid upgrade), or when a trial ending early needs the customer's bank to confirm its payment, on Stripe's invoice page. Empty string in all other branches — the client sends the customer to this URL when non-empty.",
             "default": ""
           }
         },
@@ -30210,11 +33498,104 @@
             "enum": ["monthly", "yearly"],
             "title": "Billing Cycle",
             "default": "monthly"
+          },
+          "proration_date": {
+            "anyOf": [
+              { "type": "integer", "exclusiveMinimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Proration Date"
+          },
+          "preview_id": {
+            "anyOf": [
+              { "type": "string", "pattern": "^[a-f0-9]{32}$" },
+              { "type": "null" }
+            ],
+            "title": "Preview Id"
+          },
+          "surface": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["onboarding", "paywall_gate", "billing"]
+              },
+              { "type": "null" }
+            ],
+            "title": "Surface",
+            "description": "Where the plan was picked; analytics only."
           }
         },
         "type": "object",
         "required": ["tier"],
         "title": "SubscriptionTierRequest"
+      },
+      "SubscriptionUpgradePreview": {
+        "properties": {
+          "preview_id": { "type": "string", "title": "Preview Id" },
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "tax_amount": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Tax Amount"
+          },
+          "tax_included": { "type": "boolean", "title": "Tax Included" },
+          "adjustment_amount": {
+            "type": "integer",
+            "title": "Adjustment Amount"
+          },
+          "currency": { "type": "string", "title": "Currency" },
+          "proration_date": { "type": "integer", "title": "Proration Date" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "expires_at": { "type": "integer", "title": "Expires At" },
+          "recurring_amount": {
+            "type": "integer",
+            "title": "Recurring Amount"
+          },
+          "recurring_tax_included": {
+            "type": "boolean",
+            "title": "Recurring Tax Included"
+          },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle"
+          },
+          "lines": {
+            "items": { "$ref": "#/components/schemas/UpgradeProrationLine" },
+            "type": "array",
+            "title": "Lines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "preview_id",
+          "amount_due",
+          "tax_amount",
+          "tax_included",
+          "adjustment_amount",
+          "currency",
+          "proration_date",
+          "period_end",
+          "expires_at",
+          "recurring_amount",
+          "recurring_tax_included",
+          "billing_cycle",
+          "lines"
+        ],
+        "title": "SubscriptionUpgradePreview"
+      },
+      "SubscriptionUpgradePreviewRequest": {
+        "properties": {
+          "tier": { "type": "string", "const": "MAX", "title": "Tier" },
+          "billing_cycle": {
+            "type": "string",
+            "enum": ["monthly", "yearly"],
+            "title": "Billing Cycle",
+            "default": "monthly"
+          }
+        },
+        "type": "object",
+        "required": ["tier"],
+        "title": "SubscriptionUpgradePreviewRequest"
       },
       "SuggestedGoalResponse": {
         "properties": {
@@ -31400,6 +34781,16 @@
         ],
         "title": "TrialOfferResponse"
       },
+      "TrialPaymentDue": {
+        "properties": {
+          "amount_due": { "type": "integer", "title": "Amount Due" },
+          "currency": { "type": "string", "title": "Currency" },
+          "payment_url": { "type": "string", "title": "Payment Url" }
+        },
+        "type": "object",
+        "required": ["amount_due", "currency", "payment_url"],
+        "title": "TrialPaymentDue"
+      },
       "TrialRejectionReason": {
         "type": "string",
         "enum": ["intro_offer_already_used", "card_verification_failed"],
@@ -31444,6 +34835,13 @@
             "anyOf": [{ "type": "number" }, { "type": "null" }],
             "title": "Allowance Used Percent"
           },
+          "usage_policy": {
+            "anyOf": [
+              { "type": "string", "enum": ["lifetime", "rolling"] },
+              { "type": "null" }
+            ],
+            "title": "Usage Policy"
+          },
           "active": { "type": "boolean", "title": "Active", "default": false },
           "converted": {
             "type": "boolean",
@@ -31454,6 +34852,12 @@
             "type": "boolean",
             "title": "Onboarding Credits Previously Received",
             "default": false
+          },
+          "payment_due": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TrialPaymentDue" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -31485,6 +34889,17 @@
         "type": "object",
         "required": ["name", "graph_id", "graph_version", "trigger_config"],
         "title": "TriggeredPresetSetupRequest"
+      },
+      "TurnCheckpoint": {
+        "properties": {
+          "entry_id": { "type": "string", "title": "Entry Id" },
+          "rows": { "type": "integer", "title": "Rows" },
+          "sequence": { "type": "integer", "title": "Sequence" }
+        },
+        "type": "object",
+        "required": ["entry_id", "rows", "sequence"],
+        "title": "TurnCheckpoint",
+        "description": "Where a turn's last ``data-checkpoint`` sits in its stream."
       },
       "UnderstandingUpdatedResponse": {
         "properties": {
@@ -32300,6 +35715,24 @@
         "required": ["timezone"],
         "title": "UpdateTimezoneRequest"
       },
+      "UpgradeProrationLine": {
+        "properties": {
+          "description": { "type": "string", "title": "Description" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "period_start": { "type": "integer", "title": "Period Start" },
+          "period_end": { "type": "integer", "title": "Period End" },
+          "proration": { "type": "boolean", "title": "Proration" }
+        },
+        "type": "object",
+        "required": [
+          "description",
+          "amount",
+          "period_start",
+          "period_end",
+          "proration"
+        ],
+        "title": "UpgradeProrationLine"
+      },
       "UploadCopilotSkillRequest": {
         "properties": { "content": { "type": "string", "title": "Content" } },
         "type": "object",
@@ -32512,6 +35945,34 @@
         "type": "object",
         "title": "UserAttributionInput"
       },
+      "UserConsentResponse": {
+        "properties": {
+          "terms_accepted_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Terms Accepted At"
+          },
+          "terms_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Terms Version"
+          },
+          "marketing_opt_out_at": {
+            "anyOf": [
+              { "type": "string", "format": "date-time" },
+              { "type": "null" }
+            ],
+            "title": "Marketing Opt Out At"
+          },
+          "marketing_opt_out_source": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Marketing Opt Out Source"
+          }
+        },
+        "type": "object",
+        "title": "UserConsentResponse"
+      },
       "UserCostSummary": {
         "properties": {
           "user_id": {
@@ -32683,6 +36144,17 @@
       "UserOnboarding": {
         "properties": {
           "userId": { "type": "string", "title": "Userid" },
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "type": "integer",
+            "title": "Wizardrevision",
+            "default": 0
+          },
           "completedSteps": {
             "items": { "$ref": "#/components/schemas/OnboardingStep" },
             "type": "array",
@@ -32761,6 +36233,26 @@
       },
       "UserOnboardingUpdate": {
         "properties": {
+          "wizardProgress": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/OnboardingWizardProgress" },
+              { "type": "null" }
+            ]
+          },
+          "wizardRevision": {
+            "anyOf": [
+              { "type": "integer", "minimum": 0.0 },
+              { "type": "null" }
+            ],
+            "title": "Wizardrevision"
+          },
+          "wizardUserId": {
+            "anyOf": [
+              { "type": "string", "maxLength": 128, "minLength": 1 },
+              { "type": "null" }
+            ],
+            "title": "Wizarduserid"
+          },
           "walletShown": {
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Walletshown"
@@ -32930,7 +36422,11 @@
       "UserTierResponse": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
-          "tier": { "$ref": "#/components/schemas/SubscriptionTier" }
+          "tier": { "$ref": "#/components/schemas/SubscriptionTier" },
+          "warning": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Warning"
+          }
         },
         "type": "object",
         "required": ["user_id", "tier"],

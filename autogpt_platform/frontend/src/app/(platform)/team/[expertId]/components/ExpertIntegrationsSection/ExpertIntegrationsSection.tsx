@@ -4,7 +4,6 @@ import { Button } from "@/components/atoms/Button/Button";
 import { Skeleton } from "@/components/atoms/Skeleton/Skeleton";
 import { ErrorCard } from "@/components/molecules/ErrorCard/ErrorCard";
 import { Text } from "@/components/atoms/Text/Text";
-import { SearchInput } from "@/components/molecules/SearchInput/SearchInput";
 import { useState } from "react";
 import { ExpertConnectServiceDialog } from "./ExpertConnectServiceDialog";
 import { ExpertIntegrationGroups } from "./ExpertIntegrationGroups";
@@ -16,6 +15,9 @@ import {
   TooltipTrigger,
 } from "@/components/atoms/Tooltip/BaseTooltip";
 import { useExpertIntegrationsSection } from "./useExpertIntegrationsSection";
+import { IntegrationLogo } from "@/components/molecules/IntegrationLogo/IntegrationLogo";
+import { SectionEmptyState } from "../../../components/SectionEmptyState";
+import { ToolbarSearch } from "../../../components/ToolbarSearch";
 
 interface Props {
   expertId: string;
@@ -59,7 +61,7 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
         <Text variant="large-medium" tone="primary">
           {expertName}&apos;s Integrations
         </Text>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <Tooltip>
             <TooltipTrigger asChild>
               <span>
@@ -98,12 +100,11 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           >
             Add integration
           </Button>
-          <SearchInput
-            size="small"
+          <ToolbarSearch
+            id="expert-integrations-search"
+            label="Search integrations"
             value={query}
             onChange={setQuery}
-            placeholder="Search integrations"
-            className="w-48"
           />
         </div>
       </div>
@@ -117,10 +118,34 @@ export function ExpertIntegrationsSection({ expertId, expertName }: Props) {
           onRetry={refetch}
         />
       ) : granted.length === 0 ? (
-        <Text variant="body" tone="muted">
-          Nothing connected yet. Add a tool and {expertName} can use it on your
-          behalf.
-        </Text>
+        <SectionEmptyState
+          tiles={[
+            <IntegrationLogo key="slack" provider="slack" size={24} />,
+            <IntegrationLogo key="notion" provider="notion" size={24} />,
+            <IntegrationLogo key="google" provider="google" size={24} />,
+          ]}
+          title="No integrations yet"
+          description={`Connect a tool and ${expertName} can use it on your behalf.`}
+        >
+          <Button
+            variant="primary"
+            size="small"
+            leadingIcon={PlusSignIcon}
+            onClick={openConnect}
+          >
+            Add integration
+          </Button>
+          {grantable.length > 0 && !isGrantableError ? (
+            <Button
+              variant="secondary"
+              size="small"
+              leadingIcon={Share01Icon}
+              onClick={openUseExisting}
+            >
+              Use existing
+            </Button>
+          ) : null}
+        </SectionEmptyState>
       ) : visible.length === 0 ? (
         <Text variant="body" tone="muted" className="pt-4">
           No integrations match.

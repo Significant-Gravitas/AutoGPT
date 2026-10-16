@@ -19,7 +19,6 @@ from backend.copilot import db as chat_db
 from backend.copilot.constants import (
     COPILOT_NODE_EXEC_ID_SEPARATOR,
     COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
     SPEND_REVIEW_MARKER,
 )
 from backend.data import human_review
@@ -189,10 +188,9 @@ async def open_chat_spend_review(
     """Park a paid ``run_capability`` block run on the session's review rails and return the
     review id. An open row for the same expert is reused so a model retry
     does not stack cards."""
-    synthetic_graph_id = f"{COPILOT_SESSION_PREFIX}{session_id}"
     node_id = f"{COPILOT_NODE_PREFIX}{SPEND_REVIEW_MARKER}{needed.expert_id}"
-    for review in await human_review.get_pending_reviews_for_execution(
-        synthetic_graph_id, user_id
+    for review in await human_review.get_pending_reviews_for_chat_session(
+        session_id, user_id
     ):
         if review.node_id == node_id:
             return review.node_exec_id
@@ -200,9 +198,7 @@ async def open_chat_spend_review(
     await human_review.get_or_create_human_review(
         user_id=user_id,
         node_exec_id=review_id,
-        graph_exec_id=synthetic_graph_id,
-        graph_id=synthetic_graph_id,
-        graph_version=1,
+        chat_session_id=session_id,
         input_data=_review_payload(needed, block=block_name),
         message=needed.headline,
         editable=False,

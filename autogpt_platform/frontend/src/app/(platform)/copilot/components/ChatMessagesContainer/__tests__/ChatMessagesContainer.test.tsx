@@ -131,13 +131,20 @@ vi.mock("../../JobStatsBar/useElapsedTimer", () => ({
   useElapsedTimer: () => ({ elapsedSeconds: 0 }),
 }));
 vi.mock("../../CopilotPendingReviews/CopilotPendingReviews", () => ({
-  CopilotPendingReviews: () => null,
+  CopilotPendingReviews: (props: object) => (
+    <span data-testid="pending-reviews" data-props={JSON.stringify(props)} />
+  ),
 }));
 // Tests below override this default by re-mocking ../helpers as needed.
-vi.mock("../helpers", () => ({
+vi.mock("../helpers", async (importOriginal) => ({
+  extractReviewTarget: (await importOriginal<typeof import("../helpers")>())
+    .extractReviewTarget,
   getLatestCompactionPhase: () => null,
   getTurnMessages: () => [],
   isChainableToolPart: () => false,
+}));
+
+vi.mock("../../../helpers/messageMarkers", () => ({
   parseSpecialMarkers: (text: string) => {
     if (typeof text === "string" && text.startsWith("[__COPILOT_ERROR_")) {
       return { markerType: "error" };
@@ -221,6 +228,56 @@ describe("ChatMessagesContainer — assistant rendering", () => {
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
   });
 
+  it("drops the thinking indicator once a streaming turn has landed on a pause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          {
+            id: "assistant-paused",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Saved where I got to." },
+              {
+                type: "data-turn-paused",
+                data: { reason: "steps", steps: 450 },
+              },
+            ],
+          },
+        ]}
+        status="streaming"
+      />,
+    );
+
+    expect(screen.queryByTestId("thinking-indicator")).toBeNull();
+  });
+
+  it("keeps the backend's status lines out of the thinking indicator", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        status="submitted"
+        messages={[
+          {
+            id: "assistant-status",
+            role: "assistant",
+            parts: [
+              {
+                type: "data-status",
+                data: { message: "Restoring your session…" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByTestId("thinking-indicator").textContent).toBe(
+      "thinking",
+    );
+    expect(screen.queryByText("Restoring your session…")).toBeNull();
+  });
+
   it("keeps the thinking indicator out of a read-only transcript", () => {
     render(
       <ChatMessagesContainer
@@ -265,6 +322,20 @@ describe("ChatMessagesContainer — queuedMessages", () => {
     );
     expect(screen.getByText("What about section 3?")).toBeDefined();
     expect(screen.getByText("Queued")).toBeDefined();
+  });
+
+  it("renders queued account references as badges without exposing IDs", () => {
+    const { container } = render(
+      <ChatMessagesContainer
+        {...baseProps}
+        queuedMessages={[
+          "Check [Work Gmail](credential://google/work-credential-id)",
+        ]}
+      />,
+    );
+    expect(screen.getByText("Work Gmail")).toBeDefined();
+    expect(container.textContent).not.toContain("work-credential-id");
+    expect(container.textContent).not.toContain("credential://");
   });
 
   it("renders multiple queued messages as separate bubbles", () => {
@@ -369,19 +440,19 @@ describe("ChatMessagesContainer — loading", () => {
     });
 
     expect(screen.getByTestId("thinking-indicator")).toBeDefined();
-    expect(screen.getByText("Reconnecting to live stream...")).toBeDefined();
+    expect(screen.getByText("Reconnecting…")).toBeDefined();
     expect(
       screen.getByText("Still syncing the latest progress."),
     ).toBeDefined();
   });
 
-  it("prefers the backend status message in the restore fallback", () => {
+  it("prefers the runtime's notice in the restore fallback", () => {
     render(
       <ChatMessagesContainer
         {...baseProps}
         isLoading={false}
         isRestoringActiveSession
-        restoreStatusMessage="Analyzing result..."
+        restoreStatusMessage="Catching up…"
         messages={[
           {
             id: "user-1",
@@ -396,7 +467,7 @@ describe("ChatMessagesContainer — loading", () => {
       vi.advanceTimersByTime(6_000);
     });
 
-    expect(screen.getByText("Analyzing result...")).toBeDefined();
+    expect(screen.getByText("Catching up…")).toBeDefined();
   });
 });
 
@@ -434,7 +505,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
     expect(
       screen.getByText("SDK stream error: Prompt is too long"),
     ).toBeDefined();
-    expect(screen.getByText(/encountered an error/i)).toBeDefined();
+    expect(screen.getByTestId("chat-error-banner")).toBeDefined();
   });
 
   it("suppresses the trailing banner when the last assistant message carries an error marker", () => {
@@ -462,7 +533,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 
   it("suppresses the trailing banner when the marker is retryable", () => {
@@ -490,7 +561,7 @@ describe("ChatMessagesContainer — error banner dedup", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
   });
 });
 
@@ -1018,7 +1089,7 @@ describe("ChatMessagesContainer — readOnly mode", () => {
         ]}
       />,
     );
-    expect(screen.queryByText(/encountered an error/i)).toBeNull();
+    expect(screen.queryByTestId("chat-error-banner")).toBeNull();
     expect(screen.queryByText(/upstream blew up/i)).toBeNull();
   });
 
@@ -1445,5 +1516,329 @@ describe("ChatMessagesContainer — mid-turn follow-up", () => {
     );
 
     expect(renderedRowIds()).toEqual(["user-1", "assistant-1"]);
+  });
+});
+
+describe("ChatMessagesContainer — held call rows", () => {
+  it("never shows the server's wake row or a late result as the user's words", () => {
+    const messages: Message[] = [
+      {
+        id: "sess-123-seq-5",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      {
+        id: "sess-123-seq-6",
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: '<held_call_result tool="create_folder">folder_created Q3</held_call_result>',
+          },
+        ],
+        metadata: { held_call: { review_id: "r1" } },
+      },
+    ];
+
+    render(<ChatMessagesContainer {...baseProps} messages={messages} />);
+
+    expect(screen.queryByText(/I answered an action/)).toBeNull();
+    expect(screen.queryByText(/folder_created/)).toBeNull();
+    expect(screen.getByText("Approval answered")).toBeDefined();
+  });
+
+  it.each([
+    ["approved", "Result sent to Otto."],
+    ["rejected", "Declined; nothing was sent to Otto."],
+    ["expired", "Expired; nothing was sent to Otto."],
+    ["unknown", "Unclear; check before relying on it."],
+  ])(
+    "labels the wake by the card's recorded outcome: %s",
+    (outcome, clause) => {
+      render(
+        <ChatMessagesContainer
+          {...baseProps}
+          messages={answeredCards([{ id: "a", outcome }])}
+        />,
+      );
+
+      expect(
+        screen.getByText(`Approval answered: Read "a.example.com". ${clause}`),
+      ).toBeDefined();
+    },
+  );
+
+  // Each cause the backend closes a call for, with the body it writes; only
+  // a read can close after an identical re-read already delivered it.
+  it.each([
+    [
+      "an action whose card is no longer open",
+      false,
+      "Nothing ran: this card is no longer open.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose details were lost",
+      false,
+      "Nothing ran: the approved action's details were lost before it could run.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "an action whose tool no longer exists",
+      false,
+      "Nothing ran: this tool no longer exists.",
+      'Post to "a.example.com". Closed; nothing ran.',
+    ],
+    [
+      "a read whose card is no longer open",
+      true,
+      "Nothing ran: this card is no longer open.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+    [
+      "a read an identical re-read already received",
+      true,
+      "The user released this content and it was already delivered to you once; nothing more arrives for this call.",
+      'Read "a.example.com". Closed; nothing was released, or Otto already had it.',
+    ],
+  ])("labels a closed card truly: %s", (_cause, read, body, label) => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a", outcome: "closed", read, body }])}
+      />,
+    );
+
+    expect(screen.getByText(`Approval answered: ${label}`)).toBeDefined();
+  });
+
+  it("claims nothing for a result row with no recorded outcome", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([{ id: "a" }])}
+      />,
+    );
+
+    expect(
+      screen.getByText('Approval answered: Read "a.example.com".'),
+    ).toBeDefined();
+  });
+
+  it("gives each answer in one wake its own clause", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={answeredCards([
+          { id: "a", outcome: "approved" },
+          { id: "b", outcome: "rejected" },
+          { id: "c", outcome: "approved" },
+        ])}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        'Approval answered: Read "a.example.com", Read "c.example.com". ' +
+          'Results sent to Otto. Read "b.example.com". ' +
+          "Declined; nothing was sent to Otto.",
+      ),
+    ).toBeDefined();
+  });
+
+  interface AnsweredCard {
+    id: string;
+    outcome?: string;
+    read?: boolean;
+    body?: string;
+  }
+
+  // A turn's held cards, its wake row, and a result row per card, as the
+  // server persists them.
+  function answeredCards(cards: AnsweredCard[]): Message[] {
+    return [
+      {
+        id: "assistant-cards",
+        role: "assistant",
+        parts: cards.map(({ id, read = true }) => ({
+          type: "tool-run_capability",
+          toolCallId: `call-${id}`,
+          state: "output-available",
+          input: {},
+          output: JSON.stringify({
+            type: "approval_required",
+            review_id: reviewId(id, read),
+            ask: read ? "Read" : "Post to",
+            object: `${id}.example.com`,
+          }),
+        })),
+      } as Message,
+      {
+        id: "wake",
+        role: "user",
+        parts: [
+          {
+            type: "text",
+            text: "I answered an action that was waiting for my approval.",
+          },
+        ],
+        metadata: { held_calls_answered: true },
+      },
+      ...cards.map(({ id, outcome, read = true, body }) => ({
+        id: `result-${id}`,
+        role: "user" as const,
+        parts: [
+          {
+            type: "text" as const,
+            text: `<held_call_result tool="run_capability">\n${body ?? (outcome === "approved" ? "page text" : "Nothing ran.")}\n</held_call_result>`,
+          },
+        ],
+        metadata: {
+          held_call: {
+            review_id: reviewId(id, read),
+            tool_name: "run_capability",
+            tool_call_id: `call-${id}`,
+            outcome,
+          },
+        },
+      })),
+    ];
+  }
+
+  function reviewId(id: string, read: boolean) {
+    return `copilot-node-gate-${read ? "read-" : ""}run_capability:${id}`;
+  }
+});
+
+describe("ChatMessagesContainer — pending reviews", () => {
+  function withToolOutput(output: object): Message[] {
+    return [
+      {
+        id: "assistant-review",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-run_capability",
+            toolCallId: "call-1",
+            state: "output-available",
+            input: {},
+            output: JSON.stringify(output),
+          },
+        ],
+      } as Message,
+    ];
+  }
+
+  function mounted() {
+    return screen
+      .queryAllByTestId("pending-reviews")
+      .map((el) => JSON.parse(el.getAttribute("data-props") ?? "{}"));
+  }
+
+  const chatList = (pollWhileEmpty: boolean, refetchKey: number) => ({
+    chatSessionId: "sess-123",
+    pollWhileEmpty,
+    refetchKey,
+    expertName: null,
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("finds a chat review by the chat's session, with no graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          block_id: "blk",
+          block_name: "Create Folder",
+          input_data: {},
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds a chat review stored before it had a session id of its own", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "review_required",
+          review_id: "copilot-node-blk:ab12",
+          graph_exec_id: "copilot-session-sess-123",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 0)]);
+  });
+
+  it("finds an agent run's reviews by its graph execution", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({ execution_id: "exec-9", status: "REVIEW" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 0)]);
+  });
+
+  it("keeps the chat's held cards loaded while a newer run is the review target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={[
+          ...withToolOutput({ type: "approval_required", review_id: "r1" }),
+          ...withToolOutput({ execution_id: "exec-9", status: "RUNNING" }),
+        ]}
+      />,
+    );
+
+    // One held call on screen: fetched, but polled only if a card comes back.
+    expect(mounted()).toEqual([{ graphExecId: "exec-9" }, chatList(false, 1)]);
+  });
+
+  it("refetches the chat's list at once for a new held call while it is the target", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        messages={withToolOutput({
+          type: "approval_required",
+          review_id: "r1",
+        })}
+      />,
+    );
+
+    expect(mounted()).toEqual([chatList(true, 1)]);
+  });
+
+  it("still finds held cards whose call has paged out of the loaded history", () => {
+    render(<ChatMessagesContainer {...baseProps} messages={[]} />);
+
+    expect(mounted()).toEqual([chatList(false, 0)]);
+  });
+
+  it("mounts nothing in a read-only transcript", () => {
+    render(
+      <ChatMessagesContainer
+        {...baseProps}
+        readOnly
+        messages={withToolOutput({ type: "review_required", review_id: "r" })}
+      />,
+    );
+
+    expect(mounted()).toEqual([]);
   });
 });

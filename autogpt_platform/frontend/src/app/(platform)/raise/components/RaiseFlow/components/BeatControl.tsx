@@ -7,6 +7,11 @@ import type { useRaisePage } from "../../../useRaisePage";
 import { AboutStep } from "../../AboutStep/AboutStep";
 import { AvatarStep } from "../../AvatarStep/AvatarStep";
 import { BudgetStep } from "../../BudgetStep/BudgetStep";
+import { CategoryStep } from "../../CategoryStep/CategoryStep";
+import {
+  jobTitleSuggestionsFor,
+  nameSuggestionsFor,
+} from "../../CategoryStep/helpers";
 import {
   interactiveCardClassFor,
   selectedCardClassFor,
@@ -15,11 +20,6 @@ import {
 import { JobTitleStep } from "../../JobTitleStep/JobTitleStep";
 import { MarketplaceStep } from "../../MarketplaceStep/MarketplaceStep";
 import { NameStep } from "../../NameStep/NameStep";
-import {
-  jobTitleSuggestionsFor,
-  nameSuggestionsFor,
-} from "../../RoleStep/helpers";
-import { RoleStep } from "../../RoleStep/RoleStep";
 import { SkillsStep } from "../../SkillsStep/SkillsStep";
 
 interface Props {
@@ -29,19 +29,19 @@ interface Props {
 
 export function BeatControl({ beat, flow }: Props) {
   switch (beat) {
-    case "role":
+    case "category":
       return (
-        <RoleStep
-          selectedRole={flow.role}
+        <CategoryStep
+          selectedCategory={flow.category}
           color={flow.color}
-          onPick={flow.pickRole}
+          onPick={flow.pickCategory}
         />
       );
     case "jobTitle":
       return (
         <JobTitleStep
           selectedTitle={flow.jobTitle}
-          suggestions={jobTitleSuggestionsFor(flow.role)}
+          suggestions={jobTitleSuggestionsFor(flow.category)}
           color={flow.color}
           onSubmit={flow.submitJobTitle}
           onSkip={flow.skipJobTitle}
@@ -51,15 +51,18 @@ export function BeatControl({ beat, flow }: Props) {
       return (
         <NameStep
           selectedName={flow.name || null}
-          suggestions={nameSuggestionsFor(flow.role)}
+          suggestions={nameSuggestionsFor(flow.category)}
           color={flow.color}
           onSubmit={flow.submitName}
         />
       );
     case "avatar":
+      // The avatar beat only opens once the area is answered.
+      if (!flow.category) return null;
       return (
         <AvatarStep
           name={flow.name}
+          category={flow.category}
           color={flow.color}
           avatarUrl={flow.avatarUrl || null}
           onPick={flow.pickAvatar}

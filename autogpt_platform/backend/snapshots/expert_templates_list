@@ -22,6 +22,7 @@
     "job_title": null,
     "last_run_at": null,
     "last_run_status": null,
+    "learning_paused_at": null,
     "name": "Maria",
     "pod_id": null,
     "protected_soul_rules": [
@@ -30,6 +31,8 @@
     ],
     "role": "Marketing Specialist",
     "schedules_paused_at": null,
+    "setup_failures": [],
+    "setup_status": "ready",
     "skills": [],
     "source_template_id": null,
     "tagline": "Grows your audience",

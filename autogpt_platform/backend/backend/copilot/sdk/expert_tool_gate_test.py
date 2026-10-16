@@ -32,8 +32,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from claude_agent_sdk import ResultMessage
 
+from backend.copilot.budget_gate import AutoContinueGate
 from backend.copilot.model import ChatMessage, ChatSession, ChatSessionMetadata
 from backend.copilot.response_model import StreamStart
+from backend.copilot.turn_budget import TurnBudget
 
 _SVC = "backend.copilot.sdk.service"
 
@@ -146,6 +148,7 @@ def _make_patches(*, hire_experts_enabled: bool):
                 use_e2b_sandbox=False,
                 claude_agent_max_transient_retries=1,
                 agent_max_turns=1000,
+                sdk_step_checkin=1000,
                 claude_agent_max_budget_usd=100.0,
                 claude_agent_max_thinking_tokens=0,
                 claude_agent_thinking_effort=None,
@@ -156,21 +159,36 @@ def _make_patches(*, hire_experts_enabled: bool):
         ),
         (f"{_SVC}.get_user_tier", dict(new_callable=AsyncMock, return_value=None)),
         (
-            f"{_SVC}._resolve_dynamic_max_budget_usd",
-            dict(new_callable=AsyncMock, return_value=100.0),
+            f"{_SVC}.resolve_turn_budget",
+            dict(
+                new_callable=AsyncMock,
+                return_value=TurnBudget(usd=100.0, limiting="task"),
+            ),
+        ),
+        (
+            f"{_SVC}.gate_auto_continue",
+            dict(new_callable=AsyncMock, return_value=AutoContinueGate(proceed=True)),
         ),
         (f"{_SVC}.drain_pending_safe", dict(new_callable=AsyncMock, return_value=[])),
     ]
     return patches, mcp_server_mock, is_feature_enabled_mock
 
 
-async def _run_sdk_turn(*, user_id: str | None, hire_experts_enabled: bool):
+async def _run_sdk_turn(
+    *,
+    user_id: str | None,
+    hire_experts_enabled: bool,
+    expert_id: str | None = None,
+    extra_patches: list[tuple[str, dict]] | None = None,
+):
     from backend.copilot.sdk.service import stream_chat_completion_sdk
 
     session = _make_session()
+    session.expert_id = expert_id
     patches, mcp_server_mock, is_feature_enabled_mock = _make_patches(
         hire_experts_enabled=hire_experts_enabled
     )
+    patches += extra_patches or []
 
     events = []
     with contextlib.ExitStack() as stack:
@@ -221,3 +239,32 @@ class TestSdkExpertsFlagGuard:
         assert "update_expert_soul" in hidden
         assert "hire_expert" not in hidden
         assert "delegate_to_expert" not in hidden
+
+
+class TestSdkComputerNoteWiring:
+    """The plain chat's computer note rides ``get_sdk_supplement``; an expert
+    session must ask for the variant without it, because its own
+    ``<expert_computer>`` block arrives in the first user message."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("expert_id", [None, "expert-1"])
+    async def test_main_turn_tells_the_supplement_whether_it_is_an_expert_session(
+        self, expert_id: str | None
+    ) -> None:
+        supplement = MagicMock(return_value="")
+        await _run_sdk_turn(
+            user_id=None,
+            hire_experts_enabled=False,
+            expert_id=expert_id,
+            extra_patches=[
+                (f"{_SVC}.get_sdk_supplement", dict(new=supplement)),
+                (
+                    f"{_SVC}.build_expert_identity_suffix",
+                    dict(new_callable=AsyncMock, return_value=""),
+                ),
+            ],
+        )
+
+        supplement.assert_called_once_with(
+            use_e2b=False, expert_session=bool(expert_id)
+        )

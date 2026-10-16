@@ -31,6 +31,19 @@ export interface LDMultiContext {
 
 export type LDContext = LDUserContext | LDMultiContext;
 
+// The attributes the ported flag targeting rules match on, in the flat shape
+// PostHog person properties take; the synced employee cohort matches on email.
+export function buildFlagPersonProperties(user: User): Record<string, string> {
+  return {
+    ...(user.email && {
+      email: user.email,
+      email_domain: user.email.split("@").at(-1) ?? "",
+    }),
+    ...(user.role && { role: user.role }),
+    ...(user.created_at && { created_at: user.created_at }),
+  };
+}
+
 // The `user` context mirrors the backend's
 // (feature_flag.py:_fetch_user_context_data), so rules on that kind evaluate
 // identically on both sides. The `device` context below is client-only.

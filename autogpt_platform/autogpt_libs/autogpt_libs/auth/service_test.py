@@ -23,6 +23,7 @@ from autogpt_libs.auth.config import Settings
 from autogpt_libs.auth.service import (
     FRONTEND_SERVICE_SUBJECT,
     SERVICE_TOKEN_AUDIENCE,
+    frontend_service_claims,
     requires_frontend_service,
 )
 
@@ -165,3 +166,49 @@ def test_garbage_token_is_401(jwks_config):
 # test here: a valid Settings() cannot exist without JWT_JWKS_URL (its
 # validate() raises), so the guard is unreachable. config_test.py covers that
 # enforcement.
+
+
+CLAIM_PAYLOAD = {
+    "sub": FRONTEND_SERVICE_SUBJECT,
+    "aud": SERVICE_TOKEN_AUDIENCE,
+    "scope": "client-country",
+    "country": "US",
+}
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_returns_a_vouched_claim(jwks_config):
+    token = create_es256_token(CLAIM_PAYLOAD, jwks_config)
+    claims = await frontend_service_claims(token, "client-country")
+    assert claims is not None and claims["country"] == "US"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {**CLAIM_PAYLOAD, "scope": "auth-email:send"},
+        {**CLAIM_PAYLOAD, "sub": "service:imposter"},
+        {**CLAIM_PAYLOAD, "aud": "authenticated"},
+        {**CLAIM_PAYLOAD, "exp": datetime.now(timezone.utc) - timedelta(minutes=1)},
+    ],
+    ids=["other-scope", "wrong-subject", "user-audience", "expired"],
+)
+async def test_frontend_service_claims_refuses_anything_else(jwks_config, payload):
+    token = create_es256_token(payload, jwks_config)
+    assert await frontend_service_claims(token, "client-country") is None
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_refuses_a_foreign_signature(jwks_config):
+    """A token the caller signed itself -- the spoofing case -- is no claim."""
+    forged_key, _ = make_es256_keypair()
+    token = create_es256_token(CLAIM_PAYLOAD, forged_key)
+    assert await frontend_service_claims(token, "client-country") is None
+
+
+@pytest.mark.asyncio
+async def test_frontend_service_claims_refuses_symmetric_and_garbage(jwks_config):
+    hs = jwt.encode(CLAIM_PAYLOAD, MOCK_JWT_SECRET, algorithm="HS256")
+    assert await frontend_service_claims(hs, "client-country") is None
+    assert await frontend_service_claims("US", "client-country") is None

@@ -16,6 +16,12 @@ export function asObject(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+// Anyone holding a webhook ingress URL can trigger the agent unless the
+// trigger sets a secret_token, so it is treated as a credential.
+export function isWebhookIngressUrl(url: string): boolean {
+  return /\/webhooks\/[^/?#]+\/ingress(?:[/?#]|$)/.test(url);
+}
+
 export function safeHostname(url: string): string | null {
   try {
     return new URL(url).hostname.replace(/^www\./, "");

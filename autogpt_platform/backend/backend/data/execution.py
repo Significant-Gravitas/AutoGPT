@@ -48,6 +48,10 @@ from pydantic.fields import Field
 from backend.blocks import get_block, get_io_block_ids, get_webhook_block_ids
 from backend.blocks._base import BlockType
 from backend.data.expert_run_output import reconstruct_run_outputs
+from backend.data.sharing.execution_shares import (
+    live_execution_share,
+    soft_delete_and_unshare_execution,
+)
 from backend.data.tenancy import get_user_team_ids, visibility_filter
 from backend.notifications.scoring import score_completed_run
 from backend.util import type as type_utils
@@ -1363,6 +1367,13 @@ async def update_node_execution_status(
     if res := await AgentNodeExecution.prisma().find_unique(
         where={"id": node_exec_id}, include=EXECUTION_RESULT_INCLUDE
     ):
+        if res.executionStatus != status:
+            # VALID_STATUS_TRANSITIONS rejected the write. Say so: callers get
+            # the unchanged row back and can't tell the update didn't happen.
+            logger.warning(
+                f"Node execution #{node_exec_id} can't go from "
+                f"{res.executionStatus} to {status}; it stays {res.executionStatus}"
+            )
         return NodeExecutionResult.from_db(res)
 
     raise ValueError(f"Execution {node_exec_id} not found.")
@@ -1395,10 +1406,11 @@ async def delete_graph_execution(
     graph_exec_id: str, user_id: str, soft_delete: bool = True
 ) -> None:
     if soft_delete:
-        deleted_count = await AgentGraphExecution.prisma().update_many(
-            where={"id": graph_exec_id, "userId": user_id}, data={"isDeleted": True}
+        deleted_count = await soft_delete_and_unshare_execution(
+            execution_id=graph_exec_id, user_id=user_id
         )
     else:
+        # The schema cascades the share's file allowlist and chat links.
         deleted_count = await AgentGraphExecution.prisma().delete_many(
             where={"id": graph_exec_id, "userId": user_id}
         )
@@ -1542,6 +1554,15 @@ class NodeExecutionEntry(BaseModel):
     # reconcile, leaving the delta computed against a different number).
     # Excluded from dumps — in-memory only, scoped to a single live execution.
     pre_flight_charge: Optional[int] = Field(default=None, exclude=True)
+    # When the node was queued and by what: ``graph_start`` for a node queued
+    # before this executor picked the run up (an entry node, or one left
+    # queued by an interrupted run), ``node_output`` for one queued by an
+    # upstream node's output during the run. In-memory only, for the node's
+    # queue wait on its Sentry transaction.
+    queued_at: Optional[datetime] = Field(default=None, exclude=True)
+    queued_by: Optional[Literal["graph_start", "node_output"]] = Field(
+        default=None, exclude=True
+    )
 
 
 class ExecutionQueue(Generic[T]):
@@ -1874,11 +1895,7 @@ async def get_graph_execution_by_share_token(
 ) -> SharedExecutionResponse | None:
     """Get a shared execution with limited public-safe data."""
     execution = await AgentGraphExecution.prisma().find_first(
-        where={
-            "shareToken": share_token,
-            "isShared": True,
-            "isDeleted": False,
-        },
+        where=live_execution_share(share_token),
         include={
             "AgentGraph": True,
             "NodeExecutions": {
@@ -1935,7 +1952,7 @@ async def get_graph_execution_by_share_token(
         graph_name=(
             execution.AgentGraph.name
             if (execution.AgentGraph and execution.AgentGraph.name)
-            else "Untitled Agent"
+            else "Untitled Workflow"
         ),
         graph_description=(
             execution.AgentGraph.description if execution.AgentGraph else None
@@ -2016,7 +2033,8 @@ async def get_shared_execution_file(
 ) -> str | None:
     """Look up a file ID in the shared execution file allowlist.
 
-    Returns the execution ID if the file is in the allowlist, None otherwise.
+    Returns the execution ID if the file is in the allowlist and the run's
+    share is still live (see :func:`live_execution_share`), None otherwise.
     Uses a single query and returns a uniform None for all failure modes
     to prevent timing-based enumeration attacks.
     """
@@ -2024,6 +2042,7 @@ async def get_shared_execution_file(
         where={
             "shareToken": share_token,
             "fileId": file_id,
+            "Execution": {"is": live_execution_share(share_token)},
         }
     )
     return record.executionId if record else None

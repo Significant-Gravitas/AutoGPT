@@ -20,7 +20,6 @@ from backend.copilot.capabilities.mcp_review import (
 )
 from backend.copilot.constants import (
     COPILOT_NODE_PREFIX,
-    COPILOT_SESSION_PREFIX,
     SPEND_REVIEW_MARKER,
     parse_node_id_from_exec_id,
 )
@@ -87,15 +86,15 @@ class ResumeCapabilityTool(BaseTool):
         if not review_id:
             return ErrorResponse(
                 message="Please provide a review_id", session_id=session_id
-            )
+            ).from_outside()
         if not user_id:
             return ErrorResponse(
                 message="Authentication required", session_id=session_id
-            )
+            ).from_outside()
         if input_overrides is not None and not isinstance(input_overrides, dict):
             return ErrorResponse(
                 message="input_overrides must be an object", session_id=session_id
-            )
+            ).from_outside()
         if SPEND_REVIEW_MARKER in review_id:
             # A spend approval releases an expert's budget; there is no block
             # behind it to re-run, and parsing one out of the id fails.
@@ -106,7 +105,7 @@ class ResumeCapabilityTool(BaseTool):
                     "and there is nothing here to resume."
                 ),
                 session_id=session.session_id,
-            )
+            ).from_outside()
         # Resuming runs the capability, so it answers to the gate the run
         # would have. Permissions, hidden tools and the turn envelope are all
         # rebuilt per turn, and an approval from an earlier turn is not a
@@ -137,21 +136,21 @@ async def _load_approved_review(
                 "been consumed by an earlier resume_capability call."
             ),
             session_id=session_id,
-        )
-    if review.graph_exec_id != f"{COPILOT_SESSION_PREFIX}{session_id}":
+        ).from_outside()
+    if review.session_id != session_id:
         return ErrorResponse(
             message="Review does not belong to this session.", session_id=session_id
-        )
+        ).from_outside()
     if review.status == ReviewStatus.WAITING:
         return ErrorResponse(
             message="Review has not been approved yet. Wait for the user to approve it.",
             session_id=session_id,
-        )
+        ).from_outside()
     if review.status == ReviewStatus.REJECTED:
         return ErrorResponse(
             message="Review was rejected. The capability will not run.",
             session_id=session_id,
-        )
+        ).from_outside()
     return review
 
 
@@ -171,7 +170,7 @@ async def _resume_mcp(
         return ErrorResponse(
             message="Stored review payload is not an MCP call.",
             session_id=session.session_id,
-        )
+        ).from_outside()
     arguments = {**payload.arguments, **(input_overrides or {})}
     if arguments != payload.arguments:
         # The user approved one call, not a family of them. This review only
@@ -203,9 +202,8 @@ async def _resume_mcp(
             block_id=payload.server_url,
             block_name=f"{host}/{payload.tool}",
             review_id=new_id,
-            graph_exec_id=f"{COPILOT_SESSION_PREFIX}{session.session_id}",
             input_data=fresh.model_dump(),
-        )
+        ).from_outside()
     result = await RunMCPToolTool()._execute(
         user_id,
         session,

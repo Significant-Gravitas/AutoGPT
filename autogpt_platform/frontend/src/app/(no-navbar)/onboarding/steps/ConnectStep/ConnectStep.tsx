@@ -30,7 +30,7 @@ export function ConnectStep() {
     <FadeIn>
       <div className="flex w-full max-w-2xl flex-col items-center gap-8 px-4">
         <div className="flex flex-col items-center gap-4 text-center">
-          <AutopilotAvatar size={120} />
+          <AutopilotAvatar size={120} transparent />
           <Text variant="h4" as="h1">
             Already paying for an AI subscription?
           </Text>

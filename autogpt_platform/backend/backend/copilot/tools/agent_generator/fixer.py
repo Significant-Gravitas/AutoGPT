@@ -36,7 +36,7 @@ _TEXT_REPLACE_BLOCK_ID = "7e7c87ab-3469-4bcc-9abe-67705091b713"
 # Default OrchestratorBlock model/mode — kept in sync with ChatConfig.model.
 # ChatConfig uses the OpenRouter format ("anthropic/claude-opus-5");
 # OrchestratorBlock uses the native Anthropic model name.
-ORCHESTRATOR_DEFAULT_MODEL = "claude-opus-5"
+ORCHESTRATOR_DEFAULT_MODEL = "claude-opus-5-5"
 ORCHESTRATOR_DEFAULT_EXECUTION_MODE = "extended_thinking"
 
 # Defaults applied to OrchestratorBlock nodes by the fixer.
@@ -866,7 +866,12 @@ class AgentFixer:
         Returns:
             The fixed agent dictionary
         """
-        generic_allowed_models = {"gpt-4o", "claude-opus-4-6", "claude-opus-5"}
+        generic_allowed_models = {
+            "gpt-4o",
+            "claude-opus-4-6",
+            "claude-opus-5",
+            "claude-opus-5-5",
+        }
 
         # Create a mapping of block_id to block for quick lookup
         block_map = {block.get("id"): block for block in blocks}
@@ -1665,7 +1670,7 @@ class AgentFixer:
         3. ``retry`` defaults to ``3``
         4. ``multiple_tool_calls`` defaults to ``False``
         5. ``execution_mode`` defaults to ``"extended_thinking"``
-        6. ``model`` defaults to ``"claude-opus-5"``
+        6. ``model`` defaults to ``"claude-opus-5-5"``
 
         Args:
             agent: The agent dictionary to fix
@@ -1765,7 +1770,7 @@ class AgentFixer:
         agent = self.fix_getcurrentdate_offset(agent)
 
         # Apply OrchestratorBlock defaults BEFORE fix_ai_model_parameter so that
-        # the orchestrator-specific model (claude-opus-5) is set first and
+        # the orchestrator-specific model (claude-opus-5-5) is set first and
         # fix_ai_model_parameter sees it as a valid allowed model instead of
         # overwriting it with the generic default (gpt-4o).
         agent = self.fix_orchestrator_blocks(agent)

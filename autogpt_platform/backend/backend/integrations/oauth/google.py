@@ -47,11 +47,20 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         logger.debug(f"Setting up OAuth flow with scopes: {all_scopes}")
         flow = self._setup_oauth_flow(all_scopes)
         flow.redirect_uri = self.redirect_uri
+        # The platform generated this challenge together with the verifier it
+        # stores on the OAuth state, so the challenge on the login URL is the
+        # one the verifier in exchange_code_for_tokens can answer for.
+        pkce_params = (
+            {"code_challenge": code_challenge, "code_challenge_method": "S256"}
+            if code_challenge
+            else {}
+        )
         authorization_url, _ = flow.authorization_url(
             access_type="offline",
             include_granted_scopes="true",
             state=state,
             prompt="consent",
+            **pkce_params,
         )
         return authorization_url
 
@@ -68,7 +77,9 @@ class GoogleOAuthHandler(BaseOAuthHandler):
 
         # Disable scope check in fetch_token
         flow.oauth2session.scope = None
-        token = flow.fetch_token(code=code)
+        # This is a different Flow than the one that built the login URL, so
+        # the verifier has to come from the platform's OAuth state.
+        token = flow.fetch_token(code=code, code_verifier=code_verifier)
         logger.debug("Token fetched successfully")
 
         # Get the actual scopes granted by Google
@@ -182,6 +193,13 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         )
 
     def _setup_oauth_flow(self, scopes: list[str]) -> Flow:
+        # google-auth-oauthlib >= 1.3.0 generates its own PKCE verifier per
+        # Flow by default. A verifier minted here would only live on this
+        # Flow, which is discarded after the login URL is built, so the token
+        # exchange could never present it and Google would reject every
+        # exchange with "(invalid_grant) Missing code verifier". PKCE is
+        # handled with the platform's own pair instead (see get_login_url and
+        # exchange_code_for_tokens).
         return Flow.from_client_config(
             {
                 "web": {
@@ -192,4 +210,5 @@ class GoogleOAuthHandler(BaseOAuthHandler):
                 }
             },
             scopes=scopes,
+            autogenerate_code_verifier=False,
         )

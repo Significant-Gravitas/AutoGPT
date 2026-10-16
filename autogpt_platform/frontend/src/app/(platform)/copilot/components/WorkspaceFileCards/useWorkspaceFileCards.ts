@@ -24,7 +24,7 @@ export function useWorkspaceFileCards(sessionId: string | null) {
   // Session-scoped on purpose: the card is this chat's drawer — only files
   // uploaded to or created in this session. The artifacts side panel carries
   // the workspace-wide library.
-  const { uploaded, generated, isLoading, isError } =
+  const { uploaded, generated, documentCount, isLoading, isError } =
     useSessionFiles(sessionId);
   const [pendingDelete, setPendingDelete] = useState<SessionFile | null>(null);
   const [isZipping, setIsZipping] = useState(false);
@@ -83,6 +83,7 @@ export function useWorkspaceFileCards(sessionId: string | null) {
 
   return {
     files,
+    documentCount,
     isLoading,
     isError,
     isDeleting,
