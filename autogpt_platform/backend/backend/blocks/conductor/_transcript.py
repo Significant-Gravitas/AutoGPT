@@ -161,6 +161,7 @@ async def read_after(
     cursor: str,
     count: int,
     latest: bool = False,
+    queued_ok: bool = False,
 ) -> tuple[Rows, bool, str]:
     """`fetch_after` (or `fetch_latest_after` with `latest`) for a cursor
     that is either a row id or a prompt receipt.
@@ -168,7 +169,9 @@ async def read_after(
     A row id is paged directly. When the API rejects the cursor as not a row
     of the session (404) it is taken to be the receipt returned when a prompt
     was sent and resolved to that prompt's row; the row id actually used is
-    returned so callers can continue from it without resolving again.
+    returned so callers can continue from it without resolving again. With
+    `queued_ok` a receipt whose prompt has no row yet (it is still queued)
+    reads as an empty slice that keeps the receipt as its cursor.
     """
     read = fetch_latest_after if latest else fetch_after
     try:
@@ -178,6 +181,8 @@ async def read_after(
         if e.status != 404:
             raise
         row_id = await find_prompt_row(client, session_id, cursor)
+        if not row_id and queued_ok:
+            return [], False, cursor
         if not row_id:
             raise ValueError(
                 f"after={cursor!r} is neither a transcript row ID of session "
@@ -203,8 +208,8 @@ async def wait_until_idle(
     waited for) `idle` is accepted only once that prompt's turn has produced
     an agent event beyond its startup ones, exactly as `wait_for_reply`
     judges it, so a continued wait does not end on a session that is idle
-    because the prompt is still queued. Without it an idle session is taken
-    at its word.
+    because the prompt is still queued, and the status is then read once
+    more. Without it an idle session is taken at its word.
     """
     deadline = time.monotonic() + timeout_seconds
 
@@ -214,14 +219,10 @@ async def wait_until_idle(
     status: dict[str, Any] = {}
     while True:
         try:
-            status = await bounded(client.session_status(session_id), remaining)
-            state = str(status.get("status") or "")
-            if state == "error" or (
-                state == "idle"
-                and await _turn_progressed(
-                    client, session_id, prompt_message_id, remaining
-                )
-            ):
+            status, settled = await _settled_status(
+                client, session_id, prompt_message_id, remaining
+            )
+            if settled:
                 return status, False
         except TimeoutError:
             return status, True
@@ -232,13 +233,29 @@ async def wait_until_idle(
             return status, True
 
 
+async def _settled_status(
+    client: ConductorClient, session_id: str, receipt_id: str, remaining: Remaining
+) -> tuple[dict[str, Any], bool]:
+    """The session status and whether it ends `wait_until_idle`. An idle
+    status that passed the turn check is read again: a queued prompt that
+    started between the two reads already shows progress while the first
+    read still said idle."""
+    status = await bounded(client.session_status(session_id), remaining)
+    state = str(status.get("status") or "")
+    if state == "error" or (state == "idle" and not receipt_id):
+        return status, True
+    if state != "idle" or not await _turn_progressed(
+        client, session_id, receipt_id, remaining
+    ):
+        return status, False
+    status = await bounded(client.session_status(session_id), remaining)
+    return status, str(status.get("status") or "") in ("idle", "error")
+
+
 async def _turn_progressed(
     client: ConductorClient, session_id: str, receipt_id: str, remaining: Remaining
 ) -> bool:
-    """Whether the prompt's turn has an agent event past its startup ones;
-    trivially true when no prompt is being tracked."""
-    if not receipt_id:
-        return True
+    """Whether the prompt's turn has an agent event past its startup ones."""
     turn = _TurnCollector(receipt_id)
     await turn.refresh(client, session_id, remaining)
     return turn.progressed

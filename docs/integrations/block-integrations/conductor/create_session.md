@@ -6,7 +6,7 @@ Starts a new agent session (chat) in an existing Conductor workspace, optionally
 ## Conductor Create Session
 
 ### What it is
-Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check.
+Start a new agent session (chat) in an existing Conductor workspace, optionally with a first prompt, and optionally wait for the agent's reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. In AutoPilot chat each wait returns within 270s; continue it the same way.
 
 ### How it works
 <!-- MANUAL: how_it_works -->
@@ -24,8 +24,8 @@ The block posts to `POST /v0/sessions` with `workspaceId`, `agent` and any non-b
 | effort | Reasoning effort; leave empty for the default | "" \| "none" \| "low" \| "medium" \| "high" \| "xhigh" \| "max" \| "ultra" | No |
 | fast_mode | Enable fast mode | bool | No |
 | name | Session name | str | No |
-| wait_for_reply | After sending the initial prompt, wait until the agent is idle and return its reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. | bool | No |
-| timeout_seconds | How long to wait, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. | int | No |
+| wait_for_reply | After sending the initial prompt, wait until the agent is idle and return its reply. Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. In AutoPilot chat each wait returns within 270s; continue it the same way. | bool | No |
+| timeout_seconds | How long to wait, in seconds (max 7200). Coding agents typically run 5-30 minutes: prefer a single wait with a large timeout_seconds (max 7200) over repeated short polls or scheduled follow-ups. When timed_out is true the agent is still working; keep waiting with Conductor Get Session (wait_until_idle=true, after=next_after, prompt_message_id=the prompt's message id) rather than scheduling a check. In AutoPilot chat each wait returns within 270s; continue it the same way. | int | No |
 | poll_interval_seconds | Seconds between status checks while waiting; 0 scales it with timeout_seconds (10-60s) | int | No |
 | include_messages | Also return the raw transcript rows of the turn in messages. Off by default: a long turn is hundreds of kilobytes, while reply, session_status and next_after cover the usual needs | bool | No |
 

@@ -1,5 +1,7 @@
+import time
 from typing import Any
 
+from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -22,6 +24,7 @@ from ._api import (
     WAIT_GUIDANCE,
     ConductorClient,
     poll_interval_for,
+    wait_seconds_for,
 )
 from ._config import conductor
 from ._mocks import WAIT_MOCK_REPLY
@@ -181,8 +184,14 @@ class ConductorSendMessageBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        started = time.monotonic()
         if not input_data.message.strip():
             raise BlockInputError(
                 message="message must not be empty",
@@ -218,15 +227,16 @@ class ConductorSendMessageBlock(Block):
                 message_id,
             )
             return
+        timeout_seconds = wait_seconds_for(
+            input_data.timeout_seconds, execution_context, started
+        )
         try:
             waited = await self._wait(
                 credentials,
                 input_data.session_id,
                 message_id,
-                input_data.timeout_seconds,
-                poll_interval_for(
-                    input_data.timeout_seconds, input_data.poll_interval_seconds
-                ),
+                timeout_seconds,
+                poll_interval_for(timeout_seconds, input_data.poll_interval_seconds),
             )
         except Exception as e:
             raise BlockExecutionError(

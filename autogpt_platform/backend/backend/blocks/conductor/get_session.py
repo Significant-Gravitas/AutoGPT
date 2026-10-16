@@ -1,5 +1,7 @@
+import time
 from typing import Any
 
+from backend.data.execution import ExecutionContext
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -19,6 +21,7 @@ from ._api import (
     POLL_INTERVAL_DESCRIPTION,
     ConductorClient,
     poll_interval_for,
+    wait_seconds_for,
 )
 from ._config import conductor
 from ._mocks import MOCK_PROMPT_MESSAGE, MOCK_REPLY_MESSAGE
@@ -125,8 +128,9 @@ class ConductorGetSessionBlock(Block):
         )
         next_after: str = SchemaField(
             description="Transcript row ID of the last returned message (or the "
-            "row `after` resolved to when nothing followed it); pass it as "
-            "after to read what follows, or to continue a wait that timed out"
+            "row `after` resolved to when nothing followed it, or when the wait "
+            "timed out); pass it as after to read what follows, or to continue "
+            "a wait that timed out"
         )
         timed_out: bool = SchemaField(
             description="True when wait_until_idle was set and the session was "
@@ -202,7 +206,7 @@ class ConductorGetSessionBlock(Block):
         )
 
     async def _fetch(
-        self, credentials: APIKeyCredentials, input_data: Input
+        self, credentials: APIKeyCredentials, input_data: Input, timeout_seconds: int
     ) -> dict[str, Any]:
         client = ConductorClient(credentials)
         result: dict[str, Any] = {}
@@ -210,10 +214,8 @@ class ConductorGetSessionBlock(Block):
             result["status"], result["timed_out"] = await wait_until_idle(
                 client,
                 input_data.session_id,
-                input_data.timeout_seconds,
-                poll_interval_for(
-                    input_data.timeout_seconds, input_data.poll_interval_seconds
-                ),
+                timeout_seconds,
+                poll_interval_for(timeout_seconds, input_data.poll_interval_seconds),
                 input_data.prompt_message_id,
             )
         else:
@@ -227,6 +229,8 @@ class ConductorGetSessionBlock(Block):
                     input_data.after,
                     input_data.message_limit,
                     latest=input_data.wait_until_idle,
+                    queued_ok=input_data.wait_until_idle
+                    and input_data.after == input_data.prompt_message_id,
                 )
                 result["cursor"] = cursor
             else:
@@ -239,10 +243,18 @@ class ConductorGetSessionBlock(Block):
         return result
 
     async def run(
-        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: APIKeyCredentials,
+        execution_context: ExecutionContext | None = None,
+        **kwargs,
     ) -> BlockOutput:
+        timeout_seconds = wait_seconds_for(
+            input_data.timeout_seconds, execution_context, time.monotonic()
+        )
         try:
-            data = await self._fetch(credentials, input_data)
+            data = await self._fetch(credentials, input_data, timeout_seconds)
         except Exception as e:
             raise BlockExecutionError(
                 message=f"Get session failed: {e}",
@@ -265,10 +277,15 @@ class ConductorGetSessionBlock(Block):
         yield "latest_reply", latest_reply(messages)
         yield "has_more", bool(listing.get("hasMore", False))
         cursor = str(data.get("cursor") or input_data.after)
+        timed_out = bool(data.get("timed_out", False))
+        # A timed-out wait keeps its cursor, so the continued wait still reads
+        # a reply the agent wrote just before this one gave up.
         yield "next_after", (
-            str(messages[-1].get("id") or cursor) if messages else cursor
+            str(messages[-1].get("id") or cursor)
+            if messages and not (timed_out and cursor)
+            else cursor
         )
-        yield "timed_out", bool(data.get("timed_out", False))
+        yield "timed_out", timed_out
         if data.get("message"):
             yield "message", data["message"]
         yield "deep_link", str(session.get("deepLink") or "")

@@ -248,7 +248,8 @@ async def test_wait_until_idle_with_a_prompt_ignores_idle_before_its_turn_starts
         )
     assert timed_out is False
     assert status_read["status"] == "idle"
-    assert polls["n"] == 4
+    # Four polls, plus the status re-read once the turn showed progress.
+    assert polls["n"] == 5
 
 
 @pytest.mark.asyncio

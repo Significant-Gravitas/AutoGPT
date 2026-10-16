@@ -1,6 +1,9 @@
+import time
 from enum import Enum
 from typing import Any
 
+from backend.copilot.constants import MAX_TOOL_WAIT_SECONDS, is_copilot_synthetic_id
+from backend.data.execution import ExecutionContext
 from backend.sdk import APIKeyCredentials, Requests
 
 CONDUCTOR_API_URL = "https://api.conductor.build"
@@ -17,6 +20,11 @@ DEFAULT_WAIT_SECONDS = 30 * 60
 # Bounds for the automatic poll interval when the caller leaves it at 0.
 MIN_POLL_INTERVAL_SECONDS = 10
 MAX_POLL_INTERVAL_SECONDS = 60
+# AutoPilot runs a block under a single-tool cap (MAX_TOOL_WAIT_SECONDS) and
+# cancels it there, before timed_out and next_after are yielded. A wait run
+# from AutoPilot therefore ends this long before the cap, measured from the
+# block's start, so it returns its continuation instead.
+COPILOT_WAIT_SECONDS = MAX_TOOL_WAIT_SECONDS - 30
 
 WAIT_GUIDANCE = (
     "Coding agents typically run 5-30 minutes: prefer a single wait with a "
@@ -24,7 +32,8 @@ WAIT_GUIDANCE = (
     "polls or scheduled follow-ups. When timed_out is true the agent is "
     "still working; keep waiting with Conductor Get Session "
     "(wait_until_idle=true, after=next_after, prompt_message_id=the prompt's "
-    "message id) rather than scheduling a check."
+    "message id) rather than scheduling a check. In AutoPilot chat each "
+    f"wait returns within {COPILOT_WAIT_SECONDS}s; continue it the same way."
 )
 NEXT_AFTER_CONTINUATION = (
     " When timed_out is true, pass it as after to Get Session with "
@@ -117,6 +126,19 @@ def poll_interval_for(timeout_seconds: int, poll_interval_seconds: int = 0) -> i
         min(MAX_POLL_INTERVAL_SECONDS, timeout_seconds // 90),
     )
     return max(1, min(interval, timeout_seconds // 2))
+
+
+def wait_seconds_for(
+    timeout_seconds: int, execution_context: ExecutionContext | None, started: float
+) -> int:
+    """`timeout_seconds`, trimmed when the block runs inside AutoPilot so the
+    wait ends COPILOT_WAIT_SECONDS after `started` (a `time.monotonic()`
+    reading taken when the block began)."""
+    graph_exec_id = execution_context.graph_exec_id if execution_context else None
+    if not (graph_exec_id and is_copilot_synthetic_id(graph_exec_id)):
+        return timeout_seconds
+    left = int(COPILOT_WAIT_SECONDS - (time.monotonic() - started))
+    return max(1, min(timeout_seconds, left))
 
 
 class ConductorAPIError(ValueError):
