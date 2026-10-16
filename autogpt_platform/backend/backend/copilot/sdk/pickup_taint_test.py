@@ -37,6 +37,7 @@ from backend.copilot.db import PaginatedMessages
 from backend.copilot.executor import utils as executor_utils
 from backend.copilot.executor.utils import CoPilotExecutionEntry, ScheduledTurnOrigin
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk import tool_adapter
 from backend.copilot.sdk.conftest import build_test_transcript
 from backend.copilot.sdk.continued_turn_query_test import _client
 from backend.copilot.sdk.retry_scenarios_test import _make_sdk_patches
@@ -359,6 +360,9 @@ async def _run_engine(
         (f"{_SVC}.persist_and_record_usage", dict(new_callable=AsyncMock)),
         (f"{_SVC}._rebuild_first_turn_context", dict(new=AsyncMock(return_value=[]))),
         (f"{_SVC}.persist_session_safe", dict(side_effect=_persisted)),
+        # The shared patches stub this out; the real one is what puts the
+        # turn's envelope where its tools read it.
+        (f"{_SVC}.set_execution_context", dict(new=tool_adapter.set_execution_context)),
     ]
     with contextlib.ExitStack() as stack:
         for target, patch_kwargs in patches:

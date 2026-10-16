@@ -162,12 +162,23 @@ def test_a_listed_workspace_tool_outside_the_workspace_is_denied(tool: str):
 def test_an_unlisted_workspace_tool_is_denied_even_inside_the_workspace(
     tool: str, tool_input: dict[str, Any]
 ):
-    """The session's allowed set is checked first, for these tools too."""
+    """The session's allowed set is checked first, for these tools too: an E2B
+    session doesn't list them."""
+    e2b_allowed = get_copilot_tool_names(use_e2b=True)
+    assert tool not in e2b_allowed
     result = _validate_tool_access(
-        tool, tool_input, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+        tool, tool_input, sdk_cwd=SDK_CWD, allowed_tools=e2b_allowed
     )
-    assert tool not in ALLOWED
     assert _is_denied(result)
+
+
+@pytest.mark.parametrize("tool", ["Glob", "Grep"])
+def test_outside_e2b_the_session_lists_the_workspace_tools(tool: str):
+    assert tool in ALLOWED
+    result = _validate_tool_access(
+        tool, {"path": f"{SDK_CWD}/src"}, sdk_cwd=SDK_CWD, allowed_tools=ALLOWED
+    )
+    assert result == {}
 
 
 def test_read_outside_workspace_denied():

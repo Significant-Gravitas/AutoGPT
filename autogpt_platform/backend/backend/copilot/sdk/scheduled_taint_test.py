@@ -25,6 +25,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 from backend.copilot.context import get_current_envelope, set_execution_context
 from backend.copilot.model import ChatMessage, ChatSession
+from backend.copilot.sdk import tool_adapter
 from backend.copilot.sdk.conftest import build_test_transcript
 from backend.copilot.sdk.continued_turn_query_test import _client
 from backend.copilot.sdk.pickup_taint_test import _queued
@@ -212,6 +213,9 @@ async def _run_to_query(
         (f"{_SVC}._first_turn_context_blocks", dict(new=AsyncMock(return_value=[]))),
         (f"{_SVC}._rebuild_first_turn_context", dict(new=AsyncMock(return_value=[]))),
         (f"{_SVC}.persist_session_safe", dict(side_effect=_persisted)),
+        # The shared patches stub this out; the real one is what puts the
+        # turn's envelope where its tools read it.
+        (f"{_SVC}.set_execution_context", dict(new=tool_adapter.set_execution_context)),
     ]
     with contextlib.ExitStack() as stack:
         for target, patch_kwargs in patches:
