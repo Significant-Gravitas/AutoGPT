@@ -45,6 +45,7 @@ import {
   PENDING_DRAINED_PART_TYPE,
 } from "../../messageParts";
 import { RESTORE_STALL_TIMEOUT_MS } from "../../restoreConstants";
+import { TURN_PAUSED_PART_TYPE } from "../../turnPause";
 import type { ExpertIdentity } from "../../useExpertMap";
 import { ChatMinimap } from "../ChatMinimap/ChatMinimap";
 import { WorkCard } from "../WorkCard/WorkCard";
@@ -398,6 +399,9 @@ export function ChatMessagesContainer({
     // into the next part without flashing back to "Thinking...".
     if (lastPart.type === "step-start") return true;
 
+    // A pause is how the turn ends, so nothing more is coming to wait on.
+    if (lastPart.type === TURN_PAUSED_PART_TYPE) return true;
+
     if (
       lastPart.type.startsWith(TOOL_PART_PREFIX) &&
       "state" in lastPart &&
@@ -652,7 +656,10 @@ export function ChatMessagesContainer({
                     isCompact
                       ? "text-sm leading-6 group-[.is-user]:rounded-xl"
                       : "text-[1rem] leading-relaxed group-[.is-user]:rounded-3xl",
-                    "group-[.is-user]:bg-zinc-100 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-900",
+                    "group-[.is-user]:bg-zinc-900 group-[.is-user]:px-4 group-[.is-user]:py-2.5 group-[.is-user]:text-zinc-50",
+                    // Streamdown's links (buttons, `text-primary`) and light
+                    // code chips would sink into the dark bubble.
+                    "group-[.is-user]:[&_[data-streamdown=link]]:break-all group-[.is-user]:[&_[data-streamdown=link]]:text-zinc-50 group-[.is-user]:[&_[data-streamdown=link]]:underline group-[.is-user]:[&_code]:bg-white/10 group-[.is-user]:[&_code]:text-zinc-50",
                     "group-[.is-user]:[&_h1]:text-lg group-[.is-user]:[&_h1]:font-semibold group-[.is-user]:[&_h2]:text-lg group-[.is-user]:[&_h2]:font-semibold group-[.is-user]:[&_h3]:text-lg group-[.is-user]:[&_h3]:font-semibold group-[.is-user]:[&_h4]:text-lg group-[.is-user]:[&_h4]:font-semibold group-[.is-user]:[&_h5]:text-lg group-[.is-user]:[&_h5]:font-semibold group-[.is-user]:[&_h6]:text-lg group-[.is-user]:[&_h6]:font-semibold",
                     // Chain hover pills use negative margins that the base
                     // overflow-hidden would clip.

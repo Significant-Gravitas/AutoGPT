@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict
 from backend.copilot.context import get_current_envelope
 from backend.copilot.model import ChatSession
 from backend.copilot.tree import raise_ceiling, spent_past_ceiling
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.platform_linking.models import Platform
 from backend.util.feature_flag import Flag, is_feature_enabled
 
@@ -221,7 +222,7 @@ async def check_action(
             judgement = await supervise(
                 tool_name=tool_name,
                 args=_judged_args(args, files),
-                user_message=_last_user_message(session),
+                user_messages=_typed_messages(session),
             )
             if judgement.allowed:
                 return ALLOW
@@ -233,6 +234,7 @@ async def check_action(
         args=args,
         rule_key=rule_key,
         envelope=get_current_envelope(),
+        cost_context=await capture_cost_context(user_id),
     )
     return await _park(
         call, user_id, session, reason, reason_kind, subject, decided_by, spend_shown
@@ -312,17 +314,20 @@ def _judged_args(
     return judged
 
 
-def _last_user_message(session: ChatSession) -> str:
+def _typed_messages(session: ChatSession) -> list[str]:
+    """What the user typed, oldest first; an answered card's rows and a row of
+    nothing but the server's context are not the user's words."""
     # Deferred: copilot.service imports the tool registry, which imports this gate.
     from backend.copilot.service import strip_injected_context_for_display
 
-    for message in reversed(session.messages):
-        if message.role == "user" and message.content:
-            if held.is_answer_row(message):
-                continue
-            # A first turn's row starts with the server's context blocks.
-            return strip_injected_context_for_display(message.content)
-    return ""
+    typed = [
+        strip_injected_context_for_display(message.content)
+        for message in session.messages
+        if message.role == "user"
+        and message.content
+        and not held.is_answer_row(message)
+    ]
+    return [message for message in typed if message.strip()]
 
 
 __all__ = [

@@ -28,6 +28,7 @@ from backend.copilot.model import (
     ChatSession,
     ChatSessionMetadata,
 )
+from backend.copilot.trial_cost_context import TrialCostContext
 
 from . import hire_expert, raise_expert, update_soul
 from .base import BaseTool
@@ -74,14 +75,23 @@ def gate():
         supervise=AsyncMock(
             return_value=Judgement(allowed=False, reason="Check with the user.")
         ),
+        remember=AsyncMock(return_value=True),
     )
     with (
         patch(f"{_GATE}.is_feature_enabled", AsyncMock(return_value=True)),
         patch(f"{_GATE}.review_store.find_review", store.find_review),
         patch(f"{_GATE}.review_store.open_review", store.open_review),
-        patch(f"{_GATE}.held.remember", AsyncMock(return_value=True)),
+        patch(f"{_GATE}.held.remember", store.remember),
         patch(f"{_GATE}.chat_rules.rule_for", AsyncMock(return_value=None)),
         patch(f"{_GATE}.supervise", store.supervise),
+        patch(
+            f"{_GATE}.capture_cost_context",
+            AsyncMock(
+                side_effect=lambda user_id: TrialCostContext(
+                    user_id=user_id, trial_id=None
+                )
+            ),
+        ),
         patch(f"{_GATE}.reads.release_held_read", AsyncMock(return_value=None)),
         patch(f"{_GATE}.reads.screen_read", AsyncMock(return_value=None)),
         patch.object(hire_expert, "uuid", _FIXED_UUID),
@@ -279,12 +289,9 @@ async def test_the_held_confirm_fixture_is_what_an_approved_hold_delivers(gate):
             )
         )
         review_id = stub["review_id"]
-        call = held.HeldCall(
-            review_id=review_id,
-            tool_name="confirm_expert_change",
-            tool_call_id="call-2",
-            args={"confirmation_id": _ID},
-        )
+        # The call as the gate stored it, so the late result is built from the real hold.
+        call: held.HeldCall = gate.remember.await_args.args[1]
+        assert call.review_id == review_id
         gate.find_review.return_value = SimpleNamespace(
             status=ReviewStatus.APPROVED, payload={}
         )
