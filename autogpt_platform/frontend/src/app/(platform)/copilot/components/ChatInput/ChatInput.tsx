@@ -34,7 +34,7 @@ import {
   type ComposerMenuItem,
 } from "./components/ComposerPlusMenu";
 import { DryRunToggleButton } from "./components/DryRunToggleButton";
-import { FileChips } from "./components/FileChips";
+import { ComposerAttachments } from "./components/ComposerAttachments";
 import { MentionDropdown } from "./components/MentionDropdown";
 import { ConnectionPicker } from "./components/ConnectionPicker/ConnectionPicker";
 import { NoAIConnectionNotice } from "./components/NoAIConnectionNotice/NoAIConnectionNotice";
@@ -437,10 +437,9 @@ export function ChatInput({
             className={stacked ? undefined : "mt-1.5"}
           />
         )}
-        <FileChips
+        <ComposerAttachments
           attachments={attachments}
           onRemove={handleRemoveAttachment}
-          isUploading={isUploadingFiles}
           stacked={stacked}
         />
         <div

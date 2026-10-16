@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_ATTACHMENTS } from "../../../helpers/workspaceAttachments";
 import { ChatInput } from "../ChatInput";
 
-// Only the composer's periphery is stubbed: FileChips, ComposerPlusMenu and
+// Only the composer's periphery is stubbed: ComposerAttachments, ComposerPlusMenu and
 // the cap notice stay real, because the cap is a claim about what the user
 // ends up seeing and being able to click.
 vi.mock("@/app/api/__generated__/endpoints/chat/chat", () => ({

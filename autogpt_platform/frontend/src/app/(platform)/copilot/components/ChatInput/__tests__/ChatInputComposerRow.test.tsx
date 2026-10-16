@@ -89,8 +89,8 @@ vi.mock("../useVoiceRecording", () => ({
 vi.mock("../components/ComposerPlusMenu", () => ({
   ComposerPlusMenu: () => null,
 }));
-vi.mock("../components/FileChips", () => ({
-  FileChips: () => null,
+vi.mock("../components/ComposerAttachments", () => ({
+  ComposerAttachments: () => null,
 }));
 
 // jsdom lays nothing out, so the composer's geometry is played here: the box

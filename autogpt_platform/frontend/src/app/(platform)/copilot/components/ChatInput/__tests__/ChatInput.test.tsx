@@ -228,8 +228,8 @@ vi.mock("../components/ComposerPlusMenu", () => ({
     </>
   ),
 }));
-vi.mock("../components/FileChips", () => ({
-  FileChips: () => null,
+vi.mock("../components/ComposerAttachments", () => ({
+  ComposerAttachments: () => null,
 }));
 vi.mock("../components/RecordingButton", () => ({
   RecordingButton: () => null,
