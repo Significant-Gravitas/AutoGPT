@@ -295,6 +295,18 @@ describe("ChatInput composer row", () => {
   });
 });
 
+// Secondary composer controls live behind the "..." overflow menu.
+function openOverflow() {
+  fireEvent.click(screen.getByTestId("composer-overflow-button"));
+}
+
+// Negative assertions are only meaningful with the panel open when the
+// menu exists at all (it is absent when no control qualifies).
+function openOverflowIfPresent() {
+  const trigger = screen.queryByTestId("composer-overflow-button");
+  if (trigger) fireEvent.click(trigger);
+}
+
 describe("ChatInput token devtool entry", () => {
   it("lists Token usage in the + menu while the brain-dump tray is disabled", () => {
     // The tray is brain-dump-only; the entry must not depend on that flag.
@@ -588,12 +600,14 @@ describe("ChatInput dry-run toggle", () => {
   it("does not render dry-run toggle when flag is disabled", () => {
     mockFlagValue = false;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
   it("renders dry-run toggle when flag is enabled and no session", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession={false} />);
+    openOverflow();
     expect(screen.getByTestId("dry-run-toggle")).toBeDefined();
   });
 
@@ -601,6 +615,7 @@ describe("ChatInput dry-run toggle", () => {
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} hasSession />);
     // isDryRun is false in mock, hasSession is true → toggle hidden
+    openOverflowIfPresent();
     expect(screen.queryByTestId("dry-run-toggle")).toBeNull();
   });
 
@@ -608,6 +623,7 @@ describe("ChatInput dry-run toggle", () => {
     const { toast } = await import("@/components/molecules/Toast/use-toast");
     mockFlagValue = true;
     render(<ChatInput onSend={mockOnSend} />);
+    openOverflow();
     fireEvent.click(screen.getByTestId("dry-run-toggle"));
     // isDryRun was false → next is true
     expect(toast).toHaveBeenCalledWith(
@@ -946,6 +962,25 @@ describe("ChatInput clipboard paste", () => {
     const [message, files] = onSend.mock.calls[0];
     expect(message).toBe("");
     expect(files).toHaveLength(1);
+  });
+
+  it("says why Send at reset is off for files attached before it", async () => {
+    const onSchedule = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(<ChatInput onSend={vi.fn()} />);
+    const textarea = screen.getByTestId("textarea") as HTMLTextAreaElement;
+    const image = new File(["png-bytes"], "image.png", { type: "image/png" });
+    pasteFiles(textarea, [image]);
+    expect(screen.queryByText(/Only text can wait for the reset/)).toBeNull();
+
+    // The budget runs out with the file still attached.
+    rerender(<ChatInput onSend={vi.fn()} atReset={{ onSchedule }} />);
+    fireEvent.change(textarea, { target: { value: "see screenshot" } });
+    fireEvent.submit(textarea.closest("form")!);
+
+    expect(
+      await screen.findByText(/Only text can wait for the reset/),
+    ).toBeDefined();
+    expect(onSchedule).not.toHaveBeenCalled();
   });
 
   it("keeps the original name of pasted non-generic files", async () => {

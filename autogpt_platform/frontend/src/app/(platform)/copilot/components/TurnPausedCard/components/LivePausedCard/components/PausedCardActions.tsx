@@ -1,4 +1,5 @@
 import { ArrowRight02Icon, Clock01Icon } from "@hugeicons/core-free-icons";
+import { useState } from "react";
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
@@ -14,6 +15,11 @@ interface Props {
 
 export function PausedCardActions({ card, onStop }: Props) {
   const { keep, resume, chatGpt } = card;
+  // Continue on ChatGPT picks the task up too, once it has switched, so the
+  // spinner follows the button that started it.
+  const [pickUpVia, setPickUpVia] = useState<"keep_going" | "chatgpt">(
+    "keep_going",
+  );
   const isBusy =
     keep.isContinuing ||
     resume.isScheduling ||
@@ -52,8 +58,11 @@ export function PausedCardActions({ card, onStop }: Props) {
       {card.primary === "keep_going" && (
         <Button
           size="small"
-          onClick={() => void keep.keepGoing()}
-          loading={keep.isContinuing}
+          onClick={() => {
+            setPickUpVia("keep_going");
+            void keep.keepGoing();
+          }}
+          loading={keep.isContinuing && pickUpVia === "keep_going"}
           disabled={isBusy}
         >
           Keep going
@@ -63,11 +72,13 @@ export function PausedCardActions({ card, onStop }: Props) {
         <Button
           size="small"
           variant="secondary"
-          onClick={() => void chatGpt.continueHere()}
-          // After the switch, the pick-up runs under this button too.
+          onClick={() => {
+            setPickUpVia("chatgpt");
+            void chatGpt.continueHere();
+          }}
           loading={
             chatGpt.isSwitching ||
-            (keep.isContinuing && card.primary !== "keep_going")
+            (keep.isContinuing && pickUpVia === "chatgpt")
           }
           disabled={isBusy}
         >
