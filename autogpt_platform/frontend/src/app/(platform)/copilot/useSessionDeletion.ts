@@ -1,7 +1,7 @@
 import { useDeleteV2DeleteSession } from "@/app/api/__generated__/endpoints/chat/chat";
 import { toast } from "@/components/molecules/Toast/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { parseAsString, useQueryState } from "nuqs";
+import { parseAsString, useQueryStates } from "nuqs";
 import { useCopilotUIStore } from "./store";
 import {
   SESSION_DELETE_MUTATION_KEY,
@@ -13,16 +13,20 @@ import {
 /**
  * Session deletion flow: reads the pending `sessionToDelete` from the store,
  * closes the dialog as soon as the user confirms, leaves the chat if it is
- * the open one, and fires the delete mutation. `useSessionList` hides the
- * chat while the mutation is pending. On success it is dropped from the
- * cached list; on error the chat shows again and a toast is shown.
+ * the open one (with its `expertId`, so the expert's latest-thread adoption
+ * cannot select it again), and fires the delete mutation. `useSessionList`
+ * hides the chat while the mutation is pending. On success it is dropped from
+ * the cached list; on error the chat shows again and a toast is shown.
  *
  * Consumed by `ChatSidebar`, `MobileDrawer` and `RecentChats` so each can
  * render its own `DeleteChatDialog` without duplicating the mutation wiring.
  */
 export function useSessionDeletion() {
   const queryClient = useQueryClient();
-  const [sessionId, setSessionId] = useQueryState("sessionId", parseAsString);
+  const [{ sessionId }, setChatParams] = useQueryStates({
+    sessionId: parseAsString,
+    expertId: parseAsString,
+  });
   const { sessionToDelete, setSessionToDelete } = useCopilotUIStore();
 
   const { mutate: deleteSession, isPending: isDeleting } =
@@ -39,7 +43,7 @@ export function useSessionDeletion() {
           // accidentally clear the wrong active session after the network
           // round-trip.
           if (variables.sessionId === sessionId) {
-            setSessionId(null);
+            leaveChat();
           }
         },
         onError: (error) => {
@@ -56,6 +60,10 @@ export function useSessionDeletion() {
       },
     });
 
+  function leaveChat() {
+    setChatParams({ sessionId: null, expertId: null });
+  }
+
   function requestDelete(id: string, title: string | null | undefined) {
     if (isDeleting) return;
     setSessionToDelete({ id, title });
@@ -67,7 +75,7 @@ export function useSessionDeletion() {
     // Leaving now keeps the composer from sending into a chat that is
     // already on its way out.
     if (sessionToDelete.id === sessionId) {
-      setSessionId(null);
+      leaveChat();
     }
     setSessionToDelete(null);
   }
