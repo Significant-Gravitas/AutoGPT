@@ -53,7 +53,11 @@ function RecentWorkRow({ line }: RowProps) {
   const content = (
     <>
       <span className="shrink-0">
-        <ActorMark actor={line.actor} />
+        <ActorMark
+          actor={line.actor}
+          size={22}
+          className="size-[22px] rounded-full border border-zinc-200"
+        />
       </span>
       <Text variant="body" tone="secondary" className="min-w-0 flex-1 truncate">
         <span className="font-medium text-zinc-900">{line.actor.name}</span>{" "}
