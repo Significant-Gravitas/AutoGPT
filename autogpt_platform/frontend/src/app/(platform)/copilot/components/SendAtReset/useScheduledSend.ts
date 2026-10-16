@@ -14,8 +14,10 @@ import { describeSendFailure } from "../ChatInput/helpers";
 import { useChatDraftAccess } from "../ChatInput/useChatDraft";
 import {
   atResetRefusal,
+  holdsMessage,
   isJoinedSendTooLong,
   returnToDraft,
+  SCHEDULE_FAILED_TITLE,
   sendAtResetFailureTitle,
   SentNowError,
   sessionDraftKey,
@@ -119,17 +121,18 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   }
 
   /** The send as the server holds it now, since another tab or client may
-   *  have added to it after this one last read the list. */
+   *  have added to it after this one last read the list. A request of its
+   *  own: one the list's query is making is cancelled if the chat remounts,
+   *  which would read as the server being unreachable. */
   async function readSend() {
     if (!sessionId) return { send: pending };
     try {
-      const response = await queryClient.fetchQuery({
-        queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
-        queryFn: ({ signal }) =>
-          getV2ListTurnsAtBudgetReset(sessionId, { signal }),
-        staleTime: 0,
-      });
+      const response = await getV2ListTurnsAtBudgetReset(sessionId);
       if (response.status !== 200) return { error: response };
+      queryClient.setQueryData(
+        getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
+        response,
+      );
       return {
         send: response.data.jobs.find((job) => job.kind === "send") ?? null,
       };
@@ -146,10 +149,31 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
     });
   }
 
+  /** For a message a page sent to be set and then lost track of, as on a
+   *  reload mid-request: keep it if the server has it, otherwise put it back
+   *  in the chat's draft. Never sent again from here, since the first try
+   *  could still land and the server would add the message twice. */
+  async function recover(message: string) {
+    const read = await readSend();
+    if ("send" in read && holdsMessage(read.send?.message ?? "", message)) {
+      return;
+    }
+    draft.write((current) => returnToDraft(current, message));
+    toastSendFailure({
+      title:
+        "error" in read
+          ? "Couldn’t check your scheduled message"
+          : SCHEDULE_FAILED_TITLE,
+      error: "error" in read ? read.error : undefined,
+      recovery: "your message is back in the composer",
+    });
+  }
+
   return {
     pending,
     schedule,
     scheduleQuietly,
+    recover,
     edit,
     cancel: unschedule,
     isBusy: scheduleSend.isPending || cancelSend.isPending,

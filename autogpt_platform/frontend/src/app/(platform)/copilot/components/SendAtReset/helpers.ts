@@ -66,3 +66,14 @@ export function returnToDraft(current: string, message: string) {
   if (!current.trim() || current === message) return message;
   return `${message}\n\n${current}`;
 }
+
+/** Whether the send waiting holds `message`: the server joins each send set
+ *  while one waits onto it, after a blank line. */
+export function holdsMessage(waiting: string, message: string) {
+  return (
+    waiting === message ||
+    waiting.startsWith(`${message}\n\n`) ||
+    waiting.endsWith(`\n\n${message}`) ||
+    waiting.includes(`\n\n${message}\n\n`)
+  );
+}
