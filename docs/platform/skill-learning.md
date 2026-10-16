@@ -186,6 +186,15 @@ and policy. After that limit the revision is skipped; new verified evidence
 can be considered in a later revision. A reservation does not prove that
 the provider completed a call.
 
+At the saved-skill limit (150 for the account or for each Expert), learning
+saves nothing that would need another saved slot: a new skill, or an edit
+that would move an installed copy into the saved budget. The revision is
+recorded as paused before any version exists, and its paid review is kept
+for the retry above, so it is saved once there is room. If another save
+takes the last slot between that check and the write, the new version waits
+as a pending write and is saved, without another review, once there is
+room. Improvements to skills already saved continue.
+
 Owner-approved content-check exceptions are stored with the immutable
 version as exact match hashes, file paths, and occurrence counts. Restoring
 or improving a version preserves only retained approved occurrences.
