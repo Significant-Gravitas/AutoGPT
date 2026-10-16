@@ -5,14 +5,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.learning import nightly, nightly_test, publish
-from backend.copilot.learning.contract import (
-    EvidenceBundle,
-    LearningScope,
-    SourceRevision,
-)
 from backend.copilot.learning.nightly_test import EXPERT, USER, _run, _source
-from backend.copilot.learning.prompts import build_review_messages
-from backend.copilot.tools.skills import ParsedSkill, parse_skill_markdown
+from backend.copilot.tools.skills import parse_skill_markdown
 
 adapter = nightly_test.adapter
 boundaries = nightly_test.boundaries
@@ -24,7 +18,6 @@ NAME = "csv-import-checks"
 def at_limit(monkeypatch):
     limit = AsyncMock(return_value=True)
     monkeypatch.setattr(publish, "saved_skill_limit_reached", limit)
-    monkeypatch.setattr(nightly, "saved_skill_limit_reached", limit)
     return limit
 
 
@@ -39,7 +32,7 @@ async def test_a_new_skill_waits_for_room_and_is_published_from_its_kept_review(
     waiting = await _run()
 
     assert waiting.dispositions == {"paused": 1}
-    assert boundaries["review"].await_args.kwargs["can_create"] is False
+    at_limit.assert_awaited_with(USER, EXPERT, NAME)
     assert await fake_store.get_head(USER, EXPERT, NAME) is None
     assert await fake_store.list_pending_publications(USER) == []
     boundaries["write"].assert_not_awaited()
@@ -48,6 +41,7 @@ async def test_a_new_skill_waits_for_room_and_is_published_from_its_kept_review(
     )
     assert ledger.replay is not None
     assert ledger.reason == publish.SKILL_LIMIT_REASON
+    assert (await fake_store.get_source(USER, source.id)).processed_revision is None
 
     at_limit.return_value = False
     published = await _run()
@@ -91,26 +85,3 @@ async def test_an_existing_skill_still_improves_at_the_limit(
     assert outcome.status == "applied"
     at_limit.assert_not_awaited()
     assert (await fake_store.get_head(USER, EXPERT, NAME)).current_version == 2
-
-
-def test_the_reviewer_is_told_only_when_no_new_skill_can_be_saved():
-    bundle = EvidenceBundle(
-        source=SourceRevision(
-            source_id="source",
-            source_kind="chat",
-            source_ref="session",
-            scope=LearningScope(user_id=USER, owner_key="personal"),
-            revision="1",
-            epoch=0,
-        )
-    )
-    skills = [
-        ParsedSkill(name=NAME, description="Import a CSV", body="## Steps\n1. Open")
-    ]
-
-    room = build_review_messages(bundle, skills)
-    full = build_review_messages(bundle, skills, can_create=False)
-
-    assert 'Do not decide "create"' in full[0]["content"]
-    assert 'Do not decide "create"' not in room[0]["content"]
-    assert full[1] == room[1]

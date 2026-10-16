@@ -119,18 +119,11 @@ Rules:
   check after the previous import failed."
 """
 
-_AT_SKILL_LIMIT_RULE = """- The owner's saved skills are at their limit, so a new skill cannot be
-  saved. Do not decide "create": update an existing skill whose trigger and
-  procedure match, or decide "skip".
-"""
-
 
 def build_review_messages(
     bundle: EvidenceBundle,
     existing_skills: list[ParsedSkill],
     packages: dict[str, ReviewedPackage] | None = None,
-    *,
-    can_create: bool = True,
 ) -> list[dict[str, str]]:
     evidence = [
         {"ref": span.ref, "role": span.role, "outcome": span.outcome, "text": span.text}
@@ -171,7 +164,6 @@ def build_review_messages(
         {
             "role": "system",
             "content": _SYSTEM_PROMPT
-            + ("" if can_create else _AT_SKILL_LIMIT_RULE)
             + f"\nMetadata limits: description <= {MAX_DESCRIPTION_CHARS} characters; "
             + f"at most {MAX_TRIGGERS} triggers, each <= {MAX_TRIGGER_CHARS} characters. "
             + f"SKILL.md body <= {MAX_BODY_CHARS} characters. Prefer a few specific discovery phrases.\n"

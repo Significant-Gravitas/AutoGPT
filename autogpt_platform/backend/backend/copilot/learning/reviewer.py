@@ -44,15 +44,11 @@ async def review_evidence(
     bundle: EvidenceBundle,
     existing_skills: list[ParsedSkill],
     packages: dict[str, ReviewedPackage] | None = None,
-    *,
-    can_create: bool = True,
 ) -> StructuredCompletion[LearningProposal]:
     """One reviewer call. Raises ``DreamLLMError`` on provider/parse failure."""
     return await structured_completion(
         model=reviewer_model(config),
-        messages=build_review_messages(
-            bundle, existing_skills, packages, can_create=can_create
-        ),
+        messages=build_review_messages(bundle, existing_skills, packages),
         response_model=LearningProposal,
         temperature=REVIEW_TEMPERATURE,
         max_output_tokens=REVIEW_MAX_OUTPUT_TOKENS,

@@ -94,7 +94,7 @@ async def test_pause_returning_during_a_paid_retry_keeps_its_cost_stamp(
     )
     await fake_store.set_review_replay(USER, previous.id, previous.run_id, None)
 
-    async def pause_during_review(*_args, **_kwargs):
+    async def pause_during_review(*_args):
         await fake_store.update_head_policy(USER, EXPERT, NAME, learning_paused=True)
         return _completion(_proposal())
 

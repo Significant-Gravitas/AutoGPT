@@ -187,10 +187,9 @@ can be considered in a later revision. A reservation does not prove that
 the provider completed a call.
 
 At the saved-skill limit (150 for the account or for each Expert), learning
-saves no new skill. The reviewer is told not to propose one. A new skill
-proposed anyway is recorded as paused before any version exists, and its
-paid review is kept for the retry above, so it is saved once there is room.
-Improvements to skills already saved continue.
+saves no new skill. A new skill is recorded as paused before any version
+exists, and its paid review is kept for the retry above, so it is saved once
+there is room. Improvements to skills already saved continue.
 
 Owner-approved content-check exceptions are stored with the immutable
 version as exact match hashes, file paths, and occurrence counts. Restoring

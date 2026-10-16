@@ -27,7 +27,6 @@ from backend.copilot.tools.skills import (
     ParsedSkill,
     list_user_skills,
     read_user_skill_with_body,
-    saved_skill_limit_reached,
 )
 from backend.data.db_accessors import (
     skill_learning_db,
@@ -288,7 +287,6 @@ async def _process_source(
         )
     existing = await _existing_skills(user_id, source.scope.expert_id)
     packages = await load_reviewed_packages(user_id, source.scope.expert_id, existing)
-    at_limit = await saved_skill_limit_reached(user_id, source.scope.expert_id)
     reviews = skill_reviews_db()
     claim = await reviews.reserve_model_review(
         user_id,
@@ -335,9 +333,7 @@ async def _process_source(
             advance=False,
         )
     try:
-        completion = await review_evidence(
-            config, bundle, existing, packages, can_create=not at_limit
-        )
+        completion = await review_evidence(config, bundle, existing, packages)
     except DreamLLMError as exc:
         return await record_provider_error(user_id, source, result, exc, config)
     result.model_calls += 1

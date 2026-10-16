@@ -15,6 +15,7 @@ from backend.copilot.baseline.service import _prepend_skills_notice_to_current_m
 from backend.copilot.learning.fingerprint import behavior_fingerprint
 from backend.copilot.model import ChatMessage, ChatSession
 from backend.copilot.sdk.service import _maybe_prepend_skills_update
+from backend.copilot.tools import skills as skills_module
 from backend.copilot.tools.models import ErrorResponse
 from backend.copilot.tools.skills import (
     _MAX_ROOTS_PER_FOLDER,
@@ -676,22 +677,33 @@ async def test_installed_skills_do_not_take_the_owners_saved_slots():
 
 
 @pytest.mark.asyncio
-async def test_the_saved_skill_limit_counts_only_the_owners_saved_skills():
-    """The check learning runs before saving a new skill: the same count the
-    write enforces, so installed skills never fill the owner's slots."""
-    fake = _FakeWorkspaceManager()
-    for i in range(MAX_SKILLS_PER_EXPERT):
-        _seed_skill(fake, f"bundled_{i}", origin=SKILL_ORIGIN_MARKETPLACE)
-    for i in range(MAX_SKILLS_PER_EXPERT - 1):
-        _seed_skill(fake, f"saved_{i}", origin=SKILL_ORIGIN_USER)
-    with _patch_skills_path(fake):
-        assert not await saved_skill_limit_reached("user-1", None)
-        fake.files["/skills/unrecorded/SKILL.md"] = render_skill_markdown(
-            ParsedSkill(name="unrecorded", description="desc", body="body")
-        ).encode()
-        assert await saved_skill_limit_reached("user-1", None)
-        with pytest.raises(SkillLimitError, match="saved"):
-            await store_user_skill("user-1", name="mine", description="ok", body="ok")
+@pytest.mark.parametrize(
+    "expert_id, path",
+    [
+        (None, "/skills/new-skill/SKILL.md"),
+        ("expert-1", "/experts/expert-1/skills/new-skill/SKILL.md"),
+    ],
+)
+async def test_the_saved_skill_limit_asks_the_workspace_about_the_root(
+    monkeypatch, expert_id, path
+):
+    """Learning checks the same live-root count the workspace enforces when
+    the root is published, for the owner's own budget."""
+    workspace = MagicMock(id="workspace-1")
+    monkeypatch.setattr(
+        skills_module,
+        "workspace_db",
+        lambda: MagicMock(get_or_create_workspace=AsyncMock(return_value=workspace)),
+    )
+    room = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        skills_module,
+        "workspace_skill_db",
+        lambda: MagicMock(skill_root_has_room=room),
+    )
+
+    assert await saved_skill_limit_reached("user-1", expert_id, "new-skill")
+    room.assert_awaited_once_with("workspace-1", path, SKILL_ORIGIN_USER)
 
 
 @pytest.mark.asyncio

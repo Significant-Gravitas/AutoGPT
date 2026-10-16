@@ -174,7 +174,7 @@ async def test_create_review_preserves_existing_file_or_pending_target(
         publish, "read_user_skill_markdown", AsyncMock(return_value=existing)
     )
 
-    async def create_during_review(*_args, **_kwargs):
+    async def create_during_review(*_args):
         if existing is None:
             head = await fake_store.ensure_head(USER, EXPERT, NAME)
             await fake_store.commit_version_safe(

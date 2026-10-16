@@ -204,7 +204,7 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     if blocked is not None:
         return blocked
     if current_text is None and await saved_skill_limit_reached(
-        request.user_id, request.expert_id
+        request.user_id, request.expert_id, request.skill_name
     ):
         # Checked before the head exists, so a new name at the limit leaves
         # nothing behind. Nightly keeps the paid review for its next retry.

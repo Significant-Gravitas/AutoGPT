@@ -65,6 +65,7 @@ from backend.data.db_accessors import (
     skill_deletion_db,
     skill_versions_db,
     workspace_db,
+    workspace_skill_db,
 )
 from backend.data.redis_client import get_redis_async
 from backend.data.skill_capacity import MAX_SKILLS_PER_EXPERT
@@ -1898,12 +1899,15 @@ async def invalidate_skills_index_cache(
         pass
 
 
-async def saved_skill_limit_reached(user_id: str, expert_id: str | None) -> bool:
-    """Whether the owner's folder already holds ``MAX_SKILLS_PER_EXPERT``
-    saved skills, the count at which :func:`_write_skill` refuses a new one."""
-    skills = await _list_user_skills_from_workspace(user_id, expert_id)
-    saved = sum(1 for skill in skills if budget_origin(skill) == SKILL_ORIGIN_USER)
-    return saved >= MAX_SKILLS_PER_EXPERT
+async def saved_skill_limit_reached(
+    user_id: str, expert_id: str | None, name: str
+) -> bool:
+    """Whether saving ``name`` would need a saved-skill slot the owner no
+    longer has, by the same count of live roots the workspace enforces."""
+    workspace = await workspace_db().get_or_create_workspace(user_id)
+    return not await workspace_skill_db().skill_root_has_room(
+        workspace.id, _skill_md_path(name, expert_id), SKILL_ORIGIN_USER
+    )
 
 
 async def list_user_skills(
