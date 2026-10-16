@@ -1160,7 +1160,9 @@ class UserCredit(UserCreditBase):
                         },
                     )
                     if setup_intent.status == "succeeded":
-                        successful_transaction = SafeJson({"setup_intent": setup_intent})
+                        successful_transaction = SafeJson(
+                            {"setup_intent": setup_intent}
+                        )
                         new_transaction_key = setup_intent.id
                         break
                 else:

@@ -77,9 +77,11 @@ def _stripe(credit: UserCredit, cards: list[MagicMock], intent_results: list):
 @pytest.mark.asyncio
 async def test_a_single_declined_card_raises_stripes_message():
     credit = UserCredit()
-    with _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, *_):
-        with pytest.raises(CardDeclinedError) as exc:
-            await credit._top_up_credits("user-1", 500)
+    with (
+        _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, *_),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500)
 
     assert str(exc.value) == "Your card has insufficient funds."
     assert "req_" not in str(exc.value)
@@ -108,9 +110,11 @@ async def test_every_card_declined_raises_the_last_decline_and_saves_nothing():
     credit = UserCredit()
     cards = [_card("pm_1"), _card("pm_2")]
     declines = [_declined("Your card was declined."), _declined()]
-    with _stripe(credit, cards, declines) as (enable, payment_intent, _):
-        with pytest.raises(CardDeclinedError) as exc:
-            await credit._top_up_credits("user-1", 500)
+    with (
+        _stripe(credit, cards, declines) as (enable, payment_intent, _),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500)
 
     assert payment_intent.await_count == 2
     assert "Your card has insufficient funds." in str(exc.value)
@@ -121,9 +125,11 @@ async def test_every_card_declined_raises_the_last_decline_and_saves_nothing():
 @pytest.mark.asyncio
 async def test_a_declined_card_check_raises_stripes_message():
     credit = UserCredit()
-    with _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, _, setup):
-        with pytest.raises(CardDeclinedError) as exc:
-            await credit._top_up_credits("user-1", 0)
+    with (
+        _stripe(credit, [_card("pm_1")], [_declined()]) as (enable, _, setup),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 0)
 
     setup.assert_awaited_once()
     assert str(exc.value) == "Your card has insufficient funds."
@@ -133,9 +139,11 @@ async def test_a_declined_card_check_raises_stripes_message():
 @pytest.mark.asyncio
 async def test_a_decline_without_a_message_still_says_the_card_was_declined():
     credit = UserCredit()
-    with _stripe(credit, [_card("pm_1")], [_declined("")]):
-        with pytest.raises(CardDeclinedError) as exc:
-            await credit._top_up_credits("user-1", 500)
+    with (
+        _stripe(credit, [_card("pm_1")], [_declined("")]),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500)
 
     assert str(exc.value) == "Your card was declined."
 
@@ -149,8 +157,10 @@ async def test_a_decline_asking_for_bank_approval_is_flagged():
         "authentication_required",
         http_status=402,
     )
-    with _stripe(credit, [_card("pm_1")], [sca]):
-        with pytest.raises(CardDeclinedError) as exc:
-            await credit._top_up_credits("user-1", 500)
+    with (
+        _stripe(credit, [_card("pm_1")], [sca]),
+        pytest.raises(CardDeclinedError) as exc,
+    ):
+        await credit._top_up_credits("user-1", 500)
 
     assert exc.value.needs_authentication
