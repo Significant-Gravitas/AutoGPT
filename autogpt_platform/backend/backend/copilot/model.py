@@ -1266,13 +1266,18 @@ async def _save_session_to_db(
 
 
 async def append_and_save_message(
-    session_id: str, message: ChatMessage
+    session_id: str, message: ChatMessage, *, dedupe_content: bool = True
 ) -> ChatSession | None:
     """Atomically append a message to a session and persist it.
 
     Returns the updated session, or None if the message was detected as a
     duplicate (idempotency guard). Callers must check for None and skip any
     downstream work (e.g. enqueuing a new LLM turn) when a duplicate is detected.
+
+    ``dedupe_content=False`` skips the trailing same-content collapse (layer 2
+    below) for a message that is the same text every time it is sent, such as
+    a continuation note; that caller has to rule out double sends itself. The
+    id check (layer 1) still applies.
 
     Uses _get_session_lock (Redis NX) to serialise concurrent writers across replicas.
     The idempotency check below provides a last-resort guard when the lock degrades.
@@ -1317,8 +1322,10 @@ async def append_and_save_message(
         # permanently.  The fix is to ensure failed turns always write
         # an error/timeout assistant message so the session always ends
         # on an assistant turn.
-        if message.content is not None and is_message_duplicate(
-            session.messages, message.role, message.content
+        if (
+            dedupe_content
+            and message.content is not None
+            and is_message_duplicate(session.messages, message.role, message.content)
         ):
             return None  # duplicate — caller should skip enqueue
 

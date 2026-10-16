@@ -185,6 +185,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             onSend={onSend}
             disabled={isResolvingSession || isCreating}
             isStreaming={isStreaming}
+            isTurnStarting={status === "submitted"}
             onStop={stop}
             onEnqueue={onSend}
             placeholder={`Message ${target.name}…`}

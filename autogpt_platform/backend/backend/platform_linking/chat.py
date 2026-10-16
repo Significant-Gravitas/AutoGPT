@@ -105,6 +105,7 @@ async def _check_usage_limits(user_id: str) -> TurnDenial | None:
             user_id=user_id,
             daily_cost_limit=daily,
             weekly_cost_limit=weekly,
+            expected_tier=_tier,
         )
     except RateLimitExceeded as exc:
         # str(exc) already reads e.g. "You've reached your daily usage limit.

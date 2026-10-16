@@ -4,7 +4,8 @@ import { ChatInput } from "@/app/(platform)/copilot/components/ChatInput/ChatInp
 import { useAuth } from "@/lib/auth/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { SEND_AT_RESET_PLACEHOLDER } from "../SendAtReset/helpers";
 import {
   HOME_COMPOSER_ID,
   getExpertInputPlaceholder,
@@ -45,6 +46,13 @@ interface Props {
   voiceToggle?: ReactNode;
   /** The chat's approval-mode selector. Absent when the flag is off. */
   modeSelector?: ReactNode;
+  /** Out of AutoPilot budget with a reset ahead: the composer sets the new
+   *  chat's first message to send at the reset. */
+  atReset?: ComponentProps<typeof ChatInput>["atReset"];
+  /** Shown above the composer while sending is paused. */
+  usageNotice?: ReactNode;
+  /** The running-low hint, shown under the composer. */
+  lowHint?: ReactNode;
 }
 
 export function EmptySession({
@@ -59,6 +67,9 @@ export function EmptySession({
   expertId = null,
   voiceToggle,
   modeSelector,
+  atReset,
+  usageNotice,
+  lowHint,
 }: Props) {
   const { user } = useAuth();
   const greetingName = getGreetingName(user);
@@ -130,7 +141,7 @@ export function EmptySession({
               prompts={intro.prompts}
               transcript={intro.transcript}
               onSelectPrompt={onSend}
-              disabled={isComposerDisabled}
+              disabled={isComposerDisabled || !!atReset}
             />
           ) : intro.isAwaitingGreeting ? (
             // Behind the welcome modal's blur and for as long as the
@@ -168,18 +179,25 @@ export function EmptySession({
                       : "mx-auto w-full max-w-[42rem]"),
                 )}
               >
+                {usageNotice && (
+                  <div className="mb-3 text-left">{usageNotice}</div>
+                )}
                 <ChatInput
                   inputId={HOME_COMPOSER_ID}
+                  draftKey={`new:${selectedExpert?.id ?? expertId ?? "default"}`}
                   stacked
                   voiceToggle={voiceToggle}
                   modeSelector={modeSelector}
                   onSend={onSend}
                   disabled={isComposerDisabled}
+                  atReset={atReset}
                   isUploadingFiles={isUploadingFiles}
                   placeholder={
-                    selectedExpert
-                      ? getExpertInputPlaceholder(selectedExpert.name)
-                      : inputPlaceholder
+                    atReset
+                      ? SEND_AT_RESET_PLACEHOLDER
+                      : selectedExpert
+                        ? getExpertInputPlaceholder(selectedExpert.name)
+                        : inputPlaceholder
                   }
                   className={cn(
                     "w-full max-md:[&_[data-slot=input-group-control]]:min-h-16",
@@ -193,6 +211,7 @@ export function EmptySession({
                     intro.isVisible ? recipientPicker : undefined
                   }
                 />
+                {lowHint}
               </div>
             </div>
           )}
