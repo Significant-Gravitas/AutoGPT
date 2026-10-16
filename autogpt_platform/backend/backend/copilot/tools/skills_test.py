@@ -53,7 +53,6 @@ from backend.copilot.tools.skills import (
     _validate_name,
     _write_skills_cache,
     budget_origin,
-    build_skills_context,
     build_skills_update_notice,
     copy_skill_to_expert,
     delete_user_skill,
@@ -65,6 +64,7 @@ from backend.copilot.tools.skills import (
     parse_skill_markdown,
     read_user_skill_package,
     render_skill_markdown,
+    skills_context_block,
     skills_index_entries,
     store_user_skill,
     store_user_skills,
@@ -1127,7 +1127,7 @@ async def test_delete_skill_returns_error_when_missing():
 
 
 # ---------------------------------------------------------------------------
-# ListSkillsTool + list_all_skills + build_skills_context
+# ListSkillsTool + list_all_skills + skills_context_block
 # ---------------------------------------------------------------------------
 
 
@@ -1160,28 +1160,30 @@ async def test_list_skills_authed_includes_user_skills():
 
 
 @pytest.mark.asyncio
-async def test_build_skills_context_anon_includes_directive():
-    """The injected ``<available_skills>`` body must lead with the
+async def test_skills_context_block_anon_includes_directive():
+    """The injected ``<available_skills>`` block must lead with the
     directive line so the model knows *what to do* with the index, then
     list the skills."""
-    ctx = await build_skills_context(user_id=None)
-    assert ctx.startswith("Skills are reusable procedures")
-    assert "agent_building_guide" in ctx
+    block = await skills_context_block(user_id=None)
+    assert block is not None
+    assert block.head.startswith("Skills are reusable procedures")
+    assert any("agent_building_guide" in item for item in block.items)
 
 
 @pytest.mark.asyncio
-async def test_build_skills_context_names_run_capability_as_the_engine_declares_it():
+async def test_skills_context_block_names_run_capability_as_the_engine_declares_it():
     """The model copies the directive's call, so it names ``run_capability``
     the way the calling engine declares it: bare by default, and the SDK
     path's ``mcp__copilot__`` name when that is passed in."""
-    bare = await build_skills_context(user_id=None)
-    declared = await build_skills_context(
+    bare = await skills_context_block(user_id=None)
+    declared = await skills_context_block(
         user_id=None, run_capability_tool="mcp__copilot__run_capability"
     )
+    assert bare is not None and declared is not None
     call = '(id="tool:read_skill", input={"name": ...})`'
-    assert f"`run_capability{call}" in bare
-    assert "mcp__copilot__" not in bare
-    assert f"`mcp__copilot__run_capability{call}" in declared
+    assert f"`run_capability{call}" in bare.head
+    assert "mcp__copilot__" not in bare.text
+    assert f"`mcp__copilot__run_capability{call}" in declared.head
 
 
 @pytest.mark.asyncio
@@ -1410,15 +1412,16 @@ async def test_read_skill_default_skill_missing_body_returns_error():
 
 
 @pytest.mark.asyncio
-async def test_build_skills_context_authed_includes_user_skills():
+async def test_skills_context_block_authed_includes_user_skills():
     fake_manager = _FakeWorkspaceManager()
     fake_manager.files["/skills/mine/SKILL.md"] = render_skill_markdown(
         ParsedSkill(name="mine", description="my skill", body="x")
     ).encode()
     with _patch_skills_path(fake_manager):
-        ctx = await build_skills_context(user_id="user-1")
-    assert "mine" in ctx
-    assert "agent_building_guide" in ctx  # defaults still present
+        block = await skills_context_block(user_id="user-1")
+    assert block is not None
+    assert "mine" in block.body
+    assert "agent_building_guide" in block.body  # defaults still present
 
 
 # ---------------------------------------------------------------------------
@@ -1439,9 +1442,10 @@ async def test_skills_update_notice_empty_when_index_matches_registry():
         ParsedSkill(name="mine", description="my skill", body="x")
     ).encode()
     with _patch_skills_path(fake_manager):
-        ctx = await build_skills_context(user_id="user-1")
+        block = await skills_context_block(user_id="user-1")
+        assert block is not None
         notice = await build_skills_update_notice(
-            "user-1", prior_contents=[_history_with_index(ctx)]
+            "user-1", prior_contents=[_history_with_index(block.body)]
         )
     assert notice == ""
 
@@ -1559,8 +1563,9 @@ async def test_sdk_prepend_noop_when_index_current():
         ParsedSkill(name="mine", description="my skill", body="x")
     ).encode()
     with _patch_skills_path(fake_manager):
-        ctx = await build_skills_context(user_id="user-1")
-        session = _session_with_user_history([_history_with_index(ctx)])
+        block = await skills_context_block(user_id="user-1")
+        assert block is not None
+        session = _session_with_user_history([_history_with_index(block.body)])
         result = await _maybe_prepend_skills_update(
             session, "user-1", True, "do the thing"
         )
@@ -1786,18 +1791,18 @@ async def test_read_user_skill_with_body_returns_full_text():
 
 
 @pytest.mark.asyncio
-async def test_build_skills_context_empty_when_flag_disabled():
+async def test_skills_context_block_none_when_flag_disabled():
     with patch(
         "backend.copilot.tools.skills.is_skills_feature_enabled",
         new=AsyncMock(return_value=False),
     ):
-        result = await build_skills_context("user-1")
+        result = await skills_context_block("user-1")
 
-    assert result == ""
+    assert result is None
 
 
 @pytest.mark.asyncio
-async def test_build_skills_context_normal_when_flag_enabled():
+async def test_skills_context_block_normal_when_flag_enabled():
     fake_manager = _FakeWorkspaceManager()
     fake_manager.files["/skills/x/SKILL.md"] = render_skill_markdown(
         ParsedSkill(name="x", description="ok", body="b")
@@ -1812,9 +1817,9 @@ async def test_build_skills_context_normal_when_flag_enabled():
         "backend.copilot.tools.skills._write_skills_cache",
         new=AsyncMock(),
     ):
-        result = await build_skills_context("user-1")
+        result = await skills_context_block("user-1")
 
-    assert "name: x" in result
+    assert result is not None and "name: x" in result.body
 
 
 @pytest.mark.asyncio

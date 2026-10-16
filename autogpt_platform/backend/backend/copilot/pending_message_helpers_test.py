@@ -919,10 +919,10 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
 
     Past regressions this test would have caught:
 
-      a. Persisting pending BEFORE ``inject_user_context`` (pending row
+      a. Persisting pending BEFORE ``inject_context_blocks`` (pending row
          received the full wrapped+combined string from inject's
          reverse-walk → bubble showed everything twice).
-      b. Wrapping the COMBINED text in ``inject_user_context`` (original
+      b. Wrapping the COMBINED text in ``inject_context_blocks`` (original
          row carried both texts → chip text duplicated across two
          bubbles).
       c. Pre-PR behaviour: combining everything into the existing row
@@ -938,7 +938,7 @@ async def test_turn_start_drain_invariants_one_bubble_per_send(
     _make_chat_message_class(monkeypatch)
     session = MagicMock()
     session.session_id = "sess"
-    # Routes.py pre-saved the original send at seq=0.  inject_user_context
+    # Routes.py pre-saved the original send at seq=0.  inject_context_blocks
     # then wrapped its content with envelopes (simulated here).
     session.messages = [
         MagicMock(

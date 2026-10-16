@@ -2732,20 +2732,6 @@ async def skills_context_block(
     )
 
 
-async def build_skills_context(
-    user_id: str | None,
-    expert_id: str | None = None,
-    *,
-    run_capability_tool: str = "run_capability",
-) -> str:
-    """The body of :func:`skills_context_block`, ``""`` without one, for a
-    caller that puts the tags round it itself (the baseline engine)."""
-    block = await skills_context_block(
-        user_id, expert_id, run_capability_tool=run_capability_tool
-    )
-    return block.body if block else ""
-
-
 # Non-greedy: history holds at most one ``<available_skills>`` block (the
 # first-turn injection), but a greedy match across two blocks would swallow
 # the user text between them.

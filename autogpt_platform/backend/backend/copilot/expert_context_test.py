@@ -8,7 +8,7 @@ Covers:
 - Archived/missing expert sessions fail closed, transient identity lookup errors
   retry once, and optional team/workflow context still degrades silently to no
   block.
-- inject_user_context() wires the message blocks in without touching the
+- inject_context_blocks() wires the message blocks in without touching the
   cacheable base prompt (byte-identical, verified via SHA-256 snapshot).
 """
 
@@ -839,7 +839,7 @@ class TestBuildExpertContextPlainSession:
         assert result == ""
 
 
-class TestInjectUserContextExpertWiring:
+class TestInjectContextBlocksExpertWiring:
     @pytest.mark.asyncio
     async def test_cacheable_system_prompt_is_byte_identical(self):
         """The prompt-cache contract: _CACHEABLE_SYSTEM_PROMPT must not change."""
@@ -851,20 +851,22 @@ class TestInjectUserContextExpertWiring:
     @pytest.mark.asyncio
     async def test_expert_block_injected_for_expert_session(self):
         from backend.copilot.model import ChatMessage
-        from backend.copilot.service import inject_user_context
+        from backend.copilot.service import (
+            inject_context_blocks,
+            injected_context_blocks,
+        )
 
         msg = ChatMessage(role="user", content="hello", sequence=None)
         mock_db = MagicMock()
         mock_db.get_expert = AsyncMock(return_value=_expert())
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            result = await inject_user_context(
-                None,
+            result = await inject_context_blocks(
+                await injected_context_blocks(
+                    None, user_id="user-1", expert_id="exp-1", kickoff_turn=False
+                ),
                 "hello",
                 "sess-1",
                 [msg],
-                user_id="user-1",
-                expert_id="exp-1",
-                kickoff_turn=False,
             )
 
         assert result is not None
@@ -880,7 +882,10 @@ class TestInjectUserContextExpertWiring:
         otherwise borrow its questions from."""
         from backend.copilot.expert_kickoff import expert_kickoff_metadata
         from backend.copilot.model import ChatMessage
-        from backend.copilot.service import inject_user_context
+        from backend.copilot.service import (
+            inject_context_blocks,
+            injected_context_blocks,
+        )
         from backend.data.understanding import BusinessUnderstanding
 
         understanding = BusinessUnderstanding(
@@ -902,14 +907,16 @@ class TestInjectUserContextExpertWiring:
             return_value=[_expert(), _expert(expert_id="exp-2", name="Max")]
         )
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            result = await inject_user_context(
-                understanding,
+            result = await inject_context_blocks(
+                await injected_context_blocks(
+                    understanding,
+                    user_id="user-1",
+                    expert_id="exp-1",
+                    kickoff_turn=True,
+                ),
                 "You were just hired.",
                 "sess-1",
                 [kickoff],
-                user_id="user-1",
-                expert_id="exp-1",
-                kickoff_turn=True,
             )
 
         assert result is not None
@@ -925,7 +932,10 @@ class TestInjectUserContextExpertWiring:
         self,
     ):
         from backend.copilot.model import ChatMessage
-        from backend.copilot.service import inject_user_context
+        from backend.copilot.service import (
+            inject_context_blocks,
+            injected_context_blocks,
+        )
         from backend.data.understanding import BusinessUnderstanding
 
         understanding = BusinessUnderstanding(
@@ -948,14 +958,16 @@ class TestInjectUserContextExpertWiring:
                 new=AsyncMock(return_value=SubscriptionTier.NO_TIER),
             ),
         ):
-            result = await inject_user_context(
-                understanding,
+            result = await inject_context_blocks(
+                await injected_context_blocks(
+                    understanding,
+                    user_id="user-1",
+                    expert_id="exp-1",
+                    kickoff_turn=False,
+                ),
                 "hello",
                 "sess-1",
                 [msg],
-                user_id="user-1",
-                expert_id="exp-1",
-                kickoff_turn=False,
             )
 
         assert result is not None
@@ -968,15 +980,23 @@ class TestInjectUserContextExpertWiring:
     @pytest.mark.asyncio
     async def test_no_team_or_expert_block_without_either(self):
         from backend.copilot.model import ChatMessage
-        from backend.copilot.service import inject_user_context
+        from backend.copilot.service import (
+            inject_context_blocks,
+            injected_context_blocks,
+        )
 
         msg = ChatMessage(role="user", content="hello", sequence=None)
         mock_db = MagicMock()
         mock_db.list_experts = AsyncMock(return_value=[])
         mock_db.list_routines = AsyncMock(return_value=[])
         with patch(f"{_EC}.experts_db", MagicMock(return_value=mock_db)):
-            result = await inject_user_context(
-                None, "hello", "sess-1", [msg], user_id="user-1", kickoff_turn=False
+            result = await inject_context_blocks(
+                await injected_context_blocks(
+                    None, user_id="user-1", kickoff_turn=False
+                ),
+                "hello",
+                "sess-1",
+                [msg],
             )
 
         assert result.endswith("hello")

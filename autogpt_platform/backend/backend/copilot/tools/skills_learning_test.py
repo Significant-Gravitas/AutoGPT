@@ -23,9 +23,9 @@ from backend.copilot.tools.skills import (
     SkillContentBlockedError,
     SkillVersionConflictError,
     SkillWriteLockError,
-    build_skills_context,
     build_skills_update_notice,
     list_all_skills,
+    skills_context_block,
     start_session_skill_versions,
     store_user_skill,
 )
@@ -167,7 +167,8 @@ async def test_paused_skill_is_hidden_from_the_index_and_refused_on_read(
     )
     names = {s.name for s in await list_all_skills(USER)}
     assert "csv-import" not in names and "other" in names
-    assert "csv-import" not in await build_skills_context(USER)
+    index = await skills_context_block(USER)
+    assert index is not None and "csv-import" not in index.text
 
     result = await ReadSkillTool()._execute(
         user_id=USER, session=_session(), name="csv-import"
@@ -245,9 +246,10 @@ async def test_existing_conversation_sees_index_changes_at_the_next_turn(workspa
     await store_user_skill(
         USER, name="csv-import", description="Import CSV", body="## Steps\n1. go\n"
     )
-    first_turn = await build_skills_context(USER)
-    history = [f"<available_skills>{first_turn}</available_skills>"]
-    assert "csv-import" in first_turn
+    first_turn = await skills_context_block(USER)
+    assert first_turn is not None
+    history = [first_turn.text]
+    assert "csv-import" in first_turn.text
     await build_skills_update_notice(USER, None, history)
     await store_user_skill(
         USER,
@@ -271,8 +273,9 @@ async def test_each_conversation_sees_body_updates_even_with_the_same_authored_v
     await store_user_skill(
         USER, name="unchanged", description="Another skill", body="## Steps\n1. go\n"
     )
-    context = await build_skills_context(USER)
-    history = [f"<available_skills>{context}</available_skills>"]
+    index = await skills_context_block(USER)
+    assert index is not None
+    history = [index.text]
     for session in ["first-chat", "second-chat"]:
         await build_skills_update_notice(USER, None, history, session_id=session)
     await store_user_skill(
@@ -307,8 +310,9 @@ async def test_the_first_index_a_session_is_shown_starts_its_version_baseline(
     after it is news to the session's first notice."""
     with patch("backend.copilot.tools.skills._remember_updated", new=AsyncMock()):
         await _store_csv_import("1. go")
-        context = await build_skills_context(USER)
-        history = [f"<available_skills>{context}</available_skills>"]
+        index = await skills_context_block(USER)
+        assert index is not None
+        history = [index.text]
         await start_session_skill_versions(USER, None, "chat")
         await _store_csv_import("1. validate")
 
@@ -325,8 +329,9 @@ async def test_a_later_fresh_index_keeps_the_baseline(workspace):
     bodies: a body changed since the last notice is still news after it."""
     with patch("backend.copilot.tools.skills._remember_updated", new=AsyncMock()):
         await _store_csv_import("1. go")
-        context = await build_skills_context(USER)
-        history = [f"<available_skills>{context}</available_skills>"]
+        index = await skills_context_block(USER)
+        assert index is not None
+        history = [index.text]
         await build_skills_update_notice(USER, None, history, session_id="chat")
         await _store_csv_import("1. validate")
         await start_session_skill_versions(USER, None, "chat")

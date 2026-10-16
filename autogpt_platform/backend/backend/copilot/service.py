@@ -632,36 +632,6 @@ async def inject_context_blocks(
     return None
 
 
-async def inject_user_context(
-    understanding: BusinessUnderstanding | None,
-    message: str,
-    session_id: str,
-    session_messages: list[ChatMessage],
-    warm_ctx: str = "",
-    env_ctx: str = "",
-    session_ctx: str = "",
-    skills_ctx: str = "",
-    user_id: str | None = None,
-    expert_id: str | None = None,
-    *,
-    kickoff_turn: bool,
-) -> str | None:
-    """:func:`inject_context_blocks` for a caller that holds the blocks'
-    bodies: ``skills_ctx`` is the skills index body, and the rest mean what
-    they mean on :func:`injected_context_blocks`."""
-    blocks = await injected_context_blocks(
-        understanding,
-        warm_ctx=warm_ctx,
-        env_ctx=env_ctx,
-        session_ctx=session_ctx,
-        skills=_plain_block(SKILLS_CONTEXT_TAG, skills_ctx),
-        user_id=user_id,
-        expert_id=expert_id,
-        kickoff_turn=kickoff_turn,
-    )
-    return await inject_context_blocks(blocks, message, session_id, session_messages)
-
-
 async def injected_context_blocks(
     understanding: BusinessUnderstanding | None,
     *,
