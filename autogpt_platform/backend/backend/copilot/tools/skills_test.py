@@ -684,17 +684,35 @@ async def test_installed_skills_do_not_take_the_owners_saved_slots():
         ("expert-1", "/experts/expert-1/skills/new-skill/SKILL.md"),
     ],
 )
+@pytest.mark.parametrize(
+    "root_metadata, origin",
+    [
+        (None, SKILL_ORIGIN_USER),
+        ({"skill_origin": "user"}, SKILL_ORIGIN_USER),
+        ({"skill_origin": "marketplace"}, SKILL_ORIGIN_USER),
+        (
+            {
+                "skill_origin": "marketplace",
+                "listing_id": "listing-1",
+                "listing_version_id": "listing-1-v1",
+            },
+            SKILL_ORIGIN_MARKETPLACE,
+        ),
+    ],
+    ids=["new", "saved", "installed-without-record", "installed-copy"],
+)
 async def test_the_saved_skill_limit_asks_the_workspace_about_the_root(
-    monkeypatch, expert_id, path
+    monkeypatch, expert_id, path, root_metadata, origin
 ):
     """Learning checks the same live-root count the workspace enforces when
-    the root is published, for the owner's own budget."""
-    workspace = MagicMock(id="workspace-1")
-    monkeypatch.setattr(
-        skills_module,
-        "workspace_db",
-        lambda: MagicMock(get_or_create_workspace=AsyncMock(return_value=workspace)),
+    the root is published, in the budget the write will use: an installed
+    copy that records its install stays installed when edited."""
+    root = None if root_metadata is None else MagicMock(metadata=root_metadata)
+    workspaces = MagicMock(
+        get_or_create_workspace=AsyncMock(return_value=MagicMock(id="workspace-1")),
+        get_workspace_file_by_path=AsyncMock(return_value=root),
     )
+    monkeypatch.setattr(skills_module, "workspace_db", lambda: workspaces)
     room = AsyncMock(return_value=False)
     monkeypatch.setattr(
         skills_module,
@@ -703,7 +721,8 @@ async def test_the_saved_skill_limit_asks_the_workspace_about_the_root(
     )
 
     assert await saved_skill_limit_reached("user-1", expert_id, "new-skill")
-    room.assert_awaited_once_with("workspace-1", path, SKILL_ORIGIN_USER)
+    workspaces.get_workspace_file_by_path.assert_awaited_once_with("workspace-1", path)
+    room.assert_awaited_once_with("workspace-1", path, origin)
 
 
 @pytest.mark.asyncio

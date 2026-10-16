@@ -1902,11 +1902,22 @@ async def invalidate_skills_index_cache(
 async def saved_skill_limit_reached(
     user_id: str, expert_id: str | None, name: str
 ) -> bool:
-    """Whether saving ``name`` would need a saved-skill slot the owner no
-    longer has, by the same count of live roots the workspace enforces."""
+    """Whether saving ``name`` as the owner's skill would need a saved-skill
+    slot the owner no longer has, by the same count of live roots the
+    workspace enforces. A marketplace copy that records its install stays
+    installed when edited (see :func:`_write_skill`) and needs no saved
+    slot; any other root moves into, or already fills, the saved budget."""
     workspace = await workspace_db().get_or_create_workspace(user_id)
+    path = _skill_md_path(name, expert_id)
+    root = await workspace_db().get_workspace_file_by_path(workspace.id, path)
+    meta = root.metadata if root is not None and root.metadata else {}
+    recorded_copy = (
+        _skill_origin(meta) == SKILL_ORIGIN_MARKETPLACE
+        and _baseline_from_metadata(meta) is not None
+    )
+    origin = SKILL_ORIGIN_MARKETPLACE if recorded_copy else SKILL_ORIGIN_USER
     return not await workspace_skill_db().skill_root_has_room(
-        workspace.id, _skill_md_path(name, expert_id), SKILL_ORIGIN_USER
+        workspace.id, path, origin
     )
 
 

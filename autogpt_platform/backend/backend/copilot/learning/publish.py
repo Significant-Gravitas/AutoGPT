@@ -203,11 +203,13 @@ async def publish_learned_version(request: PublishRequest) -> PublishOutcome:
     blocked = await _check_bundle(request, rendered, files, approvals)
     if blocked is not None:
         return blocked
-    if current_text is None and await saved_skill_limit_reached(
+    if await saved_skill_limit_reached(
         request.user_id, request.expert_id, request.skill_name
     ):
-        # Checked before the head exists, so a new name at the limit leaves
-        # nothing behind. Nightly keeps the paid review for its next retry.
+        # Checked before anything is written, so a skill that would need a
+        # saved slot the owner no longer has (a new one, or an installed copy
+        # an edit moves into the saved budget) leaves nothing behind. Nightly
+        # keeps the paid review for its next retry.
         return PublishOutcome(status="paused", reason=SKILL_LIMIT_REASON)
 
     versions = skill_versions_db()
