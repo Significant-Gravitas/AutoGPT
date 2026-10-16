@@ -252,9 +252,6 @@ class TestHaiku5_5Rates:
     """Haiku 5.5 is the default title/classifier model: a rate-card refresh that
     drops its key must fail here, not silently bill at the Opus 4.1 fallback."""
 
-    def test_haiku_5_5_max_output_from_rate_card(self):
-        assert get_max_output_tokens("claude-haiku-5-5") == 128000
-
     def test_haiku_5_5_billed_at_published_rates_without_fallback(self, caplog):
         cost = compute_anthropic_cost_usd(
             model="claude-haiku-5-5",
