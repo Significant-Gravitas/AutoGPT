@@ -6,6 +6,60 @@ LaunchDarkly's answer, and log every disagreement. Call sites are unaffected by
 the choice; they read through `evaluate_feature_flag()` on the backend and
 `useGetFlag` / `useFlagStatus` on the frontend.
 
+## One PostHog project per environment
+
+Dev and Prod each have their own PostHog project, and each project holds its
+own flags. A deployment reads its flags from the same project its analytics go
+to, the one `POSTHOG_API_KEY` names, and evaluates them locally with that
+project's Feature Flags Secure API Key in `POSTHOG_SECRET_KEY`. Where local
+evaluation can't decide a read, the SDK asks PostHog's `/flags` endpoint
+instead, unless the read is local-only, as a signed-out visitor's own read is.
+
+| | Dev | Prod |
+|---|---|---|
+| PostHog project | [281733](https://eu.posthog.com/project/281733/feature_flags) | [117338](https://eu.posthog.com/project/117338/feature_flags) |
+| `POSTHOG_API_KEY`, `POSTHOG_SECRET_KEY` (backend) | Dev project's | Prod project's |
+| `NEXT_PUBLIC_POSTHOG_KEY` (Vercel) | Dev project's | Prod project's |
+
+PostHog has no environments within a project, so a flag both deployments read
+is defined in each project. The **Projects** tab on the
+[flag list](https://eu.posthog.com/project/281733/feature_flags?tab=projects)
+and on each flag's page shows a flag across both projects side by side.
+
+**Until Prod switches to PostHog**, Prod serves LaunchDarkly's answers
+(`FEATURE_FLAG_BACKEND=dual` only compares PostHog's against them), so a change
+to a Prod flag is made in LaunchDarkly and mirrored in the Prod PostHog project.
+
+**The browser.** With `NEXT_PUBLIC_FEATURE_FLAG_BACKEND=server` the browser
+gets its flags from the backend's `GET /api/feature-flags`, which evaluates
+them through the same path as the backend's own reads, so the browser and the
+backend give one answer from one project. A Vercel preview in `server` mode
+gets the answer of the backend it calls. The other values read flags in the
+browser itself: `launchdarkly` (the default) from LaunchDarkly, and `posthog` /
+`dual` from the project `NEXT_PUBLIC_POSTHOG_KEY` names. `useExperiment` reads
+posthog-js in every mode.
+
+**The `environment` property.** Every PostHog flag read the backend makes, its
+own and the browser's in `server` mode, carries the person property
+`environment`: the backend's `APP_ENV` (`local`, `dev` or `prod`), the same
+value its analytics events carry. A release condition can use it in either
+project like any other person property. It is only an evaluation input, never
+stored on a person. Browser reads through posthog-js (`posthog` / `dual` mode)
+don't carry it: they send `buildFlagPersonProperties` (email, email domain,
+role, created at) only, so a condition on `environment` matches only the
+backend's reads there.
+
+**Splitting signed-out visitors.** A visitor who allowed analytics is bucketed
+under `visitor:<their PostHog id>`, but only by conditions their read can
+decide: a rollout percentage, `environment` and `is_anonymous`, with no email.
+A condition group on another person property or a cohort (the migrated
+"email in employees", for one) can't be decided for a visitor, so a visitor
+whom no decidable group matches gets the shared signed-out answer instead.
+"Employees OR 20%" is then all or nothing for visitors, whichever side the
+shared `anonymous` key lands on. For a real 20% of visitors, add
+`is_anonymous` is not `true` to the rollout group: the shared answer is then
+off, and only each visitor's own bucket turns the flag on.
+
 ## Sharing PostHog's flag definitions
 
 PostHog evaluates flags locally, in the process, from a set of flag definitions
@@ -88,5 +142,6 @@ process, `cached` once per poll on each of the other N−1, and `empty` and
 | The refresher dies | Its lock expires and another process takes the job on its next poll. |
 | A definitions fetch fails | The definitions already in memory stay in use, and the refresher keeps writing that copy to the cache. |
 
-Nothing here can make a flag read wait on Redis or on PostHog: flag evaluation
-only ever reads the definitions already in the process.
+Nothing here can make a flag read wait on Redis: evaluation reads the
+definitions already in the process, and only a read they can't decide waits on
+PostHog's `/flags`.
