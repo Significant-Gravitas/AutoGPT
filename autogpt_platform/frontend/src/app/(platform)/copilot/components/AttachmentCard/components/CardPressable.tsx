@@ -1,3 +1,4 @@
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -18,9 +19,13 @@ export function CardPressable({
   className,
   children,
 }: Props) {
+  const pressableClassName = cn(
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900",
+    className,
+  );
   if (href)
     return (
-      <Link href={href} title={title} className={className}>
+      <Link href={href} title={title} className={pressableClassName}>
         {children}
       </Link>
     );
@@ -30,7 +35,7 @@ export function CardPressable({
         type="button"
         onClick={onOpen}
         title={title}
-        className={className}
+        className={pressableClassName}
       >
         {children}
       </button>

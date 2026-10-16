@@ -58,6 +58,39 @@ describe("AttachmentCard", () => {
     expect(screen.getByText("PDF · 1.2 MB")).toBeDefined();
   });
 
+  it("rings an openable thumbnail on focus without the tile clipping it", () => {
+    render(
+      <AttachmentCard
+        size="message"
+        name="photo.png"
+        mediaType="image/png"
+        previewUrl="blob:photo"
+        onOpen={vi.fn()}
+      />,
+    );
+
+    const body = screen.getByTitle("photo.png");
+    expect(body.tagName).toBe("BUTTON");
+    expect(body.className).toContain("focus-visible:ring-2");
+    expect(body.className).toContain("focus-visible:ring-offset-2");
+    expect(body.parentElement?.className).not.toContain("overflow-hidden");
+  });
+
+  it("rings an openable file card on focus", () => {
+    render(
+      <AttachmentCard
+        size="message"
+        name="report.pdf"
+        mediaType="application/pdf"
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTitle("report.pdf").className).toContain(
+      "focus-visible:ring-2",
+    );
+  });
+
   it("names the remove button after the file", () => {
     const onRemove = vi.fn();
     render(

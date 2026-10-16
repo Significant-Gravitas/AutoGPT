@@ -27,7 +27,7 @@ export function ImageAttachment({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl bg-zinc-100",
+        "relative rounded-2xl bg-zinc-100",
         size === "composer" ? "size-14" : "size-36",
       )}
     >
@@ -36,7 +36,7 @@ export function ImageAttachment({
         href={href}
         title={name}
         className={cn(
-          "flex size-full items-center justify-center",
+          "flex size-full items-center justify-center overflow-hidden rounded-2xl focus-visible:ring-offset-2",
           isPressable({ onOpen, href }) &&
             "transition-opacity hover:opacity-90",
         )}
@@ -68,7 +68,7 @@ export function ImageAttachment({
         className="pointer-events-none absolute inset-0 rounded-2xl outline outline-1 -outline-offset-1 outline-black/10"
       />
       {status === "uploading" && (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40">
           <Icon
             icon={Loading03Icon}
             size={20}
