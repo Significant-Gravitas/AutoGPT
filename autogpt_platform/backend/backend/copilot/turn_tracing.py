@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING
 
 from sentry_sdk.tracing import Span
 
+from backend.copilot.constants import is_platform_text
+from backend.copilot.model import is_message_duplicate
 from backend.copilot.response_model import (
     StreamBaseResponse,
     StreamReasoningDelta,
@@ -42,6 +44,21 @@ MODEL_OUTPUT_CHUNKS = (StreamTextDelta, StreamReasoningDelta, StreamToolInputSta
 """Chunks that carry model output. The first one is the turn's first token."""
 
 
+def is_model_output(chunk: StreamBaseResponse) -> bool:
+    """Whether the chunk carries model output; a notice the platform streams
+    as text, where the model gave no answer, does not."""
+    return isinstance(chunk, MODEL_OUTPUT_CHUNKS) and not _is_platform_delta(chunk)
+
+
+def is_answer_text(chunk: StreamBaseResponse) -> bool:
+    """Whether the chunk is text of the model's answer."""
+    return isinstance(chunk, StreamTextDelta) and not is_platform_text(chunk.delta)
+
+
+def _is_platform_delta(chunk: StreamBaseResponse) -> bool:
+    return isinstance(chunk, StreamTextDelta) and is_platform_text(chunk.delta)
+
+
 class TurnTrace:
     """One turn's timings and outcome, recorded on its transaction."""
 
@@ -55,14 +72,21 @@ class TurnTrace:
         self._chunks = 0
         self._tool_calls = 0
 
-    def describe_chat(self, session: "ChatSession") -> None:
+    def describe_chat(self, session: "ChatSession", message: str | None = None) -> None:
         """Tag the kind of chat the turn is in, so its timings split by it: a
         chat's first turn sets up its sandbox and context, and an expert's
         turn loads the expert as well. The first turn answers the chat's first
         user message; a greeting or note the platform wrote before it doesn't
-        make it a follow-up."""
+        make it a follow-up.
+
+        ``message`` is the user message the turn answers, as the engine will
+        save it. The chat route saves it before dispatch; a schedule or a
+        sub-session doesn't, and the engine saves it when the turn starts,
+        unless it is already the chat's latest, as it decides itself."""
         try:
-            users = sum(1 for message in session.messages if message.role == "user")
+            users = sum(1 for row in session.messages if row.role == "user")
+            if message and not is_message_duplicate(session.messages, "user", message):
+                users += 1
             self.span.set_tag("copilot.turn.first", "true" if users <= 1 else "false")
             self.span.set_tag(
                 "copilot.expert", "true" if session.expert_id else "false"
@@ -80,7 +104,7 @@ class TurnTrace:
         self._chunks += 1
         if isinstance(chunk, StreamToolInputAvailable):
             self._tool_calls += 1
-        if not self._first_token_seen and isinstance(chunk, MODEL_OUTPUT_CHUNKS):
+        if not self._first_token_seen and is_model_output(chunk):
             self._first_token_seen = True
             tracing.set_timing(
                 "copilot.turn.ttft_ms", self._elapsed_ms(), span=self.span
@@ -88,7 +112,7 @@ class TurnTrace:
             self._time_since_request("copilot.turn.request_to_ttft_ms")
         if self._shape is None and isinstance(chunk, StreamToolInputStart):
             self._shape = "tool_first"
-        if not self._first_text_seen and isinstance(chunk, StreamTextDelta):
+        if not self._first_text_seen and is_answer_text(chunk):
             self._first_text_seen = True
             self._shape = self._shape or "text_first"
             tracing.set_timing(

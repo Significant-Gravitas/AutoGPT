@@ -110,7 +110,6 @@ from backend.copilot.response_model import (
     StreamStart,
     StreamStartStep,
     StreamStatus,
-    StreamTextDelta,
 )
 from backend.copilot.service import strip_injected_context_for_display
 from backend.copilot.session_permissions import resolve_session_permissions
@@ -165,7 +164,7 @@ from backend.copilot.transports import (
     save_default_chat_route,
 )
 from backend.copilot.trial_reads import sharing_trial_reads
-from backend.copilot.turn_tracing import MODEL_OUTPUT_CHUNKS
+from backend.copilot.turn_tracing import is_answer_text, is_model_output
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.redis_client import get_redis_async
 from backend.data.understanding import get_business_understanding
@@ -2193,9 +2192,7 @@ async def stream_chat_post(
                             (time_module.perf_counter() - stream_start_time) * 1000,
                             span=stream_transaction,
                         )
-                    if not first_token_yielded and isinstance(
-                        chunk, MODEL_OUTPUT_CHUNKS
-                    ):
+                    if not first_token_yielded and is_model_output(chunk):
                         first_token_yielded = True
                         tracing.set_timing(
                             "copilot.stream.ttft_ms",
@@ -2203,8 +2200,8 @@ async def stream_chat_post(
                             span=stream_transaction,
                         )
                     # Reasoning and tool calls count as the first token; the
-                    # answer starts with the first text.
-                    if not first_text_yielded and isinstance(chunk, StreamTextDelta):
+                    # answer starts with the first text the model wrote.
+                    if not first_text_yielded and is_answer_text(chunk):
                         first_text_yielded = True
                         tracing.set_timing(
                             "copilot.stream.first_text_ms",

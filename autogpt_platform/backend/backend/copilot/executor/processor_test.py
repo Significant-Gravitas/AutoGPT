@@ -19,6 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from pydantic import SecretStr
 
+from backend.copilot.constants import EMPTY_FINISH_NOTICE, STREAM_INCOMPLETE_MARKER
 from backend.copilot.engine import resolve_use_sdk
 from backend.copilot.executor.processor import (
     _CODEX_CREDENTIAL_ACQUIRE_TIMEOUT_SECONDS,
@@ -485,6 +486,16 @@ class TestExecuteAsyncAclose:
             ),
             ([StreamReasoningDelta(id="r", delta="thinking")], "none", False),
             ([StreamStatus(message="Thinking…")], "none", False),
+            # A turn that ends without an answer streams a notice in its place.
+            (
+                [
+                    StreamReasoningDelta(id="r", delta="thinking"),
+                    StreamTextDelta(id="n", delta=EMPTY_FINISH_NOTICE),
+                ],
+                "none",
+                False,
+            ),
+            ([StreamTextDelta(id="n", delta=STREAM_INCOMPLETE_MARKER)], "none", False),
         ],
     )
     @pytest.mark.asyncio
@@ -506,22 +517,38 @@ class TestExecuteAsyncAclose:
         assert ("copilot.turn.request_to_first_text_ms" in data) is answered
 
     @pytest.mark.parametrize(
-        "history, first",
+        "history, message, first",
         [
-            # A follow-up.
-            (["user", "assistant", "user"], "false"),
+            # A follow-up the chat route saved before dispatching it.
+            (
+                [("user", "hi"), ("assistant", "hello"), ("user", "next")],
+                "next",
+                "false",
+            ),
+            # The chat's first message, saved by the chat route.
+            ([("user", "hi")], "hi", "true"),
             # An expert's greeting before the chat's first user message.
-            (["assistant", "user"], "true"),
-            # A first turn redelivered after it saved a tool call and died.
-            (["user", "assistant"], "true"),
+            ([("assistant", "Welcome!"), ("user", "hi")], "hi", "true"),
+            # A schedule's or sub-session's first turn: nothing saved yet, the
+            # engine saves the message when the turn starts.
+            ([], "do this", "true"),
+            # A schedule's follow-up, dispatched without saving its message.
+            ([("user", "hi"), ("assistant", "hello")], "do this", "false"),
+            # A recurring schedule sending the same prompt into its chat again.
+            # A first turn redelivered after it saved a tool call looks the
+            # same: the engine saves its message again and resumes the chat.
+            ([("user", "brief me"), ("assistant", "done")], "brief me", "false"),
+            # A redelivered schedule turn whose message the engine saved with
+            # its server tags stripped: the same message, not a second one.
+            ([("user", "do this")], "<user_context>x</user_context>do this", "true"),
             # A kickoff the platform posts as the chat's first message.
-            (["assistant"], "true"),
+            ([("assistant", "kickoff")], None, "true"),
         ],
     )
     @pytest.mark.parametrize("expert_id", [None, "expert-1"])
     @pytest.mark.asyncio
     async def test_a_turn_is_tagged_with_the_kind_of_chat_it_is_in(
-        self, sentry_transactions, history, first, expert_id
+        self, sentry_transactions, history, message, first, expert_id
     ) -> None:
         session = ChatSession.new(
             "user-1",
@@ -532,9 +559,11 @@ class TestExecuteAsyncAclose:
         )
         session.session_id = "sess-1"
         session.messages = [
-            ChatMessage(role=role, content=f"{role} {n}")
-            for n, role in enumerate(history)
+            ChatMessage(role=role, content=content) for role, content in history
         ]
+        entry = _make_entry().model_copy(
+            update={"message": message or "", "is_user_message": message is not None}
+        )
         expert_store = MagicMock()
         expert_store.resolve_private_expert_tenancy = AsyncMock(
             return_value=("personal-org", "personal-team")
@@ -554,7 +583,7 @@ class TestExecuteAsyncAclose:
             patch("backend.data.db_accessors.experts_db", return_value=expert_store),
         ):
             await CoPilotProcessor()._execute_async(
-                _make_entry(), threading.Event(), MagicMock(), _make_log()
+                entry, threading.Event(), MagicMock(), _make_log()
             )
 
         [turn] = sentry_transactions

@@ -20,6 +20,12 @@ from backend.api.features.chat.routes import _strip_injected_context
 from backend.copilot import pending_messages as pending_messages_module
 from backend.copilot import transports as chat_transports
 from backend.copilot.config import CopilotLlmAuthProvider
+from backend.copilot.constants import (
+    BUDGET_EXHAUSTED_NOTICE,
+    EMPTY_FINISH_NOTICE,
+    NO_COMMENTARY_NOTICE,
+    STREAM_INCOMPLETE_MARKER,
+)
 from backend.copilot.model import ChatSession
 from backend.copilot.offers import EntitlementUnavailable
 from backend.copilot.rate_limit import SubscriptionTier
@@ -420,6 +426,35 @@ def test_stream_chat_records_when_the_answer_text_reached_the_client(
     data = request["contexts"]["trace"]["data"]
     assert "copilot.stream.ttft_ms" in data
     assert ("copilot.stream.first_text_ms" in data) is answered
+
+
+@pytest.mark.parametrize(
+    "notice",
+    [
+        STREAM_INCOMPLETE_MARKER,
+        EMPTY_FINISH_NOTICE,
+        BUDGET_EXHAUSTED_NOTICE,
+        NO_COMMENTARY_NOTICE,
+    ],
+)
+def test_stream_chat_does_not_time_a_notice_as_the_answer(
+    mocker: pytest_mock.MockerFixture, sentry_transactions, notice
+) -> None:
+    """A turn that ends without an answer streams a notice the platform wrote
+    in its place: it is neither the turn's first token nor its answer."""
+    _relay_through_the_stream_route(
+        mocker,
+        [
+            StreamStatus(message="Message received…"),
+            StreamTextDelta(id="n", delta=notice),
+            StreamFinish(),
+        ],
+    )
+
+    [request] = sentry_transactions
+    data = request["contexts"]["trace"]["data"]
+    assert "copilot.stream.ttft_ms" not in data
+    assert "copilot.stream.first_text_ms" not in data
 
 
 def _relay_through_the_stream_route(
