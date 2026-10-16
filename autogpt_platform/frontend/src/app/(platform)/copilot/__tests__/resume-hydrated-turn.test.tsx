@@ -334,10 +334,17 @@ function renderResumedSession(
  * The replay streams through Streamdown, which renders a text part's updates
  * in a transition. The replayed persisted half mounts empty at its
  * `text-start` and fills in a commit after the half behind it, which mounted
- * with its text, so count it once the render has settled.
+ * with its text. So wait until a replayed row (not a hydrated `-seq-N` one)
+ * shows `text`, then check that is the only copy on the page.
  */
-async function expectOnceSettled(text: string) {
-  await waitFor(() => expect(screen.getAllByText(text)).toHaveLength(1));
+async function expectReplayedOnce(text: string) {
+  const hydratedRow = `[data-message-id^="${TEST_SESSION_ID}-seq-"]`;
+  await waitFor(() =>
+    expect(
+      screen.getAllByText(text).some((el) => !el.closest(hydratedRow)),
+    ).toBe(true),
+  );
+  expect(screen.getAllByText(text)).toHaveLength(1);
 }
 
 beforeEach(() => {
@@ -378,7 +385,7 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       // The heart of the regression: the replay re-emits the persisted half,
       // so leaving the `-seq-N` hydrated message in place would show it twice
       // (two assistant bubbles, two tool chains) for one backend turn.
-      await expectOnceSettled(PERSISTED_HALF);
+      await expectReplayedOnce(PERSISTED_HALF);
     },
   );
 
@@ -431,7 +438,7 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
         "midturn-pm-1",
         "resumed-turn-2",
       ]);
-      await expectOnceSettled(PERSISTED_HALF);
+      await expectReplayedOnce(PERSISTED_HALF);
       expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
     },
   );
@@ -469,7 +476,7 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       ]);
       expect(ids).not.toContain(`promoted-midturn-${TEST_SESSION_ID}-seq-5`);
       expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
-      await expectOnceSettled(PERSISTED_HALF);
+      await expectReplayedOnce(PERSISTED_HALF);
     },
   );
 
@@ -495,7 +502,7 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       // the only copy — it must survive the resume cut. The assistant halves
       // still come from the replay alone.
       expect(screen.getAllByText(MIDTURN_FOLLOWUP)).toHaveLength(1);
-      await expectOnceSettled(PERSISTED_HALF);
+      await expectReplayedOnce(PERSISTED_HALF);
       expect(screen.getAllByText(REPLAYED_HALF)).toHaveLength(1);
       expect(screen.getAllByText(RESUMED_PROMPT)).toHaveLength(1);
       expect(
@@ -582,7 +589,7 @@ describe("useCopilotStream — resume replays a db-hydrated turn", () => {
       expect(screen.getAllByText(EARLIER_PROMPT)).toHaveLength(1);
       // The running turn's persisted half is still trimmed, so the replay
       // does not double it.
-      await expectOnceSettled(PERSISTED_HALF);
+      await expectReplayedOnce(PERSISTED_HALF);
     },
   );
 
