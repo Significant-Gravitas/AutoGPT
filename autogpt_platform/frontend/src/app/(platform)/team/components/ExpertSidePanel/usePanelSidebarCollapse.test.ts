@@ -2,7 +2,8 @@ import { renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePanelSidebarCollapse } from "./usePanelSidebarCollapse";
 
-const setOpen = vi.fn<(open: boolean) => void>();
+const setOpen =
+  vi.fn<(open: boolean, options?: { persist?: boolean }) => void>();
 const setOpenMobile = vi.fn<(open: boolean) => void>();
 let sidebarOpen = true;
 
@@ -24,7 +25,7 @@ describe("usePanelSidebarCollapse", () => {
   it("closes the left sidebar when the Soul panel opens", () => {
     renderHook(() => usePanelSidebarCollapse(true));
 
-    expect(setOpen).toHaveBeenCalledWith(false);
+    expect(setOpen).toHaveBeenCalledWith(false, { persist: false });
     expect(setOpenMobile).toHaveBeenCalledWith(false);
   });
 
@@ -38,7 +39,7 @@ describe("usePanelSidebarCollapse", () => {
 
     rerender({ isOpen: false });
 
-    expect(setOpen).toHaveBeenCalledWith(true);
+    expect(setOpen).toHaveBeenCalledWith(true, { persist: false });
   });
   it("restores a sidebar it closed when the panel unmounts", () => {
     const { rerender, unmount } = renderHook(() =>
@@ -48,7 +49,7 @@ describe("usePanelSidebarCollapse", () => {
     rerender();
     setOpen.mockClear();
     unmount();
-    expect(setOpen).toHaveBeenCalledExactlyOnceWith(true);
+    expect(setOpen).toHaveBeenCalledExactlyOnceWith(true, { persist: false });
   });
 
   it("does not open a sidebar that was already closed", () => {

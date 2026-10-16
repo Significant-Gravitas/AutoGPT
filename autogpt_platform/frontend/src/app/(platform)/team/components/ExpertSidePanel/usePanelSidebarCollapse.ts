@@ -13,12 +13,13 @@ export function usePanelSidebarCollapse(isPanelOpen: boolean) {
     const current = sidebarRef.current;
     if (!isPanelOpen || !current) return;
     const wasOpen = current.open;
-    current.setOpen(false);
+    current.setOpen(false, { persist: false });
     current.setOpenMobile(false);
 
     return () => {
       const latest = sidebarRef.current;
-      if (wasOpen && latest && !latest.open) latest.setOpen(true);
+      if (wasOpen && latest && !latest.open)
+        latest.setOpen(true, { persist: false });
     };
   }, [isPanelOpen, hasSidebar]);
 }
