@@ -45,6 +45,7 @@ import backend.api.features.chat.speech as chat_speech
 import backend.api.features.desktop_preview
 import backend.api.features.experiments
 import backend.api.features.experts.routes as experts_routes
+import backend.api.features.feature_flags.routes as feature_flags_routes
 import backend.api.features.graph_executions.review.routes
 import backend.api.features.graph_executions.routes as graph_executions_routes
 import backend.api.features.graphs.routes as graphs_routes
@@ -550,6 +551,7 @@ app.include_router(
     skill_learning_routes.router, tags=["v2", "skill-learning"], prefix="/api"
 )
 app.include_router(home_routes.router, prefix="/api")
+app.include_router(feature_flags_routes.router, prefix="/api")
 app.include_router(
     backend.api.features.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )

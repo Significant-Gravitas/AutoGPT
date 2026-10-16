@@ -142,7 +142,7 @@ class TestSideCalls:
         assert cfg.aux_client_credentials == cfg.main_client_credentials
         assert cfg.aux_uses_openrouter
         assert cfg.aux_provider_label == "open_router"
-        assert cfg.aux_model == "anthropic/claude-haiku-4-5"
+        assert cfg.aux_model == "anthropic/claude-haiku-5.5"
 
     def test_another_server_on_the_openrouter_route_gets_plain_requests(self):
         """OpenRouter's extra request fields go to OpenRouter only: another

@@ -1280,7 +1280,7 @@ def _openrouter_route(monkeypatch):
             {"usage": {"include": True}},
             "open_router",
         ),
-        ("direct_anthropic", "claude-haiku-4-5", {}, "anthropic"),
+        ("direct_anthropic", "claude-haiku-5-5", {}, "anthropic"),
     ],
 )
 async def test_the_status_runs_on_the_platform_routes_model(

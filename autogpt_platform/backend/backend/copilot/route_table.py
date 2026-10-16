@@ -100,7 +100,11 @@ DEFAULT_STANDARD_MODEL = "anthropic/claude-sonnet-5-5"
 DEFAULT_ADVANCED_MODEL = "anthropic/claude-opus-5-5"
 _SONNET = DEFAULT_STANDARD_MODEL
 _OPUS = DEFAULT_ADVANCED_MODEL
-_HAIKU = "anthropic/claude-haiku-4-5"
+# The side-call model for titles and summaries: OpenRouter's slug, which the
+# Anthropic routes send as ``claude-haiku-5-5``.
+_HAIKU = "anthropic/claude-haiku-5.5"
+# The direct route's dry-run model stays on Haiku 4.5.
+_HAIKU_4_5 = "anthropic/claude-haiku-4-5"
 _FLASH_LITE = "google/gemini-2.5-flash-lite"
 
 ROUTES: dict[RouteName, RouteRow] = {
@@ -149,7 +153,7 @@ ROUTES: dict[RouteName, RouteRow] = {
         supports_flex_tier=False,
         aux_model=_HAIKU,
         # Sent as ``claude-haiku-4-5``; Anthropic serves no Gemini.
-        simulation_model=_HAIKU,
+        simulation_model=_HAIKU_4_5,
     ),
     "subscription": RouteRow(
         name="subscription",
