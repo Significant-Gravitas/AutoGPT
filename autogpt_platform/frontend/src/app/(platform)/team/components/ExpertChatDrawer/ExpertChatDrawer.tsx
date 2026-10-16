@@ -192,6 +192,7 @@ function ChatPanelBody({ target, identity, chat }: BodyProps) {
             isTurnStarting={status === "submitted"}
             onStop={stop}
             onEnqueue={onSend}
+            canAttachWhileStreaming
             placeholder={`Message ${target.name}…`}
             hasSession={!!sessionId}
             expertId={target.expertId}

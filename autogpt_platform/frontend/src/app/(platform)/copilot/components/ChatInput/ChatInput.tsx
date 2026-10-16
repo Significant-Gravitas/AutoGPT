@@ -118,6 +118,9 @@ interface Props {
   expertId?: string | null;
   /** Names that expert in the picker's filter row. */
   expertName?: string | null;
+  /** Attachments stay open during a reply, and a message with attachments
+   *  goes to `onSend`, which must hold it until the reply ends. */
+  canAttachWhileStreaming?: boolean;
 }
 
 export function ChatInput({
@@ -146,6 +149,7 @@ export function ChatInput({
   variant = "default",
   expertId = null,
   expertName = null,
+  canAttachWhileStreaming = false,
 }: Props) {
   const { isDryRun, setIsDryRun } = useCopilotUIStore();
   // Still the CHAT_MODE_OPTION flag, which no longer names what it gates: the
@@ -184,7 +188,8 @@ export function ChatInput({
   const isAtCap = attachments.length >= MAX_ATTACHMENTS;
   // isBusy disables non-essential interactions (attachment menu, voice recording)
   // but must not disable the textarea itself — streaming allows queued messages.
-  const isBusy = disabled || isStreaming || isUploadingFiles;
+  const isBusy =
+    disabled || isUploadingFiles || (isStreaming && !canAttachWhileStreaming);
   // The textarea is only truly disabled when the session is unavailable, not
   // during normal streaming (users can type and queue the next message).
   const isTextareaDisabled = disabled || isUploadingFiles;
@@ -295,6 +300,9 @@ export function ChatInput({
     (!!value.trim() || hasAttachments) &&
     !isRecording &&
     !isTranscribing;
+  // The pending endpoint takes text only, so attachments are queued through
+  // `onSend`, and only by a host that holds them until the reply ends.
+  const canQueue = hasAttachments ? canAttachWhileStreaming : !!onEnqueue;
 
   function handleClearGuidedPrompt() {
     // Only discard untouched guided prompts — never a draft the user typed
@@ -560,13 +568,16 @@ export function ChatInput({
                 }}
               />
             )}
-            {isStreaming && canSend && onEnqueue && !hasAttachments && (
+            {isStreaming && canSend && canQueue && (
               <PromptInputButton
                 aria-label="Queue message"
                 tooltip="Queue message"
                 variant="default"
                 disabled={isEnqueueing}
-                onClick={() => void handleEnqueue()}
+                type={hasAttachments ? "submit" : "button"}
+                onClick={
+                  hasAttachments ? undefined : () => void handleEnqueue()
+                }
                 className={cn(
                   "size-[2.625rem] rounded-full border-zinc-800 bg-zinc-800 text-white hover:border-zinc-900 hover:bg-zinc-900 disabled:border-zinc-200 disabled:bg-zinc-200 disabled:text-white disabled:opacity-100",
                   sendButtonClass,
