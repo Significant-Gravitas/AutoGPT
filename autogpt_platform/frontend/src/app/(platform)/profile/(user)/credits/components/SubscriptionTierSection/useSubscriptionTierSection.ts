@@ -7,6 +7,7 @@ import {
 import type { SubscriptionStatusResponse } from "@/app/api/__generated__/models/subscriptionStatusResponse";
 import type { SubscriptionTierRequestTier } from "@/app/api/__generated__/models/subscriptionTierRequestTier";
 import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCheckoutRedirect } from "@/hooks/useCheckoutRedirect";
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { getTierLabel } from "./helpers";
 import {
@@ -49,7 +50,9 @@ export function useSubscriptionTierSection() {
     isPending: isUpdatePending,
     variables,
   } = useUpdateSubscriptionTier();
-  const isPending = isUpdatePending || isChangingTier;
+  const checkoutRedirect = useCheckoutRedirect();
+  const isPending =
+    isUpdatePending || isChangingTier || checkoutRedirect.isRedirecting;
 
   useEffect(() => {
     if (subscriptionStatus === "success") {
@@ -96,6 +99,7 @@ export function useSubscriptionTierSection() {
           value: getSubscriptionValue(tier, "monthly"),
         });
         window.location.href = result.data.url;
+        checkoutRedirect.markRedirecting();
         return;
       }
       await refetch();

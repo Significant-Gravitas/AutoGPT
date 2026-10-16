@@ -17,6 +17,7 @@ import { http, HttpResponse, type JsonBodyType } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { server } from "@/mocks/mock-server";
+import { restoreFromBackForwardCache } from "@/tests/integrations/back-forward-cache";
 import {
   installGtagShim,
   removeGtagShim,
@@ -1412,6 +1413,27 @@ describe("YourPlanCard begin_checkout", () => {
     expect(hits.post).toBe(1);
   });
 
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const location = stubLocation();
+    const hits = freeAccount("https://checkout.stripe.com/pay/cs_test");
+
+    render(<YourPlanCard />);
+    const upgrade = await screen.findByRole("button", { name: /start pro/i });
+    fireEvent.click(upgrade);
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_test"),
+    );
+    expect(upgrade.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(upgrade);
+    expect(hits.post).toBe(1);
+
+    restoreFromBackForwardCache();
+
+    expect(upgrade.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(upgrade);
+    await waitFor(() => expect(hits.post).toBe(2));
+  });
+
   it("reports no begin_checkout when the tier changes in place", async () => {
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_ID", "AW-123");
     vi.stubEnv("NEXT_PUBLIC_GOOGLE_ADS_CONVERSION_LABELS", "begin_checkout=BC");
@@ -1429,5 +1451,60 @@ describe("YourPlanCard begin_checkout", () => {
     await waitFor(() => expect(hits.post).toBe(1));
     await waitFor(() => expect(hits.get).toBeGreaterThanOrEqual(2));
     expect(gtagCalls.filter((call) => call[1] === "conversion")).toEqual([]);
+  });
+});
+
+describe("BalanceCard checkout", () => {
+  const originalLocation = window.location;
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: originalLocation,
+    });
+  });
+
+  it("stays busy while Stripe loads, and is usable again after Back restores the page", async () => {
+    const location = { href: "http://localhost/settings/billing" };
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: location,
+    });
+    let topUps = 0;
+    server.use(
+      jsonHandler("get", "/api/credits", { credits: 1000 }),
+      http.post("*/api/credits", () => {
+        topUps += 1;
+        return HttpResponse.json({
+          checkout_url: "https://checkout.stripe.com/pay/cs_top_up",
+        });
+      }),
+    );
+
+    render(<BalanceCard />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: /add credits/i }),
+    );
+    fireEvent.change(screen.getByPlaceholderText(/amount/i), {
+      target: { value: "20" },
+    });
+    const checkout = screen.getByRole("button", {
+      name: /continue to checkout/i,
+    });
+    fireEvent.click(checkout);
+    await waitFor(() =>
+      expect(location.href).toBe("https://checkout.stripe.com/pay/cs_top_up"),
+    );
+    expect(checkout.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(checkout);
+    expect(topUps).toBe(1);
+
+    restoreFromBackForwardCache();
+
+    expect(checkout.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(checkout);
+    await waitFor(() => expect(topUps).toBe(2));
   });
 });
