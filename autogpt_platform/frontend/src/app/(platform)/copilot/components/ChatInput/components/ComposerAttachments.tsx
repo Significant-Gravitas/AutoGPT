@@ -123,6 +123,7 @@ function ComposerAttachment({ attachment, onRemove }: AttachmentProps) {
       size="composer"
       name={name}
       mediaType={attachment.mimeType}
+      sizeBytes={attachment.sizeBytes}
       previewUrl={workspaceFileDownloadUrl(attachment.fileId)}
       onRemove={onRemove}
     />

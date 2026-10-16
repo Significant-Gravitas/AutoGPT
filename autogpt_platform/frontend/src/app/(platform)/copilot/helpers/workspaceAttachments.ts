@@ -12,6 +12,7 @@ export interface WorkspaceFileAttachment {
   fileId: string;
   name: string;
   mimeType: string;
+  sizeBytes?: number;
 }
 
 /**
@@ -80,6 +81,7 @@ export function workspaceItemToAttachment(item: WorkspaceFileItem): Attachment {
     fileId: item.id,
     name: item.name,
     mimeType: item.mime_type,
+    sizeBytes: item.size_bytes,
   };
 }
 
@@ -110,12 +112,13 @@ export function attachmentKey(attachment: Attachment): string {
 
 export function buildWorkspaceFilePart(
   attachment: WorkspaceFileAttachment,
-): FileUIPart {
+): SizedFileUIPart {
   return {
     type: "file",
     mediaType: attachment.mimeType,
     filename: attachment.name,
     url: workspaceFileDownloadUrl(attachment.fileId),
+    sizeBytes: attachment.sizeBytes,
   };
 }
 

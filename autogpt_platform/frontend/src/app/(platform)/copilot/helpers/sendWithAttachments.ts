@@ -9,6 +9,7 @@ import {
 import type { ExpertKickoffMetadata } from "../expertKickoff";
 import type { SendInput } from "../stream/turnRuntime";
 import {
+  filePartSize,
   isFolderPart,
   MAX_ATTACHMENTS,
   workspaceFileDownloadUrl,
@@ -146,6 +147,7 @@ export function describePendingUpload(
           id: nextPendingUploadId(),
           name: part.filename ?? "file",
           mediaType: part.mediaType,
+          sizeBytes: filePartSize(part),
           status: "uploaded",
           previewUrl: part.url,
         },

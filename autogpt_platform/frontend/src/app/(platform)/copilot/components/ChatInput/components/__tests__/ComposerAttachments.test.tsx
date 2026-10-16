@@ -23,6 +23,7 @@ const report: Attachment = {
   fileId: "file-1",
   name: "report.pdf",
   mimeType: "application/pdf",
+  sizeBytes: 2048,
 };
 
 const folder: Attachment = {
@@ -63,7 +64,7 @@ describe("ComposerAttachments", () => {
     expect(screen.getByText("notes.txt")).toBeDefined();
     expect(screen.getByText("Text · 2.0 KB")).toBeDefined();
     expect(screen.getByText("report.pdf")).toBeDefined();
-    expect(screen.getByText("PDF")).toBeDefined();
+    expect(screen.getByText("PDF · 2.0 KB")).toBeDefined();
     expect(screen.getByText("Folder · 2 files")).toBeDefined();
   });
 

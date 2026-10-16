@@ -143,6 +143,7 @@ describe("useSendMessage with local attachments", () => {
             fileId: FILE_ID,
             name: "notes.txt",
             mimeType: "text/plain",
+            sizeBytes: 512,
           },
         ],
       );
@@ -154,6 +155,7 @@ describe("useSendMessage with local attachments", () => {
         id: expect.any(String),
         name: "notes.txt",
         mediaType: "text/plain",
+        sizeBytes: 512,
         status: "uploaded",
         previewUrl: `/api/proxy/api/workspace/files/${FILE_ID}/download`,
       },

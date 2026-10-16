@@ -44,6 +44,7 @@ describe("workspaceAttachments", () => {
       fileId: "file-1",
       name: "report.pdf",
       mimeType: "application/pdf",
+      sizeBytes: 1024,
     });
   });
 
@@ -62,12 +63,14 @@ describe("workspaceAttachments", () => {
       fileId: "file-9",
       name: "data.csv",
       mimeType: "text/csv",
+      sizeBytes: 1536,
     });
     expect(part).toEqual({
       type: "file",
       mediaType: "text/csv",
       filename: "data.csv",
       url: "/api/proxy/api/workspace/files/file-9/download",
+      sizeBytes: 1536,
     });
   });
 
@@ -88,6 +91,7 @@ describe("workspaceAttachments", () => {
         fileId: "ws-1",
         name: "report.pdf",
         mimeType: "application/pdf",
+        sizeBytes: 1024,
       },
     ]);
   });
