@@ -58,14 +58,14 @@ vi.mock("../../components/GlobalSearchModal/GlobalSearchOverlay", () => ({
 
 const DESKTOP_WIDTH = window.innerWidth;
 
-function load() {
+function load(persistedSidebarOpen?: boolean) {
   const paintedStates: string[] = [];
   function StateLog() {
     paintedStates.push(useSidebar().state);
     return null;
   }
   const view = render(
-    <PlatformChrome>
+    <PlatformChrome persistedSidebarOpen={persistedSidebarOpen}>
       <StateLog />
     </PlatformChrome>,
   );
@@ -127,6 +127,14 @@ describe("the app sidebar across reloads", () => {
       expect(sidebarState()).toBe(expected);
     },
   );
+
+  it("falls back to the cookie the server read when the browser has none", () => {
+    isBrainDumpEnabled = true;
+
+    load(true);
+
+    expect(sidebarState()).toBe("expanded");
+  });
 
   it("never paints the builder with the sidebar open, whatever was remembered", () => {
     rememberSidebar(true);

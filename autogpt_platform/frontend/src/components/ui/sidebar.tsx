@@ -25,8 +25,8 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { SidebarLeftIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/atoms/Icon/Icon";
+import { parseSidebarCookie, SIDEBAR_COOKIE_NAME } from "./sidebar-cookie";
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const SIDEBAR_WIDTH = "20rem";
 const SIDEBAR_WIDTH_MOBILE = "20rem";
@@ -187,15 +187,15 @@ const SidebarProvider = React.forwardRef<
 );
 SidebarProvider.displayName = "SidebarProvider";
 
-// Client-only: seeding a server-rendered provider from it breaks hydration.
+// The browser's copy of the cookie; undefined on the server.
 function getPersistedSidebarOpen(): boolean | undefined {
-  const value = document.cookie
-    .split("; ")
-    .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
-    ?.slice(SIDEBAR_COOKIE_NAME.length + 1);
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
+  if (typeof document === "undefined") return undefined;
+  return parseSidebarCookie(
+    document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+      ?.slice(SIDEBAR_COOKIE_NAME.length + 1),
+  );
 }
 
 const Sidebar = React.forwardRef<

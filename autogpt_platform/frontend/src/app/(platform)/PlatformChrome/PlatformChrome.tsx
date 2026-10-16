@@ -27,6 +27,8 @@ import { usePlatformChrome } from "./usePlatformChrome";
 
 interface Props {
   children: ReactNode;
+  // The request's sidebar cookie, for a server render.
+  persistedSidebarOpen?: boolean;
 }
 
 // Mobile header buttons float over the content, so they get a pill surface to
@@ -34,7 +36,7 @@ interface Props {
 const mobileTriggerClassName =
   "rounded-full border border-[#DADADC] bg-white shadow-md hover:bg-[#F5F5F6]";
 
-export function PlatformChrome({ children }: Props) {
+export function PlatformChrome({ children, persistedSidebarOpen }: Props) {
   const {
     showNewLayout,
     isNewLayoutActive,
@@ -71,8 +73,9 @@ export function PlatformChrome({ children }: Props) {
   }
 
   if (showNewLayout) {
-    // Never server-rendered (usePlatformChrome), so reading the cookie is safe.
-    const openOutsideBuilder = getPersistedSidebarOpen() ?? !isBrainDumpEnabled;
+    // The browser's cookie stays current across client navigation; the layout's does not.
+    const openOutsideBuilder =
+      getPersistedSidebarOpen() ?? persistedSidebarOpen ?? !isBrainDumpEnabled;
     return (
       <SidebarProvider
         persistState
