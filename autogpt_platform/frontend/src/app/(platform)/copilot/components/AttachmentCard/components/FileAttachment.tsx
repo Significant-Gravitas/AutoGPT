@@ -1,4 +1,3 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { Text } from "@/components/atoms/Text/Text";
 import { cn } from "@/lib/utils";
@@ -10,6 +9,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { AttachmentCardProps } from "../AttachmentCard";
 import { attachmentDetail, attachmentIcon } from "../helpers";
+import { CardActionButton } from "./CardActionButton";
 import { CardPressable, isPressable } from "./CardPressable";
 import { UploadStatusText } from "./UploadStatusText";
 
@@ -78,7 +78,7 @@ export function FileAttachment({
           <Text
             variant={isFailed ? "small-medium" : "small"}
             as="span"
-            tone={isFailed ? "danger" : "muted"}
+            tone={isFailed ? "danger" : "secondary"}
             unmask={isFailed}
             className="truncate"
           >
@@ -90,26 +90,24 @@ export function FileAttachment({
         <UploadStatusText status={status} />
       </CardPressable>
       {isFailed && onRetry && (
-        <Button
-          variant="ghost"
+        <CardActionButton
           size="xs"
           leadingIcon={RefreshIcon}
-          aria-label={`Retry ${name}`}
+          label={`Retry ${name}`}
           onClick={onRetry}
         >
           <span className="hidden sm:inline">Retry</span>
-        </Button>
+        </CardActionButton>
       )}
       {onRemove && (
-        <Button
-          variant="ghost"
+        <CardActionButton
           size="icon-xs"
-          aria-label={`Remove ${name}`}
+          label={`Remove ${name}`}
           onClick={onRemove}
           className="text-zinc-500 hover:bg-zinc-100 hover:text-zinc-900"
         >
           <Icon icon={Cancel01Icon} size={14} aria-hidden />
-        </Button>
+        </CardActionButton>
       )}
     </div>
   );

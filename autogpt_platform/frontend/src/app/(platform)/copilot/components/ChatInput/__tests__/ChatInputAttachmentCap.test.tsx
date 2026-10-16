@@ -232,6 +232,25 @@ describe("ChatInput attachment cap — the notice and the affordance", () => {
   });
 });
 
+describe("ChatInput — removing an attachment", () => {
+  it("drops only that card and sends nothing", async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<ChatInput onSend={onSend} />);
+    fireEvent.change(textarea(), { target: { value: "what is this" } });
+    pasteFiles(makeFiles(2));
+    await waitFor(() => expect(removeButtons()).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Remove doc-0.pdf" }));
+
+    await waitFor(() => expect(removeButtons()).toHaveLength(1));
+    expect(
+      screen.getByRole("button", { name: "Remove doc-1.pdf" }),
+    ).toBeDefined();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(textarea().value).toBe("what is this");
+  });
+});
+
 function textarea() {
   return screen.getByTestId("textarea") as HTMLTextAreaElement;
 }

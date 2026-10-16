@@ -1,4 +1,3 @@
-import { Button } from "@/components/atoms/Button/Button";
 import { Icon } from "@/components/atoms/Icon/Icon";
 import { cn } from "@/lib/utils";
 import {
@@ -7,6 +6,7 @@ import {
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import type { AttachmentCardProps } from "../AttachmentCard";
+import { CardActionButton } from "./CardActionButton";
 import { CardPressable, isPressable } from "./CardPressable";
 import { UploadStatusText } from "./UploadStatusText";
 
@@ -47,6 +47,8 @@ export function ImageAttachment({
             src={previewUrl}
             alt={name}
             onError={onPreviewError}
+            loading="lazy"
+            decoding="async"
             className="size-full object-cover"
           />
         ) : (
@@ -77,15 +79,14 @@ export function ImageAttachment({
       )}
       <UploadStatusText status={status} />
       {onRemove && (
-        <Button
-          variant="ghost"
+        <CardActionButton
           size="icon-xs"
-          aria-label={`Remove ${name}`}
+          label={`Remove ${name}`}
           onClick={onRemove}
           className="absolute right-1 top-1 size-6 rounded-full border-transparent bg-zinc-900/70 text-white hover:border-transparent hover:bg-zinc-900"
         >
           <Icon icon={Cancel01Icon} size={12} aria-hidden />
-        </Button>
+        </CardActionButton>
       )}
     </div>
   );
