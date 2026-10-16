@@ -8,6 +8,9 @@ OpenRouter Broadcast sends every generation to PostHog LLM analytics as an
   the distinct id every other backend and browser event uses, so the
   generation lands on the same person as their product events and replays.
 - ``session_id`` becomes ``$ai_session_id``: the chat session id.
+- ``trace.trace_id`` becomes ``$ai_trace_id``: the id of the turn that made
+  the call, so every model call behind one AutoPilot reply (the main loop,
+  sub-agents, compaction, the chat title) groups into one trace.
 - ``trace.generation_name`` becomes ``$ai_span_name``; every other ``trace``
   key arrives as ``metadata_<key>`` (``metadata_environment``,
   ``metadata_impersonated``).
@@ -37,6 +40,11 @@ GenerationName = Literal["copilot-title", "copilot-sdk", "copilot-baseline"]
 # executor sets it for every turn, so a value never carries over.
 _turn_impersonated: ContextVar[bool] = ContextVar("_turn_impersonated", default=False)
 
+# The running turn's id, sent as the trace id of every call it makes. The
+# executor sets it for every turn, so a value never carries over; a call made
+# outside a turn sends none.
+_turn_trace_id: ContextVar[str | None] = ContextVar("_turn_trace_id", default=None)
+
 
 def openrouter_attribution(
     *,
@@ -52,6 +60,9 @@ def openrouter_attribution(
             "impersonated": is_turn_impersonated(),
         }
     }
+    trace_id = turn_trace_id()
+    if trace_id:
+        body["trace"]["trace_id"] = trace_id[:_MAX_ID_CHARS]
     if user_id:
         body["user"] = user_id[:_MAX_ID_CHARS]
     if session_id:
@@ -66,6 +77,15 @@ def set_turn_impersonated(impersonated: bool) -> None:
 
 def is_turn_impersonated() -> bool:
     return _turn_impersonated.get()
+
+
+def set_turn_trace_id(turn_id: str | None) -> None:
+    """Make *turn_id* the trace of every model call the running turn makes."""
+    _turn_trace_id.set(turn_id or None)
+
+
+def turn_trace_id() -> str | None:
+    return _turn_trace_id.get()
 
 
 def is_impersonated_request(request: Request) -> bool:
