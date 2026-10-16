@@ -44,11 +44,11 @@ Each Expert has a role you can shape with your instructions, context, skills, an
 
 One launch brief to Otto. Maria prepares the article, Max researches prospects, and Frankie prepares the launch review.
 
-[![Watch the team demo: Otto coordinates Maria, Max, and Frankie working in parallel.](docs/content/imgs/readme/experts-demo-poster.webp)](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)
+https://github.com/user-attachments/assets/83cddd83-00f8-46e7-be9e-e0a7237c7eea
 
-**[Watch the 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [Download the 15-second highlight](docs/content/imgs/readme/experts-demo.mp4?raw=true) · [Try the interactive demo](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
+**[Watch the full 45-second demo →](https://agpt.co/videos/otto-team-demo-v1-1080.mp4)** · [Try the interactive demo](https://platform.agpt.co/tour?utm_source=github&utm_medium=referral&utm_campaign=autogpt_readme&utm_content=tour_get_started)
 
-An edited recording of a real run, sped up. In this example, the team prepares the work for review without sending or publishing it.
+A 15-second highlight of a real run, edited and sped up. In this example, the team prepares the work for review without sending or publishing it.
 
 ## From a first brief to a routine
 
