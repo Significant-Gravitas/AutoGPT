@@ -2,6 +2,8 @@
 
 import {
   getGetV2GetCopilotUsageQueryKey,
+  getGetV2ListTurnsAtBudgetResetQueryKey,
+  getV2ListTurnsAtBudgetReset,
   useDeleteV2CancelTurnAtBudgetReset,
   usePostV2ScheduleTurnAtBudgetReset,
 } from "@/app/api/__generated__/endpoints/chat/chat";
@@ -106,10 +108,31 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   }
 
   async function edit() {
-    const message = pending?.message ?? "";
+    const send = await readSend();
+    // Already sent, or cancelled elsewhere: the read has updated the list.
+    if (!send) return;
     if (!(await unschedule())) return;
-    draft.write((current) => returnToDraft(current, message));
+    draft.write((current) => returnToDraft(current, send.message ?? ""));
     if (inputId) document.getElementById(inputId)?.focus();
+  }
+
+  /** The send as the server holds it now, since another tab or client may
+   *  have added to it after this one last read the list. Falls back to that
+   *  last read when the server can't be asked. */
+  async function readSend() {
+    if (!sessionId) return pending;
+    try {
+      const response = await queryClient.fetchQuery({
+        queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
+        queryFn: ({ signal }) =>
+          getV2ListTurnsAtBudgetReset(sessionId, { signal }),
+        staleTime: 0,
+      });
+      if (response.status !== 200) return pending;
+      return response.data.jobs.find((job) => job.kind === "send") ?? null;
+    } catch {
+      return pending;
+    }
   }
 
   return {

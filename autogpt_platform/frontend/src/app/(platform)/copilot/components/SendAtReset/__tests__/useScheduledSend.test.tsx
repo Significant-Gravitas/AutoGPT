@@ -55,4 +55,71 @@ describe("useScheduledSend", () => {
 
     expect(renders).toBe(settled);
   });
+
+  describe("Edit", () => {
+    const RUN_AT = new Date(2026, 9, 17, 1, 7).toISOString();
+
+    function serverHolding(jobs: () => unknown[]) {
+      const calls = { cancelled: 0 };
+      server.use(
+        http.get("*/api/chat/sessions/:sessionId/at-reset", () =>
+          HttpResponse.json({ jobs: jobs() }),
+        ),
+        http.delete("*/api/chat/sessions/:sessionId/at-reset/:kind", () => {
+          calls.cancelled += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      return calls;
+    }
+
+    // Another tab or client can add to the waiting send after this one last
+    // read the list.
+    it("puts back the send as the server holds it now", async () => {
+      let message = "Draft the launch post";
+      const calls = serverHolding(() => [
+        { kind: "send", run_at: RUN_AT, message },
+      ]);
+      const { result } = renderHook(
+        () => useScheduledSend({ sessionId: "chat-edit" }),
+        { wrapper: withQueryClient() },
+      );
+      await waitFor(() =>
+        expect(result.current.pending?.message).toBe("Draft the launch post"),
+      );
+      message = "Draft the launch post\n\nThen the newsletter";
+      const composer = renderHook(() =>
+        useChatDraft(sessionDraftKey("chat-edit")),
+      );
+
+      await act(() => result.current.edit());
+
+      expect(calls.cancelled).toBe(1);
+      expect(composer.result.current[0]).toBe(
+        "Draft the launch post\n\nThen the newsletter",
+      );
+    });
+
+    it("leaves a send that has already gone out of the draft", async () => {
+      let jobs: unknown[] = [
+        { kind: "send", run_at: RUN_AT, message: "Draft the launch post" },
+      ];
+      const calls = serverHolding(() => jobs);
+      const { result } = renderHook(
+        () => useScheduledSend({ sessionId: "chat-sent" }),
+        { wrapper: withQueryClient() },
+      );
+      await waitFor(() => expect(result.current.pending).not.toBeNull());
+      jobs = [];
+      const composer = renderHook(() =>
+        useChatDraft(sessionDraftKey("chat-sent")),
+      );
+
+      await act(() => result.current.edit());
+
+      expect(calls.cancelled).toBe(0);
+      expect(composer.result.current[0]).toBe("");
+      await waitFor(() => expect(result.current.pending).toBeNull());
+    });
+  });
 });
