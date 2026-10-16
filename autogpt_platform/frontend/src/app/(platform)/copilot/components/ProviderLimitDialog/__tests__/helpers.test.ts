@@ -137,6 +137,18 @@ describe("alternativeConnection", () => {
     ).toBeNull();
   });
 
+  it("knows the connection that failed by its provider, not its id", () => {
+    expect(
+      alternativeConnection(
+        [
+          offer({ selectable: false }),
+          chatgpt({ offer_id: "personal-account" }),
+        ],
+        limitOn("codex", "cred-1"),
+      ),
+    ).toBeNull();
+  });
+
   it("goes by each connection's provider, not the shape of its id", () => {
     const workAccount = { ...microsoft365(), offer_id: "work-account" };
     const personal = chatgpt({ offer_id: "personal-account" });
