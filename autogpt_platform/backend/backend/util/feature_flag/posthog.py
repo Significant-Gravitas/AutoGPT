@@ -14,6 +14,7 @@ from typing import Any
 
 from posthog import Posthog
 
+from backend.util.posthog_client import release_properties
 from backend.util.settings import Settings
 
 from .definition_cache import (
@@ -222,6 +223,7 @@ def _build_client() -> Posthog | None:
         enable_local_evaluation=bool(secret_key),
         poll_interval=refresh_interval_seconds(),
         flag_definition_cache_provider=definition_cache,
+        super_properties=release_properties(settings),
     )
     _init_attempted = True
     logger.info(

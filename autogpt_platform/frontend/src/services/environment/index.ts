@@ -88,6 +88,10 @@ function getPreviewStealingDev() {
   return branch;
 }
 
+function getRelease() {
+  return process.env.NEXT_PUBLIC_RELEASE?.trim() || "";
+}
+
 function getPostHogCredentials() {
   return {
     key: process.env.NEXT_PUBLIC_POSTHOG_KEY,
@@ -205,6 +209,7 @@ export const environment = {
   getAGPTServerBaseUrl,
   getAGPTWsServerUrl,
   getPreviewStealingDev,
+  getRelease,
   getPostHogCredentials,
   getLaunchDarklyClientId,
   getGoogleAdsID,

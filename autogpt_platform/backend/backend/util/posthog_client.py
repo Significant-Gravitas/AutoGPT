@@ -5,7 +5,9 @@ process is both cheaper and safer than one per module. Emitters send through
 :func:`capture`, which adds the base properties every event carries
 (``environment`` and ``source``, see ``docs/engineering/tracking-plan.md``),
 treats a missing client as "analytics disabled" and never lets tracking
-raise into the request or execution that produced the event.
+raise into the request or execution that produced the event. Every client
+built here also stamps ``release`` on everything it sends (see
+:func:`release_properties`).
 """
 
 import asyncio
@@ -56,8 +58,19 @@ def new_posthog_client(**options: Any) -> Posthog | None:
     if not settings.secrets.posthog_api_key:
         return None
     return Posthog(
-        settings.secrets.posthog_api_key, host=settings.secrets.posthog_host, **options
+        settings.secrets.posthog_api_key,
+        host=settings.secrets.posthog_host,
+        super_properties=release_properties(settings),
+        **options,
     )
+
+
+def release_properties(settings: Settings) -> dict[str, str]:
+    """``release`` for a client to stamp on every event it sends: the deployed
+    build's git sha, the release Sentry reports. Empty when the deploy sets
+    none, so local events carry no release rather than an empty one."""
+    release = settings.config.sentry_release.strip()
+    return {"release": release} if release else {}
 
 
 # The client drops events once its in-memory queue is full.
