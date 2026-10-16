@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { useState } from "react";
-import { expect, userEvent, within } from "storybook/test";
+import { expect, userEvent, waitFor, within } from "storybook/test";
 import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
 import { InputGroup, InputGroupAddon } from "@/components/ui/input-group";
 import { CredentialMentionEditor } from "../../CredentialMention/CredentialMentionEditor";
@@ -13,9 +13,10 @@ import { mentionStoryHandlers } from "./mentionStoryFixtures";
 
 interface Props {
   expertId?: string;
+  atTop?: boolean;
 }
 
-function AccountMentionComposer({ expertId }: Props) {
+function AccountMentionComposer({ expertId, atTop = false }: Props) {
   const [value, setValue] = useState("");
   const [sent, setSent] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
@@ -33,7 +34,7 @@ function AccountMentionComposer({ expertId }: Props) {
       setAttachments((items) => [...items, folder.name]),
   });
   return (
-    <div className="w-full max-w-2xl pt-80">
+    <div className={atTop ? "w-full max-w-2xl" : "w-full max-w-2xl pt-80"}>
       {sent && (
         <div className="mb-8 flex justify-end">
           <div
@@ -103,16 +104,41 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+function withinPage(canvasElement: HTMLElement) {
+  return within(canvasElement.ownerDocument.body);
+}
+
 export const AccountPicker: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    const page = withinPage(canvasElement);
     await userEvent.type(canvas.getByRole("textbox"), "Check my @");
     await expect(
-      await canvas.findByRole("option", { name: /Work Gmail/ }),
+      await page.findByRole("option", { name: /Work Gmail/ }),
     ).toBeVisible();
     await expect(
-      await canvas.findByRole("option", { name: /Team TODOs/ }),
+      await page.findByRole("option", { name: /Team TODOs/ }),
     ).toBeVisible();
+  },
+};
+
+export const EmptyState: Story = {
+  args: { atTop: true },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const page = withinPage(canvasElement);
+    const textbox = canvas.getByRole("textbox");
+    await userEvent.type(textbox, "Check my @");
+    const first = await page.findByRole("option", { name: /Work Gmail/ });
+    const list = page.getByRole("listbox", { name: "Mention suggestions" });
+    await waitFor(() => {
+      const listTop = list.getBoundingClientRect().top;
+      expect(listTop).toBeGreaterThanOrEqual(0);
+      expect(listTop).toBeGreaterThanOrEqual(
+        textbox.getBoundingClientRect().bottom,
+      );
+    });
+    await expect(first).toBeVisible();
   },
 };
 
@@ -120,28 +146,30 @@ export const ExpertAccounts: Story = {
   args: { expertId: "expert-a" },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    const page = withinPage(canvasElement);
     await userEvent.type(canvas.getByRole("textbox"), "Check my @");
     await expect(
-      await canvas.findByRole("option", { name: /Work Gmail/ }),
+      await page.findByRole("option", { name: /Work Gmail/ }),
     ).toBeVisible();
     await expect(
-      canvas.queryByRole("option", { name: /Personal Gmail/ }),
+      page.queryByRole("option", { name: /Personal Gmail/ }),
     ).not.toBeInTheDocument();
   },
 };
 
 async function fillAccountPrompt(canvasElement: HTMLElement) {
   const canvas = within(canvasElement);
+  const page = withinPage(canvasElement);
   await userEvent.type(canvas.getByRole("textbox"), "Check my @Work");
   await userEvent.click(
-    await canvas.findByRole("option", { name: /Work Gmail/ }),
+    await page.findByRole("option", { name: /Work Gmail/ }),
   );
   await userEvent.type(
     canvas.getByRole("textbox"),
     "for new TODOs, and @Personal",
   );
   await userEvent.click(
-    await canvas.findByRole("option", { name: /Personal Gmail/ }),
+    await page.findByRole("option", { name: /Personal Gmail/ }),
   );
   await userEvent.type(canvas.getByRole("textbox"), "for work related emails.");
   await expect(canvas.getByRole("textbox")).toHaveTextContent("Personal Gmail");
