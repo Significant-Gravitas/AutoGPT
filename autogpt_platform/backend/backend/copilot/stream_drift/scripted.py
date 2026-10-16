@@ -4,7 +4,7 @@ import contextlib
 import tempfile
 import time
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Callable
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -150,6 +150,7 @@ async def sdk_service_turn(
     *,
     queued_after_first: list[PendingMessage],
     held_results: list[PendingMessage] | None = None,
+    lock_factory: Callable[..., MagicMock] | None = None,
 ) -> AsyncGenerator[StreamBaseResponse, None]:
     """The whole SDK engine over a scripted CLI, one list of messages per
     query, with ``queued_after_first`` arriving while the first one runs:
@@ -179,7 +180,7 @@ async def sdk_service_turn(
 
     stubs: dict[str, Any] = {
         "ClaudeSDKClient": MagicMock(side_effect=cli),
-        "AsyncClusterLock": MagicMock(side_effect=lock),
+        "AsyncClusterLock": MagicMock(side_effect=lock_factory or lock),
         "_make_sdk_cwd": MagicMock(return_value=tempfile.mkdtemp()),
         "propagate_attributes": MagicMock(),
         "_build_system_prompt": AsyncMock(return_value=("System prompt", None)),
