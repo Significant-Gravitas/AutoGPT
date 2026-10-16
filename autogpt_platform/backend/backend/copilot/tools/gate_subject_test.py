@@ -66,6 +66,7 @@ _AGENT_GRAPH = "backend.copilot.tools.run_agent._agent_graph"
 _REAL_RULE_FOR = chat_rules.rule_for
 _REAL_SET_ASK = chat_rules.set_ask
 _POST = {"channel_name": "general", "message_content": "hi"}
+_URL = "https://hooks.example.com/x"
 # SMTP, so CI (no Google OAuth client) does not disable it as it does Gmail.
 _EMAIL = {
     "to_email": "sam@example.com",
@@ -421,6 +422,29 @@ def test_a_write_inside_a_sub_graph_names_it():
         == "Runs Morning digest; its step Gmail Send reaches outside the platform."
     )
     assert subject.name == "Morning digest"
+
+
+@pytest.mark.parametrize("send_first", [True, False])
+def test_a_lone_irreversible_step_warns_when_a_higher_tier_names_the_run(send_first):
+    """Approving the card lifts the run's irreversible pause, so the card must
+    say a step can't be undone even when a reversible ask-first step decided."""
+    send = _node("send", SendDiscordMessageBlock(), {})
+    post = _node("post", SendWebRequestBlock(), {"method": "POST", "url": _URL})
+    subject = workflow_subject(_graph([send, post] if send_first else [post, send]))
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.irreversible
+    assert subject.reason.endswith(
+        "it also has 1 step that can't be undone: Send Discord Message."
+    )
+
+
+@pytest.mark.parametrize("send_first", [True, False])
+def test_an_unreadable_step_beside_a_judged_irreversible_one_asks(send_first):
+    send = _node("send", SendDiscordMessageBlock(), {})
+    gone = _node("nested", AgentExecutorBlock(), {"graph_id": "gone"})
+    subject = workflow_subject(_graph([send, gone] if send_first else [gone, send]))
+    assert subject.effect is Effect.EXTERNAL
+    assert subject.irreversible
 
 
 def test_a_nested_run_whose_sub_graph_is_missing_is_unreadable():

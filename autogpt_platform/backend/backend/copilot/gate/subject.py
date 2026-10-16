@@ -102,6 +102,16 @@ def workflow_subject(
                 "outside the platform.",
             }
         )
+    elif steps and not subject.irreversible:
+        # A reversible step of a higher tier names the run; the one that can't be
+        # undone must still warn, or approving the card lifts its pause unseen.
+        subject = subject.model_copy(
+            update={
+                "irreversible": True,
+                "reason": f"{subject.reason.removesuffix('.')}; it also has "
+                f"{_steps(steps)} that can't be undone: {_listed(steps)}.",
+            }
+        )
     creates = (
         f"Runs {name} and creates a schedule."
         if schedules
