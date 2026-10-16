@@ -8,10 +8,15 @@ import pytest
 import urllib3.connectionpool
 from posthog import Posthog
 
+import backend.util.feature_flag as ff
 import backend.util.feature_flag.posthog as ph
 from backend.data import experiments
 from backend.data.experiments import Experiment
-from backend.util.feature_flag import evaluate_experiment_variant
+from backend.util.feature_flag import (
+    evaluate_experiment_variant,
+    get_feature_flag_value,
+)
+from backend.util.settings import FeatureFlagBackend
 
 PRICING = Experiment.SUBSCRIPTION_PRICING.value
 ARMS = ("control", "yearly-pro")
@@ -59,6 +64,24 @@ async def test_the_arm_is_read_locally_and_tells_posthog_nothing(
     assert arm in ARMS
     capture.assert_not_called()
     remote.assert_not_called()
+
+
+async def test_no_server_read_of_an_experiment_reports_its_exposure(
+    mocker, posthog_client
+):
+    """The browser reports it, consent-gated; a server event would double it and
+    skip consent, whichever read made it."""
+    mocker.patch.object(
+        ff.settings.config, "feature_flag_backend", FeatureFlagBackend.POSTHOG
+    )
+    capture = mocker.spy(posthog_client, "capture")
+    _remote_flags_request(mocker)
+
+    for experiment in Experiment:
+        await get_feature_flag_value(experiment.value, "u-1")
+        await evaluate_experiment_variant(experiment.value, "u-1")
+
+    capture.assert_not_called()
 
 
 async def test_without_local_definitions_nobody_is_enrolled_rather_than_asking_posthog(

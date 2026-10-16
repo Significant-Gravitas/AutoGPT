@@ -50,9 +50,11 @@ MAX_CONCURRENT_SHADOW_EVALUATIONS = 100
 _unanswered_flags_reported: set[str] = set()
 
 
-# Flags that run a PostHog experiment. Only a read of one of these sends the
-# billed `$feature_flag_called` event, which is how an experiment counts exposure.
-EXPERIMENT_FLAGS = frozenset({"subscription-pricing-page-initial-state"})
+# Flags that run a PostHog experiment read only here. Only a read of one of these
+# sends the billed `$feature_flag_called` event, which is how an experiment counts
+# exposure. A server-assigned arm (`data/experiments.py`) is not listed: the
+# browser reports its exposure, consent-gated.
+EXPERIMENT_FLAGS: frozenset[str] = frozenset()
 
 
 class Flag(str, Enum):
