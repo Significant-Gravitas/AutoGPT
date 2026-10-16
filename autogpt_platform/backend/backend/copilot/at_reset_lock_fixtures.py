@@ -7,11 +7,14 @@ from datetime import timedelta
 
 class FakeJobLock:
     """redis-py's async ``Lock``: one holder per name, waited for up to its
-    ``blocking_timeout``."""
+    ``blocking_timeout``, its renewals counted."""
 
-    def __init__(self, held: asyncio.Lock, blocking_timeout: float) -> None:
+    def __init__(
+        self, held: asyncio.Lock, blocking_timeout: float, renewals: list[float]
+    ) -> None:
         self._held = held
         self._wait = blocking_timeout
+        self._renewals = renewals
 
     async def acquire(self) -> bool:
         try:
@@ -19,6 +22,10 @@ class FakeJobLock:
                 await self._held.acquire()
         except TimeoutError:
             return False
+        return True
+
+    async def reacquire(self) -> bool:
+        self._renewals.append(asyncio.get_running_loop().time())
         return True
 
     async def release(self) -> None:
@@ -32,6 +39,8 @@ class FakeAtResetRedis:
         self.values: dict[str, str] = {}
         self.expiries: dict[str, timedelta] = {}
         self.lock_options: dict[str, dict[str, float]] = {}
+        # When each lock's holder renewed it, by name.
+        self.renewals: dict[str, list[float]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
     def lock(
@@ -42,7 +51,9 @@ class FakeAtResetRedis:
             "blocking_timeout": blocking_timeout,
         }
         return FakeJobLock(
-            self._locks.setdefault(name, asyncio.Lock()), blocking_timeout
+            self._locks.setdefault(name, asyncio.Lock()),
+            blocking_timeout,
+            self.renewals.setdefault(name, []),
         )
 
     def is_locked(self, name: str) -> bool:

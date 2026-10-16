@@ -8,22 +8,29 @@ servers and schedulers each run as several replicas, so each of those holds
 this Redis lock, keyed on the job's id, from its read to its write.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from redis.asyncio.lock import Lock as AsyncRedisLock
+from redis.exceptions import LockNotOwnedError
 
 from backend.data.redis_client import get_redis_async
 
 logger = logging.getLogger(__name__)
 
 _KEY_PREFIX = "copilot:at_reset_lock:"
-# A read and a write to the scheduler take well under a second; the expiry
-# frees a chat whose holder died before letting go.
+# A read and a write to the scheduler take well under a second, but its client
+# retries a failing call for much longer, so the holder renews the lock while
+# it works. The expiry frees a chat whose holder died before letting go.
 _LOCK_TTL_SECONDS = 10
+_LOCK_RENEW_EVERY_SECONDS = 3
 # How long a writer waits for the one ahead of it.
 _LOCK_WAIT_SECONDS = 5
+
+# Renewals under way, held so one isn't collected before it ends.
+_renewals: set[asyncio.Task[None]] = set()
 
 
 @asynccontextmanager
@@ -35,11 +42,17 @@ async def at_reset_job_lock(job_id: str) -> AsyncIterator[bool]:
     on without it.
     """
     lock = await _acquire(job_id)
+    if lock is None:
+        yield False
+        return
+    renewal = asyncio.create_task(_keep_renewed(lock, job_id))
+    _renewals.add(renewal)
+    renewal.add_done_callback(_renewals.discard)
     try:
-        yield lock is not None
+        yield True
     finally:
-        if lock is not None:
-            await _release(lock, job_id)
+        renewal.cancel()
+        await _release(lock, job_id)
 
 
 async def _acquire(job_id: str) -> AsyncRedisLock | None:
@@ -56,6 +69,23 @@ async def _acquire(job_id: str) -> AsyncRedisLock | None:
     except Exception:
         logger.warning(f"Could not lock at-reset job {job_id}", exc_info=True)
     return None
+
+
+async def _keep_renewed(lock: AsyncRedisLock, job_id: str) -> None:
+    """Reset the lock's expiry while its holder works, so a slow scheduler
+    call doesn't let it lapse under the holder."""
+    while True:
+        await asyncio.sleep(_LOCK_RENEW_EVERY_SECONDS)
+        try:
+            await lock.reacquire()
+        except LockNotOwnedError:
+            logger.warning(f"Lost the lock on at-reset job {job_id} while holding it")
+            return
+        except Exception:
+            # A blip: the lock outlives a few missed renewals.
+            logger.warning(
+                f"Could not renew the lock on at-reset job {job_id}", exc_info=True
+            )
 
 
 async def _release(lock: AsyncRedisLock, job_id: str) -> None:

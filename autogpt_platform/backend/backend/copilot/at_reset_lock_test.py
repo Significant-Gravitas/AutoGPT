@@ -4,6 +4,8 @@ Redis is faked at the boundary; the route and scheduler tests cover what each
 writer does when it can't have the lock.
 """
 
+import asyncio
+import itertools
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -24,6 +26,11 @@ def redis(mocker: pytest_mock.MockerFixture) -> FakeAtResetRedis:
     fake = FakeAtResetRedis()
     mocker.patch.object(at_reset_lock, "get_redis_async", AsyncMock(return_value=fake))
     return fake
+
+
+@pytest.fixture
+def renew_often(mocker: pytest_mock.MockerFixture) -> None:
+    mocker.patch.object(at_reset_lock, "_LOCK_RENEW_EVERY_SECONDS", 0.01)
 
 
 @pytest.mark.asyncio
@@ -80,3 +87,51 @@ async def test_a_lock_held_past_its_expiry_is_let_go_quietly(
     async with at_reset_job_lock(JOB) as locked:
         assert locked
     lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_slow_write_keeps_the_lock_until_it_lets_go(redis, renew_often):
+    # The scheduler's client retries a failing call for far longer than the
+    # lock's expiry, and the holder mustn't lose the lock under it.
+    async with at_reset_job_lock(JOB):
+        await asyncio.sleep(0.05)
+    renewed = len(redis.renewals[KEY])
+    assert renewed >= 2
+    await asyncio.sleep(0.05)
+    assert len(redis.renewals[KEY]) == renewed
+
+
+@pytest.mark.asyncio
+async def test_renewing_stops_once_the_lock_is_gone(
+    redis, renew_often, mocker: pytest_mock.MockerFixture
+):
+    lock = MagicMock(
+        acquire=AsyncMock(return_value=True),
+        reacquire=AsyncMock(side_effect=LockNotOwnedError("taken")),
+        release=AsyncMock(),
+    )
+    mocker.patch.object(redis, "lock", return_value=lock)
+    async with at_reset_job_lock(JOB) as locked:
+        assert locked
+        await asyncio.sleep(0.05)
+    lock.reacquire.assert_awaited_once()
+    lock.release.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_a_renewal_redis_misses_is_tried_again(
+    redis, renew_often, mocker: pytest_mock.MockerFixture
+):
+    lock = MagicMock(
+        acquire=AsyncMock(return_value=True),
+        reacquire=AsyncMock(
+            side_effect=itertools.chain(
+                [RedisConnectionError("blip")], itertools.repeat(True)
+            )
+        ),
+        release=AsyncMock(),
+    )
+    mocker.patch.object(redis, "lock", return_value=lock)
+    async with at_reset_job_lock(JOB):
+        await asyncio.sleep(0.05)
+    assert lock.reacquire.await_count >= 2
