@@ -159,9 +159,12 @@ export const ResultsLoadLate: Story = {
     await waitFor(() => {
       const { top, bottom } = form.getBoundingClientRect();
       const roomOnRoomierSide = Math.max(top, window.innerHeight - bottom) - 16;
-      expect(list.getBoundingClientRect().height).toBeGreaterThanOrEqual(
+      const listBox = list.getBoundingClientRect();
+      expect(listBox.height).toBeGreaterThanOrEqual(
         Math.min(320, list.scrollHeight + 2, roomOnRoomierSide) - 1,
       );
+      expect(listBox.top).toBeGreaterThanOrEqual(8 - 1);
+      expect(listBox.bottom).toBeLessThanOrEqual(window.innerHeight - 8 + 1);
     });
   },
 };
