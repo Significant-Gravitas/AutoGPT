@@ -357,6 +357,14 @@ def budget_origin(skill: ParsedSkill) -> str:
     return skill.origin or SKILL_ORIGIN_USER
 
 
+def _keeps_install(origin: str | None, baseline: SkillBaseline | None) -> bool:
+    """An installed copy that records its install stays installed when its
+    owner edits it: the write keeps its marketplace origin and the baseline a
+    later update merges into. :func:`_write_skill` and
+    :func:`saved_skill_limit_reached` both decide by this."""
+    return origin == SKILL_ORIGIN_MARKETPLACE and baseline is not None
+
+
 def parse_skill_markdown(text: str, fallback_name: str = "") -> ParsedSkill | None:
     """Parse a ``SKILL.md`` blob (YAML frontmatter + markdown body).
 
@@ -1168,11 +1176,7 @@ async def store_user_skills(
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
         same_origin = {s.name for s in existing if budget_origin(s) == origin}
         owners = {s.name for s in existing if s.origin == SKILL_ORIGIN_USER}
-        copies = {
-            s.name: s
-            for s in existing
-            if s.origin == SKILL_ORIGIN_MARKETPLACE and s.baseline is not None
-        }
+        copies = {s.name: s for s in existing if _keeps_install(s.origin, s.baseline)}
         stored: list[tuple[int, str]] = []
         for index, skill in prepared:
             # A batch outlasts one lease, so renew it before each skill. Once
@@ -1905,17 +1909,17 @@ async def saved_skill_limit_reached(
     """Whether saving ``name`` as the owner's skill would need a saved-skill
     slot the owner no longer has, by the same count of live roots the
     workspace enforces. A marketplace copy that records its install stays
-    installed when edited (see :func:`_write_skill`) and needs no saved
-    slot; any other root moves into, or already fills, the saved budget."""
+    installed when edited (:func:`_keeps_install`) and needs no saved slot;
+    any other root moves into, or already fills, the saved budget."""
     workspace = await workspace_db().get_or_create_workspace(user_id)
     path = _skill_md_path(name, expert_id)
     root = await workspace_db().get_workspace_file_by_path(workspace.id, path)
     meta = root.metadata if root is not None and root.metadata else {}
-    recorded_copy = (
-        _skill_origin(meta) == SKILL_ORIGIN_MARKETPLACE
-        and _baseline_from_metadata(meta) is not None
+    origin = (
+        SKILL_ORIGIN_MARKETPLACE
+        if _keeps_install(_skill_origin(meta), _baseline_from_metadata(meta))
+        else SKILL_ORIGIN_USER
     )
-    origin = SKILL_ORIGIN_MARKETPLACE if recorded_copy else SKILL_ORIGIN_USER
     return not await workspace_skill_db().skill_root_has_room(
         workspace.id, path, origin
     )
