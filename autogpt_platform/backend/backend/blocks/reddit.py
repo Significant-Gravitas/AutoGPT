@@ -327,7 +327,7 @@ class PostRedditCommentBlock(Block):
                 "reply_post": lambda creds, post_id, comment: "dummy_comment_id"
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -414,7 +414,7 @@ class CreateRedditPostBlock(Block):
                 )
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
@@ -1807,7 +1807,7 @@ class ReplyToRedditCommentBlock(Block):
                 "reply_to_comment": lambda creds, comment_id, reply_text: "new_reply_id"
             },
             is_irreversible_action=True,
-            effect=BlockEffect.EXTERNAL,
+            effect=BlockEffect.EXTERNAL_JUDGED,
         )
 
     @staticmethod
