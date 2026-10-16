@@ -251,7 +251,7 @@ describe("Usage limit dialog", () => {
     );
     expect(
       screen.getByText(
-        "Pro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, agents and results are saved.",
+        "Pro was due to start on Oct 12, but the $50 charge didn’t go through. Pay now and Pro starts right away. Your chats, workflows and results are saved.",
       ),
     ).toBeDefined();
     for (const amount of screen.getAllByText(/\$50/)) {
