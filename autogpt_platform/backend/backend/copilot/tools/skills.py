@@ -815,12 +815,15 @@ async def _delete_skill_files(
     attempted: set[str] = set()
     while True:
         if not await lock.refresh():
+            # A writer that took the lock over may have just stored a package
+            # in this folder; leftover files are the lesser harm.
             logger.warning(
                 "[skills] lost the write lock deleting %s for user %s — "
-                "finishing the cleanup best-effort",
+                "leaving any remaining files",
                 slug,
                 user_id[:8],
             )
+            break
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:

@@ -1736,6 +1736,26 @@ async def test_delete_user_skill_deletes_nothing_without_the_write_lock(
 
 
 @pytest.mark.asyncio
+async def test_delete_user_skill_stops_cleaning_up_once_the_lock_is_lost(
+    fake_learning_store,
+):
+    """After the lease is lost, another writer may own the folder: the
+    delete leaves the remaining files rather than risk deleting theirs."""
+    fake_manager = _FakeWorkspaceManager()
+    fake_manager.files["/skills/tracked/SKILL.md"] = (
+        await _tracked_skill(fake_learning_store, "## Steps\n1. Open the file\n")
+    ).encode()
+    fake_manager.files["/skills/tracked/scripts/run.py"] = b"print(1)"
+    with _patch_skills_path(fake_manager) as patched:
+        patched.lock.refresh.return_value = False
+        await delete_user_skill("user-1", "tracked")
+    assert "/skills/tracked/SKILL.md" not in fake_manager.files
+    assert "/skills/tracked/scripts/run.py" in fake_manager.files
+    head = await fake_learning_store.get_head("user-1", "personal", "tracked")
+    assert head.current_version_id is None
+
+
+@pytest.mark.asyncio
 async def test_delete_user_skill_rereads_a_head_a_publication_moved(
     fake_learning_store, monkeypatch
 ):
