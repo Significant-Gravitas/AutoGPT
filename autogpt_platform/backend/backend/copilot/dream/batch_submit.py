@@ -19,11 +19,12 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from backend.copilot.trial_cost_context import capture_cost_context
 from backend.executor.batch_executor import (
     INITIAL_POLL_DELAY_SECONDS,
     PendingEntry,
@@ -159,6 +160,7 @@ async def submit_phase(
     # multi-phase chain can legitimately outlive a TTL stamped once at the
     # first submit. Re-arm the bundle TTL at every submit so it stays alive
     # exactly as long as some phase batch may still call back.
+    cost_context = await capture_cost_context(user_id)
     await refresh_input_bundle_ttl(pass_id)
     model = phase_models[phase]
     messages = _build_phase_messages(
@@ -209,6 +211,7 @@ async def submit_phase(
         poll_delay_seconds=INITIAL_POLL_DELAY_SECONDS,
         payload={
             "user_id": user_id,
+            "cost_context": cost_context.model_dump(mode="json"),
             "expert_id": input_bundle.expert_id,
             "pass_id": pass_id,
             "job_id": job_id,
@@ -491,8 +494,3 @@ def _dict_to_input_bundle(data: dict) -> DreamInput:
         known_fact_uuids=set(data.get("known_fact_uuids") or []),
         known_episode_uuids=set(data.get("known_episode_uuids") or []),
     )
-
-
-def _dummy_now() -> datetime:
-    """Stub kept for symmetry with Step 4b; never called."""
-    return datetime.now(timezone.utc)

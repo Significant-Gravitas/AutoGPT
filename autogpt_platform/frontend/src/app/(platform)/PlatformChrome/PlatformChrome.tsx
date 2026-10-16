@@ -4,6 +4,7 @@ import { CSSProperties, ReactNode } from "react";
 
 import { TourSidebar } from "@/app/(public)/tour/chat/components/TourSidebar/TourSidebar";
 import { AppSidebar } from "@/components/layout/AppSidebar/AppSidebar";
+import { AppSidebarToggleProvider } from "@/components/layout/AppSidebar/components/AppSidebarTrigger/AppSidebarTrigger";
 import { cn } from "@/lib/utils";
 import { TopUpPromptProvider } from "@/components/layout/TopUpPrompt/TopUpPromptProvider";
 import {
@@ -15,7 +16,6 @@ import {
 import { Flag, useGetFlag } from "@/services/feature-flags/use-get-flag";
 import { AdminImpersonationBanner } from "../admin/components/AdminImpersonationBanner";
 import { GlobalSearchOverlay } from "../components/GlobalSearchModal/GlobalSearchOverlay";
-import { WorkspaceFilesTrigger } from "../copilot/components/WorkspaceFilesTrigger/WorkspaceFilesTrigger";
 import { PaywallGate } from "../PaywallGate/PaywallGate";
 import { ArtifactsPanelNavCollapse } from "./components/ArtifactsPanelNavCollapse/ArtifactsPanelNavCollapse";
 import { BuilderSidebarAutoClose } from "./components/BuilderSidebarAutoClose/BuilderSidebarAutoClose";
@@ -37,7 +37,7 @@ export function PlatformChrome({ children }: Props) {
     showAppSidebar,
     showTourSidebar,
     overlayInsetHeader,
-    isCopilotRoute,
+    isChatSession,
     hasInsetHeaderTitle,
     isBuilderRoute,
   } = usePlatformChrome();
@@ -88,14 +88,11 @@ export function PlatformChrome({ children }: Props) {
             )}
           >
             <div className="mx-auto flex w-full max-w-7xl items-center gap-2 px-6 md:px-8">
-              <div className="pointer-events-auto md:hidden">
-                <SidebarTrigger className={mobileTriggerClassName} />
-              </div>
-              {/* Copilot treats up-to-lg as mobile (overlay context panel),
-                  so its workspace-files toggle stays visible past md. */}
-              {isCopilotRoute && (
-                <div className="pointer-events-auto lg:hidden">
-                  <WorkspaceFilesTrigger className={mobileTriggerClassName} />
+              {/* An open chat carries both buttons in its thread chip
+                  (ThreadHeader), so they float here everywhere else. */}
+              {!isChatSession && (
+                <div className="pointer-events-auto md:hidden">
+                  <SidebarTrigger className={mobileTriggerClassName} />
                 </div>
               )}
               <InsetHeaderTitle />
@@ -104,7 +101,9 @@ export function PlatformChrome({ children }: Props) {
           </header>
           <AdminImpersonationBanner />
           <GlobalSearchOverlay />
-          <section className="flex-1">{content}</section>
+          <AppSidebarToggleProvider>
+            <section className="flex-1">{content}</section>
+          </AppSidebarToggleProvider>
         </SidebarInset>
       </SidebarProvider>
     );

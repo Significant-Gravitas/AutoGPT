@@ -37,6 +37,8 @@ export function formatTierLabel(
   tier: string | null | undefined,
 ): string | null {
   if (!tier || tier === "NO_TIER") return null;
+  if (tier === "BUSINESS") return "Team";
+  if (tier === "TRIAL") return "Free trial";
   return tier.charAt(0).toUpperCase() + tier.slice(1).toLowerCase();
 }
 

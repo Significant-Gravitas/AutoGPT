@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { usePlatformChrome } from "../usePlatformChrome";
 
 const pathnameMock = vi.fn<() => string>(() => "/marketplace");
+const searchParamsMock = vi.fn(() => new URLSearchParams());
 vi.mock("next/navigation", () => ({
   usePathname: () => pathnameMock(),
+  useSearchParams: () => searchParamsMock(),
 }));
 
 const authMock = vi.fn(() => ({
@@ -19,6 +21,7 @@ vi.mock("@/lib/auth/hooks/useAuth", () => ({
 describe("usePlatformChrome", () => {
   beforeEach(() => {
     pathnameMock.mockReturnValue("/marketplace");
+    searchParamsMock.mockReturnValue(new URLSearchParams());
     authMock.mockReturnValue({ isLoggedIn: true, isUserLoading: false });
   });
 
@@ -112,5 +115,15 @@ describe("usePlatformChrome", () => {
 
     expect(result.current.isCopilotRoute).toBe(true);
     expect(result.current.overlayInsetHeader).toBe(true);
+  });
+
+  it("flags an open chat session so its chip takes over the header buttons", () => {
+    pathnameMock.mockReturnValue("/home");
+    const { result, rerender } = renderHook(() => usePlatformChrome());
+    expect(result.current.isChatSession).toBe(false);
+
+    searchParamsMock.mockReturnValue(new URLSearchParams("sessionId=abc"));
+    rerender();
+    expect(result.current.isChatSession).toBe(true);
   });
 });

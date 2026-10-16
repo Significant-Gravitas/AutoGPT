@@ -29,7 +29,7 @@ const STEPS: Step[] = [
   {
     title: "In review",
     description:
-      "Our team checks the details, media, and safety of your agent.",
+      "Our team checks the details, media, and safety of your workflow.",
     note: "Typically reviewed within 2–3 days.",
     state: "current",
     Icon: Clock01Icon,

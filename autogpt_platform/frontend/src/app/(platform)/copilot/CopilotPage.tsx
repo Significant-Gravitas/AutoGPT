@@ -112,7 +112,7 @@ function MainArea({
             key={`chat-host-${sessionId ?? "new"}`}
             droppedFiles={droppedFiles}
             onDroppedFilesConsumed={() => setDroppedFiles([])}
-            hasFloatingControls
+            floatingControls="newLayout"
           />
           {/* Owns the session-entry reset that forgets the previous chat's
               artifact. */}
