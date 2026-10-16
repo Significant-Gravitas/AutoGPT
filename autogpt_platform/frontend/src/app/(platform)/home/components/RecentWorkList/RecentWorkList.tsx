@@ -11,7 +11,7 @@ import { useRecentWorkList } from "./useRecentWorkList";
 export function RecentWorkList() {
   const { isLoading, lines } = useRecentWorkList();
 
-  if (isLoading || lines.length === 0) return null;
+  if (isLoading) return null;
 
   return (
     <section className="relative px-4 pb-10 text-left md:px-0">
@@ -32,6 +32,14 @@ export function RecentWorkList() {
             <RecentWorkRow line={line} />
           </li>
         ))}
+        {lines.length === 0 && (
+          <li className="px-4 py-6 text-center">
+            <Text variant="body" tone="muted">
+              Nothing yet. Files your team makes and work it finishes show up
+              here.
+            </Text>
+          </li>
+        )}
       </ul>
     </section>
   );

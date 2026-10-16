@@ -1,7 +1,12 @@
+import type { ExpertIdentityMap } from "@/app/(platform)/copilot/useExpertMap";
+import { isInternalToolOutput } from "@/app/(platform)/copilot/components/ContextPanel/components/FilesTab/helpers";
 import type { HomeRecentWork } from "@/app/api/__generated__/models/homeRecentWork";
 import type { HomeRecentWorkItem } from "@/app/api/__generated__/models/homeRecentWorkItem";
 import type { HomeWorkActor } from "@/app/api/__generated__/models/homeWorkActor";
+import type { WorkspaceFileItem } from "@/app/api/__generated__/models/workspaceFileItem";
+import { AUTOPILOT_NAME } from "@/components/molecules/AutopilotAvatar/helpers";
 import { formatProviderName } from "@/components/contextual/IntegrationsPanel/helpers";
+import { isHiddenWorkspaceFile } from "@/lib/workspace-files";
 
 export const RECENT_WORK_LIMIT = 5;
 
@@ -18,8 +23,6 @@ export interface RecentWorkLine {
 }
 
 const FILE_VERBS: Record<string, string> = {
-  "file.created": "made",
-  "file.updated": "updated",
   "file.deleted": "deleted",
 };
 
@@ -34,8 +37,10 @@ function describeItem(
   item: HomeRecentWorkItem,
 ): Pick<RecentWorkLine, "verb" | "object"> | null {
   if (item.category === "file") {
-    const verb = FILE_VERBS[item.event_type];
-    return verb ? { verb, object: item.title } : null;
+    // Made and updated files come from the file list, which also has the
+    // ones the activity log never recorded; only deletions come from here.
+    if (item.event_type !== "file.deleted") return null;
+    return { verb: FILE_VERBS[item.event_type], object: item.title };
   }
   if (item.category === "schedule") {
     const verb = SCHEDULE_VERBS[item.event_type];
@@ -51,10 +56,57 @@ function toTime(value: string | Date | null | undefined) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-export function buildRecentWorkLines(
-  recentWork: HomeRecentWork | undefined,
+const SESSION_PATH = /^\/sessions\/([^/]+)\//;
+
+function fileActor(
+  expertId: string | null | undefined,
+  expertsById: ExpertIdentityMap,
+): HomeWorkActor {
+  const expert = expertId ? expertsById.get(expertId) : undefined;
+  if (!expert) return { kind: "autopilot", name: AUTOPILOT_NAME };
+  return {
+    kind: "expert",
+    name: expert.name,
+    expert: {
+      id: expert.id,
+      name: expert.name,
+      role: expert.role ?? "",
+      avatar_url: expert.avatarUrl,
+    },
+  };
+}
+
+function fileLines(
+  files: WorkspaceFileItem[],
+  expertsById: ExpertIdentityMap,
 ): RecentWorkLine[] {
   const lines: RecentWorkLine[] = [];
+  for (const file of files) {
+    if (isHiddenWorkspaceFile(file) || isInternalToolOutput(file)) continue;
+    // Files outside a chat came from workflow runs, which the run lines cover.
+    const sessionId = SESSION_PATH.exec(file.path)?.[1];
+    const at = toTime(file.created_at);
+    if (!sessionId || !at) continue;
+    lines.push({
+      id: `file:${file.id}`,
+      actor: fileActor(file.expert_id, expertsById),
+      verb: "made",
+      object: file.name,
+      suffix: null,
+      at,
+      link: `/home?sessionId=${encodeURIComponent(sessionId)}`,
+      failed: false,
+    });
+  }
+  return lines;
+}
+
+export function buildRecentWorkLines(
+  recentWork: HomeRecentWork | undefined,
+  files: WorkspaceFileItem[],
+  expertsById: ExpertIdentityMap,
+): RecentWorkLine[] {
+  const lines = fileLines(files, expertsById);
   for (const group of recentWork?.groups ?? []) {
     const { actor } = group;
     for (const run of group.runs ?? []) {
