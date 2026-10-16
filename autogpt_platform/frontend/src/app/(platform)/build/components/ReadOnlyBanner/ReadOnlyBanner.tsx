@@ -24,7 +24,7 @@ export function ReadOnlyBanner() {
       className="absolute left-1/2 top-4 z-20 flex -translate-x-1/2 select-none items-center gap-3 rounded-full bg-white px-4 py-2 shadow-lg"
     >
       <Text variant="body" className="px-2 text-zinc-700">
-        You&apos;re viewing a read-only copy of this agent.
+        You&apos;re viewing a read-only copy of this workflow.
         <br />
         {showDuplicate
           ? "Duplicate it to make changes."

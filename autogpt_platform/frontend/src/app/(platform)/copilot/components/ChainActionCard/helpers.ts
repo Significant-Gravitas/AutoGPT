@@ -55,8 +55,11 @@ export interface McpConnectorRequest {
   error: string | null;
   showManualToken: boolean;
   authScheme: "basic" | "bearer";
+  grantable: boolean;
+  granting: boolean;
   onConnect: () => void;
   onUseToken: (token: string) => void;
+  onGrant: () => void;
 }
 
 /** One setup card's ask, handed to the chain so every card in the chain can

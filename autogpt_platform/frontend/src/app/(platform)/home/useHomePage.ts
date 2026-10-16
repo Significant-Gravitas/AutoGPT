@@ -10,6 +10,7 @@ export function useHomePage({ enabled }: Args) {
     query: {
       select: (response) => okData(response) ?? null,
       enabled,
+      staleTime: 0,
       refetchInterval: 60_000,
       refetchOnWindowFocus: true,
     },

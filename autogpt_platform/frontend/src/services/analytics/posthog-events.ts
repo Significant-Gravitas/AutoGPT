@@ -23,6 +23,15 @@ export const FeatureFlagEvent = {
   FEATURE_FLAG_MISMATCHED: "feature_flag_mismatched",
 } as const;
 
+// Marketing email refusals made in the app. `surface` says where; the
+// refusal itself is stored on the user (`marketingOptOutAt`).
+export const MarketingConsentEvent = {
+  // `surface: "signup"`: "opt out" in the legal line under the signup buttons
+  // was clicked (not Undo). Nothing else rides along: there is no user yet,
+  // so it only measures the opt-out rate.
+  MARKETING_OPTED_OUT: "marketing_opted_out",
+} as const;
+
 export const ExpertsFunnelEvent = {
   EXPERTS_SECTION_VIEWED: "experts_section_viewed",
   HOME_VIEWED: "home_viewed",
@@ -140,6 +149,9 @@ export const CredentialConnectionFailureEvent = {
 
 export const TrialEvent = {
   TRIAL_OFFER_VIEWED: "trial_offer_viewed",
+  TRIAL_CANCEL_POPUP_VIEWED: "trial_cancel_popup_viewed",
+  TRIAL_RESUME_CLICKED: "trial_resume_clicked",
+  TRIAL_SUBSCRIBE_NOW_CLICKED: "trial_subscribe_now_clicked",
 } as const;
 
 export const TourEvent = {
@@ -163,6 +175,7 @@ export const MonetizationEvent = {
 export const PostHogEvent = {
   ...PageEvent,
   ...FeatureFlagEvent,
+  ...MarketingConsentEvent,
   ...ExpertsFunnelEvent,
   ...HireFlowEvent,
   ...BrainDumpEvent,

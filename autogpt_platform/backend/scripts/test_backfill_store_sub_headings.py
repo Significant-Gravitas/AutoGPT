@@ -2,11 +2,32 @@
 
 import csv
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import scripts.backfill_store_sub_headings as backfill
+
+
+@pytest.mark.parametrize("limit", [None, 0, 10])
+@pytest.mark.parametrize("include_unapproved", [False, True])
+async def test_listing_query_binds_limit(
+    limit: int | None,
+    include_unapproved: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = MagicMock(query_raw=AsyncMock(return_value=[]))
+    monkeypatch.setattr("prisma.get_client", lambda: client)
+
+    assert (
+        await backfill.find_listings_without_sub_heading(limit, include_unapproved)
+        == []
+    )
+
+    query, *parameters = client.query_raw.call_args.args
+    assert parameters == ([] if limit is None else [limit])
+    assert ("LIMIT $1" in query) == (limit is not None)
+    assert ("submissionStatus" in query) == (not include_unapproved)
 
 
 @pytest.mark.parametrize(

@@ -16,6 +16,8 @@ class Effect(str, Enum):
     READ = "read"
     WORKSPACE = "workspace"
     SHELL = "shell"
+    # Work handed to a chat of one of the user's Experts, which the gate covers itself.
+    TEAM = "team"
     PLATFORM = "platform"
     EXTERNAL = "external"
     # Never gated: the call is itself a question to the user, finishes a
@@ -24,7 +26,7 @@ class Effect(str, Enum):
 
 
 # What the gate can hold for an answer, and so what a rule can be set on.
-PARKABLE = frozenset({Effect.SHELL, Effect.PLATFORM, Effect.EXTERNAL})
+PARKABLE = frozenset({Effect.SHELL, Effect.TEAM, Effect.PLATFORM, Effect.EXTERNAL})
 
 
 class Verdict(str, Enum):
@@ -119,8 +121,6 @@ _PLATFORM = frozenset(
         "revoke_expert_credential",
         "update_expert",
         "update_expert_soul",
-        "delegate_to_expert",
-        "handoff_to_expert",
         "message_session",
         "run_sub_session",
         # Deletes inside the workspace: the user may have put the thing there.
@@ -129,6 +129,10 @@ _PLATFORM = frozenset(
         "memory_forget_confirm",
     }
 )
+
+# The chat they open keeps this one's origin, so the gate judges what the Expert does
+# there; Ask First still asks, as that chat runs in Auto.
+_TEAM = frozenset({"delegate_to_expert", "handoff_to_expert"})
 
 _EXTERNAL = frozenset(
     {"browser_act", "edit_chat_platform_message", "post_to_chat_platform"}
@@ -157,16 +161,20 @@ _EFFECTS: dict[str, Effect] = {
     **{name: Effect.READ for name in _READ | MCP_FILE_READ_TOOLS},
     **{name: Effect.WORKSPACE for name in _WORKSPACE | MCP_FILE_WRITE_TOOLS},
     "bash_exec": Effect.SHELL,
+    **{name: Effect.TEAM for name in _TEAM},
     **{name: Effect.PLATFORM for name in _PLATFORM},
     **{name: Effect.EXTERNAL for name in _EXTERNAL | _BY_SUBJECT},
     **{name: Effect.UNGATED for name in _UNGATED},
 }
 
 _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
+    # Work in the chat's own sandbox never asks; the supervisor still holds a
+    # command that reaches outside it.
     "ask_first": {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
-        Effect.SHELL: Verdict.ASK,
+        Effect.SHELL: Verdict.JUDGE,
+        Effect.TEAM: Verdict.ASK,
         Effect.PLATFORM: Verdict.ASK,
         Effect.EXTERNAL: Verdict.ASK,
     },
@@ -174,6 +182,7 @@ _MODE_VERDICTS: dict[AutopilotMode, dict[Effect, Verdict]] = {
         Effect.READ: Verdict.RUN,
         Effect.WORKSPACE: Verdict.RUN,
         Effect.SHELL: Verdict.JUDGE,
+        Effect.TEAM: Verdict.RUN,
         Effect.PLATFORM: Verdict.JUDGE,
         Effect.EXTERNAL: Verdict.ASK,
     },

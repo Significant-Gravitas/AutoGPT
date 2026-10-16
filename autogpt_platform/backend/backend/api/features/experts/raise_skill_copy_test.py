@@ -13,9 +13,12 @@ import pytest
 from backend.api.features.experts import experts_db, raise_attachments
 from backend.api.features.experts.models import RaiseAttachment
 from backend.api.features.workspace import embeddings
+from backend.copilot.learning import history
+from backend.copilot.learning._fake_store import FakeLearningStore
 from backend.copilot.tools import skills
+from backend.data.skill_learning import owner_key_for
 from backend.data.workspace import WorkspaceFile
-from backend.data.workspace_skill import WorkspaceSkillPublication
+from backend.data.workspace_skill import RetiredSkillFile, WorkspaceSkillPublication
 from backend.util import workspace
 from backend.util.exceptions import NotFoundError
 from backend.util.workspace_storage import LocalWorkspaceStorage
@@ -24,6 +27,7 @@ from backend.util.workspace_storage import LocalWorkspaceStorage
 class _WorkspaceRows:
     def __init__(self):
         self.rows: dict[tuple[str, str], WorkspaceFile] = {}
+        self.learning = FakeLearningStore()
 
     async def get_or_create_workspace(self, user_id):
         return SimpleNamespace(id=f"ws-{user_id}")
@@ -69,10 +73,39 @@ class _WorkspaceRows:
         return row
 
     async def publish_workspace_skill_file(self, write):
-        row = await self.create_workspace_file(
-            **write.model_dump(exclude={"overwrite"})
+        previous = dict(self.rows)
+        retired = []
+        try:
+            for path in [
+                write.path,
+                *(f.path for f in write.files),
+                *write.removed_paths,
+            ]:
+                existing = await self.get_workspace_file_by_path(
+                    write.workspace_id, path
+                )
+                if existing is not None:
+                    await self.soft_delete_workspace_file(
+                        existing.id, write.workspace_id
+                    )
+                    retired.append(
+                        RetiredSkillFile(
+                            file_id=existing.id, storage_path=existing.storage_path
+                        )
+                    )
+            for file in write.files:
+                await self.create_workspace_file(
+                    workspace_id=write.workspace_id, **file.model_dump()
+                )
+            row = await self.create_workspace_file(
+                **write.model_dump(exclude={"overwrite", "files", "removed_paths"})
+            )
+        except BaseException:
+            self.rows = previous
+            raise
+        return WorkspaceSkillPublication(
+            status="stored", file=row, retired_files=retired
         )
-        return WorkspaceSkillPublication(status="stored", file=row)
 
     async def soft_delete_workspace_file(self, file_id, workspace_id):
         return self.rows.pop((workspace_id, file_id), None)
@@ -103,6 +136,10 @@ def skill_storage(monkeypatch, tmp_path):
     lock.release = AsyncMock()
     monkeypatch.setattr(skills, "AsyncClusterLock", lambda *args, **kwargs: lock)
     monkeypatch.setattr(skills, "experts_db", lambda: experts_db)
+    monkeypatch.setattr(skills, "skill_versions_db", lambda: rows.learning)
+    monkeypatch.setattr(skills, "skill_deletion_db", lambda: rows.learning)
+    monkeypatch.setattr(history, "skill_versions_db", lambda: rows.learning)
+    monkeypatch.setattr(history, "skill_publication_db", lambda: rows.learning)
     return rows
 
 
@@ -207,6 +244,10 @@ async def test_raise_reconciles_a_library_source_deleted_after_resolution(
     if delete_source:
         assert package is None
         assert skill_storage.rows == {}
+        head = await skill_storage.learning.get_head(
+            "owner", owner_key_for(None), "shared"
+        )
+        assert head is not None and head.deleted
     else:
         assert package is not None and "PRIVATE BODY" in package.skill_md
         assert package.files == [
@@ -217,6 +258,22 @@ async def test_raise_reconciles_a_library_source_deleted_after_resolution(
             )
         ]
         assert indexed[0].origin == skills.SKILL_ORIGIN_USER
+        head = await skill_storage.learning.get_head(
+            "owner", owner_key_for("raised"), "shared"
+        )
+        assert (
+            head is not None
+            and not head.auto_improve
+            and head.current_version_id is not None
+        )
+        version = await skill_storage.learning.get_version(
+            "owner", head.current_version_id
+        )
+        assert version is not None and version.origin == "imported"
+        assert version.actor_user_id == "owner" and version.files is not None
+        assert [
+            (f.relative_path, f.content, f.is_executable) for f in version.files
+        ] == [("scripts/run.py", b"print('private')\n", True)]
         assert (
             await skills.read_user_skill_package(
                 "another-owner", "shared", expert_id="raised"

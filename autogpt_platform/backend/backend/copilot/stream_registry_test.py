@@ -256,6 +256,9 @@ class _FakeRedis:
         self._meta = dict(meta)
         self.deleted_keys: list[str] = []
         self.delete = AsyncMock(side_effect=self._record_delete)
+        self.expire = AsyncMock()
+        # No turn has a checkpoint, so completion trims nothing.
+        self.hget = AsyncMock(return_value=None)
 
     async def _record_delete(self, *keys: str):
         self.deleted_keys.extend(keys)
@@ -410,6 +413,36 @@ async def test_mark_session_completed_skip_error_publish_emits_no_stream_error()
 
     published = await _mark(skip_error_publish=False)
     assert any(isinstance(c, stream_registry.StreamError) for c in published)
+
+
+@pytest.mark.asyncio
+async def test_mark_session_completed_republishes_the_error_code():
+    """The executor re-publishes a turn's error here; without its code the
+    client can only match the message text, which is how a budget stop came
+    to open the "Daily usage limit reached" dialog."""
+    publish_mock = AsyncMock()
+    with (
+        patch.object(
+            stream_registry,
+            "get_redis_async",
+            new=AsyncMock(return_value=_FakeRedis({"status": "running"})),
+        ),
+        patch.object(
+            stream_registry, "hash_compare_and_set", new=AsyncMock(return_value=True)
+        ),
+        patch.object(stream_registry, "publish_chunk", new=publish_mock),
+    ):
+        await stream_registry.mark_session_completed(
+            "sess-1", error_message="The response stopped.", error_code="idle_timeout"
+        )
+    errors = [
+        call.args[1]
+        for call in publish_mock.call_args_list
+        if isinstance(call.args[1], stream_registry.StreamError)
+    ]
+    assert len(errors) == 1
+    assert errors[0].code == "idle_timeout"
+    assert errors[0].to_sse().count("[code:idle_timeout]") == 1
 
 
 @pytest.mark.asyncio
@@ -568,11 +601,12 @@ async def test_subscribe_to_session_replays_chunks_without_cursor_parts():
     while not queue.empty():
         delivered.append(queue.get_nowait())
 
-    assert len(delivered) == 4
-    assert isinstance(delivered[0], StreamTextStart)
-    assert isinstance(delivered[1], StreamTextDelta)
-    assert isinstance(delivered[2], StreamTextEnd)
-    assert isinstance(delivered[3], stream_registry.StreamFinish)
+    assert [(frame_id, type(chunk)) for frame_id, chunk in delivered] == [
+        ("turn-1:9999-0", StreamTextStart),
+        ("turn-1:9999-1", StreamTextDelta),
+        ("turn-1:9999-2", StreamTextEnd),
+        (None, stream_registry.StreamFinish),
+    ]
 
 
 def test_reconstruct_chunk_round_trips_pending_drained():
