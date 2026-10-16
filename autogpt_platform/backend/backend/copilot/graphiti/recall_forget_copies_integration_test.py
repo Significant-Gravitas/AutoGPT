@@ -30,13 +30,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
+from prisma import Prisma
 from prisma.enums import (
     DreamPassPhase,
     DreamPassRoute,
     DreamPassStatus,
     DreamPassTrigger,
 )
-from prisma import Prisma
 from prisma.models import ChatMessage, ChatSession, DreamPass, Expert, User
 from pytest_mock import MockerFixture
 

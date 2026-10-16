@@ -6,7 +6,8 @@ and returns again once marked; every error kept only as a fixed code; its
 statement timeout; its cost over 3,000 passes; and every transition that
 closes a marked pass blanking it in the same statement
 (``dream_pass_update.py``), one that leaves it open or an unmarked pass
-untouched, the read set only growing."""
+untouched, the read set only growing, and none of them touching a pass's
+usage attribution."""
 
 import asyncio
 import json
@@ -14,6 +15,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import datetime, timezone
+from typing import Any
 
 import pytest
 from prisma.enums import (
@@ -106,6 +108,7 @@ async def _pass(
     *,
     status: DreamPassStatus = DreamPassStatus.RUNNING,
     cites: str = _FORGOTTEN,
+    cost_context: dict[str, Any] | None = None,
 ) -> str:
     """A pass that read ``cites`` and consolidated ``_SENTENCE`` citing it,
     then moved to ``status`` (closed with no cleanup pending, for a closed
@@ -117,6 +120,7 @@ async def _pass(
         route=DreamPassRoute.SYNC,
         trigger=DreamPassTrigger.CRON,
         started_at=_NOW,
+        cost_context=cost_context,
     )
     await create_dream_pass(draft)
     assert await update_dream_pass(
@@ -584,3 +588,27 @@ async def test_an_unmarked_pass_closes_as_it_did(make_user):
     row = await get_dream_pass(pass_id)
     assert row is not None and row.erased_at is None
     assert _SENTENCE in await _text(pass_id)
+
+
+async def test_a_hard_forget_leaves_a_passs_usage_attribution(make_user):
+    """``costContext`` is the billing attribution a pass started under, not
+    the dream's words: the erase of a closed pass, the blanking of a marked
+    pass as it closes and the cleanup's end that blanks it again all leave
+    it as it was."""
+    owner = await make_user()
+    attribution = {"user_id": owner, "trial_id": "trial-1", "generation": 3}
+    closed = await _pass(
+        owner, owner, status=DreamPassStatus.COMPLETE, cost_context=attribution
+    )
+    running = await _pass(owner, owner, cost_context=attribution)
+
+    marked = await erase_dream_passes(owner, owner, reached=[_FORGOTTEN], named=[])
+    assert await update_dream_pass(running, _CLOSES["failed"])
+    assert await update_dream_pass(running, cleanup_finished())
+
+    assert sorted(marked) == sorted([closed, running])
+    for pass_id in (closed, running):
+        row = await get_dream_pass(pass_id)
+        assert row is not None and row.erased_at is not None
+        assert _SENTENCE not in await _text(pass_id)
+        assert row.cost_context == attribution
