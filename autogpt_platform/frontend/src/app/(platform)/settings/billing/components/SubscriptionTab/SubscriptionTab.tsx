@@ -35,7 +35,7 @@ export function SubscriptionTab({ isPlanCheckoutReturn = false }: Props) {
         {paymentFailed ? (
           <PaymentRecoveryCard
             payment={payment}
-            fallback="Update your payment method below to continue. Your chats, agents and results are saved."
+            fallback="Update your payment method below to continue. Your chats, workflows and results are saved."
           />
         ) : null}
         {showTrialCard ? <TrialCard /> : null}

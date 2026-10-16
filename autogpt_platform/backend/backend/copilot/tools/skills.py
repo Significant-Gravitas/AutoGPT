@@ -44,6 +44,11 @@ from backend.copilot.learning.content_checks import (
     check_skill_bundle,
     collect_content_approvals,
 )
+from backend.copilot.learning.fingerprint import (
+    behavior_fingerprint,
+    behavior_tokens,
+    evidence_fingerprint,
+)
 from backend.copilot.learning.history import record_registry_write
 from backend.copilot.learning.retrieval import (
     mark_index_revision_seen,
@@ -62,6 +67,7 @@ from backend.copilot.service import (
 from backend.data.db_accessors import (
     experts_db,
     skill_db,
+    skill_deletion_db,
     skill_versions_db,
     workspace_db,
 )
@@ -76,6 +82,7 @@ from backend.data.skill_capacity import SkillLimitError, SkillOwnedError
 from backend.data.skill_capacity import normalize_skill_origin as _normalize_origin
 from backend.data.skill_capacity import skill_name_key
 from backend.data.skill_content_approvals import SkillContentApproval
+from backend.data.skill_deletion import DeletedBehavior
 from backend.data.skill_learning import owner_key_for
 from backend.data.skill_package import (
     SKILL_MD,
@@ -85,7 +92,7 @@ from backend.data.skill_package import (
     package_tree_sha256,
 )
 from backend.data.skill_version_files import SkillVersionFile
-from backend.data.skill_versions import content_hash
+from backend.data.skill_versions import SkillVersionRecord, content_hash
 from backend.data.workspace_scope import (
     EXPERT_SKILL_SCOPE_DENIED,
     WorkspaceAccessDeniedError,
@@ -729,14 +736,20 @@ async def delete_user_skill(
     (personal Otto's when ``None``).
 
     The whole tree goes, however many files it holds — a package written
-    before the cap existed still has to be removable.  Returns the normalised
-    slug on success so callers can echo it back.
+    before the cap existed still has to be removable.  Before any file goes,
+    and under the per-owner write lock, the skill's version history is ended
+    and the deleted behaviour suppressed (:func:`_record_deletion`), so
+    neither a source revocation nor overnight learning brings it back.
+    Returns the normalised slug on success so callers can echo it back.
     Raises :class:`BuiltInSkillError` for default skills,
-    :class:`SkillNotFoundError` if the skill does not exist, and
-    ``ValueError`` if ``name`` is blank.  Sibling-file cleanup is
-    best-effort — a transient delete failure on a non-SKILL.md file logs
-    but does not abort the overall delete (the SKILL.md removal is what
-    makes the skill disappear from ``<available_skills>``).
+    :class:`SkillNotFoundError` if the skill does not exist, ``ValueError``
+    if ``name`` is blank, and :class:`SkillWriteLockError` or
+    :class:`SkillVersionConflictError` when the delete could not be ordered
+    with other writes to the owner's skills; nothing was deleted then.
+    Sibling-file cleanup is best-effort — a transient delete failure on a
+    non-SKILL.md file logs but does not abort the overall delete (the
+    SKILL.md removal is what makes the skill disappear from
+    ``<available_skills>``).
     """
     slug = name.strip().lower()
     if not slug:
@@ -745,6 +758,30 @@ async def delete_user_skill(
         raise BuiltInSkillError(f"'{slug}' is a built-in skill and cannot be deleted")
 
     manager = await _get_user_skill_manager(user_id, scope)
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    if lock is None:
+        raise SkillWriteLockError(
+            "could not order the delete with other changes to these skills; "
+            "try again"
+        )
+    try:
+        await _delete_skill_files(user_id, slug, expert_id, manager, lock)
+    finally:
+        await _release_skill_write_lock(lock, user_id)
+    await invalidate_skills_index_cache(user_id, expert_id)
+    if expert_id is not None:
+        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
+    return slug
+
+
+async def _delete_skill_files(
+    user_id: str,
+    slug: str,
+    expert_id: str | None,
+    manager: WorkspaceManager,
+    lock: AsyncClusterLock,
+) -> None:
+    """The delete itself; the caller holds the write lock."""
     info = await manager.get_file_info_by_path(_skill_md_path(slug, expert_id))
     if info is None:
         if expert_id is not None:
@@ -755,29 +792,20 @@ async def delete_user_skill(
 
     # Audit-log the delete BEFORE the workspace mutation runs so the
     # log row is present even if the delete itself raises mid-cleanup.
-    # Decode best-effort: a malformed body is fine for the audit trail —
-    # the slug + truncated description is what an operator needs to
-    # correlate later support requests.
-    description_for_log = ""
-    try:
-        raw = await manager.read_file(_skill_md_path(slug, expert_id))
-        try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = ""
-        if text:
-            parsed = parse_skill_markdown(text, fallback_name=slug)
-            if parsed is not None:
-                description_for_log = parsed.description
-    except Exception:
-        # Audit-log enrichment is best-effort; failure must not block the
-        # delete the user requested.
-        pass
+    # The description is best-effort — the slug + truncated description is
+    # what an operator needs to correlate later support requests.
+    parsed = await _read_deleted_skill(manager, slug, expert_id)
     logger.info(
         "[skills] user %s… deleting skill %s: %s",
         user_id[:8],
         slug,
-        description_for_log[:60],
+        (parsed.description if parsed else "")[:60],
+    )
+    await _record_deletion(
+        user_id,
+        expert_id,
+        slug,
+        await _package_behavior(manager, expert_id, slug, parsed),
     )
 
     await manager.delete_file(info.id)
@@ -788,6 +816,16 @@ async def delete_user_skill(
     # it rather than spinning it.
     attempted: set[str] = set()
     while True:
+        if not await lock.refresh():
+            # A writer that took the lock over may have just stored a package
+            # in this folder; leftover files are the lesser harm.
+            logger.warning(
+                "[skills] lost the write lock deleting %s for user %s — "
+                "leaving any remaining files",
+                slug,
+                user_id[:8],
+            )
+            break
         try:
             siblings = await _list_package_files(manager, skill_folder(expert_id), slug)
         except Exception:
@@ -805,10 +843,123 @@ async def delete_user_skill(
                     sibling.path,
                     exc_info=True,
                 )
-    await invalidate_skills_index_cache(user_id, expert_id)
-    if expert_id is not None:
-        await experts_db().remove_expert_skill_name(user_id, expert_id, slug)
-    return slug
+
+
+async def _read_deleted_skill(
+    manager: WorkspaceManager, slug: str, expert_id: str | None
+) -> ParsedSkill | None:
+    try:
+        raw = await manager.read_file(_skill_md_path(slug, expert_id))
+        return parse_skill_markdown(raw.decode("utf-8"), fallback_name=slug)
+    except Exception:
+        # Reading is best-effort; failure must not block the delete the
+        # user requested.
+        return None
+
+
+async def _record_deletion(
+    user_id: str,
+    expert_id: str | None,
+    slug: str,
+    deleted: DeletedBehavior | None,
+) -> None:
+    """End *slug*'s version history and suppress what is being deleted.
+
+    Both the package as it stands and the version the head names are
+    suppressed: learning never reapplies either, a near copy becomes a
+    decision for the owner, and a different skill may still be learned
+    under the name. Phase 1 of a publication takes no write lock, so the
+    head can move between this read and the transaction; it is read again
+    a few times before the delete gives up.
+    """
+    versions = skill_versions_db()
+    current_id: str | None = None
+    for _ in range(3):
+        head = await versions.get_head(user_id, owner_key_for(expert_id), slug)
+        current_id = head.current_version_id if head is not None else None
+        current = (
+            await versions.get_version(user_id, current_id) if current_id else None
+        )
+        behaviors = {
+            b.behavior_fingerprint: b
+            for b in (deleted, _version_behavior(current))
+            if b is not None
+        }
+        result = await skill_deletion_db().record_skill_deletion(
+            user_id,
+            expert_id=expert_id,
+            skill_name=slug,
+            expected_current_version_id=current_id,
+            behaviors=list(behaviors.values()),
+            actor_user_id=user_id,
+        )
+        if result.committed:
+            return
+    raise SkillVersionConflictError(current_id, None)
+
+
+async def _package_behavior(
+    manager: WorkspaceManager,
+    expert_id: str | None,
+    slug: str,
+    parsed: ParsedSkill | None,
+) -> DeletedBehavior | None:
+    """The behaviour of the package being deleted, as learning would
+    fingerprint a proposal of it."""
+    if parsed is None:
+        return None
+    try:
+        files = await _read_package_files(
+            manager, skill_folder(expert_id), slug, complete=True
+        )
+    except Exception:
+        # Over the files cap, or a file that cannot be read. The body alone
+        # still catches the procedure: an exact copy then becomes a decision
+        # for the owner instead of being suppressed outright. Refusing the
+        # delete instead would leave a package with a lost file undeletable.
+        logger.warning(
+            "[skills] could not read the files of %s to record its deletion",
+            slug,
+            exc_info=True,
+        )
+        files = []
+    return _deleted_behavior(
+        slug,
+        parsed.body,
+        [
+            SkillVersionFile.from_content(f.relative_path, f.content, f.is_executable)
+            for f in files
+        ],
+    )
+
+
+def _version_behavior(version: SkillVersionRecord | None) -> DeletedBehavior | None:
+    if version is None or not version.content:
+        return None
+    parsed = parse_skill_markdown(version.content, fallback_name=version.skill_name)
+    if parsed is None:
+        return None
+    return _deleted_behavior(
+        version.skill_name,
+        parsed.body,
+        version.files,
+        [str(e.get("ref", "")) for e in version.evidence],
+    )
+
+
+def _deleted_behavior(
+    skill_name: str,
+    body: str,
+    files: list[SkillVersionFile] | None,
+    evidence_refs: list[str] | None = None,
+) -> DeletedBehavior:
+    return DeletedBehavior(
+        behavior_fingerprint=behavior_fingerprint(skill_name, body, files),
+        behavior_tokens=behavior_tokens(body),
+        evidence_fingerprints=(
+            [evidence_fingerprint(evidence_refs)] if evidence_refs else []
+        ),
+    )
 
 
 class SkillContentBlockedError(ValueError):
@@ -1010,27 +1161,9 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
 
     # Coordinate ordinary package writes; the database owns the hard cap.
-    lock: AsyncClusterLock | None = None
-    lock_held = False
-    try:
-        lock = AsyncClusterLock(
-            redis=await get_redis_async(),
-            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
-            owner_id=uuid.uuid4().hex,
-            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
-        )
-        for _ in range(10):
-            if (await lock.try_acquire()) == lock.owner_id:
-                lock_held = True
-                break
-            await asyncio.sleep(0.1)
-    except Exception:
-        logger.warning(
-            "[skills] failed to acquire write lock for user %s — "
-            "falling back to unlocked best-effort write",
-            user_id,
-            exc_info=True,
-        )
+    # Without the lock they fall back to a best-effort unlocked write.
+    lock = await _acquire_skill_write_lock(user_id, expert_id)
+    lock_held = lock is not None
     try:
         manager = await _get_user_skill_manager(user_id, scope)
         existing = await _list_user_skills_from_workspace(user_id, expert_id, scope)
@@ -1099,14 +1232,43 @@ async def store_user_skills(
         return cast(list[StoredSkill | Exception], outcomes)
     finally:
         if lock is not None and lock_held:
-            try:
-                await lock.release()
-            except Exception:
-                logger.warning(
-                    "[skills] failed to release write lock for user %s",
-                    user_id,
-                    exc_info=True,
-                )
+            await _release_skill_write_lock(lock, user_id)
+
+
+async def _acquire_skill_write_lock(
+    user_id: str, expert_id: str | None
+) -> AsyncClusterLock | None:
+    """Take the owner's skill write lock, or ``None`` when it stays held
+    elsewhere for about a second or Redis cannot be reached."""
+    try:
+        lock = AsyncClusterLock(
+            redis=await get_redis_async(),
+            key=f"{_SKILL_WRITE_LOCK_KEY_PREFIX}{user_id}:{expert_id or 'autopilot'}",
+            owner_id=uuid.uuid4().hex,
+            timeout=_SKILL_WRITE_LOCK_TTL_SECONDS,
+        )
+        for _ in range(10):
+            if (await lock.try_acquire()) == lock.owner_id:
+                return lock
+            await asyncio.sleep(0.1)
+    except Exception:
+        logger.warning(
+            "[skills] failed to acquire write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
+    return None
+
+
+async def _release_skill_write_lock(lock: AsyncClusterLock, user_id: str) -> None:
+    try:
+        await lock.release()
+    except Exception:
+        logger.warning(
+            "[skills] failed to release write lock for user %s",
+            user_id,
+            exc_info=True,
+        )
 
 
 async def _require_current_head(
@@ -3465,7 +3627,7 @@ class DeleteSkillTool(BaseTool):
             return ErrorResponse(message=str(exc), session_id=session_id)
         except SkillNotFoundError as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
-        except ConflictError as exc:
+        except (ConflictError, SkillWriteLockError, SkillVersionConflictError) as exc:
             return ErrorResponse(message=str(exc), session_id=session_id)
         except Exception as exc:
             logger.exception("[skills] delete failed for %s", name)
