@@ -15671,7 +15671,7 @@
       "delete": {
         "tags": ["v1", "skills"],
         "summary": "Delete a user-distilled copilot skill",
-        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.",
+        "description": "Delete a user-distilled skill by slug.\n\nBuilt-in defaults are not user-deletable — attempting to delete one\nreturns 400.  Missing skills return 404 so the UI can reconcile a\nstale list.  409 means the delete could not be ordered with another\nchange to the owner's skills; nothing was deleted, so try again.",
         "operationId": "deleteCopilotSkill",
         "security": [{ "HTTPBearerJWT": [] }],
         "parameters": [
@@ -16473,6 +16473,7 @@
             "required": false,
             "schema": {
               "type": "integer",
+              "maximum": 100,
               "minimum": 1,
               "default": 20,
               "title": "Page Size"
