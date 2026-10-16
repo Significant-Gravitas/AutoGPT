@@ -9,6 +9,7 @@ import asyncio
 import logging
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,9 +17,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from backend.api.features.experts.models import ExpertRoutine
 from backend.copilot.credential_selection import CredentialPin
+from backend.copilot.dream.scope_reconcile import RECONCILE_INTERVAL_MINUTES
 from backend.copilot.executor.utils import ScheduledTurnOrigin
 from backend.copilot.permissions import (
     CAPABILITY_GATE_NAMES,
@@ -50,6 +53,7 @@ from backend.executor.scheduler import (
     _routine_turn_permissions,
     _self_delete_copilot_turn_schedule,
     _self_delete_morning_briefing_schedule,
+    reconcile_memory_scope_crons,
     reconcile_stripe_tiers,
 )
 from backend.util.exceptions import (
@@ -1676,14 +1680,19 @@ class _StartupRun(NamedTuple):
     add_job_calls: list
     embedding_backfill: MagicMock
     backfill_calls_at_readiness: int
+    scheduler_calls: list
 
 
 def _registered_jobs(
-    monkeypatch, interval_hours: int, startup_embedding_backfill: bool = True
+    monkeypatch,
+    interval_hours: int,
+    startup_embedding_backfill: bool = True,
+    on_start: Callable[[], object] | None = None,
 ) -> _StartupRun:
     """Drive ``Scheduler.run_service`` with every heavy dependency stubbed and
     a mock APScheduler, recording what it registered and what it ran before
-    handing over to ``AppService.run_service``."""
+    handing over to ``AppService.run_service``. *on_start* runs as the mock
+    APScheduler starts, as a job due then would."""
     monkeypatch.setattr(
         f"{_SCHEDULER_PATH}.config.stripe_tier_reconcile_interval_hours",
         interval_hours,
@@ -1693,6 +1702,7 @@ def _registered_jobs(
         startup_embedding_backfill,
     )
     mock_scheduler = MagicMock()
+    mock_scheduler.start.side_effect = on_start
     embedding_backfill = MagicMock(return_value=None)
     at_readiness = []
     with (
@@ -1719,7 +1729,10 @@ def _registered_jobs(
     ):
         Scheduler(register_system_tasks=True).run_service()
     return _StartupRun(
-        mock_scheduler.add_job.call_args_list, embedding_backfill, at_readiness[0]
+        mock_scheduler.add_job.call_args_list,
+        embedding_backfill,
+        at_readiness[0],
+        mock_scheduler.mock_calls,
     )
 
 
@@ -1738,6 +1751,49 @@ def test_reconcile_stripe_tiers_job_registered_with_interval_and_single_instance
     assert call.kwargs["max_instances"] == 1
     # 6 hours -> 6 * 3600 seconds, driven by the config setting.
     assert call.kwargs["seconds"] == 6 * 3600
+
+
+def test_memory_cron_reconcile_registered_after_start_on_its_interval(
+    monkeypatch,
+):
+    """The level-triggered backstop of the memory registry runs every
+    ``RECONCILE_INTERVAL_MINUTES``, one at a time per scheduler, a missed run
+    coalesced. It is registered once the scheduler has started, so an
+    unchanged persisted job, and its next run, can be left alone
+    (``scheduler_memory_reconcile_test.TestRegistration``)."""
+    calls = _registered_jobs(monkeypatch, interval_hours=6).scheduler_calls
+
+    names = [name for name, _, _ in calls]
+    [at] = [
+        i
+        for i, (name, args, _) in enumerate(calls)
+        if name == "add_job" and args and args[0] is reconcile_memory_scope_crons
+    ]
+    _, args, kwargs = calls[at]
+    assert names.index("start") < at
+    assert str(args[1]) == str(IntervalTrigger(minutes=RECONCILE_INTERVAL_MINUTES))
+    assert RECONCILE_INTERVAL_MINUTES == 30
+    assert kwargs["id"] == "reconcile_memory_scope_crons"
+    assert kwargs["max_instances"] == 1
+    assert kwargs["coalesce"] is True
+
+
+def test_a_system_job_due_at_start_reaches_the_scheduler(monkeypatch):
+    """APScheduler runs a job that is overdue when it starts at once, on its
+    own thread: the memory cron reconcile after a restart that outlasted its
+    interval. The job reaches the service only through
+    ``_scheduler_instance``, so that is published before ``start``; published
+    after it, the pass was skipped as "scheduler not running" and the crons
+    waited a whole interval more."""
+    monkeypatch.setattr(f"{_SCHEDULER_PATH}._scheduler_instance", None)
+    reconciled = MagicMock()
+    monkeypatch.setattr(Scheduler, "_reconcile_memory_crons", reconciled)
+
+    _registered_jobs(
+        monkeypatch, interval_hours=6, on_start=reconcile_memory_scope_crons
+    )
+
+    reconciled.assert_called_once_with()
 
 
 def test_reconcile_stripe_tiers_interval_follows_config_setting(monkeypatch):

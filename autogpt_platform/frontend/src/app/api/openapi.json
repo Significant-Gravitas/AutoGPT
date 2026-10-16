@@ -27999,6 +27999,10 @@
       "NightlyBatchResult": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
+          "expert_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Expert Id"
+          },
           "nightly_id": {
             "type": "string",
             "title": "Nightly Id",
