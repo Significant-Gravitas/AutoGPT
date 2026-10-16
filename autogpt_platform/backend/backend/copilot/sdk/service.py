@@ -1506,6 +1506,9 @@ class _StreamContext:
     # Index in ``session.messages`` of the stream's first row, for checkpoints.
     turn_start: int = 0
     turn_summary: TurnSummaryCollector | None = None
+    # The turn's envelope is tainted. A pause marker records it, so the turn
+    # that picks the task back up starts with the same taint.
+    tainted: bool = False
 
 
 # Below this token budget the model context is so tight that injecting any
@@ -3749,7 +3752,7 @@ def _dispatch_response(
             pause.reason,
             pause.checkpoint_saved,
         )
-        append_pause_marker(ctx.session, pause)
+        append_pause_marker(ctx.session, pause, tainted=ctx.tainted)
 
     if isinstance(response, StreamReasoningStart):
         acc.reasoning_response = ChatMessage(role="reasoning", content="")
@@ -4317,7 +4320,7 @@ async def _run_stream_attempt(
     ) and not acc.has_appended_assistant:
         ctx.session.messages.append(acc.assistant_response)
     if hangup_pause is not None:
-        append_pause_marker(ctx.session, hangup_pause)
+        append_pause_marker(ctx.session, hangup_pause, tainted=ctx.tainted)
 
     # SECRT-2333: persist a visible-marker ChatMessage when the turn ended
     # with ``ended_with_stream_error=True`` and no prior marker is on the
@@ -5629,6 +5632,7 @@ async def stream_chat_completion_sdk(  # pyright: ignore[reportGeneralTypeIssues
             tool_display=tool_display_bridge,
             turn_start=turn_start,
             turn_summary=turn_summary,
+            tainted=envelope is not None and envelope.tainted,
         )
 
         # ---------------------------------------------------------------

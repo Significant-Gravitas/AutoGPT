@@ -1664,18 +1664,23 @@ class TestStreamEndedWithoutResultMessage:
         assert STREAM_ERROR_MARKER not in contents, contents
 
     @pytest.mark.asyncio
-    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(self):
+    @pytest.mark.parametrize("tainted", [True, False])
+    async def test_a_hangup_while_landing_pauses_instead_of_the_notice(
+        self, tainted: bool
+    ):
         """Once the governor is refusing tools, a CLI hangup ended the landing:
         the turn pauses (no checkpoint claimed) rather than showing the
-        incomplete-turn notice, and a paused turn never auto-continues."""
+        incomplete-turn notice, and a paused turn never auto-continues. Its
+        pause row keeps the turn's taint for the turn that picks it up."""
         from backend.copilot.constants import STREAM_INCOMPLETE_MARKER
         from backend.copilot.response_model import StreamTurnPaused
         from backend.copilot.sdk.governor import TurnGovernor
         from backend.copilot.sdk.service import _run_stream_attempt
         from backend.copilot.turn_budget import TurnBudget
-        from backend.copilot.turn_pause import pause_of
+        from backend.copilot.turn_pause import continues_tainted, pause_of
 
         ctx = self._ctx()
+        ctx.tainted = tainted
         state = self._state()
         governor = TurnGovernor(
             budget=TurnBudget(usd=0.0, limiting="weekly"), step_checkin=450
@@ -1710,6 +1715,7 @@ class TestStreamEndedWithoutResultMessage:
         contents = [m.content for m in ctx.session.messages]
         assert STREAM_INCOMPLETE_MARKER not in contents, contents
         assert pause_of(ctx.session.messages[-1]) is not None
+        assert continues_tainted(ctx.session.messages) is tainted
         assert governor.landed is True
 
 

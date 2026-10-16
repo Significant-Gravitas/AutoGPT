@@ -51,11 +51,12 @@ from backend.copilot.dream.scheduling import (
 )
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
-from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
+from backend.copilot.model import create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.session_permissions import resolve_session_permissions
 from backend.copilot.transports import resolve_default_chat_route
+from backend.copilot.turn_pause import continues_tainted
 from backend.copilot.turn_queue import TurnRefusal, turn_refusal
 from backend.data.db_accessors import experts_db
 from backend.data.execution import ExecutionTrigger, GraphExecutionWithNodes
@@ -984,7 +985,7 @@ async def _execute_at_reset_turn(args: "CopilotTurnJobArgs", kind: AtResetKind) 
             )
             return
         if verdict.action == "fire":
-            await _dispatch_at_reset_turn(args, kind, chat.session)
+            await _dispatch_at_reset_turn(args, kind, chat)
         elif verdict.action == "wait" and verdict.run_at is not None:
             logger.info(
                 f"{kind}-at-reset turn for session {label} is still out of "
@@ -1036,14 +1037,17 @@ async def _at_reset_chat(args: "CopilotTurnJobArgs") -> PaginatedMessages | None
 
 
 async def _dispatch_at_reset_turn(
-    args: "CopilotTurnJobArgs", kind: AtResetKind, session: ChatSessionInfo
+    args: "CopilotTurnJobArgs", kind: AtResetKind, chat: PaginatedMessages
 ) -> None:
     """Start the turn the way a follow-up into an existing chat starts.
 
     A resume is a system note: grey in the chat, an instruction to the model.
-    A send is the user's own words, written before the reset, so unlike a
-    model-authored follow-up it lands as their message.
+    It carries on the paused turn's work, so it starts with that turn's
+    taint, read off the pause marker in the chat's latest rows. A send is the
+    user's own words, written before the reset, so unlike a model-authored
+    follow-up it lands as their message.
     """
+    session = chat.session
     is_send = kind == "send"
     await schedule_turn(
         session_id=session.session_id,
@@ -1063,6 +1067,7 @@ async def _dispatch_at_reset_turn(
         # limits, as a message sent there now would be (a builder chat's).
         permissions=resolve_session_permissions(session),
         scheduled=ScheduledTurnOrigin(schedule_id=args.schedule_id),
+        tainted=not is_send and continues_tainted(chat.messages),
     )
     logger.info(
         f"Dispatched {kind}-at-reset turn for session {session.session_id[:12]}"

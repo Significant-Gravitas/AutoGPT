@@ -532,6 +532,7 @@ async def schedule_turn(
     delegated: bool = False,
     impersonated: bool = False,
     root: bool = False,
+    tainted: bool = False,
 ) -> None:
     """End-to-end "start a copilot turn": reserve a per-user concurrency
     slot, register the session in the stream registry, then publish the
@@ -600,6 +601,7 @@ async def schedule_turn(
             scheduled=scheduled,
             impersonated=impersonated,
             root=root,
+            tainted=tainted,
         )
 
 
@@ -648,6 +650,7 @@ async def dispatch_turn(
     impersonated: bool = False,
     voice: bool = False,
     from_chat_platform: bool = False,
+    tainted: bool = False,
 ) -> None:
     """Within an already-held turn slot, register the session in the
     stream registry, publish the work to the executor queue, and
@@ -675,6 +678,10 @@ async def dispatch_turn(
     call was held under): it is re-checked instead, narrowed by today's
     ``permissions``, and its node is not released if dispatch fails.
 
+    ``tainted`` mints the envelope tainted, as ``from_chat_platform`` does: a
+    turn that picks a paused one's work back up (Keep going, the resume at the
+    budget reset) keeps that turn's taint.
+
     The same rule decides the turn's Sentry trace: it continues the caller's
     only when it derives its envelope from the caller's context, because a
     root or a re-admitted turn was caused by something other than the code
@@ -694,7 +701,7 @@ async def dispatch_turn(
             permissions,
             spawn,
             root=root,
-            tainted=from_chat_platform,
+            tainted=from_chat_platform or tainted,
         )
     else:
         await readmit_turn(envelope, user_id=user_id)
@@ -906,6 +913,7 @@ async def schedule_chat_turn(
     context: dict[str, str] | None = None,
     voice: bool = False,
     from_chat_platform: bool = False,
+    tainted: bool = False,
     capacity: int | None = None,
     file_ids: list[str] | None = None,
     organization_id: str | None = None,
@@ -1006,6 +1014,7 @@ async def schedule_chat_turn(
             impersonated=impersonated,
             voice=spoken,
             from_chat_platform=from_chat_platform,
+            tainted=tainted,
         )
         return turn_id
 
