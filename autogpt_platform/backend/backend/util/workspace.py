@@ -520,16 +520,16 @@ class WorkspaceManager:
                 **stored[0].model_dump(),
             )
             publication = await workspace_skill_db().publish_workspace_skill_file(write)
-            refusal = publication_refusal(publication, write)
-            if refusal is not None:
-                raise refusal
-        except Exception:
-            for blob in stored:
-                try:
-                    await storage.delete(blob.storage_path)
-                except Exception:
-                    logger.warning("Failed to clean up unpublished skill blob")
+        except BaseException:
+            # Cancellation included: a save stopped part-way must not leave
+            # blobs no row points at. Shielded so a second cancel cannot
+            # interrupt the cleanup itself.
+            await asyncio.shield(self._discard_unpublished(storage, stored))
             raise
+        refusal = publication_refusal(publication, write)
+        if refusal is not None:
+            await self._discard_unpublished(storage, stored)
+            raise refusal
         assert publication.file is not None
         await self._retire_replaced(storage, publication)
         logger.info(
@@ -539,6 +539,32 @@ class WorkspaceManager:
         for blob in stored:
             self._schedule_embedding(blob.file_id, blob.name, blob.path)
         return publication.file
+
+    async def _discard_unpublished(
+        self, storage: WorkspaceStorageBackend, stored: list[WorkspaceSkillFile]
+    ) -> None:
+        """Delete blobs a failed package write staged. A publication whose
+        reply was lost may have committed anyway; its root row then exists
+        and every blob it names must stay."""
+        if not stored:
+            return
+        try:
+            if await workspace_db().get_workspace_file(
+                stored[0].file_id, self.workspace_id
+            ):
+                return
+        except Exception:
+            logger.warning(
+                "Could not tell whether a skill package was published; "
+                "keeping its blobs",
+                exc_info=True,
+            )
+            return
+        for blob in stored:
+            try:
+                await storage.delete(blob.storage_path)
+            except Exception:
+                logger.warning("Failed to clean up unpublished skill blob")
 
     async def _require_package_room(
         self, package: list[SkillPackageFile], removed: list[str]
