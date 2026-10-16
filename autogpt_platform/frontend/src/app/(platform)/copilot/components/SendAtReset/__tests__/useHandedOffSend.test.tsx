@@ -15,6 +15,12 @@ vi.mock("@/lib/auth/hooks/useAuthStore", () => ({
     selector({ user: { id: "user-a" } }),
 }));
 
+const toast = vi.hoisted(() => vi.fn());
+vi.mock("@/components/molecules/Toast/use-toast", () => ({
+  toast,
+  useToast: () => ({ toast, dismiss: vi.fn() }),
+}));
+
 const RUN_AT = new Date(2026, 9, 17, 1, 7).toISOString();
 const MESSAGE = "Draft the launch post";
 
@@ -69,9 +75,14 @@ function handedOff(sessionId: string) {
   return useScheduledSendHandoff.getState().sends[sessionId];
 }
 
+function toastTitles() {
+  return toast.mock.calls.map(([options]) => options.title);
+}
+
 beforeEach(() => {
   sessionStorage.clear();
   useScheduledSendHandoff.setState({ sends: {} });
+  toast.mockClear();
 });
 
 describe("useHandedOffSend", () => {
@@ -105,6 +116,7 @@ describe("useHandedOffSend", () => {
       await waitFor(() => expect(handedOff("chat-landed")).toBeUndefined());
       expect(calls.posted).toEqual([]);
       expect(result.current).toBe("");
+      expect(toastTitles()).toEqual([]);
     });
 
     it("puts it back in the composer when the server doesn't have it", async () => {
@@ -118,6 +130,7 @@ describe("useHandedOffSend", () => {
       await waitFor(() => expect(result.current).toBe(MESSAGE));
       expect(handedOff("chat-lost")).toBeUndefined();
       expect(calls.posted).toEqual([]);
+      expect(toastTitles()).toEqual(["Couldn’t schedule your message"]);
     });
 
     it("puts it back in the composer when the server can't be asked", async () => {
@@ -130,6 +143,7 @@ describe("useHandedOffSend", () => {
 
       await waitFor(() => expect(result.current).toBe(MESSAGE));
       expect(calls.posted).toEqual([]);
+      expect(toastTitles()).toEqual(["Couldn’t check your scheduled message"]);
     });
   });
 });

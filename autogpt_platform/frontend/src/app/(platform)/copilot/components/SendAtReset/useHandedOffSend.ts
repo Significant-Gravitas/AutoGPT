@@ -18,17 +18,20 @@ export function useHandedOffSend(sessionId: string | null, actions: Actions) {
     sessionId ? (state.sends[sessionId] ?? null) : null,
   );
   const latest = useRef(actions);
-  latest.current = actions;
+  // Before the handoff's effect, so it uses the actions of a committed render.
+  useEffect(() => {
+    latest.current = actions;
+  });
   useEffect(() => {
     if (!sessionId || waiting === null || settingSends.has(sessionId)) return;
     settingSends.add(sessionId);
     const handoff = useScheduledSendHandoff.getState();
+    const notSentYet = waiting.sentAt === null;
+    if (notSentYet) handoff.markSent(sessionId);
     // Retrying a send a gone page may have set could add it twice.
-    const settle =
-      waiting.sentAt === null
-        ? latest.current.scheduleQuietly
-        : latest.current.recover;
-    if (waiting.sentAt === null) handoff.markSent(sessionId);
+    const settle = notSentYet
+      ? latest.current.scheduleQuietly
+      : latest.current.recover;
     void settle(waiting.message).finally(() => {
       settingSends.delete(sessionId);
       handoff.clear(sessionId);

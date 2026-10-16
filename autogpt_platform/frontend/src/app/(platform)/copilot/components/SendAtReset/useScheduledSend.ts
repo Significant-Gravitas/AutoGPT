@@ -22,6 +22,7 @@ import {
   SentNowError,
   sessionDraftKey,
 } from "./helpers";
+import { countSendChanges, startSendRead } from "./sendChanges";
 import { useAtResetJobs } from "./useAtResetJobs";
 
 interface Args {
@@ -38,8 +39,12 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   const draft = useChatDraftAccess(
     sessionId ? sessionDraftKey(sessionId) : undefined,
   );
-  const scheduleSend = usePostV2ScheduleTurnAtBudgetReset();
-  const cancelSend = useDeleteV2CancelTurnAtBudgetReset();
+  const scheduleSend = usePostV2ScheduleTurnAtBudgetReset({
+    mutation: countSendChanges,
+  });
+  const cancelSend = useDeleteV2CancelTurnAtBudgetReset({
+    mutation: countSendChanges,
+  });
   const pending = jobs?.find((job) => job.kind === "send") ?? null;
 
   async function schedule(message: string) {
@@ -112,9 +117,19 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
       toastChangeFailure(read.error);
       return;
     }
+    // Nor with a copy that can predate a message this page added meanwhile.
+    if (read.canHaveMissedAChange) {
+      toastChangeFailure(new Error("It changed just now"));
+      return;
+    }
     const { send } = read;
-    // Already sent, or cancelled elsewhere: the read has updated the list.
-    if (!send) return;
+    // Already sent, or cancelled elsewhere.
+    if (!send) {
+      void queryClient.invalidateQueries({
+        queryKey: getGetV2ListTurnsAtBudgetResetQueryKey(sessionId ?? ""),
+      });
+      return;
+    }
     if (!(await unschedule())) return;
     draft.write((current) => returnToDraft(current, send.message ?? ""));
     if (inputId) document.getElementById(inputId)?.focus();
@@ -123,18 +138,17 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
   /** The send as the server holds it now, since another tab or client may
    *  have added to it after this one last read the list. A request of its
    *  own: one the list's query is making is cancelled if the chat remounts,
-   *  which would read as the server being unreachable. */
+   *  which would read as the server being unreachable. It stays out of the
+   *  list's cache, where a change made while it was out is newer. */
   async function readSend() {
-    if (!sessionId) return { send: pending };
+    if (!sessionId) return { send: pending, canHaveMissedAChange: false };
+    const canHaveMissedAChange = startSendRead(sessionId);
     try {
       const response = await getV2ListTurnsAtBudgetReset(sessionId);
       if (response.status !== 200) return { error: response };
-      queryClient.setQueryData(
-        getGetV2ListTurnsAtBudgetResetQueryKey(sessionId),
-        response,
-      );
       return {
         send: response.data.jobs.find((job) => job.kind === "send") ?? null,
+        canHaveMissedAChange: canHaveMissedAChange(),
       };
     } catch (error) {
       return { error };
@@ -154,6 +168,8 @@ export function useScheduledSend({ sessionId, onSendNow, inputId }: Args) {
    *  in the chat's draft. Never sent again from here, since the first try
    *  could still land and the server would add the message twice. */
   async function recover(message: string) {
+    // A change this page makes meanwhile can't sway it: adding to the send
+    // doesn't add this message, and Edit puts what it cancels in the draft.
     const read = await readSend();
     if ("send" in read && holdsMessage(read.send?.message ?? "", message)) {
       return;
