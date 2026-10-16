@@ -577,6 +577,22 @@ class FakeLearningStore:
         self._put_head(head)
         return head
 
+    async def pause_use_if_current(
+        self, user_id: str, head_id: str, version_id: str
+    ) -> bool:
+        head = next(
+            (
+                h
+                for h in self.heads.values()
+                if h.id == head_id and h.user_id == user_id
+            ),
+            None,
+        )
+        if head is None or head.current_version_id != version_id:
+            return False
+        self._put_head(head.model_copy(update={"use_paused_at": _now()}))
+        return True
+
     # ---- versions ------------------------------------------------------
 
     def _next_number(self, head_id: str) -> int:

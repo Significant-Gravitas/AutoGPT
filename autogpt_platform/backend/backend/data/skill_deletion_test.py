@@ -264,6 +264,27 @@ async def test_a_publication_completing_mid_deletion_is_still_archived(
 
 
 @pytest.mark.asyncio(loop_scope="session")
+async def test_a_use_pause_lands_only_while_the_head_names_the_version(server):
+    """Revocation's pause for a version with no fallback is a compare-and-swap:
+    once a deletion has ended the head, the pause changes nothing."""
+    user = str(uuid4())
+    await _create_user(user)
+    try:
+        current = await _publish(user, "pause-check", "Current procedure")
+        head = await versions.get_head(user, OWNER, "pause-check")
+        assert await versions.pause_use_if_current(user, head.id, current.id)
+        assert (await versions.get_head(user, OWNER, "pause-check")).use_paused_at
+
+        await versions.update_head_policy(user, OWNER, "pause-check", use_paused=False)
+        assert (await _delete(user, "pause-check", current.id)).committed
+        assert not await versions.pause_use_if_current(user, head.id, current.id)
+        after = await versions.get_head(user, OWNER, "pause-check")
+        assert after.deleted and after.use_paused_at is None
+    finally:
+        await _cleanup(user)
+
+
+@pytest.mark.asyncio(loop_scope="session")
 async def test_deletion_against_a_moved_head_records_nothing(server):
     user = str(uuid4())
     await _create_user(user)

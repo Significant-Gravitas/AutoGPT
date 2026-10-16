@@ -911,6 +911,15 @@ async def _package_behavior(
             manager, skill_folder(expert_id), slug, complete=True
         )
     except Exception:
+        # Over the files cap, or a file that cannot be read. The body alone
+        # still catches the procedure: an exact copy then becomes a decision
+        # for the owner instead of being suppressed outright. Refusing the
+        # delete instead would leave a package with a lost file undeletable.
+        logger.warning(
+            "[skills] could not read the files of %s to record its deletion",
+            slug,
+            exc_info=True,
+        )
         files = []
     return _deleted_behavior(
         slug,

@@ -656,6 +656,7 @@ class DatabaseManager(AppService):
     list_heads = _(skill_versions_data.list_heads)
     list_use_paused_skill_names = _(skill_versions_data.list_use_paused_skill_names)
     update_head_policy = _(skill_versions_data.update_head_policy)
+    pause_use_if_current = _(skill_versions_data.pause_use_if_current)
     publish_version_if_current = _(skill_versions_data.publish_version_if_current)
     commit_version_safe = _(skill_publication_data.commit_version_safe)
     complete_publication = _(skill_publication_data.complete_publication)
@@ -1150,6 +1151,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     list_heads = d.list_heads
     list_use_paused_skill_names = d.list_use_paused_skill_names
     update_head_policy = d.update_head_policy
+    pause_use_if_current = d.pause_use_if_current
     publish_version_if_current = d.publish_version_if_current
     commit_version_safe = d.commit_version_safe
     complete_publication = d.complete_publication

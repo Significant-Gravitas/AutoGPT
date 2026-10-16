@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from backend.copilot.tools import skills
+from backend.copilot.tools.skills import SkillFile
 from backend.copilot.tools.skills_test import _FakeWorkspaceManager, _patch_skills_path
 from backend.data.skill_publication import VersionDraft
 
@@ -30,6 +31,9 @@ NEAR_COPY = BODY_V2.replace(
     "2. Validate the row count\n3. Report the row count\n",
 )
 DIFFERENT = "## Steps\n1. Parse each line as JSON\n2. Drop duplicate ids\n"
+STOPWORDS_ONLY = "## Steps\n1. Use the\n2. And then\n"
+SCRIPT = b"print('rows match')\n"
+SCRIPT_PATH = f"/skills/{NAME}/scripts/check.py"
 
 
 def _snapshot(source) -> publish.SourceSnapshot:
@@ -72,7 +76,7 @@ class _Skill:
         monkeypatch.setattr(skills, "skill_versions_db", lambda: store)
         monkeypatch.setattr(skills, "skill_deletion_db", lambda: store)
 
-    async def seed(self) -> None:
+    async def seed(self, *, independent: bool = True, learned: bool = True) -> None:
         register_source_adapter(_Adapter(self.store))
         self.withdrawn, self.later = [
             await self.store.upsert_source_revision(
@@ -86,13 +90,15 @@ class _Skill:
             )
             for ref in ("withdrawn", "later")
         ]
-        self.independent = await _commit(self.store, BODY_V1, "edited", [])
-        self.learned = await _commit(
-            self.store,
-            BODY_V2,
-            "saved_overnight",
-            [_snapshot(self.withdrawn).as_dependency()],
-        )
+        if independent:
+            self.independent = await _commit(self.store, BODY_V1, "edited", [])
+        if learned:
+            self.learned = await _commit(
+                self.store,
+                BODY_V2,
+                "saved_overnight",
+                [_snapshot(self.withdrawn).as_dependency()],
+            )
 
     async def delete(self) -> None:
         with _patch_skills_path(self.manager):
@@ -268,4 +274,93 @@ async def test_an_import_that_loses_to_a_deletion_records_nothing(
     assert (await fake_store.get_head(USER, OWNER, NAME)).deleted
     origins = [v.origin for v in await fake_store.list_versions(USER, OWNER, NAME)]
     assert origins == ["deleted"]
+    workspace.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_a_delete_landing_mid_revocation_is_not_paused(
+    fake_store, workspace, monkeypatch
+):
+    """With no version to fall back to, revocation pauses the skill. A delete
+    landing between its read and the pause must not inherit the pause, or a
+    later skill under the name would start out hidden."""
+    skill = _Skill(fake_store, monkeypatch)
+    await skill.seed(independent=False)
+    fallback = fake_store.latest_independent_version_id
+
+    async def delete_then_look(*args, **kwargs):
+        await skill.delete()
+        return await fallback(*args, **kwargs)
+
+    monkeypatch.setattr(fake_store, "latest_independent_version_id", delete_then_look)
+
+    await skill.exclude_withdrawn()
+
+    head = await fake_store.get_head(USER, OWNER, NAME)
+    assert head.deleted
+    assert head.use_paused_at is None
+
+
+def _script() -> SkillFile:
+    return SkillFile(relative_path="scripts/check.py", content=SCRIPT)
+
+
+@pytest.mark.asyncio
+async def test_the_deleted_package_with_its_files_is_suppressed(
+    fake_store, workspace, monkeypatch
+):
+    skill = _Skill(fake_store, monkeypatch)
+    skill.manager.files[SCRIPT_PATH] = SCRIPT
+    await skill.seed()
+    await skill.delete()
+    monkeypatch.setattr(
+        publish, "read_user_skill_markdown", AsyncMock(return_value=None)
+    )
+
+    outcome = await publish.publish_learned_version(
+        _request(
+            BODY_V2,
+            files=[_script()],
+            sources=[_snapshot(skill.later)],
+            create_only=True,
+        )
+    )
+
+    assert outcome.status == "suppressed"
+
+
+@pytest.mark.asyncio
+async def test_a_package_unreadable_at_deletion_still_needs_the_owner(
+    fake_store, workspace, monkeypatch
+):
+    """If the package's files cannot be read when it is deleted, its body
+    alone is recorded. The same package proposed again then waits for the
+    owner, even when its steps are all stopwords."""
+    skill = _Skill(fake_store, monkeypatch)
+    skill.manager.files[f"/skills/{NAME}/SKILL.md"] = _content(STOPWORDS_ONLY).encode()
+    skill.manager.files[SCRIPT_PATH] = SCRIPT
+    await skill.seed(independent=False, learned=False)
+    read = skill.manager.read_file
+
+    async def lose_the_script(path: str) -> bytes:
+        if path == SCRIPT_PATH:
+            raise OSError("blob missing")
+        return await read(path)
+
+    monkeypatch.setattr(skill.manager, "read_file", lose_the_script)
+    await skill.delete()
+    monkeypatch.setattr(
+        publish, "read_user_skill_markdown", AsyncMock(return_value=None)
+    )
+
+    outcome = await publish.publish_learned_version(
+        _request(
+            STOPWORDS_ONLY,
+            files=[_script()],
+            sources=[_snapshot(skill.later)],
+            create_only=True,
+        )
+    )
+
+    assert outcome.status == "needs_decision"
     workspace.assert_not_awaited()

@@ -244,6 +244,18 @@ async def update_head_policy(
     return SkillHeadRecord.from_db(row) if row else head
 
 
+async def pause_use_if_current(user_id: str, head_id: str, version_id: str) -> bool:
+    """Stop using the skill only while the head still names *version_id*.
+
+    A deletion or a newer version landing first leaves the head alone.
+    """
+    paused = await prisma.models.SkillHead.prisma().update_many(
+        where={"id": head_id, "userId": user_id, "currentVersionId": version_id},
+        data={"usePausedAt": datetime.now(timezone.utc)},
+    )
+    return paused > 0
+
+
 async def publish_version_if_current(
     user_id: str,
     head_id: str,
