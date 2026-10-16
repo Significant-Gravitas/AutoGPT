@@ -109,3 +109,28 @@ describe("useCopilotNotifications — OS notification dispatch", () => {
     });
   });
 });
+
+describe("useCopilotNotifications — tab title", () => {
+  it("leaves the tab title alone when sessions finish", async () => {
+    document.title = "AutoPilot";
+    useCopilotUIStore.setState({
+      completedSessionIDs: new Set(["sess-old-1", "sess-old-2"]),
+    });
+    renderHook(() => useCopilotNotifications(null), { wrapper: makeWrapper() });
+
+    act(() => {
+      capturedHandler!({
+        type: "copilot_completion",
+        event: "session_completed",
+        session_id: "sess-3",
+      });
+    });
+
+    await waitFor(() => {
+      expect(useCopilotUIStore.getState().completedSessionIDs).toContain(
+        "sess-3",
+      );
+    });
+    expect(document.title).toBe("AutoPilot");
+  });
+});

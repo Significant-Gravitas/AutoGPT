@@ -28,7 +28,6 @@ import { motion } from "framer-motion";
 import { parseAsString, useQueryState } from "nuqs";
 import { useEffect, useRef, useState } from "react";
 import { useCopilotChatRuntimeStore } from "../../copilotChatRegistry";
-import { formatNotificationTitle } from "../../helpers";
 import { fetchAndExportChat } from "../../helpers/exportChatAsMarkdown";
 import { shouldShowSessionProcessingIndicator } from "../../sessionActivity";
 import { useCopilotUIStore } from "../../store";
@@ -186,8 +185,6 @@ export function ChatSidebar() {
   useEffect(() => {
     if (!sessionId || !completedSessionIDs.has(sessionId)) return;
     clearCompletedSession(sessionId);
-    const remaining = Math.max(0, completedSessionIDs.size - 1);
-    document.title = formatNotificationTitle(remaining);
   }, [sessionId, completedSessionIDs, clearCompletedSession]);
 
   function handleNewChat() {
