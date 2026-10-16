@@ -659,6 +659,14 @@ async def _open_chat_ledger(session_id: str, user_id: str | None) -> None:
     )
 
 
+def running_turn_tainted(chat_source_platform: str | None = None) -> bool:
+    """Whether work the running turn leaves to run later (a follow-up, a
+    routine) starts tainted: the turn's envelope is, or its chat was started
+    on a chat platform (*chat_source_platform*), whose turns run tainted."""
+    envelope = get_current_envelope()
+    return (envelope is not None and envelope.tainted) or bool(chat_source_platform)
+
+
 async def meters_spend(user_id: str | None) -> bool:
     if not user_id:
         return False

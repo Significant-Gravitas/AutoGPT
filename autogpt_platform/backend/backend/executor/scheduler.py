@@ -28,6 +28,7 @@ from apscheduler.triggers.date import DateTrigger
 from apscheduler.util import ZoneInfo
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, ValidationError
+from pydantic.json_schema import SkipJsonSchema
 from sqlalchemy import MetaData, create_engine
 
 from backend.api.features.experts.models import ExpertRoutine
@@ -51,7 +52,7 @@ from backend.copilot.dream.scheduling import (
 )
 from backend.copilot.executor.utils import ScheduledTurnOrigin, schedule_turn
 from backend.copilot.graphiti.communities import rebuild_communities_for_user
-from backend.copilot.model import create_chat_session, get_chat_session
+from backend.copilot.model import ChatSessionInfo, create_chat_session, get_chat_session
 from backend.copilot.optimize_blocks import optimize_block_descriptions
 from backend.copilot.permissions import CopilotPermissions, routine_disabled_tools
 from backend.copilot.session_permissions import resolve_session_permissions
@@ -602,6 +603,7 @@ async def _execute_copilot_turn(**kwargs):
                 cron=args.cron,
                 fired_at=datetime.now(timezone.utc),
             ),
+            tainted=_fire_tainted(args, routine, target_session),
         )
         if routine is not None and routine.run_at is not None:
             # APScheduler drops a one-shot job once it fires, so without this
@@ -703,6 +705,24 @@ async def _refuse_if_turn_may_not_start(
         f"{refusal.reason}; {outcome}",
     )
     return True
+
+
+def _fire_tainted(
+    args: "CopilotTurnJobArgs",
+    routine: ExpertRoutine | None,
+    session: ChatSessionInfo,
+) -> bool:
+    """Whether this fire starts tainted, as the turn that set it up ran.
+
+    A follow-up keeps that turn's taint in its job; a routine also keeps it on
+    its row, read here the way its pins are, and the row's only ever rises. A
+    job or a routine row from before those fields can't say, so whether the
+    chat the fire lands in was started on a chat platform decides for it.
+    """
+    on_platform = bool(session.metadata.source_platform)
+    from_job = args.tainted if args.tainted is not None else on_platform
+    from_routine = routine is not None and (routine.tainted or on_platform)
+    return from_job or from_routine
 
 
 def _credential_pins_for_turn(
@@ -860,6 +880,9 @@ async def _reschedule_one_shot(
             # And the accounts it was set up to run on, or the retry would
             # take the first saved one instead.
             credential_pins=args.credential_pins,
+            # And how the turn that set it up ran, or the retry would start
+            # untainted.
+            tainted=args.tainted,
         )
         logger.info(
             f"Rescheduled one-shot copilot turn for session "
@@ -1121,6 +1144,7 @@ async def _readd_at_reset_turn(
             purpose=args.purpose,
             schedule_id=args.schedule_id,
             created_at=args.created_at,
+            tainted=args.tainted,
         )
     except Exception:
         logger.warning(
@@ -2125,6 +2149,13 @@ class CopilotTurnJobArgs(BaseModel):
     # When the job was first set, kept when it is put back for a retry; a
     # resume stands down if the user carried the chat on after it.
     created_at: datetime | None = None
+    # Whether the turn that set up this follow-up ran tainted, so every fire
+    # starts tainted too; kept through cron fires and one-shot retries, and a
+    # routine's own row keeps it as well. None on a job from before the field:
+    # its fires are tainted when the chat they land in was started on a chat
+    # platform, untainted otherwise. At-reset jobs don't read it: they take
+    # the paused turn's taint off its pause marker instead.
+    tainted: bool | None = None
 
 
 def _timezone_from_job(job_obj: JobObj) -> str:
@@ -2219,6 +2250,9 @@ class CopilotTurnJobInfo(CopilotTurnJobArgs):
     name: str
     next_run_time: str
     timezone: str = Field(default="UTC", description="Timezone used for scheduling")
+    # Read only at fire time, from the job's own args, so it stays out of
+    # what the schedule APIs return.
+    tainted: SkipJsonSchema[bool | None] = Field(default=None, exclude=True)
 
     @staticmethod
     def from_db(job_args: CopilotTurnJobArgs, job_obj: JobObj) -> "CopilotTurnJobInfo":
@@ -2861,6 +2895,7 @@ class Scheduler(AppService):
         purpose: Literal["followup", "resume", "send"] = "followup",
         schedule_id: str | None = None,
         created_at: datetime | None = None,
+        tainted: bool | None = None,
     ) -> CopilotTurnJobInfo:
         """Schedule a copilot turn at a future time.
 
@@ -2868,6 +2903,9 @@ class Scheduler(AppService):
         at fire time in the persisted Otto or expert scope and routes
         the turn into it. Otherwise the turn resumes the named (existing)
         session with its full history, after re-validating that scope.
+
+        *tainted* is whether the turn setting it up ran tainted; every fire
+        starts with it (see ``CopilotTurnJobArgs.tainted``).
 
         The ``*_retry_count`` arguments are set internally to bound their
         respective transient retry paths; normal callers should leave them at 0.
@@ -2919,6 +2957,7 @@ class Scheduler(AppService):
             routine_schedule_id=routine_schedule_id,
             purpose=purpose,
             created_at=created_at or datetime.now(timezone.utc),
+            tainted=tainted,
         )
         if purpose != "followup":
             default_name = AT_RESET_JOB_NAMES[purpose]

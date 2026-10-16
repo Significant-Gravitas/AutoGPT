@@ -1,0 +1,1 @@
+ALTER TABLE "ExpertRoutine" ADD COLUMN "tainted" BOOLEAN NOT NULL DEFAULT false;
