@@ -13,6 +13,7 @@ import {
   takeHeldFollowUps,
 } from "./helpers/heldFollowUps";
 import { queueFollowUpMessage } from "./helpers/queueFollowUpMessage";
+import { startReplyTiming } from "./helpers/replyTiming";
 import { stripReplayPrefix } from "./helpers/stripReplayPrefix";
 import { useCopilotStreamStore } from "./copilotStreamStore";
 import { useCopilotPendingChips } from "./useCopilotPendingChips";
@@ -31,6 +32,7 @@ import { useCopilotRuntimeStream } from "./useCopilotRuntimeStream";
 import { useCopilotStream } from "./useCopilotStream";
 import { resolveExpertIdentity, useExpertMap } from "./useExpertMap";
 import { useLoadMoreMessages } from "./useLoadMoreMessages";
+import { useReplyTiming } from "./useReplyTiming";
 import { recoverFailedDeferredSend, useSendMessage } from "./useSendMessage";
 import { useSessionTitlePoll } from "./useSessionTitlePoll";
 import { useWorkflowImportAutoSubmit } from "./useWorkflowImportAutoSubmit";
@@ -363,6 +365,16 @@ export function useCopilotPage({
 
   useCopilotNotifications(sessionId);
 
+  const { sendMessage: sendTimedMessage } = useReplyTiming({
+    sessionId,
+    messages: displayMessages,
+    status,
+    isSettled: isLocalStreamSettled,
+    isUserStopping,
+    streamClient: isStreamRuntime ? "stream-runtime" : "ai-sdk",
+    sendMessage,
+  });
+
   const {
     onSend: sendNewMessage,
     isUploadingFiles,
@@ -370,7 +382,7 @@ export function useCopilotPage({
     setPendingFileParts,
   } = useSendMessage({
     sessionId,
-    sendMessage,
+    sendMessage: sendTimedMessage,
     createSession,
     isUserStoppingRef,
   });
@@ -451,6 +463,13 @@ export function useCopilotPage({
       if (!(await waitForLocalSettle())) return;
     }
 
+    // This send starts a turn: its reply is timed from here to the first
+    // answer text on screen. A follow-up queued above never gets this far.
+    const timing = startReplyTiming({
+      isNewChat: !sessionId,
+      isExpert: Boolean(activeExpertId),
+    });
+
     // Mark in-flight synchronously before dispatching so a rapid second
     // press sees isInflightRef.current=true and routes to the queue path
     // instead of triggering a duplicate /stream POST.
@@ -463,12 +482,16 @@ export function useCopilotPage({
       // Resolve once dispatched, not when the whole answer has streamed:
       // the composer's enqueue path is waiting on this, and holding it for
       // the entire turn would lock Enter and the queue button again.
-      void sendNewMessage(message, files, workspaceFiles, metadata).catch(
-        (err: unknown) => recoverFailedDeferredSend(trimmed, [], err),
-      );
+      void sendNewMessage(
+        message,
+        files,
+        workspaceFiles,
+        metadata,
+        timing,
+      ).catch((err: unknown) => recoverFailedDeferredSend(trimmed, [], err));
       return;
     }
-    await sendNewMessage(message, files, workspaceFiles, metadata);
+    await sendNewMessage(message, files, workspaceFiles, metadata, timing);
   }
 
   useWorkflowImportAutoSubmit({
@@ -492,6 +515,7 @@ export function useCopilotPage({
     onAdoptSession: setSessionId,
     async onKickoff(id, attemptToken) {
       const kickoffMessage = buildKickoffMessage(id, attemptToken);
+      // Untimed: nobody pressed send, the page opened an expert's first day.
       await sendNewMessage(
         kickoffMessage.text,
         undefined,
