@@ -2624,6 +2624,81 @@ def test_create_session_with_expert_id_persists_it(
     assert mock_create.call_args.kwargs["expert_id"] == "expert-1"
 
 
+def _pinned_expert(credential_id: str = "cred-codex"):
+    return _make_expert("expert-1").model_copy(
+        update={"llm_auth_provider": "codex", "llm_credential_id": credential_id}
+    )
+
+
+def _link_codex(credential_id: str = "cred-codex") -> None:
+    credential = _codex_credentials(credential_id)
+    chat_transports.credentials_manager.store.get_creds_by_provider.side_effect = (
+        lambda _user_id, provider: ([credential] if provider == "codex" else [])
+    )
+
+
+def test_create_session_for_pinned_expert_uses_the_pin(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """With no route named, a new expert thread starts on the expert's pin
+    rather than the account default (platform here)."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    _mock_get_expert(mocker, _pinned_expert())
+    _link_codex()
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "codex"
+    assert mock_create.call_args.kwargs["llm_credential_id"] == "cred-codex"
+
+
+def test_create_session_explicit_route_overrides_the_expert_pin(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A route picked for one chat wins over the expert's pin."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    _mock_get_expert(mocker, _pinned_expert())
+    _link_codex()
+
+    response = client.post(
+        "/sessions",
+        json={"expert_id": "expert-1", "llm_auth_provider": "platform"},
+    )
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
+    assert mock_create.call_args.kwargs["llm_credential_id"] is None
+
+
+def test_create_session_for_expert_with_unlinked_pin_uses_account_default(
+    mocker: pytest_mock.MockerFixture,
+) -> None:
+    """A pin naming a credential the user no longer holds falls back to the
+    account default instead of failing the new thread."""
+    mock_create = _mock_create_chat_session(mocker)
+    mocker.patch(
+        "backend.api.features.chat.routes.enforce_payment_paywall",
+        new_callable=AsyncMock,
+    )
+    _mock_get_expert(mocker, _pinned_expert("cred-gone"))
+    _link_codex("cred-other")
+
+    response = client.post("/sessions", json={"expert_id": "expert-1"})
+
+    assert response.status_code == 200
+    assert mock_create.call_args.kwargs["llm_auth_provider"] == "platform"
+    assert mock_create.call_args.kwargs["llm_credential_id"] is None
+
+
 def test_create_expert_kickoff_session_uses_atomic_get_or_create(
     mocker: pytest_mock.MockerFixture,
     test_user_id: str,

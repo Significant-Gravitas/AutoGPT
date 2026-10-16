@@ -5,6 +5,7 @@ import type { AIConnectionOffer } from "@/app/api/__generated__/models/aIConnect
 import { useOAuthConnect } from "@/components/contextual/IntegrationsPanel/components/ConnectServiceDialog/components/DetailView/useOAuthConnect";
 
 import { useCopilotUIStore } from "../../../../store";
+import { useExpertLlmRoute } from "../../../../useExpertLlmRoute";
 import {
   isSelectable,
   matchesSelection,
@@ -14,10 +15,11 @@ import {
 } from "./helpers";
 import { useLockedTierFallback } from "./useLockedTierFallback";
 
-export function useConnectionPicker() {
+export function useConnectionPicker(expertId: string | null = null) {
   const query = useGetV2ListChatConnections({
     query: { refetchOnWindowFocus: true, staleTime: 0 },
   });
+  const { route: expertRoute } = useExpertLlmRoute(expertId);
   const {
     copilotLlmAuth,
     setCopilotLlmAuth,
@@ -36,14 +38,19 @@ export function useConnectionPicker() {
   );
 
   // Nothing chosen yet, or the chosen connection is gone: show the one the
-  // server marks default. Showing it is all this does -- writing it into the
-  // store would turn "follow the server" into a standing choice, and the
-  // store has no way back to null: a connection picked for one chat would
-  // silently become the default for every later chat, a new default set in
-  // Settings could never take over, and the create call would always name a
-  // route, which makes the server skip its own default. Deciding where a chat
-  // starts is the server's job, so an unmade choice stays unmade.
-  const fallback = choosable.find((offer) => offer.is_default) ?? choosable[0];
+  // server will start the chat on -- the addressed expert's pinned connection
+  // when there is one, else the account default. Showing it is all this does
+  // -- writing it into the store would turn "follow the server" into a
+  // standing choice, and the store has no way back to null: a connection
+  // picked for one chat would silently become the default for every later
+  // chat, a new default set in Settings could never take over, and the create
+  // call would always name a route, which makes the server skip its own
+  // default. Deciding where a chat starts is the server's job, so an unmade
+  // choice stays unmade.
+  const fallback =
+    choosable.find((offer) => matchesSelection(offer, expertRoute)) ??
+    choosable.find((offer) => offer.is_default) ??
+    choosable[0];
 
   const active = selected ?? fallback;
   useLockedTierFallback(active);

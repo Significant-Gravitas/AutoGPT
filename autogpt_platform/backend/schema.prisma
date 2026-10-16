@@ -1253,6 +1253,13 @@ model Expert {
   // future learning stops; existing skills stay usable and ordinary work is
   // unaffected. Cleared by the resume-learning endpoint.
   learningPausedAt DateTime?
+  // The AI connection this expert's new threads run on: a chat LLM route
+  // (`platform`, `codex`, `microsoft_365_copilot`) plus the credential it
+  // runs as. Both null = follow the owner's account default. Stored as a
+  // pair, never provider alone, so two linked ChatGPT accounts stay distinct
+  // (mirrors User.defaultChatAuthProvider / defaultChatCredentialId).
+  llmAuthProvider String?
+  llmCredentialId String?
 
   // Null until the credential allow-list has been seeded from the expert's
   // installed workflows. Distinguishes "never curated" from "deliberately
