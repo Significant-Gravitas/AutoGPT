@@ -105,7 +105,7 @@ On the managed cloud, the catalog is the serve-time gate for layers 1–2: a slu
 
 Retirement has two halves:
 
-1. **Stop it serving**: a catalog PR setting `is_enabled: False` (kill switch — beats the routing flag). Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs.
+1. **Stop it serving**: a catalog PR setting `is_enabled: False`. On the managed cloud this is the kill switch: it beats the routing flag and hides the model from block pickers. Two caveats: if the model is also a `CHAT_*_MODEL` env default, the env floor still serves it (loudly — log + Sentry) until you change that default; and existing agent graphs referencing it keep executing and billing — the kill switch stops NEW serving, step 2 is what stops stored graphs. Self-hosted installs and local transports skip the catalog gate, so there it only hides the model from pickers: to stop AutoPilot serving it, remove its route from the `copilot-model-routing` flag and change any `CHAT_*_MODEL` default that still selects it.
 2. **Migrate existing graph nodes** onto a replacement so users' agents keep working:
 
 ```bash
