@@ -11,10 +11,13 @@ import {
 } from "@/tests/integrations/test-utils";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { http, HttpResponse } from "msw";
+import { parseAsString, useQueryState } from "nuqs";
+import { withNuqsTestingAdapter } from "nuqs/adapters/testing";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useGlobalSearchStore } from "@/app/(platform)/components/GlobalSearchModal/useGlobalSearchStore";
 import { useCopilotUIStore } from "../../../store";
+import { useSendMessage } from "../../../useSendMessage";
 import { ChatSidebar } from "../ChatSidebar";
 
 const toastMock = vi.fn();
@@ -210,6 +213,66 @@ describe("ChatSidebar — delete flow", () => {
     expect(screen.queryByText("Other chat")).toBeNull();
 
     releaseDelete();
+  });
+
+  it("leaves the open chat as soon as its delete is confirmed, so nothing more is sent to it", async () => {
+    let releaseDelete = () => {};
+    const deleteHeld = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    let deleted = false;
+    server.use(
+      getDeleteV2DeleteSessionMockHandler(async () => {
+        await deleteHeld;
+        deleted = true;
+      }),
+    );
+    const sent: (string | null)[] = [];
+    const createSession = vi.fn();
+    const ActiveChatWrapper = withNuqsTestingAdapter({
+      searchParams: "?sessionId=s1",
+      hasMemory: true,
+    });
+    function ActiveChatComposer() {
+      const [sessionId] = useQueryState("sessionId", parseAsString);
+      const { onSend } = useSendMessage({
+        sessionId,
+        createSession,
+        isUserStoppingRef: { current: false },
+        sendMessage: async () => {
+          sent.push(sessionId);
+        },
+      });
+      return (
+        <>
+          <span data-testid="open-session">{sessionId ?? "none"}</span>
+          <button onClick={() => onSend("One more thing")}>Send</button>
+        </>
+      );
+    }
+    render(
+      <ActiveChatWrapper>
+        <SidebarProvider>
+          <ChatSidebar />
+        </SidebarProvider>
+        <ActiveChatComposer />
+      </ActiveChatWrapper>,
+    );
+    expect(screen.getByTestId("open-session").textContent).toBe("s1");
+
+    await openDeleteDialogFor("Active chat");
+    fireEvent.click(await screen.findByRole("button", { name: /^delete$/i }));
+
+    await vi.waitFor(() => {
+      expect(screen.getByTestId("open-session").textContent).toBe("none");
+    });
+    expect(deleted).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await vi.waitFor(() => expect(createSession).toHaveBeenCalled());
+    expect(sent).not.toContain("s1");
+
+    releaseDelete();
+    await vi.waitFor(() => expect(deleted).toBe(true));
   });
 
   it("puts the chat back and toasts when the delete fails, without waiting for a refetch", async () => {
